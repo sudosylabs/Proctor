@@ -2,5 +2,6 @@ go 1.25.4
 
 use (
 	./packages/cache
+	./packages/mail
 	./packages/vfs
 )
