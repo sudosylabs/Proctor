@@ -1,0 +1,29 @@
+name: proctor-cache-test
+
+services:
+  redis:
+    image: ${CACHE_REDIS_IMAGE:-redis:7.2.15-alpine3.21}
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --loglevel
+      - warning
+    ports:
+      - "127.0.0.1:${CACHE_REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    restart: "no"
+    user: redis
+    tmpfs:
+      - /data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

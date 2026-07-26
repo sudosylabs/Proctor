@@ -166,14 +166,35 @@ go vet ./...
 ```
 
 Redis integration tests are opt-in and currently target a standalone test
-instance:
+instance. Docker CLI with Compose provides the repeatable local workflow:
 
 ```bash
-CACHE_REDIS_ADDRESS=127.0.0.1:6379 go test ./redis -run Integration
+make conformance-redis
 ```
 
-Optional environment variables are `CACHE_REDIS_PASSWORD` and
-`CACHE_REDIS_DATABASE`.
+This starts an isolated Redis container, waits for its health check, runs the
+shared conformance suite, and removes the container even when the test fails.
+It binds only to `127.0.0.1:16379`, disables persistence, and stores temporary
+data in a container-local `tmpfs`.
+
+For debugging, keep the service running explicitly:
+
+```bash
+make redis-up
+CACHE_REDIS_ADDRESS=127.0.0.1:16379 go test ./redis -run Integration -count=1
+make redis-down
+```
+
+The defaults can be overridden without editing Compose:
+
+```bash
+CACHE_REDIS_PORT=26379 \
+CACHE_REDIS_IMAGE=redis:7.2-alpine \
+make conformance-redis
+```
+
+When testing an existing server without Docker, optional environment variables
+are `CACHE_REDIS_PASSWORD` and `CACHE_REDIS_DATABASE`.
 
 Backend authors can use `cachetest.Run` to validate the shared contract.
 
