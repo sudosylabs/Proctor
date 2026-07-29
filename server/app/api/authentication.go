@@ -37,6 +37,44 @@ type authenticationResponse struct {
 	Tokens  *model.AuthenticationTokens `json:"tokens"`
 }
 
+func (a *API) InitAuthentication() error {
+	if err := a.Register(
+		Route{Method: http.MethodPost, Path: "/api/v1/auth/login", Auth: AuthPublic},
+		loginHandler(a.application, a.logger),
+	); err != nil {
+		return err
+	}
+	if err := a.Register(
+		Route{
+			Method: http.MethodPost,
+			Path:   "/api/v1/auth/refresh",
+			Auth:   AuthRefreshCredentialRequired,
+		},
+		refreshHandler(a.application, a.logger),
+	); err != nil {
+		return err
+	}
+	return a.Register(
+		Route{
+			Method: http.MethodPost,
+			Path:   "/api/v1/auth/logout",
+			Auth:   AuthSessionRequired,
+		},
+		logoutHandler(a.application, a.logger),
+	)
+}
+
+func (a *API) InitUsers() error {
+	return a.Register(
+		Route{
+			Method: http.MethodGet,
+			Path:   "/api/v1/users/me",
+			Auth:   AuthSessionRequired,
+		},
+		currentUserHandler(a.application, a.logger),
+	)
+}
+
 func loginHandler(application Authentication, logger *mlog.Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var input loginRequest
@@ -97,7 +135,7 @@ func logoutHandler(application Authentication, logger *mlog.Logger) http.Handler
 	})
 }
 
-func currentUserHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func currentUserHandler(application Users, logger *mlog.Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {
@@ -116,7 +154,7 @@ func currentUserHandler(application Authentication, logger *mlog.Logger) http.Ha
 func requireAuthentication(
 	next http.Handler,
 	requirement AuthRequirement,
-	application Authentication,
+	application Authenticator,
 	logger *mlog.Logger,
 ) http.Handler {
 	switch requirement {

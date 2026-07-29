@@ -22,21 +22,31 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	routes := helper.Server.API().Routes()
-	if len(routes) != 11 {
-		t.Fatalf("route count = %d, want 11", len(routes))
+	if len(routes) != 21 {
+		t.Fatalf("route count = %d, want 21", len(routes))
 	}
 	expected := map[string]api.AuthRequirement{
-		http.MethodGet + " /health/live":                          api.AuthPublic,
-		http.MethodGet + " /health/ready":                         api.AuthPublic,
-		http.MethodGet + " /api/v1/system/version":                api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/login":                   api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/refresh":                 api.AuthRefreshCredentialRequired,
-		http.MethodPost + " /api/v1/auth/logout":                  api.AuthSessionRequired,
-		http.MethodGet + " /api/v1/users/me":                      api.AuthSessionRequired,
-		http.MethodGet + " /api/v1/users/me/sessions":             api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/sessions/revoke":     api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/sessions/revoke-all": api.AuthSessionRequired,
-		http.MethodGet + " /api/v1/audits":                        api.AuthPrivileged,
+		http.MethodGet + " /health/live":                               api.AuthPublic,
+		http.MethodGet + " /health/ready":                              api.AuthPublic,
+		http.MethodGet + " /api/v1/system/version":                     api.AuthPublic,
+		http.MethodPost + " /api/v1/auth/login":                        api.AuthPublic,
+		http.MethodPost + " /api/v1/auth/refresh":                      api.AuthRefreshCredentialRequired,
+		http.MethodPost + " /api/v1/auth/logout":                       api.AuthSessionRequired,
+		http.MethodGet + " /api/v1/users/me":                           api.AuthSessionRequired,
+		http.MethodGet + " /api/v1/users/me/sessions":                  api.AuthSessionRequired,
+		http.MethodPost + " /api/v1/users/me/sessions/revoke":          api.AuthSessionRequired,
+		http.MethodPost + " /api/v1/users/me/sessions/revoke-all":      api.AuthSessionRequired,
+		http.MethodGet + " /api/v1/audits":                             api.AuthPrivileged,
+		http.MethodGet + " /api/v1/bootstrap":                          api.AuthPublic,
+		http.MethodPost + " /api/v1/bootstrap":                         api.AuthPublic,
+		http.MethodGet + " /api/v1/roles":                              api.AuthPrivileged,
+		http.MethodPost + " /api/v1/roles":                             api.AuthPrivileged,
+		http.MethodGet + " /api/v1/roles/{role_id}":                    api.AuthPrivileged,
+		http.MethodPatch + " /api/v1/roles/{role_id}":                  api.AuthPrivileged,
+		http.MethodDelete + " /api/v1/roles/{role_id}":                 api.AuthPrivileged,
+		http.MethodGet + " /api/v1/role-bindings":                      api.AuthPrivileged,
+		http.MethodPost + " /api/v1/role-bindings":                     api.AuthPrivileged,
+		http.MethodDelete + " /api/v1/role-bindings/{role_binding_id}": api.AuthPrivileged,
 	}
 	for _, route := range routes {
 		if route.Method == "" || route.Path == "" {

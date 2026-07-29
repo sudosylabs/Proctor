@@ -67,6 +67,7 @@ Corresponding Proctor paths:
 - server/model/class_member.go
 - server/model/role.go
 - server/model/role_binding.go
+- server/model/installation.go
 - server/model/session.go
 - server/model/credential.go
 - server/model/session_credential.go
@@ -272,6 +273,10 @@ Upstream paths:
 - server/channels/app/permissions.go
 - server/channels/app/role.go
 - server/channels/app/audit.go
+- server/channels/app/users/users.go
+- server/channels/app/platform/config.go
+- server/channels/api4/api.go
+- server/channels/api4/role.go
 - server/channels/api4/audit_logging.go
 - server/channels/store/store.go
 - server/channels/store/sqlstore/role_store.go
@@ -289,6 +294,10 @@ Corresponding Proctor paths:
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go
 - server/app/api/audit.go
+- server/app/api/bootstrap.go
+- server/app/api/role.go
+- server/app/api/role_binding.go
+- server/app/api/system.go
 - server/app/api/api.go
 - server/app/api/authentication.go
 - server/app/api/middleware.go
@@ -296,6 +305,9 @@ Corresponding Proctor paths:
 - server/store/sqlstore/role_store.go
 - server/store/sqlstore/role_binding_store.go
 - server/store/sqlstore/audit_store.go
+- server/store/sqlstore/installation_store.go
+- server/migrations/postgres/000004_create_installation_state.up.sql
+- server/migrations/postgres/000004_create_installation_state.down.sql
 - server/store/storetest/role_store.go
 - server/store/storetest/role_binding_store.go
 - server/store/storetest/audit_store.go
@@ -327,6 +339,18 @@ Modifications:
   listing handler runs;
 - omitted Mattermost product, team, channel, scheme, license, enterprise,
   database-replica, and audit-output target assumptions.
+- adopted Mattermost's per-domain `Init*` API ownership while replacing its
+  large product route tree and handler context with Proctor's central
+  policy-aware registrar, narrow composed application contract, Problem
+  Details boundary, and path-pattern dispatcher;
+- used Mattermost's first-user administrator behavior as a product reference
+  but replaced its process-local first-user check with an explicit one-time
+  PostgreSQL aggregate, durable installation marker, cluster-safe advisory
+  lock, pristine-state validation, protected built-in role, and atomic success
+  audit;
+- adapted role administration around Proctor's scoped bindings and closed
+  action registry, including immutable built-ins, institution-only
+  system-administrator grants, and serialized last-administrator protection.
 
 Mattermost cluster messaging implementation
 -------------------------------------------

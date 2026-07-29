@@ -88,6 +88,9 @@ walking skeleton is operational and includes:
   password credential, affiliation, academic-unit member, class member, role,
   role binding, session, hashed session credential, and personal access token;
 - explicit authentication classification metadata for every registered route;
+- Mattermost-style per-domain `Init*` API registration, with one central
+  registrar enforcing explicit authentication policy, duplicate detection,
+  path-parameter routing, literal-route precedence, and route-matrix tests;
 - platform-owned cache, mail, and VFS adapters selected from typed deployment
   configuration, with memory/Redis cache, disabled/SMTP mail, local/S3 VFS,
   dependency checks, deterministic cleanup, and memory test implementations;
@@ -120,6 +123,14 @@ walking skeleton is operational and includes:
   context, plus application primitives for audited critical mutations;
 - an explicitly privileged `GET /api/v1/audits` vertical slice that enforces
   `audit.view` in the application layer and returns cursor-paginated events.
+- an explicit public installation-status/bootstrap boundary backed by an
+  atomic PostgreSQL aggregate that creates the singleton institution, first
+  local administrator, protected built-in system-administrator role,
+  institution-scoped binding, installation marker, and success audit event;
+- audited role and role-binding administration APIs, recognized-permission
+  validation, protected built-in roles, institution-only system-administrator
+  bindings, immediate current-state authorization changes, and transactional
+  protection against ending the final active system-administrator binding.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
@@ -127,10 +138,10 @@ Mattermost-shaped root store with per-model contracts, and all structural
 academic SQL stores: institution, academic unit, programme, programme level,
 academic period, and class. It also includes user, password-credential,
 session, session-credential, role, role-binding, and audit SQL stores with
-reusable conformance tests. External identity login, password
-reset/verification, MFA, personal access token services, role-administration
-APIs, academic membership services, exam-domain, WebSocket, and a concrete
-multi-node cluster transport remain unimplemented.
+reusable conformance tests, plus the atomic installation-bootstrap store.
+External identity login, password reset/verification, MFA, personal access
+token services, academic membership services, exam-domain, WebSocket, and a
+concrete multi-node cluster transport remain unimplemented.
 
 Do not:
 
@@ -402,6 +413,46 @@ Identity model rules:
 - `UserToken` is a hashed, expiring, single-use password-reset or
   email-verification credential; invitations require their own future model.
 
+### Initial installation bootstrap
+
+Bootstrap is an explicit installation operation, not a side effect of ordinary
+user registration. Never grant administrator access merely because a user
+happens to be the first account observed by one application process.
+
+The public bootstrap status exposes only whether the logical installation has
+been initialized. It must not expose the administrator ID, institution ID,
+account existence, or other durable identifiers.
+
+The one successful bootstrap transaction creates:
+
+- the singleton institution;
+- the first local administrator account and encoded password credential;
+- the protected built-in `system_admin` role containing every action currently
+  recognized by the closed action registry;
+- an institution-scoped role binding for that administrator;
+- the singleton durable installation marker;
+- a terminal successful `installation.bootstrap` audit event.
+
+PostgreSQL serializes bootstrap attempts with a transaction-scoped advisory
+lock. The transaction requires a pristine database: an absent marker is not
+enough if institution, user, role, or role-binding records already exist.
+Concurrent nodes may attempt bootstrap, but exactly one transaction may
+succeed. Failed or losing attempts create no partial account, institution,
+credential, role, binding, marker, or success audit event.
+
+Bootstrap requests are source-rate-limited before password hashing. Plaintext
+passwords and encoded password hashes are never returned, logged, or audited.
+The successful administrator signs in through the ordinary authentication
+flow after bootstrap; bootstrap does not mint a special session.
+
+The `system_admin` role is owned by server code. Administration APIs may not
+patch or delete built-in roles, and system-administrator bindings may exist
+only at institution scope. Ending administrator bindings is serialized and
+must leave at least one other active system-administrator binding at the
+effective end time. When the action registry grows, the same release must
+include a migration or reconciliation step that adds the new actions to the
+built-in role for initialized installations.
+
 ### API authentication boundary
 
 Preserve the strong behavior behind Mattermost-style `APISessionRequired`
@@ -434,6 +485,15 @@ Every route must explicitly be one of:
 
 Route authentication requirements must be composable and testable. Add a route
 matrix test that fails when a route lacks an explicit classification.
+
+The API package follows Mattermost's readable route-ownership convention:
+`api.New` constructs shared routing state and calls domain initializers such as
+`InitSystem`, `InitAuthentication`, `InitSessions`, `InitRoles`, and
+`InitRoleBindings`. Each domain file owns its initializer and handlers.
+Initializers must register through the central `API.Register` boundary; they
+must not mutate router internals. The registrar rejects missing/unknown
+authentication classifications and duplicate route shapes. The root `api.go`
+must not become a flat inventory of every endpoint again.
 
 Authentication proves identity. It does not grant permission to a resource.
 
@@ -1315,12 +1375,13 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     middleware — complete for the first local-password, access/refresh session,
     login/refresh/logout/current-user vertical slice and self-service active
     session listing/individual/revoke-all management; external identity,
-    password recovery, MFA, personal/service credentials, administrative
-    session management, and durable security audit remain;
+    password recovery, MFA, personal/service credentials, and administrative
+    session management remain;
 12. scoped authorization and audit — complete for action/resource contracts,
     current-state institution/academic-unit/class evaluation, role and binding
-    stores, durable decision/critical-action auditing, and the privileged audit
-    listing slice; role/binding administration APIs and bootstrap policy remain;
+    stores, durable decision/critical-action auditing, the privileged audit
+    listing slice, atomic installation bootstrap, and audited role/binding
+    administration with last-administrator protection;
 13. institution/academic hierarchy and enrollment vertical slice;
 14. first two-node cluster tests;
 15. WebSocket hub, cluster fan-out, and replay;
@@ -1422,6 +1483,13 @@ Before handing off:
 - Authentication route wrappers, sessions, tokens, scoped permissions, and
   audit behavior should be inspired by Mattermost but redesigned around small
   explicit services.
+- API route ownership uses per-domain `Init*` methods called by `api.New`; one
+  central registrar applies authentication wrappers, detects duplicate route
+  shapes, and records the route matrix.
+- Initial administrator creation is an explicit one-time, PostgreSQL-serialized
+  bootstrap aggregate and never an implicit first-user side effect.
+- Built-in roles are server-owned and immutable through administration APIs;
+  the last active institution system-administrator binding cannot be ended.
 - The server follows a cohesive Mattermost-inspired construction flow:
   `config.Store → platform.Service → app.Server/app.App → app/api`.
 - `app.NewServer` is the sole composition root and `testlib` reuses that exact

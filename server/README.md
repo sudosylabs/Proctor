@@ -53,11 +53,17 @@ The server also includes:
 - dedicated role and role-binding stores with overlap-safe effective periods;
 - durable PostgreSQL security audits with fail-closed decision recording,
   bounded prior/result data, request/node correlation, and keyset pagination.
+- Mattermost-style per-domain `Init*` API registration through one policy-aware
+  registrar and route-matrix test;
+- atomic one-time installation bootstrap with a protected built-in
+  system-administrator role and durable success audit;
+- audited custom-role and scoped role-binding administration, including
+  immediate permission changes and last-administrator protection.
 
 External identity login, password recovery, MFA, personal access-token
-services, role-administration APIs and bootstrap policy, academic enrollment
-services, exams, a concrete multi-node cluster backend, and WebSockets remain
-intentionally unimplemented until their next vertical slices.
+services, academic enrollment services, exams, a concrete multi-node cluster
+backend, and WebSockets remain intentionally unimplemented until their next
+vertical slices.
 
 ## Run locally
 
@@ -76,6 +82,8 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /health/live`
 - `GET /health/ready`
 - `GET /api/v1/system/version`
+- `GET /api/v1/bootstrap` (public boolean installation status)
+- `POST /api/v1/bootstrap` (public only until the atomic bootstrap succeeds)
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
@@ -86,6 +94,18 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /api/v1/audits` (requires an institution-scoped role granting
   `audit.view`; accepts `limit`, opaque `cursor`, `actor_id`, `action`,
   `resource_type`, and `resource_id` filters)
+- `GET|POST /api/v1/roles` and
+  `GET|PATCH|DELETE /api/v1/roles/{role_id}` (requires `role.manage`)
+- `GET|POST /api/v1/role-bindings` and
+  `DELETE /api/v1/role-bindings/{role_binding_id}` (requires `role.manage`;
+  list by `user_id` or by `scope_type` plus `scope_id`)
+
+Bootstrap is explicit: normal account creation never promotes a “first user.”
+The successful transaction creates the institution, administrator and password
+credential, protected system-administrator role, institution binding,
+installation marker, and audit event together. A PostgreSQL advisory lock and
+pristine-state check make this safe when several application nodes start at
+once. The status response exposes only `initialized`.
 
 Validate a configuration without starting the server:
 

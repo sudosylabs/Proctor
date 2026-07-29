@@ -19,7 +19,38 @@ type revokeSessionRequest struct {
 	SessionID string `json:"session_id"`
 }
 
-func getSessionsHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func (a *API) InitSessions() error {
+	if err := a.Register(
+		Route{
+			Method: http.MethodGet,
+			Path:   "/api/v1/users/me/sessions",
+			Auth:   AuthSessionRequired,
+		},
+		getSessionsHandler(a.application, a.logger),
+	); err != nil {
+		return err
+	}
+	if err := a.Register(
+		Route{
+			Method: http.MethodPost,
+			Path:   "/api/v1/users/me/sessions/revoke",
+			Auth:   AuthSessionRequired,
+		},
+		revokeSessionHandler(a.application, a.logger),
+	); err != nil {
+		return err
+	}
+	return a.Register(
+		Route{
+			Method: http.MethodPost,
+			Path:   "/api/v1/users/me/sessions/revoke-all",
+			Auth:   AuthSessionRequired,
+		},
+		revokeAllSessionsHandler(a.application, a.logger),
+	)
+}
+
+func getSessionsHandler(application Sessions, logger *mlog.Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {
@@ -35,7 +66,7 @@ func getSessionsHandler(application Authentication, logger *mlog.Logger) http.Ha
 	})
 }
 
-func revokeSessionHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func revokeSessionHandler(application Sessions, logger *mlog.Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {
@@ -60,7 +91,7 @@ func revokeSessionHandler(application Authentication, logger *mlog.Logger) http.
 	})
 }
 
-func revokeAllSessionsHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func revokeAllSessionsHandler(application Sessions, logger *mlog.Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {

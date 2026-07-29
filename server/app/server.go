@@ -195,11 +195,11 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 	}
 	health := &Health{}
 	httpAPI, err := api.New(api.Options{
-		Logger:         applicationPlatform.Log(),
-		Health:         health,
-		Authentication: application,
-		BuildInfo:      settings.buildInfo,
-		MaxBodyBytes:   applicationPlatform.Config().Server.MaxBodyBytes,
+		Logger:       applicationPlatform.Log(),
+		Health:       health,
+		Application:  application,
+		BuildInfo:    settings.buildInfo,
+		MaxBodyBytes: applicationPlatform.Config().Server.MaxBodyBytes,
 	})
 	if err != nil {
 		_ = applicationPlatform.Close()

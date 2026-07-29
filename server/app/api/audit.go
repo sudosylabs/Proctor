@@ -30,7 +30,18 @@ type auditListResponse struct {
 	NextCursor string              `json:"next_cursor,omitempty"`
 }
 
-func listAuditEventsHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func (a *API) InitAudits() error {
+	return a.Register(
+		Route{
+			Method: http.MethodGet,
+			Path:   "/api/v1/audits",
+			Auth:   AuthPrivileged,
+		},
+		listAuditEventsHandler(a.application, a.logger),
+	)
+}
+
+func listAuditEventsHandler(application Audits, logger *mlog.Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {
