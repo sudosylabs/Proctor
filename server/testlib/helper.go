@@ -58,6 +58,10 @@ func (s *Store) AcademicUnit() store.AcademicUnitStore {
 	return nil
 }
 
+func (s *Store) Programme() store.ProgrammeStore {
+	return nil
+}
+
 func (s *Store) Ping(context.Context) error {
 	return nil
 }

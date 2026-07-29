@@ -18,6 +18,7 @@ type testStore struct{}
 
 func (testStore) Institution() store.InstitutionStore             { return nil }
 func (testStore) AcademicUnit() store.AcademicUnitStore           { return nil }
+func (testStore) Programme() store.ProgrammeStore                 { return nil }
 func (testStore) Ping(context.Context) error                      { return nil }
 func (testStore) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
 func (testStore) GetLocalSchemaVersion() (int, error)             { return 0, nil }

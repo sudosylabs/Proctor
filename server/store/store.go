@@ -16,6 +16,7 @@ import (
 type Store interface {
 	Institution() InstitutionStore
 	AcademicUnit() AcademicUnitStore
+	Programme() ProgrammeStore
 
 	Ping(context.Context) error
 	GetDBSchemaVersion(context.Context) (int, error)
@@ -39,4 +40,13 @@ type AcademicUnitStore interface {
 	Get(context.Context, string) (*model.AcademicUnit, error)
 	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)
 	Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
+}
+
+// ProgrammeStore persists courses of study owned by academic units.
+type ProgrammeStore interface {
+	Save(context.Context, *model.Programme) (*model.Programme, error)
+	Get(context.Context, string) (*model.Programme, error)
+	GetByName(context.Context, string, string) (*model.Programme, error)
+	ListByAcademicUnit(context.Context, string) ([]*model.Programme, error)
+	Update(context.Context, *model.Programme) (*model.Programme, error)
 }

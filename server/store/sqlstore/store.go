@@ -74,6 +74,7 @@ func (s Settings) validate() error {
 type SqlStoreStores struct {
 	institution  store.InstitutionStore
 	academicUnit store.AcademicUnitStore
+	programme    store.ProgrammeStore
 }
 
 // SqlStore owns PostgreSQL connections and all concrete model stores.
@@ -112,6 +113,7 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 
 	sqlStore.stores.institution = newSqlInstitutionStore(sqlStore)
 	sqlStore.stores.academicUnit = newSqlAcademicUnitStore(sqlStore)
+	sqlStore.stores.programme = newSqlProgrammeStore(sqlStore)
 	return sqlStore, nil
 }
 
@@ -136,6 +138,10 @@ func (ss *SqlStore) Institution() store.InstitutionStore {
 
 func (ss *SqlStore) AcademicUnit() store.AcademicUnitStore {
 	return ss.stores.academicUnit
+}
+
+func (ss *SqlStore) Programme() store.ProgrammeStore {
+	return ss.stores.programme
 }
 
 func (ss *SqlStore) GetMaster() *sqlxDBWrapper {
