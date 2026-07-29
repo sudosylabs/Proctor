@@ -35,6 +35,8 @@ The server also includes:
   hierarchy and the first identity/session slice;
 - platform-owned memory/Redis cache, disabled/SMTP mail, and local/S3 VFS
   adapters with startup dependency checks and deterministic shutdown;
+- a typed, bounded cluster message contract and server-owned transport port,
+  with a loop-safe `local` backend as the single-node form of the architecture;
 - bounded Argon2id local-password authentication;
 - revocable server-side sessions with separately hashed opaque access and
   rotating refresh credentials, replay detection, activity debouncing, and
@@ -47,9 +49,9 @@ The server also includes:
   invalidation.
 
 External identity login, password recovery, MFA, personal access-token
-services, authorization evaluation, audit persistence, exams, clustering, and
-WebSockets remain intentionally unimplemented until their next vertical
-slices.
+services, authorization evaluation, audit persistence, exams, a concrete
+multi-node cluster backend, and WebSockets remain intentionally unimplemented
+until their next vertical slices.
 
 ## Run locally
 
@@ -86,11 +88,11 @@ Configuration is loaded in this order: built-in defaults, an optional strict
 JSON file, then `PROCTOR_` environment variables. Unknown JSON fields and
 invalid values are rejected at startup.
 
-The deployment schema covers HTTP, PostgreSQL, cache, mail, VFS, logging,
-password hashing, session lifetimes, concurrent-session limits, and login rate
-limits. Secret fields are explicitly redacted. Environment-overridden values
-are effective only for the running process and are never persisted back into
-the configuration file.
+The deployment schema covers HTTP, PostgreSQL, cache, cluster transport and
+node identity, mail, VFS, logging, password hashing, session lifetimes,
+concurrent-session limits, and login rate limits. Secret fields are explicitly
+redacted. Environment-overridden values are effective only for the running
+process and are never persisted back into the configuration file.
 
 The active configuration is owned by one concurrency-safe store. It separates
 persisted values from environment overrides, returns cloned snapshots, supports
@@ -101,6 +103,12 @@ require a process restart.
 Logging supports multiple independently filtered console or file targets,
 text/JSON formatting, contextual fields, bounded field sizes, runtime
 reconfiguration, flush/shutdown, and locked test capture.
+
+The default `cluster.backend` is `local`, with `node_id` set to `local`. This
+backend has no peers: broadcast is deliberately a no-op and never loops back
+into local handlers. The transport still participates in dependency checks and
+is started before readiness and stopped through the platform lifecycle. A
+multi-node backend and its reliable-delivery semantics are not selected yet.
 
 ## Verify
 

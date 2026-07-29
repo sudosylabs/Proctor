@@ -91,6 +91,10 @@ walking skeleton is operational and includes:
 - platform-owned cache, mail, and VFS adapters selected from typed deployment
   configuration, with memory/Redis cache, disabled/SMTP mail, local/S3 VFS,
   dependency checks, deterministic cleanup, and memory test implementations;
+- a Mattermost-shaped cluster message contract and server-owned cluster port
+  with typed handlers, explicit best-effort/reliable delivery classes, stable
+  node identity, bounded messages, startup/readiness/shutdown ownership, and a
+  loop-safe single-node local transport;
 - the first complete identity slice: transactional local-user/password
   persistence, bounded Argon2id password hashing, generic login failures,
   server-side sessions, hashed opaque access and refresh credentials, refresh
@@ -112,7 +116,7 @@ academic period, and class. It also includes user, password-credential,
 session, and session-credential SQL stores with reusable conformance tests.
 External identity login, password reset/verification, MFA, personal access
 token services, authorization evaluation, audit persistence, exam-domain,
-WebSocket, and cluster transport remain unimplemented.
+WebSocket, and a concrete multi-node cluster transport remain unimplemented.
 
 Do not:
 
@@ -710,8 +714,8 @@ Configuration rules:
   configuration requirements are finalized;
 - listeners receive cloned old/current values after successful changes;
 - runtime reconfiguration is capability-specific: logging currently
-  reconfigures dynamically, while listener addresses and HTTP limits require a
-  process restart;
+  reconfigures dynamically, while listener addresses, HTTP limits, cluster
+  backend, and cluster node identity require a process restart;
 - configuration backing conformance must be reusable when another backing is
   introduced.
 
@@ -886,6 +890,32 @@ Do not turn the cache package into a message-bus package.
 
 Do not extract the cluster transport into `packages/` until its API is stable
 and independently useful.
+
+The current implementation establishes the transport-independent contract:
+
+- `model.ClusterMessage` carries a typed event, explicit best-effort or reliable
+  send class, bounded opaque data, and bounded string properties;
+- the transport owns source/target identity, wire versioning, message IDs,
+  serialization, acknowledgements, and retry mechanics;
+- one handler owns each event on a node, matching the Mattermost application
+  dispatch shape and making duplicate ownership an explicit error;
+- `Broadcast` means peers only and must never call the sending node's handler;
+- `SendToNode` is targeted delivery and may address the current node;
+- handlers receive cloned messages, so neither callers nor other handlers can
+  mutate shared message state;
+- handler panics are contained at the transport boundary and message data is
+  never included in ordinary logs;
+- the platform constructs and health-checks the transport, the server starts
+  it before becoming ready, and platform shutdown stops it before shared
+  infrastructure is closed;
+- `local` is the only concrete backend today. It is the valid single-node
+  degenerate transport: peer broadcasts succeed without local delivery, while
+  self-targeted messages exercise registered handlers synchronously.
+
+The reliable send class is part of the application contract, but the local
+backend has no remote delivery to acknowledge. No multi-node backend may claim
+reliable delivery until retry, acknowledgement, ordering, duplicate handling,
+backpressure, and node-failure behavior are explicitly defined and tested.
 
 ## WebSocket Architecture
 
@@ -1238,7 +1268,10 @@ Unless the user reprioritizes, build the server as a walking skeleton:
 9. cache, VFS, and mail adapters — complete for memory/Redis,
    disabled/SMTP, and local/S3 configuration, platform lifecycle, dependency
    checking, and memory test doubles;
-10. cluster transport port and local implementation;
+10. cluster transport port and local implementation — complete for typed,
+    bounded messages, one-handler-per-event dispatch, stable local node
+    identity, peer-only broadcast semantics, self-targeted delivery, platform
+    health/lifecycle ownership, and startup readiness gating;
 11. identity/authentication services, credential rotation, and authentication
     middleware — complete for the first local-password, access/refresh session,
     login/refresh/logout/current-user vertical slice and self-service active

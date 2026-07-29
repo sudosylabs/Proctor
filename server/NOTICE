@@ -109,8 +109,9 @@ Mattermost store implementation
 Upstream project: Mattermost
 Repository: https://github.com/mattermost/mattermost
 Revision: 10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f
-Governing license: Apache License 2.0, as specified by Mattermost LICENSE.txt
-for the referenced server paths.
+Governing license: GNU Affero General Public License v3, as specified by the
+Mattermost repository LICENSE.txt for source outside its Apache-licensed
+directories.
 
 Upstream paths:
 
@@ -192,8 +193,9 @@ Mattermost authentication and session implementation
 Upstream project: Mattermost
 Repository: https://github.com/mattermost/mattermost
 Revision: 10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f
-Governing license: Apache License 2.0, as specified by Mattermost LICENSE.txt
-for the referenced server paths.
+Governing license: GNU Affero General Public License v3, as specified by the
+Mattermost repository LICENSE.txt for source outside its Apache-licensed
+directories.
 
 Upstream paths:
 
@@ -244,6 +246,57 @@ Modifications:
 - added a Proctor-specific per-user PostgreSQL advisory-lock protocol shared by
   login, refresh rotation, individual revocation, and revoke-all so concurrent
   credentials cannot escape an account security reset.
+
+Mattermost cluster messaging implementation
+-------------------------------------------
+
+Upstream project: Mattermost
+Repository: https://github.com/mattermost/mattermost
+Revision: 10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f
+Governing licenses:
+
+- Apache License 2.0 for `server/public/model/cluster_message.go`, as specified
+  by `server/public/LICENSE.txt`;
+- GNU Affero General Public License v3 for the cluster interface and
+  application integration files outside Mattermost's Apache-licensed
+  directories, as specified by the repository `LICENSE.txt`.
+
+Upstream paths:
+
+- server/public/model/cluster_message.go
+- server/einterfaces/cluster.go
+- server/channels/app/platform/cluster.go
+- server/channels/app/platform/cluster_handlers.go
+- server/channels/app/platform/session.go
+
+Corresponding Proctor paths:
+
+- server/model/cluster_message.go
+- server/platform/cluster.go
+- server/platform/service.go
+- server/app/app.go
+- server/app/server.go
+
+Modifications:
+
+- substantially adapted the public typed event, message, properties, and
+  best-effort/reliable send-class contract while adding validation, cloning,
+  and hard data/property bounds;
+- retained the one-handler-per-event, broadcast, targeted-send, and explicit
+  start/stop concepts from Mattermost's public cluster boundary;
+- omitted enterprise-only discovery, gossip, leader election, transport,
+  support-packet, log-query, plugin-status, and cross-node WebSocket queue
+  implementations;
+- implemented an original Proctor local transport as the single-node
+  degenerate architecture, with peer-only no-op broadcasts and explicit
+  self-targeted handler dispatch;
+- made platform startup gate server readiness and made platform shutdown own
+  transport cleanup;
+- contained handler panics, cloned inbound messages, and restricted operational
+  logs to event, send class, and byte-count metadata;
+- left the multi-node backend and reliable acknowledgement/retry semantics
+  deliberately undecided rather than representing best-effort pub/sub as
+  reliable delivery.
 
 The Morph migration dependency is separately licensed under the MIT License.
 The Masterminds Squirrel query-builder dependency is separately licensed under
