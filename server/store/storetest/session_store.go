@@ -1,0 +1,302 @@
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: Apache-2.0
+//
+// Adapted from Mattermost server/channels/store/storetest/session_store.go.
+// These tests additionally verify Proctor's split credential model, atomic
+// access/refresh creation, refresh rotation, and replay revocation.
+
+package storetest
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
+)
+
+func TestSessionStores(t *testing.T, ss store.Store) {
+	t.Run("SaveResolveAndList", func(t *testing.T) { testSessionSaveResolveAndList(t, ss) })
+	t.Run("MaximumActive", func(t *testing.T) { testSessionMaximumActive(t, ss) })
+	t.Run("UpdateActivity", func(t *testing.T) { testSessionUpdateActivity(t, ss) })
+	t.Run("Revoke", func(t *testing.T) { testSessionRevoke(t, ss) })
+	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUser(t, ss) })
+	t.Run("RotateAndDetectReplay", func(t *testing.T) { testSessionRotateAndDetectReplay(t, ss) })
+	t.Run("ConcurrentRefreshReplay", func(t *testing.T) { testSessionConcurrentRefreshReplay(t, ss) })
+}
+
+func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, credentials, raw := saveSession(t, ctx, ss, user.Id, 10)
+	if len(credentials) != 2 || session.UserId != user.Id {
+		t.Fatalf("Save() session=%#v credentials=%#v", session, credentials)
+	}
+	credential, resolved, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx,
+		model.HashToken(raw.access),
+		model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if credential.SessionId != session.Id || resolved.Id != session.Id {
+		t.Fatalf("resolved credential=%#v session=%#v", credential, resolved)
+	}
+	list, err := ss.Session().ListByUser(ctx, user.Id)
+	requireNoError(t, err)
+	if len(list) != 1 || list[0].Id != session.Id {
+		t.Fatalf("ListByUser() = %#v", list)
+	}
+}
+
+func testSessionMaximumActive(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	saveSession(t, ctx, ss, user.Id, 1)
+	session, credentials, _ := newSession(user.Id)
+	_, _, err := ss.Session().Save(ctx, session, credentials, 1)
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) || conflict.Constraint != "sessions_maximum_per_user" {
+		t.Fatalf("second active session error = %v", err)
+	}
+}
+
+func testSessionUpdateActivity(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	at := session.LastActivityAt + 1_000
+	idle := at + int64(time.Hour/time.Millisecond)
+	requireNoError(t, ss.Session().UpdateActivity(ctx, session.Id, at, idle))
+	got, err := ss.Session().Get(ctx, session.Id)
+	requireNoError(t, err)
+	if got.LastActivityAt != at || got.IdleExpiresAt != idle {
+		t.Fatalf("UpdateActivity() session = %#v", got)
+	}
+}
+
+func testSessionRevoke(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	at := model.GetMillis() + 100
+	hashes, err := ss.Session().Revoke(ctx, session.Id, at, "user logout")
+	requireNoError(t, err)
+	if len(hashes) != 2 {
+		t.Fatalf("Revoke() hashes = %#v", hashes)
+	}
+	credential, got, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx,
+		model.HashToken(raw.access),
+		model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if credential.RevokedAt != at || got.RevokedAt != at || got.RevocationReason != "user logout" {
+		t.Fatalf("revoked credential=%#v session=%#v", credential, got)
+	}
+}
+
+func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	first, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	second, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	other := saveUser(t, ctx, ss)
+	otherSession, _, _ := saveSession(t, ctx, ss, other.Id, 10)
+	at := model.GetMillis() + 100
+	hashes, err := ss.Session().RevokeAllForUser(ctx, user.Id, at, "security reset")
+	requireNoError(t, err)
+	if len(hashes) != 4 {
+		t.Fatalf("RevokeAllForUser() hashes = %#v", hashes)
+	}
+	for _, id := range []string{first.Id, second.Id} {
+		got, getErr := ss.Session().Get(ctx, id)
+		requireNoError(t, getErr)
+		if got.RevokedAt != at {
+			t.Fatalf("session %s not revoked: %#v", id, got)
+		}
+	}
+	gotOther, err := ss.Session().Get(ctx, otherSession.Id)
+	requireNoError(t, err)
+	if gotOther.RevokedAt != 0 {
+		t.Fatalf("other user's session was revoked: %#v", gotOther)
+	}
+}
+
+func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	now := session.CreateAt + 1_000
+	newAccessRaw := model.NewCredentialToken()
+	newRefreshRaw := model.NewCredentialToken()
+	rotation, err := ss.SessionCredential().RotateRefresh(
+		ctx,
+		model.HashToken(raw.refresh),
+		&model.SessionCredential{
+			TokenHash: model.HashToken(newAccessRaw),
+			ExpiresAt: now + int64((15*time.Minute)/time.Millisecond),
+		},
+		&model.SessionCredential{
+			TokenHash: model.HashToken(newRefreshRaw),
+			ExpiresAt: session.ExpiresAt,
+		},
+		now,
+		min(now+int64((24*time.Hour)/time.Millisecond), session.ExpiresAt),
+	)
+	requireNoError(t, err)
+	if rotation.ReplayDetected ||
+		rotation.AccessCredential.Kind != model.SessionCredentialAccess ||
+		rotation.RefreshCredential.ParentId == "" ||
+		len(rotation.RevokedAccessHashes) != 1 {
+		t.Fatalf("RotateRefresh() = %#v", rotation)
+	}
+	oldAccess, _, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx,
+		model.HashToken(raw.access),
+		model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if oldAccess.RevokedAt != now {
+		t.Fatalf("old access credential = %#v", oldAccess)
+	}
+
+	replayAt := now + 100
+	replay, err := ss.SessionCredential().RotateRefresh(
+		ctx,
+		model.HashToken(raw.refresh),
+		&model.SessionCredential{
+			TokenHash: model.HashToken(model.NewCredentialToken()),
+			ExpiresAt: replayAt + int64((15*time.Minute)/time.Millisecond),
+		},
+		&model.SessionCredential{
+			TokenHash: model.HashToken(model.NewCredentialToken()),
+			ExpiresAt: session.ExpiresAt,
+		},
+		replayAt,
+		session.ExpiresAt,
+	)
+	requireNoError(t, err)
+	if !replay.ReplayDetected || replay.Session.RevokedAt != replayAt {
+		t.Fatalf("replay rotation = %#v", replay)
+	}
+	newAccess, replayedSession, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx,
+		model.HashToken(newAccessRaw),
+		model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if newAccess.RevokedAt != replayAt || replayedSession.RevokedAt != replayAt {
+		t.Fatalf("replay did not revoke family: credential=%#v session=%#v", newAccess, replayedSession)
+	}
+}
+
+func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	now := session.CreateAt + 1_000
+
+	type result struct {
+		rotation *store.SessionRotation
+		err      error
+	}
+	start := make(chan struct{})
+	results := make(chan result, 2)
+	for range 2 {
+		go func() {
+			<-start
+			rotation, err := ss.SessionCredential().RotateRefresh(
+				ctx,
+				model.HashToken(raw.refresh),
+				&model.SessionCredential{
+					TokenHash: model.HashToken(model.NewCredentialToken()),
+					ExpiresAt: now + int64((15*time.Minute)/time.Millisecond),
+				},
+				&model.SessionCredential{
+					TokenHash: model.HashToken(model.NewCredentialToken()),
+					ExpiresAt: session.ExpiresAt,
+				},
+				now,
+				min(now+int64((24*time.Hour)/time.Millisecond), session.ExpiresAt),
+			)
+			results <- result{rotation: rotation, err: err}
+		}()
+	}
+	close(start)
+
+	successes := 0
+	replays := 0
+	for range 2 {
+		outcome := <-results
+		requireNoError(t, outcome.err)
+		if outcome.rotation.ReplayDetected {
+			replays++
+		} else {
+			successes++
+		}
+	}
+	if successes != 1 || replays != 1 {
+		t.Fatalf("concurrent rotations: successes=%d replays=%d", successes, replays)
+	}
+	got, err := ss.Session().Get(ctx, session.Id)
+	requireNoError(t, err)
+	if got.RevokedAt == 0 || got.RevocationReason != "refresh credential replay detected" {
+		t.Fatalf("concurrent replay did not revoke the session: %#v", got)
+	}
+}
+
+type rawSessionCredentials struct {
+	access  string
+	refresh string
+}
+
+func newSession(userID string) (*model.Session, []*model.SessionCredential, rawSessionCredentials) {
+	now := model.GetMillis()
+	absolute := now + int64((30*24*time.Hour)/time.Millisecond)
+	session := &model.Session{
+		UserId:                 userID,
+		ClientType:             model.SessionClientDesktop,
+		DeviceId:               "test-device",
+		DeviceName:             "Test Device",
+		AuthenticationMethod:   "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt:        now,
+		LastActivityAt:         now,
+		IdleExpiresAt:          now + int64((7*24*time.Hour)/time.Millisecond),
+		ExpiresAt:              absolute,
+	}
+	raw := rawSessionCredentials{
+		access:  model.NewCredentialToken(),
+		refresh: model.NewCredentialToken(),
+	}
+	credentials := []*model.SessionCredential{
+		{
+			Kind:      model.SessionCredentialAccess,
+			TokenHash: model.HashToken(raw.access),
+			ExpiresAt: now + int64((15*time.Minute)/time.Millisecond),
+		},
+		{
+			Kind:      model.SessionCredentialRefresh,
+			TokenHash: model.HashToken(raw.refresh),
+			ExpiresAt: absolute,
+		},
+	}
+	return session, credentials, raw
+}
+
+func saveSession(
+	t *testing.T,
+	ctx context.Context,
+	ss store.Store,
+	userID string,
+	maximum int,
+) (*model.Session, []*model.SessionCredential, rawSessionCredentials) {
+	t.Helper()
+	session, credentials, raw := newSession(userID)
+	savedSession, savedCredentials, err := ss.Session().Save(ctx, session, credentials, maximum)
+	requireNoError(t, err)
+	return savedSession, savedCredentials, raw
+}

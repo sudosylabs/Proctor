@@ -11,7 +11,9 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
+	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/store"
@@ -23,12 +25,18 @@ type ServiceConfig struct {
 	ConfigStore *config.Store
 	Logger      *mlog.Logger
 	Store       store.Store
+	Cache       Cache
+	Mailer      Mailer
+	VFS         vfspkg.FileSystem
 }
 
 type Service struct {
 	configStore    *config.Store
 	logger         *mlog.Logger
 	store          store.Store
+	cache          Cache
+	mailer         Mailer
+	vfs            vfspkg.FileSystem
 	configListener string
 	shutdownOnce   sync.Once
 	shutdownErr    error
@@ -81,10 +89,63 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 		return nil, fmt.Errorf("validate database schema: %w", err)
 	}
 
+	cacheStore := serviceConfig.Cache
+	if cacheStore == nil {
+		var err error
+		cacheStore, err = newCache(serviceConfig.ConfigStore.Get().Cache)
+		if err != nil {
+			_ = persistence.Close()
+			if serviceConfig.Logger == nil {
+				_ = logger.Shutdown()
+			}
+			return nil, fmt.Errorf("open cache: %w", err)
+		}
+	}
+	mailer := serviceConfig.Mailer
+	if mailer == nil {
+		var err error
+		mailer, err = newMailer(serviceConfig.ConfigStore.Get().Mail)
+		if err != nil {
+			_ = cacheStore.Close()
+			_ = persistence.Close()
+			if serviceConfig.Logger == nil {
+				_ = logger.Shutdown()
+			}
+			return nil, fmt.Errorf("open mail transport: %w", err)
+		}
+	}
+	filesystem := serviceConfig.VFS
+	if filesystem == nil {
+		var err error
+		filesystem, err = newVFS(serviceConfig.ConfigStore.Get().VFS)
+		if err != nil {
+			_ = mailer.Close()
+			_ = cacheStore.Close()
+			_ = persistence.Close()
+			if serviceConfig.Logger == nil {
+				_ = logger.Shutdown()
+			}
+			return nil, fmt.Errorf("open VFS: %w", err)
+		}
+	}
+
 	service := &Service{
 		configStore: serviceConfig.ConfigStore,
 		logger:      logger,
 		store:       persistence,
+		cache:       cacheStore,
+		mailer:      mailer,
+		vfs:         filesystem,
+	}
+	checkCtx, cancelCheck := context.WithTimeout(constructionCtx, 15*time.Second)
+	defer cancelCheck()
+	if err := service.CheckDependencies(checkCtx); err != nil {
+		_ = service.closeInfrastructure()
+		_ = persistence.Close()
+		if serviceConfig.Logger == nil {
+			_ = logger.Shutdown()
+		}
+		return nil, fmt.Errorf("check platform dependencies: %w", err)
 	}
 	service.configListener = service.configStore.AddListener(func(old, current config.Config) {
 		if !logConfigurationChanged(old, current) {
@@ -119,10 +180,39 @@ func (s *Service) Store() store.Store {
 	return s.store
 }
 
+func (s *Service) Cache() Cache {
+	return s.cache
+}
+
+func (s *Service) Mailer() Mailer {
+	return s.mailer
+}
+
+func (s *Service) VFS() vfspkg.FileSystem {
+	return s.vfs
+}
+
+func (s *Service) CheckDependencies(ctx context.Context) error {
+	if err := s.store.Ping(ctx); err != nil {
+		return fmt.Errorf("database: %w", err)
+	}
+	if err := s.cache.Ping(ctx); err != nil {
+		return fmt.Errorf("cache: %w", err)
+	}
+	if err := s.mailer.Test(ctx); err != nil {
+		return fmt.Errorf("mail: %w", err)
+	}
+	if err := checkVFS(ctx, s.vfs); err != nil {
+		return fmt.Errorf("vfs: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) Close() error {
 	s.shutdownOnce.Do(func() {
 		s.configStore.RemoveListener(s.configListener)
 		s.shutdownErr = errors.Join(
+			s.closeInfrastructure(),
 			s.store.Close(),
 			s.logger.Flush(),
 			s.logger.Shutdown(),
@@ -130,6 +220,18 @@ func (s *Service) Close() error {
 		)
 	})
 	return s.shutdownErr
+}
+
+func (s *Service) closeInfrastructure() error {
+	var vfsErr error
+	if closer, ok := s.vfs.(interface{ Close() error }); ok {
+		vfsErr = closer.Close()
+	}
+	return errors.Join(
+		vfsErr,
+		s.mailer.Close(),
+		s.cache.Close(),
+	)
 }
 
 func configureLogger(logger *mlog.Logger, settings config.Log) error {

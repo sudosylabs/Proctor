@@ -8,25 +8,90 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	mailpkg "github.com/sudosylabs/proctor/packages/mail"
+	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type testStore struct{}
+type testCache struct{}
+type testMailer struct{}
 
-func (testStore) Institution() store.InstitutionStore             { return nil }
-func (testStore) AcademicUnit() store.AcademicUnitStore           { return nil }
-func (testStore) Programme() store.ProgrammeStore                 { return nil }
-func (testStore) ProgrammeLevel() store.ProgrammeLevelStore       { return nil }
-func (testStore) AcademicPeriod() store.AcademicPeriodStore       { return nil }
-func (testStore) Class() store.ClassStore                         { return nil }
-func (testStore) Ping(context.Context) error                      { return nil }
-func (testStore) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
-func (testStore) GetLocalSchemaVersion() (int, error)             { return 0, nil }
-func (testStore) ValidateSchema(context.Context) error            { return nil }
-func (testStore) Close() error                                    { return nil }
+type trackedStore struct {
+	testStore
+	closed atomic.Bool
+}
+
+type unhealthyCache struct {
+	testCache
+	closed atomic.Bool
+}
+
+type trackedMailer struct {
+	testMailer
+	closed atomic.Bool
+}
+
+func (testStore) Institution() store.InstitutionStore               { return nil }
+func (testStore) AcademicUnit() store.AcademicUnitStore             { return nil }
+func (testStore) Programme() store.ProgrammeStore                   { return nil }
+func (testStore) ProgrammeLevel() store.ProgrammeLevelStore         { return nil }
+func (testStore) AcademicPeriod() store.AcademicPeriodStore         { return nil }
+func (testStore) Class() store.ClassStore                           { return nil }
+func (testStore) User() store.UserStore                             { return nil }
+func (testStore) PasswordCredential() store.PasswordCredentialStore { return nil }
+func (testStore) Session() store.SessionStore                       { return nil }
+func (testStore) SessionCredential() store.SessionCredentialStore   { return nil }
+func (testStore) Ping(context.Context) error                        { return nil }
+func (testStore) GetDBSchemaVersion(context.Context) (int, error)   { return 0, nil }
+func (testStore) GetLocalSchemaVersion() (int, error)               { return 0, nil }
+func (testStore) ValidateSchema(context.Context) error              { return nil }
+func (testStore) Close() error                                      { return nil }
+
+func (testCache) Get(context.Context, string) ([]byte, error) {
+	return nil, ErrCacheMiss
+}
+func (testCache) Set(context.Context, string, []byte, time.Duration, CacheCondition) error {
+	return nil
+}
+func (testCache) Delete(context.Context, string) error { return nil }
+func (testCache) Add(context.Context, string, int64, time.Duration) (int64, error) {
+	return 0, nil
+}
+func (testCache) Ping(context.Context) error { return nil }
+func (testCache) Close() error               { return nil }
+
+func (testMailer) Enabled() bool         { return false }
+func (testMailer) From() mailpkg.Address { return mailpkg.Address{} }
+func (testMailer) Send(context.Context, mailpkg.Message) (mailpkg.Receipt, error) {
+	return mailpkg.Receipt{}, ErrMailDisabled
+}
+func (testMailer) Test(context.Context) error { return nil }
+func (testMailer) Close() error               { return nil }
+
+func (s *trackedStore) Close() error {
+	s.closed.Store(true)
+	return nil
+}
+
+func (c *unhealthyCache) Ping(context.Context) error {
+	return context.DeadlineExceeded
+}
+
+func (c *unhealthyCache) Close() error {
+	c.closed.Store(true)
+	return nil
+}
+
+func (m *trackedMailer) Close() error {
+	m.closed.Store(true)
+	return nil
+}
 
 func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 	t.Parallel()
@@ -49,7 +114,13 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service, err := New(ServiceConfig{ConfigStore: store, Store: testStore{}})
+	service, err := New(ServiceConfig{
+		ConfigStore: store,
+		Store:       testStore{},
+		Cache:       testCache{},
+		Mailer:      testMailer{},
+		VFS:         memoryvfs.New(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,5 +153,42 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 	}
 	if !strings.Contains(string(secondData), "second target") {
 		t.Fatalf("second target = %q", secondData)
+	}
+}
+
+func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configuration.Close() })
+
+	persistence := &trackedStore{}
+	cache := &unhealthyCache{}
+	mailer := &trackedMailer{}
+	_, err = New(ServiceConfig{
+		ConfigStore: configuration,
+		Store:       persistence,
+		Cache:       cache,
+		Mailer:      mailer,
+		VFS:         memoryvfs.New(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "cache") {
+		t.Fatalf("New() error = %v", err)
+	}
+	if !persistence.closed.Load() {
+		t.Error("store was not closed after dependency failure")
+	}
+	if !cache.closed.Load() {
+		t.Error("cache was not closed after dependency failure")
+	}
+	if !mailer.closed.Load() {
+		t.Error("mailer was not closed after dependency failure")
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
@@ -42,6 +43,9 @@ type Helper struct {
 	ConfigStore *config.Store
 	Logs        *mlog.Buffer
 	Store       *Store
+	Cache       *Cache
+	Mailer      *Mailer
+	VFS         *memoryvfs.FS
 }
 
 // Store is the persistence dependency used by ordinary unit tests. SQL store
@@ -71,6 +75,22 @@ func (s *Store) AcademicPeriod() store.AcademicPeriodStore {
 }
 
 func (s *Store) Class() store.ClassStore {
+	return nil
+}
+
+func (s *Store) User() store.UserStore {
+	return nil
+}
+
+func (s *Store) PasswordCredential() store.PasswordCredentialStore {
+	return nil
+}
+
+func (s *Store) Session() store.SessionStore {
+	return nil
+}
+
+func (s *Store) SessionCredential() store.SessionCredentialStore {
 	return nil
 }
 
@@ -138,10 +158,22 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 	logger.LockConfiguration()
 
 	persistence := &Store{}
+	cache, err := newCache()
+	if err != nil {
+		tb.Fatalf("create test cache: %v", err)
+	}
+	mailer, err := newMailer()
+	if err != nil {
+		tb.Fatalf("create test mailer: %v", err)
+	}
+	filesystem := memoryvfs.New()
 	serverOptions := append([]app.Option{
 		app.WithConfigStore(store),
 		app.WithLogger(logger),
 		app.WithStore(persistence),
+		app.WithCache(cache),
+		app.WithMailer(mailer),
+		app.WithVFS(filesystem),
 	}, settings.serverOptions...)
 	server, err := app.NewServer(context.Background(), serverOptions...)
 	if err != nil {
@@ -154,6 +186,9 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		ConfigStore: store,
 		Logs:        logs,
 		Store:       persistence,
+		Cache:       cache,
+		Mailer:      mailer,
+		VFS:         filesystem,
 	}
 	tb.Cleanup(func() {
 		if err := server.Close(); err != nil {

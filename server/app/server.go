@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
@@ -25,6 +26,9 @@ type serverOptions struct {
 	configStore *config.Store
 	logger      *mlog.Logger
 	store       store.Store
+	cache       platform.Cache
+	mailer      platform.Mailer
+	vfs         vfspkg.FileSystem
 	buildInfo   api.BuildInfo
 }
 
@@ -66,6 +70,36 @@ func WithStore(persistence store.Store) Option {
 			return errors.New("store is nil")
 		}
 		options.store = persistence
+		return nil
+	}
+}
+
+func WithCache(cache platform.Cache) Option {
+	return func(options *serverOptions) error {
+		if cache == nil {
+			return errors.New("cache is nil")
+		}
+		options.cache = cache
+		return nil
+	}
+}
+
+func WithMailer(mailer platform.Mailer) Option {
+	return func(options *serverOptions) error {
+		if mailer == nil {
+			return errors.New("mailer is nil")
+		}
+		options.mailer = mailer
+		return nil
+	}
+}
+
+func WithVFS(filesystem vfspkg.FileSystem) Option {
+	return func(options *serverOptions) error {
+		if filesystem == nil {
+			return errors.New("VFS is nil")
+		}
+		options.vfs = filesystem
 		return nil
 	}
 }
@@ -131,6 +165,9 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 		ConfigStore: configStore,
 		Logger:      settings.logger,
 		Store:       settings.store,
+		Cache:       settings.cache,
+		Mailer:      settings.mailer,
+		VFS:         settings.vfs,
 	})
 	if err != nil {
 		_ = configStore.Close()
@@ -139,13 +176,18 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 		}
 		return nil, err
 	}
-	application := New(applicationPlatform)
+	application, err := New(applicationPlatform)
+	if err != nil {
+		_ = applicationPlatform.Close()
+		return nil, fmt.Errorf("construct application: %w", err)
+	}
 	health := &Health{}
 	httpAPI, err := api.New(api.Options{
-		Logger:       applicationPlatform.Log(),
-		Health:       health,
-		BuildInfo:    settings.buildInfo,
-		MaxBodyBytes: applicationPlatform.Config().Server.MaxBodyBytes,
+		Logger:         applicationPlatform.Log(),
+		Health:         health,
+		Authentication: application,
+		BuildInfo:      settings.buildInfo,
+		MaxBodyBytes:   applicationPlatform.Config().Server.MaxBodyBytes,
 	})
 	if err != nil {
 		_ = applicationPlatform.Close()

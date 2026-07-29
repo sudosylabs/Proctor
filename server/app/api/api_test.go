@@ -22,16 +22,30 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	routes := helper.Server.API().Routes()
-	if len(routes) != 3 {
-		t.Fatalf("route count = %d, want 3", len(routes))
+	if len(routes) != 7 {
+		t.Fatalf("route count = %d, want 7", len(routes))
+	}
+	expected := map[string]api.AuthRequirement{
+		http.MethodGet + " /health/live":           api.AuthPublic,
+		http.MethodGet + " /health/ready":          api.AuthPublic,
+		http.MethodGet + " /api/v1/system/version": api.AuthPublic,
+		http.MethodPost + " /api/v1/auth/login":    api.AuthPublic,
+		http.MethodPost + " /api/v1/auth/refresh":  api.AuthRefreshCredentialRequired,
+		http.MethodPost + " /api/v1/auth/logout":   api.AuthSessionRequired,
+		http.MethodGet + " /api/v1/users/me":       api.AuthSessionRequired,
 	}
 	for _, route := range routes {
 		if route.Method == "" || route.Path == "" {
 			t.Errorf("route is incomplete: %#v", route)
 		}
-		if route.Auth != api.AuthPublic {
-			t.Errorf("route %s %s auth = %q", route.Method, route.Path, route.Auth)
+		key := route.Method + " " + route.Path
+		if want, exists := expected[key]; !exists || route.Auth != want {
+			t.Errorf("route %s auth = %q, want %q", key, route.Auth, want)
 		}
+		delete(expected, key)
+	}
+	if len(expected) != 0 {
+		t.Fatalf("missing routes = %#v", expected)
 	}
 	routes[0].Path = "/mutated"
 	if helper.Server.API().Routes()[0].Path == "/mutated" {
@@ -108,6 +122,101 @@ func TestRoutingFailuresUseProblemDetails(t *testing.T) {
 			t.Error(err)
 		} else if problem.Code != test.code || problem.RequestID == "" {
 			t.Errorf("problem = %#v", problem)
+		}
+	}
+}
+
+func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testing.T) {
+	t.Parallel()
+
+	helper := testlib.Setup(t)
+	tests := []struct {
+		name      string
+		method    string
+		path      string
+		configure func(*http.Request)
+	}{
+		{
+			name:   "missing session credential",
+			method: http.MethodGet,
+			path:   "/api/v1/users/me",
+		},
+		{
+			name:   "missing refresh credential",
+			method: http.MethodPost,
+			path:   "/api/v1/auth/refresh",
+		},
+		{
+			name:   "query credential is never accepted",
+			method: http.MethodGet,
+			path:   "/api/v1/users/me?access_token=secret",
+		},
+		{
+			name:   "duplicate authorization headers",
+			method: http.MethodGet,
+			path:   "/api/v1/users/me",
+			configure: func(request *http.Request) {
+				request.Header.Add("Authorization", "Bearer first")
+				request.Header.Add("Authorization", "Bearer second")
+			},
+		},
+		{
+			name:   "non bearer authorization",
+			method: http.MethodGet,
+			path:   "/api/v1/users/me",
+			configure: func(request *http.Request) {
+				request.Header.Set("Authorization", "Basic secret")
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, test.path, nil)
+			if test.configure != nil {
+				test.configure(request)
+			}
+			response := httptest.NewRecorder()
+			helper.Server.Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			var problem api.Problem
+			if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+				t.Fatal(err)
+			}
+			if problem.Code != "authentication.required" {
+				t.Fatalf("problem = %#v", problem)
+			}
+		})
+	}
+}
+
+func TestAuthenticationRequestsUseStrictJSON(t *testing.T) {
+	t.Parallel()
+
+	helper := testlib.Setup(t)
+	tests := []string{
+		`{"login_id":"user@example.com","password":"password","client_type":"desktop","unknown":true}`,
+		`{"login_id":"user@example.com"} {"password":"password"}`,
+	}
+	for _, body := range tests {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/auth/login",
+			strings.NewReader(body),
+		)
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		helper.Server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("body %q: status = %d, response = %s", body, response.Code, response.Body.String())
+		}
+		var problem api.Problem
+		if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+			t.Fatal(err)
+		}
+		if problem.Code != "request.invalid" {
+			t.Fatalf("problem = %#v", problem)
 		}
 	}
 }

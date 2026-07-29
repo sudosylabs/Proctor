@@ -20,6 +20,10 @@ type Store interface {
 	ProgrammeLevel() ProgrammeLevelStore
 	AcademicPeriod() AcademicPeriodStore
 	Class() ClassStore
+	User() UserStore
+	PasswordCredential() PasswordCredentialStore
+	Session() SessionStore
+	SessionCredential() SessionCredentialStore
 
 	Ping(context.Context) error
 	GetDBSchemaVersion(context.Context) (int, error)
@@ -80,4 +84,67 @@ type ClassStore interface {
 	ListByProgrammeLevel(context.Context, string) ([]*model.Class, error)
 	ListByAcademicPeriod(context.Context, string) ([]*model.Class, error)
 	Update(context.Context, *model.Class) (*model.Class, error)
+}
+
+// UserStore persists login-capable accounts without their credentials.
+type UserStore interface {
+	Save(context.Context, *model.User) (*model.User, error)
+	SaveWithPassword(
+		context.Context,
+		*model.User,
+		*model.PasswordCredential,
+	) (*model.User, *model.PasswordCredential, error)
+	Get(context.Context, string) (*model.User, error)
+	GetByUsername(context.Context, string) (*model.User, error)
+	GetByEmail(context.Context, string) (*model.User, error)
+	Update(context.Context, *model.User) (*model.User, error)
+	UpdateLastLogin(context.Context, string, int64) error
+}
+
+// PasswordCredentialStore persists one encoded password hash per local user.
+type PasswordCredentialStore interface {
+	Save(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
+	GetByUser(context.Context, string) (*model.PasswordCredential, error)
+	Update(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
+}
+
+// SessionStore persists sessions and owns atomic session lifecycle changes.
+type SessionStore interface {
+	Save(
+		context.Context,
+		*model.Session,
+		[]*model.SessionCredential,
+		int,
+	) (*model.Session, []*model.SessionCredential, error)
+	Get(context.Context, string) (*model.Session, error)
+	ListByUser(context.Context, string) ([]*model.Session, error)
+	UpdateActivity(context.Context, string, int64, int64) error
+	Revoke(context.Context, string, int64, string) ([]string, error)
+	RevokeAllForUser(context.Context, string, int64, string) ([]string, error)
+}
+
+type SessionRotation struct {
+	Session             *model.Session
+	AccessCredential    *model.SessionCredential
+	RefreshCredential   *model.SessionCredential
+	RevokedAccessHashes []string
+	ReplayDetected      bool
+}
+
+// SessionCredentialStore resolves bearer credentials and atomically rotates
+// refresh credentials with replay detection.
+type SessionCredentialStore interface {
+	GetSessionByTokenHash(
+		context.Context,
+		string,
+		model.SessionCredentialKind,
+	) (*model.SessionCredential, *model.Session, error)
+	RotateRefresh(
+		context.Context,
+		string,
+		*model.SessionCredential,
+		*model.SessionCredential,
+		int64,
+		int64,
+	) (*SessionRotation, error)
 }

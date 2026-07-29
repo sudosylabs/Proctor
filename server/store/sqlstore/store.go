@@ -72,12 +72,16 @@ func (s Settings) validate() error {
 // Keeping this registry separate from SqlStore mirrors Mattermost's composition
 // flow and makes future store decorators possible without changing callers.
 type SqlStoreStores struct {
-	institution    store.InstitutionStore
-	academicUnit   store.AcademicUnitStore
-	programme      store.ProgrammeStore
-	programmeLevel store.ProgrammeLevelStore
-	academicPeriod store.AcademicPeriodStore
-	class          store.ClassStore
+	institution        store.InstitutionStore
+	academicUnit       store.AcademicUnitStore
+	programme          store.ProgrammeStore
+	programmeLevel     store.ProgrammeLevelStore
+	academicPeriod     store.AcademicPeriodStore
+	class              store.ClassStore
+	user               store.UserStore
+	passwordCredential store.PasswordCredentialStore
+	session            store.SessionStore
+	sessionCredential  store.SessionCredentialStore
 }
 
 // SqlStore owns PostgreSQL connections and all concrete model stores.
@@ -120,6 +124,10 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 	sqlStore.stores.programmeLevel = newSqlProgrammeLevelStore(sqlStore)
 	sqlStore.stores.academicPeriod = newSqlAcademicPeriodStore(sqlStore)
 	sqlStore.stores.class = newSqlClassStore(sqlStore)
+	sqlStore.stores.user = newSqlUserStore(sqlStore)
+	sqlStore.stores.passwordCredential = newSqlPasswordCredentialStore(sqlStore)
+	sqlStore.stores.session = newSqlSessionStore(sqlStore)
+	sqlStore.stores.sessionCredential = newSqlSessionCredentialStore(sqlStore)
 	return sqlStore, nil
 }
 
@@ -160,6 +168,22 @@ func (ss *SqlStore) AcademicPeriod() store.AcademicPeriodStore {
 
 func (ss *SqlStore) Class() store.ClassStore {
 	return ss.stores.class
+}
+
+func (ss *SqlStore) User() store.UserStore {
+	return ss.stores.user
+}
+
+func (ss *SqlStore) PasswordCredential() store.PasswordCredentialStore {
+	return ss.stores.passwordCredential
+}
+
+func (ss *SqlStore) Session() store.SessionStore {
+	return ss.stores.session
+}
+
+func (ss *SqlStore) SessionCredential() store.SessionCredentialStore {
+	return ss.stores.sessionCredential
 }
 
 func (ss *SqlStore) GetMaster() *sqlxDBWrapper {

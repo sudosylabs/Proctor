@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 type BuildInfo struct {
@@ -29,7 +31,9 @@ type Health interface {
 type AuthRequirement string
 
 const (
-	AuthPublic AuthRequirement = "public"
+	AuthPublic                    AuthRequirement = "public"
+	AuthSessionRequired           AuthRequirement = "session_required"
+	AuthRefreshCredentialRequired AuthRequirement = "refresh_credential_required"
 )
 
 type Route struct {
@@ -39,10 +43,30 @@ type Route struct {
 }
 
 type Options struct {
-	Logger       *mlog.Logger
-	Health       Health
-	BuildInfo    BuildInfo
-	MaxBodyBytes int64
+	Logger         *mlog.Logger
+	Health         Health
+	Authentication Authentication
+	BuildInfo      BuildInfo
+	MaxBodyBytes   int64
+}
+
+type Authentication interface {
+	Login(
+		context.Context,
+		string,
+		string,
+		model.SessionClientType,
+		string,
+		string,
+		string,
+	) (*model.User, *model.Session, *model.AuthenticationTokens, *model.AppError)
+	AuthenticateAccess(context.Context, string) (*model.Principal, *model.AppError)
+	RefreshSession(
+		context.Context,
+		string,
+	) (*model.Session, *model.AuthenticationTokens, *model.AppError)
+	Logout(context.Context, model.Principal) *model.AppError
+	GetUser(context.Context, string) (*model.User, *model.AppError)
 }
 
 type API struct {
@@ -56,6 +80,9 @@ func New(options Options) (*API, error) {
 	}
 	if options.Health == nil {
 		return nil, errors.New("health state is required")
+	}
+	if options.Authentication == nil {
+		return nil, errors.New("authentication application is required")
 	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
@@ -108,11 +135,47 @@ func New(options Options) (*API, error) {
 				writeJSON(writer, http.StatusOK, options.BuildInfo)
 			}),
 		},
+		{
+			route:   Route{Method: http.MethodPost, Path: "/api/v1/auth/login", Auth: AuthPublic},
+			handler: loginHandler(options.Authentication, options.Logger),
+		},
+		{
+			route: Route{
+				Method: http.MethodPost,
+				Path:   "/api/v1/auth/refresh",
+				Auth:   AuthRefreshCredentialRequired,
+			},
+			handler: refreshHandler(options.Authentication, options.Logger),
+		},
+		{
+			route: Route{
+				Method: http.MethodPost,
+				Path:   "/api/v1/auth/logout",
+				Auth:   AuthSessionRequired,
+			},
+			handler: logoutHandler(options.Authentication, options.Logger),
+		},
+		{
+			route: Route{
+				Method: http.MethodGet,
+				Path:   "/api/v1/users/me",
+				Auth:   AuthSessionRequired,
+			},
+			handler: currentUserHandler(options.Authentication, options.Logger),
+		},
 	}
 
 	routes := make([]Route, 0, len(registrations))
 	for _, registration := range registrations {
-		dispatcher.handle(registration.route, registration.handler)
+		dispatcher.handle(
+			registration.route,
+			requireAuthentication(
+				registration.handler,
+				registration.route.Auth,
+				options.Authentication,
+				options.Logger,
+			),
+		)
 		routes = append(routes, registration.route)
 	}
 	sortRoutes(routes)
