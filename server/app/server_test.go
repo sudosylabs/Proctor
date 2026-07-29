@@ -5,12 +5,54 @@ package app_test
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
+
+type failingStartCluster struct {
+	stopped atomic.Bool
+}
+
+func (c *failingStartCluster) NodeID() string {
+	return "failing-node"
+}
+
+func (c *failingStartCluster) Start(context.Context) error {
+	return errors.New("start failure")
+}
+
+func (c *failingStartCluster) Stop(context.Context) error {
+	c.stopped.Store(true)
+	return nil
+}
+
+func (c *failingStartCluster) Ping(context.Context) error {
+	return nil
+}
+
+func (c *failingStartCluster) RegisterMessageHandler(
+	model.ClusterEvent,
+	platform.ClusterMessageHandler,
+) error {
+	return nil
+}
+
+func (c *failingStartCluster) Broadcast(context.Context, *model.ClusterMessage) error {
+	return nil
+}
+
+func (c *failingStartCluster) SendToNode(context.Context, string, *model.ClusterMessage) error {
+	return nil
+}
 
 func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	t.Parallel()
@@ -33,6 +75,9 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	}
 	if helper.App.Store() != helper.Store {
 		t.Fatal("application and platform do not share the same persistence store")
+	}
+	if helper.App.Cluster() != helper.Cluster || helper.Platform.Cluster() != helper.Cluster {
+		t.Fatal("application graph contains more than one cluster transport")
 	}
 }
 
@@ -57,6 +102,23 @@ func TestServerStopsWhenContextIsCanceled(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("server did not stop after context cancellation")
+	}
+}
+
+func TestClusterStartFailurePreventsReadinessAndClosesPlatform(t *testing.T) {
+	t.Parallel()
+
+	cluster := &failingStartCluster{}
+	helper := testlib.Setup(t, testlib.WithServerOptions(app.WithCluster(cluster)))
+	err := helper.Server.Start(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "start cluster transport") {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if helper.Server.Health().Ready() {
+		t.Fatal("server became ready after cluster transport start failed")
+	}
+	if !cluster.stopped.Load() {
+		t.Fatal("cluster transport was not stopped after startup failure")
 	}
 }
 
@@ -126,3 +188,5 @@ func TestClosedServerCannotBeStarted(t *testing.T) {
 		t.Fatal("closed server was started")
 	}
 }
+
+var _ platform.Cluster = (*failingStartCluster)(nil)

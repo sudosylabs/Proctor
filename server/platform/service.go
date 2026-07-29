@@ -26,6 +26,7 @@ type ServiceConfig struct {
 	Logger      *mlog.Logger
 	Store       store.Store
 	Cache       Cache
+	Cluster     Cluster
 	Mailer      Mailer
 	VFS         vfspkg.FileSystem
 }
@@ -35,6 +36,7 @@ type Service struct {
 	logger         *mlog.Logger
 	store          store.Store
 	cache          Cache
+	cluster        Cluster
 	mailer         Mailer
 	vfs            vfspkg.FileSystem
 	configListener string
@@ -128,18 +130,42 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 			return nil, fmt.Errorf("open VFS: %w", err)
 		}
 	}
+	clusterTransport := serviceConfig.Cluster
+	if clusterTransport == nil {
+		var err error
+		clusterTransport, err = newCluster(serviceConfig.ConfigStore.Get().Cluster, logger)
+		if err != nil {
+			if closer, ok := filesystem.(interface{ Close() error }); ok {
+				_ = closer.Close()
+			}
+			_ = mailer.Close()
+			_ = cacheStore.Close()
+			_ = persistence.Close()
+			if serviceConfig.Logger == nil {
+				_ = logger.Shutdown()
+			}
+			return nil, fmt.Errorf("open cluster transport: %w", err)
+		}
+	}
 
 	service := &Service{
 		configStore: serviceConfig.ConfigStore,
 		logger:      logger,
 		store:       persistence,
 		cache:       cacheStore,
+		cluster:     clusterTransport,
 		mailer:      mailer,
 		vfs:         filesystem,
 	}
 	checkCtx, cancelCheck := context.WithTimeout(constructionCtx, 15*time.Second)
 	defer cancelCheck()
 	if err := service.CheckDependencies(checkCtx); err != nil {
+		stopCtx, cancelStop := context.WithTimeout(
+			context.Background(),
+			service.Config().Server.ShutdownTimeout.Duration,
+		)
+		_ = service.cluster.Stop(stopCtx)
+		cancelStop()
 		_ = service.closeInfrastructure()
 		_ = persistence.Close()
 		if serviceConfig.Logger == nil {
@@ -160,6 +186,8 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 		"platform initialized",
 		mlog.String("go_version", runtime.Version()),
 		mlog.String("config_source", service.configStore.Describe()),
+		mlog.String("node_id", service.cluster.NodeID()),
+		mlog.String("cluster_backend", service.Config().Cluster.Backend),
 	)
 	return service, nil
 }
@@ -184,6 +212,10 @@ func (s *Service) Cache() Cache {
 	return s.cache
 }
 
+func (s *Service) Cluster() Cluster {
+	return s.cluster
+}
+
 func (s *Service) Mailer() Mailer {
 	return s.mailer
 }
@@ -192,12 +224,23 @@ func (s *Service) VFS() vfspkg.FileSystem {
 	return s.vfs
 }
 
+func (s *Service) Start(ctx context.Context) error {
+	if err := s.cluster.Start(ctx); err != nil {
+		return fmt.Errorf("start cluster transport: %w", err)
+	}
+	s.logger.Info("cluster transport started", mlog.String("node_id", s.cluster.NodeID()))
+	return nil
+}
+
 func (s *Service) CheckDependencies(ctx context.Context) error {
 	if err := s.store.Ping(ctx); err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
 	if err := s.cache.Ping(ctx); err != nil {
 		return fmt.Errorf("cache: %w", err)
+	}
+	if err := s.cluster.Ping(ctx); err != nil {
+		return fmt.Errorf("cluster: %w", err)
 	}
 	if err := s.mailer.Test(ctx); err != nil {
 		return fmt.Errorf("mail: %w", err)
@@ -211,7 +254,13 @@ func (s *Service) CheckDependencies(ctx context.Context) error {
 func (s *Service) Close() error {
 	s.shutdownOnce.Do(func() {
 		s.configStore.RemoveListener(s.configListener)
+		stopCtx, cancelStop := context.WithTimeout(
+			context.Background(),
+			s.Config().Server.ShutdownTimeout.Duration,
+		)
+		defer cancelStop()
 		s.shutdownErr = errors.Join(
+			s.cluster.Stop(stopCtx),
 			s.closeInfrastructure(),
 			s.store.Close(),
 			s.logger.Flush(),

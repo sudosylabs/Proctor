@@ -47,6 +47,10 @@ func (a *App) Cache() platform.Cache {
 	return a.platform.Cache()
 }
 
+func (a *App) Cluster() platform.Cluster {
+	return a.platform.Cluster()
+}
+
 func (a *App) Mailer() platform.Mailer {
 	return a.platform.Mailer()
 }

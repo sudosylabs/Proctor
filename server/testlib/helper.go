@@ -44,6 +44,7 @@ type Helper struct {
 	Logs        *mlog.Buffer
 	Store       *Store
 	Cache       *Cache
+	Cluster     platform.Cluster
 	Mailer      *Mailer
 	VFS         *memoryvfs.FS
 }
@@ -187,6 +188,7 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		Logs:        logs,
 		Store:       persistence,
 		Cache:       cache,
+		Cluster:     server.Platform().Cluster(),
 		Mailer:      mailer,
 		VFS:         filesystem,
 	}

@@ -15,6 +15,7 @@ import (
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -35,6 +36,11 @@ type unhealthyCache struct {
 type trackedMailer struct {
 	testMailer
 	closed atomic.Bool
+}
+
+type trackedCluster struct {
+	started atomic.Bool
+	stopped atomic.Bool
 }
 
 func (testStore) Institution() store.InstitutionStore               { return nil }
@@ -90,6 +96,42 @@ func (c *unhealthyCache) Close() error {
 
 func (m *trackedMailer) Close() error {
 	m.closed.Store(true)
+	return nil
+}
+
+func (c *trackedCluster) NodeID() string {
+	return "test-node"
+}
+
+func (c *trackedCluster) Start(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.started.Store(true)
+	return nil
+}
+
+func (c *trackedCluster) Stop(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.stopped.Store(true)
+	return nil
+}
+
+func (c *trackedCluster) Ping(ctx context.Context) error {
+	return ctx.Err()
+}
+
+func (c *trackedCluster) RegisterMessageHandler(model.ClusterEvent, ClusterMessageHandler) error {
+	return nil
+}
+
+func (c *trackedCluster) Broadcast(context.Context, *model.ClusterMessage) error {
+	return nil
+}
+
+func (c *trackedCluster) SendToNode(context.Context, string, *model.ClusterMessage) error {
 	return nil
 }
 
@@ -172,10 +214,12 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 	persistence := &trackedStore{}
 	cache := &unhealthyCache{}
 	mailer := &trackedMailer{}
+	cluster := &trackedCluster{}
 	_, err = New(ServiceConfig{
 		ConfigStore: configuration,
 		Store:       persistence,
 		Cache:       cache,
+		Cluster:     cluster,
 		Mailer:      mailer,
 		VFS:         memoryvfs.New(),
 	})
@@ -191,4 +235,49 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 	if !mailer.closed.Load() {
 		t.Error("mailer was not closed after dependency failure")
 	}
+	if !cluster.stopped.Load() {
+		t.Error("cluster transport was not stopped after dependency failure")
+	}
 }
+
+func TestServiceOwnsClusterLifecycle(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cluster := &trackedCluster{}
+	service, err := New(ServiceConfig{
+		ConfigStore: configuration,
+		Store:       testStore{},
+		Cache:       testCache{},
+		Cluster:     cluster,
+		Mailer:      testMailer{},
+		VFS:         memoryvfs.New(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cluster.started.Load() {
+		t.Fatal("cluster transport started during construction before handlers can be registered")
+	}
+	if err := service.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !cluster.started.Load() {
+		t.Fatal("platform did not start cluster transport")
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !cluster.stopped.Load() {
+		t.Fatal("platform did not stop cluster transport")
+	}
+}
+
+var _ Cluster = (*trackedCluster)(nil)

@@ -27,6 +27,7 @@ type serverOptions struct {
 	logger      *mlog.Logger
 	store       store.Store
 	cache       platform.Cache
+	cluster     platform.Cluster
 	mailer      platform.Mailer
 	vfs         vfspkg.FileSystem
 	buildInfo   api.BuildInfo
@@ -80,6 +81,16 @@ func WithCache(cache platform.Cache) Option {
 			return errors.New("cache is nil")
 		}
 		options.cache = cache
+		return nil
+	}
+}
+
+func WithCluster(cluster platform.Cluster) Option {
+	return func(options *serverOptions) error {
+		if cluster == nil {
+			return errors.New("cluster transport is nil")
+		}
+		options.cluster = cluster
 		return nil
 	}
 }
@@ -166,6 +177,7 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 		Logger:      settings.logger,
 		Store:       settings.store,
 		Cache:       settings.cache,
+		Cluster:     settings.cluster,
 		Mailer:      settings.mailer,
 		VFS:         settings.vfs,
 	})
@@ -247,6 +259,13 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		close(runDone)
 		s.lifecycleMu.Unlock()
 	}()
+
+	if err := s.platform.Start(runCtx); err != nil {
+		if errors.Is(err, context.Canceled) && errors.Is(runCtx.Err(), context.Canceled) {
+			return nil
+		}
+		return fmt.Errorf("start platform: %w", err)
+	}
 
 	cfg := s.platform.Config()
 	listener, err := net.Listen("tcp", cfg.Server.ListenAddress)
