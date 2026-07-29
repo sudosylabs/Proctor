@@ -84,6 +84,9 @@ func (s SqlRoleBindingStore) Save(
 	if err := validateRoleBindingReferences(ctx, tx, &candidate); err != nil {
 		return nil, err
 	}
+	if err := validateSystemAdministratorScope(ctx, tx, &candidate); err != nil {
+		return nil, err
+	}
 	var overlap bool
 	if err := tx.Get(ctx, &overlap, `
 		SELECT EXISTS (
@@ -160,6 +163,31 @@ func validateRoleBindingReferences(
 	return nil
 }
 
+func validateSystemAdministratorScope(
+	ctx context.Context,
+	executor sqlxExecutor,
+	binding *model.RoleBinding,
+) error {
+	var roleName string
+	if err := executor.Get(
+		ctx,
+		&roleName,
+		`SELECT name FROM roles WHERE id = $1 AND delete_at = 0`,
+		binding.RoleId,
+	); err != nil {
+		return translateError("role", binding.RoleId, err)
+	}
+	if roleName == model.SystemAdministratorRoleName &&
+		binding.ScopeType != model.RoleScopeInstitution {
+		return store.NewErrConflict(
+			"role_binding",
+			"role_bindings_system_admin_institution_scope",
+			nil,
+		)
+	}
+	return nil
+}
+
 func (s SqlRoleBindingStore) Get(ctx context.Context, id string) (*model.RoleBinding, error) {
 	var row roleBindingRow
 	query := s.bindingsQuery.Where(sq.Eq{
@@ -230,16 +258,75 @@ func (s SqlRoleBindingStore) End(
 	if endAt <= 0 {
 		return nil, store.NewErrInvalidInput("role_binding", "end_at", endAt)
 	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin role binding end: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var current struct {
+		roleBindingRow
+		RoleName string `db:"role_name"`
+	}
+	if err := tx.Get(ctx, &current, `
+		SELECT rb.id, rb.create_at, rb.update_at, rb.delete_at, rb.user_id,
+		       rb.role_id, rb.scope_type, rb.scope_id, rb.start_at, rb.end_at,
+		       r.name AS role_name
+		  FROM role_bindings rb
+		  JOIN roles r ON r.id = rb.role_id AND r.delete_at = 0
+		 WHERE rb.id = $1 AND rb.delete_at = 0
+		   AND rb.start_at < $2
+		   AND (rb.end_at = 0 OR rb.end_at > $2)
+		 FOR UPDATE OF rb`, id, endAt); err != nil {
+		return nil, translateError("role_binding", id, err)
+	}
+	if current.RoleName == model.SystemAdministratorRoleName {
+		if _, err := tx.Exec(
+			ctx,
+			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+			"proctor:system-administrator-bindings",
+		); err != nil {
+			return nil, fmt.Errorf("lock administrator bindings: %w", err)
+		}
+		var remaining bool
+		if err := tx.Get(ctx, &remaining, `
+			SELECT EXISTS (
+				SELECT 1
+				  FROM role_bindings rb
+				  JOIN roles r ON r.id = rb.role_id
+				 WHERE r.name = $1 AND r.built_in = true AND r.delete_at = 0
+				   AND rb.id <> $2 AND rb.scope_type = 'institution'
+				   AND rb.scope_id = $3 AND rb.delete_at = 0
+				   AND rb.start_at <= $4
+				   AND (rb.end_at = 0 OR rb.end_at > $4)
+			)`,
+			model.SystemAdministratorRoleName,
+			id,
+			current.ScopeID,
+			endAt,
+		); err != nil {
+			return nil, fmt.Errorf("check remaining administrator binding: %w", err)
+		}
+		if !remaining {
+			return nil, store.NewErrConflict(
+				"role_binding",
+				"role_bindings_last_system_admin",
+				nil,
+			)
+		}
+	}
+
 	var row roleBindingRow
-	err := s.GetMaster().Get(ctx, &row, `
+	if err := tx.Get(ctx, &row, `
 		UPDATE role_bindings
 		   SET update_at = $1, end_at = $1
-		 WHERE id = $2 AND delete_at = 0 AND start_at < $1
-		   AND (end_at = 0 OR end_at > $1)
+		 WHERE id = $2
 		RETURNING id, create_at, update_at, delete_at, user_id, role_id,
-		          scope_type, scope_id, start_at, end_at`, endAt, id)
-	if err != nil {
+		          scope_type, scope_id, start_at, end_at`, endAt, id); err != nil {
 		return nil, translateError("role_binding", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit role binding end: %w", err)
 	}
 	return row.model(), nil
 }

@@ -70,4 +70,27 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		reference.Constraint != "role_bindings_class_scope_fkey" {
 		t.Fatalf("invalid scope error = %v", err)
 	}
+
+	adminRole, err := ss.Role().Save(ctx, &model.Role{
+		Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
+		Permissions: model.AllActions(), BuiltIn: true,
+	})
+	requireNoError(t, err)
+	firstAdmin, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserId: user.Id, RoleId: adminRole.Id, ScopeType: model.RoleScopeInstitution,
+		ScopeId: institution.Id, StartAt: start,
+	})
+	requireNoError(t, err)
+	if _, err := ss.RoleBinding().End(ctx, firstAdmin.Id, start+10); !store.IsConflict(err) {
+		t.Fatalf("End(last system administrator) error = %v", err)
+	}
+	secondUser := saveUser(t, ctx, ss)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserId: secondUser.Id, RoleId: adminRole.Id, ScopeType: model.RoleScopeInstitution,
+		ScopeId: institution.Id, StartAt: start,
+	})
+	requireNoError(t, err)
+	if _, err := ss.RoleBinding().End(ctx, firstAdmin.Id, start+10); err != nil {
+		t.Fatalf("End(system administrator with successor) error = %v", err)
+	}
 }

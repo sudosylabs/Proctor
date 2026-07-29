@@ -8,6 +8,8 @@
 
 package model
 
+import "sort"
+
 // Action is a stable authorization contract. Actions describe domain
 // capabilities, never HTTP methods or route names.
 type Action string
@@ -89,6 +91,23 @@ var actionDefinitions = map[Action]ActionDefinition{
 func DefinitionForAction(action Action) (ActionDefinition, bool) {
 	definition, ok := actionDefinitions[action]
 	return definition, ok
+}
+
+// AllActions returns every action currently recognized by the authorization
+// evaluator in stable order. The installation bootstrap uses this closed,
+// code-reviewed registry to construct the protected system-administrator role.
+func AllActions() []string {
+	actions := make([]string, 0, len(actionDefinitions))
+	for action := range actionDefinitions {
+		actions = append(actions, string(action))
+	}
+	sort.Strings(actions)
+	return actions
+}
+
+func IsKnownAction(action string) bool {
+	_, ok := actionDefinitions[Action(action)]
+	return ok
 }
 
 func (r Resource) IsValid() bool {

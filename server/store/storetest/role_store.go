@@ -73,5 +73,9 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if _, err := ss.Role().Delete(ctx, first.Id, model.GetMillis()); !store.IsConflict(err) {
 			t.Fatalf("Delete(built-in) error = %v", err)
 		}
+		first.DisplayName = "Modified Built-in"
+		if _, err := ss.Role().Update(ctx, first); !store.IsConflict(err) {
+			t.Fatalf("Update(built-in) error = %v", err)
+		}
 	})
 }

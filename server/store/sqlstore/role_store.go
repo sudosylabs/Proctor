@@ -137,6 +137,9 @@ func (s SqlRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role
 	if role == nil {
 		return nil, store.NewErrInvalidInput("role", "value", nil)
 	}
+	if role.BuiltIn {
+		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
+	}
 	candidate := role.Clone()
 	candidate.PreUpdate()
 	if appErr := candidate.IsValid(); appErr != nil {

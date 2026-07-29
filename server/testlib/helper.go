@@ -107,6 +107,10 @@ func (s *Store) Audit() store.AuditStore {
 	return nil
 }
 
+func (s *Store) Installation() store.InstallationStore {
+	return nil
+}
+
 func (s *Store) Ping(context.Context) error {
 	return nil
 }

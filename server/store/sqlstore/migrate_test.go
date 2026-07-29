@@ -27,22 +27,22 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		t.Fatalf("Pending() = %d, %v", len(pending), err)
 	}
 	version, err := migrator.SchemaVersion(context.Background())
-	if err != nil || version != 3 {
+	if err != nil || version != 4 {
 		t.Fatalf("SchemaVersion() = %d, %v", version, err)
 	}
 
 	if _, err := migrator.store.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			audit_events, user_tokens, personal_access_tokens, session_credentials, sessions,
+			installation_state, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,
 			classes, academic_periods, programme_levels, programmes,
 			academic_units, institutions CASCADE`); err != nil {
 		t.Fatalf("truncate before down migrations: %v", err)
 	}
-	rolledBack, err := migrator.Down(3)
-	if err != nil || rolledBack != 3 {
-		t.Fatalf("Down(3) = %d, %v", rolledBack, err)
+	rolledBack, err := migrator.Down(4)
+	if err != nil || rolledBack != 4 {
+		t.Fatalf("Down(4) = %d, %v", rolledBack, err)
 	}
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("second Up() error = %v", err)

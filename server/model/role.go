@@ -12,6 +12,8 @@ import "regexp"
 const (
 	RolePermissionMaxLength = 128
 	RolePermissionMaxCount  = 256
+
+	SystemAdministratorRoleName = "system_admin"
 )
 
 var validPermission = regexp.MustCompile(`^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`)
@@ -29,6 +31,34 @@ type Role struct {
 	Description string   `json:"description"`
 	Permissions []string `json:"permissions"`
 	BuiltIn     bool     `json:"built_in"`
+}
+
+// RolePatch contains the mutable fields of a custom role. Role names are
+// stable identifiers and built-in roles are managed by server code.
+type RolePatch struct {
+	DisplayName *string   `json:"display_name,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Permissions *[]string `json:"permissions,omitempty"`
+}
+
+func (r *Role) Patch(patch *RolePatch) {
+	if r == nil || patch == nil {
+		return
+	}
+	if patch.DisplayName != nil {
+		r.DisplayName = *patch.DisplayName
+	}
+	if patch.Description != nil {
+		r.Description = *patch.Description
+	}
+	if patch.Permissions != nil {
+		r.Permissions = cloneStrings(*patch.Permissions)
+	}
+}
+
+func (rp *RolePatch) IsEmpty() bool {
+	return rp == nil ||
+		(rp.DisplayName == nil && rp.Description == nil && rp.Permissions == nil)
 }
 
 func (r *Role) PreSave() {

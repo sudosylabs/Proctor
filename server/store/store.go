@@ -27,6 +27,7 @@ type Store interface {
 	Role() RoleStore
 	RoleBinding() RoleBindingStore
 	Audit() AuditStore
+	Installation() InstallationStore
 
 	Ping(context.Context) error
 	GetDBSchemaVersion(context.Context) (int, error)
@@ -199,4 +200,23 @@ type AuditStore interface {
 	Get(context.Context, string) (*model.AuditEvent, error)
 	Complete(context.Context, string, model.AuditStatus, string, []byte, int64) (*model.AuditEvent, error)
 	List(context.Context, AuditListOptions) ([]*model.AuditEvent, error)
+}
+
+// InstallationBootstrap is the complete durable input for the one-time
+// installation bootstrap transaction. PasswordHash is already encoded by the
+// application password hasher and must never be logged or audited.
+type InstallationBootstrap struct {
+	Institution   *model.Institution
+	Administrator *model.User
+	PasswordHash  string
+	Role          *model.Role
+	RoleBinding   *model.RoleBinding
+	AuditEvent    *model.AuditEvent
+}
+
+// InstallationStore owns the cross-model transaction that makes a pristine
+// database into an initialized logical Proctor installation.
+type InstallationStore interface {
+	Get(context.Context) (*model.InstallationState, error)
+	Bootstrap(context.Context, *InstallationBootstrap) (*model.InstallationBootstrapResult, error)
 }
