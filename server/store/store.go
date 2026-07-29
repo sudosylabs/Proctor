@@ -24,6 +24,9 @@ type Store interface {
 	PasswordCredential() PasswordCredentialStore
 	Session() SessionStore
 	SessionCredential() SessionCredentialStore
+	Role() RoleStore
+	RoleBinding() RoleBindingStore
+	Audit() AuditStore
 
 	Ping(context.Context) error
 	GetDBSchemaVersion(context.Context) (int, error)
@@ -46,6 +49,7 @@ type AcademicUnitStore interface {
 	Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
 	Get(context.Context, string) (*model.AcademicUnit, error)
 	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)
+	ListAncestors(context.Context, string) ([]*model.AcademicUnit, error)
 	Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
 }
 
@@ -83,6 +87,7 @@ type ClassStore interface {
 	GetByName(context.Context, string, string, string) (*model.Class, error)
 	ListByProgrammeLevel(context.Context, string) ([]*model.Class, error)
 	ListByAcademicPeriod(context.Context, string) ([]*model.Class, error)
+	GetAcademicUnitId(context.Context, string) (string, error)
 	Update(context.Context, *model.Class) (*model.Class, error)
 }
 
@@ -153,4 +158,45 @@ type SessionCredentialStore interface {
 		int64,
 		int64,
 	) (*SessionRotation, error)
+}
+
+// RoleStore persists reusable permission sets independently of their scopes.
+type RoleStore interface {
+	Save(context.Context, *model.Role) (*model.Role, error)
+	Get(context.Context, string) (*model.Role, error)
+	GetByName(context.Context, string) (*model.Role, error)
+	GetByIds(context.Context, []string) ([]*model.Role, error)
+	List(context.Context) ([]*model.Role, error)
+	Update(context.Context, *model.Role) (*model.Role, error)
+	Delete(context.Context, string, int64) (*model.Role, error)
+}
+
+// RoleBindingStore persists time-bounded role assignments. Scope references
+// are validated transactionally because PostgreSQL cannot express a foreign
+// key whose target table depends on scope_type.
+type RoleBindingStore interface {
+	Save(context.Context, *model.RoleBinding) (*model.RoleBinding, error)
+	Get(context.Context, string) (*model.RoleBinding, error)
+	ListByUser(context.Context, string) ([]*model.RoleBinding, error)
+	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
+	ListActiveByUser(context.Context, string, int64) ([]*model.RoleBinding, error)
+	End(context.Context, string, int64) (*model.RoleBinding, error)
+}
+
+type AuditListOptions struct {
+	ActorId    string
+	Action     string
+	Resource   *model.Resource
+	BeforeTime int64
+	BeforeId   string
+	Limit      int
+}
+
+// AuditStore owns authoritative security records. Events are append-oriented;
+// Complete permits only the terminal transition from attempt to success/fail.
+type AuditStore interface {
+	Save(context.Context, *model.AuditEvent) (*model.AuditEvent, error)
+	Get(context.Context, string) (*model.AuditEvent, error)
+	Complete(context.Context, string, model.AuditStatus, string, []byte, int64) (*model.AuditEvent, error)
+	List(context.Context, AuditListOptions) ([]*model.AuditEvent, error)
 }

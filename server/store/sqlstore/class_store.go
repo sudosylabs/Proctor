@@ -145,6 +145,22 @@ func (s SqlClassStore) ListByAcademicPeriod(
 	return s.selectClasses(ctx, query, "list classes by academic period")
 }
 
+func (s SqlClassStore) GetAcademicUnitId(ctx context.Context, id string) (string, error) {
+	var academicUnitID string
+	if err := s.GetMaster().Get(ctx, &academicUnitID, `
+		SELECT programmes.academic_unit_id
+		  FROM classes
+		  JOIN programme_levels ON programme_levels.id = classes.programme_level_id
+		  JOIN programmes ON programmes.id = programme_levels.programme_id
+		 WHERE classes.id = $1
+		   AND classes.delete_at = 0
+		   AND programme_levels.delete_at = 0
+		   AND programmes.delete_at = 0`, id); err != nil {
+		return "", translateError("class", id, err)
+	}
+	return academicUnitID, nil
+}
+
 func (s SqlClassStore) selectClasses(
 	ctx context.Context,
 	query sq.SelectBuilder,

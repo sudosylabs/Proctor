@@ -95,6 +95,18 @@ func (s *Store) SessionCredential() store.SessionCredentialStore {
 	return nil
 }
 
+func (s *Store) Role() store.RoleStore {
+	return nil
+}
+
+func (s *Store) RoleBinding() store.RoleBindingStore {
+	return nil
+}
+
+func (s *Store) Audit() store.AuditStore {
+	return nil
+}
+
 func (s *Store) Ping(context.Context) error {
 	return nil
 }

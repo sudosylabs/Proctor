@@ -23,6 +23,7 @@ func TestClassStore(t *testing.T, ss store.Store) {
 	t.Run("GetByName", func(t *testing.T) { testClassStoreGetByName(t, ss) })
 	t.Run("ListByProgrammeLevel", func(t *testing.T) { testClassStoreListByProgrammeLevel(t, ss) })
 	t.Run("ListByAcademicPeriod", func(t *testing.T) { testClassStoreListByAcademicPeriod(t, ss) })
+	t.Run("GetAcademicUnitId", func(t *testing.T) { testClassStoreGetAcademicUnitId(t, ss) })
 	t.Run("Update", func(t *testing.T) { testClassStoreUpdate(t, ss) })
 	t.Run("RejectUnknownProgrammeLevel", func(t *testing.T) {
 		testClassStoreRejectUnknownProgrammeLevel(t, ss)
@@ -33,6 +34,22 @@ func TestClassStore(t *testing.T, ss store.Store) {
 	t.Run("EnforceScopedNameUniqueness", func(t *testing.T) {
 		testClassStoreEnforceScopedNameUniqueness(t, ss)
 	})
+}
+
+func testClassStoreGetAcademicUnitId(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture := saveClassFixture(t, ctx, ss)
+	class := saveClass(t, ctx, ss, fixture.level.Id, fixture.period.Id, "class-a")
+	academicUnitID, err := ss.Class().GetAcademicUnitId(ctx, class.Id)
+	requireNoError(t, err)
+	programme, err := ss.Programme().Get(ctx, fixture.programme.Id)
+	requireNoError(t, err)
+	if academicUnitID != programme.AcademicUnitId {
+		t.Fatalf("GetAcademicUnitId() = %q, want %q", academicUnitID, programme.AcademicUnitId)
+	}
+	if _, err := ss.Class().GetAcademicUnitId(ctx, model.NewId()); !store.IsNotFound(err) {
+		t.Fatalf("GetAcademicUnitId(missing) error = %v", err)
+	}
 }
 
 func testClassStoreSave(t *testing.T, ss store.Store) {

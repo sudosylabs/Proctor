@@ -53,6 +53,9 @@ func (testStore) User() store.UserStore                             { return nil
 func (testStore) PasswordCredential() store.PasswordCredentialStore { return nil }
 func (testStore) Session() store.SessionStore                       { return nil }
 func (testStore) SessionCredential() store.SessionCredentialStore   { return nil }
+func (testStore) Role() store.RoleStore                             { return nil }
+func (testStore) RoleBinding() store.RoleBindingStore               { return nil }
+func (testStore) Audit() store.AuditStore                           { return nil }
 func (testStore) Ping(context.Context) error                        { return nil }
 func (testStore) GetDBSchemaVersion(context.Context) (int, error)   { return 0, nil }
 func (testStore) GetLocalSchemaVersion() (int, error)               { return 0, nil }

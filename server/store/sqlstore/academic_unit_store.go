@@ -109,6 +109,44 @@ func (s SqlAcademicUnitStore) Get(ctx context.Context, id string) (*model.Academ
 	return row.model(), nil
 }
 
+// ListAncestors returns the target unit first, followed by each parent up to
+// the root. The recursive query is bounded by the cycle invariant enforced by
+// Save and Update.
+func (s SqlAcademicUnitStore) ListAncestors(
+	ctx context.Context,
+	id string,
+) ([]*model.AcademicUnit, error) {
+	rows := []academicUnitRow{}
+	if err := s.GetMaster().Select(ctx, &rows, `
+		WITH RECURSIVE ancestors AS (
+			SELECT id, create_at, update_at, delete_at, institution_id, parent_id,
+			       name, display_name, description, 0 AS depth
+			  FROM academic_units
+			 WHERE id = $1 AND delete_at = 0
+			UNION ALL
+			SELECT parent.id, parent.create_at, parent.update_at, parent.delete_at,
+			       parent.institution_id, parent.parent_id, parent.name,
+			       parent.display_name, parent.description, ancestors.depth + 1
+			  FROM academic_units parent
+			  JOIN ancestors ON parent.id = ancestors.parent_id
+			 WHERE parent.delete_at = 0
+		)
+		SELECT id, create_at, update_at, delete_at, institution_id, parent_id,
+		       name, display_name, description
+		  FROM ancestors
+		 ORDER BY depth`, id); err != nil {
+		return nil, fmt.Errorf("list academic unit ancestors: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, store.NewErrNotFound("academic_unit", id)
+	}
+	units := make([]*model.AcademicUnit, 0, len(rows))
+	for _, row := range rows {
+		units = append(units, row.model())
+	}
+	return units, nil
+}
+
 func (s SqlAcademicUnitStore) ListChildren(ctx context.Context, institutionID, parentID string) ([]*model.AcademicUnit, error) {
 	query := s.academicUnitsQuery.
 		Where(sq.Eq{

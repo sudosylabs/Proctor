@@ -82,6 +82,9 @@ type SqlStoreStores struct {
 	passwordCredential store.PasswordCredentialStore
 	session            store.SessionStore
 	sessionCredential  store.SessionCredentialStore
+	role               store.RoleStore
+	roleBinding        store.RoleBindingStore
+	audit              store.AuditStore
 }
 
 // SqlStore owns PostgreSQL connections and all concrete model stores.
@@ -128,6 +131,9 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 	sqlStore.stores.passwordCredential = newSqlPasswordCredentialStore(sqlStore)
 	sqlStore.stores.session = newSqlSessionStore(sqlStore)
 	sqlStore.stores.sessionCredential = newSqlSessionCredentialStore(sqlStore)
+	sqlStore.stores.role = newSqlRoleStore(sqlStore)
+	sqlStore.stores.roleBinding = newSqlRoleBindingStore(sqlStore)
+	sqlStore.stores.audit = newSqlAuditStore(sqlStore)
 	return sqlStore, nil
 }
 
@@ -184,6 +190,18 @@ func (ss *SqlStore) Session() store.SessionStore {
 
 func (ss *SqlStore) SessionCredential() store.SessionCredentialStore {
 	return ss.stores.sessionCredential
+}
+
+func (ss *SqlStore) Role() store.RoleStore {
+	return ss.stores.role
+}
+
+func (ss *SqlStore) RoleBinding() store.RoleBindingStore {
+	return ss.stores.roleBinding
+}
+
+func (ss *SqlStore) Audit() store.AuditStore {
+	return ss.stores.audit
 }
 
 func (ss *SqlStore) GetMaster() *sqlxDBWrapper {

@@ -576,7 +576,7 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SqlStore
 	}
 	if _, err := persistence.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			user_tokens, personal_access_tokens, session_credentials, sessions,
+			audit_events, user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,
 			classes, academic_periods, programme_levels, programmes,

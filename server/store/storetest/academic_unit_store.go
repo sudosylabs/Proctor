@@ -16,6 +16,7 @@ func TestAcademicUnitStore(t *testing.T, ss store.Store) {
 	t.Run("Save", func(t *testing.T) { testAcademicUnitStoreSave(t, ss) })
 	t.Run("Get", func(t *testing.T) { testAcademicUnitStoreGet(t, ss) })
 	t.Run("ListChildren", func(t *testing.T) { testAcademicUnitStoreListChildren(t, ss) })
+	t.Run("ListAncestors", func(t *testing.T) { testAcademicUnitStoreListAncestors(t, ss) })
 	t.Run("Update", func(t *testing.T) { testAcademicUnitStoreUpdate(t, ss) })
 	t.Run("RejectCycle", func(t *testing.T) { testAcademicUnitStoreRejectCycle(t, ss) })
 	t.Run("RejectCrossInstitutionParent", func(t *testing.T) {
@@ -24,6 +25,26 @@ func TestAcademicUnitStore(t *testing.T, ss store.Store) {
 	t.Run("EnforceInstitutionNameUniqueness", func(t *testing.T) {
 		testAcademicUnitStoreEnforceInstitutionNameUniqueness(t, ss)
 	})
+}
+
+func testAcademicUnitStoreListAncestors(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	root := saveAcademicUnit(t, ctx, ss, institution.Id, "", "engineering")
+	child := saveAcademicUnit(t, ctx, ss, institution.Id, root.Id, "computing")
+	leaf := saveAcademicUnit(t, ctx, ss, institution.Id, child.Id, "software")
+
+	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, leaf.Id)
+	requireNoError(t, err)
+	if len(ancestors) != 3 ||
+		ancestors[0].Id != leaf.Id ||
+		ancestors[1].Id != child.Id ||
+		ancestors[2].Id != root.Id {
+		t.Fatalf("ListAncestors() = %#v", ancestors)
+	}
+	if _, err := ss.AcademicUnit().ListAncestors(ctx, model.NewId()); !store.IsNotFound(err) {
+		t.Fatalf("ListAncestors(missing) error = %v", err)
+	}
 }
 
 func testAcademicUnitStoreSave(t *testing.T, ss store.Store) {
