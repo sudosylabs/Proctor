@@ -241,6 +241,13 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 	if appErr := s.IsValid(); appErr != nil {
 		t.Fatal(appErr)
 	}
+	if s.LastActivityAt != s.CreateAt {
+		t.Fatalf(
+			"PreSave() last_activity_at = %d, create_at = %d",
+			s.LastActivityAt,
+			s.CreateAt,
+		)
+	}
 	if s.IsExpiredAt(s.IdleExpiresAt - 1) {
 		t.Fatal("session expired before its idle deadline")
 	}

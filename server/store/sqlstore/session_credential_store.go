@@ -139,6 +139,24 @@ func (s SqlSessionCredentialStore) RotateRefresh(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	var userID string
+	if err := tx.Get(ctx, &userID, `
+		SELECT session.user_id
+		  FROM session_credentials credential
+		  JOIN sessions session ON session.id = credential.session_id
+		 WHERE credential.token_hash = ?
+		   AND credential.kind = ?
+		   AND credential.delete_at = 0
+		   AND session.delete_at = 0`,
+		tokenHash,
+		string(model.SessionCredentialRefresh),
+	); err != nil {
+		return nil, translateError("session_credential", tokenHash, err)
+	}
+	if err := lockUserSessions(ctx, tx, userID); err != nil {
+		return nil, err
+	}
+
 	var currentRow sessionCredentialRow
 	if err := tx.Get(ctx, &currentRow, `
 		SELECT id, create_at, update_at, delete_at, session_id, kind,

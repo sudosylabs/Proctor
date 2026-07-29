@@ -118,9 +118,15 @@ type SessionStore interface {
 	) (*model.Session, []*model.SessionCredential, error)
 	Get(context.Context, string) (*model.Session, error)
 	ListByUser(context.Context, string) ([]*model.Session, error)
+	ListActiveByUser(context.Context, string, int64) ([]*model.Session, error)
 	UpdateActivity(context.Context, string, int64, int64) error
-	Revoke(context.Context, string, int64, string) ([]string, error)
-	RevokeAllForUser(context.Context, string, int64, string) ([]string, error)
+	Revoke(context.Context, string, string, int64, string) ([]string, error)
+	RevokeAllForUser(
+		context.Context,
+		string,
+		int64,
+		string,
+	) ([]*model.Session, []string, error)
 }
 
 type SessionRotation struct {

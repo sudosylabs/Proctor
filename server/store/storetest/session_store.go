@@ -26,6 +26,9 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUser(t, ss) })
 	t.Run("RotateAndDetectReplay", func(t *testing.T) { testSessionRotateAndDetectReplay(t, ss) })
 	t.Run("ConcurrentRefreshReplay", func(t *testing.T) { testSessionConcurrentRefreshReplay(t, ss) })
+	t.Run("ConcurrentRefreshAndRevokeAll", func(t *testing.T) {
+		testSessionConcurrentRefreshAndRevokeAll(t, ss)
+	})
 }
 
 func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
@@ -48,6 +51,16 @@ func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if len(list) != 1 || list[0].Id != session.Id {
 		t.Fatalf("ListByUser() = %#v", list)
+	}
+	active, err := ss.Session().ListActiveByUser(ctx, user.Id, session.CreateAt)
+	requireNoError(t, err)
+	if len(active) != 1 || active[0].Id != session.Id {
+		t.Fatalf("ListActiveByUser(active) = %#v", active)
+	}
+	active, err = ss.Session().ListActiveByUser(ctx, user.Id, session.ExpiresAt)
+	requireNoError(t, err)
+	if len(active) != 0 {
+		t.Fatalf("ListActiveByUser(expired) = %#v", active)
 	}
 }
 
@@ -82,7 +95,17 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
 	at := model.GetMillis() + 100
-	hashes, err := ss.Session().Revoke(ctx, session.Id, at, "user logout")
+	other := saveUser(t, ctx, ss)
+	_, err := ss.Session().Revoke(ctx, session.Id, other.Id, at, "invalid owner")
+	if !store.IsNotFound(err) {
+		t.Fatalf("cross-user Revoke() error = %v", err)
+	}
+	unrevoked, err := ss.Session().Get(ctx, session.Id)
+	requireNoError(t, err)
+	if unrevoked.RevokedAt != 0 {
+		t.Fatalf("cross-user Revoke() changed session = %#v", unrevoked)
+	}
+	hashes, err := ss.Session().Revoke(ctx, session.Id, user.Id, at, "user logout")
 	requireNoError(t, err)
 	if len(hashes) != 2 {
 		t.Fatalf("Revoke() hashes = %#v", hashes)
@@ -96,6 +119,11 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	if credential.RevokedAt != at || got.RevokedAt != at || got.RevocationReason != "user logout" {
 		t.Fatalf("revoked credential=%#v session=%#v", credential, got)
 	}
+	active, err := ss.Session().ListActiveByUser(ctx, user.Id, at)
+	requireNoError(t, err)
+	if len(active) != 0 {
+		t.Fatalf("revoked session remained active: %#v", active)
+	}
 }
 
 func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
@@ -106,10 +134,13 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	other := saveUser(t, ctx, ss)
 	otherSession, _, _ := saveSession(t, ctx, ss, other.Id, 10)
 	at := model.GetMillis() + 100
-	hashes, err := ss.Session().RevokeAllForUser(ctx, user.Id, at, "security reset")
+	revoked, hashes, err := ss.Session().RevokeAllForUser(ctx, user.Id, at, "security reset")
 	requireNoError(t, err)
 	if len(hashes) != 4 {
 		t.Fatalf("RevokeAllForUser() hashes = %#v", hashes)
+	}
+	if len(revoked) != 2 {
+		t.Fatalf("RevokeAllForUser() sessions = %#v", revoked)
 	}
 	for _, id := range []string{first.Id, second.Id} {
 		got, getErr := ss.Session().Get(ctx, id)
@@ -245,6 +276,79 @@ func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if got.RevokedAt == 0 || got.RevocationReason != "refresh credential replay detected" {
 		t.Fatalf("concurrent replay did not revoke the session: %#v", got)
+	}
+}
+
+func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	rotateAt := session.CreateAt + 1_000
+	revokeAt := rotateAt + 100
+	newAccessRaw := model.NewCredentialToken()
+	start := make(chan struct{})
+	rotationResult := make(chan error, 1)
+	revocationResult := make(chan error, 1)
+
+	go func() {
+		<-start
+		_, err := ss.SessionCredential().RotateRefresh(
+			ctx,
+			model.HashToken(raw.refresh),
+			&model.SessionCredential{
+				TokenHash: model.HashToken(newAccessRaw),
+				ExpiresAt: rotateAt + int64((15*time.Minute)/time.Millisecond),
+			},
+			&model.SessionCredential{
+				TokenHash: model.HashToken(model.NewCredentialToken()),
+				ExpiresAt: session.ExpiresAt,
+			},
+			rotateAt,
+			min(rotateAt+int64((24*time.Hour)/time.Millisecond), session.ExpiresAt),
+		)
+		rotationResult <- err
+	}()
+	go func() {
+		<-start
+		_, _, err := ss.Session().RevokeAllForUser(
+			ctx,
+			user.Id,
+			revokeAt,
+			"security reset",
+		)
+		revocationResult <- err
+	}()
+	close(start)
+
+	rotationErr := <-rotationResult
+	if rotationErr != nil {
+		var conflict *store.ErrConflict
+		if !errors.As(rotationErr, &conflict) {
+			t.Fatalf("RotateRefresh() error = %v", rotationErr)
+		}
+	}
+	requireNoError(t, <-revocationResult)
+
+	got, err := ss.Session().Get(ctx, session.Id)
+	requireNoError(t, err)
+	if got.RevokedAt != revokeAt || got.RevocationReason != "security reset" {
+		t.Fatalf("session after concurrent revocation = %#v", got)
+	}
+	active, err := ss.Session().ListActiveByUser(ctx, user.Id, rotateAt)
+	requireNoError(t, err)
+	if len(active) != 0 {
+		t.Fatalf("sessions remained active after revoke-all: %#v", active)
+	}
+	if rotationErr == nil {
+		credential, _, err := ss.SessionCredential().GetSessionByTokenHash(
+			ctx,
+			model.HashToken(newAccessRaw),
+			model.SessionCredentialAccess,
+		)
+		requireNoError(t, err)
+		if credential.RevokedAt != revokeAt {
+			t.Fatalf("rotated access credential was not revoked: %#v", credential)
+		}
 	}
 }
 

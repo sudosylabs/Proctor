@@ -61,7 +61,7 @@ func (s *Session) PreSave() {
 	if s.AuthenticatedAt == 0 {
 		s.AuthenticatedAt = s.CreateAt
 	}
-	if s.LastActivityAt == 0 {
+	if s.LastActivityAt < s.CreateAt {
 		s.LastActivityAt = s.CreateAt
 	}
 	s.DeviceId = SanitizeUnicode(s.DeviceId)

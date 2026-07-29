@@ -104,9 +104,8 @@ func (s SqlSessionStore) Save(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockKey := "proctor:session-user:" + candidate.UserId
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", lockKey); err != nil {
-		return nil, nil, fmt.Errorf("lock user sessions: %w", err)
+	if err := lockUserSessions(ctx, tx, candidate.UserId); err != nil {
+		return nil, nil, err
 	}
 	var active int
 	if err := tx.Get(ctx, &active, `
@@ -250,6 +249,35 @@ func (s SqlSessionStore) ListByUser(ctx context.Context, userID string) ([]*mode
 	return sessions, nil
 }
 
+func (s SqlSessionStore) ListActiveByUser(
+	ctx context.Context,
+	userID string,
+	now int64,
+) ([]*model.Session, error) {
+	query := s.sessionsQuery.
+		Where(sq.Eq{
+			"sessions.user_id":    userID,
+			"sessions.delete_at":  int64(0),
+			"sessions.revoked_at": int64(0),
+		}).
+		Where(sq.Gt{"sessions.idle_expires_at": now}).
+		Where(sq.Gt{"sessions.expires_at": now}).
+		OrderBy(
+			"sessions.last_activity_at DESC",
+			"sessions.create_at DESC",
+			"sessions.id",
+		)
+	rows := []sessionRow{}
+	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
+		return nil, fmt.Errorf("list active sessions by user: %w", err)
+	}
+	sessions := make([]*model.Session, 0, len(rows))
+	for _, row := range rows {
+		sessions = append(sessions, row.model())
+	}
+	return sessions, nil
+}
+
 func (s SqlSessionStore) UpdateActivity(
 	ctx context.Context,
 	id string,
@@ -282,6 +310,7 @@ func (s SqlSessionStore) UpdateActivity(
 func (s SqlSessionStore) Revoke(
 	ctx context.Context,
 	id string,
+	userID string,
 	revokedAt int64,
 	reason string,
 ) ([]string, error) {
@@ -291,6 +320,19 @@ func (s SqlSessionStore) Revoke(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := lockUserSessions(ctx, tx, userID); err != nil {
+		return nil, err
+	}
+	var matchedSessionID string
+	if err := tx.Get(ctx, &matchedSessionID, `
+		SELECT id
+		  FROM sessions
+		 WHERE id = ? AND user_id = ? AND delete_at = 0 AND revoked_at = 0`,
+		id,
+		userID,
+	); err != nil {
+		return nil, translateError("session", id, err)
+	}
 	hashes, err := selectActiveTokenHashes(ctx, tx, id)
 	if err != nil {
 		return nil, err
@@ -300,11 +342,12 @@ func (s SqlSessionStore) Revoke(
 		   SET update_at = GREATEST(update_at, ?),
 		       revoked_at = ?,
 		       revocation_reason = ?
-		 WHERE id = ? AND delete_at = 0 AND revoked_at = 0`,
+		 WHERE id = ? AND user_id = ? AND delete_at = 0 AND revoked_at = 0`,
 		revokedAt,
 		revokedAt,
 		model.SanitizeUnicode(reason),
 		id,
+		userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("revoke session: %w", err)
@@ -333,13 +376,16 @@ func (s SqlSessionStore) RevokeAllForUser(
 	userID string,
 	revokedAt int64,
 	reason string,
-) ([]string, error) {
+) ([]*model.Session, []string, error) {
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin user session revocation: %w", err)
+		return nil, nil, fmt.Errorf("begin user session revocation: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := lockUserSessions(ctx, tx, userID); err != nil {
+		return nil, nil, err
+	}
 	hashes := []string{}
 	if err := tx.Select(ctx, &hashes, `
 		SELECT credential.token_hash
@@ -353,7 +399,21 @@ func (s SqlSessionStore) RevokeAllForUser(
 		 FOR UPDATE OF credential`,
 		userID,
 	); err != nil {
-		return nil, fmt.Errorf("select user session credentials: %w", err)
+		return nil, nil, fmt.Errorf("select user session credentials: %w", err)
+	}
+	rows := []sessionRow{}
+	if err := tx.Select(ctx, &rows, `
+		SELECT id, create_at, update_at, delete_at, user_id, client_type,
+		       device_id, device_name, authentication_method,
+		       authentication_strength, authenticated_at, mfa_completed_at,
+		       last_activity_at, idle_expires_at, expires_at, revoked_at,
+		       revocation_reason
+		  FROM sessions
+		 WHERE user_id = ? AND delete_at = 0 AND revoked_at = 0
+		 FOR UPDATE`,
+		userID,
+	); err != nil {
+		return nil, nil, fmt.Errorf("select user sessions: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE session_credentials credential
@@ -369,7 +429,7 @@ func (s SqlSessionStore) RevokeAllForUser(
 		revokedAt,
 		userID,
 	); err != nil {
-		return nil, fmt.Errorf("revoke user session credentials: %w", err)
+		return nil, nil, fmt.Errorf("revoke user session credentials: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE sessions
@@ -382,12 +442,36 @@ func (s SqlSessionStore) RevokeAllForUser(
 		model.SanitizeUnicode(reason),
 		userID,
 	); err != nil {
-		return nil, fmt.Errorf("revoke user sessions: %w", err)
+		return nil, nil, fmt.Errorf("revoke user sessions: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit user session revocation: %w", err)
+		return nil, nil, fmt.Errorf("commit user session revocation: %w", err)
 	}
-	return hashes, nil
+	sessions := make([]*model.Session, 0, len(rows))
+	for _, row := range rows {
+		session := row.model()
+		session.UpdateAt = max(session.UpdateAt, revokedAt)
+		session.RevokedAt = revokedAt
+		session.RevocationReason = model.SanitizeUnicode(reason)
+		sessions = append(sessions, session)
+	}
+	return sessions, hashes, nil
+}
+
+func lockUserSessions(
+	ctx context.Context,
+	executor sqlxExecutor,
+	userID string,
+) error {
+	lockKey := "proctor:session-user:" + userID
+	if _, err := executor.Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+		lockKey,
+	); err != nil {
+		return fmt.Errorf("lock user sessions: %w", err)
+	}
+	return nil
 }
 
 func selectActiveTokenHashes(
