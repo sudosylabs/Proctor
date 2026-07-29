@@ -11,6 +11,75 @@
     "max_header_bytes": 1048576,
     "max_body_bytes": 1048576
   },
+  "database": {
+    "data_source": "postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable",
+    "max_open_connections": 50,
+    "max_idle_connections": 10,
+    "connection_max_lifetime": "1h",
+    "connection_max_idle_time": "5m",
+    "query_timeout": "10s",
+    "migration_timeout": "1m"
+  },
+  "cache": {
+    "backend": "memory",
+    "namespace": "proctor",
+    "redis": {
+      "addresses": ["127.0.0.1:6379"],
+      "database": 0,
+      "tls": false,
+      "connect_timeout": "5s"
+    }
+  },
+  "mail": {
+    "enabled": false,
+    "backend": "smtp",
+    "from_address": "no-reply@localhost",
+    "from_name": "Proctor",
+    "smtp": {
+      "address": "127.0.0.1:1025",
+      "security": "none",
+      "authentication": "none",
+      "timeout": "10s",
+      "message_id_domain": "localhost",
+      "max_message_bytes": 26214400,
+      "max_recipients": 100
+    }
+  },
+  "vfs": {
+    "backend": "local",
+    "local": {
+      "root": "./data"
+    },
+    "s3": {
+      "endpoint": "",
+      "bucket": "",
+      "secure": true
+    }
+  },
+  "authentication": {
+    "password": {
+      "minimum_length": 12,
+      "maximum_length": 128,
+      "argon_memory_kib": 65536,
+      "argon_iterations": 3,
+      "argon_parallelism": 2,
+      "argon_salt_bytes": 16,
+      "argon_key_bytes": 32
+    },
+    "sessions": {
+      "access_ttl": "15m",
+      "refresh_ttl": "720h",
+      "idle_ttl": "168h",
+      "absolute_ttl": "720h",
+      "activity_update_interval": "5m",
+      "maximum_per_user": 10
+    },
+    "login_rate_limit": {
+      "window": "1m",
+      "maximum_attempts": 10,
+      "maximum_source_attempts": 1000
+    }
+  },
   "log": {
     "max_field_bytes": 16384,
     "targets": [

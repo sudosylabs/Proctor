@@ -7,6 +7,10 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/mattermost/morph v1.1.0
+	github.com/sudosylabs/proctor/packages/cache v0.0.0-20260726111247-11f8bdd6cebe
+	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260726114928-8a166a08b663
+	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20260726110112-233c3e43a771
+	golang.org/x/crypto v0.36.0
 )
 
 require (

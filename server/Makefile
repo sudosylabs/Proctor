@@ -1,10 +1,8 @@
 SHELL := /bin/sh
-GOWORK ?= off
 COMPOSE := docker compose -f compose.yaml
 PROCTOR_POSTGRES_PORT ?= 15432
 PROCTOR_TEST_DATABASE_URL ?= postgres://proctor:proctor@127.0.0.1:$(PROCTOR_POSTGRES_PORT)/proctor?sslmode=disable
 
-export GOWORK
 export PROCTOR_POSTGRES_PORT
 
 .PHONY: check test test-race vet build postgres-up postgres-down postgres-logs conformance-postgres
@@ -38,6 +36,8 @@ conformance-postgres:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test ./store/sqlstore -run '^(TestInstitutionStore|TestAcademicUnitStore|TestProgrammeStore|TestProgrammeLevelStore|TestAcademicPeriodStore|TestClassStore|TestMigrationsRoundTrip)$$' -count=1; \
+		go test ./store/sqlstore -run '^(TestInstitutionStore|TestAcademicUnitStore|TestProgrammeStore|TestProgrammeLevelStore|TestAcademicPeriodStore|TestClassStore|TestUserStore|TestPasswordCredentialStore|TestSessionStores|TestMigrationsRoundTrip)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test ./cmd/proctor -run '^TestMigrateIntegration$$' -count=1
+		go test ./cmd/proctor -run '^TestMigrateIntegration$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test ./app -run '^TestAuthenticationIntegration$$' -count=1

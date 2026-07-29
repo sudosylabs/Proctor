@@ -28,8 +28,12 @@ func TestStoreLoadsDefaultsAndReturnsClones(t *testing.T) {
 		t.Fatalf("Get() = %#v, want defaults %#v", got, Default())
 	}
 	got.Log.Targets[0].Level = "error"
+	got.Cache.Redis.Addresses[0] = "mutated:6379"
 	if store.Get().Log.Targets[0].Level != "info" {
 		t.Fatal("Get exposed mutable store state")
+	}
+	if store.Get().Cache.Redis.Addresses[0] == "mutated:6379" {
+		t.Fatal("Get exposed mutable cache address state")
 	}
 }
 
@@ -88,6 +92,9 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 		"PROCTOR_SERVER_LISTEN_ADDRESS": "127.0.0.1:9000",
 		"PROCTOR_LOG_LEVEL":             "debug",
 		"PROCTOR_DATABASE_DATA_SOURCE":  "postgres://runtime:secret@db.example/proctor?sslmode=require",
+		"PROCTOR_CACHE_REDIS_PASSWORD":  "runtime-cache-secret",
+		"PROCTOR_MAIL_SMTP_PASSWORD":    "runtime-mail-secret",
+		"PROCTOR_VFS_S3_SECRET_KEY":     "runtime-vfs-secret",
 	}
 	store, err := NewStore(context.Background(), backing, StoreOptions{
 		LookupEnv: func(key string) (string, bool) {
@@ -110,6 +117,11 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	if effective.Database.DataSource != environment["PROCTOR_DATABASE_DATA_SOURCE"] {
 		t.Fatalf("effective database data source = %q", effective.Database.DataSource)
 	}
+	if effective.Cache.Redis.Password != environment["PROCTOR_CACHE_REDIS_PASSWORD"] ||
+		effective.Mail.SMTP.Password != environment["PROCTOR_MAIL_SMTP_PASSWORD"] ||
+		effective.VFS.S3.SecretKey != environment["PROCTOR_VFS_S3_SECRET_KEY"] {
+		t.Fatal("effective configuration did not apply infrastructure secrets")
+	}
 	effective.Server.PublicURL = "https://proctor.example.edu"
 	if _, _, err := store.Set(context.Background(), effective); err != nil {
 		t.Fatal(err)
@@ -125,25 +137,71 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	if persisted.Database.DataSource != initial.Database.DataSource {
 		t.Fatalf("environment database data source was persisted: %q", persisted.Database.DataSource)
 	}
+	if persisted.Cache.Redis.Password != "" ||
+		persisted.Mail.SMTP.Password != "" ||
+		persisted.VFS.S3.SecretKey != "" {
+		t.Fatal("environment infrastructure secrets were persisted")
+	}
 	if persisted.Server.PublicURL != "https://proctor.example.edu" {
 		t.Fatalf("non-overridden change was lost: %q", persisted.Server.PublicURL)
 	}
 }
 
-func TestRedactedConfigurationHidesDatabaseCredentials(t *testing.T) {
+func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	t.Parallel()
 
 	cfg := Default()
 	cfg.Database.DataSource = "postgres://proctor:secret@db.example/proctor?sslmode=require"
+	cfg.Cache.Redis.Password = "cache-secret"
+	cfg.Mail.SMTP.Password = "mail-secret"
+	cfg.VFS.S3.AccessKey = "vfs-access-key"
+	cfg.VFS.S3.SecretKey = "vfs-secret-key"
+	cfg.VFS.S3.SessionToken = "vfs-session-token"
 	data, err := cfg.RedactedJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "secret") || strings.Contains(string(data), "db.example") {
-		t.Fatalf("redacted configuration exposed database data source: %s", data)
+	for _, forbidden := range []string{
+		"cache-secret",
+		"mail-secret",
+		"db.example",
+		"vfs-access-key",
+		"vfs-secret-key",
+		"vfs-session-token",
+	} {
+		if strings.Contains(string(data), forbidden) {
+			t.Fatalf("redacted configuration exposed %q: %s", forbidden, data)
+		}
 	}
 	if cfg.Database.DataSource == "[redacted]" {
 		t.Fatal("Redacted mutated the original configuration")
+	}
+}
+
+func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Cache.Backend = "redis"
+	cfg.Cache.Redis.Addresses = []string{"missing-port"}
+	cfg.Mail.Enabled = true
+	cfg.Mail.FromAddress = "not-an-address"
+	cfg.Mail.SMTP.Authentication = "plain"
+	cfg.Mail.SMTP.Security = "none"
+	cfg.Mail.SMTP.Username = ""
+	cfg.VFS.Backend = "s3"
+	cfg.VFS.S3.Endpoint = ""
+	cfg.VFS.S3.Bucket = ""
+	cfg.Authentication.Password.ArgonMemoryKiB = 1
+	cfg.Authentication.Sessions.AccessTTL.Duration = cfg.Authentication.Sessions.IdleTTL.Duration + time.Second
+
+	err := cfg.Validate()
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("Validate() error = %v, want ValidationError", err)
+	}
+	if len(validationError.Fields) < 8 {
+		t.Fatalf("Validate() fields = %#v, want aggregate infrastructure failures", validationError.Fields)
 	}
 }
 
