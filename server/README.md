@@ -41,7 +41,10 @@ The server also includes:
   concurrent-session limits;
 - login throttling through the configured shared cache;
 - an immutable request principal and explicit authentication policy on every
-  route.
+  route;
+- active-session listing and self-service individual or account-wide
+  revocation, with serialized refresh/login races and complete access-cache
+  invalidation.
 
 External identity login, password recovery, MFA, personal access-token
 services, authorization evaluation, audit persistence, exams, clustering, and
@@ -69,6 +72,9 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/users/me`
+- `GET /api/v1/users/me/sessions`
+- `POST /api/v1/users/me/sessions/revoke`
+- `POST /api/v1/users/me/sessions/revoke-all`
 
 Validate a configuration without starting the server:
 

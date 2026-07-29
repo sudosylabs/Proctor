@@ -200,6 +200,7 @@ Upstream paths:
 - server/channels/app/authentication.go
 - server/channels/app/login.go
 - server/channels/app/session.go
+- server/channels/app/platform/session.go
 - server/channels/api4/user.go
 - server/channels/store/sqlstore/user_store.go
 - server/channels/store/sqlstore/session_store.go
@@ -210,7 +211,9 @@ Corresponding Proctor paths:
 
 - server/app/authentication.go
 - server/app/authentication_integration_test.go
+- server/app/session_management.go
 - server/app/api/authentication.go
+- server/app/api/session.go
 - server/store/sqlstore/user_store.go
 - server/store/sqlstore/password_credential_store.go
 - server/store/sqlstore/session_store.go
@@ -235,7 +238,12 @@ Modifications:
 - replaced product-specific API handler state with an immutable, minimal
   request principal and explicit per-route authentication classifications;
 - accept credentials only through a single Authorization bearer header and
-  never through URL query parameters.
+  never through URL query parameters;
+- adapted active-session listing and self-service individual/account-wide
+  revocation while retaining ownership checks and sanitized responses;
+- added a Proctor-specific per-user PostgreSQL advisory-lock protocol shared by
+  login, refresh rotation, individual revocation, and revoke-all so concurrent
+  credentials cannot escape an account security reset.
 
 The Morph migration dependency is separately licensed under the MIT License.
 The Masterminds Squirrel query-builder dependency is separately licensed under

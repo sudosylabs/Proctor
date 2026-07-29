@@ -97,8 +97,12 @@ walking skeleton is operational and includes:
   rotation and replay revocation, debounced activity, concurrent-session
   limits, cache-backed authentication resolution and login throttling;
 - public login, refresh-credential, session-required logout, and current-user
-  HTTP endpoints, all using Authorization bearer credentials and the immutable
-  request principal.
+  HTTP endpoints, plus self-service active-session listing, individual session
+  revocation, and account-wide session revocation, all using Authorization
+  bearer credentials and the immutable request principal;
+- serialized per-user session lifecycle transactions across login, refresh,
+  individual revocation, and revoke-all, preventing refresh rotation or a
+  concurrent login from escaping an account-wide security reset.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
@@ -1237,8 +1241,10 @@ Unless the user reprioritizes, build the server as a walking skeleton:
 10. cluster transport port and local implementation;
 11. identity/authentication services, credential rotation, and authentication
     middleware — complete for the first local-password, access/refresh session,
-    login/refresh/logout/current-user vertical slice; external identity,
-    password recovery, MFA, and personal/service credentials remain;
+    login/refresh/logout/current-user vertical slice and self-service active
+    session listing/individual/revoke-all management; external identity,
+    password recovery, MFA, personal/service credentials, administrative
+    session management, and durable security audit remain;
 12. scoped authorization and audit;
 13. institution/academic hierarchy and enrollment vertical slice;
 14. first two-node cluster tests;
