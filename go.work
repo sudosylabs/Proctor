@@ -4,4 +4,5 @@ use (
 	./packages/cache
 	./packages/mail
 	./packages/vfs
+	./server
 )

@@ -30,7 +30,7 @@ dist
 #
 # Kept locally as a requirements reference while the new implementation is
 # built. These paths are intentionally outside the new repository history.
-/server/
+/legacy/
 /tools/
 /.github/
 /.npmrc

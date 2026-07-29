@@ -1,0 +1,170 @@
+Proctor Server
+Copyright 2026 SudoSylabs
+
+This product is licensed under the GNU Affero General Public License,
+version 3. See LICENSE.
+
+The initial server walking skeleton is an original implementation using the Go
+standard library. Mattermost informed architectural requirements and behavioral
+analysis, but no Mattermost source files were copied into this implementation.
+
+The cohesive configuration, platform, server, application, and test-helper flow
+was behaviorally compared with Mattermost revision
+10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f, particularly:
+
+- server/config/store.go;
+- server/channels/app/server.go;
+- server/channels/app/platform/service.go;
+- server/channels/app/platform/config.go;
+- server/channels/app/platform/log.go;
+- server/channels/app/helper_test.go;
+- server/channels/testlib/helper.go;
+- server/public/shared/mlog.
+
+Proctor's corresponding walking-skeleton implementation was independently
+written and does not copy those Mattermost sources.
+
+Mattermost model implementation
+-------------------------------
+
+Upstream project: Mattermost
+Repository: https://github.com/mattermost/mattermost
+Revision: 10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f
+Governing license: Apache License 2.0, as specified by Mattermost LICENSE.txt
+for server/public/ and its subdirectories.
+
+Upstream paths:
+
+- server/public/model/utils.go
+- server/public/model/team.go
+- server/public/model/audit_record.go
+- server/public/model/user.go
+- server/public/model/team_member.go
+- server/public/model/channel_member.go
+- server/public/model/role.go
+- server/public/model/session.go
+- server/public/model/user_access_token.go
+- server/public/model/token.go
+
+Corresponding Proctor paths:
+
+- server/model/app_error.go
+- server/model/utils.go
+- server/model/audit.go
+- server/model/institution.go
+- server/model/academic_unit.go
+- server/model/programme.go
+- server/model/programme_level.go
+- server/model/academic_period.go
+- server/model/class.go
+- server/model/user.go
+- server/model/external_identity.go
+- server/model/password_credential.go
+- server/model/affiliation.go
+- server/model/academic_unit_member.go
+- server/model/class_member.go
+- server/model/role.go
+- server/model/role_binding.go
+- server/model/session.go
+- server/model/credential.go
+- server/model/session_credential.go
+- server/model/personal_access_token.go
+- server/model/user_token.go
+
+Modifications:
+
+- retained the AppError translation-ID, immediate/default translation,
+  wrapping, internal-detail, status, request-correlation, and bounded rendering
+  concepts;
+- integrated AppError with Proctor's RFC 9457 Problem Details boundary and
+  separated translation parameters from explicitly public safe fields;
+- retained Mattermost's 26-character z-base-32 UUID representation while using
+  Go's crypto/rand directly and validating the canonical alphabet;
+- retained the `PreSave`, `PreUpdate`, `IsValid`, and safe `Auditable`
+  conventions while defining Proctor-specific institution and academic
+  hierarchy models;
+- separated user profiles from passwords and external identities instead of
+  retaining Mattermost's combined user/authentication record;
+- adapted team/channel membership validation into time-bounded academic-unit
+  and class membership records without embedding authorization roles;
+- adapted Mattermost roles into Proctor action permissions and added separate
+  scoped role bindings;
+- adapted sessions to omit raw tokens and role snapshots, with hashed
+  access/refresh credentials and refresh-rotation lineage stored separately;
+- adapted personal access tokens to require token hashes, mandatory expiry,
+  explicit scopes, and optional academic-unit constraints;
+- adapted purpose-specific user tokens to store hashes with explicit expiry and
+  single-use consumption state;
+- excluded Mattermost product-specific fields and validations.
+
+The adapted files preserve Mattermost copyright notices where source was
+directly adapted. Proctor-specific domain model files remain under the server's
+AGPL license; their Mattermost-inspired conventions are recorded here.
+
+Mattermost store implementation
+-------------------------------
+
+Upstream project: Mattermost
+Repository: https://github.com/mattermost/mattermost
+Revision: 10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f
+Governing license: Apache License 2.0, as specified by Mattermost LICENSE.txt
+for the referenced server paths.
+
+Upstream paths:
+
+- server/channels/db/assets.go
+- server/channels/store/errors.go
+- server/channels/store/store.go
+- server/channels/store/sqlstore/store.go
+- server/channels/store/sqlstore/sqlx_wrapper.go
+- server/channels/store/sqlstore/migrate.go
+- server/channels/store/sqlstore/team_store.go
+- server/channels/store/storetest/team_store.go
+- server/channels/store/sqlstore/store_test.go
+- server/channels/store/sqlstore/migrate_test.go
+
+Corresponding Proctor paths:
+
+- server/migrations/assets.go
+- server/store/errors.go
+- server/store/store.go
+- server/store/sqlstore/store.go
+- server/store/sqlstore/sqlx_wrapper.go
+- server/store/sqlstore/sqlx_wrapper_test.go
+- server/store/sqlstore/migrate.go
+- server/store/sqlstore/institution_store.go
+- server/store/sqlstore/academic_unit_store.go
+- server/store/storetest/institution_store.go
+- server/store/storetest/academic_unit_store.go
+- server/store/sqlstore/store_test.go
+- server/store/sqlstore/institution_store_test.go
+- server/store/sqlstore/academic_unit_store_test.go
+- server/store/sqlstore/migrate_test.go
+
+Modifications:
+
+- retained Mattermost's root store and per-model store composition:
+  `store.Store`, model-store interfaces, `SqlStoreStores`, concrete
+  `Sql<Model>Store` implementations, and interface-returning accessors;
+- retained explicit PostgreSQL pool lifecycle, centralized SQL execution
+  wrappers, reusable Squirrel select builders, named writes, transaction
+  executors, query timeouts, and minimum-version validation while omitting
+  Mattermost's MySQL, replicas, search replicas, licensing, and transparent
+  store layers;
+- retained embedded, locked Morph migrations but separated migration execution
+  from ordinary server startup;
+- adapted typed store errors while ensuring public error strings never include
+  invalid values or driver details;
+- adapted the per-model reusable store-conformance and thin SQL adapter-test
+  pattern for institution and academic-unit stores;
+- kept explicit SQL row representations, colocated with their corresponding
+  `Sql<Model>Store`, instead of binding domain models directly to database
+  column names;
+- added Proctor-specific singleton-institution, generic academic hierarchy,
+  hierarchy-cycle serialization, and same-parent-institution behavior;
+- added PostgreSQL constraints for identity, enrollment, hashed credentials,
+  and one active class per student and academic period.
+
+The Morph migration dependency is separately licensed under the MIT License.
+The Masterminds Squirrel query-builder dependency is separately licensed under
+the MIT License.
