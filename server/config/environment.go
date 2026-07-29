@@ -50,6 +50,8 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 		cfg.Cache.Redis.Addresses = splitList(value)
 		applied = append(applied, "PROCTOR_CACHE_REDIS_ADDRESSES")
 	}
+	setString("PROCTOR_CLUSTER_BACKEND", &cfg.Cluster.Backend)
+	setString("PROCTOR_CLUSTER_NODE_ID", &cfg.Cluster.NodeID)
 	setString("PROCTOR_MAIL_BACKEND", &cfg.Mail.Backend)
 	setString("PROCTOR_MAIL_FROM_ADDRESS", &cfg.Mail.FromAddress)
 	setString("PROCTOR_MAIL_FROM_NAME", &cfg.Mail.FromName)
@@ -296,6 +298,10 @@ func removeEnvironmentOverrides(candidate *Config, persisted Config, keys []stri
 			candidate.Cache.Redis.TLS = persisted.Cache.Redis.TLS
 		case "PROCTOR_CACHE_REDIS_CONNECT_TIMEOUT":
 			candidate.Cache.Redis.ConnectTimeout = persisted.Cache.Redis.ConnectTimeout
+		case "PROCTOR_CLUSTER_BACKEND":
+			candidate.Cluster.Backend = persisted.Cluster.Backend
+		case "PROCTOR_CLUSTER_NODE_ID":
+			candidate.Cluster.NodeID = persisted.Cluster.NodeID
 		case "PROCTOR_MAIL_ENABLED":
 			candidate.Mail.Enabled = persisted.Mail.Enabled
 		case "PROCTOR_MAIL_BACKEND":

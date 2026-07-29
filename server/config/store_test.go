@@ -93,6 +93,7 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 		"PROCTOR_LOG_LEVEL":             "debug",
 		"PROCTOR_DATABASE_DATA_SOURCE":  "postgres://runtime:secret@db.example/proctor?sslmode=require",
 		"PROCTOR_CACHE_REDIS_PASSWORD":  "runtime-cache-secret",
+		"PROCTOR_CLUSTER_NODE_ID":       "runtime-node",
 		"PROCTOR_MAIL_SMTP_PASSWORD":    "runtime-mail-secret",
 		"PROCTOR_VFS_S3_SECRET_KEY":     "runtime-vfs-secret",
 	}
@@ -117,6 +118,9 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	if effective.Database.DataSource != environment["PROCTOR_DATABASE_DATA_SOURCE"] {
 		t.Fatalf("effective database data source = %q", effective.Database.DataSource)
 	}
+	if effective.Cluster.NodeID != environment["PROCTOR_CLUSTER_NODE_ID"] {
+		t.Fatalf("effective cluster node ID = %q", effective.Cluster.NodeID)
+	}
 	if effective.Cache.Redis.Password != environment["PROCTOR_CACHE_REDIS_PASSWORD"] ||
 		effective.Mail.SMTP.Password != environment["PROCTOR_MAIL_SMTP_PASSWORD"] ||
 		effective.VFS.S3.SecretKey != environment["PROCTOR_VFS_S3_SECRET_KEY"] {
@@ -136,6 +140,9 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	}
 	if persisted.Database.DataSource != initial.Database.DataSource {
 		t.Fatalf("environment database data source was persisted: %q", persisted.Database.DataSource)
+	}
+	if persisted.Cluster.NodeID != initial.Cluster.NodeID {
+		t.Fatalf("environment cluster node ID was persisted: %q", persisted.Cluster.NodeID)
 	}
 	if persisted.Cache.Redis.Password != "" ||
 		persisted.Mail.SMTP.Password != "" ||
@@ -194,13 +201,15 @@ func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
 	cfg.VFS.S3.Bucket = ""
 	cfg.Authentication.Password.ArgonMemoryKiB = 1
 	cfg.Authentication.Sessions.AccessTTL.Duration = cfg.Authentication.Sessions.IdleTTL.Duration + time.Second
+	cfg.Cluster.Backend = "redis"
+	cfg.Cluster.NodeID = "invalid node"
 
 	err := cfg.Validate()
 	var validationError *ValidationError
 	if !errors.As(err, &validationError) {
 		t.Fatalf("Validate() error = %v, want ValidationError", err)
 	}
-	if len(validationError.Fields) < 8 {
+	if len(validationError.Fields) < 10 {
 		t.Fatalf("Validate() fields = %#v, want aggregate infrastructure failures", validationError.Fields)
 	}
 }

@@ -89,6 +89,14 @@ type Cache struct {
 	Redis     CacheRedis `json:"redis"`
 }
 
+// Cluster selects the inter-node transport and gives this process its stable
+// runtime identity. "local" is the single-node degenerate transport; a
+// multi-node backend will be added only after its delivery contract is chosen.
+type Cluster struct {
+	Backend string `json:"backend"`
+	NodeID  string `json:"node_id"`
+}
+
 type MailSMTP struct {
 	Address         string   `json:"address"`
 	ServerName      string   `json:"server_name,omitempty"`
@@ -168,6 +176,7 @@ type Config struct {
 	Server         Server         `json:"server"`
 	Database       Database       `json:"database"`
 	Cache          Cache          `json:"cache"`
+	Cluster        Cluster        `json:"cluster"`
 	Mail           Mail           `json:"mail"`
 	VFS            VFS            `json:"vfs"`
 	Authentication Authentication `json:"authentication"`
@@ -204,6 +213,10 @@ func Default() Config {
 				Addresses:      []string{"127.0.0.1:6379"},
 				ConnectTimeout: Duration{Duration: 5 * time.Second},
 			},
+		},
+		Cluster: Cluster{
+			Backend: "local",
+			NodeID:  "local",
 		},
 		Mail: Mail{
 			Enabled:     false,
@@ -350,6 +363,7 @@ func (c Config) Validate() error {
 
 	validateDatabase(c.Database, add)
 	validateCache(c.Cache, add)
+	validateCluster(c.Cluster, add)
 	validateMail(c.Mail, add)
 	validateVFS(c.VFS, add)
 	validateAuthentication(c.Authentication, add)
@@ -400,6 +414,25 @@ func (c Config) Validate() error {
 		return &ValidationError{Fields: fields}
 	}
 	return nil
+}
+
+func validateCluster(cluster Cluster, add func(string, string)) {
+	if cluster.Backend != "local" {
+		add("cluster.backend", "must be local")
+	}
+	if len(cluster.NodeID) == 0 || len(cluster.NodeID) > 128 {
+		add("cluster.node_id", "must contain between 1 and 128 characters")
+		return
+	}
+	for _, character := range cluster.NodeID {
+		if (character < 'a' || character > 'z') &&
+			(character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') &&
+			character != '.' && character != '_' && character != '-' {
+			add("cluster.node_id", "contains an invalid character")
+			return
+		}
+	}
 }
 
 func validateCache(cache Cache, add func(string, string)) {
