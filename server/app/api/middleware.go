@@ -5,11 +5,13 @@ package api
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func withMiddleware(next http.Handler, logger *mlog.Logger, maxBodyBytes int64) http.Handler {
@@ -17,8 +19,32 @@ func withMiddleware(next http.Handler, logger *mlog.Logger, maxBodyBytes int64) 
 	handler = recoverPanics(handler, logger)
 	handler = logRequests(handler, logger)
 	handler = securityHeaders(handler)
+	handler = attachRequestMetadata(handler)
 	handler = assignRequestID(handler)
 	return handler
+}
+
+func attachRequestMetadata(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		ipAddress := request.RemoteAddr
+		if host, _, err := net.SplitHostPort(request.RemoteAddr); err == nil {
+			ipAddress = host
+		}
+		metadata := model.RequestMetadata{
+			RequestId: RequestID(request.Context()),
+			IPAddress: ipAddress,
+			UserAgent: request.UserAgent(),
+		}
+		ctx := context.WithValue(request.Context(), requestMetadataContextKey{}, metadata)
+		next.ServeHTTP(writer, request.WithContext(ctx))
+	})
+}
+
+type requestMetadataContextKey struct{}
+
+func RequestMetadata(ctx context.Context) model.RequestMetadata {
+	metadata, _ := ctx.Value(requestMetadataContextKey{}).(model.RequestMetadata)
+	return metadata
 }
 
 func assignRequestID(next http.Handler) http.Handler {

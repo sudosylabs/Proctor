@@ -34,6 +34,7 @@ const (
 	AuthPublic                    AuthRequirement = "public"
 	AuthSessionRequired           AuthRequirement = "session_required"
 	AuthRefreshCredentialRequired AuthRequirement = "refresh_credential_required"
+	AuthPrivileged                AuthRequirement = "privileged"
 )
 
 type Route struct {
@@ -70,6 +71,12 @@ type Authentication interface {
 	GetSessions(context.Context, model.Principal) ([]*model.Session, *model.AppError)
 	RevokeSession(context.Context, model.Principal, string) *model.AppError
 	RevokeAllSessions(context.Context, model.Principal) *model.AppError
+	ListAuditEvents(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		model.AuditQuery,
+	) ([]*model.AuditEvent, *model.AppError)
 }
 
 type API struct {
@@ -189,6 +196,14 @@ func New(options Options) (*API, error) {
 				Auth:   AuthSessionRequired,
 			},
 			handler: revokeAllSessionsHandler(options.Authentication, options.Logger),
+		},
+		{
+			route: Route{
+				Method: http.MethodGet,
+				Path:   "/api/v1/audits",
+				Auth:   AuthPrivileged,
+			},
+			handler: listAuditEventsHandler(options.Authentication, options.Logger),
 		},
 	}
 

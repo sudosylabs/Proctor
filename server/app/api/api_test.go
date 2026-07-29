@@ -22,8 +22,8 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	routes := helper.Server.API().Routes()
-	if len(routes) != 10 {
-		t.Fatalf("route count = %d, want 10", len(routes))
+	if len(routes) != 11 {
+		t.Fatalf("route count = %d, want 11", len(routes))
 	}
 	expected := map[string]api.AuthRequirement{
 		http.MethodGet + " /health/live":                          api.AuthPublic,
@@ -36,6 +36,7 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 		http.MethodGet + " /api/v1/users/me/sessions":             api.AuthSessionRequired,
 		http.MethodPost + " /api/v1/users/me/sessions/revoke":     api.AuthSessionRequired,
 		http.MethodPost + " /api/v1/users/me/sessions/revoke-all": api.AuthSessionRequired,
+		http.MethodGet + " /api/v1/audits":                        api.AuthPrivileged,
 	}
 	for _, route := range routes {
 		if route.Method == "" || route.Path == "" {
@@ -153,6 +154,11 @@ func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testi
 			name:   "missing session-list credential",
 			method: http.MethodGet,
 			path:   "/api/v1/users/me/sessions",
+		},
+		{
+			name:   "missing privileged credential",
+			method: http.MethodGet,
+			path:   "/api/v1/audits",
 		},
 		{
 			name:   "missing session-revoke credential",

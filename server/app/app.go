@@ -5,9 +5,12 @@
 package app
 
 import (
+	"context"
+
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -17,6 +20,8 @@ import (
 type App struct {
 	platform       *platform.Service
 	authentication *AuthenticationService
+	authorization  *AuthorizationService
+	audit          *AuditService
 }
 
 func New(applicationPlatform *platform.Service) (*App, error) {
@@ -24,7 +29,46 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &App{platform: applicationPlatform, authentication: authentication}, nil
+	audit := newAuditService(
+		applicationPlatform.Store(),
+		applicationPlatform.Cluster().NodeID(),
+	)
+	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
+	return &App{
+		platform: applicationPlatform, authentication: authentication,
+		authorization: authorization, audit: audit,
+	}, nil
+}
+
+func (a *App) ListAuditEvents(
+	ctx context.Context,
+	principal model.Principal,
+	metadata model.RequestMetadata,
+	query model.AuditQuery,
+) ([]*model.AuditEvent, *model.AppError) {
+	institution, err := a.Store().Institution().GetSingleton(ctx)
+	if err != nil {
+		return nil, authorizationResourceError("institution", err)
+	}
+	if appErr := a.authorization.Authorize(
+		ctx,
+		principal,
+		model.ActionAuditView,
+		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		metadata,
+	); appErr != nil {
+		return nil, appErr
+	}
+	return a.audit.List(ctx, query)
+}
+
+func (a *App) Can(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+) (bool, *model.AppError) {
+	return a.authorization.Can(ctx, principal, action, resource)
 }
 
 func (a *App) Platform() *platform.Service {

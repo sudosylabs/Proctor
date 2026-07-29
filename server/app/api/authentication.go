@@ -132,7 +132,7 @@ func requireAuthentication(
 			ctx := context.WithValue(request.Context(), credentialContextKey{}, token)
 			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
-	case AuthSessionRequired:
+	case AuthSessionRequired, AuthPrivileged:
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			token, appErr := bearerCredential(request)
 			if appErr != nil {
