@@ -1,0 +1,48 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package api
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/sudosylabs/proctor/server/mlog"
+)
+
+func TestPanicRecoveryReturnsSafeProblemAndRetainsDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	var logs mlog.Buffer
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	if err := logger.Configure(mlog.Config{
+		MaxFieldBytes: 1024,
+		Targets: []mlog.Target{{
+			Name: "test", Type: "console", Level: "debug", Format: "json", Writer: &logs,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := withMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("secret panic detail")
+	}), logger, 1024)
+
+	request := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if strings.Contains(response.Body.String(), "secret panic detail") {
+		t.Fatal("panic detail leaked to client")
+	}
+	if !strings.Contains(logs.String(), "secret panic detail") {
+		t.Fatal("panic detail was not retained in operational logs")
+	}
+}
