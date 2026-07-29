@@ -135,13 +135,22 @@ Corresponding Proctor paths:
 - server/store/sqlstore/institution_store.go
 - server/store/sqlstore/academic_unit_store.go
 - server/store/sqlstore/programme_store.go
+- server/store/sqlstore/programme_level_store.go
+- server/store/sqlstore/academic_period_store.go
+- server/store/sqlstore/class_store.go
 - server/store/storetest/institution_store.go
 - server/store/storetest/academic_unit_store.go
 - server/store/storetest/programme_store.go
+- server/store/storetest/programme_level_store.go
+- server/store/storetest/academic_period_store.go
+- server/store/storetest/class_store.go
 - server/store/sqlstore/store_test.go
 - server/store/sqlstore/institution_store_test.go
 - server/store/sqlstore/academic_unit_store_test.go
 - server/store/sqlstore/programme_store_test.go
+- server/store/sqlstore/programme_level_store_test.go
+- server/store/sqlstore/academic_period_store_test.go
+- server/store/sqlstore/class_store_test.go
 - server/store/sqlstore/migrate_test.go
 
 Modifications:
@@ -159,7 +168,7 @@ Modifications:
 - adapted typed store errors while ensuring public error strings never include
   invalid values or driver details;
 - adapted the per-model reusable store-conformance and thin SQL adapter-test
-  pattern for institution, academic-unit, and programme stores;
+  pattern for every structural academic store;
 - kept explicit SQL row representations, colocated with their corresponding
   `Sql<Model>Store`, instead of binding domain models directly to database
   column names;

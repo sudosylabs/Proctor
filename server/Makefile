@@ -38,6 +38,6 @@ conformance-postgres:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test ./store/sqlstore -run '^(TestInstitutionStore|TestAcademicUnitStore|TestProgrammeStore|TestMigrationsRoundTrip)$$' -count=1; \
+		go test ./store/sqlstore -run '^(TestInstitutionStore|TestAcademicUnitStore|TestProgrammeStore|TestProgrammeLevelStore|TestAcademicPeriodStore|TestClassStore|TestMigrationsRoundTrip)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 		go test ./cmd/proctor -run '^TestMigrateIntegration$$' -count=1

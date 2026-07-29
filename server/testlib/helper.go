@@ -62,6 +62,18 @@ func (s *Store) Programme() store.ProgrammeStore {
 	return nil
 }
 
+func (s *Store) ProgrammeLevel() store.ProgrammeLevelStore {
+	return nil
+}
+
+func (s *Store) AcademicPeriod() store.AcademicPeriodStore {
+	return nil
+}
+
+func (s *Store) Class() store.ClassStore {
+	return nil
+}
+
 func (s *Store) Ping(context.Context) error {
 	return nil
 }

@@ -17,6 +17,9 @@ type Store interface {
 	Institution() InstitutionStore
 	AcademicUnit() AcademicUnitStore
 	Programme() ProgrammeStore
+	ProgrammeLevel() ProgrammeLevelStore
+	AcademicPeriod() AcademicPeriodStore
+	Class() ClassStore
 
 	Ping(context.Context) error
 	GetDBSchemaVersion(context.Context) (int, error)
@@ -49,4 +52,32 @@ type ProgrammeStore interface {
 	GetByName(context.Context, string, string) (*model.Programme, error)
 	ListByAcademicUnit(context.Context, string) ([]*model.Programme, error)
 	Update(context.Context, *model.Programme) (*model.Programme, error)
+}
+
+// ProgrammeLevelStore persists reusable curriculum stages owned by programmes.
+type ProgrammeLevelStore interface {
+	Save(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
+	Get(context.Context, string) (*model.ProgrammeLevel, error)
+	GetByName(context.Context, string, string) (*model.ProgrammeLevel, error)
+	ListByProgramme(context.Context, string) ([]*model.ProgrammeLevel, error)
+	Update(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
+}
+
+// AcademicPeriodStore persists institution-wide enrollment periods.
+type AcademicPeriodStore interface {
+	Save(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
+	Get(context.Context, string) (*model.AcademicPeriod, error)
+	GetByName(context.Context, string, string) (*model.AcademicPeriod, error)
+	ListByInstitution(context.Context, string) ([]*model.AcademicPeriod, error)
+	Update(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
+}
+
+// ClassStore persists concrete programme-level rosters for academic periods.
+type ClassStore interface {
+	Save(context.Context, *model.Class) (*model.Class, error)
+	Get(context.Context, string) (*model.Class, error)
+	GetByName(context.Context, string, string, string) (*model.Class, error)
+	ListByProgrammeLevel(context.Context, string) ([]*model.Class, error)
+	ListByAcademicPeriod(context.Context, string) ([]*model.Class, error)
+	Update(context.Context, *model.Class) (*model.Class, error)
 }

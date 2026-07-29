@@ -91,8 +91,9 @@ walking skeleton is operational and includes:
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
-Mattermost-shaped root store with per-model contracts, and the institution,
-academic-unit, and programme SQL stores. Identity/authentication
+Mattermost-shaped root store with per-model contracts, and all structural
+academic SQL stores: institution, academic unit, programme, programme level,
+academic period, and class. Identity/authentication
 services, authorization evaluation, exam-domain, WebSocket, cluster, and
 external-package adapter wiring remain unimplemented.
 
@@ -1215,7 +1216,7 @@ Unless the user reprioritizes, build the server as a walking skeleton:
 8. PostgreSQL connection management and migration command — complete for
    PostgreSQL 14+, including embedded up/down migrations, schema compatibility
    validation, Docker conformance, the Mattermost-shaped root/per-model store
-   architecture, and institution, academic-unit, and programme SQL stores;
+   architecture, and the complete structural academic SQL store set;
 9. cache, VFS, and mail adapters;
 10. cluster transport port and local implementation;
 11. identity/authentication services, credential rotation, and authentication

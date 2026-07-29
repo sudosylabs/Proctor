@@ -72,9 +72,12 @@ func (s Settings) validate() error {
 // Keeping this registry separate from SqlStore mirrors Mattermost's composition
 // flow and makes future store decorators possible without changing callers.
 type SqlStoreStores struct {
-	institution  store.InstitutionStore
-	academicUnit store.AcademicUnitStore
-	programme    store.ProgrammeStore
+	institution    store.InstitutionStore
+	academicUnit   store.AcademicUnitStore
+	programme      store.ProgrammeStore
+	programmeLevel store.ProgrammeLevelStore
+	academicPeriod store.AcademicPeriodStore
+	class          store.ClassStore
 }
 
 // SqlStore owns PostgreSQL connections and all concrete model stores.
@@ -114,6 +117,9 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 	sqlStore.stores.institution = newSqlInstitutionStore(sqlStore)
 	sqlStore.stores.academicUnit = newSqlAcademicUnitStore(sqlStore)
 	sqlStore.stores.programme = newSqlProgrammeStore(sqlStore)
+	sqlStore.stores.programmeLevel = newSqlProgrammeLevelStore(sqlStore)
+	sqlStore.stores.academicPeriod = newSqlAcademicPeriodStore(sqlStore)
+	sqlStore.stores.class = newSqlClassStore(sqlStore)
 	return sqlStore, nil
 }
 
@@ -142,6 +148,18 @@ func (ss *SqlStore) AcademicUnit() store.AcademicUnitStore {
 
 func (ss *SqlStore) Programme() store.ProgrammeStore {
 	return ss.stores.programme
+}
+
+func (ss *SqlStore) ProgrammeLevel() store.ProgrammeLevelStore {
+	return ss.stores.programmeLevel
+}
+
+func (ss *SqlStore) AcademicPeriod() store.AcademicPeriodStore {
+	return ss.stores.academicPeriod
+}
+
+func (ss *SqlStore) Class() store.ClassStore {
+	return ss.stores.class
 }
 
 func (ss *SqlStore) GetMaster() *sqlxDBWrapper {
