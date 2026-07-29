@@ -106,17 +106,31 @@ walking skeleton is operational and includes:
   bearer credentials and the immutable request principal;
 - serialized per-user session lifecycle transactions across login, refresh,
   individual revocation, and revoke-all, preventing refresh rotation or a
-  concurrent login from escaping an account-wide security reset.
+  concurrent login from escaping an account-wide security reset;
+- a closed action registry, resource contracts, and current-state scoped
+  authorization evaluator with additive roles, deny-by-default behavior,
+  institution and ancestor academic-unit inheritance, exact class scope,
+  deleted-role exclusion, and no permission snapshots in sessions;
+- complete role, role-binding, and durable audit SQL stores with reusable
+  conformance suites, role batch resolution, serialized time-range overlap
+  protection, polymorphic scope-reference validation, hierarchy resolution,
+  keyset audit pagination, and attempt-only terminal audit transitions;
+- fail-closed durable auditing of authorization decisions with actor, session,
+  request, node, direct peer, client, authentication, resource, and scope
+  context, plus application primitives for audited critical mutations;
+- an explicitly privileged `GET /api/v1/audits` vertical slice that enforces
+  `audit.view` in the application layer and returns cursor-paginated events.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
 Mattermost-shaped root store with per-model contracts, and all structural
 academic SQL stores: institution, academic unit, programme, programme level,
 academic period, and class. It also includes user, password-credential,
-session, and session-credential SQL stores with reusable conformance tests.
-External identity login, password reset/verification, MFA, personal access
-token services, authorization evaluation, audit persistence, exam-domain,
-WebSocket, and a concrete multi-node cluster transport remain unimplemented.
+session, session-credential, role, role-binding, and audit SQL stores with
+reusable conformance tests. External identity login, password
+reset/verification, MFA, personal access token services, role-administration
+APIs, academic membership services, exam-domain, WebSocket, and a concrete
+multi-node cluster transport remain unimplemented.
 
 Do not:
 
@@ -613,6 +627,13 @@ deny rules without a documented need and precedence model.
 - Add table-driven policy tests covering roles, scopes, inheritance, and
   cross-department isolation.
 
+The current evaluator deliberately performs no authorization-result caching:
+each decision resolves active bindings and non-deleted roles from PostgreSQL.
+This makes revocation immediately visible to every node sharing the database.
+If authorization caching is introduced, role and binding mutations must
+invalidate it through the shared cache/cluster layer before the mutation API is
+considered complete.
+
 ## Target Server Architecture
 
 The server should use explicit composition and business-oriented vertical
@@ -821,6 +842,24 @@ Audit events must capture, as applicable:
 
 Audit storage, retention, and access are explicit. Audit failures for critical
 security actions must have a documented policy.
+
+Current audit policy:
+
+- PostgreSQL `audit_events` records are authoritative; operational logs are not
+  a substitute;
+- authorization decisions are fail-closed: an otherwise allowed action is not
+  allowed when its durable decision record cannot be written;
+- a critical mutation must write an `attempt` before changing state;
+- the attempt may transition exactly once to `success` or `fail`;
+- if terminal completion fails after a mutation committed, return an internal
+  failure and leave the durable attempt for operator reconciliation;
+- audit JSON parameters and prior/result states are individually bounded to
+  16 KiB and must be deliberately safe projections;
+- direct peer addresses are recorded; forwarded client addresses are not
+  trusted until trusted-proxy configuration exists;
+- audit retention is currently indefinite. Automated deletion must not be
+  introduced until an administrator-visible retention and legal-preservation
+  policy is confirmed.
 
 ## High Availability and Cluster Model
 
@@ -1278,7 +1317,10 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     session listing/individual/revoke-all management; external identity,
     password recovery, MFA, personal/service credentials, administrative
     session management, and durable security audit remain;
-12. scoped authorization and audit;
+12. scoped authorization and audit — complete for action/resource contracts,
+    current-state institution/academic-unit/class evaluation, role and binding
+    stores, durable decision/critical-action auditing, and the privileged audit
+    listing slice; role/binding administration APIs and bootstrap policy remain;
 13. institution/academic hierarchy and enrollment vertical slice;
 14. first two-node cluster tests;
 15. WebSocket hub, cluster fan-out, and replay;

@@ -46,12 +46,18 @@ The server also includes:
   route;
 - active-session listing and self-service individual or account-wide
   revocation, with serialized refresh/login races and complete access-cache
-  invalidation.
+  invalidation;
+- current-state scoped authorization with institution and ancestor
+  academic-unit inheritance, exact class scope, additive roles, and default
+  denial;
+- dedicated role and role-binding stores with overlap-safe effective periods;
+- durable PostgreSQL security audits with fail-closed decision recording,
+  bounded prior/result data, request/node correlation, and keyset pagination.
 
 External identity login, password recovery, MFA, personal access-token
-services, authorization evaluation, audit persistence, exams, a concrete
-multi-node cluster backend, and WebSockets remain intentionally unimplemented
-until their next vertical slices.
+services, role-administration APIs and bootstrap policy, academic enrollment
+services, exams, a concrete multi-node cluster backend, and WebSockets remain
+intentionally unimplemented until their next vertical slices.
 
 ## Run locally
 
@@ -77,6 +83,9 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /api/v1/users/me/sessions`
 - `POST /api/v1/users/me/sessions/revoke`
 - `POST /api/v1/users/me/sessions/revoke-all`
+- `GET /api/v1/audits` (requires an institution-scoped role granting
+  `audit.view`; accepts `limit`, opaque `cursor`, `actor_id`, `action`,
+  `resource_type`, and `resource_id` filters)
 
 Validate a configuration without starting the server:
 
