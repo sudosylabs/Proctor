@@ -67,6 +67,9 @@ type Authentication interface {
 	) (*model.Session, *model.AuthenticationTokens, *model.AppError)
 	Logout(context.Context, model.Principal) *model.AppError
 	GetUser(context.Context, string) (*model.User, *model.AppError)
+	GetSessions(context.Context, model.Principal) ([]*model.Session, *model.AppError)
+	RevokeSession(context.Context, model.Principal, string) *model.AppError
+	RevokeAllSessions(context.Context, model.Principal) *model.AppError
 }
 
 type API struct {
@@ -162,6 +165,30 @@ func New(options Options) (*API, error) {
 				Auth:   AuthSessionRequired,
 			},
 			handler: currentUserHandler(options.Authentication, options.Logger),
+		},
+		{
+			route: Route{
+				Method: http.MethodGet,
+				Path:   "/api/v1/users/me/sessions",
+				Auth:   AuthSessionRequired,
+			},
+			handler: getSessionsHandler(options.Authentication, options.Logger),
+		},
+		{
+			route: Route{
+				Method: http.MethodPost,
+				Path:   "/api/v1/users/me/sessions/revoke",
+				Auth:   AuthSessionRequired,
+			},
+			handler: revokeSessionHandler(options.Authentication, options.Logger),
+		},
+		{
+			route: Route{
+				Method: http.MethodPost,
+				Path:   "/api/v1/users/me/sessions/revoke-all",
+				Auth:   AuthSessionRequired,
+			},
+			handler: revokeAllSessionsHandler(options.Authentication, options.Logger),
 		},
 	}
 

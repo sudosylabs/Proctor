@@ -471,11 +471,13 @@ func (s *AuthenticationService) refresh(
 			revokedAccessHashes, err = s.platform.Store().Session().Revoke(
 				ctx,
 				rotation.Session.Id,
+				rotation.Session.UserId,
 				now,
 				"inactive user",
 			)
 			if err == nil {
 				s.deleteAuthenticationCache(ctx, revokedAccessHashes)
+				s.deleteActivityCache(ctx, rotation.Session.Id)
 			}
 		}
 		return nil, nil, invalidTokenError("RefreshSession.user")
@@ -495,7 +497,13 @@ func (s *AuthenticationService) refresh(
 
 func (a *App) Logout(ctx context.Context, principal model.Principal) *model.AppError {
 	now := a.authentication.now().UnixMilli()
-	hashes, err := a.Store().Session().Revoke(ctx, principal.SessionId, now, "user logout")
+	hashes, err := a.Store().Session().Revoke(
+		ctx,
+		principal.SessionId,
+		principal.UserId,
+		now,
+		"user logout",
+	)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil
@@ -503,6 +511,7 @@ func (a *App) Logout(ctx context.Context, principal model.Principal) *model.AppE
 		return internalAuthenticationError("Logout", err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
+	a.authentication.deleteActivityCache(ctx, principal.SessionId)
 	return nil
 }
 
@@ -581,6 +590,12 @@ func (s *AuthenticationService) deleteAuthenticationCache(ctx context.Context, h
 		if err := s.platform.Cache().Delete(ctx, authenticationCachePrefix+hash); err != nil {
 			s.platform.Log().WarnContext(ctx, "authentication cache delete failed", mlog.Err(err))
 		}
+	}
+}
+
+func (s *AuthenticationService) deleteActivityCache(ctx context.Context, sessionID string) {
+	if err := s.platform.Cache().Delete(ctx, activityCachePrefix+sessionID); err != nil {
+		s.platform.Log().WarnContext(ctx, "session activity cache delete failed", mlog.Err(err))
 	}
 }
 

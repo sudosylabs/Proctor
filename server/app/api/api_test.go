@@ -22,17 +22,20 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	routes := helper.Server.API().Routes()
-	if len(routes) != 7 {
-		t.Fatalf("route count = %d, want 7", len(routes))
+	if len(routes) != 10 {
+		t.Fatalf("route count = %d, want 10", len(routes))
 	}
 	expected := map[string]api.AuthRequirement{
-		http.MethodGet + " /health/live":           api.AuthPublic,
-		http.MethodGet + " /health/ready":          api.AuthPublic,
-		http.MethodGet + " /api/v1/system/version": api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/login":    api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/refresh":  api.AuthRefreshCredentialRequired,
-		http.MethodPost + " /api/v1/auth/logout":   api.AuthSessionRequired,
-		http.MethodGet + " /api/v1/users/me":       api.AuthSessionRequired,
+		http.MethodGet + " /health/live":                          api.AuthPublic,
+		http.MethodGet + " /health/ready":                         api.AuthPublic,
+		http.MethodGet + " /api/v1/system/version":                api.AuthPublic,
+		http.MethodPost + " /api/v1/auth/login":                   api.AuthPublic,
+		http.MethodPost + " /api/v1/auth/refresh":                 api.AuthRefreshCredentialRequired,
+		http.MethodPost + " /api/v1/auth/logout":                  api.AuthSessionRequired,
+		http.MethodGet + " /api/v1/users/me":                      api.AuthSessionRequired,
+		http.MethodGet + " /api/v1/users/me/sessions":             api.AuthSessionRequired,
+		http.MethodPost + " /api/v1/users/me/sessions/revoke":     api.AuthSessionRequired,
+		http.MethodPost + " /api/v1/users/me/sessions/revoke-all": api.AuthSessionRequired,
 	}
 	for _, route := range routes {
 		if route.Method == "" || route.Path == "" {
@@ -145,6 +148,21 @@ func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testi
 			name:   "missing refresh credential",
 			method: http.MethodPost,
 			path:   "/api/v1/auth/refresh",
+		},
+		{
+			name:   "missing session-list credential",
+			method: http.MethodGet,
+			path:   "/api/v1/users/me/sessions",
+		},
+		{
+			name:   "missing session-revoke credential",
+			method: http.MethodPost,
+			path:   "/api/v1/users/me/sessions/revoke",
+		},
+		{
+			name:   "missing revoke-all credential",
+			method: http.MethodPost,
+			path:   "/api/v1/users/me/sessions/revoke-all",
 		},
 		{
 			name:   "query credential is never accepted",

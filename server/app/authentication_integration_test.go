@@ -263,6 +263,253 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 }
 
+func TestSessionManagementIntegration(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	helper := testlib.Setup(t, testlib.WithServerOptions(app.WithStore(persistence)))
+	password := "correct horse battery staple"
+	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
+		Username:    "session-user",
+		Email:       "session-user@example.edu",
+		DisplayName: "Session User",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+
+	firstLogin := loginIntegrationUser(
+		t,
+		helper.Server.Handler(),
+		user.Username,
+		password,
+		model.SessionClientDesktop,
+		"first-device",
+	)
+	secondLogin := loginIntegrationUser(
+		t,
+		helper.Server.Handler(),
+		user.Username,
+		password,
+		model.SessionClientCLI,
+		"second-device",
+	)
+
+	list := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me/sessions",
+		nil,
+		secondLogin.Tokens.AccessToken,
+	)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list sessions status = %d: %s", list.Code, list.Body.String())
+	}
+	var sessions []*model.Session
+	if err := json.Unmarshal(list.Body.Bytes(), &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	for _, session := range sessions {
+		if session.UserId != user.Id || session.RevokedAt != 0 {
+			t.Fatalf("unsafe session listing = %#v", session)
+		}
+	}
+	if strings.Contains(list.Body.String(), "token_hash") ||
+		strings.Contains(list.Body.String(), firstLogin.Tokens.AccessToken) ||
+		strings.Contains(list.Body.String(), firstLogin.Tokens.RefreshToken) {
+		t.Fatalf("session listing exposed credential material: %s", list.Body.String())
+	}
+
+	unknownField := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/sessions/revoke",
+		map[string]any{"session_id": firstLogin.Session.Id, "unknown": true},
+		secondLogin.Tokens.AccessToken,
+	)
+	if unknownField.Code != http.StatusBadRequest {
+		t.Fatalf("unknown revoke field status = %d", unknownField.Code)
+	}
+
+	revokeFirst := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/sessions/revoke",
+		map[string]any{"session_id": firstLogin.Session.Id},
+		secondLogin.Tokens.AccessToken,
+	)
+	if revokeFirst.Code != http.StatusNoContent {
+		t.Fatalf("revoke session status = %d: %s", revokeFirst.Code, revokeFirst.Body.String())
+	}
+	firstAfterRevoke := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		firstLogin.Tokens.AccessToken,
+	)
+	if firstAfterRevoke.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked access status = %d", firstAfterRevoke.Code)
+	}
+	secondStillActive := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		secondLogin.Tokens.AccessToken,
+	)
+	if secondStillActive.Code != http.StatusOK {
+		t.Fatalf("unrelated session status = %d", secondStillActive.Code)
+	}
+
+	invalidID := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/sessions/revoke",
+		map[string]any{"session_id": "not-an-id"},
+		secondLogin.Tokens.AccessToken,
+	)
+	if invalidID.Code != http.StatusBadRequest {
+		t.Fatalf("invalid session id status = %d", invalidID.Code)
+	}
+
+	otherUser, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
+		Username:    "other-session-user",
+		Email:       "other-session-user@example.edu",
+		DisplayName: "Other Session User",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	otherLogin := loginIntegrationUser(
+		t,
+		helper.Server.Handler(),
+		otherUser.Username,
+		password,
+		model.SessionClientDesktop,
+		"other-device",
+	)
+	crossUserRevoke := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/sessions/revoke",
+		map[string]any{"session_id": otherLogin.Session.Id},
+		secondLogin.Tokens.AccessToken,
+	)
+	if crossUserRevoke.Code != http.StatusNotFound {
+		t.Fatalf(
+			"cross-user revoke status = %d: %s",
+			crossUserRevoke.Code,
+			crossUserRevoke.Body.String(),
+		)
+	}
+	otherStillActive := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		otherLogin.Tokens.AccessToken,
+	)
+	if otherStillActive.Code != http.StatusOK {
+		t.Fatalf("cross-user session status = %d", otherStillActive.Code)
+	}
+
+	revokeAll := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/sessions/revoke-all",
+		nil,
+		secondLogin.Tokens.AccessToken,
+	)
+	if revokeAll.Code != http.StatusNoContent {
+		t.Fatalf("revoke-all status = %d: %s", revokeAll.Code, revokeAll.Body.String())
+	}
+	secondAfterRevokeAll := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		secondLogin.Tokens.AccessToken,
+	)
+	if secondAfterRevokeAll.Code != http.StatusUnauthorized {
+		t.Fatalf("revoke-all access status = %d", secondAfterRevokeAll.Code)
+	}
+
+	thirdLogin := loginIntegrationUser(
+		t,
+		helper.Server.Handler(),
+		user.Username,
+		password,
+		model.SessionClientDesktop,
+		"third-device",
+	)
+	activeAfterRevokeAll := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me/sessions",
+		nil,
+		thirdLogin.Tokens.AccessToken,
+	)
+	if err := json.Unmarshal(activeAfterRevokeAll.Body.Bytes(), &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if activeAfterRevokeAll.Code != http.StatusOK ||
+		len(sessions) != 1 ||
+		sessions[0].Id != thirdLogin.Session.Id {
+		t.Fatalf(
+			"active sessions after revoke-all status=%d sessions=%#v",
+			activeAfterRevokeAll.Code,
+			sessions,
+		)
+	}
+
+	logs := helper.Logs.String()
+	for _, token := range []string{
+		firstLogin.Tokens.AccessToken,
+		firstLogin.Tokens.RefreshToken,
+		secondLogin.Tokens.AccessToken,
+		secondLogin.Tokens.RefreshToken,
+		otherLogin.Tokens.AccessToken,
+		otherLogin.Tokens.RefreshToken,
+		thirdLogin.Tokens.AccessToken,
+		thirdLogin.Tokens.RefreshToken,
+	} {
+		if strings.Contains(logs, token) {
+			t.Fatal("raw session-management credential appeared in logs")
+		}
+	}
+}
+
+func loginIntegrationUser(
+	t *testing.T,
+	handler http.Handler,
+	loginID string,
+	password string,
+	clientType model.SessionClientType,
+	deviceID string,
+) authenticationResponse {
+	t.Helper()
+	response := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/api/v1/auth/login",
+		map[string]any{
+			"login_id": loginID, "password": password,
+			"client_type": clientType, "device_id": deviceID,
+		},
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d: %s", response.Code, response.Body.String())
+	}
+	return decodeAuthenticationResponse(t, response)
+}
+
 type authenticationResponse struct {
 	User    *model.User                 `json:"user"`
 	Session *model.Session              `json:"session"`
