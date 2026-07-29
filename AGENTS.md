@@ -87,15 +87,28 @@ walking skeleton is operational and includes:
 - identity and authorization model foundations: user, external identity, local
   password credential, affiliation, academic-unit member, class member, role,
   role binding, session, hashed session credential, and personal access token;
-- explicit authentication classification metadata for every registered route.
+- explicit authentication classification metadata for every registered route;
+- platform-owned cache, mail, and VFS adapters selected from typed deployment
+  configuration, with memory/Redis cache, disabled/SMTP mail, local/S3 VFS,
+  dependency checks, deterministic cleanup, and memory test implementations;
+- the first complete identity slice: transactional local-user/password
+  persistence, bounded Argon2id password hashing, generic login failures,
+  server-side sessions, hashed opaque access and refresh credentials, refresh
+  rotation and replay revocation, debounced activity, concurrent-session
+  limits, cache-backed authentication resolution and login throttling;
+- public login, refresh-credential, session-required logout, and current-user
+  HTTP endpoints, all using Authorization bearer credentials and the immutable
+  request principal.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
 Mattermost-shaped root store with per-model contracts, and all structural
 academic SQL stores: institution, academic unit, programme, programme level,
-academic period, and class. Identity/authentication
-services, authorization evaluation, exam-domain, WebSocket, cluster, and
-external-package adapter wiring remain unimplemented.
+academic period, and class. It also includes user, password-credential,
+session, and session-credential SQL stores with reusable conformance tests.
+External identity login, password reset/verification, MFA, personal access
+token services, authorization evaluation, audit persistence, exam-domain,
+WebSocket, and cluster transport remain unimplemented.
 
 Do not:
 
@@ -1040,7 +1053,8 @@ order:
 2. create the configuration backing and shared `config.Store`;
 3. begin `platform.Service` construction and initialize operational logging;
 4. within the platform, open PostgreSQL and validate schema compatibility;
-5. within the platform, construct cache, cluster, VFS, and mail infrastructure;
+5. within the platform, construct cache, VFS, and mail infrastructure, followed
+   by cluster infrastructure when that transport exists;
 6. construct the long-lived `app.App` and its product services;
 7. finish cross-service wiring through the composition root;
 8. construct HTTP API and WebSocket transports;
@@ -1217,10 +1231,14 @@ Unless the user reprioritizes, build the server as a walking skeleton:
    PostgreSQL 14+, including embedded up/down migrations, schema compatibility
    validation, Docker conformance, the Mattermost-shaped root/per-model store
    architecture, and the complete structural academic SQL store set;
-9. cache, VFS, and mail adapters;
+9. cache, VFS, and mail adapters — complete for memory/Redis,
+   disabled/SMTP, and local/S3 configuration, platform lifecycle, dependency
+   checking, and memory test doubles;
 10. cluster transport port and local implementation;
 11. identity/authentication services, credential rotation, and authentication
-    middleware;
+    middleware — complete for the first local-password, access/refresh session,
+    login/refresh/logout/current-user vertical slice; external identity,
+    password recovery, MFA, and personal/service credentials remain;
 12. scoped authorization and audit;
 13. institution/academic hierarchy and enrollment vertical slice;
 14. first two-node cluster tests;

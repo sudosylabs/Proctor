@@ -28,9 +28,25 @@ The flat `model` package now establishes the durable model contract:
   expiring personal access tokens;
 - hashed, expiring, single-use password-reset and email-verification tokens.
 
-Identity services, authentication middleware, authorization evaluation, exams,
-persistence, and WebSockets remain intentionally unimplemented until their
-next vertical slices.
+The server also includes:
+
+- PostgreSQL connection and schema management with explicit migrations;
+- Mattermost-shaped per-model stores for the complete structural academic
+  hierarchy and the first identity/session slice;
+- platform-owned memory/Redis cache, disabled/SMTP mail, and local/S3 VFS
+  adapters with startup dependency checks and deterministic shutdown;
+- bounded Argon2id local-password authentication;
+- revocable server-side sessions with separately hashed opaque access and
+  rotating refresh credentials, replay detection, activity debouncing, and
+  concurrent-session limits;
+- login throttling through the configured shared cache;
+- an immutable request principal and explicit authentication policy on every
+  route.
+
+External identity login, password recovery, MFA, personal access-token
+services, authorization evaluation, audit persistence, exams, clustering, and
+WebSockets remain intentionally unimplemented until their next vertical
+slices.
 
 ## Run locally
 
@@ -40,11 +56,19 @@ From the repository root:
 go run ./server/cmd/proctor serve --config ./server/config.example.json
 ```
 
+The server requires a migrated PostgreSQL database before startup. Cache, mail,
+and VFS backends are selected from `config.example.json`; the development
+defaults use memory cache, disabled mail, and local VFS.
+
 The default listener is `127.0.0.1:8065`. Available endpoints are:
 
 - `GET /health/live`
 - `GET /health/ready`
 - `GET /api/v1/system/version`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/users/me`
 
 Validate a configuration without starting the server:
 
@@ -55,6 +79,12 @@ go run ./server/cmd/proctor config validate --config ./server/config.example.jso
 Configuration is loaded in this order: built-in defaults, an optional strict
 JSON file, then `PROCTOR_` environment variables. Unknown JSON fields and
 invalid values are rejected at startup.
+
+The deployment schema covers HTTP, PostgreSQL, cache, mail, VFS, logging,
+password hashing, session lifetimes, concurrent-session limits, and login rate
+limits. Secret fields are explicitly redacted. Environment-overridden values
+are effective only for the running process and are never persisted back into
+the configuration file.
 
 The active configuration is owned by one concurrency-safe store. It separates
 persisted values from environment overrides, returns cloned snapshots, supports
@@ -72,5 +102,13 @@ reconfiguration, flush/shutdown, and locked test capture.
 make -C server check
 ```
 
-The individual `test`, `test-race`, `vet`, and `build` targets run against the
-standalone server module as well.
+Run the PostgreSQL-backed store, migration, and authentication tests with:
+
+```sh
+make -C server conformance-postgres
+```
+
+The individual `test`, `test-race`, `vet`, and `build` targets use the root
+workspace during repository development. The server declares exact pseudo
+versions of the reusable modules; those versions must be published before the
+server module is distributed independently of this monorepo.

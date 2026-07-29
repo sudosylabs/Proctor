@@ -5,8 +5,10 @@ This product is licensed under the GNU Affero General Public License,
 version 3. See LICENSE.
 
 The initial server walking skeleton is an original implementation using the Go
-standard library. Mattermost informed architectural requirements and behavioral
-analysis, but no Mattermost source files were copied into this implementation.
+standard library. Later model, store, authentication, session, and API files
+substantially adapt eligible Mattermost source. Those files preserve the
+Mattermost copyright notice, identify their upstream source in-file, and are
+recorded below.
 
 The cohesive configuration, platform, server, application, and test-helper flow
 was behaviorally compared with Mattermost revision
@@ -151,6 +153,13 @@ Corresponding Proctor paths:
 - server/store/sqlstore/programme_level_store_test.go
 - server/store/sqlstore/academic_period_store_test.go
 - server/store/sqlstore/class_store_test.go
+- server/store/sqlstore/user_store.go
+- server/store/sqlstore/password_credential_store.go
+- server/store/sqlstore/session_store.go
+- server/store/sqlstore/session_credential_store.go
+- server/store/storetest/user_store.go
+- server/store/storetest/password_credential_store.go
+- server/store/storetest/session_store.go
 - server/store/sqlstore/migrate_test.go
 
 Modifications:
@@ -176,6 +185,57 @@ Modifications:
   hierarchy-cycle serialization, and same-parent-institution behavior;
 - added PostgreSQL constraints for identity, enrollment, hashed credentials,
   and one active class per student and academic period.
+
+Mattermost authentication and session implementation
+-----------------------------------------------------
+
+Upstream project: Mattermost
+Repository: https://github.com/mattermost/mattermost
+Revision: 10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f
+Governing license: Apache License 2.0, as specified by Mattermost LICENSE.txt
+for the referenced server paths.
+
+Upstream paths:
+
+- server/channels/app/authentication.go
+- server/channels/app/login.go
+- server/channels/app/session.go
+- server/channels/api4/user.go
+- server/channels/store/sqlstore/user_store.go
+- server/channels/store/sqlstore/session_store.go
+- server/channels/store/storetest/user_store.go
+- server/channels/store/storetest/session_store.go
+
+Corresponding Proctor paths:
+
+- server/app/authentication.go
+- server/app/authentication_integration_test.go
+- server/app/api/authentication.go
+- server/store/sqlstore/user_store.go
+- server/store/sqlstore/password_credential_store.go
+- server/store/sqlstore/session_store.go
+- server/store/sqlstore/session_credential_store.go
+- server/store/storetest/user_store.go
+- server/store/storetest/password_credential_store.go
+- server/store/storetest/session_store.go
+
+Modifications:
+
+- retained one application authentication flow, generic login failures,
+  server-side revocable sessions, activity debouncing, and boundary-safe
+  application errors;
+- separated password credentials from users and used bounded Argon2id PHC
+  values without Mattermost's legacy-hash migration requirements;
+- replaced raw session tokens with separately hashed, short-lived access and
+  rotating refresh credentials;
+- added refresh-family lineage, transactional row locking, reuse detection, and
+  family-wide session revocation;
+- retained Mattermost's dedicated per-model stores and reusable conformance
+  tests while adapting them to Proctor's split credential schema;
+- replaced product-specific API handler state with an immutable, minimal
+  request principal and explicit per-route authentication classifications;
+- accept credentials only through a single Authorization bearer header and
+  never through URL query parameters.
 
 The Morph migration dependency is separately licensed under the MIT License.
 The Masterminds Squirrel query-builder dependency is separately licensed under
