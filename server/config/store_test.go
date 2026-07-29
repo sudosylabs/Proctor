@@ -1,0 +1,271 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package config
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"reflect"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestStoreLoadsDefaultsAndReturnsClones(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewStore(context.Background(), NewMemoryStore(nil), StoreOptions{LookupEnv: noEnvironment})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	got := store.Get()
+	if !reflect.DeepEqual(got, Default()) {
+		t.Fatalf("Get() = %#v, want defaults %#v", got, Default())
+	}
+	got.Log.Targets[0].Level = "error"
+	if store.Get().Log.Targets[0].Level != "info" {
+		t.Fatal("Get exposed mutable store state")
+	}
+}
+
+func TestStoreSetPersistsAndNotifies(t *testing.T) {
+	t.Parallel()
+
+	backing := NewMemoryStore(nil)
+	store, err := NewStore(context.Background(), backing, StoreOptions{LookupEnv: noEnvironment})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	var notifiedOld Config
+	var notifiedCurrent Config
+	listenerID := store.AddListener(func(old, current Config) {
+		notifiedOld = old
+		notifiedCurrent = current
+	})
+	candidate := store.Get()
+	candidate.Server.PublicURL = "https://proctor.example.edu"
+	old, current, err := store.Set(context.Background(), candidate)
+	if err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	if old.Server.PublicURL == current.Server.PublicURL {
+		t.Fatal("Set did not return distinct old and current values")
+	}
+	if notifiedOld.Server.PublicURL != old.Server.PublicURL ||
+		notifiedCurrent.Server.PublicURL != current.Server.PublicURL {
+		t.Fatalf("listener received old=%q current=%q", notifiedOld.Server.PublicURL, notifiedCurrent.Server.PublicURL)
+	}
+	store.RemoveListener(listenerID)
+
+	data, err := backing.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "https://proctor.example.edu") {
+		t.Fatalf("persisted configuration = %s", data)
+	}
+}
+
+func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
+	t.Parallel()
+
+	initial := Default()
+	initial.Server.ListenAddress = "127.0.0.1:8000"
+	data, err := json.Marshal(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backing := NewMemoryStore(data)
+	environment := map[string]string{
+		"PROCTOR_SERVER_LISTEN_ADDRESS": "127.0.0.1:9000",
+		"PROCTOR_LOG_LEVEL":             "debug",
+		"PROCTOR_DATABASE_DATA_SOURCE":  "postgres://runtime:secret@db.example/proctor?sslmode=require",
+	}
+	store, err := NewStore(context.Background(), backing, StoreOptions{
+		LookupEnv: func(key string) (string, bool) {
+			value, ok := environment[key]
+			return value, ok
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	effective := store.Get()
+	if effective.Server.ListenAddress != "127.0.0.1:9000" {
+		t.Fatalf("effective listen address = %q", effective.Server.ListenAddress)
+	}
+	if effective.Log.Targets[0].Level != "debug" {
+		t.Fatalf("effective log level = %q", effective.Log.Targets[0].Level)
+	}
+	if effective.Database.DataSource != environment["PROCTOR_DATABASE_DATA_SOURCE"] {
+		t.Fatalf("effective database data source = %q", effective.Database.DataSource)
+	}
+	effective.Server.PublicURL = "https://proctor.example.edu"
+	if _, _, err := store.Set(context.Background(), effective); err != nil {
+		t.Fatal(err)
+	}
+
+	persisted := store.GetPersisted()
+	if persisted.Server.ListenAddress != "127.0.0.1:8000" {
+		t.Fatalf("environment value was persisted: %q", persisted.Server.ListenAddress)
+	}
+	if persisted.Log.Targets[0].Level != "info" {
+		t.Fatalf("environment log level was persisted: %q", persisted.Log.Targets[0].Level)
+	}
+	if persisted.Database.DataSource != initial.Database.DataSource {
+		t.Fatalf("environment database data source was persisted: %q", persisted.Database.DataSource)
+	}
+	if persisted.Server.PublicURL != "https://proctor.example.edu" {
+		t.Fatalf("non-overridden change was lost: %q", persisted.Server.PublicURL)
+	}
+}
+
+func TestRedactedConfigurationHidesDatabaseCredentials(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Database.DataSource = "postgres://proctor:secret@db.example/proctor?sslmode=require"
+	data, err := cfg.RedactedJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "secret") || strings.Contains(string(data), "db.example") {
+		t.Fatalf("redacted configuration exposed database data source: %s", data)
+	}
+	if cfg.Database.DataSource == "[redacted]" {
+		t.Fatal("Redacted mutated the original configuration")
+	}
+}
+
+func TestReloadPublishesExternalBackingChanges(t *testing.T) {
+	t.Parallel()
+
+	backing := NewMemoryStore(nil)
+	store, err := NewStore(context.Background(), backing, StoreOptions{LookupEnv: noEnvironment})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	changed := make(chan Config, 1)
+	store.AddListener(func(_, current Config) {
+		changed <- current
+	})
+	external := Default()
+	external.Server.ReadTimeout.Duration = 45 * time.Second
+	data, err := json.Marshal(external)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backing.Save(context.Background(), data); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case current := <-changed:
+		if current.Server.ReadTimeout.Duration != 45*time.Second {
+			t.Fatalf("listener timeout = %s", current.Server.ReadTimeout.Duration)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reload listener was not called")
+	}
+}
+
+func TestListenerCanSafelyPerformAnotherConfigurationChange(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewStore(context.Background(), NewMemoryStore(nil), StoreOptions{LookupEnv: noEnvironment})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	var nested atomic.Bool
+	store.AddListener(func(_, current Config) {
+		if !nested.CompareAndSwap(false, true) {
+			return
+		}
+		current.Server.PublicURL = "https://nested.example.edu"
+		if _, _, err := store.Set(context.Background(), current); err != nil {
+			t.Errorf("nested Set() error = %v", err)
+		}
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		cfg := store.Get()
+		cfg.Server.ReadTimeout.Duration = 40 * time.Second
+		_, _, err := store.Set(context.Background(), cfg)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("listener-triggered Set deadlocked")
+	}
+	if store.Get().Server.PublicURL != "https://nested.example.edu" {
+		t.Fatal("nested configuration change was not applied")
+	}
+}
+
+func TestStoreRejectsUnknownAndInvalidConfiguration(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewStore(
+		context.Background(),
+		NewMemoryStore([]byte(`{"version":1,"mystery":true}`)),
+		StoreOptions{LookupEnv: noEnvironment},
+	)
+	if err == nil || !strings.Contains(err.Error(), `unknown field "mystery"`) {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	store, err := NewStore(context.Background(), NewMemoryStore(nil), StoreOptions{LookupEnv: noEnvironment})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	invalid := store.Get()
+	invalid.Server.ReadTimeout.Duration = 0
+	invalid.Log.Targets[0].Format = "xml"
+	_, _, err = store.Set(context.Background(), invalid)
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) || len(validationError.Fields) != 2 {
+		t.Fatalf("Set() error = %v, want two validation fields", err)
+	}
+}
+
+func TestDiffReportsStableConfigurationPaths(t *testing.T) {
+	t.Parallel()
+
+	old := Default()
+	current := old.Clone()
+	current.Server.PublicURL = "https://proctor.example.edu"
+	current.Log.Targets[0].Level = "debug"
+
+	changes := Diff(old, current)
+	want := []Change{{Path: "log.targets"}, {Path: "server.public_url"}}
+	if !reflect.DeepEqual(changes, want) {
+		t.Fatalf("Diff() = %#v, want %#v", changes, want)
+	}
+}
+
+func noEnvironment(string) (string, bool) {
+	return "", false
+}
