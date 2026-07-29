@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS user_tokens;
+DROP TABLE IF EXISTS personal_access_tokens;
+DROP TABLE IF EXISTS session_credentials;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS role_bindings;
+DROP TABLE IF EXISTS roles;
+DROP TABLE IF EXISTS class_members;
+DROP TABLE IF EXISTS academic_unit_members;
+DROP TABLE IF EXISTS affiliations;
+DROP TABLE IF EXISTS password_credentials;
+DROP TABLE IF EXISTS external_identities;
+DROP TABLE IF EXISTS users;

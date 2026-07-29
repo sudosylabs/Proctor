@@ -1,0 +1,162 @@
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: Apache-2.0
+//
+// Adapted from Mattermost server/channels/store/storetest/team_store.go. The
+// suite receives the root store contract and verifies each InstitutionStore
+// operation independently so every future adapter can reuse the same tests.
+
+package storetest
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
+)
+
+func TestInstitutionStore(t *testing.T, ss store.Store) {
+	t.Run("Save", func(t *testing.T) { testInstitutionStoreSave(t, ss) })
+	t.Run("Get", func(t *testing.T) { testInstitutionStoreGet(t, ss) })
+	t.Run("GetSingleton", func(t *testing.T) { testInstitutionStoreGetSingleton(t, ss) })
+	t.Run("Update", func(t *testing.T) { testInstitutionStoreUpdate(t, ss) })
+	t.Run("Delete", func(t *testing.T) { testInstitutionStoreDelete(t, ss) })
+}
+
+func testInstitutionStoreSave(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	cleanupInstitution(t, ctx, ss)
+
+	institution := &model.Institution{
+		Name:        "northbridge",
+		DisplayName: "Northbridge University",
+		Description: "Primary institution",
+	}
+	saved, err := ss.Institution().Save(ctx, institution)
+	requireNoError(t, err)
+	if !model.IsValidId(saved.Id) {
+		t.Fatalf("Save() id = %q", saved.Id)
+	}
+	if institution.Id != "" {
+		t.Fatalf("Save() mutated input id to %q", institution.Id)
+	}
+
+	_, err = ss.Institution().Save(ctx, saved)
+	var invalid *store.ErrInvalidInput
+	if !errors.As(err, &invalid) {
+		t.Fatalf("second Save(saved) error = %v, want invalid input", err)
+	}
+
+	_, err = ss.Institution().Save(ctx, &model.Institution{
+		Name:        "second",
+		DisplayName: "Second University",
+	})
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) || conflict.Constraint != "institutions_singleton_key" {
+		t.Fatalf("second active institution error = %v, want singleton conflict", err)
+	}
+}
+
+func testInstitutionStoreGet(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+
+	got, err := ss.Institution().Get(ctx, institution.Id)
+	requireNoError(t, err)
+	if *got != *institution {
+		t.Fatalf("Get() = %#v, want %#v", got, institution)
+	}
+
+	_, err = ss.Institution().Get(ctx, model.NewId())
+	if !store.IsNotFound(err) {
+		t.Fatalf("Get(missing) error = %v, want not found", err)
+	}
+}
+
+func testInstitutionStoreGetSingleton(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+
+	got, err := ss.Institution().GetSingleton(ctx)
+	requireNoError(t, err)
+	if got.Id != institution.Id {
+		t.Fatalf("GetSingleton() id = %q, want %q", got.Id, institution.Id)
+	}
+}
+
+func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	createAt := institution.CreateAt
+
+	institution.DisplayName = "Northbridge"
+	updated, err := ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
+	if updated.DisplayName != "Northbridge" {
+		t.Fatalf("Update() display name = %q", updated.DisplayName)
+	}
+	if updated.CreateAt != createAt || updated.UpdateAt < institution.UpdateAt {
+		t.Fatalf("Update() timestamps = %#v", updated)
+	}
+
+	missing := *updated
+	missing.Id = model.NewId()
+	_, err = ss.Institution().Update(ctx, &missing)
+	if !store.IsNotFound(err) {
+		t.Fatalf("Update(missing) error = %v, want not found", err)
+	}
+}
+
+func testInstitutionStoreDelete(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+
+	if err := ss.Institution().Delete(ctx, institution.Id, model.GetMillis()); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if _, err := ss.Institution().Get(ctx, institution.Id); !store.IsNotFound(err) {
+		t.Fatalf("Get(deleted) error = %v, want not found", err)
+	}
+	if err := ss.Institution().Delete(ctx, institution.Id, model.GetMillis()); !store.IsNotFound(err) {
+		t.Fatalf("second Delete() error = %v, want not found", err)
+	}
+	if _, err := ss.Institution().Save(ctx, &model.Institution{
+		Name:        "replacement",
+		DisplayName: "Replacement University",
+	}); err != nil {
+		t.Fatalf("Save() after deletion error = %v", err)
+	}
+}
+
+func saveInstitution(t *testing.T, ctx context.Context, ss store.Store) *model.Institution {
+	t.Helper()
+	cleanupInstitution(t, ctx, ss)
+	institution, err := ss.Institution().Save(ctx, &model.Institution{
+		Name:        "institution-" + model.NewId(),
+		DisplayName: "Northbridge University",
+	})
+	requireNoError(t, err)
+	t.Cleanup(func() { cleanupInstitution(t, context.Background(), ss) })
+	return institution
+}
+
+func cleanupInstitution(t *testing.T, ctx context.Context, ss store.Store) {
+	t.Helper()
+	institution, err := ss.Institution().GetSingleton(ctx)
+	if store.IsNotFound(err) {
+		return
+	}
+	requireNoError(t, err)
+	if err := ss.Institution().Delete(ctx, institution.Id, model.GetMillis()); err != nil {
+		t.Fatalf("cleanup institution: %v", err)
+	}
+}
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
