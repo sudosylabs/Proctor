@@ -536,12 +536,15 @@ routes.
 Authentication proves identity. It does not grant permission to a resource.
 Privileged handlers must make their required stable action and resource
 visible before decoding request bodies, parsing expensive filters, or invoking
-the use case. The application use case remains an independent authorization
-boundary. A successful API preflight attaches a sealed, short-lived, one-use
-decision receipt bound to the principal, action, resource, request ID, and
-process; the use case verifies and consumes it. Direct application callers or
-calls with an absent, expired, forged, mismatched, or already consumed receipt
-perform the complete current-state authorization and durable decision audit.
+the use case. The handler must directly call the appropriately scoped
+`PrincipalHasPermissionTo*` application method; do not hide that call behind a
+generic API preauthorization helper. The application use case remains an
+independent authorization boundary. A successful API preflight attaches a
+sealed, short-lived, one-use decision receipt bound to the principal, action,
+resource, request ID, and process; the use case verifies and consumes it.
+Direct application callers or calls with an absent, expired, forged,
+mismatched, or already consumed receipt perform the complete current-state
+authorization and durable decision audit.
 
 ### Request principal
 
@@ -734,9 +737,12 @@ deny rules without a documented need and precedence model.
 - Application use cases independently enforce permission to the actual
   resource. They may consume a verified one-use decision receipt from that
   same request, but must fully authorize when no valid receipt is present.
-- Reusable `PrincipalHasPermissionTo*` methods are non-auditing predicates for
-  composing policy. Security boundaries use `AuthorizePrincipalTo*`, which
-  records the allow/deny decision durably and fails closed.
+- Generic resource `PrincipalHasPermissionTo*` methods are non-auditing
+  predicates for composing policy. API-facing scoped variants may return a
+  permission result plus an authorization-decision context so the handler can
+  visibly enforce the check and the use case can consume its already-audited
+  one-use receipt. Direct security boundaries use `AuthorizePrincipalTo*`,
+  which records the allow/deny decision durably and fails closed.
 - Visibility helpers such as `UserCanSeeOtherUser` are contextual application
   policy, not aliases for session authentication.
 - Repository list/search methods must constrain results by authorized scope;

@@ -50,20 +50,21 @@ func (a *API) listRoleBindings(writer http.ResponseWriter, request *http.Request
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	values := request.URL.Query()
 	userID := values.Get("user_id")
 	scopeType := model.RoleScopeType(values.Get("scope_type"))
 	scopeID := values.Get("scope_id")
-	var (
-		bindings []*model.RoleBinding
-		appErr   *model.AppError
-	)
+	var bindings []*model.RoleBinding
 	switch {
 	case userID != "" && scopeType == "" && scopeID == "" && model.IsValidId(userID):
 		bindings, appErr = a.application.ListRoleBindingsForUser(
@@ -97,12 +98,16 @@ func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Reques
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	var input createRoleBindingRequest
 	if err := decodeRequestJSON(request, &input); err != nil {
 		WriteError(writer, request, invalidRequestError("createRoleBinding", err))
@@ -130,12 +135,16 @@ func (a *API) endRoleBinding(writer http.ResponseWriter, request *http.Request) 
 	if !ok {
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	ended, appErr := a.application.EndRoleBinding(
 		request.Context(), principal, RequestMetadata(request.Context()), bindingID,
 	)

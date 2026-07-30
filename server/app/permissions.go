@@ -14,21 +14,23 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-// PreauthorizePrincipalToSystem performs the API's early institution-scoped
-// permission check, audits it, and attaches a sealed one-use receipt to the
-// returned context. The application use case consumes and verifies that
-// receipt; direct non-HTTP callers without one are evaluated normally.
-func (a *App) PreauthorizePrincipalToSystem(
+// PrincipalHasPermissionToSystem performs the API's visible, fail-fast
+// institution-scoped permission check. It returns the permission result
+// separately from evaluation/audit failures and, when allowed, attaches a
+// sealed one-use receipt to the returned context. The application use case
+// consumes and verifies that receipt; direct non-HTTP callers without one are
+// evaluated normally.
+func (a *App) PrincipalHasPermissionToSystem(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (context.Context, *model.AppError) {
+) (context.Context, bool, *model.AppError) {
 	institution, err := a.Store().Institution().GetSingleton(ctx)
 	if err != nil {
-		return ctx, authorizationResourceError("institution", err)
+		return ctx, false, authorizationResourceError("institution", err)
 	}
-	decision, appErr := a.authorization.preauthorize(
+	decision, allowed, appErr := a.authorization.preauthorize(
 		ctx,
 		principal,
 		action,
@@ -36,9 +38,12 @@ func (a *App) PreauthorizePrincipalToSystem(
 		metadata,
 	)
 	if appErr != nil {
-		return ctx, appErr
+		return ctx, false, appErr
 	}
-	return contextWithAuthorizationDecision(ctx, decision), nil
+	if !allowed {
+		return ctx, false, nil
+	}
+	return contextWithAuthorizationDecision(ctx, decision), true, nil
 }
 
 func (a *App) authorizePrincipalToSystem(

@@ -141,8 +141,14 @@ func (s *AuthorizationService) Authorize(
 	if s.consumePreauthorization(ctx, principal, action, resource, metadata) {
 		return nil
 	}
-	_, appErr := s.preauthorize(ctx, principal, action, resource, metadata)
-	return appErr
+	_, allowed, appErr := s.preauthorize(ctx, principal, action, resource, metadata)
+	if appErr != nil {
+		return appErr
+	}
+	if !allowed {
+		return authorizationDeniedError("AuthorizationService.Authorize")
+	}
+	return nil
 }
 
 func (s *AuthorizationService) preauthorize(
@@ -151,25 +157,19 @@ func (s *AuthorizationService) preauthorize(
 	action model.Action,
 	resource model.Resource,
 	metadata model.RequestMetadata,
-) (authorizationDecision, *model.AppError) {
+) (authorizationDecision, bool, *model.AppError) {
 	allowed, resolved, appErr := s.evaluate(ctx, principal, action, resource)
 	if appErr != nil {
-		return authorizationDecision{}, appErr
+		return authorizationDecision{}, false, appErr
 	}
 	scopeType, scopeID := authorizationAuditScope(resource, resolved)
 	if appErr = s.audit.RecordAuthorizationDecision(
 		ctx, principal, action, resource, scopeType, scopeID, metadata, allowed,
 	); appErr != nil {
-		return authorizationDecision{}, appErr
+		return authorizationDecision{}, false, appErr
 	}
 	if !allowed {
-		return authorizationDecision{}, model.NewAppError(
-			"AuthorizationService.Authorize",
-			"authorization.denied",
-			nil,
-			"",
-			http.StatusForbidden,
-		)
+		return authorizationDecision{}, false, nil
 	}
 	now := s.now().UnixMilli()
 	decision := authorizationDecision{
@@ -179,7 +179,17 @@ func (s *AuthorizationService) preauthorize(
 		expiresAt: now + authorizationDecisionTTL.Milliseconds(),
 	}
 	decision.proof = s.signDecision(decision)
-	return decision, nil
+	return decision, true, nil
+}
+
+func authorizationDeniedError(where string) *model.AppError {
+	return model.NewAppError(
+		where,
+		"authorization.denied",
+		nil,
+		"",
+		http.StatusForbidden,
+	)
 }
 
 func (s *AuthorizationService) consumePreauthorization(

@@ -69,7 +69,9 @@ The server also includes:
   immediate permission changes and last-administrator protection;
 - fail-fast permission checks visible in privileged API handlers, connected to
   authoritative application authorization by a sealed, request-bound,
-  one-use receipt so the same decision is not queried or audited twice.
+  one-use receipt so the same decision is not queried or audited twice. Each
+  privileged handler calls its scoped `PrincipalHasPermissionTo*` method
+  directly rather than hiding the check behind a generic preflight helper.
 
 External identity login, password recovery, MFA, personal access-token
 services, academic enrollment services, exams, a concrete multi-node cluster

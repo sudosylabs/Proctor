@@ -68,12 +68,16 @@ func (a *API) listRoles(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	roles, appErr := a.application.ListRoles(
 		request.Context(), principal, RequestMetadata(request.Context()),
 	)
@@ -89,12 +93,16 @@ func (a *API) getRole(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	role, appErr := a.application.GetRole(
 		request.Context(), principal, RequestMetadata(request.Context()), roleID,
 	)
@@ -111,12 +119,16 @@ func (a *API) createRole(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	var input createRoleRequest
 	if err := decodeRequestJSON(request, &input); err != nil {
 		WriteError(writer, request, invalidRequestError("createRole", err))
@@ -143,12 +155,16 @@ func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	var patch model.RolePatch
 	if err := decodeRequestJSON(request, &patch); err != nil {
 		WriteError(writer, request, invalidRequestError("patchRole", err))
@@ -169,12 +185,16 @@ func (a *API) deleteRole(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionRoleManage,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionRoleManage,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	if appErr := a.application.DeleteRole(
 		request.Context(), principal, RequestMetadata(request.Context()), roleID,
 	); appErr != nil {

@@ -192,7 +192,7 @@ type RoleBindings interface {
 // an unrelated service locator.
 type Application interface {
 	Authentication
-	AuthorizationPreflight
+	PermissionChecker
 	Users
 	Sessions
 	Audits

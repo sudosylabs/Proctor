@@ -15,30 +15,38 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-type AuthorizationPreflight interface {
-	PreauthorizePrincipalToSystem(
+type PermissionChecker interface {
+	PrincipalHasPermissionToSystem(
 		context.Context,
 		model.Principal,
 		model.Action,
 		model.RequestMetadata,
-	) (context.Context, *model.AppError)
+	) (context.Context, bool, *model.AppError)
 }
 
-func (a *API) preauthorizeSystemAction(
+func (a *API) requirePermission(
 	writer http.ResponseWriter,
 	request *http.Request,
-	principal model.Principal,
-	action model.Action,
-) (*http.Request, bool) {
-	authorizedContext, appErr := a.application.PreauthorizePrincipalToSystem(
-		request.Context(),
-		principal,
-		action,
-		RequestMetadata(request.Context()),
-	)
+	allowed bool,
+	appErr *model.AppError,
+) bool {
 	if appErr != nil {
 		writeApplicationError(writer, request, a.logger, appErr)
-		return request, false
+		return false
 	}
-	return request.WithContext(authorizedContext), true
+	if !allowed {
+		WriteError(
+			writer,
+			request,
+			model.NewAppError(
+				"API.requirePermission",
+				"authorization.denied",
+				nil,
+				"",
+				http.StatusForbidden,
+			),
+		)
+		return false
+	}
+	return true
 }

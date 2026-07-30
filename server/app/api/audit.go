@@ -45,12 +45,16 @@ func (a *API) listAuditEvents(writer http.ResponseWriter, request *http.Request)
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	request, ok = a.preauthorizeSystemAction(
-		writer, request, principal, model.ActionAuditView,
+	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+		request.Context(),
+		principal,
+		model.ActionAuditView,
+		RequestMetadata(request.Context()),
 	)
-	if !ok {
+	if !a.requirePermission(writer, request, allowed, appErr) {
 		return
 	}
+	request = request.WithContext(authorizedContext)
 	query, err := auditQueryFromRequest(request)
 	if err != nil {
 		WriteError(writer, request, invalidRequestError("listAuditEvents", err))
