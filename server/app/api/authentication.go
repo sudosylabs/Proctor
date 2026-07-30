@@ -42,8 +42,7 @@ func (a *API) InitAuthentication() error {
 		a.BaseRoutes.Authentication,
 		"/login",
 		http.MethodPost,
-		AuthPublic,
-		loginHandler(a.application, a.logger),
+		a.APIHandler(loginHandler(a.application, a.logger)),
 	); err != nil {
 		return err
 	}
@@ -51,8 +50,7 @@ func (a *API) InitAuthentication() error {
 		a.BaseRoutes.Authentication,
 		"/refresh",
 		http.MethodPost,
-		AuthRefreshCredentialRequired,
-		refreshHandler(a.application, a.logger),
+		a.APIRefreshCredentialRequired(refreshHandler(a.application, a.logger)),
 	); err != nil {
 		return err
 	}
@@ -60,8 +58,7 @@ func (a *API) InitAuthentication() error {
 		a.BaseRoutes.Authentication,
 		"/logout",
 		http.MethodPost,
-		AuthSessionRequired,
-		logoutHandler(a.application, a.logger),
+		a.APISessionRequired(logoutHandler(a.application, a.logger)),
 	)
 }
 
@@ -70,8 +67,7 @@ func (a *API) InitUsers() error {
 		a.BaseRoutes.CurrentUser,
 		"",
 		http.MethodGet,
-		AuthSessionRequired,
-		currentUserHandler(a.application, a.logger),
+		a.APISessionRequired(currentUserHandler(a.application, a.logger)),
 	)
 }
 
@@ -142,59 +138,18 @@ func currentUserHandler(application Users, logger *mlog.Logger) http.Handler {
 			WriteError(writer, request, authenticationRequiredError())
 			return
 		}
-		user, appErr := application.GetUser(request.Context(), principal.UserId)
+		user, appErr := application.GetUserForPrincipal(
+			request.Context(),
+			principal,
+			RequestMetadata(request.Context()),
+			principal.UserId,
+		)
 		if appErr != nil {
 			writeApplicationError(writer, request, logger, appErr)
 			return
 		}
 		writeJSON(writer, http.StatusOK, user)
 	})
-}
-
-func requireAuthentication(
-	next http.Handler,
-	requirement AuthRequirement,
-	application Authenticator,
-	logger *mlog.Logger,
-) http.Handler {
-	switch requirement {
-	case AuthPublic:
-		return next
-	case AuthRefreshCredentialRequired:
-		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			token, appErr := bearerCredential(request)
-			if appErr != nil {
-				WriteError(writer, request, appErr)
-				return
-			}
-			ctx := context.WithValue(request.Context(), credentialContextKey{}, token)
-			next.ServeHTTP(writer, request.WithContext(ctx))
-		})
-	case AuthSessionRequired, AuthPrivileged:
-		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			token, appErr := bearerCredential(request)
-			if appErr != nil {
-				WriteError(writer, request, appErr)
-				return
-			}
-			principal, appErr := application.AuthenticateAccess(request.Context(), token)
-			if appErr != nil {
-				writeApplicationError(writer, request, logger, appErr)
-				return
-			}
-			ctx := context.WithValue(request.Context(), principalContextKey{}, *principal)
-			next.ServeHTTP(writer, request.WithContext(ctx))
-		})
-	default:
-		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			logger.ErrorContext(
-				request.Context(),
-				"route has unsupported authentication requirement",
-				mlog.String("requirement", string(requirement)),
-			)
-			WriteProblem(writer, internalProblem(request))
-		})
-	}
 }
 
 func bearerCredential(request *http.Request) (string, *model.AppError) {

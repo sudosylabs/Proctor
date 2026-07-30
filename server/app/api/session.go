@@ -24,8 +24,7 @@ func (a *API) InitSessions() error {
 		a.BaseRoutes.CurrentUser,
 		"/sessions",
 		http.MethodGet,
-		AuthSessionRequired,
-		getSessionsHandler(a.application, a.logger),
+		a.APISessionRequired(getSessionsHandler(a.application, a.logger)),
 	); err != nil {
 		return err
 	}
@@ -33,8 +32,7 @@ func (a *API) InitSessions() error {
 		a.BaseRoutes.CurrentUser,
 		"/sessions/revoke",
 		http.MethodPost,
-		AuthSessionRequired,
-		revokeSessionHandler(a.application, a.logger),
+		a.APISessionRequired(revokeSessionHandler(a.application, a.logger)),
 	); err != nil {
 		return err
 	}
@@ -42,8 +40,7 @@ func (a *API) InitSessions() error {
 		a.BaseRoutes.CurrentUser,
 		"/sessions/revoke-all",
 		http.MethodPost,
-		AuthSessionRequired,
-		revokeAllSessionsHandler(a.application, a.logger),
+		a.APISessionRequired(revokeAllSessionsHandler(a.application, a.logger)),
 	)
 }
 

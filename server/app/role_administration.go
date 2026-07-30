@@ -329,8 +329,12 @@ func (a *App) authorizeRoleAdministration(
 		return model.Resource{}, authorizationResourceError("institution", err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
-	if appErr := a.authorization.Authorize(
-		ctx, principal, model.ActionRoleManage, resource, metadata,
+	if appErr := a.AuthorizePrincipalToInstitution(
+		ctx,
+		principal,
+		institution.Id,
+		model.ActionRoleManage,
+		metadata,
 	); appErr != nil {
 		return model.Resource{}, appErr
 	}

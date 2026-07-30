@@ -12,6 +12,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -209,5 +210,147 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	)
 	if appErr != nil || allowed {
 		t.Fatalf("ended binding permission = %v, %v", allowed, appErr)
+	}
+}
+
+func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	helper := testlib.Setup(
+		t,
+		testlib.WithServerOptions(app.WithStore(persistence)),
+	)
+	ctx := context.Background()
+	institution, err := persistence.Institution().Save(ctx, &model.Institution{
+		Name: "northbridge", DisplayName: "Northbridge University",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := "correct horse battery staple"
+	viewer, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+		Username: "directory-viewer", Email: "directory-viewer@example.edu",
+		DisplayName: "Directory Viewer",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	target, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+		Username: "directory-target", Email: "directory-target@example.edu",
+		DisplayName: "Directory Target",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	login := loginIntegrationUser(
+		t, helper.Server.Handler(), viewer.Username, password,
+		model.SessionClientDesktop, "directory-device",
+	)
+	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	metadata := model.RequestMetadata{
+		RequestId: model.NewId(),
+		IPAddress: "127.0.0.1",
+		UserAgent: "proctor-authorization-integration-test",
+	}
+
+	allowed, appErr := helper.App.PrincipalHasPermissionToUser(
+		ctx, *principal, viewer.Id, model.ActionUserView,
+	)
+	if appErr != nil || !allowed {
+		t.Fatalf("self visibility = %v, %v", allowed, appErr)
+	}
+	allowed, appErr = helper.App.PrincipalHasPermissionToUser(
+		ctx, *principal, viewer.Id, model.ActionUserManage,
+	)
+	if appErr != nil || allowed {
+		t.Fatalf("self management without permission = %v, %v", allowed, appErr)
+	}
+	allowed, appErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	if appErr != nil || allowed {
+		t.Fatalf("unbound cross-user visibility = %v, %v", allowed, appErr)
+	}
+	if _, appErr = helper.App.GetUserForPrincipal(
+		ctx, *principal, metadata, target.Id,
+	); appErr == nil || appErr.Id != "authorization.denied" ||
+		appErr.HTTPStatus() != http.StatusForbidden {
+		t.Fatalf("unbound cross-user read error = %v", appErr)
+	}
+
+	role, err := persistence.Role().Save(ctx, &model.Role{
+		Name: "institution-directory-viewer", DisplayName: "Institution Directory Viewer",
+		Permissions: []string{string(model.ActionUserView)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserId: viewer.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
+		ScopeId: institution.Id, StartAt: model.GetMillis() - 1_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowed, appErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	if appErr != nil || !allowed {
+		t.Fatalf("bound cross-user visibility = %v, %v", allowed, appErr)
+	}
+	visible, appErr := helper.App.GetUserForPrincipal(
+		ctx, *principal, metadata, target.Id,
+	)
+	if appErr != nil || visible.Id != target.Id {
+		t.Fatalf("authorized cross-user read = %#v, %v", visible, appErr)
+	}
+	allowed, appErr = helper.App.PrincipalHasPermissionToUser(
+		ctx, *principal, target.Id, model.ActionUserManage,
+	)
+	if appErr != nil || allowed {
+		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, appErr)
+	}
+
+	if _, err := persistence.RoleBinding().End(ctx, binding.Id, model.GetMillis()); err != nil {
+		t.Fatal(err)
+	}
+	allowed, appErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	if appErr != nil || allowed {
+		t.Fatalf("ended binding visibility = %v, %v", allowed, appErr)
+	}
+	if _, appErr = helper.App.GetUserForPrincipal(
+		ctx, *principal, metadata, target.Id,
+	); appErr == nil || appErr.Id != "authorization.denied" {
+		t.Fatalf("ended binding cross-user read error = %v", appErr)
+	}
+
+	events, err := persistence.Audit().List(ctx, store.AuditListOptions{
+		ActorId: viewer.Id,
+		Action:  string(model.ActionUserView),
+		Resource: &model.Resource{
+			Type: model.ResourceUser,
+			Id:   target.Id,
+		},
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := map[model.AuditStatus]int{}
+	for _, event := range events {
+		statuses[event.Status]++
+		if event.Resource.Type != model.ResourceUser ||
+			event.Resource.Id != target.Id ||
+			event.ScopeType != model.RoleScopeInstitution ||
+			event.ScopeId != institution.Id {
+			t.Fatalf("user authorization audit scope = %#v", event)
+		}
+	}
+	if statuses[model.AuditStatusSuccess] != 1 ||
+		statuses[model.AuditStatusFail] != 2 {
+		t.Fatalf("user authorization audit statuses = %#v", statuses)
 	}
 }

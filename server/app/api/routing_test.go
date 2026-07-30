@@ -33,8 +33,7 @@ func TestBaseRoutesCentralizeAPIVersionRegexAndParams(t *testing.T) {
 		httpAPI.BaseRoutes.Role,
 		"",
 		http.MethodGet,
-		AuthPublic,
-		handler,
+		httpAPI.APIHandler(handler),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -79,18 +78,27 @@ func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T
 		httpAPI.BaseRoutes.APIRoot,
 		"/resources/{other:[a-z]+}",
 	)
-	if err := httpAPI.Register(first, "", http.MethodGet, AuthPublic, handler); err != nil {
+	if err := httpAPI.Register(
+		first,
+		"",
+		http.MethodGet,
+		httpAPI.APIHandler(handler),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := httpAPI.Register(second, "", http.MethodGet, AuthPublic, handler); err == nil {
+	if err := httpAPI.Register(
+		second,
+		"",
+		http.MethodGet,
+		httpAPI.APIHandler(handler),
+	); err == nil {
 		t.Fatal("duplicate route shape was accepted")
 	}
 	if err := httpAPI.Register(
 		httpAPI.BaseRoutes.APIRoot,
 		"/resources",
 		http.MethodPost,
-		"",
-		handler,
+		&Handler{handler: handler},
 	); err == nil {
 		t.Fatal("route without authentication policy was accepted")
 	}
@@ -98,8 +106,7 @@ func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T
 		mux.NewRouter(),
 		"/resources",
 		http.MethodGet,
-		AuthPublic,
-		handler,
+		httpAPI.APIHandler(handler),
 	); err == nil {
 		t.Fatal("foreign base router was accepted")
 	}
@@ -113,8 +120,9 @@ func TestRouteMetadataRetainsVersionAndRegexContract(t *testing.T) {
 		httpAPI.BaseRoutes.Role,
 		"",
 		http.MethodDelete,
-		AuthPrivileged,
-		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+		httpAPI.APISessionRequired(
+			http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+		),
 	); err != nil {
 		t.Fatal(err)
 	}

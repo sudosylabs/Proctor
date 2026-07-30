@@ -21,8 +21,30 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	if (Resource{Type: ResourceClass, Id: NewId()}).IsValid() == false {
 		t.Fatal("valid class resource was rejected")
 	}
+	userDefinition, ok := DefinitionForAction(ActionUserView)
+	if !ok || userDefinition.ResourceType != ResourceUser ||
+		!userDefinition.InheritInstitutionScope ||
+		userDefinition.InheritAcademicUnitScopes {
+		t.Fatalf("user-view definition = %#v, %v", userDefinition, ok)
+	}
+	if !(Resource{Type: ResourceUser, Id: NewId()}).IsValid() {
+		t.Fatal("valid user resource was rejected")
+	}
 	if (Resource{Type: ResourceType("exam"), Id: NewId()}).IsValid() {
 		t.Fatal("unimplemented resource type was accepted")
+	}
+}
+
+func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
+	event := &AuditEvent{
+		ActorId: NewId(), SessionId: NewId(), Action: string(ActionUserView),
+		Resource:  Resource{Type: ResourceUser, Id: NewId()},
+		ScopeType: RoleScopeInstitution, ScopeId: NewId(),
+		Status: AuditStatusSuccess, NodeId: "node-1",
+	}
+	event.PreSave()
+	if appErr := event.IsValid(); appErr != nil {
+		t.Fatal(appErr)
 	}
 }
 

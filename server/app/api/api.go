@@ -4,7 +4,7 @@
 //
 // Adapted from Mattermost server/channels/api4/api.go. Proctor retains the
 // versioned BaseRoutes tree and regex-constrained resource subrouters while
-// applying its own explicit authentication registry and Problem Details
+// applying its own typed authentication wrappers and Problem Details
 // boundary.
 
 // Package api implements Proctor's versioned HTTP boundary.
@@ -44,7 +44,6 @@ const (
 	AuthPublic                    AuthRequirement = "public"
 	AuthSessionRequired           AuthRequirement = "session_required"
 	AuthRefreshCredentialRequired AuthRequirement = "refresh_credential_required"
-	AuthPrivileged                AuthRequirement = "privileged"
 )
 
 type Route struct {
@@ -110,7 +109,12 @@ type Authentication interface {
 }
 
 type Users interface {
-	GetUser(context.Context, string) (*model.User, *model.AppError)
+	GetUserForPrincipal(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+	) (*model.User, *model.AppError)
 }
 
 type Sessions interface {
@@ -320,14 +324,14 @@ func (a *API) Register(
 	base *mux.Router,
 	path string,
 	method string,
-	auth AuthRequirement,
-	handler http.Handler,
+	handler *Handler,
 ) error {
-	if handler == nil {
+	if handler == nil || handler.handler == nil {
 		return fmt.Errorf("register %s %s: handler is nil", method, path)
 	}
+	auth := handler.authentication
 	switch auth {
-	case AuthPublic, AuthSessionRequired, AuthRefreshCredentialRequired, AuthPrivileged:
+	case AuthPublic, AuthSessionRequired, AuthRefreshCredentialRequired:
 	default:
 		return fmt.Errorf("register %s %s: authentication policy is invalid", method, path)
 	}
@@ -359,12 +363,7 @@ func (a *API) Register(
 		return fmt.Errorf("register %s %s: duplicate route", method, fullPath)
 	}
 
-	registered := base.Handle(
-		path,
-		withRequestParams(requireAuthentication(
-			handler, auth, a.application, a.logger,
-		)),
-	).Methods(method)
+	registered := base.Handle(path, handler).Methods(method)
 	if err := registered.GetError(); err != nil {
 		return fmt.Errorf("register %s %s: %w", method, fullPath, err)
 	}

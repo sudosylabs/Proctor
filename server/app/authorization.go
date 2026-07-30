@@ -48,12 +48,23 @@ func (s *AuthorizationService) Can(
 	action model.Action,
 	resource model.Resource,
 ) (bool, *model.AppError) {
+	allowed, _, appErr := s.evaluate(ctx, principal, action, resource)
+	return allowed, appErr
+}
+
+func (s *AuthorizationService) evaluate(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+) (bool, resolvedAuthorizationResource, *model.AppError) {
+	var unresolved resolvedAuthorizationResource
 	if !principal.IsValid() {
-		return false, invalidTokenError("AuthorizationService.Can")
+		return false, unresolved, invalidTokenError("AuthorizationService.Can")
 	}
 	definition, known := model.DefinitionForAction(action)
 	if !known || !resource.IsValid() || definition.ResourceType != resource.Type {
-		return false, model.NewAppError(
+		return false, unresolved, model.NewAppError(
 			"AuthorizationService.Can",
 			"authorization.request.invalid",
 			nil,
@@ -62,7 +73,7 @@ func (s *AuthorizationService) Can(
 		)
 	}
 	if s.store == nil || s.store.Role() == nil || s.store.RoleBinding() == nil {
-		return false, authorizationUnavailableError(
+		return false, unresolved, authorizationUnavailableError(
 			"AuthorizationService.Can",
 			store.NewErrNotFound("authorization_store", ""),
 		)
@@ -70,13 +81,13 @@ func (s *AuthorizationService) Can(
 
 	resolved, appErr := s.resolveResource(ctx, resource)
 	if appErr != nil {
-		return false, appErr
+		return false, unresolved, appErr
 	}
 	bindings, err := s.store.RoleBinding().ListActiveByUser(
 		ctx, principal.UserId, s.now().UnixMilli(),
 	)
 	if err != nil {
-		return false, authorizationUnavailableError("AuthorizationService.Can.bindings", err)
+		return false, unresolved, authorizationUnavailableError("AuthorizationService.Can.bindings", err)
 	}
 	roleIDs := make([]string, 0, len(bindings))
 	seen := make(map[string]struct{}, len(bindings))
@@ -88,7 +99,7 @@ func (s *AuthorizationService) Can(
 	}
 	roles, err := s.store.Role().GetByIds(ctx, roleIDs)
 	if err != nil {
-		return false, authorizationUnavailableError("AuthorizationService.Can.roles", err)
+		return false, unresolved, authorizationUnavailableError("AuthorizationService.Can.roles", err)
 	}
 	permissionByRole := make(map[string]map[string]struct{}, len(roles))
 	for _, role := range roles {
@@ -103,10 +114,10 @@ func (s *AuthorizationService) Can(
 			continue
 		}
 		if _, grants := permissionByRole[binding.RoleId][string(action)]; grants {
-			return true, nil
+			return true, resolved, nil
 		}
 	}
-	return false, nil
+	return false, resolved, nil
 }
 
 // Authorize is fail-closed: the requested action is allowed only after the
@@ -118,12 +129,13 @@ func (s *AuthorizationService) Authorize(
 	resource model.Resource,
 	metadata model.RequestMetadata,
 ) *model.AppError {
-	allowed, appErr := s.Can(ctx, principal, action, resource)
+	allowed, resolved, appErr := s.evaluate(ctx, principal, action, resource)
 	if appErr != nil {
 		return appErr
 	}
+	scopeType, scopeID := authorizationAuditScope(resource, resolved)
 	if appErr = s.audit.RecordAuthorizationDecision(
-		ctx, principal, action, resource, metadata, allowed,
+		ctx, principal, action, resource, scopeType, scopeID, metadata, allowed,
 	); appErr != nil {
 		return appErr
 	}
@@ -137,6 +149,24 @@ func (s *AuthorizationService) Authorize(
 		)
 	}
 	return nil
+}
+
+func authorizationAuditScope(
+	resource model.Resource,
+	resolved resolvedAuthorizationResource,
+) (model.RoleScopeType, string) {
+	switch resource.Type {
+	case model.ResourceInstitution:
+		return model.RoleScopeInstitution, resolved.institutionID
+	case model.ResourceAcademicUnit:
+		return model.RoleScopeAcademicUnit, resource.Id
+	case model.ResourceClass:
+		return model.RoleScopeClass, resource.Id
+	case model.ResourceUser:
+		return model.RoleScopeInstitution, resolved.institutionID
+	default:
+		return "", ""
+	}
 }
 
 func (s *AuthorizationService) resolveResource(
@@ -176,6 +206,15 @@ func (s *AuthorizationService) resolveResource(
 		for _, unit := range units {
 			resolved.academicUnitID[unit.Id] = struct{}{}
 		}
+	case model.ResourceUser:
+		if _, err := s.store.User().Get(ctx, resource.Id); err != nil {
+			return resolved, authorizationResourceError("user", err)
+		}
+		institution, err := s.store.Institution().GetSingleton(ctx)
+		if err != nil {
+			return resolved, authorizationResourceError("institution", err)
+		}
+		resolved.institutionID = institution.Id
 	}
 	return resolved, nil
 }

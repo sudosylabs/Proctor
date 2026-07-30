@@ -107,6 +107,8 @@ func (s *AuditService) RecordAuthorizationDecision(
 	principal model.Principal,
 	action model.Action,
 	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
 	metadata model.RequestMetadata,
 	allowed bool,
 ) *model.AppError {
@@ -116,11 +118,10 @@ func (s *AuditService) RecordAuthorizationDecision(
 		status = model.AuditStatusSuccess
 		errorCode = ""
 	}
-	scopeType := model.RoleScopeType(resource.Type)
 	event := &model.AuditEvent{
 		ActorId: principal.UserId, SessionId: principal.SessionId,
 		Action: string(action), Resource: resource,
-		ScopeType: scopeType, ScopeId: resource.Id, Status: status,
+		ScopeType: scopeType, ScopeId: scopeID, Status: status,
 		RequestId: metadata.RequestId, NodeId: s.nodeID,
 		ClientType: string(principal.ClientType),
 		AuthMethod: principal.AuthenticationMethod,

@@ -24,8 +24,7 @@ func (a *API) InitRoleBindings() error {
 		a.BaseRoutes.RoleBindings,
 		"",
 		http.MethodGet,
-		AuthPrivileged,
-		http.HandlerFunc(a.listRoleBindings),
+		a.APISessionRequired(http.HandlerFunc(a.listRoleBindings)),
 	); err != nil {
 		return err
 	}
@@ -33,8 +32,7 @@ func (a *API) InitRoleBindings() error {
 		a.BaseRoutes.RoleBindings,
 		"",
 		http.MethodPost,
-		AuthPrivileged,
-		http.HandlerFunc(a.createRoleBinding),
+		a.APISessionRequired(http.HandlerFunc(a.createRoleBinding)),
 	); err != nil {
 		return err
 	}
@@ -42,8 +40,7 @@ func (a *API) InitRoleBindings() error {
 		a.BaseRoutes.RoleBinding,
 		"",
 		http.MethodDelete,
-		AuthPrivileged,
-		http.HandlerFunc(a.endRoleBinding),
+		a.APISessionRequired(http.HandlerFunc(a.endRoleBinding)),
 	)
 }
 

@@ -50,11 +50,11 @@ func (a *App) ListAuditEvents(
 	if err != nil {
 		return nil, authorizationResourceError("institution", err)
 	}
-	if appErr := a.authorization.Authorize(
+	if appErr := a.AuthorizePrincipalToInstitution(
 		ctx,
 		principal,
+		institution.Id,
 		model.ActionAuditView,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
 		metadata,
 	); appErr != nil {
 		return nil, appErr
@@ -68,7 +68,7 @@ func (a *App) Can(
 	action model.Action,
 	resource model.Resource,
 ) (bool, *model.AppError) {
-	return a.authorization.Can(ctx, principal, action, resource)
+	return a.PrincipalHasPermissionTo(ctx, principal, action, resource)
 }
 
 func (a *App) Platform() *platform.Service {

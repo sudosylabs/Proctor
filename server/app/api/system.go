@@ -10,8 +10,7 @@ func (a *API) InitSystem() error {
 		a.BaseRoutes.Health,
 		"/live",
 		http.MethodGet,
-		AuthPublic,
-		http.HandlerFunc(a.getLiveness),
+		a.APIHandler(http.HandlerFunc(a.getLiveness)),
 	); err != nil {
 		return err
 	}
@@ -19,8 +18,7 @@ func (a *API) InitSystem() error {
 		a.BaseRoutes.Health,
 		"/ready",
 		http.MethodGet,
-		AuthPublic,
-		http.HandlerFunc(a.getReadiness),
+		a.APIHandler(http.HandlerFunc(a.getReadiness)),
 	); err != nil {
 		return err
 	}
@@ -28,8 +26,7 @@ func (a *API) InitSystem() error {
 		a.BaseRoutes.System,
 		"/version",
 		http.MethodGet,
-		AuthPublic,
-		http.HandlerFunc(a.getVersion),
+		a.APIHandler(http.HandlerFunc(a.getVersion)),
 	)
 }
 

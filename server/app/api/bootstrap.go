@@ -36,8 +36,7 @@ func (a *API) InitBootstrap() error {
 		a.BaseRoutes.Bootstrap,
 		"",
 		http.MethodGet,
-		AuthPublic,
-		http.HandlerFunc(a.getBootstrapStatus),
+		a.APIHandler(http.HandlerFunc(a.getBootstrapStatus)),
 	); err != nil {
 		return err
 	}
@@ -45,8 +44,7 @@ func (a *API) InitBootstrap() error {
 		a.BaseRoutes.Bootstrap,
 		"",
 		http.MethodPost,
-		AuthPublic,
-		http.HandlerFunc(a.bootstrapInstallation),
+		a.APIHandler(http.HandlerFunc(a.bootstrapInstallation)),
 	)
 }
 

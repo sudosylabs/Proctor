@@ -18,6 +18,8 @@ const (
 	ActionInstitutionManage Action = "institution.manage"
 	ActionRoleManage        Action = "role.manage"
 	ActionAuditView         Action = "audit.view"
+	ActionUserView          Action = "user.view"
+	ActionUserManage        Action = "user.manage"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -34,6 +36,7 @@ const (
 	ResourceInstitution  ResourceType = "institution"
 	ResourceAcademicUnit ResourceType = "academic_unit"
 	ResourceClass        ResourceType = "class"
+	ResourceUser         ResourceType = "user"
 )
 
 // Resource identifies the concrete object against which an action is checked.
@@ -64,6 +67,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionAuditView: {
 		Action: ActionAuditView, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true,
+	},
+	ActionUserView: {
+		Action: ActionUserView, ResourceType: ResourceUser,
+		InheritInstitutionScope: true,
+	},
+	ActionUserManage: {
+		Action: ActionUserManage, ResourceType: ResourceUser,
 		InheritInstitutionScope: true,
 	},
 	ActionAcademicUnitView: {
@@ -115,7 +126,7 @@ func (r Resource) IsValid() bool {
 		return false
 	}
 	switch r.Type {
-	case ResourceInstitution, ResourceAcademicUnit, ResourceClass:
+	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser:
 		return true
 	default:
 		return false
