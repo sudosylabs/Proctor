@@ -108,8 +108,11 @@ walking skeleton is operational and includes:
   limits, cache-backed authentication resolution and login throttling;
 - public login, refresh-credential, session-required logout, and current-user
   HTTP endpoints, plus self-service active-session listing, individual session
-  revocation, and account-wide session revocation, all using Authorization
-  bearer credentials and the immutable request principal;
+  revocation, and account-wide session revocation;
+- dual session transport: Electron/web sessions use host-only HttpOnly
+  access/refresh cookies plus a rotating signed double-submit CSRF contract,
+  while CLI sessions use Authorization bearer credentials; ambiguous mixed
+  credential sources and duplicate credential cookies are rejected;
 - serialized per-user session lifecycle transactions across login, refresh,
   individual revocation, and revoke-all, preventing refresh rotation or a
   concurrent login from escaping an account-wide security reset;
@@ -137,7 +140,12 @@ walking skeleton is operational and includes:
 - audited role and role-binding administration APIs, recognized-permission
   validation, protected built-in roles, institution-only system-administrator
   bindings, immediate current-state authorization changes, and transactional
-  protection against ending the final active system-administrator binding.
+  protection against ending the final active system-administrator binding;
+- visible API-handler permission preflights for the current role,
+  role-binding, and audit administration routes, with a private, sealed,
+  request-bound, one-use decision receipt that prevents duplicate
+  authorization queries/audits while preserving authoritative application
+  authorization for direct and non-HTTP callers.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
@@ -471,12 +479,13 @@ The HTTP pipeline should be conceptually:
 panic recovery
 → request ID and request metadata
 → body/URL limits and security headers
-→ credential extraction
+→ bearer/cookie credential extraction and ambiguity rejection
+→ CSRF verification for unsafe cookie-authenticated requests
 → session authentication
 → principal attached to context
 → route authentication-strength requirement
-→ handler/application use case
-→ resource authorization
+→ handler-level resource permission preflight
+→ application use case with authoritative authorization/receipt verification
 → response/error mapping
 → audit and operational logging
 ```
@@ -525,6 +534,14 @@ variables or common bounded query parameters actually used by registered
 routes.
 
 Authentication proves identity. It does not grant permission to a resource.
+Privileged handlers must make their required stable action and resource
+visible before decoding request bodies, parsing expensive filters, or invoking
+the use case. The application use case remains an independent authorization
+boundary. A successful API preflight attaches a sealed, short-lived, one-use
+decision receipt bound to the principal, action, resource, request ID, and
+process; the use case verifies and consumes it. Direct application callers or
+calls with an absent, expired, forged, mismatched, or already consumed receipt
+perform the complete current-state authorization and durable decision audit.
 
 ### Request principal
 
@@ -570,17 +587,29 @@ roles copied at login time.
 
 ### Desktop credentials
 
-The desktop application is a primary client.
+The primary desktop application is Electron. Electron/web interactive sessions
+use the browser cookie transport:
 
-Preferred interactive model:
-
-- short-lived opaque access credential;
-- rotating refresh credential;
-- refresh credential stored in the operating-system credential store;
-- access credential normally held only in memory;
-- bearer authentication over HTTPS;
+- the opaque access and rotating refresh credentials are delivered only as
+  host-only HttpOnly cookies and omitted from JSON;
+- the access cookie applies to the server, while the refresh cookie is limited
+  to the versioned refresh endpoint;
+- production cookies are Secure and use SameSite=Lax;
+- unsafe cookie-authenticated methods, including refresh and logout, require
+  the `X-Proctor-CSRF-Token` value derived from the rotating CSRF cookie pair;
+- successful refresh rotates both credentials and all CSRF cookies;
+- logout, current-session revocation, revoke-all, and invalid cookie
+  authentication clear the cookie set;
+- bearer and cookie credentials in one request are rejected rather than
+  resolved by precedence;
 - automatic refresh with replay/reuse detection;
 - server-side revocation.
+
+This contract assumes the Electron renderer is loaded from the installation's
+public server origin, as in Mattermost Desktop. If a future bundled renderer
+uses a different origin, do not weaken SameSite or CORS casually: route
+credential operations through a trusted Electron main-process boundary or
+design and review an explicit cross-origin contract.
 
 For external university login, prefer system-browser authorization with
 Authorization Code and PKCE. The desktop application should not collect
@@ -621,13 +650,10 @@ tokens must be:
 - consumed transactionally;
 - redacted from logs and API responses after creation.
 
-Accept API credentials from the `Authorization` header. Do not accept access
-tokens in URL query parameters. URLs are frequently recorded in logs, history,
-and monitoring systems.
-
-If a browser client is introduced later, cookie authentication must use Secure,
-HttpOnly, and appropriate SameSite settings plus CSRF protection. Desktop and
-CLI clients should use bearer credentials.
+CLI API credentials are accepted from the `Authorization` header. Electron/web
+sessions use the cookie contract above. Never accept access or refresh tokens
+in URL query parameters: URLs are frequently recorded in logs, history, and
+monitoring systems.
 
 ### MFA and authentication strength
 
@@ -703,7 +729,11 @@ deny rules without a documented need and precedence model.
 ### Enforcement rules
 
 - HTTP middleware verifies that a valid credential/assurance level exists.
-- Application use cases enforce permission to the actual resource.
+- Privileged HTTP handlers perform a visible, fail-fast resource/action
+  preflight before decoding bodies or performing avoidable handler work.
+- Application use cases independently enforce permission to the actual
+  resource. They may consume a verified one-use decision receipt from that
+  same request, but must fully authorize when no valid receipt is present.
 - Reusable `PrincipalHasPermissionTo*` methods are non-auditing predicates for
   composing policy. Security boundaries use `AuthorizePrincipalTo*`, which
   records the allow/deny decision durably and fails closed.
@@ -1534,8 +1564,10 @@ Before handing off:
   route variables.
 - Route authentication and application authorization are deliberately
   separate: `APISessionRequired` establishes the principal, while explicit
-  `PrincipalHasPermissionTo*`, `AuthorizePrincipalTo*`, and contextual
-  visibility helpers evaluate current access to resources.
+  handler preflights, `PrincipalHasPermissionTo*`, `AuthorizePrincipalTo*`, and
+  contextual visibility helpers evaluate current access to resources. A
+  sealed one-use request receipt connects a successful handler preflight to
+  the authoritative use case without duplicating its database and audit work.
 - Initial administrator creation is an explicit one-time, PostgreSQL-serialized
   bootstrap aggregate and never an implicit first-user side effect.
 - Built-in roles are server-owned and immutable through administration APIs;
@@ -1565,7 +1597,8 @@ Before handing off:
   constraint errors at the adapter boundary.
 - Each model store has a reusable Mattermost-shaped conformance suite under
   `store/storetest` and a thin corresponding SQL adapter test.
-- Desktop and CLI clients are primary API consumers.
+- Electron desktop and CLI clients are primary API consumers. Electron/web
+  sessions use cookie plus CSRF transport; CLI sessions use bearer transport.
 - This `AGENTS.md` is a living document and must be maintained as the project
   evolves.
 

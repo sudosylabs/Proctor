@@ -41,6 +41,9 @@ The server also includes:
 - revocable server-side sessions with separately hashed opaque access and
   rotating refresh credentials, replay detection, activity debouncing, and
   concurrent-session limits;
+- Electron/web cookie delivery using host-only HttpOnly access/refresh
+  cookies, rotating CSRF cookies and header verification, while retaining
+  bearer credentials for the CLI and rejecting mixed credential sources;
 - login throttling through the configured shared cache;
 - an immutable request principal and typed Mattermost-style authentication
   wrapper on every route;
@@ -63,7 +66,10 @@ The server also includes:
 - atomic one-time installation bootstrap with a protected built-in
   system-administrator role and durable success audit;
 - audited custom-role and scoped role-binding administration, including
-  immediate permission changes and last-administrator protection.
+  immediate permission changes and last-administrator protection;
+- fail-fast permission checks visible in privileged API handlers, connected to
+  authoritative application authorization by a sealed, request-bound,
+  one-use receipt so the same decision is not queried or audited twice.
 
 External identity login, password recovery, MFA, personal access-token
 services, academic enrollment services, exams, a concrete multi-node cluster
@@ -111,6 +117,22 @@ credential, protected system-administrator role, institution binding,
 installation marker, and audit event together. A PostgreSQL advisory lock and
 pristine-state check make this safe when several application nodes start at
 once. The status response exposes only `initialized`.
+
+Electron/web login (`client_type` equal to `desktop` or `web`) returns the user
+and session but omits raw credentials from JSON. It sets host-only
+`PROCTOR_ACCESS`, `PROCTOR_REFRESH`, `PROCTOR_CSRF_BINDING`, and
+`PROCTOR_CSRF` cookies. The first three are HttpOnly except for
+`PROCTOR_CSRF`, which the client copies into `X-Proctor-CSRF-Token` on unsafe
+requests. The refresh cookie is restricted to `/api/v1/auth/refresh`; refresh
+rotates the full cookie set. Production cookie security follows the configured
+HTTPS public URL. Electron is expected to load the installation's server
+origin so SameSite=Lax remains effective.
+
+CLI login (`client_type: "cli"`) returns the one-time access and refresh
+credentials in the response body. CLI requests send exactly one
+`Authorization: Bearer <credential>` header. Credentials are never accepted in
+URLs, and requests containing both a relevant cookie and bearer header are
+rejected.
 
 Validate a configuration without starting the server:
 
