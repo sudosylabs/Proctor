@@ -42,21 +42,24 @@ The server also includes:
   rotating refresh credentials, replay detection, activity debouncing, and
   concurrent-session limits;
 - login throttling through the configured shared cache;
-- an immutable request principal and explicit authentication policy on every
-  route;
+- an immutable request principal and typed Mattermost-style authentication
+  wrapper on every route;
 - active-session listing and self-service individual or account-wide
   revocation, with serialized refresh/login races and complete access-cache
   invalidation;
 - current-state scoped authorization with institution and ancestor
   academic-unit inheritance, exact class scope, additive roles, and default
   denial;
+- reusable principal/resource permission helpers and default-deny user
+  visibility, with audited application-layer `user.view` enforcement that
+  keeps the target user separate from its institution authorization scope;
 - dedicated role and role-binding stores with overlap-safe effective periods;
 - durable PostgreSQL security audits with fail-closed decision recording,
   bounded prior/result data, request/node correlation, and keyset pagination.
-- Mattermost-style per-domain `Init*` API registration through one
-  policy-aware registrar and route-matrix test, with a single versioned
-  `BaseRoutes.APIRoot`, regex-constrained resource IDs, and centrally populated
-  typed request parameters;
+- Mattermost-style per-domain `Init*` API registration using typed
+  `APIHandler`/`APISessionRequired` wrappers and a route-matrix test, with a
+  single versioned `BaseRoutes.APIRoot`, regex-constrained resource IDs, and
+  centrally populated typed request parameters;
 - atomic one-time installation bootstrap with a protected built-in
   system-administrator role and durable success audit;
 - audited custom-role and scoped role-binding administration, including

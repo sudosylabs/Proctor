@@ -272,15 +272,18 @@ Upstream paths:
 - server/public/model/client4.go
 - server/channels/app/authorization.go
 - server/channels/app/permissions.go
+- server/channels/app/user.go
 - server/channels/app/role.go
 - server/channels/app/audit.go
 - server/channels/app/users/users.go
 - server/channels/app/platform/config.go
 - server/channels/api4/api.go
+- server/channels/api4/handlers.go
 - server/channels/api4/role.go
 - server/channels/api4/audit_logging.go
 - server/channels/web/params.go
 - server/channels/web/context.go
+- server/channels/web/handlers.go
 - server/channels/store/store.go
 - server/channels/store/sqlstore/role_store.go
 - server/channels/store/sqlstore/audit_store.go
@@ -294,6 +297,7 @@ Corresponding Proctor paths:
 - server/model/request_metadata.go
 - server/model/client.go
 - server/app/authorization.go
+- server/app/permissions.go
 - server/app/audit.go
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go
@@ -303,6 +307,7 @@ Corresponding Proctor paths:
 - server/app/api/role_binding.go
 - server/app/api/system.go
 - server/app/api/api.go
+- server/app/api/handler.go
 - server/app/api/authentication.go
 - server/app/api/middleware.go
 - server/app/api/params.go
@@ -313,6 +318,8 @@ Corresponding Proctor paths:
 - server/store/sqlstore/installation_store.go
 - server/migrations/postgres/000004_create_installation_state.up.sql
 - server/migrations/postgres/000004_create_installation_state.down.sql
+- server/migrations/postgres/000005_add_user_authorization_resource.up.sql
+- server/migrations/postgres/000005_add_user_authorization_resource.down.sql
 - server/store/storetest/role_store.go
 - server/store/storetest/role_binding_store.go
 - server/store/storetest/audit_store.go
@@ -339,6 +346,10 @@ Modifications:
   attempt-only terminal transitions, and keyset pagination;
 - made authorization-decision audit persistence fail closed and provided
   attempt-before-mutation primitives for future security-sensitive use cases;
+- adapted Mattermost's reusable permission and user-visibility helpers around
+  Proctor's immutable principal, current PostgreSQL role bindings, typed
+  resources, default-deny cross-user policy, and separate audited resource and
+  academic-scope fields;
 - kept resource authorization in application use cases and used the HTTP
   classification only to require a valid session before the privileged audit
   listing handler runs;
@@ -346,9 +357,10 @@ Modifications:
   database-replica, and audit-output target assumptions.
 - adopted Mattermost's per-domain `Init*` API ownership, central client-facing
   API URL suffix, `BaseRoutes` resource subrouters, named regex route
-  variables, and centrally populated request parameters while retaining
-  Proctor's narrow composed application contract, explicit authentication
-  registry, duplicate-route detection, and Problem Details boundary;
+  variables, centrally populated request parameters, and typed handler
+  wrappers while retaining Proctor's narrow composed application contract,
+  immutable principal, duplicate-route detection, and Problem Details
+  boundary;
 - used Mattermost's first-user administrator behavior as a product reference
   but replaced its process-local first-user check with an explicit one-time
   PostgreSQL aggregate, durable installation marker, cluster-safe advisory

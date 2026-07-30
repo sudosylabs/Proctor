@@ -87,7 +87,9 @@ walking skeleton is operational and includes:
 - identity and authorization model foundations: user, external identity, local
   password credential, affiliation, academic-unit member, class member, role,
   role binding, session, hashed session credential, and personal access token;
-- explicit authentication classification metadata for every registered route;
+- typed Mattermost-style `APIHandler`, `APISessionRequired`, and
+  `APIRefreshCredentialRequired` wrappers that make the authentication
+  contract explicit for every registered route;
 - Mattermost-style per-domain `Init*` API registration, with one central
   `BaseRoutes` tree and registrar enforcing explicit authentication policy,
   duplicate detection, regex-constrained path variables, centralized typed
@@ -115,6 +117,10 @@ walking skeleton is operational and includes:
   authorization evaluator with additive roles, deny-by-default behavior,
   institution and ancestor academic-unit inheritance, exact class scope,
   deleted-role exclusion, and no permission snapshots in sessions;
+- reusable principal permission predicates, typed institution/academic-unit/
+  class/user helpers, an explicitly default-deny cross-user visibility policy,
+  and transport-safe user reads that enforce and audit `user.view` in the
+  application layer;
 - complete role, role-binding, and durable audit SQL stores with reusable
   conformance suites, role batch resolution, serialized time-range overlap
   protection, polymorphic scope-reference validation, hierarchy resolution,
@@ -481,8 +487,12 @@ Every route must explicitly be one of:
 - authenticated session required;
 - MFA/strong authentication required;
 - recent reauthentication required;
-- personal/service credential required;
-- privileged administrative route.
+- personal/service credential required.
+
+Administrative privilege is not a route authentication class. An
+administrative route first declares the credential or assurance level it
+requires, then its application use case checks a stable action against the
+actual resource. A valid session alone never implies administrative access.
 
 Route authentication requirements must be composable and testable. Add a route
 matrix test that fails when a route lacks an explicit classification.
@@ -492,9 +502,10 @@ The API package follows Mattermost's readable route-ownership convention:
 `InitSystem`, `InitAuthentication`, `InitSessions`, `InitRoles`, and
 `InitRoleBindings`. Each domain file owns its initializer and handlers.
 Initializers must register through the central `API.Register` boundary; they
-must not mutate router internals. The registrar rejects missing/unknown
-authentication classifications and duplicate route shapes. The root `api.go`
-must not become a flat inventory of every endpoint again.
+must wrap each handler with `APIHandler`, `APISessionRequired`, or another
+explicit typed wrapper and must not mutate router internals. The registrar
+rejects nil/unclassified handlers and duplicate route shapes. The root
+`api.go` must not become a flat inventory of every endpoint again.
 
 The root router is a `gorilla/mux` route tree exposed through `API.BaseRoutes`.
 All versioned resource routers descend from `BaseRoutes.APIRoot`, which is
@@ -693,6 +704,11 @@ deny rules without a documented need and precedence model.
 
 - HTTP middleware verifies that a valid credential/assurance level exists.
 - Application use cases enforce permission to the actual resource.
+- Reusable `PrincipalHasPermissionTo*` methods are non-auditing predicates for
+  composing policy. Security boundaries use `AuthorizePrincipalTo*`, which
+  records the allow/deny decision durably and fails closed.
+- Visibility helpers such as `UserCanSeeOtherUser` are contextual application
+  policy, not aliases for session authentication.
 - Repository list/search methods must constrain results by authorized scope;
   do not fetch all records and filter them in memory.
 - WebSocket commands and subscriptions must use the same authorization service.
@@ -711,6 +727,14 @@ This makes revocation immediately visible to every node sharing the database.
 If authorization caching is introduced, role and binding mutations must
 invalidate it through the shared cache/cluster layer before the mutation API is
 considered complete.
+
+The current user-visibility policy grants self-view, but not implicit
+self-management. Cross-user access is denied unless an institution-scoped role
+explicitly grants `user.view` or `user.manage`. Academic-unit/class
+teacher-to-student visibility must be added only after the membership stores
+and its exact relationship rules are implemented; it must not be guessed from
+profile fields. User authorization audit records keep the target user as the
+resource and the institution as the separate academic authorization scope.
 
 ## Target Server Architecture
 
@@ -1399,7 +1423,8 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     current-state institution/academic-unit/class evaluation, role and binding
     stores, durable decision/critical-action auditing, the privileged audit
     listing slice, atomic installation bootstrap, and audited role/binding
-    administration with last-administrator protection;
+    administration with last-administrator protection, plus user resource
+    actions, default-deny visibility helpers, and audited cross-user reads;
 13. institution/academic hierarchy and enrollment vertical slice;
 14. first two-node cluster tests;
 15. WebSocket hub, cluster fan-out, and replay;
@@ -1499,13 +1524,18 @@ Before handing off:
 - WebSocket fan-out is application-side and uses inter-node messages, not the
   database as an event transport.
 - Authentication route wrappers, sessions, tokens, scoped permissions, and
-  audit behavior should be inspired by Mattermost but redesigned around small
-  explicit services.
+  audit behavior should be inspired by Mattermost while using Proctor's
+  immutable principal and current durable role bindings.
 - API route ownership uses per-domain `Init*` methods called by `api.New`; one
-  central registrar applies authentication wrappers, detects duplicate route
-  shapes, and records the route matrix; all resource routers derive from the
-  single versioned `BaseRoutes.APIRoot`, and typed request parameters are
-  populated centrally from regex-constrained route variables.
+  typed Mattermost-style wrapper classifies each handler before the central
+  registrar detects duplicate route shapes and records the route matrix; all
+  resource routers derive from the single versioned `BaseRoutes.APIRoot`, and
+  typed request parameters are populated centrally from regex-constrained
+  route variables.
+- Route authentication and application authorization are deliberately
+  separate: `APISessionRequired` establishes the principal, while explicit
+  `PrincipalHasPermissionTo*`, `AuthorizePrincipalTo*`, and contextual
+  visibility helpers evaluate current access to resources.
 - Initial administrator creation is an explicit one-time, PostgreSQL-serialized
   bootstrap aggregate and never an implicit first-user side effect.
 - Built-in roles are server-owned and immutable through administration APIs;
