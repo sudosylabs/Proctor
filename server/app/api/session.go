@@ -21,31 +21,28 @@ type revokeSessionRequest struct {
 
 func (a *API) InitSessions() error {
 	if err := a.Register(
-		Route{
-			Method: http.MethodGet,
-			Path:   "/api/v1/users/me/sessions",
-			Auth:   AuthSessionRequired,
-		},
+		a.BaseRoutes.CurrentUser,
+		"/sessions",
+		http.MethodGet,
+		AuthSessionRequired,
 		getSessionsHandler(a.application, a.logger),
 	); err != nil {
 		return err
 	}
 	if err := a.Register(
-		Route{
-			Method: http.MethodPost,
-			Path:   "/api/v1/users/me/sessions/revoke",
-			Auth:   AuthSessionRequired,
-		},
+		a.BaseRoutes.CurrentUser,
+		"/sessions/revoke",
+		http.MethodPost,
+		AuthSessionRequired,
 		revokeSessionHandler(a.application, a.logger),
 	); err != nil {
 		return err
 	}
 	return a.Register(
-		Route{
-			Method: http.MethodPost,
-			Path:   "/api/v1/users/me/sessions/revoke-all",
-			Auth:   AuthSessionRequired,
-		},
+		a.BaseRoutes.CurrentUser,
+		"/sessions/revoke-all",
+		http.MethodPost,
+		AuthSessionRequired,
 		revokeAllSessionsHandler(a.application, a.logger),
 	)
 }

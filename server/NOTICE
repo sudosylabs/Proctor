@@ -269,6 +269,7 @@ Upstream paths:
 - server/public/model/permission.go
 - server/public/model/role.go
 - server/public/model/audit_record.go
+- server/public/model/client4.go
 - server/channels/app/authorization.go
 - server/channels/app/permissions.go
 - server/channels/app/role.go
@@ -278,6 +279,8 @@ Upstream paths:
 - server/channels/api4/api.go
 - server/channels/api4/role.go
 - server/channels/api4/audit_logging.go
+- server/channels/web/params.go
+- server/channels/web/context.go
 - server/channels/store/store.go
 - server/channels/store/sqlstore/role_store.go
 - server/channels/store/sqlstore/audit_store.go
@@ -289,6 +292,7 @@ Corresponding Proctor paths:
 - server/model/authorization.go
 - server/model/audit_event.go
 - server/model/request_metadata.go
+- server/model/client.go
 - server/app/authorization.go
 - server/app/audit.go
 - server/app/authorization_test.go
@@ -301,6 +305,7 @@ Corresponding Proctor paths:
 - server/app/api/api.go
 - server/app/api/authentication.go
 - server/app/api/middleware.go
+- server/app/api/params.go
 - server/store/store.go
 - server/store/sqlstore/role_store.go
 - server/store/sqlstore/role_binding_store.go
@@ -339,10 +344,11 @@ Modifications:
   listing handler runs;
 - omitted Mattermost product, team, channel, scheme, license, enterprise,
   database-replica, and audit-output target assumptions.
-- adopted Mattermost's per-domain `Init*` API ownership while replacing its
-  large product route tree and handler context with Proctor's central
-  policy-aware registrar, narrow composed application contract, Problem
-  Details boundary, and path-pattern dispatcher;
+- adopted Mattermost's per-domain `Init*` API ownership, central client-facing
+  API URL suffix, `BaseRoutes` resource subrouters, named regex route
+  variables, and centrally populated request parameters while retaining
+  Proctor's narrow composed application contract, explicit authentication
+  registry, duplicate-route detection, and Problem Details boundary;
 - used Mattermost's first-user administrator behavior as a product reference
   but replaced its process-local first-user check with an explicit one-time
   PostgreSQL aggregate, durable installation marker, cluster-safe advisory
@@ -406,3 +412,5 @@ Modifications:
 The Morph migration dependency is separately licensed under the MIT License.
 The Masterminds Squirrel query-builder dependency is separately licensed under
 the MIT License.
+The Gorilla mux router dependency is separately licensed under the BSD
+3-Clause License.

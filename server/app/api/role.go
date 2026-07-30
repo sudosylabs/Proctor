@@ -22,49 +22,49 @@ type createRoleRequest struct {
 }
 
 func (a *API) InitRoles() error {
-	registrations := []struct {
-		route   Route
-		handler http.Handler
-	}{
-		{
-			Route{Method: http.MethodGet, Path: "/api/v1/roles", Auth: AuthPrivileged},
-			http.HandlerFunc(a.listRoles),
-		},
-		{
-			Route{Method: http.MethodPost, Path: "/api/v1/roles", Auth: AuthPrivileged},
-			http.HandlerFunc(a.createRole),
-		},
-		{
-			Route{
-				Method: http.MethodGet,
-				Path:   "/api/v1/roles/{role_id}",
-				Auth:   AuthPrivileged,
-			},
-			http.HandlerFunc(a.getRole),
-		},
-		{
-			Route{
-				Method: http.MethodPatch,
-				Path:   "/api/v1/roles/{role_id}",
-				Auth:   AuthPrivileged,
-			},
-			http.HandlerFunc(a.patchRole),
-		},
-		{
-			Route{
-				Method: http.MethodDelete,
-				Path:   "/api/v1/roles/{role_id}",
-				Auth:   AuthPrivileged,
-			},
-			http.HandlerFunc(a.deleteRole),
-		},
+	if err := a.Register(
+		a.BaseRoutes.Roles,
+		"",
+		http.MethodGet,
+		AuthPrivileged,
+		http.HandlerFunc(a.listRoles),
+	); err != nil {
+		return err
 	}
-	for _, registration := range registrations {
-		if err := a.Register(registration.route, registration.handler); err != nil {
-			return err
-		}
+	if err := a.Register(
+		a.BaseRoutes.Roles,
+		"",
+		http.MethodPost,
+		AuthPrivileged,
+		http.HandlerFunc(a.createRole),
+	); err != nil {
+		return err
 	}
-	return nil
+	if err := a.Register(
+		a.BaseRoutes.Role,
+		"",
+		http.MethodGet,
+		AuthPrivileged,
+		http.HandlerFunc(a.getRole),
+	); err != nil {
+		return err
+	}
+	if err := a.Register(
+		a.BaseRoutes.Role,
+		"",
+		http.MethodPatch,
+		AuthPrivileged,
+		http.HandlerFunc(a.patchRole),
+	); err != nil {
+		return err
+	}
+	return a.Register(
+		a.BaseRoutes.Role,
+		"",
+		http.MethodDelete,
+		AuthPrivileged,
+		http.HandlerFunc(a.deleteRole),
+	)
 }
 
 func (a *API) listRoles(writer http.ResponseWriter, request *http.Request) {
@@ -84,7 +84,7 @@ func (a *API) listRoles(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (a *API) getRole(writer http.ResponseWriter, request *http.Request) {
-	principal, roleID, ok := principalAndPathID(writer, request, "role_id")
+	principal, roleID, ok := principalAndRoleId(writer, request)
 	if !ok {
 		return
 	}
@@ -126,7 +126,7 @@ func (a *API) createRole(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
-	principal, roleID, ok := principalAndPathID(writer, request, "role_id")
+	principal, roleID, ok := principalAndRoleId(writer, request)
 	if !ok {
 		return
 	}
@@ -146,7 +146,7 @@ func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (a *API) deleteRole(writer http.ResponseWriter, request *http.Request) {
-	principal, roleID, ok := principalAndPathID(writer, request, "role_id")
+	principal, roleID, ok := principalAndRoleId(writer, request)
 	if !ok {
 		return
 	}
@@ -160,20 +160,11 @@ func (a *API) deleteRole(writer http.ResponseWriter, request *http.Request) {
 	writer.WriteHeader(http.StatusNoContent)
 }
 
-func principalAndPathID(
+func principalAndRoleId(
 	writer http.ResponseWriter,
 	request *http.Request,
-	name string,
 ) (model.Principal, string, bool) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return model.Principal{}, "", false
-	}
-	id := request.PathValue(name)
-	if !model.IsValidId(id) {
-		WriteError(writer, request, invalidRequestError(name, nil))
-		return model.Principal{}, "", false
-	}
-	return principal, id, true
+	return principalAndRequiredId(writer, request, func(params Params) (string, *model.AppError) {
+		return params.RequireRoleId()
+	})
 }

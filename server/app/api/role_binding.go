@@ -21,31 +21,28 @@ type createRoleBindingRequest struct {
 
 func (a *API) InitRoleBindings() error {
 	if err := a.Register(
-		Route{
-			Method: http.MethodGet,
-			Path:   "/api/v1/role-bindings",
-			Auth:   AuthPrivileged,
-		},
+		a.BaseRoutes.RoleBindings,
+		"",
+		http.MethodGet,
+		AuthPrivileged,
 		http.HandlerFunc(a.listRoleBindings),
 	); err != nil {
 		return err
 	}
 	if err := a.Register(
-		Route{
-			Method: http.MethodPost,
-			Path:   "/api/v1/role-bindings",
-			Auth:   AuthPrivileged,
-		},
+		a.BaseRoutes.RoleBindings,
+		"",
+		http.MethodPost,
+		AuthPrivileged,
 		http.HandlerFunc(a.createRoleBinding),
 	); err != nil {
 		return err
 	}
 	return a.Register(
-		Route{
-			Method: http.MethodDelete,
-			Path:   "/api/v1/role-bindings/{role_binding_id}",
-			Auth:   AuthPrivileged,
-		},
+		a.BaseRoutes.RoleBinding,
+		"",
+		http.MethodDelete,
+		AuthPrivileged,
 		http.HandlerFunc(a.endRoleBinding),
 	)
 }
@@ -120,9 +117,7 @@ func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Reques
 }
 
 func (a *API) endRoleBinding(writer http.ResponseWriter, request *http.Request) {
-	principal, bindingID, ok := principalAndPathID(
-		writer, request, "role_binding_id",
-	)
+	principal, bindingID, ok := principalAndRoleBindingId(writer, request)
 	if !ok {
 		return
 	}
@@ -134,4 +129,13 @@ func (a *API) endRoleBinding(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	writeJSON(writer, http.StatusOK, ended)
+}
+
+func principalAndRoleBindingId(
+	writer http.ResponseWriter,
+	request *http.Request,
+) (model.Principal, string, bool) {
+	return principalAndRequiredId(writer, request, func(params Params) (string, *model.AppError) {
+		return params.RequireRoleBindingId()
+	})
 }

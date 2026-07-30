@@ -16,9 +16,9 @@ import (
 
 const IdLength = 26
 
-const idAlphabet = "ybndrfg8ejkmcpqxot1uwisza345h769"
+const IdAlphabet = "ybndrfg8ejkmcpqxot1uwisza345h769"
 
-var idEncoding = base32.NewEncoding(idAlphabet).WithPadding(base32.NoPadding)
+var idEncoding = base32.NewEncoding(IdAlphabet).WithPadding(base32.NoPadding)
 
 // NewId returns a random 128-bit identifier encoded as 26 z-base-32
 // characters. It panics only if the operating system random source fails.
@@ -41,7 +41,7 @@ func IsValidId(value string) bool {
 		return false
 	}
 	for index := range value {
-		if !strings.ContainsRune(idAlphabet, rune(value[index])) {
+		if !strings.ContainsRune(IdAlphabet, rune(value[index])) {
 			return false
 		}
 	}

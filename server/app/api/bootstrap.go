@@ -33,13 +33,19 @@ type bootstrapAdministratorRequest struct {
 
 func (a *API) InitBootstrap() error {
 	if err := a.Register(
-		Route{Method: http.MethodGet, Path: "/api/v1/bootstrap", Auth: AuthPublic},
+		a.BaseRoutes.Bootstrap,
+		"",
+		http.MethodGet,
+		AuthPublic,
 		http.HandlerFunc(a.getBootstrapStatus),
 	); err != nil {
 		return err
 	}
 	return a.Register(
-		Route{Method: http.MethodPost, Path: "/api/v1/bootstrap", Auth: AuthPublic},
+		a.BaseRoutes.Bootstrap,
+		"",
+		http.MethodPost,
+		AuthPublic,
 		http.HandlerFunc(a.bootstrapInstallation),
 	)
 }

@@ -1,5 +1,11 @@
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
+//
+// Adapted from Mattermost server/channels/api4/api.go. Proctor retains the
+// versioned BaseRoutes tree and regex-constrained resource subrouters while
+// applying its own explicit authentication registry and Problem Details
+// boundary.
 
 // Package api implements Proctor's versioned HTTP boundary.
 package api
@@ -10,9 +16,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -42,6 +51,31 @@ type Route struct {
 	Method string
 	Path   string
 	Auth   AuthRequirement
+}
+
+type routeMatcher struct {
+	route      Route
+	pathRegexp *regexp.Regexp
+}
+
+// Routes owns the stable HTTP resource tree. Versioned resources are always
+// derived from APIRoot so changing model.APIURLSuffix moves the complete API
+// without editing individual handlers.
+type Routes struct {
+	Root    *mux.Router
+	APIRoot *mux.Router
+
+	Health         *mux.Router
+	System         *mux.Router
+	Authentication *mux.Router
+	Users          *mux.Router
+	CurrentUser    *mux.Router
+	Audits         *mux.Router
+	Bootstrap      *mux.Router
+	Roles          *mux.Router
+	Role           *mux.Router
+	RoleBindings   *mux.Router
+	RoleBinding    *mux.Router
 }
 
 type Options struct {
@@ -162,13 +196,17 @@ type Application interface {
 }
 
 type API struct {
-	handler     http.Handler
-	dispatcher  *dispatcher
-	application Application
-	logger      *mlog.Logger
-	health      Health
-	buildInfo   BuildInfo
-	routes      []Route
+	handler       http.Handler
+	router        *mux.Router
+	BaseRoutes    *Routes
+	application   Application
+	logger        *mlog.Logger
+	health        Health
+	buildInfo     BuildInfo
+	routes        []Route
+	routeMatchers []routeMatcher
+	routeKeys     map[string]struct{}
+	prefixes      map[*mux.Router]string
 }
 
 func New(options Options) (*API, error) {
@@ -186,12 +224,14 @@ func New(options Options) (*API, error) {
 	}
 
 	api := &API{
-		dispatcher:  &dispatcher{keys: make(map[string]struct{})},
 		application: options.Application,
 		logger:      options.Logger,
 		health:      options.Health,
 		buildInfo:   options.BuildInfo,
+		routeKeys:   make(map[string]struct{}),
+		prefixes:    make(map[*mux.Router]string),
 	}
+	api.initializeBaseRoutes(model.APIURLSuffix)
 	initializers := []func() error{
 		api.InitSystem,
 		api.InitAuthentication,
@@ -208,7 +248,11 @@ func New(options Options) (*API, error) {
 		}
 	}
 	sortRoutes(api.routes)
-	api.handler = withMiddleware(api.dispatcher, options.Logger, options.MaxBodyBytes)
+	api.handler = withMiddleware(
+		http.HandlerFunc(api.serveRoutes),
+		options.Logger,
+		options.MaxBodyBytes,
+	)
 	return api, nil
 }
 
@@ -220,106 +264,146 @@ func (a *API) Routes() []Route {
 	return append([]Route(nil), a.routes...)
 }
 
-type dispatcher struct {
-	routes []registeredRoute
-	keys   map[string]struct{}
-}
-
-type routeSegment struct {
-	literal   string
-	parameter string
-}
-
-type registeredRoute struct {
-	route       Route
-	handler     http.Handler
-	segments    []routeSegment
-	specificity int
-}
-
-func (a *API) Register(route Route, handler http.Handler) error {
-	if handler == nil {
-		return fmt.Errorf("register %s %s: handler is nil", route.Method, route.Path)
+func (a *API) serveRoutes(writer http.ResponseWriter, request *http.Request) {
+	match := &mux.RouteMatch{}
+	if !a.router.Match(request, match) {
+		if len(a.allowedMethods(request)) != 0 {
+			a.handleMethodNotAllowed(writer, request)
+			return
+		}
+		a.handleNotFound(writer, request)
+		return
 	}
-	switch route.Auth {
+	a.router.ServeHTTP(writer, request)
+}
+
+func (a *API) initializeBaseRoutes(apiURLSuffix string) {
+	root := mux.NewRouter()
+	a.router = root
+	a.prefixes[root] = ""
+
+	a.BaseRoutes = &Routes{Root: root}
+	a.BaseRoutes.APIRoot = a.subrouter(root, apiURLSuffix)
+	a.BaseRoutes.Health = a.subrouter(root, "/health")
+	a.BaseRoutes.System = a.subrouter(a.BaseRoutes.APIRoot, "/system")
+	a.BaseRoutes.Authentication = a.subrouter(a.BaseRoutes.APIRoot, "/auth")
+	a.BaseRoutes.Users = a.subrouter(a.BaseRoutes.APIRoot, "/users")
+	a.BaseRoutes.CurrentUser = a.subrouter(a.BaseRoutes.Users, "/me")
+	a.BaseRoutes.Audits = a.subrouter(a.BaseRoutes.APIRoot, "/audits")
+	a.BaseRoutes.Bootstrap = a.subrouter(a.BaseRoutes.APIRoot, "/bootstrap")
+	a.BaseRoutes.Roles = a.subrouter(a.BaseRoutes.APIRoot, "/roles")
+	a.BaseRoutes.Role = a.subrouter(
+		a.BaseRoutes.Roles,
+		"/{role_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.RoleBindings = a.subrouter(a.BaseRoutes.APIRoot, "/role-bindings")
+	a.BaseRoutes.RoleBinding = a.subrouter(
+		a.BaseRoutes.RoleBindings,
+		"/{role_binding_id:"+canonicalIDRoutePattern()+"}",
+	)
+}
+
+func canonicalIDRoutePattern() string {
+	return "[" + model.IdAlphabet + "]{" + strconv.Itoa(model.IdLength) + "}"
+}
+
+func (a *API) subrouter(parent *mux.Router, pathPrefix string) *mux.Router {
+	router := parent.PathPrefix(pathPrefix).Subrouter()
+	a.prefixes[router] = a.prefixes[parent] + pathPrefix
+	return router
+}
+
+// Register binds one explicitly classified endpoint beneath a stable base
+// route. path is relative to base and is empty when the resource root itself is
+// the endpoint.
+func (a *API) Register(
+	base *mux.Router,
+	path string,
+	method string,
+	auth AuthRequirement,
+	handler http.Handler,
+) error {
+	if handler == nil {
+		return fmt.Errorf("register %s %s: handler is nil", method, path)
+	}
+	switch auth {
 	case AuthPublic, AuthSessionRequired, AuthRefreshCredentialRequired, AuthPrivileged:
 	default:
-		return fmt.Errorf("register %s %s: authentication policy is invalid", route.Method, route.Path)
+		return fmt.Errorf("register %s %s: authentication policy is invalid", method, path)
 	}
-	segments, canonical, err := compileRoutePath(route.Path)
+	prefix, exists := a.prefixes[base]
+	if !exists {
+		return fmt.Errorf("register %s %s: base route is not owned by this API", method, path)
+	}
+	if method == "" || strings.ToUpper(method) != method {
+		return fmt.Errorf("register %s %s: HTTP method is invalid", method, path)
+	}
+	if path != "" && (!strings.HasPrefix(path, "/") || strings.HasSuffix(path, "/")) {
+		return fmt.Errorf("register %s %s: relative route path is not canonical", method, path)
+	}
+	fullPath := prefix + path
+	probe := mux.NewRouter().NewRoute().Path(fullPath).Methods(method)
+	if err := probe.GetError(); err != nil {
+		return fmt.Errorf("register %s %s: invalid route: %w", method, fullPath, err)
+	}
+	pathRegexp, err := probe.GetPathRegexp()
 	if err != nil {
-		return fmt.Errorf("register %s %s: %w", route.Method, route.Path, err)
+		return fmt.Errorf("register %s %s: compile route: %w", method, fullPath, err)
 	}
-	if route.Method == "" || strings.ToUpper(route.Method) != route.Method {
-		return fmt.Errorf("register %s %s: HTTP method is invalid", route.Method, route.Path)
+	compiledPathRegexp, err := regexp.Compile(pathRegexp)
+	if err != nil {
+		return fmt.Errorf("register %s %s: compile route regexp: %w", method, fullPath, err)
 	}
-	key := route.Method + " " + canonical
-	if _, exists := a.dispatcher.keys[key]; exists {
-		return fmt.Errorf("register %s %s: duplicate route", route.Method, route.Path)
+	key := method + " " + pathRegexp
+	if _, exists := a.routeKeys[key]; exists {
+		return fmt.Errorf("register %s %s: duplicate route", method, fullPath)
 	}
-	a.dispatcher.keys[key] = struct{}{}
-	a.dispatcher.routes = append(a.dispatcher.routes, registeredRoute{
-		route: route,
-		handler: requireAuthentication(
-			handler, route.Auth, a.application, a.logger,
-		),
-		segments:    segments,
-		specificity: routeSpecificity(segments),
-	})
+
+	registered := base.Handle(
+		path,
+		withRequestParams(requireAuthentication(
+			handler, auth, a.application, a.logger,
+		)),
+	).Methods(method)
+	if err := registered.GetError(); err != nil {
+		return fmt.Errorf("register %s %s: %w", method, fullPath, err)
+	}
+
+	a.routeKeys[key] = struct{}{}
+	route := Route{Method: method, Path: fullPath, Auth: auth}
 	a.routes = append(a.routes, route)
+	a.routeMatchers = append(a.routeMatchers, routeMatcher{
+		route:      route,
+		pathRegexp: compiledPathRegexp,
+	})
 	return nil
 }
 
-func (d *dispatcher) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	type match struct {
-		route  registeredRoute
-		values map[string]string
-	}
-	matches := make([]match, 0, 2)
-	maxSpecificity := -1
-	for _, route := range d.routes {
-		values, matchesPath := matchRoutePath(route.segments, request.URL.Path)
-		if !matchesPath {
-			continue
+func sortRoutes(routes []Route) {
+	sort.Slice(routes, func(left, right int) bool {
+		if routes[left].Path == routes[right].Path {
+			return routes[left].Method < routes[right].Method
 		}
-		if route.specificity > maxSpecificity {
-			matches = matches[:0]
-			maxSpecificity = route.specificity
-		}
-		if route.specificity == maxSpecificity {
-			matches = append(matches, match{route: route, values: values})
-		}
+		return routes[left].Path < routes[right].Path
+	})
+}
+
+func (a *API) handleNotFound(writer http.ResponseWriter, request *http.Request) {
+	WriteProblem(writer, Problem{
+		Type:      "https://proctor.sudosylabs.com/problems/not-found",
+		Title:     "Resource not found",
+		Status:    http.StatusNotFound,
+		Detail:    "The requested resource was not found.",
+		Instance:  request.URL.Path,
+		Code:      "not_found",
+		RequestID: RequestID(request.Context()),
+	})
+}
+
+func (a *API) handleMethodNotAllowed(writer http.ResponseWriter, request *http.Request) {
+	if methods := a.allowedMethods(request); len(methods) != 0 {
+		writer.Header().Set("Allow", strings.Join(methods, ", "))
 	}
-	allowed := make(map[string]struct{})
-	for _, matched := range matches {
-		allowed[matched.route.route.Method] = struct{}{}
-		if matched.route.route.Method != request.Method {
-			continue
-		}
-		for name, value := range matched.values {
-			request.SetPathValue(name, value)
-		}
-		matched.route.handler.ServeHTTP(writer, request)
-		return
-	}
-	if len(allowed) == 0 {
-		WriteProblem(writer, Problem{
-			Type:      "https://proctor.sudosylabs.com/problems/not-found",
-			Title:     "Resource not found",
-			Status:    http.StatusNotFound,
-			Detail:    "The requested resource was not found.",
-			Instance:  request.URL.Path,
-			Code:      "not_found",
-			RequestID: RequestID(request.Context()),
-		})
-		return
-	}
-	methods := make([]string, 0, len(allowed))
-	for method := range allowed {
-		methods = append(methods, method)
-	}
-	sort.Strings(methods)
-	writer.Header().Set("Allow", strings.Join(methods, ", "))
 	WriteProblem(writer, Problem{
 		Type:      "https://proctor.sudosylabs.com/problems/method-not-allowed",
 		Title:     "Method not allowed",
@@ -331,86 +415,19 @@ func (d *dispatcher) ServeHTTP(writer http.ResponseWriter, request *http.Request
 	})
 }
 
-func routeSpecificity(segments []routeSegment) int {
-	specificity := 0
-	for _, segment := range segments {
-		if segment.parameter == "" {
-			specificity++
+func (a *API) allowedMethods(request *http.Request) []string {
+	allowed := make(map[string]struct{})
+	for _, matcher := range a.routeMatchers {
+		if matcher.pathRegexp.MatchString(request.URL.Path) {
+			allowed[matcher.route.Method] = struct{}{}
 		}
 	}
-	return specificity
-}
-
-func compileRoutePath(path string) ([]routeSegment, string, error) {
-	if path == "" || path[0] != '/' || (len(path) > 1 && strings.HasSuffix(path, "/")) {
-		return nil, "", errors.New("path must be an absolute canonical path")
+	methods := make([]string, 0, len(allowed))
+	for method := range allowed {
+		methods = append(methods, method)
 	}
-	rawSegments := splitPath(path)
-	segments := make([]routeSegment, 0, len(rawSegments))
-	canonical := make([]string, 0, len(rawSegments))
-	names := make(map[string]struct{})
-	for _, raw := range rawSegments {
-		if strings.HasPrefix(raw, "{") && strings.HasSuffix(raw, "}") {
-			name := strings.TrimSuffix(strings.TrimPrefix(raw, "{"), "}")
-			if name == "" || strings.ContainsAny(name, "{}") {
-				return nil, "", errors.New("path parameter is invalid")
-			}
-			if _, exists := names[name]; exists {
-				return nil, "", errors.New("path parameter is duplicated")
-			}
-			names[name] = struct{}{}
-			segments = append(segments, routeSegment{parameter: name})
-			canonical = append(canonical, "{}")
-			continue
-		}
-		if raw == "" || strings.ContainsAny(raw, "{}") {
-			return nil, "", errors.New("path segment is invalid")
-		}
-		segments = append(segments, routeSegment{literal: raw})
-		canonical = append(canonical, raw)
-	}
-	return segments, "/" + strings.Join(canonical, "/"), nil
-}
-
-func matchRoutePath(segments []routeSegment, path string) (map[string]string, bool) {
-	if path == "" || (len(path) > 1 && strings.HasSuffix(path, "/")) {
-		return nil, false
-	}
-	values := make(map[string]string)
-	requestSegments := splitPath(path)
-	if len(requestSegments) != len(segments) {
-		return nil, false
-	}
-	for index, segment := range segments {
-		value := requestSegments[index]
-		if segment.parameter != "" {
-			if value == "" {
-				return nil, false
-			}
-			values[segment.parameter] = value
-			continue
-		}
-		if segment.literal != value {
-			return nil, false
-		}
-	}
-	return values, true
-}
-
-func splitPath(path string) []string {
-	if path == "/" {
-		return nil
-	}
-	return strings.Split(strings.TrimPrefix(path, "/"), "/")
-}
-
-func sortRoutes(routes []Route) {
-	sort.Slice(routes, func(left, right int) bool {
-		if routes[left].Path == routes[right].Path {
-			return routes[left].Method < routes[right].Method
-		}
-		return routes[left].Path < routes[right].Path
-	})
+	sort.Strings(methods)
+	return methods
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {

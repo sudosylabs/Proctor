@@ -39,38 +39,38 @@ type authenticationResponse struct {
 
 func (a *API) InitAuthentication() error {
 	if err := a.Register(
-		Route{Method: http.MethodPost, Path: "/api/v1/auth/login", Auth: AuthPublic},
+		a.BaseRoutes.Authentication,
+		"/login",
+		http.MethodPost,
+		AuthPublic,
 		loginHandler(a.application, a.logger),
 	); err != nil {
 		return err
 	}
 	if err := a.Register(
-		Route{
-			Method: http.MethodPost,
-			Path:   "/api/v1/auth/refresh",
-			Auth:   AuthRefreshCredentialRequired,
-		},
+		a.BaseRoutes.Authentication,
+		"/refresh",
+		http.MethodPost,
+		AuthRefreshCredentialRequired,
 		refreshHandler(a.application, a.logger),
 	); err != nil {
 		return err
 	}
 	return a.Register(
-		Route{
-			Method: http.MethodPost,
-			Path:   "/api/v1/auth/logout",
-			Auth:   AuthSessionRequired,
-		},
+		a.BaseRoutes.Authentication,
+		"/logout",
+		http.MethodPost,
+		AuthSessionRequired,
 		logoutHandler(a.application, a.logger),
 	)
 }
 
 func (a *API) InitUsers() error {
 	return a.Register(
-		Route{
-			Method: http.MethodGet,
-			Path:   "/api/v1/users/me",
-			Auth:   AuthSessionRequired,
-		},
+		a.BaseRoutes.CurrentUser,
+		"",
+		http.MethodGet,
+		AuthSessionRequired,
 		currentUserHandler(a.application, a.logger),
 	)
 }

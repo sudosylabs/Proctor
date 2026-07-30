@@ -53,8 +53,10 @@ The server also includes:
 - dedicated role and role-binding stores with overlap-safe effective periods;
 - durable PostgreSQL security audits with fail-closed decision recording,
   bounded prior/result data, request/node correlation, and keyset pagination.
-- Mattermost-style per-domain `Init*` API registration through one policy-aware
-  registrar and route-matrix test;
+- Mattermost-style per-domain `Init*` API registration through one
+  policy-aware registrar and route-matrix test, with a single versioned
+  `BaseRoutes.APIRoot`, regex-constrained resource IDs, and centrally populated
+  typed request parameters;
 - atomic one-time installation bootstrap with a protected built-in
   system-administrator role and durable success audit;
 - audited custom-role and scoped role-binding administration, including

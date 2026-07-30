@@ -89,8 +89,9 @@ walking skeleton is operational and includes:
   role binding, session, hashed session credential, and personal access token;
 - explicit authentication classification metadata for every registered route;
 - Mattermost-style per-domain `Init*` API registration, with one central
-  registrar enforcing explicit authentication policy, duplicate detection,
-  path-parameter routing, literal-route precedence, and route-matrix tests;
+  `BaseRoutes` tree and registrar enforcing explicit authentication policy,
+  duplicate detection, regex-constrained path variables, centralized typed
+  request parameters, and route-matrix tests;
 - platform-owned cache, mail, and VFS adapters selected from typed deployment
   configuration, with memory/Redis cache, disabled/SMTP mail, local/S3 VFS,
   dependency checks, deterministic cleanup, and memory test implementations;
@@ -494,6 +495,23 @@ Initializers must register through the central `API.Register` boundary; they
 must not mutate router internals. The registrar rejects missing/unknown
 authentication classifications and duplicate route shapes. The root `api.go`
 must not become a flat inventory of every endpoint again.
+
+The root router is a `gorilla/mux` route tree exposed through `API.BaseRoutes`.
+All versioned resource routers descend from `BaseRoutes.APIRoot`, which is
+constructed from the single client-facing `model.APIURLSuffix` constant. Domain
+initializers register paths relative to their resource router; they must never
+repeat `/api/v1` or another API generation in individual endpoint files.
+Resource identifiers use named regex variables with the canonical Proctor
+z-base-32 alphabet and length. Add literal resource routes before permissive
+variable routes when their patterns could overlap.
+
+Route variables are read exactly once through `ParamsFromRequest`, normalized,
+and attached to the request context before authentication and handlers run.
+Handlers consume the typed `RequestParams` contract and its `Require*` methods;
+they must not split `request.URL.Path`, call `request.PathValue`, or scatter
+direct `mux.Vars` lookups across domain files. Extend `Params` only for
+variables or common bounded query parameters actually used by registered
+routes.
 
 Authentication proves identity. It does not grant permission to a resource.
 
@@ -1485,7 +1503,9 @@ Before handing off:
   explicit services.
 - API route ownership uses per-domain `Init*` methods called by `api.New`; one
   central registrar applies authentication wrappers, detects duplicate route
-  shapes, and records the route matrix.
+  shapes, and records the route matrix; all resource routers derive from the
+  single versioned `BaseRoutes.APIRoot`, and typed request parameters are
+  populated centrally from regex-constrained route variables.
 - Initial administrator creation is an explicit one-time, PostgreSQL-serialized
   bootstrap aggregate and never an implicit first-user side effect.
 - Built-in roles are server-owned and immutable through administration APIs;

@@ -32,11 +32,10 @@ type auditListResponse struct {
 
 func (a *API) InitAudits() error {
 	return a.Register(
-		Route{
-			Method: http.MethodGet,
-			Path:   "/api/v1/audits",
-			Auth:   AuthPrivileged,
-		},
+		a.BaseRoutes.Audits,
+		"",
+		http.MethodGet,
+		AuthPrivileged,
 		listAuditEventsHandler(a.application, a.logger),
 	)
 }

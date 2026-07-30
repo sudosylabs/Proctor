@@ -7,19 +7,28 @@ import "net/http"
 
 func (a *API) InitSystem() error {
 	if err := a.Register(
-		Route{Method: http.MethodGet, Path: "/health/live", Auth: AuthPublic},
+		a.BaseRoutes.Health,
+		"/live",
+		http.MethodGet,
+		AuthPublic,
 		http.HandlerFunc(a.getLiveness),
 	); err != nil {
 		return err
 	}
 	if err := a.Register(
-		Route{Method: http.MethodGet, Path: "/health/ready", Auth: AuthPublic},
+		a.BaseRoutes.Health,
+		"/ready",
+		http.MethodGet,
+		AuthPublic,
 		http.HandlerFunc(a.getReadiness),
 	); err != nil {
 		return err
 	}
 	return a.Register(
-		Route{Method: http.MethodGet, Path: "/api/v1/system/version", Auth: AuthPublic},
+		a.BaseRoutes.System,
+		"/version",
+		http.MethodGet,
+		AuthPublic,
 		http.HandlerFunc(a.getVersion),
 	)
 }

@@ -7,104 +7,131 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
-func TestDispatcherExtractsParametersAndPrefersLiteralRoutes(t *testing.T) {
+func TestBaseRoutesCentralizeAPIVersionRegexAndParams(t *testing.T) {
 	t.Parallel()
 
-	dispatcher := &dispatcher{keys: make(map[string]struct{})}
-	parameterSegments, _, err := compileRoutePath("/resources/{resource_id}")
-	if err != nil {
-		t.Fatal(err)
-	}
-	literalSegments, _, err := compileRoutePath("/resources/search")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dispatcher.routes = []registeredRoute{
-		{
-			route:       Route{Method: http.MethodPost, Path: "/resources/{resource_id}"},
-			segments:    parameterSegments,
-			specificity: routeSpecificity(parameterSegments),
-			handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				writeJSON(writer, http.StatusOK, map[string]string{
-					"id": request.PathValue("resource_id"),
-				})
-			}),
-		},
-		{
-			route:       Route{Method: http.MethodGet, Path: "/resources/search"},
-			segments:    literalSegments,
-			specificity: routeSpecificity(literalSegments),
-			handler: http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-				writer.WriteHeader(http.StatusNoContent)
-			}),
-		},
-	}
-
-	parameterRequest := httptest.NewRequest(http.MethodPost, "/resources/"+modelIDForRouteTest, nil)
-	parameterResponse := httptest.NewRecorder()
-	dispatcher.ServeHTTP(parameterResponse, parameterRequest)
-	if parameterResponse.Code != http.StatusOK ||
-		parameterRequest.PathValue("resource_id") != modelIDForRouteTest {
-		t.Fatalf(
-			"parameter route status/id = %d/%q",
-			parameterResponse.Code,
-			parameterRequest.PathValue("resource_id"),
-		)
-	}
-
-	literalMethodMismatch := httptest.NewRequest(http.MethodPost, "/resources/search", nil)
-	literalResponse := httptest.NewRecorder()
-	dispatcher.ServeHTTP(literalResponse, literalMethodMismatch)
-	if literalResponse.Code != http.StatusMethodNotAllowed ||
-		literalResponse.Header().Get("Allow") != http.MethodGet {
-		t.Fatalf(
-			"literal route mismatch status/allow = %d/%q",
-			literalResponse.Code,
-			literalResponse.Header().Get("Allow"),
-		)
-	}
-}
-
-func TestCompileRoutePathRejectsAmbiguousShapes(t *testing.T) {
-	t.Parallel()
-
-	for _, path := range []string{
-		"relative",
-		"/trailing/",
-		"/duplicate/{id}/{id}",
-		"/broken/{id",
-	} {
-		if _, _, err := compileRoutePath(path); err == nil {
-			t.Errorf("compileRoutePath(%q) succeeded", path)
+	httpAPI := newRoutingTestAPI("/api/testing")
+	var gotRoleID string
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		params, ok := RequestParams(request.Context())
+		if !ok {
+			t.Error("request parameters were not attached")
+		} else {
+			roleID, appErr := params.RequireRoleId()
+			if appErr != nil {
+				t.Errorf("RequireRoleId returned %v", appErr)
+			}
+			gotRoleID = roleID
 		}
-	}
-}
-
-func TestRegisterRejectsMissingPolicyAndDuplicatePattern(t *testing.T) {
-	t.Parallel()
-
-	httpAPI := &API{dispatcher: &dispatcher{keys: make(map[string]struct{})}}
-	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+		writer.WriteHeader(http.StatusNoContent)
+	})
 	if err := httpAPI.Register(
-		Route{Method: http.MethodGet, Path: "/resources/{id}", Auth: AuthPublic},
+		httpAPI.BaseRoutes.Role,
+		"",
+		http.MethodGet,
+		AuthPublic,
 		handler,
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := httpAPI.Register(
-		Route{Method: http.MethodGet, Path: "/resources/{other}", Auth: AuthPublic},
-		handler,
-	); err == nil {
+
+	valid := httptest.NewRequest(
+		http.MethodGet,
+		"/api/testing/roles/"+modelIDForRouteTest,
+		nil,
+	)
+	validResponse := httptest.NewRecorder()
+	httpAPI.router.ServeHTTP(validResponse, valid)
+	if validResponse.Code != http.StatusNoContent || gotRoleID != modelIDForRouteTest {
+		t.Fatalf("valid route status/id = %d/%q", validResponse.Code, gotRoleID)
+	}
+
+	for _, path := range []string{
+		"/api/v1/roles/" + modelIDForRouteTest,
+		"/api/testing/roles/not-an-id",
+		"/api/testing/roles/3UUUid3i7bexfcbzmo6s5w4zqo",
+	} {
+		response := httptest.NewRecorder()
+		httpAPI.router.ServeHTTP(
+			response,
+			httptest.NewRequest(http.MethodGet, path, nil),
+		)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("%s status = %d, want 404", path, response.Code)
+		}
+	}
+}
+
+func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T) {
+	t.Parallel()
+
+	httpAPI := newRoutingTestAPI("/api/testing")
+	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	first := httpAPI.subrouter(
+		httpAPI.BaseRoutes.APIRoot,
+		"/resources/{id:[a-z]+}",
+	)
+	second := httpAPI.subrouter(
+		httpAPI.BaseRoutes.APIRoot,
+		"/resources/{other:[a-z]+}",
+	)
+	if err := httpAPI.Register(first, "", http.MethodGet, AuthPublic, handler); err != nil {
+		t.Fatal(err)
+	}
+	if err := httpAPI.Register(second, "", http.MethodGet, AuthPublic, handler); err == nil {
 		t.Fatal("duplicate route shape was accepted")
 	}
 	if err := httpAPI.Register(
-		Route{Method: http.MethodPost, Path: "/resources", Auth: ""},
+		httpAPI.BaseRoutes.APIRoot,
+		"/resources",
+		http.MethodPost,
+		"",
 		handler,
 	); err == nil {
 		t.Fatal("route without authentication policy was accepted")
 	}
+	if err := httpAPI.Register(
+		mux.NewRouter(),
+		"/resources",
+		http.MethodGet,
+		AuthPublic,
+		handler,
+	); err == nil {
+		t.Fatal("foreign base router was accepted")
+	}
+}
+
+func TestRouteMetadataRetainsVersionAndRegexContract(t *testing.T) {
+	t.Parallel()
+
+	httpAPI := newRoutingTestAPI("/api/testing")
+	if err := httpAPI.Register(
+		httpAPI.BaseRoutes.Role,
+		"",
+		http.MethodDelete,
+		AuthPrivileged,
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	routes := httpAPI.Routes()
+	want := "/api/testing/roles/{role_id:" + canonicalIDRoutePattern() + "}"
+	if len(routes) != 1 || routes[0].Path != want {
+		t.Fatalf("routes = %#v, want path %q", routes, want)
+	}
+}
+
+func newRoutingTestAPI(apiURLSuffix string) *API {
+	httpAPI := &API{
+		routeKeys: make(map[string]struct{}),
+		prefixes:  make(map[*mux.Router]string),
+	}
+	httpAPI.initializeBaseRoutes(apiURLSuffix)
+	return httpAPI
 }
 
 const modelIDForRouteTest = "3uuuid3i7bexfcbzmo6s5w4zqo"
