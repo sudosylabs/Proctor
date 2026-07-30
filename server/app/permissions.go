@@ -14,6 +14,65 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
+// PreauthorizePrincipalToSystem performs the API's early institution-scoped
+// permission check, audits it, and attaches a sealed one-use receipt to the
+// returned context. The application use case consumes and verifies that
+// receipt; direct non-HTTP callers without one are evaluated normally.
+func (a *App) PreauthorizePrincipalToSystem(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (context.Context, *model.AppError) {
+	institution, err := a.Store().Institution().GetSingleton(ctx)
+	if err != nil {
+		return ctx, authorizationResourceError("institution", err)
+	}
+	decision, appErr := a.authorization.preauthorize(
+		ctx,
+		principal,
+		action,
+		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		metadata,
+	)
+	if appErr != nil {
+		return ctx, appErr
+	}
+	return contextWithAuthorizationDecision(ctx, decision), nil
+}
+
+func (a *App) authorizePrincipalToSystem(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (model.Resource, *model.AppError) {
+	if resource, ok := a.authorization.consumePreauthorizedResource(
+		ctx,
+		principal,
+		action,
+		model.ResourceInstitution,
+		metadata,
+	); ok {
+		return resource, nil
+	}
+	institution, err := a.Store().Institution().GetSingleton(ctx)
+	if err != nil {
+		return model.Resource{}, authorizationResourceError("institution", err)
+	}
+	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
+	if appErr := a.AuthorizePrincipalToInstitution(
+		ctx,
+		principal,
+		institution.Id,
+		action,
+		metadata,
+	); appErr != nil {
+		return model.Resource{}, appErr
+	}
+	return resource, nil
+}
+
 // PrincipalHasPermissionTo is the reusable, non-auditing permission predicate.
 // Application use cases call AuthorizePrincipalTo at their security boundary
 // when the decision must be durably recorded.

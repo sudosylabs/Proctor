@@ -1,10 +1,11 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // Copyright 2026 SudoSylabs
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //
-// Adapted from Mattermost server/channels/api4/user.go login/logout handlers
-// and its APISessionRequired boundary. Proctor keeps explicit wrappers and a
-// request principal without Mattermost's product-specific handler context.
+// Adapted from Mattermost server/channels/api4/user.go login/logout handlers,
+// its APISessionRequired boundary, and browser session-cookie behavior.
+// Proctor keeps explicit wrappers and an immutable request principal without
+// Mattermost's product-specific handler context.
 
 package api
 
@@ -22,6 +23,19 @@ import (
 
 type principalContextKey struct{}
 type credentialContextKey struct{}
+type credentialSourceContextKey struct{}
+
+type credentialSource string
+
+const (
+	credentialSourceBearer credentialSource = "bearer"
+	credentialSourceCookie credentialSource = "cookie"
+)
+
+type requestCredential struct {
+	token  string
+	source credentialSource
+}
 
 type loginRequest struct {
 	LoginID    string                  `json:"login_id"`
@@ -34,7 +48,7 @@ type loginRequest struct {
 type authenticationResponse struct {
 	User    *model.User                 `json:"user,omitempty"`
 	Session *model.Session              `json:"session"`
-	Tokens  *model.AuthenticationTokens `json:"tokens"`
+	Tokens  *model.AuthenticationTokens `json:"tokens,omitempty"`
 }
 
 func (a *API) InitAuthentication() error {
@@ -42,7 +56,7 @@ func (a *API) InitAuthentication() error {
 		a.BaseRoutes.Authentication,
 		"/login",
 		http.MethodPost,
-		a.APIHandler(loginHandler(a.application, a.logger)),
+		a.APIHandler(loginHandler(a.application, a.logger, a.cookies)),
 	); err != nil {
 		return err
 	}
@@ -50,7 +64,7 @@ func (a *API) InitAuthentication() error {
 		a.BaseRoutes.Authentication,
 		"/refresh",
 		http.MethodPost,
-		a.APIRefreshCredentialRequired(refreshHandler(a.application, a.logger)),
+		a.APIRefreshCredentialRequired(refreshHandler(a.application, a.logger, a.cookies)),
 	); err != nil {
 		return err
 	}
@@ -58,7 +72,7 @@ func (a *API) InitAuthentication() error {
 		a.BaseRoutes.Authentication,
 		"/logout",
 		http.MethodPost,
-		a.APISessionRequired(logoutHandler(a.application, a.logger)),
+		a.APISessionRequired(logoutHandler(a.application, a.logger, a.cookies)),
 	)
 }
 
@@ -71,7 +85,11 @@ func (a *API) InitUsers() error {
 	)
 }
 
-func loginHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func loginHandler(
+	application Authentication,
+	logger *mlog.Logger,
+	cookies browserCookies,
+) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var input loginRequest
 		if err := decodeRequestJSON(request, &input); err != nil {
@@ -91,23 +109,48 @@ func loginHandler(application Authentication, logger *mlog.Logger) http.Handler 
 			writeApplicationError(writer, request, logger, appErr)
 			return
 		}
+		writer.Header().Set("Cache-Control", "no-store")
+		if usesBrowserCookieTransport(input.ClientType) {
+			cookies.attach(writer, tokens)
+			tokens = nil
+		}
 		writeJSON(writer, http.StatusOK, authenticationResponse{
 			User: user, Session: session, Tokens: tokens,
 		})
 	})
 }
 
-func refreshHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func usesBrowserCookieTransport(clientType model.SessionClientType) bool {
+	return clientType == model.SessionClientDesktop ||
+		clientType == model.SessionClientWeb
+}
+
+func refreshHandler(
+	application Authentication,
+	logger *mlog.Logger,
+	cookies browserCookies,
+) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		token, ok := credentialFromContext(request.Context())
+		credential, ok := credentialFromContext(request.Context())
 		if !ok {
 			WriteError(writer, request, authenticationRequiredError())
 			return
 		}
-		session, tokens, appErr := application.RefreshSession(request.Context(), token)
+		session, tokens, appErr := application.RefreshSession(
+			request.Context(),
+			credential.token,
+		)
 		if appErr != nil {
+			if credential.source == credentialSourceCookie {
+				cookies.clear(writer)
+			}
 			writeApplicationError(writer, request, logger, appErr)
 			return
+		}
+		writer.Header().Set("Cache-Control", "no-store")
+		if credential.source == credentialSourceCookie {
+			cookies.attach(writer, tokens)
+			tokens = nil
 		}
 		writeJSON(writer, http.StatusOK, authenticationResponse{
 			Session: session, Tokens: tokens,
@@ -115,7 +158,11 @@ func refreshHandler(application Authentication, logger *mlog.Logger) http.Handle
 	})
 }
 
-func logoutHandler(application Authentication, logger *mlog.Logger) http.Handler {
+func logoutHandler(
+	application Authentication,
+	logger *mlog.Logger,
+	cookies browserCookies,
+) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {
@@ -125,6 +172,9 @@ func logoutHandler(application Authentication, logger *mlog.Logger) http.Handler
 		if appErr := application.Logout(request.Context(), principal); appErr != nil {
 			writeApplicationError(writer, request, logger, appErr)
 			return
+		}
+		if credentialSourceFromContext(request.Context()) == credentialSourceCookie {
+			cookies.clear(writer)
 		}
 		writer.Header().Set("Cache-Control", "no-store")
 		writer.WriteHeader(http.StatusNoContent)
@@ -152,16 +202,68 @@ func currentUserHandler(application Users, logger *mlog.Logger) http.Handler {
 	})
 }
 
-func bearerCredential(request *http.Request) (string, *model.AppError) {
+func requestAccessCredential(request *http.Request) (requestCredential, *model.AppError) {
+	return requestCredentialFrom(request, BrowserAccessCookieName)
+}
+
+func requestRefreshCredential(request *http.Request) (requestCredential, *model.AppError) {
+	return requestCredentialFrom(request, BrowserRefreshCookieName)
+}
+
+func requestCredentialFrom(
+	request *http.Request,
+	cookieName string,
+) (requestCredential, *model.AppError) {
+	bearer, hasBearer, appErr := optionalBearerCredential(request)
+	if appErr != nil {
+		return requestCredential{}, appErr
+	}
+	cookie, appErr := singleCookieValue(request, cookieName)
+	if appErr != nil {
+		return requestCredential{}, appErr
+	}
+	if hasBearer && cookie != "" {
+		return requestCredential{}, ambiguousCredentialError()
+	}
+	if hasBearer {
+		return requestCredential{token: bearer, source: credentialSourceBearer}, nil
+	}
+	if cookie != "" {
+		return requestCredential{token: cookie, source: credentialSourceCookie}, nil
+	}
+	return requestCredential{}, authenticationRequiredError()
+}
+
+func optionalBearerCredential(request *http.Request) (string, bool, *model.AppError) {
 	values := request.Header.Values("Authorization")
+	if len(values) == 0 {
+		return "", false, nil
+	}
 	if len(values) != 1 {
-		return "", authenticationRequiredError()
+		return "", false, authenticationRequiredError()
 	}
 	parts := strings.Fields(values[0])
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
-		return "", authenticationRequiredError()
+		return "", false, authenticationRequiredError()
 	}
-	return parts[1], nil
+	return parts[1], true, nil
+}
+
+func singleCookieValue(
+	request *http.Request,
+	name string,
+) (string, *model.AppError) {
+	var value string
+	for _, cookie := range request.Cookies() {
+		if cookie.Name != name {
+			continue
+		}
+		if value != "" || cookie.Value == "" {
+			return "", ambiguousCredentialError()
+		}
+		value = cookie.Value
+	}
+	return value, nil
 }
 
 func Principal(ctx context.Context) (model.Principal, bool) {
@@ -169,9 +271,14 @@ func Principal(ctx context.Context) (model.Principal, bool) {
 	return principal, ok && principal.IsValid()
 }
 
-func credentialFromContext(ctx context.Context) (string, bool) {
-	credential, ok := ctx.Value(credentialContextKey{}).(string)
-	return credential, ok && credential != ""
+func credentialFromContext(ctx context.Context) (requestCredential, bool) {
+	credential, ok := ctx.Value(credentialContextKey{}).(requestCredential)
+	return credential, ok && credential.token != "" && credential.source != ""
+}
+
+func credentialSourceFromContext(ctx context.Context) credentialSource {
+	source, _ := ctx.Value(credentialSourceContextKey{}).(credentialSource)
+	return source
 }
 
 func decodeRequestJSON(request *http.Request, target any) error {
@@ -209,6 +316,16 @@ func authenticationRequiredError() *model.AppError {
 		nil,
 		"",
 		http.StatusUnauthorized,
+	)
+}
+
+func ambiguousCredentialError() *model.AppError {
+	return model.NewAppError(
+		"requestCredentialFrom",
+		"authentication.credential_ambiguous",
+		nil,
+		"",
+		http.StatusBadRequest,
 	)
 }
 

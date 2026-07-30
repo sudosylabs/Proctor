@@ -68,6 +68,12 @@ func (a *API) listRoles(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
+	if !ok {
+		return
+	}
 	roles, appErr := a.application.ListRoles(
 		request.Context(), principal, RequestMetadata(request.Context()),
 	)
@@ -80,6 +86,12 @@ func (a *API) listRoles(writer http.ResponseWriter, request *http.Request) {
 
 func (a *API) getRole(writer http.ResponseWriter, request *http.Request) {
 	principal, roleID, ok := principalAndRoleId(writer, request)
+	if !ok {
+		return
+	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
 	if !ok {
 		return
 	}
@@ -97,6 +109,12 @@ func (a *API) createRole(writer http.ResponseWriter, request *http.Request) {
 	principal, ok := Principal(request.Context())
 	if !ok {
 		WriteError(writer, request, authenticationRequiredError())
+		return
+	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
+	if !ok {
 		return
 	}
 	var input createRoleRequest
@@ -125,6 +143,12 @@ func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
+	if !ok {
+		return
+	}
 	var patch model.RolePatch
 	if err := decodeRequestJSON(request, &patch); err != nil {
 		WriteError(writer, request, invalidRequestError("patchRole", err))
@@ -142,6 +166,12 @@ func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
 
 func (a *API) deleteRole(writer http.ResponseWriter, request *http.Request) {
 	principal, roleID, ok := principalAndRoleId(writer, request)
+	if !ok {
+		return
+	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
 	if !ok {
 		return
 	}

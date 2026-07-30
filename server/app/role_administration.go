@@ -324,21 +324,12 @@ func (a *App) authorizeRoleAdministration(
 	principal model.Principal,
 	metadata model.RequestMetadata,
 ) (model.Resource, *model.AppError) {
-	institution, err := a.Store().Institution().GetSingleton(ctx)
-	if err != nil {
-		return model.Resource{}, authorizationResourceError("institution", err)
-	}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
-	if appErr := a.AuthorizePrincipalToInstitution(
+	return a.authorizePrincipalToSystem(
 		ctx,
 		principal,
-		institution.Id,
 		model.ActionRoleManage,
 		metadata,
-	); appErr != nil {
-		return model.Resource{}, appErr
-	}
-	return resource, nil
+	)
 }
 
 func validateKnownPermissions(where string, permissions []string) *model.AppError {

@@ -199,6 +199,7 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 		Health:       health,
 		Application:  application,
 		BuildInfo:    settings.buildInfo,
+		PublicURL:    applicationPlatform.Config().Server.PublicURL,
 		MaxBodyBytes: applicationPlatform.Config().Server.MaxBodyBytes,
 	})
 	if err != nil {

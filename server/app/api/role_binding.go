@@ -50,6 +50,12 @@ func (a *API) listRoleBindings(writer http.ResponseWriter, request *http.Request
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
+	if !ok {
+		return
+	}
 	values := request.URL.Query()
 	userID := values.Get("user_id")
 	scopeType := model.RoleScopeType(values.Get("scope_type"))
@@ -91,6 +97,12 @@ func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Reques
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
+	if !ok {
+		return
+	}
 	var input createRoleBindingRequest
 	if err := decodeRequestJSON(request, &input); err != nil {
 		WriteError(writer, request, invalidRequestError("createRoleBinding", err))
@@ -115,6 +127,12 @@ func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Reques
 
 func (a *API) endRoleBinding(writer http.ResponseWriter, request *http.Request) {
 	principal, bindingID, ok := principalAndRoleBindingId(writer, request)
+	if !ok {
+		return
+	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionRoleManage,
+	)
 	if !ok {
 		return
 	}

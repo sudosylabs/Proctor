@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -93,6 +94,22 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		t, handler, created.Administrator.Username, password,
 		model.SessionClientCLI, "administrator-cli",
 	)
+	authorizedRequestID := "role-preflight-receipt-test"
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/roles", nil)
+	listRequest.Header.Set(
+		"Authorization",
+		"Bearer "+administratorLogin.Tokens.AccessToken,
+	)
+	listRequest.Header.Set("X-Request-ID", authorizedRequestID)
+	listResponse := httptest.NewRecorder()
+	handler.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"authorized role preflight status = %d: %s",
+			listResponse.Code,
+			listResponse.Body.String(),
+		)
+	}
 	rejectServerOwnedRoleFields := performJSONRequest(
 		handler,
 		http.MethodPost,
@@ -180,6 +197,29 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	)
 	if appErr != nil {
 		t.Fatal(appErr)
+	}
+	unprivilegedLogin := loginIntegrationUser(
+		t, handler, secondAdministrator.Username, password,
+		model.SessionClientCLI, "unprivileged-cli",
+	)
+	malformedRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/roles",
+		strings.NewReader("{"),
+	)
+	malformedRequest.Header.Set("Content-Type", "application/json")
+	malformedRequest.Header.Set(
+		"Authorization",
+		"Bearer "+unprivilegedLogin.Tokens.AccessToken,
+	)
+	malformedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(malformedResponse, malformedRequest)
+	if malformedResponse.Code != http.StatusForbidden {
+		t.Fatalf(
+			"permission preflight did not precede body decoding: status = %d: %s",
+			malformedResponse.Code,
+			malformedResponse.Body.String(),
+		)
 	}
 	createBinding := performJSONRequest(
 		handler,
@@ -294,10 +334,13 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var successes, failures int
+	var successes, failures, receiptAudits int
 	for _, event := range events {
 		if event.Action != string(model.ActionRoleManage) {
 			continue
+		}
+		if event.RequestId == authorizedRequestID {
+			receiptAudits++
 		}
 		switch event.Status {
 		case model.AuditStatusSuccess:
@@ -311,6 +354,12 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			"role administration audit statuses successes=%d failures=%d",
 			successes,
 			failures,
+		)
+	}
+	if receiptAudits != 1 {
+		t.Fatalf(
+			"API preflight and application use case wrote %d authorization decisions for one request",
+			receiptAudits,
 		)
 	}
 }

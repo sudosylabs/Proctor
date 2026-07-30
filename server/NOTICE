@@ -205,6 +205,7 @@ Upstream paths:
 - server/channels/app/session.go
 - server/channels/app/platform/session.go
 - server/channels/api4/user.go
+- server/channels/web/handlers.go
 - server/channels/store/sqlstore/user_store.go
 - server/channels/store/sqlstore/session_store.go
 - server/channels/store/storetest/user_store.go
@@ -216,6 +217,8 @@ Corresponding Proctor paths:
 - server/app/authentication_integration_test.go
 - server/app/session_management.go
 - server/app/api/authentication.go
+- server/app/api/cookies.go
+- server/app/api/handler.go
 - server/app/api/session.go
 - server/store/sqlstore/user_store.go
 - server/store/sqlstore/password_credential_store.go
@@ -240,8 +243,10 @@ Modifications:
   tests while adapting them to Proctor's split credential schema;
 - replaced product-specific API handler state with an immutable, minimal
   request principal and explicit per-route authentication classifications;
-- accept credentials only through a single Authorization bearer header and
-  never through URL query parameters;
+- retained bearer credentials for CLI sessions and added Mattermost-inspired
+  host-only Electron/web cookies, with Proctor-specific split access/refresh
+  paths, rotating signed double-submit CSRF verification, rejection of mixed
+  or duplicate credential sources, and no credentials in URL parameters;
 - adapted active-session listing and self-service individual/account-wide
   revocation while retaining ownership checks and sanitized responses;
 - added a Proctor-specific per-user PostgreSQL advisory-lock protocol shared by
@@ -297,11 +302,13 @@ Corresponding Proctor paths:
 - server/model/request_metadata.go
 - server/model/client.go
 - server/app/authorization.go
+- server/app/authorization_decision.go
 - server/app/permissions.go
 - server/app/audit.go
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go
 - server/app/api/audit.go
+- server/app/api/authorization.go
 - server/app/api/bootstrap.go
 - server/app/api/role.go
 - server/app/api/role_binding.go
@@ -350,9 +357,11 @@ Modifications:
   Proctor's immutable principal, current PostgreSQL role bindings, typed
   resources, default-deny cross-user policy, and separate audited resource and
   academic-scope fields;
-- kept resource authorization in application use cases and used the HTTP
-  classification only to require a valid session before the privileged audit
-  listing handler runs;
+- retained Mattermost's visible permission checks at privileged API handlers
+  while keeping application use cases as independent authorization boundaries;
+- added a Proctor-specific per-process sealed, request-bound, one-use
+  authorization receipt so the application can verify and consume the exact
+  audited API preflight decision without repeating role/resource queries;
 - omitted Mattermost product, team, channel, scheme, license, enterprise,
   database-replica, and audit-output target assumptions.
 - adopted Mattermost's per-domain `Init*` API ownership, central client-facing

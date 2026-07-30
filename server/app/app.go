@@ -46,14 +46,9 @@ func (a *App) ListAuditEvents(
 	metadata model.RequestMetadata,
 	query model.AuditQuery,
 ) ([]*model.AuditEvent, *model.AppError) {
-	institution, err := a.Store().Institution().GetSingleton(ctx)
-	if err != nil {
-		return nil, authorizationResourceError("institution", err)
-	}
-	if appErr := a.AuthorizePrincipalToInstitution(
+	if _, appErr := a.authorizePrincipalToSystem(
 		ctx,
 		principal,
-		institution.Id,
 		model.ActionAuditView,
 		metadata,
 	); appErr != nil {

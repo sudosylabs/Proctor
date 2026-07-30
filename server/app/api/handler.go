@@ -59,6 +59,7 @@ func (a *API) newHandler(
 			requirement,
 			a.application,
 			a.logger,
+			a.cookies,
 		)),
 		authentication: requirement,
 	}
@@ -69,33 +70,55 @@ func requireAuthentication(
 	requirement AuthRequirement,
 	application Authenticator,
 	logger *mlog.Logger,
+	cookies browserCookies,
 ) http.Handler {
 	switch requirement {
 	case AuthPublic:
 		return next
 	case AuthRefreshCredentialRequired:
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			token, appErr := bearerCredential(request)
+			credential, appErr := requestRefreshCredential(request)
 			if appErr != nil {
 				WriteError(writer, request, appErr)
 				return
 			}
-			ctx := context.WithValue(request.Context(), credentialContextKey{}, token)
+			if credential.source == credentialSourceCookie {
+				if appErr := cookies.verifyCSRF(request); appErr != nil {
+					WriteError(writer, request, appErr)
+					return
+				}
+			}
+			ctx := context.WithValue(request.Context(), credentialContextKey{}, credential)
+			ctx = context.WithValue(ctx, credentialSourceContextKey{}, credential.source)
 			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
 	case AuthSessionRequired:
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			token, appErr := bearerCredential(request)
+			credential, appErr := requestAccessCredential(request)
 			if appErr != nil {
 				WriteError(writer, request, appErr)
 				return
 			}
-			principal, appErr := application.AuthenticateAccess(request.Context(), token)
+			if credential.source == credentialSourceCookie &&
+				requiresCSRF(request.Method) {
+				if appErr := cookies.verifyCSRF(request); appErr != nil {
+					WriteError(writer, request, appErr)
+					return
+				}
+			}
+			principal, appErr := application.AuthenticateAccess(
+				request.Context(),
+				credential.token,
+			)
 			if appErr != nil {
+				if credential.source == credentialSourceCookie {
+					cookies.clear(writer)
+				}
 				writeApplicationError(writer, request, logger, appErr)
 				return
 			}
 			ctx := context.WithValue(request.Context(), principalContextKey{}, *principal)
+			ctx = context.WithValue(ctx, credentialSourceContextKey{}, credential.source)
 			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
 	default:
@@ -107,5 +130,14 @@ func requireAuthentication(
 			)
 			WriteProblem(writer, internalProblem(request))
 		})
+	}
+}
+
+func requiresCSRF(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	default:
+		return true
 	}
 }

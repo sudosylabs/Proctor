@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Adapted from Mattermost server/channels/api4/audit_logging.go. Proctor keeps
-// authorization in the application use case and uses an opaque keyset cursor.
+// visible API preflight, authoritative application authorization, and an
+// opaque keyset cursor.
 
 package api
 
@@ -14,7 +15,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -35,38 +35,42 @@ func (a *API) InitAudits() error {
 		a.BaseRoutes.Audits,
 		"",
 		http.MethodGet,
-		a.APISessionRequired(listAuditEventsHandler(a.application, a.logger)),
+		a.APISessionRequired(http.HandlerFunc(a.listAuditEvents)),
 	)
 }
 
-func listAuditEventsHandler(application Audits, logger *mlog.Logger) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		principal, ok := Principal(request.Context())
-		if !ok {
-			WriteError(writer, request, authenticationRequiredError())
-			return
-		}
-		query, err := auditQueryFromRequest(request)
-		if err != nil {
-			WriteError(writer, request, invalidRequestError("listAuditEvents", err))
-			return
-		}
-		events, appErr := application.ListAuditEvents(
-			request.Context(), principal, RequestMetadata(request.Context()), query,
-		)
-		if appErr != nil {
-			writeApplicationError(writer, request, logger, appErr)
-			return
-		}
-		response := auditListResponse{Events: events}
-		if len(events) == query.Limit {
-			last := events[len(events)-1]
-			response.NextCursor = encodeAuditCursor(auditCursor{
-				CreateAt: last.CreateAt, Id: last.Id,
-			})
-		}
-		writeJSON(writer, http.StatusOK, response)
-	})
+func (a *API) listAuditEvents(writer http.ResponseWriter, request *http.Request) {
+	principal, ok := Principal(request.Context())
+	if !ok {
+		WriteError(writer, request, authenticationRequiredError())
+		return
+	}
+	request, ok = a.preauthorizeSystemAction(
+		writer, request, principal, model.ActionAuditView,
+	)
+	if !ok {
+		return
+	}
+	query, err := auditQueryFromRequest(request)
+	if err != nil {
+		WriteError(writer, request, invalidRequestError("listAuditEvents", err))
+		return
+	}
+	events, appErr := a.application.ListAuditEvents(
+		request.Context(), principal, RequestMetadata(request.Context()), query,
+	)
+	if appErr != nil {
+		writeApplicationError(writer, request, a.logger, appErr)
+		return
+	}
+	response := auditListResponse{Events: events}
+	if len(events) == query.Limit {
+		last := events[len(events)-1]
+		response.NextCursor = encodeAuditCursor(auditCursor{
+			CreateAt: last.CreateAt, Id: last.Id,
+		})
+	}
+	writeJSON(writer, http.StatusOK, response)
 }
 
 func auditQueryFromRequest(request *http.Request) (model.AuditQuery, error) {

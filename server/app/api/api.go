@@ -82,6 +82,7 @@ type Options struct {
 	Health       Health
 	Application  Application
 	BuildInfo    BuildInfo
+	PublicURL    string
 	MaxBodyBytes int64
 }
 
@@ -191,6 +192,7 @@ type RoleBindings interface {
 // an unrelated service locator.
 type Application interface {
 	Authentication
+	AuthorizationPreflight
 	Users
 	Sessions
 	Audits
@@ -207,6 +209,7 @@ type API struct {
 	logger        *mlog.Logger
 	health        Health
 	buildInfo     BuildInfo
+	cookies       browserCookies
 	routes        []Route
 	routeMatchers []routeMatcher
 	routeKeys     map[string]struct{}
@@ -226,12 +229,17 @@ func New(options Options) (*API, error) {
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
+	cookies, err := newBrowserCookies(options.PublicURL)
+	if err != nil {
+		return nil, fmt.Errorf("configure browser cookies: %w", err)
+	}
 
 	api := &API{
 		application: options.Application,
 		logger:      options.Logger,
 		health:      options.Health,
 		buildInfo:   options.BuildInfo,
+		cookies:     cookies,
 		routeKeys:   make(map[string]struct{}),
 		prefixes:    make(map[*mux.Router]string),
 	}

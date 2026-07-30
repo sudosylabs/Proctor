@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -51,7 +52,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		"/api/v1/auth/login",
 		map[string]any{
 			"login_id": user.Username, "password": "wrong password",
-			"client_type": model.SessionClientDesktop,
+			"client_type": model.SessionClientCLI,
 		},
 		"",
 	)
@@ -65,7 +66,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		"/api/v1/auth/login",
 		map[string]any{
 			"login_id": user.Email, "password": password,
-			"client_type": model.SessionClientDesktop,
+			"client_type": model.SessionClientCLI,
 			"device_id":   "integration-device", "device_name": "Integration Device",
 		},
 		"",
@@ -77,6 +78,9 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if first.User == nil || first.User.Id != user.Id || first.Tokens.AccessToken == "" ||
 		first.Tokens.RefreshToken == "" {
 		t.Fatalf("login response = %#v", first)
+	}
+	if cookies := login.Result().Cookies(); len(cookies) != 0 {
+		t.Fatalf("CLI login unexpectedly set browser cookies = %#v", cookies)
 	}
 
 	me := performJSONRequest(
@@ -178,7 +182,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		"/api/v1/auth/login",
 		map[string]any{
 			"login_id": user.Username, "password": password,
-			"client_type": model.SessionClientDesktop,
+			"client_type": model.SessionClientCLI,
 		},
 		"",
 	)
@@ -227,7 +231,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 			map[string]any{
 				"login_id":    "does-not-exist@example.edu",
 				"password":    "irrelevant password",
-				"client_type": model.SessionClientDesktop,
+				"client_type": model.SessionClientCLI,
 			},
 			"",
 		)
@@ -263,6 +267,152 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 }
 
+func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	helper := testlib.Setup(
+		t,
+		testlib.WithConfig(func(cfg *config.Config) {
+			cfg.Server.PublicURL = "https://proctor.example.edu"
+		}),
+		testlib.WithServerOptions(app.WithStore(persistence)),
+	)
+	password := "correct horse battery staple"
+	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
+		Username: "browser-user", Email: "browser-user@example.edu",
+		DisplayName: "Browser User",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+
+	login := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/auth/login",
+		map[string]any{
+			"login_id": user.Username, "password": password,
+			"client_type": model.SessionClientDesktop,
+		},
+		"",
+	)
+	if login.Code != http.StatusOK {
+		t.Fatalf("browser login status = %d: %s", login.Code, login.Body.String())
+	}
+	var loginBody authenticationResponse
+	if err := json.Unmarshal(login.Body.Bytes(), &loginBody); err != nil {
+		t.Fatal(err)
+	}
+	if loginBody.User == nil || loginBody.Session == nil || loginBody.Tokens != nil {
+		t.Fatalf("browser login response = %#v", loginBody)
+	}
+	loginCookies := cookieMap(login.Result().Cookies())
+	assertBrowserCookieContract(t, loginCookies)
+	for _, cookie := range loginCookies {
+		if strings.Contains(login.Body.String(), cookie.Value) ||
+			strings.Contains(helper.Logs.String(), cookie.Value) {
+			t.Fatal("browser credential appeared in body or logs")
+		}
+	}
+
+	me := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		nil, loginCookies, "", "",
+	)
+	if me.Code != http.StatusOK {
+		t.Fatalf("browser current-user status = %d: %s", me.Code, me.Body.String())
+	}
+	ambiguous := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		nil, loginCookies, "another-access-token", "",
+	)
+	if ambiguous.Code != http.StatusBadRequest {
+		t.Fatalf("ambiguous browser credential status = %d: %s", ambiguous.Code, ambiguous.Body.String())
+	}
+
+	missingLogoutCSRF := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/logout",
+		nil, loginCookies, "", "",
+	)
+	if missingLogoutCSRF.Code != http.StatusForbidden {
+		t.Fatalf(
+			"missing logout CSRF status = %d: %s",
+			missingLogoutCSRF.Code,
+			missingLogoutCSRF.Body.String(),
+		)
+	}
+	missingRefreshCSRF := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/refresh",
+		nil, loginCookies, "", "",
+	)
+	if missingRefreshCSRF.Code != http.StatusForbidden {
+		t.Fatalf(
+			"missing refresh CSRF status = %d: %s",
+			missingRefreshCSRF.Code,
+			missingRefreshCSRF.Body.String(),
+		)
+	}
+
+	refresh := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/refresh",
+		nil, loginCookies, "",
+		loginCookies[api.BrowserCSRFCookieName].Value,
+	)
+	if refresh.Code != http.StatusOK {
+		t.Fatalf("browser refresh status = %d: %s", refresh.Code, refresh.Body.String())
+	}
+	var refreshBody authenticationResponse
+	if err := json.Unmarshal(refresh.Body.Bytes(), &refreshBody); err != nil {
+		t.Fatal(err)
+	}
+	if refreshBody.Session == nil || refreshBody.Tokens != nil {
+		t.Fatalf("browser refresh response = %#v", refreshBody)
+	}
+	refreshedCookies := cookieMap(refresh.Result().Cookies())
+	assertBrowserCookieContract(t, refreshedCookies)
+	for name, previous := range loginCookies {
+		if refreshedCookies[name].Value == previous.Value {
+			t.Fatalf("%s was not rotated", name)
+		}
+	}
+
+	oldAccess := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		nil, loginCookies, "", "",
+	)
+	if oldAccess.Code != http.StatusUnauthorized {
+		t.Fatalf("old browser access status = %d", oldAccess.Code)
+	}
+	currentAccess := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		nil, refreshedCookies, "", "",
+	)
+	if currentAccess.Code != http.StatusOK {
+		t.Fatalf("refreshed browser access status = %d: %s", currentAccess.Code, currentAccess.Body.String())
+	}
+
+	logout := performBrowserJSONRequest(
+		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/logout",
+		nil, refreshedCookies, "",
+		refreshedCookies[api.BrowserCSRFCookieName].Value,
+	)
+	if logout.Code != http.StatusNoContent {
+		t.Fatalf("browser logout status = %d: %s", logout.Code, logout.Body.String())
+	}
+	cleared := cookieMap(logout.Result().Cookies())
+	if len(cleared) != 4 {
+		t.Fatalf("cleared cookies = %#v", cleared)
+	}
+	for _, cookie := range cleared {
+		if cookie.MaxAge >= 0 {
+			t.Fatalf("logout did not expire cookie = %#v", cookie)
+		}
+	}
+}
+
 func TestSessionManagementIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
@@ -285,7 +435,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		helper.Server.Handler(),
 		user.Username,
 		password,
-		model.SessionClientDesktop,
+		model.SessionClientCLI,
 		"first-device",
 	)
 	secondLogin := loginIntegrationUser(
@@ -391,7 +541,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		helper.Server.Handler(),
 		otherUser.Username,
 		password,
-		model.SessionClientDesktop,
+		model.SessionClientCLI,
 		"other-device",
 	)
 	crossUserRevoke := performJSONRequest(
@@ -445,7 +595,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		helper.Server.Handler(),
 		user.Username,
 		password,
-		model.SessionClientDesktop,
+		model.SessionClientCLI,
 		"third-device",
 	)
 	activeAfterRevokeAll := performJSONRequest(
@@ -552,6 +702,68 @@ func performJSONRequest(
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func performBrowserJSONRequest(
+	handler http.Handler,
+	method string,
+	path string,
+	body any,
+	cookies map[string]*http.Cookie,
+	bearer string,
+	csrf string,
+) *httptest.ResponseRecorder {
+	var encoded []byte
+	if body != nil {
+		encoded, _ = json.Marshal(body)
+	}
+	request := httptest.NewRequest(method, path, bytes.NewReader(encoded))
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	for _, cookie := range cookies {
+		request.AddCookie(cookie)
+	}
+	if bearer != "" {
+		request.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	if csrf != "" {
+		request.Header.Set(api.BrowserCSRFHeader, csrf)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func cookieMap(cookies []*http.Cookie) map[string]*http.Cookie {
+	mapped := make(map[string]*http.Cookie, len(cookies))
+	for _, cookie := range cookies {
+		mapped[cookie.Name] = cookie
+	}
+	return mapped
+}
+
+func assertBrowserCookieContract(
+	t *testing.T,
+	cookies map[string]*http.Cookie,
+) {
+	t.Helper()
+	if len(cookies) != 4 {
+		t.Fatalf("browser cookies = %#v", cookies)
+	}
+	access := cookies[api.BrowserAccessCookieName]
+	refresh := cookies[api.BrowserRefreshCookieName]
+	binding := cookies[api.BrowserCSRFBindingCookieName]
+	csrf := cookies[api.BrowserCSRFCookieName]
+	if access == nil || refresh == nil || binding == nil || csrf == nil ||
+		!access.HttpOnly || !refresh.HttpOnly || !binding.HttpOnly ||
+		csrf.HttpOnly || !access.Secure || !refresh.Secure ||
+		!binding.Secure || !csrf.Secure ||
+		access.SameSite != http.SameSiteLaxMode ||
+		refresh.SameSite != http.SameSiteLaxMode ||
+		refresh.Path != model.APIURLSuffix+"/auth/refresh" {
+		t.Fatalf("browser cookie contract = %#v", cookies)
+	}
 }
 
 func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SqlStore {

@@ -167,7 +167,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	login := loginIntegrationUser(
 		t, helper.Server.Handler(), user.Username, password,
-		model.SessionClientDesktop, "hierarchy-device",
+		model.SessionClientCLI, "hierarchy-device",
 	)
 	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
 	if appErr != nil {
@@ -247,7 +247,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	}
 	login := loginIntegrationUser(
 		t, helper.Server.Handler(), viewer.Username, password,
-		model.SessionClientDesktop, "directory-device",
+		model.SessionClientCLI, "directory-device",
 	)
 	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
 	if appErr != nil {
