@@ -24,6 +24,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type BuildInfo struct {
@@ -64,17 +65,32 @@ type Routes struct {
 	Root    *mux.Router
 	APIRoot *mux.Router
 
-	Health         *mux.Router
-	System         *mux.Router
-	Authentication *mux.Router
-	Users          *mux.Router
-	CurrentUser    *mux.Router
-	Audits         *mux.Router
-	Bootstrap      *mux.Router
-	Roles          *mux.Router
-	Role           *mux.Router
-	RoleBindings   *mux.Router
-	RoleBinding    *mux.Router
+	Health             *mux.Router
+	System             *mux.Router
+	Authentication     *mux.Router
+	Users              *mux.Router
+	CurrentUser        *mux.Router
+	Audits             *mux.Router
+	Bootstrap          *mux.Router
+	Roles              *mux.Router
+	Role               *mux.Router
+	RoleBindings       *mux.Router
+	RoleBinding        *mux.Router
+	Institution        *mux.Router
+	AcademicUnits      *mux.Router
+	AcademicUnit       *mux.Router
+	Programmes         *mux.Router
+	Programme          *mux.Router
+	ProgrammeLevels    *mux.Router
+	ProgrammeLevel     *mux.Router
+	AcademicPeriods    *mux.Router
+	AcademicPeriod     *mux.Router
+	Classes            *mux.Router
+	Class              *mux.Router
+	User               *mux.Router
+	Affiliation        *mux.Router
+	AcademicUnitMember *mux.Router
+	ClassMember        *mux.Router
 }
 
 type Options struct {
@@ -116,6 +132,54 @@ type Users interface {
 		model.RequestMetadata,
 		string,
 	) (*model.User, *model.AppError)
+	ListUsers(context.Context, model.Principal, model.RequestMetadata, store.UserListOptions) ([]*model.User, *model.AppError)
+	PatchUser(context.Context, model.Principal, model.RequestMetadata, string, *model.UserPatch) (*model.User, *model.AppError)
+	SetUserDisabled(context.Context, model.Principal, model.RequestMetadata, string, bool) (*model.User, *model.AppError)
+	RevokeUserSessions(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+}
+
+type AcademicAdministration interface {
+	GetInstitution(context.Context, model.Principal, model.RequestMetadata) (*model.Institution, *model.AppError)
+	PatchInstitution(context.Context, model.Principal, model.RequestMetadata, *model.InstitutionPatch) (*model.Institution, *model.AppError)
+	GetAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string) (*model.AcademicUnit, *model.AppError)
+	ListAcademicUnits(context.Context, model.Principal, model.RequestMetadata, string) ([]*model.AcademicUnit, *model.AppError)
+	SearchAcademicUnits(context.Context, model.Principal, model.RequestMetadata, string, int) ([]*model.AcademicUnit, *model.AppError)
+	CreateAcademicUnit(context.Context, model.Principal, model.RequestMetadata, *model.AcademicUnit) (*model.AcademicUnit, *model.AppError)
+	PatchAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string, *model.AcademicUnitPatch) (*model.AcademicUnit, *model.AppError)
+	ArchiveAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+	GetProgramme(context.Context, model.Principal, model.RequestMetadata, string) (*model.Programme, *model.AppError)
+	ListProgrammes(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.Programme, *model.AppError)
+	CreateProgramme(context.Context, model.Principal, model.RequestMetadata, *model.Programme) (*model.Programme, *model.AppError)
+	PatchProgramme(context.Context, model.Principal, model.RequestMetadata, string, *model.ProgrammePatch) (*model.Programme, *model.AppError)
+	ArchiveProgramme(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+	GetProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, string) (*model.ProgrammeLevel, *model.AppError)
+	ListProgrammeLevels(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.ProgrammeLevel, *model.AppError)
+	CreateProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, *model.ProgrammeLevel) (*model.ProgrammeLevel, *model.AppError)
+	PatchProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, string, *model.ProgrammeLevelPatch) (*model.ProgrammeLevel, *model.AppError)
+	ArchiveProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+	GetAcademicPeriod(context.Context, model.Principal, model.RequestMetadata, string) (*model.AcademicPeriod, *model.AppError)
+	ListAcademicPeriods(context.Context, model.Principal, model.RequestMetadata, string, int) ([]*model.AcademicPeriod, *model.AppError)
+	CreateAcademicPeriod(context.Context, model.Principal, model.RequestMetadata, *model.AcademicPeriod) (*model.AcademicPeriod, *model.AppError)
+	PatchAcademicPeriod(context.Context, model.Principal, model.RequestMetadata, string, *model.AcademicPeriodPatch) (*model.AcademicPeriod, *model.AppError)
+	ArchiveAcademicPeriod(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+	GetClass(context.Context, model.Principal, model.RequestMetadata, string) (*model.Class, *model.AppError)
+	ListClasses(context.Context, model.Principal, model.RequestMetadata, string) ([]*model.Class, *model.AppError)
+	SearchClasses(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.Class, *model.AppError)
+	CreateClass(context.Context, model.Principal, model.RequestMetadata, *model.Class) (*model.Class, *model.AppError)
+	PatchClass(context.Context, model.Principal, model.RequestMetadata, string, *model.ClassPatch) (*model.Class, *model.AppError)
+	ArchiveClass(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+}
+
+type MembershipAdministration interface {
+	ListAffiliations(context.Context, model.Principal, model.RequestMetadata, string) ([]*model.Affiliation, *model.AppError)
+	CreateAffiliation(context.Context, model.Principal, model.RequestMetadata, *model.Affiliation) (*model.Affiliation, *model.AppError)
+	EndAffiliation(context.Context, model.Principal, model.RequestMetadata, string) (*model.Affiliation, *model.AppError)
+	ListAcademicUnitMembers(context.Context, model.Principal, model.RequestMetadata, string, int64) ([]*model.AcademicUnitMember, *model.AppError)
+	CreateAcademicUnitMember(context.Context, model.Principal, model.RequestMetadata, *model.AcademicUnitMember) (*model.AcademicUnitMember, *model.AppError)
+	EndAcademicUnitMember(context.Context, model.Principal, model.RequestMetadata, string) (*model.AcademicUnitMember, *model.AppError)
+	ListClassMembers(context.Context, model.Principal, model.RequestMetadata, string, int64) ([]*model.ClassMember, *model.AppError)
+	EnrollClassMember(context.Context, model.Principal, model.RequestMetadata, *model.ClassMember) (*model.ClassEnrollment, *model.AppError)
+	EndClassMember(context.Context, model.Principal, model.RequestMetadata, string) (*model.ClassMember, *model.AppError)
 }
 
 type Sessions interface {
@@ -199,6 +263,8 @@ type Application interface {
 	Bootstrap
 	Roles
 	RoleBindings
+	AcademicAdministration
+	MembershipAdministration
 }
 
 type API struct {
@@ -253,6 +319,13 @@ func New(options Options) (*API, error) {
 		api.InitBootstrap,
 		api.InitRoles,
 		api.InitRoleBindings,
+		api.InitInstitution,
+		api.InitAcademicUnits,
+		api.InitProgrammes,
+		api.InitProgrammeLevels,
+		api.InitAcademicPeriods,
+		api.InitClasses,
+		api.InitMemberships,
 	}
 	for _, initialize := range initializers {
 		if err := initialize(); err != nil {
@@ -312,6 +385,48 @@ func (a *API) initializeBaseRoutes(apiURLSuffix string) {
 	a.BaseRoutes.RoleBinding = a.subrouter(
 		a.BaseRoutes.RoleBindings,
 		"/{role_binding_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.Institution = a.subrouter(a.BaseRoutes.APIRoot, "/institution")
+	a.BaseRoutes.AcademicUnits = a.subrouter(a.BaseRoutes.APIRoot, "/academic-units")
+	a.BaseRoutes.AcademicUnit = a.subrouter(
+		a.BaseRoutes.AcademicUnits,
+		"/{academic_unit_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.Programmes = a.subrouter(a.BaseRoutes.APIRoot, "/programmes")
+	a.BaseRoutes.Programme = a.subrouter(
+		a.BaseRoutes.Programmes,
+		"/{programme_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.ProgrammeLevels = a.subrouter(a.BaseRoutes.APIRoot, "/programme-levels")
+	a.BaseRoutes.ProgrammeLevel = a.subrouter(
+		a.BaseRoutes.ProgrammeLevels,
+		"/{programme_level_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.AcademicPeriods = a.subrouter(a.BaseRoutes.APIRoot, "/academic-periods")
+	a.BaseRoutes.AcademicPeriod = a.subrouter(
+		a.BaseRoutes.AcademicPeriods,
+		"/{academic_period_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.Classes = a.subrouter(a.BaseRoutes.APIRoot, "/classes")
+	a.BaseRoutes.Class = a.subrouter(
+		a.BaseRoutes.Classes,
+		"/{class_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.User = a.subrouter(
+		a.BaseRoutes.Users,
+		"/{user_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.Affiliation = a.subrouter(
+		a.BaseRoutes.APIRoot,
+		"/affiliations/{affiliation_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.AcademicUnitMember = a.subrouter(
+		a.BaseRoutes.APIRoot,
+		"/academic-unit-members/{academic_unit_member_id:"+canonicalIDRoutePattern()+"}",
+	)
+	a.BaseRoutes.ClassMember = a.subrouter(
+		a.BaseRoutes.APIRoot,
+		"/class-members/{class_member_id:"+canonicalIDRoutePattern()+"}",
 	)
 }
 

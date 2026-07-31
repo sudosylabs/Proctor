@@ -22,6 +22,65 @@ type PermissionChecker interface {
 		model.Action,
 		model.RequestMetadata,
 	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToAcademicUnitForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.Action,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToClassForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.Action,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToProgrammeForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.Action,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToProgrammeLevelForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.Action,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToClassAdministrationForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToUserForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.Action,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToAffiliationForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToAcademicUnitMemberForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
+	PrincipalHasPermissionToClassMemberForRequest(
+		context.Context,
+		model.Principal,
+		string,
+		model.RequestMetadata,
+	) (context.Context, bool, *model.AppError)
 }
 
 func (a *API) requirePermission(

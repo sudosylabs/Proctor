@@ -77,12 +77,15 @@ func (a *API) InitAuthentication() error {
 }
 
 func (a *API) InitUsers() error {
-	return a.Register(
+	if err := a.Register(
 		a.BaseRoutes.CurrentUser,
 		"",
 		http.MethodGet,
 		a.APISessionRequired(currentUserHandler(a.application, a.logger)),
-	)
+	); err != nil {
+		return err
+	}
+	return a.initUserAdministration()
 }
 
 func loginHandler(

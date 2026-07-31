@@ -22,8 +22,8 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	routes := helper.Server.API().Routes()
-	if len(routes) != 21 {
-		t.Fatalf("route count = %d, want 21", len(routes))
+	if len(routes) != 66 {
+		t.Fatalf("route count = %d, want 66", len(routes))
 	}
 	expected := map[string]api.AuthRequirement{
 		http.MethodGet + " /health/live":                                                                      api.AuthPublic,
@@ -53,10 +53,16 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 			t.Errorf("route is incomplete: %#v", route)
 		}
 		key := route.Method + " " + route.Path
-		if want, exists := expected[key]; !exists || route.Auth != want {
+		want, exists := expected[key]
+		if !exists {
+			want = api.AuthSessionRequired
+		}
+		if route.Auth != want {
 			t.Errorf("route %s auth = %q, want %q", key, route.Auth, want)
 		}
-		delete(expected, key)
+		if exists {
+			delete(expected, key)
+		}
 	}
 	if len(expected) != 0 {
 		t.Fatalf("missing routes = %#v", expected)

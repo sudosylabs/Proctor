@@ -22,16 +22,70 @@ type paramsContextKey struct{}
 // Params contains normalized variables selected by the matched route. Handlers
 // consume this object instead of reaching into mux or parsing URL paths.
 type Params struct {
-	RoleId        string
-	RoleBindingId string
+	RoleId               string
+	RoleBindingId        string
+	UserId               string
+	AcademicUnitId       string
+	ProgrammeId          string
+	ProgrammeLevelId     string
+	AcademicPeriodId     string
+	ClassId              string
+	AffiliationId        string
+	AcademicUnitMemberId string
+	ClassMemberId        string
 }
 
 func ParamsFromRequest(request *http.Request) Params {
 	variables := mux.Vars(request)
 	return Params{
-		RoleId:        strings.TrimSpace(variables["role_id"]),
-		RoleBindingId: strings.TrimSpace(variables["role_binding_id"]),
+		RoleId:               strings.TrimSpace(variables["role_id"]),
+		RoleBindingId:        strings.TrimSpace(variables["role_binding_id"]),
+		UserId:               strings.TrimSpace(variables["user_id"]),
+		AcademicUnitId:       strings.TrimSpace(variables["academic_unit_id"]),
+		ProgrammeId:          strings.TrimSpace(variables["programme_id"]),
+		ProgrammeLevelId:     strings.TrimSpace(variables["programme_level_id"]),
+		AcademicPeriodId:     strings.TrimSpace(variables["academic_period_id"]),
+		ClassId:              strings.TrimSpace(variables["class_id"]),
+		AffiliationId:        strings.TrimSpace(variables["affiliation_id"]),
+		AcademicUnitMemberId: strings.TrimSpace(variables["academic_unit_member_id"]),
+		ClassMemberId:        strings.TrimSpace(variables["class_member_id"]),
 	}
+}
+
+func (p Params) RequireUserId() (string, *model.AppError) {
+	return requirePathId("user_id", p.UserId)
+}
+
+func (p Params) RequireAcademicUnitId() (string, *model.AppError) {
+	return requirePathId("academic_unit_id", p.AcademicUnitId)
+}
+
+func (p Params) RequireProgrammeId() (string, *model.AppError) {
+	return requirePathId("programme_id", p.ProgrammeId)
+}
+
+func (p Params) RequireProgrammeLevelId() (string, *model.AppError) {
+	return requirePathId("programme_level_id", p.ProgrammeLevelId)
+}
+
+func (p Params) RequireAcademicPeriodId() (string, *model.AppError) {
+	return requirePathId("academic_period_id", p.AcademicPeriodId)
+}
+
+func (p Params) RequireClassId() (string, *model.AppError) {
+	return requirePathId("class_id", p.ClassId)
+}
+
+func (p Params) RequireAffiliationId() (string, *model.AppError) {
+	return requirePathId("affiliation_id", p.AffiliationId)
+}
+
+func (p Params) RequireAcademicUnitMemberId() (string, *model.AppError) {
+	return requirePathId("academic_unit_member_id", p.AcademicUnitMemberId)
+}
+
+func (p Params) RequireClassMemberId() (string, *model.AppError) {
+	return requirePathId("class_member_id", p.ClassMemberId)
 }
 
 func RequestParams(ctx context.Context) (Params, bool) {
