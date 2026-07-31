@@ -3,14 +3,34 @@
 This directory contains the new Proctor application server. It is an
 independent Go module and is licensed under AGPL-3.0-only.
 
-The server currently establishes one cohesive construction flow:
+The server exposes a narrow module-root construction and lifecycle facade:
 
-```text
-config.Store → platform.Service → app.Server/app.App → app/api
+```go
+node, err := server.New(ctx, server.WithConfigPath(path))
+if err != nil {
+	return err
+}
+defer node.Close()
+return node.Start(ctx)
 ```
 
-`app.NewServer` is the sole composition root. The shared `testlib` constructs
-that same graph with an in-memory config store and captured logs.
+During the incremental architecture migration, this facade delegates to the
+existing cohesive construction flow:
+
+```text
+server.New → app.NewServer → config.Store → platform.Service → app.App → app/api
+```
+
+The legacy constructor currently starts bounded WebSocket replay maintenance
+during construction. A successfully constructed node must therefore always be
+closed, even if it is never started. Moving that background lifecycle into the
+module-root owner is part of the subsequent migration.
+
+The facade intentionally exposes only construction, start, close, and
+readiness. Runtime ownership moves from `app.NewServer` into the module-root
+package in subsequent migration tickets; existing callers and the shared
+`testlib` continue using the legacy constructor until their dedicated
+migrations.
 
 The flat `model` package now establishes the durable model contract:
 
