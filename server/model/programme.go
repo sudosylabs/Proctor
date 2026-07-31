@@ -17,6 +17,24 @@ type Programme struct {
 	Description    string `json:"description"`
 }
 
+type ProgrammePatch struct {
+	Name        *string `json:"name,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+func (p *Programme) Patch(patch *ProgrammePatch) {
+	if patch.Name != nil {
+		p.Name = *patch.Name
+	}
+	if patch.DisplayName != nil {
+		p.DisplayName = *patch.DisplayName
+	}
+	if patch.Description != nil {
+		p.Description = *patch.Description
+	}
+}
+
 func (p *Programme) PreSave() {
 	preSave(&p.Id, &p.CreateAt, &p.UpdateAt)
 	sanitizeNamed(&p.Name, &p.DisplayName, &p.Description)

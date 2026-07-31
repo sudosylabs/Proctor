@@ -294,7 +294,9 @@ func (s SqlRoleBindingStore) End(
 				SELECT 1
 				  FROM role_bindings rb
 				  JOIN roles r ON r.id = rb.role_id
+				  JOIN users u ON u.id = rb.user_id
 				 WHERE r.name = $1 AND r.built_in = true AND r.delete_at = 0
+				   AND u.delete_at = 0 AND u.disabled_at = 0
 				   AND rb.id <> $2 AND rb.scope_type = 'institution'
 				   AND rb.scope_id = $3 AND rb.delete_at = 0
 				   AND rb.start_at <= $4

@@ -135,6 +135,32 @@ func (s SqlProgrammeStore) ListByAcademicUnit(
 	return programmes, nil
 }
 
+func (s SqlProgrammeStore) SearchByAcademicUnit(
+	ctx context.Context,
+	academicUnitID string,
+	term string,
+	limit int,
+) ([]*model.Programme, error) {
+	if limit < 1 || limit > 200 {
+		return nil, store.NewErrInvalidInput("programme", "limit", limit)
+	}
+	query := s.programmesQuery.Where(sq.Eq{
+		"programmes.academic_unit_id": academicUnitID,
+		"programmes.delete_at":        int64(0),
+	}).Where("(programmes.name ILIKE ? OR programmes.display_name ILIKE ?)",
+		"%"+term+"%", "%"+term+"%").
+		OrderBy("programmes.name", "programmes.id").Limit(uint64(limit))
+	rows := []programmeRow{}
+	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
+		return nil, fmt.Errorf("search programmes: %w", err)
+	}
+	result := make([]*model.Programme, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, row.model())
+	}
+	return result, nil
+}
+
 func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
 	if programme == nil {
 		return nil, store.NewErrInvalidInput("programme", "value", nil)
@@ -161,6 +187,42 @@ func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programm
 		return nil, err
 	}
 	return &candidate, nil
+}
+
+func (s SqlProgrammeStore) Delete(
+	ctx context.Context,
+	id string,
+	deleteAt int64,
+) (*model.Programme, error) {
+	if deleteAt <= 0 {
+		return nil, store.NewErrInvalidInput("programme", "delete_at", deleteAt)
+	}
+	current, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var dependent bool
+	if err := s.GetMaster().Get(ctx, &dependent, `
+		SELECT EXISTS (
+			SELECT 1 FROM programme_levels
+			 WHERE programme_id = ? AND delete_at = 0
+		)`, id); err != nil {
+		return nil, fmt.Errorf("check programme archive dependencies: %w", err)
+	}
+	if dependent {
+		return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
+	}
+	result, err := s.GetMaster().Exec(ctx, `
+		UPDATE programmes SET update_at = ?, delete_at = ?
+		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id)
+	if err != nil {
+		return nil, fmt.Errorf("archive programme: %w", err)
+	}
+	if err := requireAffected(result, "programme", id); err != nil {
+		return nil, err
+	}
+	current.UpdateAt, current.DeleteAt = deleteAt, deleteAt
+	return current, nil
 }
 
 func newProgrammeRow(programme *model.Programme) programmeRow {

@@ -17,6 +17,24 @@ type ProgrammeLevel struct {
 	Description string `json:"description"`
 }
 
+type ProgrammeLevelPatch struct {
+	Name        *string `json:"name,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+func (pl *ProgrammeLevel) Patch(p *ProgrammeLevelPatch) {
+	if p.Name != nil {
+		pl.Name = *p.Name
+	}
+	if p.DisplayName != nil {
+		pl.DisplayName = *p.DisplayName
+	}
+	if p.Description != nil {
+		pl.Description = *p.Description
+	}
+}
+
 func (pl *ProgrammeLevel) PreSave() {
 	preSave(&pl.Id, &pl.CreateAt, &pl.UpdateAt)
 	sanitizeNamed(&pl.Name, &pl.DisplayName, &pl.Description)

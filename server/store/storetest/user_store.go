@@ -21,6 +21,103 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	t.Run("Update", func(t *testing.T) { testUserStoreUpdate(t, ss) })
 	t.Run("UpdateLastLogin", func(t *testing.T) { testUserStoreUpdateLastLogin(t, ss) })
 	t.Run("Uniqueness", func(t *testing.T) { testUserStoreUniqueness(t, ss) })
+	t.Run("ListAndDisable", func(t *testing.T) { testUserStoreListAndDisable(t, ss) })
+	t.Run("ProtectLastAdministrator", func(t *testing.T) {
+		testUserStoreProtectLastAdministrator(t, ss)
+	})
+}
+
+func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	role, err := ss.Role().Save(ctx, &model.Role{
+		Name:        model.SystemAdministratorRoleName,
+		DisplayName: "System Administrator",
+		BuiltIn:     true,
+		Permissions: model.AllActions(),
+	})
+	requireNoError(t, err)
+	first := saveUser(t, ctx, ss)
+	firstBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserId: first.Id, RoleId: role.Id,
+		ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		StartAt: model.GetMillis() - 100,
+	})
+	requireNoError(t, err)
+	at := model.GetMillis()
+	_, err = ss.User().SetDisabled(ctx, first.Id, at, at)
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) ||
+		conflict.Constraint != "users_last_system_admin" {
+		t.Fatalf("disable last administrator error = %v", err)
+	}
+	second := saveUser(t, ctx, ss)
+	secondBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserId: second.Id, RoleId: role.Id,
+		ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		StartAt: at - 100,
+	})
+	requireNoError(t, err)
+	_, err = ss.User().SetDisabled(ctx, first.Id, at, at)
+	requireNoError(t, err)
+	if _, err = ss.RoleBinding().End(ctx, secondBinding.Id, at+1); !errors.As(err, &conflict) {
+		t.Fatalf("end only enabled administrator binding error = %v", err)
+	}
+	if _, err = ss.RoleBinding().End(ctx, firstBinding.Id, at+1); err != nil {
+		t.Fatalf("ending disabled administrator binding should be allowed: %v", err)
+	}
+}
+
+func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	first := newUser()
+	first.Username = "aaa-" + model.NewId()
+	first.DisplayName = "Searchable Alpha"
+	first, err := ss.User().Save(ctx, first)
+	requireNoError(t, err)
+	second := newUser()
+	second.Username = "bbb-" + model.NewId()
+	second, err = ss.User().Save(ctx, second)
+	requireNoError(t, err)
+
+	found, err := ss.User().List(ctx, store.UserListOptions{
+		Query: "Searchable Alpha", Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(found) != 1 || found[0].Id != first.Id {
+		t.Fatalf("List(search) = %#v", found)
+	}
+	page, err := ss.User().List(ctx, store.UserListOptions{
+		AfterUsername: first.Username, AfterId: first.Id, Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(page) == 0 || page[0].Id != second.Id {
+		t.Fatalf("List(after) = %#v", page)
+	}
+	at := model.GetMillis() + 100
+	disabled, err := ss.User().SetDisabled(ctx, first.Id, at, at)
+	requireNoError(t, err)
+	if disabled.DisabledAt != at {
+		t.Fatalf("SetDisabled() = %#v", disabled)
+	}
+	active, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
+	requireNoError(t, err)
+	for _, user := range active {
+		if user.Id == first.Id {
+			t.Fatalf("disabled user returned in active list: %#v", active)
+		}
+	}
+	all, err := ss.User().List(ctx, store.UserListOptions{
+		Limit: 10, IncludeDisabled: true,
+	})
+	requireNoError(t, err)
+	seen := false
+	for _, user := range all {
+		seen = seen || user.Id == first.Id
+	}
+	if !seen {
+		t.Fatalf("disabled user missing from inclusive list: %#v", all)
+	}
 }
 
 func testUserStoreSaveAndGet(t *testing.T, ss store.Store) {

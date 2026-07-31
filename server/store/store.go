@@ -21,6 +21,9 @@ type Store interface {
 	AcademicPeriod() AcademicPeriodStore
 	Class() ClassStore
 	User() UserStore
+	Affiliation() AffiliationStore
+	AcademicUnitMember() AcademicUnitMemberStore
+	ClassMember() ClassMemberStore
 	PasswordCredential() PasswordCredentialStore
 	Session() SessionStore
 	SessionCredential() SessionCredentialStore
@@ -51,7 +54,9 @@ type AcademicUnitStore interface {
 	Get(context.Context, string) (*model.AcademicUnit, error)
 	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)
 	ListAncestors(context.Context, string) ([]*model.AcademicUnit, error)
+	Search(context.Context, string, string, int) ([]*model.AcademicUnit, error)
 	Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
+	Delete(context.Context, string, int64) (*model.AcademicUnit, error)
 }
 
 // ProgrammeStore persists courses of study owned by academic units.
@@ -60,7 +65,9 @@ type ProgrammeStore interface {
 	Get(context.Context, string) (*model.Programme, error)
 	GetByName(context.Context, string, string) (*model.Programme, error)
 	ListByAcademicUnit(context.Context, string) ([]*model.Programme, error)
+	SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Programme, error)
 	Update(context.Context, *model.Programme) (*model.Programme, error)
+	Delete(context.Context, string, int64) (*model.Programme, error)
 }
 
 // ProgrammeLevelStore persists reusable curriculum stages owned by programmes.
@@ -69,7 +76,9 @@ type ProgrammeLevelStore interface {
 	Get(context.Context, string) (*model.ProgrammeLevel, error)
 	GetByName(context.Context, string, string) (*model.ProgrammeLevel, error)
 	ListByProgramme(context.Context, string) ([]*model.ProgrammeLevel, error)
+	SearchByProgramme(context.Context, string, string, int) ([]*model.ProgrammeLevel, error)
 	Update(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
+	Delete(context.Context, string, int64) (*model.ProgrammeLevel, error)
 }
 
 // AcademicPeriodStore persists institution-wide enrollment periods.
@@ -78,7 +87,9 @@ type AcademicPeriodStore interface {
 	Get(context.Context, string) (*model.AcademicPeriod, error)
 	GetByName(context.Context, string, string) (*model.AcademicPeriod, error)
 	ListByInstitution(context.Context, string) ([]*model.AcademicPeriod, error)
+	SearchByInstitution(context.Context, string, string, int) ([]*model.AcademicPeriod, error)
 	Update(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
+	Delete(context.Context, string, int64) (*model.AcademicPeriod, error)
 }
 
 // ClassStore persists concrete programme-level rosters for academic periods.
@@ -88,8 +99,18 @@ type ClassStore interface {
 	GetByName(context.Context, string, string, string) (*model.Class, error)
 	ListByProgrammeLevel(context.Context, string) ([]*model.Class, error)
 	ListByAcademicPeriod(context.Context, string) ([]*model.Class, error)
+	SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Class, error)
 	GetAcademicUnitId(context.Context, string) (string, error)
 	Update(context.Context, *model.Class) (*model.Class, error)
+	Delete(context.Context, string, int64) (*model.Class, error)
+}
+
+type UserListOptions struct {
+	Query           string
+	AfterUsername   string
+	AfterId         string
+	Limit           int
+	IncludeDisabled bool
 }
 
 // UserStore persists login-capable accounts without their credentials.
@@ -103,8 +124,50 @@ type UserStore interface {
 	Get(context.Context, string) (*model.User, error)
 	GetByUsername(context.Context, string) (*model.User, error)
 	GetByEmail(context.Context, string) (*model.User, error)
+	List(context.Context, UserListOptions) ([]*model.User, error)
 	Update(context.Context, *model.User) (*model.User, error)
+	SetDisabled(context.Context, string, int64, int64) (*model.User, error)
+	DisableAndRevokeSessions(
+		context.Context,
+		string,
+		int64,
+		string,
+	) (*model.User, []*model.Session, []string, error)
 	UpdateLastLogin(context.Context, string, int64) error
+}
+
+// AffiliationStore persists non-exclusive institution relationships.
+type AffiliationStore interface {
+	Save(context.Context, *model.Affiliation) (*model.Affiliation, error)
+	Get(context.Context, string) (*model.Affiliation, error)
+	ListByUser(context.Context, string) ([]*model.Affiliation, error)
+	ListActiveByUser(context.Context, string, int64) ([]*model.Affiliation, error)
+	End(context.Context, string, int64) (*model.Affiliation, error)
+}
+
+// AcademicUnitMemberStore persists organizational membership without roles.
+type AcademicUnitMemberStore interface {
+	Save(context.Context, *model.AcademicUnitMember) (*model.AcademicUnitMember, error)
+	Get(context.Context, string) (*model.AcademicUnitMember, error)
+	ListByUser(context.Context, string) ([]*model.AcademicUnitMember, error)
+	ListByAcademicUnit(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
+	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
+	End(context.Context, string, int64) (*model.AcademicUnitMember, error)
+}
+
+type ClassEnrollmentResult struct {
+	Membership *model.ClassMember
+	Previous   *model.ClassMember
+}
+
+// ClassMemberStore owns transactional student enrollment and history.
+type ClassMemberStore interface {
+	Enroll(context.Context, *model.ClassMember) (*ClassEnrollmentResult, error)
+	Get(context.Context, string) (*model.ClassMember, error)
+	ListByUser(context.Context, string) ([]*model.ClassMember, error)
+	ListByClass(context.Context, string, int64) ([]*model.ClassMember, error)
+	ListActiveByUser(context.Context, string, int64) ([]*model.ClassMember, error)
+	End(context.Context, string, int64) (*model.ClassMember, error)
 }
 
 // PasswordCredentialStore persists one encoded password hash per local user.

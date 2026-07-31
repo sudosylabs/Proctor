@@ -29,6 +29,25 @@ func TestProgrammeStore(t *testing.T, ss store.Store) {
 	t.Run("EnforceAcademicUnitNameUniqueness", func(t *testing.T) {
 		testProgrammeStoreEnforceAcademicUnitNameUniqueness(t, ss)
 	})
+	t.Run("SearchAndArchive", func(t *testing.T) {
+		testProgrammeStoreSearchAndArchive(t, ss)
+	})
+}
+
+func testProgrammeStoreSearchAndArchive(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	unit, _ := saveProgrammeParents(t, ctx, ss, "archive-programme-parent")
+	programme := saveProgramme(t, ctx, ss, unit.Id, "distinct-robotics")
+	found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.Id, "robot", 10)
+	requireNoError(t, err)
+	if len(found) != 1 || found[0].Id != programme.Id {
+		t.Fatalf("SearchByAcademicUnit() = %#v", found)
+	}
+	archived, err := ss.Programme().Delete(ctx, programme.Id, model.GetMillis())
+	requireNoError(t, err)
+	if archived.DeleteAt == 0 {
+		t.Fatalf("Delete() = %#v", archived)
+	}
 }
 
 func testProgrammeStoreSave(t *testing.T, ss store.Store) {

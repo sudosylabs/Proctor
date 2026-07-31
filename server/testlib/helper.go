@@ -83,6 +83,18 @@ func (s *Store) User() store.UserStore {
 	return nil
 }
 
+func (s *Store) Affiliation() store.AffiliationStore {
+	return nil
+}
+
+func (s *Store) AcademicUnitMember() store.AcademicUnitMemberStore {
+	return nil
+}
+
+func (s *Store) ClassMember() store.ClassMemberStore {
+	return nil
+}
+
 func (s *Store) PasswordCredential() store.PasswordCredentialStore {
 	return nil
 }

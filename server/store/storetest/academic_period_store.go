@@ -29,6 +29,29 @@ func TestAcademicPeriodStore(t *testing.T, ss store.Store) {
 	t.Run("EnforceInstitutionNameUniqueness", func(t *testing.T) {
 		testAcademicPeriodStoreEnforceInstitutionNameUniqueness(t, ss)
 	})
+	t.Run("SearchAndArchive", func(t *testing.T) {
+		testAcademicPeriodStoreSearchAndArchive(t, ss)
+	})
+}
+
+func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	period := saveAcademicPeriod(
+		t, ctx, ss, institution.Id, "distinct-summer-term", 2_000_000_000_000,
+	)
+	found, err := ss.AcademicPeriod().SearchByInstitution(
+		ctx, institution.Id, "summer", 10,
+	)
+	requireNoError(t, err)
+	if len(found) != 1 || found[0].Id != period.Id {
+		t.Fatalf("SearchByInstitution() = %#v", found)
+	}
+	archived, err := ss.AcademicPeriod().Delete(ctx, period.Id, model.GetMillis())
+	requireNoError(t, err)
+	if archived.DeleteAt == 0 {
+		t.Fatalf("Delete() = %#v", archived)
+	}
 }
 
 func testAcademicPeriodStoreSave(t *testing.T, ss store.Store) {

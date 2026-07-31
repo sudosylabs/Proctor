@@ -62,6 +62,44 @@ type User struct {
 	DisabledAt     int64  `json:"disabled_at,omitempty"`
 }
 
+type UserPatch struct {
+	Username      *string `json:"username,omitempty"`
+	Email         *string `json:"email,omitempty"`
+	EmailVerified *bool   `json:"email_verified,omitempty"`
+	DisplayName   *string `json:"display_name,omitempty"`
+	FirstName     *string `json:"first_name,omitempty"`
+	LastName      *string `json:"last_name,omitempty"`
+	Locale        *string `json:"locale,omitempty"`
+	Timezone      *string `json:"timezone,omitempty"`
+}
+
+func (u *User) Patch(p *UserPatch) {
+	if p.Username != nil {
+		u.Username = *p.Username
+	}
+	if p.Email != nil {
+		u.Email = *p.Email
+	}
+	if p.EmailVerified != nil {
+		u.EmailVerified = *p.EmailVerified
+	}
+	if p.DisplayName != nil {
+		u.DisplayName = *p.DisplayName
+	}
+	if p.FirstName != nil {
+		u.FirstName = *p.FirstName
+	}
+	if p.LastName != nil {
+		u.LastName = *p.LastName
+	}
+	if p.Locale != nil {
+		u.Locale = *p.Locale
+	}
+	if p.Timezone != nil {
+		u.Timezone = *p.Timezone
+	}
+}
+
 func (u *User) PreSave() {
 	if u.Username == "" {
 		u.Username = "u" + NewId()

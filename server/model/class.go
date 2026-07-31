@@ -18,6 +18,32 @@ type Class struct {
 	Description      string `json:"description"`
 }
 
+type ClassPatch struct {
+	ProgrammeLevelId *string `json:"programme_level_id,omitempty"`
+	AcademicPeriodId *string `json:"academic_period_id,omitempty"`
+	Name             *string `json:"name,omitempty"`
+	DisplayName      *string `json:"display_name,omitempty"`
+	Description      *string `json:"description,omitempty"`
+}
+
+func (c *Class) Patch(p *ClassPatch) {
+	if p.ProgrammeLevelId != nil {
+		c.ProgrammeLevelId = *p.ProgrammeLevelId
+	}
+	if p.AcademicPeriodId != nil {
+		c.AcademicPeriodId = *p.AcademicPeriodId
+	}
+	if p.Name != nil {
+		c.Name = *p.Name
+	}
+	if p.DisplayName != nil {
+		c.DisplayName = *p.DisplayName
+	}
+	if p.Description != nil {
+		c.Description = *p.Description
+	}
+}
+
 func (c *Class) PreSave() {
 	preSave(&c.Id, &c.CreateAt, &c.UpdateAt)
 	sanitizeNamed(&c.Name, &c.DisplayName, &c.Description)

@@ -145,6 +145,32 @@ func (s SqlAcademicPeriodStore) ListByInstitution(
 	return periods, nil
 }
 
+func (s SqlAcademicPeriodStore) SearchByInstitution(
+	ctx context.Context,
+	institutionID string,
+	term string,
+	limit int,
+) ([]*model.AcademicPeriod, error) {
+	if limit < 1 || limit > 200 {
+		return nil, store.NewErrInvalidInput("academic_period", "limit", limit)
+	}
+	query := s.academicPeriodsQuery.Where(sq.Eq{
+		"academic_periods.institution_id": institutionID,
+		"academic_periods.delete_at":      int64(0),
+	}).Where("(academic_periods.name ILIKE ? OR academic_periods.display_name ILIKE ?)",
+		"%"+term+"%", "%"+term+"%").
+		OrderBy("academic_periods.start_at", "academic_periods.id").Limit(uint64(limit))
+	rows := []academicPeriodRow{}
+	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
+		return nil, fmt.Errorf("search academic periods: %w", err)
+	}
+	result := make([]*model.AcademicPeriod, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, row.model())
+	}
+	return result, nil
+}
+
 func (s SqlAcademicPeriodStore) Update(
 	ctx context.Context,
 	period *model.AcademicPeriod,
@@ -180,6 +206,47 @@ func (s SqlAcademicPeriodStore) Update(
 		return nil, err
 	}
 	return &candidate, nil
+}
+
+func (s SqlAcademicPeriodStore) Delete(
+	ctx context.Context,
+	id string,
+	deleteAt int64,
+) (*model.AcademicPeriod, error) {
+	if deleteAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_period", "delete_at", deleteAt)
+	}
+	current, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var dependent bool
+	if err := s.GetMaster().Get(ctx, &dependent, `
+		SELECT EXISTS (
+			SELECT 1 FROM classes WHERE academic_period_id = ? AND delete_at = 0
+			UNION ALL
+			SELECT 1 FROM class_members WHERE academic_period_id = ? AND delete_at = 0
+		)`, id, id); err != nil {
+		return nil, fmt.Errorf("check academic period archive dependencies: %w", err)
+	}
+	if dependent {
+		return nil, store.NewErrConflict(
+			"academic_period",
+			"academic_period_has_active_dependents",
+			nil,
+		)
+	}
+	result, err := s.GetMaster().Exec(ctx, `
+		UPDATE academic_periods SET update_at = ?, delete_at = ?
+		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id)
+	if err != nil {
+		return nil, fmt.Errorf("archive academic period: %w", err)
+	}
+	if err := requireAffected(result, "academic_period", id); err != nil {
+		return nil, err
+	}
+	current.UpdateAt, current.DeleteAt = deleteAt, deleteAt
+	return current, nil
 }
 
 func newAcademicPeriodRow(period *model.AcademicPeriod) academicPeriodRow {

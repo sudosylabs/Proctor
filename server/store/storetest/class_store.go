@@ -34,6 +34,29 @@ func TestClassStore(t *testing.T, ss store.Store) {
 	t.Run("EnforceScopedNameUniqueness", func(t *testing.T) {
 		testClassStoreEnforceScopedNameUniqueness(t, ss)
 	})
+	t.Run("SearchAndArchive", func(t *testing.T) {
+		testClassStoreSearchAndArchive(t, ss)
+	})
+}
+
+func testClassStoreSearchAndArchive(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture := saveClassFixture(t, ctx, ss)
+	class := saveClass(
+		t, ctx, ss, fixture.level.Id, fixture.period.Id, "distinct-class-zeta",
+	)
+	unitID, err := ss.Class().GetAcademicUnitId(ctx, class.Id)
+	requireNoError(t, err)
+	found, err := ss.Class().SearchByAcademicUnit(ctx, unitID, "zeta", 10)
+	requireNoError(t, err)
+	if len(found) != 1 || found[0].Id != class.Id {
+		t.Fatalf("SearchByAcademicUnit() = %#v", found)
+	}
+	archived, err := ss.Class().Delete(ctx, class.Id, model.GetMillis())
+	requireNoError(t, err)
+	if archived.DeleteAt == 0 {
+		t.Fatalf("Delete() = %#v", archived)
+	}
 }
 
 func testClassStoreGetAcademicUnitId(t *testing.T, ss store.Store) {

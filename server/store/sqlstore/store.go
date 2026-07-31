@@ -79,6 +79,9 @@ type SqlStoreStores struct {
 	academicPeriod     store.AcademicPeriodStore
 	class              store.ClassStore
 	user               store.UserStore
+	affiliation        store.AffiliationStore
+	academicUnitMember store.AcademicUnitMemberStore
+	classMember        store.ClassMemberStore
 	passwordCredential store.PasswordCredentialStore
 	session            store.SessionStore
 	sessionCredential  store.SessionCredentialStore
@@ -129,6 +132,9 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 	sqlStore.stores.academicPeriod = newSqlAcademicPeriodStore(sqlStore)
 	sqlStore.stores.class = newSqlClassStore(sqlStore)
 	sqlStore.stores.user = newSqlUserStore(sqlStore)
+	sqlStore.stores.affiliation = newSqlAffiliationStore(sqlStore)
+	sqlStore.stores.academicUnitMember = newSqlAcademicUnitMemberStore(sqlStore)
+	sqlStore.stores.classMember = newSqlClassMemberStore(sqlStore)
 	sqlStore.stores.passwordCredential = newSqlPasswordCredentialStore(sqlStore)
 	sqlStore.stores.session = newSqlSessionStore(sqlStore)
 	sqlStore.stores.sessionCredential = newSqlSessionCredentialStore(sqlStore)
@@ -180,6 +186,18 @@ func (ss *SqlStore) Class() store.ClassStore {
 
 func (ss *SqlStore) User() store.UserStore {
 	return ss.stores.user
+}
+
+func (ss *SqlStore) Affiliation() store.AffiliationStore {
+	return ss.stores.affiliation
+}
+
+func (ss *SqlStore) AcademicUnitMember() store.AcademicUnitMemberStore {
+	return ss.stores.academicUnitMember
+}
+
+func (ss *SqlStore) ClassMember() store.ClassMemberStore {
+	return ss.stores.classMember
 }
 
 func (ss *SqlStore) PasswordCredential() store.PasswordCredentialStore {

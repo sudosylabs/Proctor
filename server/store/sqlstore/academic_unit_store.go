@@ -167,6 +167,35 @@ func (s SqlAcademicUnitStore) ListChildren(ctx context.Context, institutionID, p
 	return units, nil
 }
 
+func (s SqlAcademicUnitStore) Search(
+	ctx context.Context,
+	institutionID string,
+	term string,
+	limit int,
+) ([]*model.AcademicUnit, error) {
+	if limit < 1 || limit > 200 {
+		return nil, store.NewErrInvalidInput("academic_unit", "limit", limit)
+	}
+	query := s.academicUnitsQuery.
+		Where(sq.Eq{
+			"academic_units.institution_id": institutionID,
+			"academic_units.delete_at":      int64(0),
+		}).
+		Where("(academic_units.name ILIKE ? OR academic_units.display_name ILIKE ?)",
+			"%"+term+"%", "%"+term+"%").
+		OrderBy("academic_units.name", "academic_units.id").
+		Limit(uint64(limit))
+	rows := []academicUnitRow{}
+	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
+		return nil, fmt.Errorf("search academic units: %w", err)
+	}
+	units := make([]*model.AcademicUnit, 0, len(rows))
+	for _, row := range rows {
+		units = append(units, row.model())
+	}
+	return units, nil
+}
+
 func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
 	if unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
@@ -208,6 +237,70 @@ func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUn
 		return nil, fmt.Errorf("commit academic unit update: %w", err)
 	}
 	return &candidate, nil
+}
+
+func (s SqlAcademicUnitStore) Delete(
+	ctx context.Context,
+	id string,
+	deleteAt int64,
+) (*model.AcademicUnit, error) {
+	if deleteAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit", "delete_at", deleteAt)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin academic unit archive: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+		return nil, err
+	}
+	current, err := academicUnitFromExecutor(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	var dependent bool
+	if err := tx.Get(ctx, &dependent, `
+		SELECT EXISTS (
+			SELECT 1 FROM academic_units WHERE parent_id = ? AND delete_at = 0
+			UNION ALL
+			SELECT 1 FROM programmes WHERE academic_unit_id = ? AND delete_at = 0
+			UNION ALL
+			SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND delete_at = 0 AND end_at = 0
+			UNION ALL
+			SELECT 1 FROM role_bindings WHERE scope_type = 'academic_unit' AND scope_id = ? AND delete_at = 0 AND end_at = 0
+		)`, id, id, id, id); err != nil {
+		return nil, fmt.Errorf("check academic unit archive dependencies: %w", err)
+	}
+	if dependent {
+		return nil, store.NewErrConflict("academic_unit", "academic_unit_has_active_dependents", nil)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE academic_units SET update_at = ?, delete_at = ?
+		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id); err != nil {
+		return nil, fmt.Errorf("archive academic unit: %w", err)
+	}
+	current.UpdateAt = deleteAt
+	current.DeleteAt = deleteAt
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit academic unit archive: %w", err)
+	}
+	return current, nil
+}
+
+func academicUnitFromExecutor(
+	ctx context.Context,
+	executor sqlxExecutor,
+	id string,
+) (*model.AcademicUnit, error) {
+	var row academicUnitRow
+	if err := executor.Get(ctx, &row, `
+		SELECT id, create_at, update_at, delete_at, institution_id, parent_id,
+		       name, display_name, description
+		  FROM academic_units WHERE id = ? AND delete_at = 0 FOR UPDATE`, id); err != nil {
+		return nil, translateError("academic_unit", id, err)
+	}
+	return row.model(), nil
 }
 
 func lockAcademicUnitHierarchy(ctx context.Context, tx sqlxExecutor) error {

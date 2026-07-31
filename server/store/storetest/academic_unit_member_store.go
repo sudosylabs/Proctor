@@ -1,0 +1,56 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package storetest
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
+)
+
+func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.Id, "", "member-unit")
+	user := saveUser(t, ctx, ss)
+	start := model.GetMillis() + 1000
+	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitId: unit.Id, UserId: user.Id, StartAt: start,
+	})
+	requireNoError(t, err)
+	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.Id, start+1)
+	requireNoError(t, err)
+	if len(active) != 1 || active[0].Id != saved.Id {
+		t.Fatalf("ListByAcademicUnit() = %#v", active)
+	}
+	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.Id, start+1)
+	requireNoError(t, err)
+	if len(byUser) != 1 || byUser[0].AcademicUnitId != unit.Id {
+		t.Fatalf("ListActiveByUser() = %#v", byUser)
+	}
+	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitId: unit.Id, UserId: user.Id, StartAt: start + 2,
+	})
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) {
+		t.Fatalf("duplicate active membership error = %v", err)
+	}
+	ended, err := ss.AcademicUnitMember().End(ctx, saved.Id, start+10)
+	requireNoError(t, err)
+	if ended.EndAt != start+10 {
+		t.Fatalf("End() = %#v", ended)
+	}
+	history, err := ss.AcademicUnitMember().ListByUser(ctx, user.Id)
+	requireNoError(t, err)
+	if len(history) != 1 || history[0].EndAt == 0 {
+		t.Fatalf("ListByUser() = %#v", history)
+	}
+	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitId: unit.Id, UserId: user.Id, StartAt: start + 10,
+	})
+	requireNoError(t, err)
+}

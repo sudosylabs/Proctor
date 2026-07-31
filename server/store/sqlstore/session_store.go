@@ -386,8 +386,27 @@ func (s SqlSessionStore) RevokeAllForUser(
 	if err := lockUserSessions(ctx, tx, userID); err != nil {
 		return nil, nil, err
 	}
+	rows, hashes, err := revokeAllUserSessions(
+		ctx, tx, userID, revokedAt, reason,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("commit user session revocation: %w", err)
+	}
+	return revokedSessionModels(rows, revokedAt, reason), hashes, nil
+}
+
+func revokeAllUserSessions(
+	ctx context.Context,
+	executor sqlxExecutor,
+	userID string,
+	revokedAt int64,
+	reason string,
+) ([]sessionRow, []string, error) {
 	hashes := []string{}
-	if err := tx.Select(ctx, &hashes, `
+	if err := executor.Select(ctx, &hashes, `
 		SELECT credential.token_hash
 		  FROM session_credentials credential
 		  JOIN sessions session ON session.id = credential.session_id
@@ -402,7 +421,7 @@ func (s SqlSessionStore) RevokeAllForUser(
 		return nil, nil, fmt.Errorf("select user session credentials: %w", err)
 	}
 	rows := []sessionRow{}
-	if err := tx.Select(ctx, &rows, `
+	if err := executor.Select(ctx, &rows, `
 		SELECT id, create_at, update_at, delete_at, user_id, client_type,
 		       device_id, device_name, authentication_method,
 		       authentication_strength, authenticated_at, mfa_completed_at,
@@ -415,7 +434,7 @@ func (s SqlSessionStore) RevokeAllForUser(
 	); err != nil {
 		return nil, nil, fmt.Errorf("select user sessions: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `
+	if _, err := executor.Exec(ctx, `
 		UPDATE session_credentials credential
 		   SET update_at = GREATEST(credential.update_at, ?), revoked_at = ?
 		  FROM sessions session
@@ -431,7 +450,7 @@ func (s SqlSessionStore) RevokeAllForUser(
 	); err != nil {
 		return nil, nil, fmt.Errorf("revoke user session credentials: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `
+	if _, err := executor.Exec(ctx, `
 		UPDATE sessions
 		   SET update_at = GREATEST(update_at, ?),
 		       revoked_at = ?,
@@ -444,9 +463,14 @@ func (s SqlSessionStore) RevokeAllForUser(
 	); err != nil {
 		return nil, nil, fmt.Errorf("revoke user sessions: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("commit user session revocation: %w", err)
-	}
+	return rows, hashes, nil
+}
+
+func revokedSessionModels(
+	rows []sessionRow,
+	revokedAt int64,
+	reason string,
+) []*model.Session {
 	sessions := make([]*model.Session, 0, len(rows))
 	for _, row := range rows {
 		session := row.model()
@@ -455,7 +479,7 @@ func (s SqlSessionStore) RevokeAllForUser(
 		session.RevocationReason = model.SanitizeUnicode(reason)
 		sessions = append(sessions, session)
 	}
-	return sessions, hashes, nil
+	return sessions
 }
 
 func lockUserSessions(

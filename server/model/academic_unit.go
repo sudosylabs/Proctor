@@ -21,6 +21,28 @@ type AcademicUnit struct {
 	Description   string `json:"description"`
 }
 
+type AcademicUnitPatch struct {
+	ParentId    *string `json:"parent_id,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+func (au *AcademicUnit) Patch(p *AcademicUnitPatch) {
+	if p.ParentId != nil {
+		au.ParentId = *p.ParentId
+	}
+	if p.Name != nil {
+		au.Name = *p.Name
+	}
+	if p.DisplayName != nil {
+		au.DisplayName = *p.DisplayName
+	}
+	if p.Description != nil {
+		au.Description = *p.Description
+	}
+}
+
 func (au *AcademicUnit) PreSave() {
 	preSave(&au.Id, &au.CreateAt, &au.UpdateAt)
 	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)

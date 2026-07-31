@@ -29,6 +29,25 @@ func TestProgrammeLevelStore(t *testing.T, ss store.Store) {
 	t.Run("EnforceProgrammeNameUniqueness", func(t *testing.T) {
 		testProgrammeLevelStoreEnforceProgrammeNameUniqueness(t, ss)
 	})
+	t.Run("SearchAndArchive", func(t *testing.T) {
+		testProgrammeLevelStoreSearchAndArchive(t, ss)
+	})
+}
+
+func testProgrammeLevelStoreSearchAndArchive(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	_, programme := saveProgrammeParents(t, ctx, ss, "archive-level-programme")
+	level := saveProgrammeLevel(t, ctx, ss, programme.Id, "distinct-foundation")
+	found, err := ss.ProgrammeLevel().SearchByProgramme(ctx, programme.Id, "foundation", 10)
+	requireNoError(t, err)
+	if len(found) != 1 || found[0].Id != level.Id {
+		t.Fatalf("SearchByProgramme() = %#v", found)
+	}
+	archived, err := ss.ProgrammeLevel().Delete(ctx, level.Id, model.GetMillis())
+	requireNoError(t, err)
+	if archived.DeleteAt == 0 {
+		t.Fatalf("Delete() = %#v", archived)
+	}
 }
 
 func testProgrammeLevelStoreSave(t *testing.T, ss store.Store) {

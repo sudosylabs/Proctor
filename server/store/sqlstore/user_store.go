@@ -169,6 +169,47 @@ func (s SqlUserStore) GetByEmail(ctx context.Context, email string) (*model.User
 	}), email)
 }
 
+func (s SqlUserStore) List(
+	ctx context.Context,
+	options store.UserListOptions,
+) ([]*model.User, error) {
+	if options.Limit < 1 || options.Limit > 200 ||
+		(options.AfterUsername == "") != (options.AfterId == "") {
+		return nil, store.NewErrInvalidInput("user", "list_options", nil)
+	}
+	query := s.usersQuery.Where(sq.Eq{"users.delete_at": int64(0)})
+	if !options.IncludeDisabled {
+		query = query.Where(sq.Eq{"users.disabled_at": int64(0)})
+	}
+	term := strings.TrimSpace(options.Query)
+	if term != "" {
+		pattern := "%" + term + "%"
+		query = query.Where(`(
+			users.username ILIKE ? OR users.email ILIKE ? OR
+			users.display_name ILIKE ? OR users.first_name ILIKE ? OR
+			users.last_name ILIKE ?
+		)`, pattern, pattern, pattern, pattern, pattern)
+	}
+	if options.AfterUsername != "" {
+		query = query.Where(
+			"(users.username > ? OR (users.username = ? AND users.id > ?))",
+			options.AfterUsername,
+			options.AfterUsername,
+			options.AfterId,
+		)
+	}
+	query = query.OrderBy("users.username", "users.id").Limit(uint64(options.Limit))
+	rows := []userRow{}
+	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	users := make([]*model.User, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, row.model())
+	}
+	return users, nil
+}
+
 func (s SqlUserStore) get(
 	ctx context.Context,
 	query sq.SelectBuilder,
@@ -214,6 +255,145 @@ func (s SqlUserStore) Update(ctx context.Context, user *model.User) (*model.User
 		return nil, err
 	}
 	return &candidate, nil
+}
+
+func (s SqlUserStore) SetDisabled(
+	ctx context.Context,
+	id string,
+	disabledAt int64,
+	updateAt int64,
+) (*model.User, error) {
+	if updateAt <= 0 || disabledAt < 0 || (disabledAt != 0 && disabledAt != updateAt) {
+		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin set user disabled state: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	row, err := setUserDisabled(ctx, tx, id, disabledAt, updateAt)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit set user disabled state: %w", err)
+	}
+	return row.model(), nil
+}
+
+func (s SqlUserStore) DisableAndRevokeSessions(
+	ctx context.Context,
+	id string,
+	disabledAt int64,
+	reason string,
+) (*model.User, []*model.Session, []string, error) {
+	if disabledAt <= 0 {
+		return nil, nil, nil, store.NewErrInvalidInput(
+			"user", "disabled_at", disabledAt,
+		)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf(
+			"begin disable user and revoke sessions: %w",
+			err,
+		)
+	}
+	defer func() { _ = tx.Rollback() }()
+	row, err := setUserDisabled(ctx, tx, id, disabledAt, disabledAt)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if err := lockUserSessions(ctx, tx, id); err != nil {
+		return nil, nil, nil, err
+	}
+	sessionRows, hashes, err := revokeAllUserSessions(
+		ctx, tx, id, disabledAt, reason,
+	)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, nil, fmt.Errorf(
+			"commit disable user and revoke sessions: %w",
+			err,
+		)
+	}
+	return row.model(), revokedSessionModels(sessionRows, disabledAt, reason), hashes, nil
+}
+
+func setUserDisabled(
+	ctx context.Context,
+	tx *sqlxTxWrapper,
+	id string,
+	disabledAt int64,
+	updateAt int64,
+) (*userRow, error) {
+	if updateAt <= 0 || disabledAt < 0 || (disabledAt != 0 && disabledAt != updateAt) {
+		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
+	}
+	if disabledAt != 0 {
+		if _, err := tx.Exec(
+			ctx,
+			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+			"proctor:system-administrator-bindings",
+		); err != nil {
+			return nil, fmt.Errorf("lock administrator bindings: %w", err)
+		}
+		var isAdministrator bool
+		if err := tx.Get(ctx, &isAdministrator, `
+			SELECT EXISTS (
+				SELECT 1
+				  FROM role_bindings rb
+				  JOIN roles r ON r.id = rb.role_id
+				 WHERE rb.user_id = $1
+				   AND r.name = $2 AND r.built_in = true AND r.delete_at = 0
+				   AND rb.scope_type = 'institution' AND rb.delete_at = 0
+				   AND rb.start_at <= $3
+				   AND (rb.end_at = 0 OR rb.end_at > $3)
+			)`, id, model.SystemAdministratorRoleName, disabledAt); err != nil {
+			return nil, fmt.Errorf("check administrator binding: %w", err)
+		}
+		if isAdministrator {
+			var remaining bool
+			if err := tx.Get(ctx, &remaining, `
+				SELECT EXISTS (
+					SELECT 1
+					  FROM role_bindings rb
+					  JOIN roles r ON r.id = rb.role_id
+					  JOIN users u ON u.id = rb.user_id
+					 WHERE rb.user_id <> $1
+					   AND r.name = $2 AND r.built_in = true AND r.delete_at = 0
+					   AND rb.scope_type = 'institution' AND rb.delete_at = 0
+					   AND rb.start_at <= $3
+					   AND (rb.end_at = 0 OR rb.end_at > $3)
+					   AND u.delete_at = 0 AND u.disabled_at = 0
+				)`, id, model.SystemAdministratorRoleName, disabledAt); err != nil {
+				return nil, fmt.Errorf("check remaining administrator: %w", err)
+			}
+			if !remaining {
+				return nil, store.NewErrConflict(
+					"user", "users_last_system_admin", nil,
+				)
+			}
+		}
+	}
+	var row userRow
+	if err := tx.Get(ctx, &row, `
+		UPDATE users
+		   SET update_at = ?, disabled_at = ?
+		 WHERE id = ? AND delete_at = 0
+		RETURNING id, create_at, update_at, delete_at, username, email,
+		          email_verified, display_name, first_name, last_name, locale,
+		          timezone, last_login_at, last_activity_at, disabled_at`,
+		updateAt, disabledAt, id,
+	); err != nil {
+		return nil, fmt.Errorf(
+			"set user disabled state: %w",
+			translateError("user", id, err),
+		)
+	}
+	return &row, nil
 }
 
 func (s SqlUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) error {

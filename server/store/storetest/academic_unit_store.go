@@ -25,6 +25,32 @@ func TestAcademicUnitStore(t *testing.T, ss store.Store) {
 	t.Run("EnforceInstitutionNameUniqueness", func(t *testing.T) {
 		testAcademicUnitStoreEnforceInstitutionNameUniqueness(t, ss)
 	})
+	t.Run("SearchAndArchive", func(t *testing.T) {
+		testAcademicUnitStoreSearchAndArchive(t, ss)
+	})
+}
+
+func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	parent := saveAcademicUnit(t, ctx, ss, institution.Id, "", "archive-parent")
+	child := saveAcademicUnit(t, ctx, ss, institution.Id, parent.Id, "distinct-computing")
+	found, err := ss.AcademicUnit().Search(ctx, institution.Id, "distinct-comput", 10)
+	requireNoError(t, err)
+	if len(found) != 1 || found[0].Id != child.Id {
+		t.Fatalf("Search() = %#v", found)
+	}
+	if _, err = ss.AcademicUnit().Delete(ctx, parent.Id, model.GetMillis()); !store.IsConflict(err) {
+		t.Fatalf("Delete(parent with child) error = %v", err)
+	}
+	archived, err := ss.AcademicUnit().Delete(ctx, child.Id, model.GetMillis())
+	requireNoError(t, err)
+	if archived.DeleteAt == 0 {
+		t.Fatalf("Delete(child) = %#v", archived)
+	}
+	if _, err = ss.AcademicUnit().Get(ctx, child.Id); !store.IsNotFound(err) {
+		t.Fatalf("Get(archived) error = %v", err)
+	}
 }
 
 func testAcademicUnitStoreListAncestors(t *testing.T, ss store.Store) {

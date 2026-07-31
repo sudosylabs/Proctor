@@ -141,6 +141,32 @@ func (s SqlProgrammeLevelStore) ListByProgramme(
 	return levels, nil
 }
 
+func (s SqlProgrammeLevelStore) SearchByProgramme(
+	ctx context.Context,
+	programmeID string,
+	term string,
+	limit int,
+) ([]*model.ProgrammeLevel, error) {
+	if limit < 1 || limit > 200 {
+		return nil, store.NewErrInvalidInput("programme_level", "limit", limit)
+	}
+	query := s.programmeLevelsQuery.Where(sq.Eq{
+		"programme_levels.programme_id": programmeID,
+		"programme_levels.delete_at":    int64(0),
+	}).Where("(programme_levels.name ILIKE ? OR programme_levels.display_name ILIKE ?)",
+		"%"+term+"%", "%"+term+"%").
+		OrderBy("programme_levels.name", "programme_levels.id").Limit(uint64(limit))
+	rows := []programmeLevelRow{}
+	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
+		return nil, fmt.Errorf("search programme levels: %w", err)
+	}
+	result := make([]*model.ProgrammeLevel, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, row.model())
+	}
+	return result, nil
+}
+
 func (s SqlProgrammeLevelStore) Update(
 	ctx context.Context,
 	level *model.ProgrammeLevel,
@@ -174,6 +200,46 @@ func (s SqlProgrammeLevelStore) Update(
 		return nil, err
 	}
 	return &candidate, nil
+}
+
+func (s SqlProgrammeLevelStore) Delete(
+	ctx context.Context,
+	id string,
+	deleteAt int64,
+) (*model.ProgrammeLevel, error) {
+	if deleteAt <= 0 {
+		return nil, store.NewErrInvalidInput("programme_level", "delete_at", deleteAt)
+	}
+	current, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var dependent bool
+	if err := s.GetMaster().Get(ctx, &dependent, `
+		SELECT EXISTS (
+			SELECT 1 FROM classes
+			 WHERE programme_level_id = ? AND delete_at = 0
+		)`, id); err != nil {
+		return nil, fmt.Errorf("check programme level archive dependencies: %w", err)
+	}
+	if dependent {
+		return nil, store.NewErrConflict(
+			"programme_level",
+			"programme_level_has_active_classes",
+			nil,
+		)
+	}
+	result, err := s.GetMaster().Exec(ctx, `
+		UPDATE programme_levels SET update_at = ?, delete_at = ?
+		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id)
+	if err != nil {
+		return nil, fmt.Errorf("archive programme level: %w", err)
+	}
+	if err := requireAffected(result, "programme_level", id); err != nil {
+		return nil, err
+	}
+	current.UpdateAt, current.DeleteAt = deleteAt, deleteAt
+	return current, nil
 }
 
 func newProgrammeLevelRow(level *model.ProgrammeLevel) programmeLevelRow {

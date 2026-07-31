@@ -20,6 +20,32 @@ type AcademicPeriod struct {
 	EndAt         int64  `json:"end_at"`
 }
 
+type AcademicPeriodPatch struct {
+	Name        *string `json:"name,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	StartAt     *int64  `json:"start_at,omitempty"`
+	EndAt       *int64  `json:"end_at,omitempty"`
+}
+
+func (ap *AcademicPeriod) Patch(p *AcademicPeriodPatch) {
+	if p.Name != nil {
+		ap.Name = *p.Name
+	}
+	if p.DisplayName != nil {
+		ap.DisplayName = *p.DisplayName
+	}
+	if p.Description != nil {
+		ap.Description = *p.Description
+	}
+	if p.StartAt != nil {
+		ap.StartAt = *p.StartAt
+	}
+	if p.EndAt != nil {
+		ap.EndAt = *p.EndAt
+	}
+}
+
 func (ap *AcademicPeriod) PreSave() {
 	preSave(&ap.Id, &ap.CreateAt, &ap.UpdateAt)
 	sanitizeNamed(&ap.Name, &ap.DisplayName, &ap.Description)

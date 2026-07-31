@@ -71,6 +71,9 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
 	}
+	if err := s.validateInstitution(ctx, &candidate); err != nil {
+		return nil, err
+	}
 
 	row := newClassRow(&candidate)
 	if _, err := s.GetMaster().NamedExec(ctx, `
@@ -145,6 +148,31 @@ func (s SqlClassStore) ListByAcademicPeriod(
 	return s.selectClasses(ctx, query, "list classes by academic period")
 }
 
+func (s SqlClassStore) SearchByAcademicUnit(
+	ctx context.Context,
+	academicUnitID string,
+	term string,
+	limit int,
+) ([]*model.Class, error) {
+	if limit < 1 || limit > 200 {
+		return nil, store.NewErrInvalidInput("class", "limit", limit)
+	}
+	query := s.classesQuery.
+		Join("programme_levels ON programme_levels.id = classes.programme_level_id").
+		Join("programmes ON programmes.id = programme_levels.programme_id").
+		Where(sq.Eq{
+			"programmes.academic_unit_id": academicUnitID,
+			"programmes.delete_at":        int64(0),
+			"programme_levels.delete_at":  int64(0),
+			"classes.delete_at":           int64(0),
+		}).
+		Where("(classes.name ILIKE ? OR classes.display_name ILIKE ?)",
+			"%"+term+"%", "%"+term+"%").
+		OrderBy("classes.name", "classes.id").
+		Limit(uint64(limit))
+	return s.selectClasses(ctx, query, "search classes by academic unit")
+}
+
 func (s SqlClassStore) GetAcademicUnitId(ctx context.Context, id string) (string, error) {
 	var academicUnitID string
 	if err := s.GetMaster().Get(ctx, &academicUnitID, `
@@ -187,6 +215,9 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
 	}
+	if err := s.validateInstitution(ctx, &candidate); err != nil {
+		return nil, err
+	}
 
 	row := newClassRow(&candidate)
 	result, err := s.GetMaster().NamedExec(ctx, `
@@ -205,6 +236,113 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 		return nil, err
 	}
 	return &candidate, nil
+}
+
+func (s SqlClassStore) Delete(
+	ctx context.Context,
+	id string,
+	deleteAt int64,
+) (*model.Class, error) {
+	if deleteAt <= 0 {
+		return nil, store.NewErrInvalidInput("class", "delete_at", deleteAt)
+	}
+	current, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var dependent bool
+	if err := s.GetMaster().Get(ctx, &dependent, `
+		SELECT EXISTS (
+			SELECT 1 FROM class_members
+			 WHERE class_id = ? AND delete_at = 0 AND end_at = 0
+			UNION ALL
+			SELECT 1 FROM role_bindings
+			 WHERE scope_type = 'class' AND scope_id = ?
+			   AND delete_at = 0 AND end_at = 0
+		)`, id, id); err != nil {
+		return nil, fmt.Errorf("check class archive dependencies: %w", err)
+	}
+	if dependent {
+		return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
+	}
+	result, err := s.GetMaster().Exec(ctx, `
+		UPDATE classes SET update_at = ?, delete_at = ?
+		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id)
+	if err != nil {
+		return nil, fmt.Errorf("archive class: %w", err)
+	}
+	if err := requireAffected(result, "class", id); err != nil {
+		return nil, err
+	}
+	current.UpdateAt, current.DeleteAt = deleteAt, deleteAt
+	return current, nil
+}
+
+func (s SqlClassStore) validateInstitution(
+	ctx context.Context,
+	class *model.Class,
+) error {
+	var unitInstitutionID string
+	if err := s.GetMaster().Get(ctx, &unitInstitutionID, `
+		SELECT academic_units.institution_id
+		  FROM programme_levels
+		  JOIN programmes ON programmes.id = programme_levels.programme_id
+		  JOIN academic_units ON academic_units.id = programmes.academic_unit_id
+		 WHERE programme_levels.id = ?
+		   AND programme_levels.delete_at = 0
+		   AND programmes.delete_at = 0
+		   AND academic_units.delete_at = 0`,
+		class.ProgrammeLevelId,
+	); err != nil {
+		var exists bool
+		if existsErr := s.GetMaster().Get(
+			ctx,
+			&exists,
+			"SELECT EXISTS (SELECT 1 FROM programme_levels WHERE id = ?)",
+			class.ProgrammeLevelId,
+		); existsErr != nil {
+			return fmt.Errorf("check programme level reference: %w", existsErr)
+		}
+		constraint := "classes_active_hierarchy"
+		if !exists {
+			constraint = "classes_programme_level_id_fkey"
+		}
+		return store.NewErrReference(
+			"class",
+			constraint,
+			err,
+		)
+	}
+	var periodInstitutionID string
+	if err := s.GetMaster().Get(ctx, &periodInstitutionID, `
+		SELECT institution_id
+		  FROM academic_periods
+		 WHERE id = ? AND delete_at = 0`,
+		class.AcademicPeriodId,
+	); err != nil {
+		var exists bool
+		if existsErr := s.GetMaster().Get(
+			ctx,
+			&exists,
+			"SELECT EXISTS (SELECT 1 FROM academic_periods WHERE id = ?)",
+			class.AcademicPeriodId,
+		); existsErr != nil {
+			return fmt.Errorf("check academic period reference: %w", existsErr)
+		}
+		constraint := "classes_active_hierarchy"
+		if !exists {
+			constraint = "classes_academic_period_id_fkey"
+		}
+		return store.NewErrReference("class", constraint, err)
+	}
+	if unitInstitutionID != periodInstitutionID {
+		return store.NewErrReference(
+			"class",
+			"classes_same_institution",
+			nil,
+		)
+	}
+	return nil
 }
 
 func newClassRow(class *model.Class) classRow {

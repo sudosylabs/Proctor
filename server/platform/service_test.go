@@ -50,6 +50,9 @@ func (testStore) ProgrammeLevel() store.ProgrammeLevelStore         { return nil
 func (testStore) AcademicPeriod() store.AcademicPeriodStore         { return nil }
 func (testStore) Class() store.ClassStore                           { return nil }
 func (testStore) User() store.UserStore                             { return nil }
+func (testStore) Affiliation() store.AffiliationStore               { return nil }
+func (testStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
+func (testStore) ClassMember() store.ClassMemberStore               { return nil }
 func (testStore) PasswordCredential() store.PasswordCredentialStore { return nil }
 func (testStore) Session() store.SessionStore                       { return nil }
 func (testStore) SessionCredential() store.SessionCredentialStore   { return nil }
