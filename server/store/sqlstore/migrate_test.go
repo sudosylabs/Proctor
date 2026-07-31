@@ -29,7 +29,7 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		t.Fatalf("Pending() = %d, %v", len(pending), err)
 	}
 	version, err := migrator.SchemaVersion(context.Background())
-	if err != nil || version != 5 {
+	if err != nil || version != 9 {
 		t.Fatalf("SchemaVersion() = %d, %v", version, err)
 	}
 
@@ -37,6 +37,22 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	rolledBack, err := migrator.Down(1)
 	if err != nil || rolledBack != 1 {
 		t.Fatalf("Down(1) = %d, %v", rolledBack, err)
+	}
+	var sessionActionsRemoved bool
+	if err := migrator.store.GetMaster().Get(ctx, &sessionActionsRemoved, `
+		SELECT NOT EXISTS (
+			SELECT 1 FROM roles
+			 WHERE name = 'system_admin' AND built_in AND delete_at = 0
+			   AND permissions && ARRAY['session.view', 'session.manage']
+		)`); err != nil || !sessionActionsRemoved {
+		t.Fatalf("session-action rollback = %v, %v", sessionActionsRemoved, err)
+	}
+	if err := migrator.Up(); err != nil {
+		t.Fatalf("restore session-action migration: %v", err)
+	}
+	rolledBack, err = migrator.Down(5)
+	if err != nil || rolledBack != 5 {
+		t.Fatalf("Down(5) = %d, %v", rolledBack, err)
 	}
 	if _, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
@@ -66,20 +82,24 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	if err := migrator.store.GetMaster().Get(
 		ctx,
 		&reconciled,
-		`SELECT permissions @> ARRAY['user.view', 'user.manage']
+		`SELECT permissions @> ARRAY[
+			'user.view', 'user.manage', 'session.view', 'session.manage'
+		]
 		 FROM roles WHERE name = 'system_admin'`,
 	); err != nil || !reconciled {
 		t.Fatalf("system administrator reconciliation = %v, %v", reconciled, err)
 	}
-	rolledBack, err = migrator.Down(1)
-	if err != nil || rolledBack != 1 {
-		t.Fatalf("reconciliation Down(1) = %d, %v", rolledBack, err)
+	rolledBack, err = migrator.Down(5)
+	if err != nil || rolledBack != 5 {
+		t.Fatalf("reconciliation Down(5) = %d, %v", rolledBack, err)
 	}
 	var removed bool
 	if err := migrator.store.GetMaster().Get(
 		ctx,
 		&removed,
-		`SELECT NOT (permissions && ARRAY['user.view', 'user.manage'])
+		`SELECT NOT (permissions && ARRAY[
+			'user.view', 'user.manage', 'session.view', 'session.manage'
+		])
 		 FROM roles WHERE name = 'system_admin'`,
 	); err != nil || !removed {
 		t.Fatalf("system administrator reconciliation rollback = %v, %v", removed, err)
@@ -90,16 +110,17 @@ func TestMigrationsRoundTrip(t *testing.T) {
 
 	if _, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
-			installation_state, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions,
+			installation_state, audit_events, mfa_recovery_codes, mfa_credentials,
+			user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,
 			classes, academic_periods, programme_levels, programmes,
 			academic_units, institutions CASCADE`); err != nil {
 		t.Fatalf("truncate before down migrations: %v", err)
 	}
-	rolledBack, err = migrator.Down(5)
-	if err != nil || rolledBack != 5 {
-		t.Fatalf("Down(5) = %d, %v", rolledBack, err)
+	rolledBack, err = migrator.Down(9)
+	if err != nil || rolledBack != 9 {
+		t.Fatalf("Down(9) = %d, %v", rolledBack, err)
 	}
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("second Up() error = %v", err)

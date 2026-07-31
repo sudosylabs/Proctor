@@ -20,12 +20,17 @@ import (
 type App struct {
 	platform       *platform.Service
 	authentication *AuthenticationService
+	mfa            *MFAService
 	authorization  *AuthorizationService
 	audit          *AuditService
 }
 
 func New(applicationPlatform *platform.Service) (*App, error) {
-	authentication, err := newAuthenticationService(applicationPlatform)
+	mfa, err := newMFAService(applicationPlatform)
+	if err != nil {
+		return nil, err
+	}
+	authentication, err := newAuthenticationService(applicationPlatform, mfa)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +41,7 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
-		authorization: authorization, audit: audit,
+		mfa: mfa, authorization: authorization, audit: audit,
 	}, nil
 }
 

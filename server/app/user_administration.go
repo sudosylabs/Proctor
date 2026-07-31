@@ -132,13 +132,13 @@ func (a *App) RevokeUserSessions(
 	userID string,
 ) *model.AppError {
 	resource, appErr := a.authorizePrincipalToUser(
-		ctx, principal, userID, model.ActionUserManage, metadata,
+		ctx, principal, userID, model.ActionSessionManage, metadata,
 	)
 	if appErr != nil {
 		return appErr
 	}
 	attempt, appErr := a.beginAdministrationMutation(
-		ctx, principal, model.ActionUserManage, resource, metadata,
+		ctx, principal, model.ActionSessionManage, resource, metadata,
 		"revoke_sessions", map[string]any{"user_id": userID}, nil,
 	)
 	if appErr != nil {

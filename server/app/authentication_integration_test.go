@@ -12,14 +12,293 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
+
+func TestPersonalAccessTokenIntegration(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	helper := testlib.Setup(
+		t,
+		testlib.WithServerOptions(app.WithStore(persistence)),
+	)
+	institution, err := persistence.Institution().Save(
+		context.Background(),
+		&model.Institution{
+			Name: "northbridge", DisplayName: "Northbridge University",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentUnit, err := persistence.AcademicUnit().Save(
+		context.Background(),
+		&model.AcademicUnit{
+			InstitutionId: institution.Id, Name: "engineering",
+			DisplayName: "Engineering",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childUnit, err := persistence.AcademicUnit().Save(
+		context.Background(),
+		&model.AcademicUnit{
+			InstitutionId: institution.Id, ParentId: parentUnit.Id,
+			Name: "computing", DisplayName: "Computing",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siblingUnit, err := persistence.AcademicUnit().Save(
+		context.Background(),
+		&model.AcademicUnit{
+			InstitutionId: institution.Id, Name: "health",
+			DisplayName: "Health",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := "correct horse battery staple"
+	user, appErr := helper.App.CreateLocalUser(
+		context.Background(),
+		&model.User{
+			Username: "pat-user", Email: "pat-user@example.edu",
+			DisplayName: "PAT User",
+		},
+		password,
+	)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	role, err := persistence.Role().Save(
+		context.Background(),
+		&model.Role{
+			Name: "academic_reader", DisplayName: "Academic reader",
+			Permissions: []string{string(model.ActionAcademicUnitView)},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.RoleBinding().Save(
+		context.Background(),
+		&model.RoleBinding{
+			UserId: user.Id, RoleId: role.Id,
+			ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	login := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/auth/login",
+		map[string]any{
+			"login_id": user.Username, "password": password,
+			"client_type": model.SessionClientCLI,
+		},
+		"",
+	)
+	if login.Code != http.StatusOK {
+		t.Fatalf("login status = %d: %s", login.Code, login.Body.String())
+	}
+	session := decodeAuthenticationResponse(t, login)
+	create := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/tokens",
+		map[string]any{
+			"description":      "local automation",
+			"scopes":           []string{string(model.ActionAcademicUnitView)},
+			"academic_unit_id": parentUnit.Id,
+			"expires_at":       time.Now().Add(2 * time.Hour).UnixMilli(),
+		},
+		session.Tokens.AccessToken,
+	)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create PAT status = %d: %s", create.Code, create.Body.String())
+	}
+	var created model.PersonalAccessTokenCreation
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Token == nil || created.Credential == "" ||
+		created.Token.TokenHash != "" ||
+		create.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("create PAT response = %#v", created)
+	}
+	me := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		created.Credential,
+	)
+	if me.Code != http.StatusOK {
+		t.Fatalf("PAT current-user status = %d: %s", me.Code, me.Body.String())
+	}
+	descendant := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/academic-units/"+childUnit.Id,
+		nil,
+		created.Credential,
+	)
+	if descendant.Code != http.StatusOK {
+		t.Fatalf(
+			"PAT descendant status = %d: %s",
+			descendant.Code,
+			descendant.Body.String(),
+		)
+	}
+	outsideConstraint := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/academic-units/"+siblingUnit.Id,
+		nil,
+		created.Credential,
+	)
+	if outsideConstraint.Code != http.StatusForbidden {
+		t.Fatalf(
+			"PAT sibling status = %d: %s",
+			outsideConstraint.Code,
+			outsideConstraint.Body.String(),
+		)
+	}
+	outsideScope := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/institution",
+		nil,
+		created.Credential,
+	)
+	if outsideScope.Code != http.StatusForbidden {
+		t.Fatalf(
+			"PAT institution status = %d: %s",
+			outsideScope.Code,
+			outsideScope.Body.String(),
+		)
+	}
+	sessionOnly := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/auth/logout",
+		nil,
+		created.Credential,
+	)
+	if sessionOnly.Code != http.StatusUnauthorized {
+		t.Fatalf("PAT session-only status = %d: %s", sessionOnly.Code, sessionOnly.Body.String())
+	}
+	list := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me/tokens",
+		nil,
+		session.Tokens.AccessToken,
+	)
+	if list.Code != http.StatusOK ||
+		strings.Contains(list.Body.String(), created.Credential) ||
+		strings.Contains(list.Body.String(), model.HashToken(created.Credential)) {
+		t.Fatalf("list PAT response = %d: %s", list.Code, list.Body.String())
+	}
+	audits, err := persistence.Audit().List(
+		context.Background(),
+		store.AuditListOptions{Limit: 200},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedAudits, err := json.Marshal(audits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encodedAudits, []byte(created.Credential)) ||
+		bytes.Contains(encodedAudits, []byte(model.HashToken(created.Credential))) {
+		t.Fatal("personal access token credential or hash leaked into audit events")
+	}
+	disable := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/tokens/"+created.Token.Id+"/disable",
+		nil,
+		session.Tokens.AccessToken,
+	)
+	if disable.Code != http.StatusOK {
+		t.Fatalf("disable PAT status = %d: %s", disable.Code, disable.Body.String())
+	}
+	whileDisabled := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		created.Credential,
+	)
+	if whileDisabled.Code != http.StatusUnauthorized {
+		t.Fatalf(
+			"disabled PAT status = %d: %s",
+			whileDisabled.Code,
+			whileDisabled.Body.String(),
+		)
+	}
+	enable := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/tokens/"+created.Token.Id+"/enable",
+		nil,
+		session.Tokens.AccessToken,
+	)
+	if enable.Code != http.StatusOK {
+		t.Fatalf("enable PAT status = %d: %s", enable.Code, enable.Body.String())
+	}
+	afterEnable := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		created.Credential,
+	)
+	if afterEnable.Code != http.StatusOK {
+		t.Fatalf(
+			"reenabled PAT status = %d: %s",
+			afterEnable.Code,
+			afterEnable.Body.String(),
+		)
+	}
+	revoke := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodDelete,
+		"/api/v1/users/me/tokens/"+created.Token.Id,
+		nil,
+		session.Tokens.AccessToken,
+	)
+	if revoke.Code != http.StatusNoContent {
+		t.Fatalf("revoke PAT status = %d: %s", revoke.Code, revoke.Body.String())
+	}
+	afterRevoke := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		created.Credential,
+	)
+	if afterRevoke.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked PAT status = %d: %s", afterRevoke.Code, afterRevoke.Body.String())
+	}
+}
 
 func TestAuthenticationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
@@ -788,7 +1067,8 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SqlStore
 	}
 	if _, err := persistence.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			installation_state, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions,
+			installation_state, audit_events, mfa_recovery_codes, mfa_credentials,
+			user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,
 			classes, academic_periods, programme_levels, programmes,

@@ -78,10 +78,34 @@
       "activity_update_interval": "5m",
       "maximum_per_user": 10
     },
+    "recent_authentication_ttl": "15m",
     "login_rate_limit": {
       "window": "1m",
       "maximum_attempts": 10,
       "maximum_source_attempts": 1000
+    },
+    "account_recovery": {
+      "email_verification_ttl": "24h",
+      "password_reset_ttl": "1h",
+      "rate_limit": {
+        "window": "15m",
+        "maximum_attempts": 3,
+        "maximum_source_attempts": 100
+      }
+    },
+    "personal_access_tokens": {
+      "minimum_lifetime": "1h",
+      "maximum_lifetime": "2160h",
+      "last_used_update_interval": "5m",
+      "maximum_per_user": 50
+    },
+    "mfa": {
+      "enabled": false,
+      "issuer": "Proctor",
+      "encryption_key": "",
+      "decryption_keys": [],
+      "setup_ttl": "10m",
+      "recovery_code_count": 10
     }
   },
   "log": {

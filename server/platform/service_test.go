@@ -43,13 +43,18 @@ type trackedCluster struct {
 	stopped atomic.Bool
 }
 
-func (testStore) Institution() store.InstitutionStore               { return nil }
-func (testStore) AcademicUnit() store.AcademicUnitStore             { return nil }
-func (testStore) Programme() store.ProgrammeStore                   { return nil }
-func (testStore) ProgrammeLevel() store.ProgrammeLevelStore         { return nil }
-func (testStore) AcademicPeriod() store.AcademicPeriodStore         { return nil }
-func (testStore) Class() store.ClassStore                           { return nil }
-func (testStore) User() store.UserStore                             { return nil }
+func (testStore) Institution() store.InstitutionStore       { return nil }
+func (testStore) AcademicUnit() store.AcademicUnitStore     { return nil }
+func (testStore) Programme() store.ProgrammeStore           { return nil }
+func (testStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
+func (testStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
+func (testStore) Class() store.ClassStore                   { return nil }
+func (testStore) User() store.UserStore                     { return nil }
+func (testStore) UserToken() store.UserTokenStore           { return nil }
+func (testStore) PersonalAccessToken() store.PersonalAccessTokenStore {
+	return nil
+}
+func (testStore) MFA() store.MFAStore                               { return nil }
 func (testStore) Affiliation() store.AffiliationStore               { return nil }
 func (testStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
 func (testStore) ClassMember() store.ClassMemberStore               { return nil }

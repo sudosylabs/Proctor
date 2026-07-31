@@ -38,6 +38,7 @@ const (
 type AuthenticationService struct {
 	platform *platform.Service
 	hasher   *passwordHasher
+	mfa      *MFAService
 	settings config.Authentication
 	now      func() time.Time
 }
@@ -48,7 +49,10 @@ type cachedAuthentication struct {
 	User       *model.User              `json:"user"`
 }
 
-func newAuthenticationService(applicationPlatform *platform.Service) (*AuthenticationService, error) {
+func newAuthenticationService(
+	applicationPlatform *platform.Service,
+	mfa *MFAService,
+) (*AuthenticationService, error) {
 	settings := applicationPlatform.Config().Authentication
 	hasher, err := newPasswordHasher(settings.Password)
 	if err != nil {
@@ -57,6 +61,7 @@ func newAuthenticationService(applicationPlatform *platform.Service) (*Authentic
 	return &AuthenticationService{
 		platform: applicationPlatform,
 		hasher:   hasher,
+		mfa:      mfa,
 		settings: settings,
 		now:      time.Now,
 	}, nil
@@ -103,9 +108,19 @@ func (a *App) Login(
 	clientType model.SessionClientType,
 	deviceID string,
 	deviceName string,
+	mfaCode string,
 	source string,
 ) (*model.User, *model.Session, *model.AuthenticationTokens, *model.AppError) {
-	return a.authentication.login(ctx, loginID, password, clientType, deviceID, deviceName, source)
+	return a.authentication.login(
+		ctx,
+		loginID,
+		password,
+		clientType,
+		deviceID,
+		deviceName,
+		mfaCode,
+		source,
+	)
 }
 
 func (s *AuthenticationService) login(
@@ -115,6 +130,7 @@ func (s *AuthenticationService) login(
 	clientType model.SessionClientType,
 	deviceID string,
 	deviceName string,
+	mfaCode string,
 	source string,
 ) (*model.User, *model.Session, *model.AuthenticationTokens, *model.AppError) {
 	identityRateKey, appErr := s.checkLoginRateLimit(ctx, loginID, source)
@@ -156,6 +172,54 @@ func (s *AuthenticationService) login(
 		).WithSafeFields(map[string]string{"field": "client_type"})
 	}
 
+	authenticationStrength := model.AuthenticationSingleFactor
+	mfaCompletedAt := int64(0)
+	now := s.now()
+	mfaPersistence := s.platform.Store().MFA()
+	var (
+		mfaCredential *model.MFACredential
+		mfaErr        error
+	)
+	if mfaPersistence == nil {
+		mfaErr = store.NewErrNotFound("mfa_credential", user.Id)
+	} else {
+		mfaCredential, mfaErr = mfaPersistence.GetByUser(ctx, user.Id)
+	}
+	switch {
+	case mfaErr == nil && mfaCredential.IsActive():
+		if s.mfa == nil || !s.mfa.settings.Enabled {
+			return nil, nil, nil, model.NewAppError(
+				"Login",
+				"authentication.mfa.unavailable",
+				nil,
+				"",
+				http.StatusServiceUnavailable,
+			)
+		}
+		if strings.TrimSpace(mfaCode) == "" {
+			return nil, nil, nil, model.NewAppError(
+				"Login",
+				"authentication.mfa.required",
+				nil,
+				"",
+				http.StatusUnauthorized,
+			)
+		}
+		if appErr := s.mfa.consumeSecondFactor(
+			ctx,
+			s.platform.Store(),
+			user.Id,
+			mfaCode,
+			now,
+		); appErr != nil {
+			return nil, nil, nil, appErr
+		}
+		authenticationStrength = model.AuthenticationMultiFactor
+		mfaCompletedAt = now.UnixMilli()
+	case mfaErr != nil && !store.IsNotFound(mfaErr):
+		return nil, nil, nil, internalAuthenticationError("Login.mfa", mfaErr)
+	}
+
 	if s.hasher.NeedsRehash(credential.PasswordHash) {
 		rehashed, hashErr := s.hasher.Hash(password)
 		if hashErr != nil {
@@ -167,21 +231,22 @@ func (s *AuthenticationService) login(
 		}
 	}
 
-	now := s.now().UnixMilli()
+	nowMillis := now.UnixMilli()
 	settings := s.settings.Sessions
-	absoluteExpiresAt := now + settings.AbsoluteTTL.Milliseconds()
-	accessExpiresAt := min(now+settings.AccessTTL.Milliseconds(), absoluteExpiresAt)
-	refreshExpiresAt := min(now+settings.RefreshTTL.Milliseconds(), absoluteExpiresAt)
+	absoluteExpiresAt := nowMillis + settings.AbsoluteTTL.Milliseconds()
+	accessExpiresAt := min(nowMillis+settings.AccessTTL.Milliseconds(), absoluteExpiresAt)
+	refreshExpiresAt := min(nowMillis+settings.RefreshTTL.Milliseconds(), absoluteExpiresAt)
 	session := &model.Session{
 		UserId:                 user.Id,
 		ClientType:             clientType,
 		DeviceId:               deviceID,
 		DeviceName:             deviceName,
 		AuthenticationMethod:   "password",
-		AuthenticationStrength: model.AuthenticationSingleFactor,
-		AuthenticatedAt:        now,
-		LastActivityAt:         now,
-		IdleExpiresAt:          min(now+settings.IdleTTL.Milliseconds(), absoluteExpiresAt),
+		AuthenticationStrength: authenticationStrength,
+		AuthenticatedAt:        nowMillis,
+		MFACompletedAt:         mfaCompletedAt,
+		LastActivityAt:         nowMillis,
+		IdleExpiresAt:          min(nowMillis+settings.IdleTTL.Milliseconds(), absoluteExpiresAt),
 		ExpiresAt:              absoluteExpiresAt,
 	}
 	accessToken := model.NewCredentialToken()
@@ -234,7 +299,7 @@ func (s *AuthenticationService) login(
 		Credential: accessCredential,
 		Session:    savedSession,
 		User:       user,
-	}, now)
+	}, nowMillis)
 	if err := s.platform.Cache().Delete(ctx, identityRateKey); err != nil {
 		s.platform.Log().WarnContext(ctx, "login rate-limit reset failed", mlog.Err(err))
 	}
@@ -316,6 +381,67 @@ func (a *App) AuthenticateAccess(
 	rawToken string,
 ) (*model.Principal, *model.AppError) {
 	return a.authentication.authenticateAccess(ctx, rawToken)
+}
+
+// AuthenticateBearer accepts the two Authorization-header credential classes:
+// a CLI session access credential or a personal access token. Cookie
+// authentication remains session-only and therefore calls AuthenticateAccess.
+func (a *App) AuthenticateBearer(
+	ctx context.Context,
+	rawToken string,
+) (*model.Principal, *model.AppError) {
+	principal, appErr := a.authentication.authenticateAccess(ctx, rawToken)
+	if appErr == nil || appErr.ErrorCode() != "authentication.invalid_token" {
+		return principal, appErr
+	}
+	return a.authentication.authenticatePersonalAccessToken(ctx, rawToken)
+}
+
+func (s *AuthenticationService) authenticatePersonalAccessToken(
+	ctx context.Context,
+	rawToken string,
+) (*model.Principal, *model.AppError) {
+	if !validRawCredential(rawToken) {
+		return nil, invalidTokenError("AuthenticateBearer")
+	}
+	settings := s.settings.PersonalAccessTokens
+	tokenStore := s.platform.Store().PersonalAccessToken()
+	if tokenStore == nil {
+		return nil, internalAuthenticationError(
+			"AuthenticateBearer.store",
+			errors.New("personal access token store is unavailable"),
+		)
+	}
+	resolved, err := tokenStore.Resolve(
+		ctx,
+		model.HashToken(rawToken),
+		s.now().UnixMilli(),
+		settings.LastUsedUpdateInterval.Milliseconds(),
+	)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, invalidTokenError("AuthenticateBearer")
+		}
+		return nil, internalAuthenticationError("AuthenticateBearer.resolve", err)
+	}
+	principal := &model.Principal{
+		UserId:               resolved.User.Id,
+		CredentialId:         resolved.Token.Id,
+		CredentialType:       model.CredentialPersonalAccessToken,
+		AuthenticationMethod: "personal_access_token",
+		ClientType:           model.SessionClientCLI,
+		CredentialScopes:     append([]string(nil), resolved.Token.Scopes...),
+		AcademicUnitId:       resolved.Token.AcademicUnitId,
+	}
+	if !principal.IsValid() {
+		s.platform.Log().WarnContext(
+			ctx,
+			"personal access token resolved to invalid principal",
+			mlog.String("personal_access_token_id", resolved.Token.Id),
+		)
+		return nil, invalidTokenError("AuthenticateBearer.principal")
+	}
+	return principal, nil
 }
 
 func (s *AuthenticationService) authenticateAccess(

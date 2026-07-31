@@ -13,11 +13,11 @@ import (
 
 func (a *API) InitInstitution() error {
 	if err := a.Register(a.BaseRoutes.Institution, "", http.MethodGet,
-		a.APISessionRequired(http.HandlerFunc(a.getInstitution))); err != nil {
+		a.APIPrincipalRequired(http.HandlerFunc(a.getInstitution))); err != nil {
 		return err
 	}
 	return a.Register(a.BaseRoutes.Institution, "", http.MethodPatch,
-		a.APISessionRequired(http.HandlerFunc(a.patchInstitution)))
+		a.APIPrincipalRequired(http.HandlerFunc(a.patchInstitution)))
 }
 
 func (a *API) getInstitution(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +77,7 @@ func (a *API) InitAcademicUnits() error {
 	for _, route := range routes {
 		if err := a.Register(
 			route.base, route.path, route.method,
-			a.APISessionRequired(route.handler),
+			a.APIPrincipalRequired(route.handler),
 		); err != nil {
 			return err
 		}

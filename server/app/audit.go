@@ -42,6 +42,12 @@ func (s *AuditService) BeginCriticalAction(
 	if !principal.IsValid() {
 		return nil, invalidTokenError("AuditService.BeginCriticalAction")
 	}
+	if s.store == nil || s.store.Audit() == nil {
+		return nil, auditUnavailableError(
+			"AuditService.BeginCriticalAction",
+			store.NewErrNotFound("audit_store", ""),
+		)
+	}
 	encodedParameters, appErr := model.EncodeAuditData(parameters)
 	if appErr != nil {
 		return nil, appErr
@@ -50,21 +56,28 @@ func (s *AuditService) BeginCriticalAction(
 	if appErr != nil {
 		return nil, appErr
 	}
+	scopeType := model.RoleScopeType(resource.Type)
+	scopeID := resource.Id
+	if resource.Type == model.ResourceUser {
+		institution, err := s.store.Institution().GetSingleton(ctx)
+		if err != nil {
+			return nil, auditUnavailableError(
+				"AuditService.BeginCriticalAction.scope",
+				err,
+			)
+		}
+		scopeType = model.RoleScopeInstitution
+		scopeID = institution.Id
+	}
 	event := &model.AuditEvent{
 		ActorId: principal.UserId, SessionId: principal.SessionId,
 		Action: string(action), Resource: resource,
-		ScopeType: model.RoleScopeType(resource.Type), ScopeId: resource.Id,
+		ScopeType: scopeType, ScopeId: scopeID,
 		Status: model.AuditStatusAttempt, RequestId: metadata.RequestId,
 		NodeId: s.nodeID, ClientType: string(principal.ClientType),
 		AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress,
 		UserAgent: metadata.UserAgent, Parameters: encodedParameters,
 		PriorState: encodedPriorState,
-	}
-	if s.store == nil || s.store.Audit() == nil {
-		return nil, auditUnavailableError(
-			"AuditService.BeginCriticalAction",
-			store.NewErrNotFound("audit_store", ""),
-		)
 	}
 	saved, err := s.store.Audit().Save(ctx, event)
 	if err != nil {

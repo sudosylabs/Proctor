@@ -5,6 +5,10 @@ package model
 
 const PasswordHashMaxLength = 1024
 
+func IsValidPasswordHash(value string) bool {
+	return len(value) > 0 && len(value) <= PasswordHashMaxLength
+}
+
 // PasswordCredential contains only an established password hasher's encoded
 // output. Plaintext passwords must never be assigned to this model. Keeping it
 // separate permits external-only accounts and future credential replacement
@@ -45,7 +49,7 @@ func (pc *PasswordCredential) IsValid() *AppError {
 	if !IsValidId(pc.UserId) {
 		return invalidModelError(where, "password_credential", "user_id", "must be a valid identifier", details)
 	}
-	if len(pc.PasswordHash) == 0 || len(pc.PasswordHash) > PasswordHashMaxLength {
+	if !IsValidPasswordHash(pc.PasswordHash) {
 		return invalidModelError(where, "password_credential", "password_hash", "has an invalid length", details)
 	}
 	if pc.PasswordChangedAt < pc.CreateAt {

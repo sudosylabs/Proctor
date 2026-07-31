@@ -20,6 +20,8 @@ const (
 	ActionAuditView         Action = "audit.view"
 	ActionUserView          Action = "user.view"
 	ActionUserManage        Action = "user.manage"
+	ActionSessionView       Action = "session.view"
+	ActionSessionManage     Action = "session.manage"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -75,6 +77,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionUserManage: {
 		Action: ActionUserManage, ResourceType: ResourceUser,
+		InheritInstitutionScope: true,
+	},
+	ActionSessionView: {
+		Action: ActionSessionView, ResourceType: ResourceUser,
+		InheritInstitutionScope: true,
+	},
+	ActionSessionManage: {
+		Action: ActionSessionManage, ResourceType: ResourceUser,
 		InheritInstitutionScope: true,
 	},
 	ActionAcademicUnitView: {

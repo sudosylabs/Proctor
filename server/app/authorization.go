@@ -92,6 +92,10 @@ func (s *AuthorizationService) evaluate(
 	if appErr != nil {
 		return false, unresolved, appErr
 	}
+	if principal.CredentialType == model.CredentialPersonalAccessToken &&
+		!personalAccessTokenAllows(principal, action, resource, resolved) {
+		return false, resolved, nil
+	}
 	bindings, err := s.store.RoleBinding().ListActiveByUser(
 		ctx, principal.UserId, s.now().UnixMilli(),
 	)
@@ -127,6 +131,36 @@ func (s *AuthorizationService) evaluate(
 		}
 	}
 	return false, resolved, nil
+}
+
+// personalAccessTokenAllows is only a credential ceiling. It never grants an
+// action; ordinary current-state role evaluation still has to grant it.
+func personalAccessTokenAllows(
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	resolved resolvedAuthorizationResource,
+) bool {
+	scoped := false
+	for _, scope := range principal.CredentialScopes {
+		if scope == string(action) {
+			scoped = true
+			break
+		}
+	}
+	if !scoped {
+		return false
+	}
+	if principal.AcademicUnitId == "" {
+		return true
+	}
+	switch resource.Type {
+	case model.ResourceAcademicUnit, model.ResourceClass:
+		_, applies := resolved.academicUnitID[principal.AcademicUnitId]
+		return applies
+	default:
+		return false
+	}
 }
 
 // Authorize is fail-closed: the requested action is allowed only after the

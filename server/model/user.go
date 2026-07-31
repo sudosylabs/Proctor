@@ -78,6 +78,10 @@ func (u *User) Patch(p *UserPatch) {
 		u.Username = *p.Username
 	}
 	if p.Email != nil {
+		if strings.ToLower(strings.TrimSpace(*p.Email)) != u.Email &&
+			p.EmailVerified == nil {
+			u.EmailVerified = false
+		}
 		u.Email = *p.Email
 	}
 	if p.EmailVerified != nil {

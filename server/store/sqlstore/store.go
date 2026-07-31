@@ -72,23 +72,26 @@ func (s Settings) validate() error {
 // Keeping this registry separate from SqlStore mirrors Mattermost's composition
 // flow and makes future store decorators possible without changing callers.
 type SqlStoreStores struct {
-	institution        store.InstitutionStore
-	academicUnit       store.AcademicUnitStore
-	programme          store.ProgrammeStore
-	programmeLevel     store.ProgrammeLevelStore
-	academicPeriod     store.AcademicPeriodStore
-	class              store.ClassStore
-	user               store.UserStore
-	affiliation        store.AffiliationStore
-	academicUnitMember store.AcademicUnitMemberStore
-	classMember        store.ClassMemberStore
-	passwordCredential store.PasswordCredentialStore
-	session            store.SessionStore
-	sessionCredential  store.SessionCredentialStore
-	role               store.RoleStore
-	roleBinding        store.RoleBindingStore
-	audit              store.AuditStore
-	installation       store.InstallationStore
+	institution         store.InstitutionStore
+	academicUnit        store.AcademicUnitStore
+	programme           store.ProgrammeStore
+	programmeLevel      store.ProgrammeLevelStore
+	academicPeriod      store.AcademicPeriodStore
+	class               store.ClassStore
+	user                store.UserStore
+	userToken           store.UserTokenStore
+	personalAccessToken store.PersonalAccessTokenStore
+	mfa                 store.MFAStore
+	affiliation         store.AffiliationStore
+	academicUnitMember  store.AcademicUnitMemberStore
+	classMember         store.ClassMemberStore
+	passwordCredential  store.PasswordCredentialStore
+	session             store.SessionStore
+	sessionCredential   store.SessionCredentialStore
+	role                store.RoleStore
+	roleBinding         store.RoleBindingStore
+	audit               store.AuditStore
+	installation        store.InstallationStore
 }
 
 // SqlStore owns PostgreSQL connections and all concrete model stores.
@@ -132,6 +135,9 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 	sqlStore.stores.academicPeriod = newSqlAcademicPeriodStore(sqlStore)
 	sqlStore.stores.class = newSqlClassStore(sqlStore)
 	sqlStore.stores.user = newSqlUserStore(sqlStore)
+	sqlStore.stores.userToken = newSqlUserTokenStore(sqlStore)
+	sqlStore.stores.personalAccessToken = newSqlPersonalAccessTokenStore(sqlStore)
+	sqlStore.stores.mfa = newSqlMFAStore(sqlStore)
 	sqlStore.stores.affiliation = newSqlAffiliationStore(sqlStore)
 	sqlStore.stores.academicUnitMember = newSqlAcademicUnitMemberStore(sqlStore)
 	sqlStore.stores.classMember = newSqlClassMemberStore(sqlStore)
@@ -186,6 +192,18 @@ func (ss *SqlStore) Class() store.ClassStore {
 
 func (ss *SqlStore) User() store.UserStore {
 	return ss.stores.user
+}
+
+func (ss *SqlStore) UserToken() store.UserTokenStore {
+	return ss.stores.userToken
+}
+
+func (ss *SqlStore) PersonalAccessToken() store.PersonalAccessTokenStore {
+	return ss.stores.personalAccessToken
+}
+
+func (ss *SqlStore) MFA() store.MFAStore {
+	return ss.stores.mfa
 }
 
 func (ss *SqlStore) Affiliation() store.AffiliationStore {

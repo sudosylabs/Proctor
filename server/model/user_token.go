@@ -7,6 +7,8 @@
 
 package model
 
+import "strings"
+
 type UserTokenPurpose string
 
 const (
@@ -25,15 +27,18 @@ type UserToken struct {
 	UserId     string           `json:"user_id"`
 	Purpose    UserTokenPurpose `json:"purpose"`
 	TokenHash  string           `json:"-"`
+	Target     string           `json:"-"`
 	ExpiresAt  int64            `json:"expires_at"`
 	ConsumedAt int64            `json:"consumed_at,omitempty"`
 }
 
 func (t *UserToken) PreSave() {
+	t.Target = strings.ToLower(strings.TrimSpace(SanitizeUnicode(t.Target)))
 	preSave(&t.Id, &t.CreateAt, &t.UpdateAt)
 }
 
 func (t *UserToken) PreUpdate() {
+	t.Target = strings.ToLower(strings.TrimSpace(SanitizeUnicode(t.Target)))
 	preUpdate(&t.UpdateAt)
 }
 
@@ -57,6 +62,15 @@ func (t *UserToken) IsValid() *AppError {
 	}
 	if !IsValidTokenHash(t.TokenHash) {
 		return invalidModelError(where, "user_token", "token_hash", "has an invalid format", details)
+	}
+	if !IsValidEmail(t.Target) {
+		return invalidModelError(
+			where,
+			"user_token",
+			"target",
+			"must be a normalized email address",
+			details,
+		)
 	}
 	if t.ExpiresAt <= t.CreateAt {
 		return invalidModelError(where, "user_token", "expires_at", "must be after create_at", details)

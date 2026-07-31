@@ -105,6 +105,118 @@ func (a *App) RevokeAllSessions(
 	return nil
 }
 
+func (a *App) ListUserSessions(
+	ctx context.Context,
+	principal model.Principal,
+	metadata model.RequestMetadata,
+	userID string,
+	includeRevoked bool,
+) ([]*model.Session, *model.AppError) {
+	if _, appErr := a.authorizePrincipalToUser(
+		ctx,
+		principal,
+		userID,
+		model.ActionSessionView,
+		metadata,
+	); appErr != nil {
+		return nil, appErr
+	}
+	var (
+		sessions []*model.Session
+		err      error
+	)
+	if includeRevoked {
+		sessions, err = a.Store().Session().ListByUser(ctx, userID)
+	} else {
+		sessions, err = a.Store().Session().ListActiveByUser(
+			ctx,
+			userID,
+			a.authentication.now().UnixMilli(),
+		)
+	}
+	if err != nil {
+		return nil, internalAuthenticationError("ListUserSessions", err)
+	}
+	return sessions, nil
+}
+
+func (a *App) RevokeUserSession(
+	ctx context.Context,
+	principal model.Principal,
+	metadata model.RequestMetadata,
+	userID string,
+	sessionID string,
+) *model.AppError {
+	resource, appErr := a.authorizePrincipalToUser(
+		ctx,
+		principal,
+		userID,
+		model.ActionSessionManage,
+		metadata,
+	)
+	if appErr != nil {
+		return appErr
+	}
+	if !model.IsValidId(sessionID) {
+		return model.NewAppError(
+			"RevokeUserSession",
+			"session.id.invalid",
+			nil,
+			"",
+			http.StatusBadRequest,
+		).WithSafeFields(map[string]string{"field": "session_id"})
+	}
+	session, err := a.Store().Session().Get(ctx, sessionID)
+	if err != nil || session.UserId != userID {
+		if err == nil {
+			err = store.NewErrNotFound("session", sessionID)
+		}
+		if store.IsNotFound(err) {
+			return sessionNotFoundError("RevokeUserSession")
+		}
+		return internalAuthenticationError("RevokeUserSession.get", err)
+	}
+	attempt, appErr := a.beginAdministrationMutation(
+		ctx,
+		principal,
+		model.ActionSessionManage,
+		resource,
+		metadata,
+		"revoke_session",
+		map[string]any{"user_id": userID, "session_id": sessionID},
+		session.Auditable(),
+	)
+	if appErr != nil {
+		return appErr
+	}
+	hashes, err := a.Store().Session().Revoke(
+		ctx,
+		sessionID,
+		userID,
+		a.authentication.now().UnixMilli(),
+		"session revoked by administrator",
+	)
+	if err != nil {
+		return a.failAdministrationMutation(
+			ctx,
+			attempt.Id,
+			"RevokeUserSession",
+			"session",
+			err,
+		)
+	}
+	a.authentication.deleteAuthenticationCache(ctx, hashes)
+	a.authentication.deleteActivityCache(ctx, sessionID)
+	_, appErr = a.audit.CompleteCriticalAction(
+		ctx,
+		attempt.Id,
+		model.AuditStatusSuccess,
+		"",
+		map[string]any{"session_id": sessionID, "revoked": true},
+	)
+	return appErr
+}
+
 func sessionNotFoundError(where string) *model.AppError {
 	return model.NewAppError(
 		where,

@@ -86,3 +86,54 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 		})
 	}
 }
+
+func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
+	parentID := model.NewId()
+	childID := model.NewId()
+	classID := model.NewId()
+	resolved := resolvedAuthorizationResource{
+		institutionID: model.NewId(),
+		academicUnitID: map[string]struct{}{
+			parentID: {}, childID: {},
+		},
+		classID: classID,
+	}
+	principal := model.Principal{
+		CredentialType:   model.CredentialPersonalAccessToken,
+		CredentialScopes: []string{string(model.ActionClassView)},
+		AcademicUnitId:   parentID,
+	}
+	if !personalAccessTokenAllows(
+		principal,
+		model.ActionClassView,
+		model.Resource{Type: model.ResourceClass, Id: classID},
+		resolved,
+	) {
+		t.Fatal("matching scope and descendant resource were rejected")
+	}
+	if personalAccessTokenAllows(
+		principal,
+		model.ActionClassMembersView,
+		model.Resource{Type: model.ResourceClass, Id: classID},
+		resolved,
+	) {
+		t.Fatal("an action absent from token scopes was allowed")
+	}
+	if personalAccessTokenAllows(
+		principal,
+		model.ActionClassView,
+		model.Resource{Type: model.ResourceInstitution, Id: resolved.institutionID},
+		resolved,
+	) {
+		t.Fatal("academic-unit-constrained token was allowed at institution scope")
+	}
+	principal.AcademicUnitId = model.NewId()
+	if personalAccessTokenAllows(
+		principal,
+		model.ActionClassView,
+		model.Resource{Type: model.ResourceClass, Id: classID},
+		resolved,
+	) {
+		t.Fatal("token constrained to an unrelated academic unit was allowed")
+	}
+}

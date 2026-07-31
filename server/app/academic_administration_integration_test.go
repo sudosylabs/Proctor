@@ -256,6 +256,106 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("disabled session remained valid = %d: %s", revoked.Code, revoked.Body.String())
 	}
 
+	firstStudentSession := loginIntegrationUser(
+		t, handler, student.Username, password,
+		model.SessionClientCLI, "student-first-cli",
+	)
+	secondStudentSession := loginIntegrationUser(
+		t, handler, student.Username, password,
+		model.SessionClientCLI, "student-second-cli",
+	)
+	teacherSessionList := performJSONRequest(
+		handler,
+		http.MethodGet,
+		"/api/v1/users/"+student.Id+"/sessions",
+		nil,
+		teacherLogin.Tokens.AccessToken,
+	)
+	if teacherSessionList.Code != http.StatusForbidden {
+		t.Fatalf(
+			"teacher session list = %d: %s",
+			teacherSessionList.Code,
+			teacherSessionList.Body.String(),
+		)
+	}
+	sessionList := performJSONRequest(
+		handler,
+		http.MethodGet,
+		"/api/v1/users/"+student.Id+"/sessions",
+		nil,
+		adminToken,
+	)
+	if sessionList.Code != http.StatusOK {
+		t.Fatalf(
+			"administrator session list = %d: %s",
+			sessionList.Code,
+			sessionList.Body.String(),
+		)
+	}
+	var studentSessions []*model.Session
+	decodeIntegrationResponse(t, sessionList, &studentSessions)
+	if len(studentSessions) != 2 {
+		t.Fatalf("administrator session list = %#v", studentSessions)
+	}
+	revokeOne := performJSONRequest(
+		handler,
+		http.MethodDelete,
+		"/api/v1/users/"+student.Id+"/sessions/"+firstStudentSession.Session.Id,
+		nil,
+		adminToken,
+	)
+	if revokeOne.Code != http.StatusNoContent {
+		t.Fatalf(
+			"administrator session revoke = %d: %s",
+			revokeOne.Code,
+			revokeOne.Body.String(),
+		)
+	}
+	firstRevoked := performJSONRequest(
+		handler,
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		firstStudentSession.Tokens.AccessToken,
+	)
+	if firstRevoked.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked student session = %d", firstRevoked.Code)
+	}
+	secondActive := performJSONRequest(
+		handler,
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		secondStudentSession.Tokens.AccessToken,
+	)
+	if secondActive.Code != http.StatusOK {
+		t.Fatalf("unrelated student session = %d", secondActive.Code)
+	}
+	revokeAll := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/api/v1/users/"+student.Id+"/sessions/revoke-all",
+		nil,
+		adminToken,
+	)
+	if revokeAll.Code != http.StatusNoContent {
+		t.Fatalf(
+			"administrator revoke all sessions = %d: %s",
+			revokeAll.Code,
+			revokeAll.Body.String(),
+		)
+	}
+	secondRevoked := performJSONRequest(
+		handler,
+		http.MethodGet,
+		"/api/v1/users/me",
+		nil,
+		secondStudentSession.Tokens.AccessToken,
+	)
+	if secondRevoked.Code != http.StatusUnauthorized {
+		t.Fatalf("student session survived revoke all = %d", secondRevoked.Code)
+	}
+
 	events, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{Limit: 200},
@@ -274,6 +374,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		model.ActionAcademicUnitManage,
 		model.ActionClassMembersManage,
 		model.ActionUserManage,
+		model.ActionSessionManage,
 	} {
 		if !mutated[string(action)] {
 			t.Errorf("missing successful mutation audit for %s", action)

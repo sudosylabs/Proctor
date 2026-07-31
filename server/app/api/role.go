@@ -26,7 +26,7 @@ func (a *API) InitRoles() error {
 		a.BaseRoutes.Roles,
 		"",
 		http.MethodGet,
-		a.APISessionRequired(http.HandlerFunc(a.listRoles)),
+		a.APIPrincipalRequired(http.HandlerFunc(a.listRoles)),
 	); err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func (a *API) InitRoles() error {
 		a.BaseRoutes.Roles,
 		"",
 		http.MethodPost,
-		a.APISessionRequired(http.HandlerFunc(a.createRole)),
+		a.APIPrincipalRequired(http.HandlerFunc(a.createRole)),
 	); err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func (a *API) InitRoles() error {
 		a.BaseRoutes.Role,
 		"",
 		http.MethodGet,
-		a.APISessionRequired(http.HandlerFunc(a.getRole)),
+		a.APIPrincipalRequired(http.HandlerFunc(a.getRole)),
 	); err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (a *API) InitRoles() error {
 		a.BaseRoutes.Role,
 		"",
 		http.MethodPatch,
-		a.APISessionRequired(http.HandlerFunc(a.patchRole)),
+		a.APIPrincipalRequired(http.HandlerFunc(a.patchRole)),
 	); err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (a *API) InitRoles() error {
 		a.BaseRoutes.Role,
 		"",
 		http.MethodDelete,
-		a.APISessionRequired(http.HandlerFunc(a.deleteRole)),
+		a.APIPrincipalRequired(http.HandlerFunc(a.deleteRole)),
 	)
 }
 

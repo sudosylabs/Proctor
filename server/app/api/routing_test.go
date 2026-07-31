@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestBaseRoutesCentralizeAPIVersionRegexAndParams(t *testing.T) {
@@ -133,10 +135,55 @@ func TestRouteMetadataRetainsVersionAndRegexContract(t *testing.T) {
 	}
 }
 
+func TestPrincipalAssuranceRequirements(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_000_000)
+	recent := model.Principal{
+		AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt:        now.Add(-time.Minute).UnixMilli(),
+	}
+	strongOld := model.Principal{
+		AuthenticationStrength: model.AuthenticationMultiFactor,
+		AuthenticatedAt:        now.Add(-time.Hour).UnixMilli(),
+		MFACompletedAt:         now.Add(-time.Hour).UnixMilli(),
+	}
+	strongRecent := model.Principal{
+		AuthenticationStrength: model.AuthenticationMultiFactor,
+		AuthenticatedAt:        now.Add(-time.Hour).UnixMilli(),
+		MFACompletedAt:         now.Add(-time.Minute).UnixMilli(),
+	}
+	if appErr := requirePrincipalAssurance(
+		recent, AuthRecentSessionRequired, now, 15*time.Minute,
+	); appErr != nil {
+		t.Fatalf("recent session rejected: %v", appErr)
+	}
+	if appErr := requirePrincipalAssurance(
+		recent, AuthStrongSessionRequired, now, 15*time.Minute,
+	); appErr == nil || appErr.ErrorCode() != "authentication.strong_required" {
+		t.Fatalf("single-factor strong requirement error = %v", appErr)
+	}
+	if appErr := requirePrincipalAssurance(
+		strongOld, AuthRecentSessionRequired, now, 15*time.Minute,
+	); appErr == nil ||
+		appErr.ErrorCode() != "authentication.reauthentication_required" {
+		t.Fatalf("old recent requirement error = %v", appErr)
+	}
+	if appErr := requirePrincipalAssurance(
+		strongRecent,
+		AuthStrongRecentSessionRequired,
+		now,
+		15*time.Minute,
+	); appErr != nil {
+		t.Fatalf("strong recent session rejected: %v", appErr)
+	}
+}
+
 func newRoutingTestAPI(apiURLSuffix string) *API {
 	httpAPI := &API{
-		routeKeys: make(map[string]struct{}),
-		prefixes:  make(map[*mux.Router]string),
+		routeKeys:               make(map[string]struct{}),
+		prefixes:                make(map[*mux.Router]string),
+		recentAuthenticationTTL: 15 * time.Minute,
 	}
 	httpAPI.initializeBaseRoutes(apiURLSuffix)
 	return httpAPI

@@ -72,6 +72,15 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 	setString("PROCTOR_VFS_S3_BUCKET", &cfg.VFS.S3.Bucket)
 	setString("PROCTOR_VFS_S3_PREFIX", &cfg.VFS.S3.Prefix)
 	setString("PROCTOR_VFS_S3_REGION", &cfg.VFS.S3.Region)
+	setString(
+		"PROCTOR_AUTHENTICATION_MFA_ENCRYPTION_KEY",
+		&cfg.Authentication.MFA.EncryptionKey,
+	)
+	setString("PROCTOR_AUTHENTICATION_MFA_ISSUER", &cfg.Authentication.MFA.Issuer)
+	if value, ok := lookup("PROCTOR_AUTHENTICATION_MFA_DECRYPTION_KEYS"); ok {
+		cfg.Authentication.MFA.DecryptionKeys = splitList(value)
+		applied = append(applied, "PROCTOR_AUTHENTICATION_MFA_DECRYPTION_KEYS")
+	}
 	for _, item := range []struct {
 		key    string
 		target *Duration
@@ -94,6 +103,38 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 		{
 			"PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_WINDOW",
 			&cfg.Authentication.LoginRateLimit.Window,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_RECENT_AUTHENTICATION_TTL",
+			&cfg.Authentication.RecentAuthenticationTTL,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_EMAIL_VERIFICATION_TTL",
+			&cfg.Authentication.AccountRecovery.EmailVerificationTTL,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_PASSWORD_RESET_TTL",
+			&cfg.Authentication.AccountRecovery.PasswordResetTTL,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_WINDOW",
+			&cfg.Authentication.AccountRecovery.RateLimit.Window,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MINIMUM_LIFETIME",
+			&cfg.Authentication.PersonalAccessTokens.MinimumLifetime,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MAXIMUM_LIFETIME",
+			&cfg.Authentication.PersonalAccessTokens.MaximumLifetime,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_LAST_USED_UPDATE_INTERVAL",
+			&cfg.Authentication.PersonalAccessTokens.LastUsedUpdateInterval,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_MFA_SETUP_TTL",
+			&cfg.Authentication.MFA.SetupTTL,
 		},
 	} {
 		if err := setDuration(item.key, item.target); err != nil {
@@ -128,6 +169,22 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 			"PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS",
 			&cfg.Authentication.LoginRateLimit.MaximumSourceAttempts,
 		},
+		{
+			"PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_MAXIMUM_ATTEMPTS",
+			&cfg.Authentication.AccountRecovery.RateLimit.MaximumAttempts,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS",
+			&cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MAXIMUM_PER_USER",
+			&cfg.Authentication.PersonalAccessTokens.MaximumPerUser,
+		},
+		{
+			"PROCTOR_AUTHENTICATION_MFA_RECOVERY_CODE_COUNT",
+			&cfg.Authentication.MFA.RecoveryCodeCount,
+		},
 	} {
 		if err := setInt(item.key, lookup, item.target, &applied); err != nil {
 			return nil, err
@@ -148,6 +205,7 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 		{"PROCTOR_CACHE_REDIS_TLS", &cfg.Cache.Redis.TLS},
 		{"PROCTOR_MAIL_ENABLED", &cfg.Mail.Enabled},
 		{"PROCTOR_VFS_S3_SECURE", &cfg.VFS.S3.Secure},
+		{"PROCTOR_AUTHENTICATION_MFA_ENABLED", &cfg.Authentication.MFA.Enabled},
 	} {
 		if err := setBool(item.key, lookup, item.target, &applied); err != nil {
 			return nil, err
@@ -380,6 +438,9 @@ func removeEnvironmentOverrides(candidate *Config, persisted Config, keys []stri
 		case "PROCTOR_AUTHENTICATION_SESSIONS_MAXIMUM_PER_USER":
 			candidate.Authentication.Sessions.MaximumPerUser =
 				persisted.Authentication.Sessions.MaximumPerUser
+		case "PROCTOR_AUTHENTICATION_RECENT_AUTHENTICATION_TTL":
+			candidate.Authentication.RecentAuthenticationTTL =
+				persisted.Authentication.RecentAuthenticationTTL
 		case "PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_WINDOW":
 			candidate.Authentication.LoginRateLimit.Window =
 				persisted.Authentication.LoginRateLimit.Window
@@ -389,6 +450,41 @@ func removeEnvironmentOverrides(candidate *Config, persisted Config, keys []stri
 		case "PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS":
 			candidate.Authentication.LoginRateLimit.MaximumSourceAttempts =
 				persisted.Authentication.LoginRateLimit.MaximumSourceAttempts
+		case "PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_EMAIL_VERIFICATION_TTL":
+			candidate.Authentication.AccountRecovery.EmailVerificationTTL =
+				persisted.Authentication.AccountRecovery.EmailVerificationTTL
+		case "PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_PASSWORD_RESET_TTL":
+			candidate.Authentication.AccountRecovery.PasswordResetTTL =
+				persisted.Authentication.AccountRecovery.PasswordResetTTL
+		case "PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_WINDOW":
+			candidate.Authentication.AccountRecovery.RateLimit.Window =
+				persisted.Authentication.AccountRecovery.RateLimit.Window
+		case "PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_MAXIMUM_ATTEMPTS":
+			candidate.Authentication.AccountRecovery.RateLimit.MaximumAttempts =
+				persisted.Authentication.AccountRecovery.RateLimit.MaximumAttempts
+		case "PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS":
+			candidate.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts =
+				persisted.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts
+		case "PROCTOR_AUTHENTICATION_MFA_ENABLED":
+			candidate.Authentication.MFA.Enabled =
+				persisted.Authentication.MFA.Enabled
+		case "PROCTOR_AUTHENTICATION_MFA_ISSUER":
+			candidate.Authentication.MFA.Issuer =
+				persisted.Authentication.MFA.Issuer
+		case "PROCTOR_AUTHENTICATION_MFA_ENCRYPTION_KEY":
+			candidate.Authentication.MFA.EncryptionKey =
+				persisted.Authentication.MFA.EncryptionKey
+		case "PROCTOR_AUTHENTICATION_MFA_DECRYPTION_KEYS":
+			candidate.Authentication.MFA.DecryptionKeys = append(
+				[]string(nil),
+				persisted.Authentication.MFA.DecryptionKeys...,
+			)
+		case "PROCTOR_AUTHENTICATION_MFA_SETUP_TTL":
+			candidate.Authentication.MFA.SetupTTL =
+				persisted.Authentication.MFA.SetupTTL
+		case "PROCTOR_AUTHENTICATION_MFA_RECOVERY_CODE_COUNT":
+			candidate.Authentication.MFA.RecoveryCodeCount =
+				persisted.Authentication.MFA.RecoveryCodeCount
 		case "PROCTOR_LOG_MAX_FIELD_BYTES":
 			candidate.Log.MaxFieldBytes = persisted.Log.MaxFieldBytes
 		case "PROCTOR_LOG_LEVEL":

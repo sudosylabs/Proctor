@@ -30,7 +30,15 @@ type PersonalAccessToken struct {
 	AcademicUnitId string   `json:"academic_unit_id,omitempty"`
 	ExpiresAt      int64    `json:"expires_at"`
 	LastUsedAt     int64    `json:"last_used_at,omitempty"`
+	DisabledAt     int64    `json:"disabled_at,omitempty"`
 	RevokedAt      int64    `json:"revoked_at,omitempty"`
+}
+
+// PersonalAccessTokenCreation contains the raw credential returned exactly
+// once. Credential must never be persisted, logged, or audited.
+type PersonalAccessTokenCreation struct {
+	Token      *PersonalAccessToken `json:"token"`
+	Credential string               `json:"credential"`
 }
 
 func (t *PersonalAccessToken) PreSave() {
@@ -152,12 +160,22 @@ func (t *PersonalAccessToken) IsValid() *AppError {
 			details,
 		)
 	}
+	if t.DisabledAt != 0 && t.DisabledAt < t.CreateAt {
+		return invalidModelError(
+			where,
+			"personal_access_token",
+			"disabled_at",
+			"must not precede create_at",
+			details,
+		)
+	}
 	return nil
 }
 
 func (t *PersonalAccessToken) IsActiveAt(now int64) bool {
 	return t != nil &&
 		t.DeleteAt == 0 &&
+		t.DisabledAt == 0 &&
 		t.RevokedAt == 0 &&
 		now < t.ExpiresAt
 }
@@ -170,6 +188,7 @@ func (t *PersonalAccessToken) Auditable() map[string]any {
 	fields["academic_unit_id"] = t.AcademicUnitId
 	fields["expires_at"] = t.ExpiresAt
 	fields["last_used_at"] = t.LastUsedAt
+	fields["disabled_at"] = t.DisabledAt
 	fields["revoked_at"] = t.RevokedAt
 	return fields
 }

@@ -124,6 +124,7 @@ func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
 				UserId:    userID,
 				Purpose:   UserTokenEmailVerification,
 				TokenHash: tokenHash,
+				Target:    "student@example.edu",
 				ExpiresAt: now + int64(time.Hour/time.Millisecond),
 			},
 		},

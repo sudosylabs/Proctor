@@ -21,6 +21,9 @@ type Store interface {
 	AcademicPeriod() AcademicPeriodStore
 	Class() ClassStore
 	User() UserStore
+	UserToken() UserTokenStore
+	PersonalAccessToken() PersonalAccessTokenStore
+	MFA() MFAStore
 	Affiliation() AffiliationStore
 	AcademicUnitMember() AcademicUnitMemberStore
 	ClassMember() ClassMemberStore
@@ -134,6 +137,96 @@ type UserStore interface {
 		string,
 	) (*model.User, []*model.Session, []string, error)
 	UpdateLastLogin(context.Context, string, int64) error
+}
+
+type EmailVerificationResult struct {
+	Token *model.UserToken
+	User  *model.User
+}
+
+type PasswordResetResult struct {
+	Token               *model.UserToken
+	User                *model.User
+	PasswordCredential  *model.PasswordCredential
+	RevokedSessions     []*model.Session
+	RevokedAccessHashes []string
+}
+
+// UserTokenStore owns issuance and single-use consumption of purpose-specific
+// account credentials. Consumption methods include their account mutation,
+// session revocation where applicable, and terminal audit in one transaction.
+type UserTokenStore interface {
+	Issue(
+		context.Context,
+		*model.UserToken,
+		*model.AuditEvent,
+	) (*model.UserToken, error)
+	GetByHash(
+		context.Context,
+		string,
+		model.UserTokenPurpose,
+	) (*model.UserToken, error)
+	ConsumeEmailVerification(
+		context.Context,
+		string,
+		int64,
+		*model.AuditEvent,
+	) (*EmailVerificationResult, error)
+	ConsumePasswordReset(
+		context.Context,
+		string,
+		string,
+		int64,
+		string,
+		*model.AuditEvent,
+	) (*PasswordResetResult, error)
+}
+
+type PersonalAccessTokenResolution struct {
+	Token *model.PersonalAccessToken
+	User  *model.User
+}
+
+// PersonalAccessTokenStore persists hashed, explicitly scoped credentials.
+// Resolve is authoritative and also performs the debounced last-used update.
+type PersonalAccessTokenStore interface {
+	Save(context.Context, *model.PersonalAccessToken, int) (*model.PersonalAccessToken, error)
+	Get(context.Context, string) (*model.PersonalAccessToken, error)
+	ListByUser(context.Context, string) ([]*model.PersonalAccessToken, error)
+	Resolve(context.Context, string, int64, int64) (*PersonalAccessTokenResolution, error)
+	SetDisabled(context.Context, string, string, bool, int64, int) (*model.PersonalAccessToken, error)
+	Revoke(context.Context, string, string, int64) (*model.PersonalAccessToken, error)
+}
+
+type MFAActivationResult struct {
+	Credential        *model.MFACredential
+	Session           *model.Session
+	AccessTokenHashes []string
+}
+
+type MFADisableResult struct {
+	AccessTokenHashes []string
+}
+
+// MFAStore owns the encrypted TOTP credential, hashed recovery codes, replay
+// prevention, and the session-strength changes coupled to MFA lifecycle.
+type MFAStore interface {
+	SavePending(context.Context, *model.MFACredential) (*model.MFACredential, error)
+	GetByUser(context.Context, string) (*model.MFACredential, error)
+	Activate(
+		context.Context,
+		string,
+		string,
+		int64,
+		[]*model.MFARecoveryCode,
+		string,
+		int64,
+	) (*MFAActivationResult, error)
+	ConsumeSecondFactor(context.Context, string, int64, string, int64) error
+	UpgradeSession(context.Context, string, string, int64) ([]string, error)
+	ReplaceRecoveryCodes(context.Context, string, []*model.MFARecoveryCode, int64) error
+	CountRecoveryCodes(context.Context, string) (int, error)
+	Disable(context.Context, string, int64) (*MFADisableResult, error)
 }
 
 // AffiliationStore persists non-exclusive institution relationships.

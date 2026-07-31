@@ -3,10 +3,13 @@
 
 package model
 
+import "time"
+
 type CredentialType string
 
 const (
-	CredentialSessionAccess CredentialType = "session_access"
+	CredentialSessionAccess       CredentialType = "session_access"
+	CredentialPersonalAccessToken CredentialType = "personal_access_token"
 )
 
 // Principal is the immutable authentication context attached to one request.
@@ -22,6 +25,8 @@ type Principal struct {
 	ClientType             SessionClientType      `json:"client_type"`
 	AuthenticatedAt        int64                  `json:"authenticated_at"`
 	MFACompletedAt         int64                  `json:"mfa_completed_at,omitempty"`
+	CredentialScopes       []string               `json:"credential_scopes,omitempty"`
+	AcademicUnitId         string                 `json:"academic_unit_id,omitempty"`
 }
 
 // AuthenticationTokens contains raw credentials returned exactly once after
@@ -34,12 +39,59 @@ type AuthenticationTokens struct {
 }
 
 func (p Principal) IsValid() bool {
-	return IsValidId(p.UserId) &&
-		IsValidId(p.SessionId) &&
-		IsValidId(p.CredentialId) &&
-		p.CredentialType == CredentialSessionAccess &&
-		p.AuthenticationMethod != "" &&
-		p.AuthenticationStrength.IsValid() &&
-		p.ClientType.IsValid() &&
-		p.AuthenticatedAt > 0
+	if !IsValidId(p.UserId) || !IsValidId(p.CredentialId) ||
+		p.AuthenticationMethod == "" || !p.ClientType.IsValid() {
+		return false
+	}
+	switch p.CredentialType {
+	case CredentialSessionAccess:
+		return IsValidId(p.SessionId) &&
+			p.AuthenticationStrength.IsValid() &&
+			p.AuthenticatedAt > 0 &&
+			len(p.CredentialScopes) == 0 &&
+			p.AcademicUnitId == ""
+	case CredentialPersonalAccessToken:
+		if p.SessionId != "" || p.AuthenticationStrength != "" ||
+			p.AuthenticatedAt != 0 || p.MFACompletedAt != 0 ||
+			p.ClientType != SessionClientCLI ||
+			len(p.CredentialScopes) == 0 ||
+			(p.AcademicUnitId != "" && !IsValidId(p.AcademicUnitId)) {
+			return false
+		}
+		seen := make(map[string]struct{}, len(p.CredentialScopes))
+		for _, scope := range p.CredentialScopes {
+			if !IsKnownAction(scope) {
+				return false
+			}
+			if _, exists := seen[scope]; exists {
+				return false
+			}
+			seen[scope] = struct{}{}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func (p Principal) HasStrongAuthentication() bool {
+	return p.AuthenticationStrength == AuthenticationMultiFactor
+}
+
+func (p Principal) LastAuthenticationAt() int64 {
+	if p.MFACompletedAt > p.AuthenticatedAt {
+		return p.MFACompletedAt
+	}
+	return p.AuthenticatedAt
+}
+
+func (p Principal) IsRecentlyAuthenticated(now time.Time, maximumAge time.Duration) bool {
+	if maximumAge <= 0 {
+		return false
+	}
+	authenticatedAt := p.LastAuthenticationAt()
+	current := now.UnixMilli()
+	return authenticatedAt > 0 &&
+		authenticatedAt <= current &&
+		current-authenticatedAt <= maximumAge.Milliseconds()
 }

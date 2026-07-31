@@ -201,6 +201,8 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 		BuildInfo:    settings.buildInfo,
 		PublicURL:    applicationPlatform.Config().Server.PublicURL,
 		MaxBodyBytes: applicationPlatform.Config().Server.MaxBodyBytes,
+		RecentAuthenticationTTL: applicationPlatform.Config().
+			Authentication.RecentAuthenticationTTL.Duration,
 	})
 	if err != nil {
 		_ = applicationPlatform.Close()

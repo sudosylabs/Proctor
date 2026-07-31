@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -165,10 +166,39 @@ type LoginRateLimit struct {
 	MaximumSourceAttempts int      `json:"maximum_source_attempts"`
 }
 
+type AccountRecovery struct {
+	EmailVerificationTTL Duration       `json:"email_verification_ttl"`
+	PasswordResetTTL     Duration       `json:"password_reset_ttl"`
+	RateLimit            LoginRateLimit `json:"rate_limit"`
+}
+
+type PersonalAccessTokens struct {
+	MinimumLifetime        Duration `json:"minimum_lifetime"`
+	MaximumLifetime        Duration `json:"maximum_lifetime"`
+	LastUsedUpdateInterval Duration `json:"last_used_update_interval"`
+	MaximumPerUser         int      `json:"maximum_per_user"`
+}
+
+// MFA contains operator-owned cryptographic and policy settings. The primary
+// key encrypts new TOTP secrets; decryption_keys permits online key rotation
+// while existing credentials are re-encrypted.
+type MFA struct {
+	Enabled           bool     `json:"enabled"`
+	Issuer            string   `json:"issuer"`
+	EncryptionKey     string   `json:"encryption_key,omitempty"`
+	DecryptionKeys    []string `json:"decryption_keys,omitempty"`
+	SetupTTL          Duration `json:"setup_ttl"`
+	RecoveryCodeCount int      `json:"recovery_code_count"`
+}
+
 type Authentication struct {
-	Password       Password       `json:"password"`
-	Sessions       Sessions       `json:"sessions"`
-	LoginRateLimit LoginRateLimit `json:"login_rate_limit"`
+	Password                Password             `json:"password"`
+	Sessions                Sessions             `json:"sessions"`
+	RecentAuthenticationTTL Duration             `json:"recent_authentication_ttl"`
+	LoginRateLimit          LoginRateLimit       `json:"login_rate_limit"`
+	AccountRecovery         AccountRecovery      `json:"account_recovery"`
+	PersonalAccessTokens    PersonalAccessTokens `json:"personal_access_tokens"`
+	MFA                     MFA                  `json:"mfa"`
 }
 
 type Config struct {
@@ -256,10 +286,32 @@ func Default() Config {
 				ActivityUpdateInterval: Duration{Duration: 5 * time.Minute},
 				MaximumPerUser:         10,
 			},
+			RecentAuthenticationTTL: Duration{Duration: 15 * time.Minute},
 			LoginRateLimit: LoginRateLimit{
 				Window:                Duration{Duration: time.Minute},
 				MaximumAttempts:       10,
 				MaximumSourceAttempts: 1000,
+			},
+			AccountRecovery: AccountRecovery{
+				EmailVerificationTTL: Duration{Duration: 24 * time.Hour},
+				PasswordResetTTL:     Duration{Duration: time.Hour},
+				RateLimit: LoginRateLimit{
+					Window:                Duration{Duration: 15 * time.Minute},
+					MaximumAttempts:       3,
+					MaximumSourceAttempts: 100,
+				},
+			},
+			PersonalAccessTokens: PersonalAccessTokens{
+				MinimumLifetime:        Duration{Duration: time.Hour},
+				MaximumLifetime:        Duration{Duration: 90 * 24 * time.Hour},
+				LastUsedUpdateInterval: Duration{Duration: 5 * time.Minute},
+				MaximumPerUser:         50,
+			},
+			MFA: MFA{
+				Enabled:           false,
+				Issuer:            "Proctor",
+				SetupTTL:          Duration{Duration: 10 * time.Minute},
+				RecoveryCodeCount: 10,
 			},
 		},
 		Log: Log{
@@ -278,6 +330,10 @@ func (c Config) Clone() Config {
 	cloned := c
 	cloned.Log.Targets = append([]LogTarget(nil), c.Log.Targets...)
 	cloned.Cache.Redis.Addresses = append([]string(nil), c.Cache.Redis.Addresses...)
+	cloned.Authentication.MFA.DecryptionKeys = append(
+		[]string(nil),
+		c.Authentication.MFA.DecryptionKeys...,
+	)
 	return cloned
 }
 
@@ -292,6 +348,14 @@ func (c Config) Redacted() Config {
 	redacted.VFS.S3.AccessKey = redactSecret(redacted.VFS.S3.AccessKey)
 	redacted.VFS.S3.SecretKey = redactSecret(redacted.VFS.S3.SecretKey)
 	redacted.VFS.S3.SessionToken = redactSecret(redacted.VFS.S3.SessionToken)
+	redacted.Authentication.MFA.EncryptionKey = redactSecret(
+		redacted.Authentication.MFA.EncryptionKey,
+	)
+	for index := range redacted.Authentication.MFA.DecryptionKeys {
+		redacted.Authentication.MFA.DecryptionKeys[index] = redactSecret(
+			redacted.Authentication.MFA.DecryptionKeys[index],
+		)
+	}
 	return redacted
 }
 
@@ -604,20 +668,133 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 	if sessions.MaximumPerUser < 1 || sessions.MaximumPerUser > 1000 {
 		add("authentication.sessions.maximum_per_user", "must be between 1 and 1000")
 	}
+	if authentication.RecentAuthenticationTTL.Duration < time.Minute ||
+		authentication.RecentAuthenticationTTL.Duration > 24*time.Hour {
+		add(
+			"authentication.recent_authentication_ttl",
+			"must be between 1m and 24h",
+		)
+	}
+	if authentication.RecentAuthenticationTTL.Duration >
+		sessions.AbsoluteTTL.Duration {
+		add(
+			"authentication.recent_authentication_ttl",
+			"must not exceed sessions.absolute_ttl",
+		)
+	}
 
 	rateLimit := authentication.LoginRateLimit
+	validateAuthenticationRateLimit(
+		"authentication.login_rate_limit", rateLimit, add,
+	)
+
+	recovery := authentication.AccountRecovery
+	if recovery.EmailVerificationTTL.Duration < 5*time.Minute ||
+		recovery.EmailVerificationTTL.Duration > 30*24*time.Hour {
+		add(
+			"authentication.account_recovery.email_verification_ttl",
+			"must be between 5m and 720h",
+		)
+	}
+	if recovery.PasswordResetTTL.Duration < 5*time.Minute ||
+		recovery.PasswordResetTTL.Duration > 24*time.Hour {
+		add(
+			"authentication.account_recovery.password_reset_ttl",
+			"must be between 5m and 24h",
+		)
+	}
+	validateAuthenticationRateLimit(
+		"authentication.account_recovery.rate_limit",
+		recovery.RateLimit,
+		add,
+	)
+
+	tokens := authentication.PersonalAccessTokens
+	if tokens.MinimumLifetime.Duration < 5*time.Minute ||
+		tokens.MinimumLifetime.Duration > 24*time.Hour {
+		add(
+			"authentication.personal_access_tokens.minimum_lifetime",
+			"must be between 5m and 24h",
+		)
+	}
+	if tokens.MaximumLifetime.Duration < tokens.MinimumLifetime.Duration ||
+		tokens.MaximumLifetime.Duration > 365*24*time.Hour {
+		add(
+			"authentication.personal_access_tokens.maximum_lifetime",
+			"must be between minimum_lifetime and 8760h",
+		)
+	}
+	if tokens.LastUsedUpdateInterval.Duration <= 0 ||
+		tokens.LastUsedUpdateInterval.Duration >= tokens.MinimumLifetime.Duration {
+		add(
+			"authentication.personal_access_tokens.last_used_update_interval",
+			"must be greater than zero and less than minimum_lifetime",
+		)
+	}
+	if tokens.MaximumPerUser < 1 || tokens.MaximumPerUser > 1000 {
+		add(
+			"authentication.personal_access_tokens.maximum_per_user",
+			"must be between 1 and 1000",
+		)
+	}
+
+	mfa := authentication.MFA
+	if len(mfa.Issuer) == 0 || len(mfa.Issuer) > 128 ||
+		strings.ContainsAny(mfa.Issuer, "\x00\r\n") {
+		add("authentication.mfa.issuer", "must contain between 1 and 128 safe characters")
+	}
+	if mfa.SetupTTL.Duration < time.Minute || mfa.SetupTTL.Duration > time.Hour {
+		add("authentication.mfa.setup_ttl", "must be between 1m and 1h")
+	}
+	if mfa.RecoveryCodeCount < 5 || mfa.RecoveryCodeCount > 20 {
+		add("authentication.mfa.recovery_code_count", "must be between 5 and 20")
+	}
+	keys := append([]string{mfa.EncryptionKey}, mfa.DecryptionKeys...)
+	seenKeys := make(map[string]struct{}, len(keys))
+	for index, key := range keys {
+		if key == "" {
+			if index == 0 && mfa.Enabled {
+				add(
+					"authentication.mfa.encryption_key",
+					"is required when MFA is enabled",
+				)
+			}
+			continue
+		}
+		decoded, err := base64.StdEncoding.DecodeString(key)
+		if err != nil || len(decoded) != 32 {
+			field := "authentication.mfa.encryption_key"
+			if index > 0 {
+				field = fmt.Sprintf(
+					"authentication.mfa.decryption_keys[%d]",
+					index-1,
+				)
+			}
+			add(field, "must be standard base64 encoding of exactly 32 bytes")
+			continue
+		}
+		if _, exists := seenKeys[key]; exists {
+			add("authentication.mfa.decryption_keys", "must not contain duplicate keys")
+			continue
+		}
+		seenKeys[key] = struct{}{}
+	}
+}
+
+func validateAuthenticationRateLimit(
+	prefix string,
+	rateLimit LoginRateLimit,
+	add func(string, string),
+) {
 	if rateLimit.Window.Duration < time.Second || rateLimit.Window.Duration > 24*time.Hour {
-		add("authentication.login_rate_limit.window", "must be between 1s and 24h")
+		add(prefix+".window", "must be between 1s and 24h")
 	}
 	if rateLimit.MaximumAttempts < 1 || rateLimit.MaximumAttempts > 10000 {
-		add("authentication.login_rate_limit.maximum_attempts", "must be between 1 and 10000")
+		add(prefix+".maximum_attempts", "must be between 1 and 10000")
 	}
 	if rateLimit.MaximumSourceAttempts < rateLimit.MaximumAttempts ||
 		rateLimit.MaximumSourceAttempts > 1_000_000 {
-		add(
-			"authentication.login_rate_limit.maximum_source_attempts",
-			"must be between maximum_attempts and 1000000",
-		)
+		add(prefix+".maximum_source_attempts", "must be between maximum_attempts and 1000000")
 	}
 }
 

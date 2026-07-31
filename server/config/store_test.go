@@ -5,6 +5,7 @@ package config
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -29,11 +30,15 @@ func TestStoreLoadsDefaultsAndReturnsClones(t *testing.T) {
 	}
 	got.Log.Targets[0].Level = "error"
 	got.Cache.Redis.Addresses[0] = "mutated:6379"
+	got.Authentication.MFA.DecryptionKeys = []string{"mutated"}
 	if store.Get().Log.Targets[0].Level != "info" {
 		t.Fatal("Get exposed mutable store state")
 	}
 	if store.Get().Cache.Redis.Addresses[0] == "mutated:6379" {
 		t.Fatal("Get exposed mutable cache address state")
+	}
+	if len(store.Get().Authentication.MFA.DecryptionKeys) != 0 {
+		t.Fatal("Get exposed mutable MFA decryption keys")
 	}
 }
 
@@ -89,13 +94,22 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	}
 	backing := NewMemoryStore(data)
 	environment := map[string]string{
-		"PROCTOR_SERVER_LISTEN_ADDRESS": "127.0.0.1:9000",
-		"PROCTOR_LOG_LEVEL":             "debug",
-		"PROCTOR_DATABASE_DATA_SOURCE":  "postgres://runtime:secret@db.example/proctor?sslmode=require",
-		"PROCTOR_CACHE_REDIS_PASSWORD":  "runtime-cache-secret",
-		"PROCTOR_CLUSTER_NODE_ID":       "runtime-node",
-		"PROCTOR_MAIL_SMTP_PASSWORD":    "runtime-mail-secret",
-		"PROCTOR_VFS_S3_SECRET_KEY":     "runtime-vfs-secret",
+		"PROCTOR_SERVER_LISTEN_ADDRESS":                              "127.0.0.1:9000",
+		"PROCTOR_LOG_LEVEL":                                          "debug",
+		"PROCTOR_DATABASE_DATA_SOURCE":                               "postgres://runtime:secret@db.example/proctor?sslmode=require",
+		"PROCTOR_CACHE_REDIS_PASSWORD":                               "runtime-cache-secret",
+		"PROCTOR_CLUSTER_NODE_ID":                                    "runtime-node",
+		"PROCTOR_MAIL_SMTP_PASSWORD":                                 "runtime-mail-secret",
+		"PROCTOR_VFS_S3_SECRET_KEY":                                  "runtime-vfs-secret",
+		"PROCTOR_AUTHENTICATION_RECENT_AUTHENTICATION_TTL":           "10m",
+		"PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_PASSWORD_RESET_TTL": "30m",
+		"PROCTOR_AUTHENTICATION_MFA_ENABLED":                         "true",
+		"PROCTOR_AUTHENTICATION_MFA_ENCRYPTION_KEY": base64.StdEncoding.
+			EncodeToString(make([]byte, 32)),
+		"PROCTOR_AUTHENTICATION_MFA_DECRYPTION_KEYS": base64.StdEncoding.
+			EncodeToString([]byte("01234567890123456789012345678901")),
+		"PROCTOR_AUTHENTICATION_MFA_SETUP_TTL":           "15m",
+		"PROCTOR_AUTHENTICATION_MFA_RECOVERY_CODE_COUNT": "12",
 	}
 	store, err := NewStore(context.Background(), backing, StoreOptions{
 		LookupEnv: func(key string) (string, bool) {
@@ -126,6 +140,19 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 		effective.VFS.S3.SecretKey != environment["PROCTOR_VFS_S3_SECRET_KEY"] {
 		t.Fatal("effective configuration did not apply infrastructure secrets")
 	}
+	if effective.Authentication.RecentAuthenticationTTL.Duration != 10*time.Minute ||
+		effective.Authentication.AccountRecovery.PasswordResetTTL.Duration !=
+			30*time.Minute {
+		t.Fatal("effective configuration did not apply authentication durations")
+	}
+	if !effective.Authentication.MFA.Enabled ||
+		effective.Authentication.MFA.EncryptionKey !=
+			environment["PROCTOR_AUTHENTICATION_MFA_ENCRYPTION_KEY"] ||
+		len(effective.Authentication.MFA.DecryptionKeys) != 1 ||
+		effective.Authentication.MFA.SetupTTL.Duration != 15*time.Minute ||
+		effective.Authentication.MFA.RecoveryCodeCount != 12 {
+		t.Fatal("effective configuration did not apply MFA settings")
+	}
 	effective.Server.PublicURL = "https://proctor.example.edu"
 	if _, _, err := store.Set(context.Background(), effective); err != nil {
 		t.Fatal(err)
@@ -149,6 +176,17 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 		persisted.VFS.S3.SecretKey != "" {
 		t.Fatal("environment infrastructure secrets were persisted")
 	}
+	if persisted.Authentication.RecentAuthenticationTTL !=
+		initial.Authentication.RecentAuthenticationTTL ||
+		persisted.Authentication.AccountRecovery.PasswordResetTTL !=
+			initial.Authentication.AccountRecovery.PasswordResetTTL {
+		t.Fatal("environment authentication durations were persisted")
+	}
+	if persisted.Authentication.MFA.Enabled ||
+		persisted.Authentication.MFA.EncryptionKey != "" ||
+		len(persisted.Authentication.MFA.DecryptionKeys) != 0 {
+		t.Fatal("environment MFA settings were persisted")
+	}
 	if persisted.Server.PublicURL != "https://proctor.example.edu" {
 		t.Fatalf("non-overridden change was lost: %q", persisted.Server.PublicURL)
 	}
@@ -164,6 +202,10 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	cfg.VFS.S3.AccessKey = "vfs-access-key"
 	cfg.VFS.S3.SecretKey = "vfs-secret-key"
 	cfg.VFS.S3.SessionToken = "vfs-session-token"
+	cfg.Authentication.MFA.EncryptionKey = base64.StdEncoding.
+		EncodeToString([]byte("01234567890123456789012345678901"))
+	cfg.Authentication.MFA.DecryptionKeys = []string{base64.StdEncoding.
+		EncodeToString([]byte("abcdefghijklmnopqrstuvwxyzABCDEF"))}
 	data, err := cfg.RedactedJSON()
 	if err != nil {
 		t.Fatal(err)
@@ -175,6 +217,8 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 		"vfs-access-key",
 		"vfs-secret-key",
 		"vfs-session-token",
+		cfg.Authentication.MFA.EncryptionKey,
+		cfg.Authentication.MFA.DecryptionKeys[0],
 	} {
 		if strings.Contains(string(data), forbidden) {
 			t.Fatalf("redacted configuration exposed %q: %s", forbidden, data)
@@ -200,6 +244,9 @@ func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
 	cfg.VFS.S3.Endpoint = ""
 	cfg.VFS.S3.Bucket = ""
 	cfg.Authentication.Password.ArgonMemoryKiB = 1
+	cfg.Authentication.MFA.Enabled = true
+	cfg.Authentication.MFA.EncryptionKey = "not-base64"
+	cfg.Authentication.MFA.RecoveryCodeCount = 2
 	cfg.Authentication.Sessions.AccessTTL.Duration = cfg.Authentication.Sessions.IdleTTL.Duration + time.Second
 	cfg.Cluster.Backend = "redis"
 	cfg.Cluster.NodeID = "invalid node"

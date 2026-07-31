@@ -36,8 +36,8 @@ conformance-postgres:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test ./store/sqlstore -run '^(TestInstitutionStore|TestAcademicUnitStore|TestProgrammeStore|TestProgrammeLevelStore|TestAcademicPeriodStore|TestClassStore|TestUserStore|TestPasswordCredentialStore|TestSessionStores|TestRoleStore|TestRoleBindingStore|TestAuditStore|TestInstallationStore|TestMigrationsRoundTrip)$$' -count=1; \
+		go test ./store/sqlstore -run '^(TestInstitutionStore|TestAcademicUnitStore|TestProgrammeStore|TestProgrammeLevelStore|TestAcademicPeriodStore|TestClassStore|TestUserStore|TestPasswordCredentialStore|TestUserTokenStore|TestPersonalAccessTokenStore|TestMFAStore|TestSessionStores|TestRoleStore|TestRoleBindingStore|TestAuditStore|TestInstallationStore|TestMigrationsRoundTrip)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 		go test ./cmd/proctor -run '^TestMigrateIntegration$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test ./app -run '^(Test(Authentication|BrowserCookieAuthentication|SessionManagement)Integration|TestBootstrapAndRoleAdministrationIntegration|TestPrivilegedAuditListingIsScopedAndDurablyAudited|TestAuthorizationResolvesCurrentAcademicHierarchy|TestPrincipalPermissionAndUserVisibilityPolicies)$$' -count=1
+		go test ./app -run '^(Test(Authentication|BrowserCookieAuthentication|SessionManagement|AccountRecovery|PersonalAccessToken|MFA)Integration|TestAcademicMembershipAndUserAdministrationIntegration|TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence|TestBootstrapAndRoleAdministrationIntegration|TestPrivilegedAuditListingIsScopedAndDurablyAudited|TestAuthorizationResolvesCurrentAcademicHierarchy|TestPrincipalPermissionAndUserVisibilityPolicies)$$' -count=1

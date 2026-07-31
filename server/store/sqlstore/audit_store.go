@@ -73,6 +73,14 @@ func (s SqlAuditStore) Save(
 	ctx context.Context,
 	event *model.AuditEvent,
 ) (*model.AuditEvent, error) {
+	return insertAuditEvent(ctx, s.GetMaster(), event)
+}
+
+func insertAuditEvent(
+	ctx context.Context,
+	executor sqlxExecutor,
+	event *model.AuditEvent,
+) (*model.AuditEvent, error) {
 	if event == nil {
 		return nil, store.NewErrInvalidInput("audit_event", "value", nil)
 	}
@@ -85,7 +93,7 @@ func (s SqlAuditStore) Save(
 		return nil, appErr
 	}
 	row := newAuditRow(candidate)
-	if _, err := s.GetMaster().NamedExec(ctx, `
+	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO audit_events (
 			id, create_at, update_at, actor_id, session_id, action,
 			resource_type, resource_id, scope_type, scope_id, status,

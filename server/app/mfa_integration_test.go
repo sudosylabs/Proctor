@@ -1,0 +1,332 @@
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Adapted from Mattermost server/channels/app/user_test.go MFA lifecycle
+// coverage. Proctor additionally verifies encrypted persistence, one-time
+// recovery credentials, login assurance, cache invalidation, and redaction.
+
+package app_test
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base32"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib"
+)
+
+func TestMFAIntegration(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	encryptionKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	helper := testlib.Setup(
+		t,
+		testlib.WithConfig(func(cfg *config.Config) {
+			cfg.Authentication.MFA.Enabled = true
+			cfg.Authentication.MFA.EncryptionKey = encryptionKey
+		}),
+		testlib.WithServerOptions(app.WithStore(persistence)),
+	)
+	institution, err := persistence.Institution().Save(
+		context.Background(),
+		&model.Institution{
+			Name: "northbridge", DisplayName: "Northbridge University",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = institution
+	password := "correct horse battery staple"
+	user, appErr := helper.App.CreateLocalUser(
+		context.Background(),
+		&model.User{
+			Username: "mfa-user", Email: "mfa-user@example.edu",
+			DisplayName: "MFA User",
+		},
+		password,
+	)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	initial := loginIntegrationUser(
+		t,
+		helper.Server.Handler(),
+		user.Username,
+		password,
+		model.SessionClientCLI,
+		"mfa-initial",
+	)
+	setupResponse := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/mfa/setup",
+		nil,
+		initial.Tokens.AccessToken,
+	)
+	if setupResponse.Code != http.StatusCreated {
+		t.Fatalf(
+			"MFA setup status = %d: %s",
+			setupResponse.Code,
+			setupResponse.Body.String(),
+		)
+	}
+	var setup model.MFASetup
+	if err := json.Unmarshal(setupResponse.Body.Bytes(), &setup); err != nil {
+		t.Fatal(err)
+	}
+	if setup.Secret == "" ||
+		!strings.HasPrefix(setup.ProvisioningURI, "otpauth://totp/") ||
+		setupResponse.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("MFA setup = %#v", setup)
+	}
+	persisted, err := persistence.MFA().GetByUser(context.Background(), user.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.EncryptedSecret == setup.Secret ||
+		strings.Contains(persisted.EncryptedSecret, setup.Secret) {
+		t.Fatal("TOTP secret was not encrypted at rest")
+	}
+	code := integrationTOTP(t, setup.Secret, time.Now().UTC().Unix()/30)
+	activateResponse := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/mfa/activate",
+		map[string]any{"code": code},
+		initial.Tokens.AccessToken,
+	)
+	if activateResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"MFA activation status = %d: %s",
+			activateResponse.Code,
+			activateResponse.Body.String(),
+		)
+	}
+	var activation model.MFAActivation
+	if err := json.Unmarshal(activateResponse.Body.Bytes(), &activation); err != nil {
+		t.Fatal(err)
+	}
+	if len(activation.RecoveryCodes) !=
+		helper.ConfigStore.Get().Authentication.MFA.RecoveryCodeCount {
+		t.Fatalf("MFA recovery codes = %#v", activation.RecoveryCodes)
+	}
+	statusResponse := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodGet,
+		"/api/v1/users/me/mfa",
+		nil,
+		initial.Tokens.AccessToken,
+	)
+	if statusResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"MFA status = %d: %s",
+			statusResponse.Code,
+			statusResponse.Body.String(),
+		)
+	}
+	var status model.MFAStatus
+	if err := json.Unmarshal(statusResponse.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if !status.Enabled ||
+		status.RecoveryCodesRemaining != len(activation.RecoveryCodes) {
+		t.Fatalf("MFA status = %#v", status)
+	}
+	rechallenge := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/mfa/challenge",
+		map[string]any{"code": activation.RecoveryCodes[1]},
+		initial.Tokens.AccessToken,
+	)
+	if rechallenge.Code != http.StatusOK {
+		t.Fatalf(
+			"MFA rechallenge status = %d: %s",
+			rechallenge.Code,
+			rechallenge.Body.String(),
+		)
+	}
+	var rechallenged model.Session
+	if err := json.Unmarshal(rechallenge.Body.Bytes(), &rechallenged); err != nil {
+		t.Fatal(err)
+	}
+	if rechallenged.AuthenticationStrength != model.AuthenticationMultiFactor ||
+		rechallenged.MFACompletedAt == 0 {
+		t.Fatalf("MFA rechallenge session = %#v", rechallenged)
+	}
+	withoutSecondFactor := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/auth/login",
+		map[string]any{
+			"login_id": user.Username, "password": password,
+			"client_type": model.SessionClientCLI,
+		},
+		"",
+	)
+	if withoutSecondFactor.Code != http.StatusUnauthorized {
+		t.Fatalf(
+			"MFA-required login status = %d: %s",
+			withoutSecondFactor.Code,
+			withoutSecondFactor.Body.String(),
+		)
+	}
+	recoveryCode := activation.RecoveryCodes[0]
+	recoveryLogin := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/auth/login",
+		map[string]any{
+			"login_id": user.Username, "password": password,
+			"mfa_code": recoveryCode, "client_type": model.SessionClientCLI,
+			"device_id": "mfa-recovery",
+		},
+		"",
+	)
+	if recoveryLogin.Code != http.StatusOK {
+		t.Fatalf(
+			"MFA recovery login status = %d: %s",
+			recoveryLogin.Code,
+			recoveryLogin.Body.String(),
+		)
+	}
+	recovered := decodeAuthenticationResponse(t, recoveryLogin)
+	if recovered.Session.AuthenticationStrength != model.AuthenticationMultiFactor ||
+		recovered.Session.MFACompletedAt == 0 {
+		t.Fatalf("MFA login session = %#v", recovered.Session)
+	}
+	replay := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/auth/login",
+		map[string]any{
+			"login_id": user.Username, "password": password,
+			"mfa_code": recoveryCode, "client_type": model.SessionClientCLI,
+		},
+		"",
+	)
+	if replay.Code != http.StatusUnauthorized {
+		t.Fatalf(
+			"MFA recovery replay status = %d: %s",
+			replay.Code,
+			replay.Body.String(),
+		)
+	}
+	regenerate := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/mfa/recovery-codes/regenerate",
+		nil,
+		initial.Tokens.AccessToken,
+	)
+	if regenerate.Code != http.StatusOK {
+		t.Fatalf(
+			"MFA recovery regeneration = %d: %s",
+			regenerate.Code,
+			regenerate.Body.String(),
+		)
+	}
+	var regenerated struct {
+		RecoveryCodes []string `json:"recovery_codes"`
+	}
+	if err := json.Unmarshal(regenerate.Body.Bytes(), &regenerated); err != nil {
+		t.Fatal(err)
+	}
+	if len(regenerated.RecoveryCodes) != len(activation.RecoveryCodes) ||
+		regenerated.RecoveryCodes[0] == activation.RecoveryCodes[0] {
+		t.Fatalf("regenerated MFA recovery codes = %#v", regenerated)
+	}
+	disable := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/users/me/mfa/disable",
+		nil,
+		initial.Tokens.AccessToken,
+	)
+	if disable.Code != http.StatusNoContent {
+		t.Fatalf("MFA disable = %d: %s", disable.Code, disable.Body.String())
+	}
+	afterDisable := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/auth/login",
+		map[string]any{
+			"login_id": user.Username, "password": password,
+			"client_type": model.SessionClientCLI,
+		},
+		"",
+	)
+	if afterDisable.Code != http.StatusOK {
+		t.Fatalf(
+			"post-MFA login status = %d: %s",
+			afterDisable.Code,
+			afterDisable.Body.String(),
+		)
+	}
+	disabledLogin := decodeAuthenticationResponse(t, afterDisable)
+	if disabledLogin.Session.AuthenticationStrength != model.AuthenticationSingleFactor {
+		t.Fatalf("post-MFA session = %#v", disabledLogin.Session)
+	}
+
+	audits, err := persistence.Audit().List(
+		context.Background(),
+		store.AuditListOptions{Limit: 200},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedAudits, err := json.Marshal(audits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sensitiveValues := append(
+		[]string{setup.Secret, persisted.EncryptedSecret},
+		activation.RecoveryCodes...,
+	)
+	sensitiveValues = append(sensitiveValues, regenerated.RecoveryCodes...)
+	for _, sensitive := range sensitiveValues {
+		if bytes.Contains(encodedAudits, []byte(sensitive)) ||
+			strings.Contains(helper.Logs.String(), sensitive) {
+			t.Fatal("MFA secret or recovery credential leaked")
+		}
+	}
+}
+
+func integrationTOTP(t *testing.T, secret string, timeStep int64) string {
+	t.Helper()
+	key, err := base32.StdEncoding.DecodeString(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var counter [8]byte
+	binary.BigEndian.PutUint64(counter[:], uint64(timeStep))
+	mac := hmac.New(sha1.New, key)
+	if _, err := mac.Write(counter[:]); err != nil {
+		t.Fatal(err)
+	}
+	digest := mac.Sum(nil)
+	offset := digest[len(digest)-1] & 0x0f
+	truncated := binary.BigEndian.Uint32(digest[offset : offset+4])
+	value := (truncated & 0x7fffffff) % 1_000_000
+	return fmt.Sprintf("%06d", value)
+}

@@ -35,7 +35,7 @@ func (a *API) InitAudits() error {
 		a.BaseRoutes.Audits,
 		"",
 		http.MethodGet,
-		a.APISessionRequired(http.HandlerFunc(a.listAuditEvents)),
+		a.APIPrincipalRequired(http.HandlerFunc(a.listAuditEvents)),
 	)
 }
 

@@ -22,33 +22,37 @@ type paramsContextKey struct{}
 // Params contains normalized variables selected by the matched route. Handlers
 // consume this object instead of reaching into mux or parsing URL paths.
 type Params struct {
-	RoleId               string
-	RoleBindingId        string
-	UserId               string
-	AcademicUnitId       string
-	ProgrammeId          string
-	ProgrammeLevelId     string
-	AcademicPeriodId     string
-	ClassId              string
-	AffiliationId        string
-	AcademicUnitMemberId string
-	ClassMemberId        string
+	RoleId                string
+	RoleBindingId         string
+	UserId                string
+	AcademicUnitId        string
+	ProgrammeId           string
+	ProgrammeLevelId      string
+	AcademicPeriodId      string
+	ClassId               string
+	AffiliationId         string
+	AcademicUnitMemberId  string
+	ClassMemberId         string
+	PersonalAccessTokenId string
+	SessionId             string
 }
 
 func ParamsFromRequest(request *http.Request) Params {
 	variables := mux.Vars(request)
 	return Params{
-		RoleId:               strings.TrimSpace(variables["role_id"]),
-		RoleBindingId:        strings.TrimSpace(variables["role_binding_id"]),
-		UserId:               strings.TrimSpace(variables["user_id"]),
-		AcademicUnitId:       strings.TrimSpace(variables["academic_unit_id"]),
-		ProgrammeId:          strings.TrimSpace(variables["programme_id"]),
-		ProgrammeLevelId:     strings.TrimSpace(variables["programme_level_id"]),
-		AcademicPeriodId:     strings.TrimSpace(variables["academic_period_id"]),
-		ClassId:              strings.TrimSpace(variables["class_id"]),
-		AffiliationId:        strings.TrimSpace(variables["affiliation_id"]),
-		AcademicUnitMemberId: strings.TrimSpace(variables["academic_unit_member_id"]),
-		ClassMemberId:        strings.TrimSpace(variables["class_member_id"]),
+		RoleId:                strings.TrimSpace(variables["role_id"]),
+		RoleBindingId:         strings.TrimSpace(variables["role_binding_id"]),
+		UserId:                strings.TrimSpace(variables["user_id"]),
+		AcademicUnitId:        strings.TrimSpace(variables["academic_unit_id"]),
+		ProgrammeId:           strings.TrimSpace(variables["programme_id"]),
+		ProgrammeLevelId:      strings.TrimSpace(variables["programme_level_id"]),
+		AcademicPeriodId:      strings.TrimSpace(variables["academic_period_id"]),
+		ClassId:               strings.TrimSpace(variables["class_id"]),
+		AffiliationId:         strings.TrimSpace(variables["affiliation_id"]),
+		AcademicUnitMemberId:  strings.TrimSpace(variables["academic_unit_member_id"]),
+		ClassMemberId:         strings.TrimSpace(variables["class_member_id"]),
+		PersonalAccessTokenId: strings.TrimSpace(variables["personal_access_token_id"]),
+		SessionId:             strings.TrimSpace(variables["session_id"]),
 	}
 }
 
@@ -86,6 +90,14 @@ func (p Params) RequireAcademicUnitMemberId() (string, *model.AppError) {
 
 func (p Params) RequireClassMemberId() (string, *model.AppError) {
 	return requirePathId("class_member_id", p.ClassMemberId)
+}
+
+func (p Params) RequirePersonalAccessTokenId() (string, *model.AppError) {
+	return requirePathId("personal_access_token_id", p.PersonalAccessTokenId)
+}
+
+func (p Params) RequireSessionId() (string, *model.AppError) {
+	return requirePathId("session_id", p.SessionId)
 }
 
 func RequestParams(ctx context.Context) (Params, bool) {

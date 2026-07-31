@@ -43,6 +43,20 @@ type loginRequest struct {
 	ClientType model.SessionClientType `json:"client_type"`
 	DeviceID   string                  `json:"device_id,omitempty"`
 	DeviceName string                  `json:"device_name,omitempty"`
+	MFACode    string                  `json:"mfa_code,omitempty"`
+}
+
+type passwordResetRequest struct {
+	Email string `json:"email"`
+}
+
+type passwordResetCompletion struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+type emailVerificationCompletion struct {
+	Token string `json:"token"`
 }
 
 type authenticationResponse struct {
@@ -52,28 +66,51 @@ type authenticationResponse struct {
 }
 
 func (a *API) InitAuthentication() error {
-	if err := a.Register(
-		a.BaseRoutes.Authentication,
-		"/login",
-		http.MethodPost,
-		a.APIHandler(loginHandler(a.application, a.logger, a.cookies)),
-	); err != nil {
-		return err
+	routes := []struct {
+		path    string
+		handler *Handler
+	}{
+		{"/login", a.APIHandler(loginHandler(a.application, a.logger, a.cookies))},
+		{
+			"/refresh",
+			a.APIRefreshCredentialRequired(
+				refreshHandler(a.application, a.logger, a.cookies),
+			),
+		},
+		{
+			"/logout",
+			a.APISessionRequired(
+				logoutHandler(a.application, a.logger, a.cookies),
+			),
+		},
+		{
+			"/email-verification/request",
+			a.APISessionRequired(http.HandlerFunc(a.requestEmailVerification)),
+		},
+		{
+			"/email-verification/complete",
+			a.APIHandler(http.HandlerFunc(a.completeEmailVerification)),
+		},
+		{
+			"/password-reset/request",
+			a.APIHandler(http.HandlerFunc(a.requestPasswordReset)),
+		},
+		{
+			"/password-reset/complete",
+			a.APIHandler(http.HandlerFunc(a.completePasswordReset)),
+		},
 	}
-	if err := a.Register(
-		a.BaseRoutes.Authentication,
-		"/refresh",
-		http.MethodPost,
-		a.APIRefreshCredentialRequired(refreshHandler(a.application, a.logger, a.cookies)),
-	); err != nil {
-		return err
+	for _, route := range routes {
+		if err := a.Register(
+			a.BaseRoutes.Authentication,
+			route.path,
+			http.MethodPost,
+			route.handler,
+		); err != nil {
+			return err
+		}
 	}
-	return a.Register(
-		a.BaseRoutes.Authentication,
-		"/logout",
-		http.MethodPost,
-		a.APISessionRequired(logoutHandler(a.application, a.logger, a.cookies)),
-	)
+	return nil
 }
 
 func (a *API) InitUsers() error {
@@ -81,7 +118,7 @@ func (a *API) InitUsers() error {
 		a.BaseRoutes.CurrentUser,
 		"",
 		http.MethodGet,
-		a.APISessionRequired(currentUserHandler(a.application, a.logger)),
+		a.APIPrincipalRequired(currentUserHandler(a.application, a.logger)),
 	); err != nil {
 		return err
 	}
@@ -106,6 +143,7 @@ func loginHandler(
 			input.ClientType,
 			input.DeviceID,
 			input.DeviceName,
+			input.MFACode,
 			request.RemoteAddr,
 		)
 		if appErr != nil {
@@ -126,6 +164,91 @@ func loginHandler(
 func usesBrowserCookieTransport(clientType model.SessionClientType) bool {
 	return clientType == model.SessionClientDesktop ||
 		clientType == model.SessionClientWeb
+}
+
+func (a *API) requestEmailVerification(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	principal, ok := requiredPrincipal(writer, request)
+	if !ok {
+		return
+	}
+	if appErr := a.application.RequestEmailVerification(
+		request.Context(),
+		principal,
+		RequestMetadata(request.Context()),
+		request.RemoteAddr,
+	); appErr != nil {
+		writeApplicationError(writer, request, a.logger, appErr)
+		return
+	}
+	writer.WriteHeader(http.StatusAccepted)
+}
+
+func (a *API) completeEmailVerification(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	var input emailVerificationCompletion
+	if err := decodeRequestJSON(request, &input); err != nil {
+		WriteError(writer, request, invalidRequestError("complete_email_verification", err))
+		return
+	}
+	if _, appErr := a.application.CompleteEmailVerification(
+		request.Context(),
+		input.Token,
+		RequestMetadata(request.Context()),
+		request.RemoteAddr,
+	); appErr != nil {
+		writeApplicationError(writer, request, a.logger, appErr)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) requestPasswordReset(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	var input passwordResetRequest
+	if err := decodeRequestJSON(request, &input); err != nil {
+		WriteError(writer, request, invalidRequestError("request_password_reset", err))
+		return
+	}
+	if appErr := a.application.RequestPasswordReset(
+		request.Context(),
+		input.Email,
+		RequestMetadata(request.Context()),
+		request.RemoteAddr,
+	); appErr != nil {
+		writeApplicationError(writer, request, a.logger, appErr)
+		return
+	}
+	writer.WriteHeader(http.StatusAccepted)
+}
+
+func (a *API) completePasswordReset(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	var input passwordResetCompletion
+	if err := decodeRequestJSON(request, &input); err != nil {
+		WriteError(writer, request, invalidRequestError("complete_password_reset", err))
+		return
+	}
+	if _, appErr := a.application.CompletePasswordReset(
+		request.Context(),
+		input.Token,
+		input.Password,
+		RequestMetadata(request.Context()),
+		request.RemoteAddr,
+	); appErr != nil {
+		writeApplicationError(writer, request, a.logger, appErr)
+		return
+	}
+	a.cookies.clear(writer)
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func refreshHandler(

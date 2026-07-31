@@ -24,7 +24,7 @@ func (a *API) InitAcademicPeriods() error {
 	}
 	for _, route := range routes {
 		if err := a.Register(route.base, route.path, route.method,
-			a.APISessionRequired(route.handler)); err != nil {
+			a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}
 	}

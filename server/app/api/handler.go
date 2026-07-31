@@ -12,8 +12,10 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // Handler is a fully classified API endpoint. It is intentionally constructed
@@ -33,10 +35,35 @@ func (a *API) APIHandler(handler http.Handler) *Handler {
 	return a.newHandler(handler, AuthPublic)
 }
 
+// APIPrincipalRequired accepts either a revocable interactive session or a
+// personal access token. The latter remains subject to its scope and optional
+// academic-unit ceiling during application authorization.
+func (a *API) APIPrincipalRequired(handler http.Handler) *Handler {
+	return a.newHandler(handler, AuthPrincipalRequired)
+}
+
 // APISessionRequired classifies an endpoint as requiring an authenticated,
 // revocable server-side session.
 func (a *API) APISessionRequired(handler http.Handler) *Handler {
 	return a.newHandler(handler, AuthSessionRequired)
+}
+
+// APIStrongSessionRequired requires a session whose current authentication
+// strength records a trusted multi-factor authentication event.
+func (a *API) APIStrongSessionRequired(handler http.Handler) *Handler {
+	return a.newHandler(handler, AuthStrongSessionRequired)
+}
+
+// APIRecentSessionRequired requires a session whose most recent login or
+// stronger authentication event falls within the configured reauthentication
+// window.
+func (a *API) APIRecentSessionRequired(handler http.Handler) *Handler {
+	return a.newHandler(handler, AuthRecentSessionRequired)
+}
+
+// APIStrongRecentSessionRequired composes both assurance requirements.
+func (a *API) APIStrongRecentSessionRequired(handler http.Handler) *Handler {
+	return a.newHandler(handler, AuthStrongRecentSessionRequired)
 }
 
 // APIRefreshCredentialRequired classifies an endpoint as accepting only a
@@ -60,6 +87,7 @@ func (a *API) newHandler(
 			a.application,
 			a.logger,
 			a.cookies,
+			a.recentAuthenticationTTL,
 		)),
 		authentication: requirement,
 	}
@@ -71,6 +99,7 @@ func requireAuthentication(
 	application Authenticator,
 	logger *mlog.Logger,
 	cookies browserCookies,
+	recentAuthenticationTTL time.Duration,
 ) http.Handler {
 	switch requirement {
 	case AuthPublic:
@@ -92,7 +121,11 @@ func requireAuthentication(
 			ctx = context.WithValue(ctx, credentialSourceContextKey{}, credential.source)
 			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
-	case AuthSessionRequired:
+	case AuthPrincipalRequired,
+		AuthSessionRequired,
+		AuthStrongSessionRequired,
+		AuthRecentSessionRequired,
+		AuthStrongRecentSessionRequired:
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			credential, appErr := requestAccessCredential(request)
 			if appErr != nil {
@@ -106,15 +139,33 @@ func requireAuthentication(
 					return
 				}
 			}
-			principal, appErr := application.AuthenticateAccess(
-				request.Context(),
-				credential.token,
-			)
+			var principal *model.Principal
+			if requirement == AuthPrincipalRequired &&
+				credential.source == credentialSourceBearer {
+				principal, appErr = application.AuthenticateBearer(
+					request.Context(),
+					credential.token,
+				)
+			} else {
+				principal, appErr = application.AuthenticateAccess(
+					request.Context(),
+					credential.token,
+				)
+			}
 			if appErr != nil {
 				if credential.source == credentialSourceCookie {
 					cookies.clear(writer)
 				}
 				writeApplicationError(writer, request, logger, appErr)
+				return
+			}
+			if appErr := requirePrincipalAssurance(
+				*principal,
+				requirement,
+				time.Now(),
+				recentAuthenticationTTL,
+			); appErr != nil {
+				WriteError(writer, request, appErr)
 				return
 			}
 			ctx := context.WithValue(request.Context(), principalContextKey{}, *principal)
@@ -131,6 +182,38 @@ func requireAuthentication(
 			WriteProblem(writer, internalProblem(request))
 		})
 	}
+}
+
+func requirePrincipalAssurance(
+	principal model.Principal,
+	requirement AuthRequirement,
+	now time.Time,
+	recentAuthenticationTTL time.Duration,
+) *model.AppError {
+	strongRequired := requirement == AuthStrongSessionRequired ||
+		requirement == AuthStrongRecentSessionRequired
+	recentRequired := requirement == AuthRecentSessionRequired ||
+		requirement == AuthStrongRecentSessionRequired
+	if strongRequired && !principal.HasStrongAuthentication() {
+		return model.NewAppError(
+			"requirePrincipalAssurance",
+			"authentication.strong_required",
+			nil,
+			"",
+			http.StatusForbidden,
+		)
+	}
+	if recentRequired &&
+		!principal.IsRecentlyAuthenticated(now, recentAuthenticationTTL) {
+		return model.NewAppError(
+			"requirePrincipalAssurance",
+			"authentication.reauthentication_required",
+			nil,
+			"",
+			http.StatusForbidden,
+		)
+	}
+	return nil
 }
 
 func requiresCSRF(method string) bool {

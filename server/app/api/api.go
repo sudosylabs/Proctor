@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/sudosylabs/proctor/server/mlog"
@@ -42,9 +43,13 @@ type Health interface {
 type AuthRequirement string
 
 const (
-	AuthPublic                    AuthRequirement = "public"
-	AuthSessionRequired           AuthRequirement = "session_required"
-	AuthRefreshCredentialRequired AuthRequirement = "refresh_credential_required"
+	AuthPublic                      AuthRequirement = "public"
+	AuthPrincipalRequired           AuthRequirement = "principal_required"
+	AuthSessionRequired             AuthRequirement = "session_required"
+	AuthStrongSessionRequired       AuthRequirement = "strong_session_required"
+	AuthRecentSessionRequired       AuthRequirement = "recent_session_required"
+	AuthStrongRecentSessionRequired AuthRequirement = "strong_recent_session_required"
+	AuthRefreshCredentialRequired   AuthRequirement = "refresh_credential_required"
 )
 
 type Route struct {
@@ -65,45 +70,52 @@ type Routes struct {
 	Root    *mux.Router
 	APIRoot *mux.Router
 
-	Health             *mux.Router
-	System             *mux.Router
-	Authentication     *mux.Router
-	Users              *mux.Router
-	CurrentUser        *mux.Router
-	Audits             *mux.Router
-	Bootstrap          *mux.Router
-	Roles              *mux.Router
-	Role               *mux.Router
-	RoleBindings       *mux.Router
-	RoleBinding        *mux.Router
-	Institution        *mux.Router
-	AcademicUnits      *mux.Router
-	AcademicUnit       *mux.Router
-	Programmes         *mux.Router
-	Programme          *mux.Router
-	ProgrammeLevels    *mux.Router
-	ProgrammeLevel     *mux.Router
-	AcademicPeriods    *mux.Router
-	AcademicPeriod     *mux.Router
-	Classes            *mux.Router
-	Class              *mux.Router
-	User               *mux.Router
-	Affiliation        *mux.Router
-	AcademicUnitMember *mux.Router
-	ClassMember        *mux.Router
+	Health               *mux.Router
+	System               *mux.Router
+	Authentication       *mux.Router
+	Users                *mux.Router
+	CurrentUser          *mux.Router
+	MFA                  *mux.Router
+	PersonalAccessTokens *mux.Router
+	PersonalAccessToken  *mux.Router
+	Audits               *mux.Router
+	Bootstrap            *mux.Router
+	Roles                *mux.Router
+	Role                 *mux.Router
+	RoleBindings         *mux.Router
+	RoleBinding          *mux.Router
+	Institution          *mux.Router
+	AcademicUnits        *mux.Router
+	AcademicUnit         *mux.Router
+	Programmes           *mux.Router
+	Programme            *mux.Router
+	ProgrammeLevels      *mux.Router
+	ProgrammeLevel       *mux.Router
+	AcademicPeriods      *mux.Router
+	AcademicPeriod       *mux.Router
+	Classes              *mux.Router
+	Class                *mux.Router
+	User                 *mux.Router
+	UserSessions         *mux.Router
+	UserSession          *mux.Router
+	Affiliation          *mux.Router
+	AcademicUnitMember   *mux.Router
+	ClassMember          *mux.Router
 }
 
 type Options struct {
-	Logger       *mlog.Logger
-	Health       Health
-	Application  Application
-	BuildInfo    BuildInfo
-	PublicURL    string
-	MaxBodyBytes int64
+	Logger                  *mlog.Logger
+	Health                  Health
+	Application             Application
+	BuildInfo               BuildInfo
+	PublicURL               string
+	MaxBodyBytes            int64
+	RecentAuthenticationTTL time.Duration
 }
 
 type Authenticator interface {
 	AuthenticateAccess(context.Context, string) (*model.Principal, *model.AppError)
+	AuthenticateBearer(context.Context, string) (*model.Principal, *model.AppError)
 }
 
 type Authentication interface {
@@ -116,6 +128,7 @@ type Authentication interface {
 		string,
 		string,
 		string,
+		string,
 	) (*model.User, *model.Session, *model.AuthenticationTokens, *model.AppError)
 	AuthenticateAccess(context.Context, string) (*model.Principal, *model.AppError)
 	RefreshSession(
@@ -123,6 +136,31 @@ type Authentication interface {
 		string,
 	) (*model.Session, *model.AuthenticationTokens, *model.AppError)
 	Logout(context.Context, model.Principal) *model.AppError
+	RequestEmailVerification(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+	) *model.AppError
+	CompleteEmailVerification(
+		context.Context,
+		string,
+		model.RequestMetadata,
+		string,
+	) (*model.User, *model.AppError)
+	RequestPasswordReset(
+		context.Context,
+		string,
+		model.RequestMetadata,
+		string,
+	) *model.AppError
+	CompletePasswordReset(
+		context.Context,
+		string,
+		string,
+		model.RequestMetadata,
+		string,
+	) (*model.User, *model.AppError)
 }
 
 type Users interface {
@@ -136,6 +174,8 @@ type Users interface {
 	PatchUser(context.Context, model.Principal, model.RequestMetadata, string, *model.UserPatch) (*model.User, *model.AppError)
 	SetUserDisabled(context.Context, model.Principal, model.RequestMetadata, string, bool) (*model.User, *model.AppError)
 	RevokeUserSessions(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+	ListUserSessions(context.Context, model.Principal, model.RequestMetadata, string, bool) ([]*model.Session, *model.AppError)
+	RevokeUserSession(context.Context, model.Principal, model.RequestMetadata, string, string) *model.AppError
 }
 
 type AcademicAdministration interface {
@@ -186,6 +226,70 @@ type Sessions interface {
 	GetSessions(context.Context, model.Principal) ([]*model.Session, *model.AppError)
 	RevokeSession(context.Context, model.Principal, string) *model.AppError
 	RevokeAllSessions(context.Context, model.Principal) *model.AppError
+}
+
+type PersonalAccessTokens interface {
+	CreatePersonalAccessToken(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+		[]string,
+		string,
+		int64,
+	) (*model.PersonalAccessTokenCreation, *model.AppError)
+	ListPersonalAccessTokens(
+		context.Context,
+		model.Principal,
+	) ([]*model.PersonalAccessToken, *model.AppError)
+	RevokePersonalAccessToken(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+	) (*model.PersonalAccessToken, *model.AppError)
+	SetPersonalAccessTokenDisabled(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+		bool,
+	) (*model.PersonalAccessToken, *model.AppError)
+}
+
+type MFA interface {
+	GetMFAStatus(
+		context.Context,
+		model.Principal,
+	) (*model.MFAStatus, *model.AppError)
+	SetupMFA(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+	) (*model.MFASetup, *model.AppError)
+	ActivateMFA(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+	) (*model.MFAActivation, *model.AppError)
+	ChallengeMFA(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		string,
+	) (*model.Session, *model.AppError)
+	RegenerateMFARecoveryCodes(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+	) ([]string, *model.AppError)
+	DisableMFA(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+	) *model.AppError
 }
 
 type Audits interface {
@@ -259,6 +363,8 @@ type Application interface {
 	PermissionChecker
 	Users
 	Sessions
+	PersonalAccessTokens
+	MFA
 	Audits
 	Bootstrap
 	Roles
@@ -268,18 +374,19 @@ type Application interface {
 }
 
 type API struct {
-	handler       http.Handler
-	router        *mux.Router
-	BaseRoutes    *Routes
-	application   Application
-	logger        *mlog.Logger
-	health        Health
-	buildInfo     BuildInfo
-	cookies       browserCookies
-	routes        []Route
-	routeMatchers []routeMatcher
-	routeKeys     map[string]struct{}
-	prefixes      map[*mux.Router]string
+	handler                 http.Handler
+	router                  *mux.Router
+	BaseRoutes              *Routes
+	application             Application
+	logger                  *mlog.Logger
+	health                  Health
+	buildInfo               BuildInfo
+	cookies                 browserCookies
+	recentAuthenticationTTL time.Duration
+	routes                  []Route
+	routeMatchers           []routeMatcher
+	routeKeys               map[string]struct{}
+	prefixes                map[*mux.Router]string
 }
 
 func New(options Options) (*API, error) {
@@ -295,19 +402,23 @@ func New(options Options) (*API, error) {
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
+	if options.RecentAuthenticationTTL <= 0 {
+		return nil, errors.New("recent authentication TTL must be greater than zero")
+	}
 	cookies, err := newBrowserCookies(options.PublicURL)
 	if err != nil {
 		return nil, fmt.Errorf("configure browser cookies: %w", err)
 	}
 
 	api := &API{
-		application: options.Application,
-		logger:      options.Logger,
-		health:      options.Health,
-		buildInfo:   options.BuildInfo,
-		cookies:     cookies,
-		routeKeys:   make(map[string]struct{}),
-		prefixes:    make(map[*mux.Router]string),
+		application:             options.Application,
+		logger:                  options.Logger,
+		health:                  options.Health,
+		buildInfo:               options.BuildInfo,
+		cookies:                 cookies,
+		recentAuthenticationTTL: options.RecentAuthenticationTTL,
+		routeKeys:               make(map[string]struct{}),
+		prefixes:                make(map[*mux.Router]string),
 	}
 	api.initializeBaseRoutes(model.APIURLSuffix)
 	initializers := []func() error{
@@ -315,6 +426,8 @@ func New(options Options) (*API, error) {
 		api.InitAuthentication,
 		api.InitUsers,
 		api.InitSessions,
+		api.InitMFA,
+		api.InitPersonalAccessTokens,
 		api.InitAudits,
 		api.InitBootstrap,
 		api.InitRoles,
@@ -374,6 +487,15 @@ func (a *API) initializeBaseRoutes(apiURLSuffix string) {
 	a.BaseRoutes.Authentication = a.subrouter(a.BaseRoutes.APIRoot, "/auth")
 	a.BaseRoutes.Users = a.subrouter(a.BaseRoutes.APIRoot, "/users")
 	a.BaseRoutes.CurrentUser = a.subrouter(a.BaseRoutes.Users, "/me")
+	a.BaseRoutes.MFA = a.subrouter(a.BaseRoutes.CurrentUser, "/mfa")
+	a.BaseRoutes.PersonalAccessTokens = a.subrouter(
+		a.BaseRoutes.CurrentUser,
+		"/tokens",
+	)
+	a.BaseRoutes.PersonalAccessToken = a.subrouter(
+		a.BaseRoutes.PersonalAccessTokens,
+		"/{personal_access_token_id:"+canonicalIDRoutePattern()+"}",
+	)
 	a.BaseRoutes.Audits = a.subrouter(a.BaseRoutes.APIRoot, "/audits")
 	a.BaseRoutes.Bootstrap = a.subrouter(a.BaseRoutes.APIRoot, "/bootstrap")
 	a.BaseRoutes.Roles = a.subrouter(a.BaseRoutes.APIRoot, "/roles")
@@ -416,6 +538,11 @@ func (a *API) initializeBaseRoutes(apiURLSuffix string) {
 		a.BaseRoutes.Users,
 		"/{user_id:"+canonicalIDRoutePattern()+"}",
 	)
+	a.BaseRoutes.UserSessions = a.subrouter(a.BaseRoutes.User, "/sessions")
+	a.BaseRoutes.UserSession = a.subrouter(
+		a.BaseRoutes.UserSessions,
+		"/{session_id:"+canonicalIDRoutePattern()+"}",
+	)
 	a.BaseRoutes.Affiliation = a.subrouter(
 		a.BaseRoutes.APIRoot,
 		"/affiliations/{affiliation_id:"+canonicalIDRoutePattern()+"}",
@@ -454,7 +581,13 @@ func (a *API) Register(
 	}
 	auth := handler.authentication
 	switch auth {
-	case AuthPublic, AuthSessionRequired, AuthRefreshCredentialRequired:
+	case AuthPublic,
+		AuthPrincipalRequired,
+		AuthSessionRequired,
+		AuthStrongSessionRequired,
+		AuthRecentSessionRequired,
+		AuthStrongRecentSessionRequired,
+		AuthRefreshCredentialRequired:
 	default:
 		return fmt.Errorf("register %s %s: authentication policy is invalid", method, path)
 	}
