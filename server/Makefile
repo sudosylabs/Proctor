@@ -1,11 +1,13 @@
 SHELL := /bin/sh
 COMPOSE := docker compose -f compose.yaml
 PROCTOR_POSTGRES_PORT ?= 15432
+PROCTOR_REDIS_PORT ?= 16379
 PROCTOR_TEST_DATABASE_URL ?= postgres://proctor:proctor@127.0.0.1:$(PROCTOR_POSTGRES_PORT)/proctor?sslmode=disable
+PROCTOR_TEST_REDIS_ADDRESS ?= 127.0.0.1:$(PROCTOR_REDIS_PORT)
 
-export PROCTOR_POSTGRES_PORT
+export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT
 
-.PHONY: check test test-race vet build postgres-up postgres-down postgres-logs conformance-postgres
+.PHONY: check test test-race vet build postgres-up postgres-down postgres-logs redis-up redis-logs conformance-postgres conformance-realtime
 
 check: test test-race vet
 
@@ -30,6 +32,12 @@ postgres-down:
 postgres-logs:
 	$(COMPOSE) logs postgres
 
+redis-up:
+	$(COMPOSE) up --detach --wait redis
+
+redis-logs:
+	$(COMPOSE) logs redis
+
 conformance-postgres:
 	@set -eu; \
 	cleanup() { $(COMPOSE) down --remove-orphans; }; \
@@ -41,3 +49,14 @@ conformance-postgres:
 		go test ./cmd/proctor -run '^TestMigrateIntegration$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 		go test ./app -run '^(Test(Authentication|BrowserCookieAuthentication|SessionManagement|AccountRecovery|PersonalAccessToken|MFA|CASExternalAuthentication|OIDCExternalAuthentication)Integration|TestAcademicMembershipAndUserAdministrationIntegration|TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence|TestBootstrapAndRoleAdministrationIntegration|TestPrivilegedAuditListingIsScopedAndDurablyAudited|TestAuthorizationResolvesCurrentAcademicHierarchy|TestPrincipalPermissionAndUserVisibilityPolicies)$$' -count=1
+
+conformance-realtime:
+	@set -eu; \
+	cleanup() { $(COMPOSE) down --remove-orphans; }; \
+	trap cleanup EXIT INT TERM; \
+	$(COMPOSE) up --detach --wait postgres redis; \
+	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
+		go test ./platform -run '^TestRedisClusterTwoNodeConformance$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
+		go test ./app -run '^TestWebSocket(Integration|TwoNodeConformance)$$' -count=1

@@ -1,0 +1,405 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
+
+	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store/sqlstore"
+	"github.com/sudosylabs/proctor/server/testlib"
+)
+
+func TestWebSocketIntegration(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	helper := testlib.Setup(
+		t,
+		testlib.WithServerOptions(app.WithStore(persistence)),
+	)
+	if err := helper.Platform.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	password := "correct horse battery staple"
+	bootstrap := performJSONRequest(
+		helper.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/bootstrap",
+		map[string]any{
+			"institution": map[string]any{
+				"name": "northbridge", "display_name": "Northbridge University",
+			},
+			"administrator": map[string]any{
+				"username": "socket-owner", "email": "socket-owner@example.edu",
+				"display_name": "Socket Owner",
+			},
+			"password": password,
+		},
+		"",
+	)
+	if bootstrap.Code != http.StatusCreated {
+		t.Fatalf("bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
+	}
+	var installation model.InstallationBootstrapResult
+	if err := json.Unmarshal(bootstrap.Body.Bytes(), &installation); err != nil {
+		t.Fatal(err)
+	}
+	login := loginIntegrationUser(
+		t,
+		helper.Server.Handler(),
+		installation.Administrator.Username,
+		password,
+		model.SessionClientCLI,
+		"websocket-test",
+	)
+
+	server := httptest.NewServer(helper.Server.Handler())
+	t.Cleanup(server.Close)
+	socketURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/websocket"
+	headers := http.Header{"Authorization": []string{"Bearer " + login.Tokens.AccessToken}}
+	connection, response, err := websocket.DefaultDialer.Dial(socketURL, headers)
+	if err != nil {
+		if response != nil {
+			t.Fatalf("WebSocket dial = %v, status = %d", err, response.StatusCode)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+
+	hello := readWebSocketEvent(t, connection)
+	if hello.Event != string(model.WebSocketEventHello) ||
+		hello.Sequence != 1 ||
+		!model.IsValidId(hello.Id) {
+		t.Fatalf("hello event = %#v", hello)
+	}
+	var helloData model.WebSocketHello
+	if err := json.Unmarshal(hello.Data, &helloData); err != nil {
+		t.Fatal(err)
+	}
+	if !model.IsValidId(helloData.ConnectionId) ||
+		helloData.NodeId != helper.Cluster.NodeID() ||
+		helloData.Resumed {
+		t.Fatalf("hello data = %#v", helloData)
+	}
+
+	subscription := model.WebSocketSubscription{
+		Action: model.ActionInstitutionManage,
+		Resource: model.Resource{
+			Type: model.ResourceInstitution,
+			Id:   installation.Institution.Id,
+		},
+	}
+	writeWebSocketRequest(t, connection, 1, "subscribe", subscription)
+	responseMessage := readWebSocketResponse(t, connection)
+	if responseMessage.Status != "ok" || responseMessage.Sequence != 1 {
+		t.Fatalf("subscribe response = %#v", responseMessage)
+	}
+
+	eventData := json.RawMessage(`{"version":1}`)
+	if appErr := helper.App.PublishWebSocketEvent(
+		context.Background(),
+		&model.WebSocketEvent{
+			Event:    "institution.updated",
+			Action:   subscription.Action,
+			Resource: subscription.Resource,
+			Data:     eventData,
+		},
+		model.ClusterSendBestEffort,
+	); appErr != nil {
+		t.Fatal(appErr)
+	}
+	event := readWebSocketEvent(t, connection)
+	if event.Event != "institution.updated" ||
+		event.Sequence != 2 ||
+		string(event.Data) != string(eventData) {
+		t.Fatalf("published event = %#v", event)
+	}
+
+	writeWebSocketRequest(t, connection, 2, "unsubscribe", subscription)
+	if responseMessage = readWebSocketResponse(t, connection); responseMessage.Status != "ok" {
+		t.Fatalf("unsubscribe response = %#v", responseMessage)
+	}
+
+	principal, appErr := helper.App.AuthenticateAccess(
+		context.Background(),
+		login.Tokens.AccessToken,
+	)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if appErr := helper.App.RevokeSession(
+		context.Background(),
+		*principal,
+		login.Session.Id,
+	); appErr != nil {
+		t.Fatal(appErr)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, _, err = connection.ReadMessage()
+	var closeError *websocket.CloseError
+	if !errors.As(err, &closeError) ||
+		closeError.Code != app.WebSocketCloseSessionRevoked {
+		t.Fatalf("revoked WebSocket close = %v", err)
+	}
+
+	unauthenticatedURL, err := url.Parse(socketURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, response, err = websocket.DefaultDialer.Dial(unauthenticatedURL.String(), nil)
+	if err == nil {
+		t.Fatal("unauthenticated WebSocket connection succeeded")
+	}
+	if response == nil || response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated WebSocket response = %#v, %v", response, err)
+	}
+}
+
+func TestWebSocketTwoNodeConformance(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	redisAddress := os.Getenv("PROCTOR_TEST_REDIS_ADDRESS")
+	if dataSource == "" || redisAddress == "" {
+		t.Skip("PROCTOR_TEST_DATABASE_URL and PROCTOR_TEST_REDIS_ADDRESS are required")
+	}
+	persistenceA := openAuthenticationStore(t, dataSource)
+	database := config.Default().Database
+	database.DataSource = dataSource
+	persistenceB, err := sqlstore.New(
+		context.Background(),
+		sqlstore.SettingsFromConfig(database),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespace := "proctor_test_" + model.NewId()
+	nodeConfig := func(nodeID string) testlib.Option {
+		return testlib.WithConfig(func(cfg *config.Config) {
+			cfg.Cluster.Backend = "redis"
+			cfg.Cluster.NodeID = nodeID
+			cfg.Cluster.Redis.Addresses = []string{redisAddress}
+			cfg.Cluster.Redis.Namespace = namespace
+			cfg.Cache.Backend = "redis"
+			cfg.Cache.Redis.Addresses = []string{redisAddress}
+			cfg.VFS.Backend = "s3"
+			cfg.VFS.S3.Endpoint = "127.0.0.1:19000"
+			cfg.VFS.S3.Bucket = "proctor-test"
+		})
+	}
+	nodeA := testlib.Setup(
+		t,
+		nodeConfig("node-a"),
+		testlib.WithServerOptions(app.WithStore(persistenceA)),
+	)
+	nodeB := testlib.Setup(
+		t,
+		nodeConfig("node-b"),
+		testlib.WithServerOptions(app.WithStore(persistenceB)),
+	)
+	if err := nodeA.Platform.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := nodeB.Platform.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	password := "correct horse battery staple"
+	bootstrap := performJSONRequest(
+		nodeA.Server.Handler(),
+		http.MethodPost,
+		"/api/v1/bootstrap",
+		map[string]any{
+			"institution": map[string]any{
+				"name": "northbridge", "display_name": "Northbridge University",
+			},
+			"administrator": map[string]any{
+				"username": "cluster-owner", "email": "cluster-owner@example.edu",
+				"display_name": "Cluster Owner",
+			},
+			"password": password,
+		},
+		"",
+	)
+	if bootstrap.Code != http.StatusCreated {
+		t.Fatalf("bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
+	}
+	var installation model.InstallationBootstrapResult
+	if err := json.Unmarshal(bootstrap.Body.Bytes(), &installation); err != nil {
+		t.Fatal(err)
+	}
+	login := loginIntegrationUser(
+		t,
+		nodeA.Server.Handler(),
+		installation.Administrator.Username,
+		password,
+		model.SessionClientCLI,
+		"two-node-websocket",
+	)
+
+	serverB := httptest.NewServer(nodeB.Server.Handler())
+	t.Cleanup(serverB.Close)
+	socketURL := "ws" + strings.TrimPrefix(serverB.URL, "http") + "/api/v1/websocket"
+	headers := http.Header{"Authorization": []string{"Bearer " + login.Tokens.AccessToken}}
+	connection, response, err := websocket.DefaultDialer.Dial(socketURL, headers)
+	if err != nil {
+		if response != nil {
+			t.Fatalf("node B WebSocket dial = %v, status = %d", err, response.StatusCode)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	_ = readWebSocketEvent(t, connection)
+
+	subscription := model.WebSocketSubscription{
+		Action: model.ActionInstitutionManage,
+		Resource: model.Resource{
+			Type: model.ResourceInstitution,
+			Id:   installation.Institution.Id,
+		},
+	}
+	writeWebSocketRequest(t, connection, 1, "subscribe", subscription)
+	if response := readWebSocketResponse(t, connection); response.Status != "ok" {
+		t.Fatalf("node B subscription = %#v", response)
+	}
+
+	if appErr := nodeA.App.PublishWebSocketEvent(
+		context.Background(),
+		&model.WebSocketEvent{
+			Event:    "institution.cluster_updated",
+			Action:   subscription.Action,
+			Resource: subscription.Resource,
+			Data:     json.RawMessage(`{"source":"node-a"}`),
+		},
+		model.ClusterSendReliable,
+	); appErr != nil {
+		t.Fatal(appErr)
+	}
+	event := readWebSocketEvent(t, connection)
+	if event.Event != "institution.cluster_updated" ||
+		string(event.Data) != `{"source":"node-a"}` {
+		t.Fatalf("node B cluster event = %#v", event)
+	}
+
+	principal, appErr := nodeA.App.AuthenticateAccess(
+		context.Background(),
+		login.Tokens.AccessToken,
+	)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	role, appErr := nodeA.App.CreateRole(
+		context.Background(),
+		*principal,
+		model.RequestMetadata{RequestId: "two-node-role-create"},
+		&model.Role{
+			Name: "cluster_observer", DisplayName: "Cluster Observer",
+			Permissions: []string{string(model.ActionUserView)},
+		},
+	)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	updatedDisplayName := "Updated Cluster Observer"
+	if _, appErr := nodeA.App.PatchRole(
+		context.Background(),
+		*principal,
+		model.RequestMetadata{RequestId: "two-node-role-patch"},
+		role.Id,
+		&model.RolePatch{DisplayName: &updatedDisplayName},
+	); appErr != nil {
+		t.Fatal(appErr)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, _, err = connection.ReadMessage()
+	var closeError *websocket.CloseError
+	if !errors.As(err, &closeError) ||
+		closeError.Code != app.WebSocketCloseAuthorizationChanged {
+		t.Fatalf("node B authorization-change close = %v", err)
+	}
+
+	connection, response, err = websocket.DefaultDialer.Dial(socketURL, headers)
+	if err != nil {
+		if response != nil {
+			t.Fatalf("node B reconnect = %v, status = %d", err, response.StatusCode)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	_ = readWebSocketEvent(t, connection)
+	if appErr := nodeA.App.RevokeSession(
+		context.Background(),
+		*principal,
+		login.Session.Id,
+	); appErr != nil {
+		t.Fatal(appErr)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, _, err = connection.ReadMessage()
+	closeError = nil
+	if !errors.As(err, &closeError) ||
+		closeError.Code != app.WebSocketCloseSessionRevoked {
+		t.Fatalf("node B revocation close = %v", err)
+	}
+}
+
+func writeWebSocketRequest(
+	t *testing.T,
+	connection *websocket.Conn,
+	sequence int64,
+	action string,
+	data any,
+) {
+	t.Helper()
+	raw, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.WriteJSON(&model.WebSocketRequest{
+		Sequence: sequence, Action: action, Data: raw,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readWebSocketEvent(
+	t *testing.T,
+	connection *websocket.Conn,
+) *model.WebSocketEvent {
+	t.Helper()
+	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var event model.WebSocketEvent
+	if err := connection.ReadJSON(&event); err != nil {
+		t.Fatal(err)
+	}
+	return &event
+}
+
+func readWebSocketResponse(
+	t *testing.T,
+	connection *websocket.Conn,
+) *model.WebSocketResponse {
+	t.Helper()
+	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var response model.WebSocketResponse
+	if err := connection.ReadJSON(&response); err != nil {
+		t.Fatal(err)
+	}
+	return &response
+}
