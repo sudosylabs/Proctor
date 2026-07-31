@@ -22,8 +22,8 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	routes := helper.Server.API().Routes()
-	if len(routes) != 86 {
-		t.Fatalf("route count = %d, want 86", len(routes))
+	if len(routes) != 87 {
+		t.Fatalf("route count = %d, want 87", len(routes))
 	}
 	expected := map[string]api.AuthRequirement{
 		http.MethodGet + " /health/live":                                                                                       api.AuthPublic,
@@ -36,6 +36,7 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 		http.MethodPost + " /api/v1/auth/email-verification/request":                                                           api.AuthSessionRequired,
 		http.MethodPost + " /api/v1/auth/password-reset/complete":                                                              api.AuthPublic,
 		http.MethodPost + " /api/v1/auth/password-reset/request":                                                               api.AuthPublic,
+		http.MethodGet + " /api/v1/websocket":                                                                                  api.AuthSessionRequired,
 		http.MethodGet + " /api/v1/auth/providers":                                                                             api.AuthPublic,
 		http.MethodGet + " /api/v1/auth/providers/{provider_id:[a-z0-9][a-z0-9._-]{0,63}}/login":                               api.AuthPublic,
 		http.MethodGet + " /api/v1/auth/providers/{provider_id:[a-z0-9][a-z0-9._-]{0,63}}/callback":                            api.AuthPublic,

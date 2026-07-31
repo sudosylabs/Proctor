@@ -52,6 +52,13 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 	}
 	setString("PROCTOR_CLUSTER_BACKEND", &cfg.Cluster.Backend)
 	setString("PROCTOR_CLUSTER_NODE_ID", &cfg.Cluster.NodeID)
+	setString("PROCTOR_CLUSTER_REDIS_NAMESPACE", &cfg.Cluster.Redis.Namespace)
+	setString("PROCTOR_CLUSTER_REDIS_USERNAME", &cfg.Cluster.Redis.Username)
+	setString("PROCTOR_CLUSTER_REDIS_PASSWORD", &cfg.Cluster.Redis.Password)
+	if value, ok := lookup("PROCTOR_CLUSTER_REDIS_ADDRESSES"); ok {
+		cfg.Cluster.Redis.Addresses = splitList(value)
+		applied = append(applied, "PROCTOR_CLUSTER_REDIS_ADDRESSES")
+	}
 	setString("PROCTOR_MAIL_BACKEND", &cfg.Mail.Backend)
 	setString("PROCTOR_MAIL_FROM_ADDRESS", &cfg.Mail.FromAddress)
 	setString("PROCTOR_MAIL_FROM_NAME", &cfg.Mail.FromName)
@@ -91,6 +98,9 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 		{"PROCTOR_SERVER_IDLE_TIMEOUT", &cfg.Server.IdleTimeout},
 		{"PROCTOR_SERVER_SHUTDOWN_TIMEOUT", &cfg.Server.ShutdownTimeout},
 		{"PROCTOR_CACHE_REDIS_CONNECT_TIMEOUT", &cfg.Cache.Redis.ConnectTimeout},
+		{"PROCTOR_CLUSTER_REDIS_CONNECT_TIMEOUT", &cfg.Cluster.Redis.ConnectTimeout},
+		{"PROCTOR_CLUSTER_REDIS_LEASE_TTL", &cfg.Cluster.Redis.LeaseTTL},
+		{"PROCTOR_CLUSTER_REDIS_HEARTBEAT", &cfg.Cluster.Redis.Heartbeat},
 		{"PROCTOR_MAIL_SMTP_TIMEOUT", &cfg.Mail.SMTP.Timeout},
 		{"PROCTOR_AUTHENTICATION_SESSIONS_ACCESS_TTL", &cfg.Authentication.Sessions.AccessTTL},
 		{"PROCTOR_AUTHENTICATION_SESSIONS_REFRESH_TTL", &cfg.Authentication.Sessions.RefreshTTL},
@@ -155,6 +165,8 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 		target *int
 	}{
 		{"PROCTOR_CACHE_REDIS_DATABASE", &cfg.Cache.Redis.Database},
+		{"PROCTOR_CLUSTER_REDIS_DATABASE", &cfg.Cluster.Redis.Database},
+		{"PROCTOR_CLUSTER_REDIS_RELIABLE_MAXIMUM", &cfg.Cluster.Redis.ReliableMaximum},
 		{"PROCTOR_MAIL_SMTP_MAX_RECIPIENTS", &cfg.Mail.SMTP.MaxRecipients},
 		{"PROCTOR_AUTHENTICATION_PASSWORD_MINIMUM_LENGTH", &cfg.Authentication.Password.MinimumLength},
 		{"PROCTOR_AUTHENTICATION_PASSWORD_MAXIMUM_LENGTH", &cfg.Authentication.Password.MaximumLength},
@@ -203,6 +215,7 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) ([]string, error) {
 		target *bool
 	}{
 		{"PROCTOR_CACHE_REDIS_TLS", &cfg.Cache.Redis.TLS},
+		{"PROCTOR_CLUSTER_REDIS_TLS", &cfg.Cluster.Redis.TLS},
 		{"PROCTOR_MAIL_ENABLED", &cfg.Mail.Enabled},
 		{"PROCTOR_VFS_S3_SECURE", &cfg.VFS.S3.Secure},
 		{"PROCTOR_AUTHENTICATION_MFA_ENABLED", &cfg.Authentication.MFA.Enabled},
@@ -360,6 +373,29 @@ func removeEnvironmentOverrides(candidate *Config, persisted Config, keys []stri
 			candidate.Cluster.Backend = persisted.Cluster.Backend
 		case "PROCTOR_CLUSTER_NODE_ID":
 			candidate.Cluster.NodeID = persisted.Cluster.NodeID
+		case "PROCTOR_CLUSTER_REDIS_ADDRESSES":
+			candidate.Cluster.Redis.Addresses = append(
+				[]string(nil),
+				persisted.Cluster.Redis.Addresses...,
+			)
+		case "PROCTOR_CLUSTER_REDIS_USERNAME":
+			candidate.Cluster.Redis.Username = persisted.Cluster.Redis.Username
+		case "PROCTOR_CLUSTER_REDIS_PASSWORD":
+			candidate.Cluster.Redis.Password = persisted.Cluster.Redis.Password
+		case "PROCTOR_CLUSTER_REDIS_DATABASE":
+			candidate.Cluster.Redis.Database = persisted.Cluster.Redis.Database
+		case "PROCTOR_CLUSTER_REDIS_TLS":
+			candidate.Cluster.Redis.TLS = persisted.Cluster.Redis.TLS
+		case "PROCTOR_CLUSTER_REDIS_CONNECT_TIMEOUT":
+			candidate.Cluster.Redis.ConnectTimeout = persisted.Cluster.Redis.ConnectTimeout
+		case "PROCTOR_CLUSTER_REDIS_NAMESPACE":
+			candidate.Cluster.Redis.Namespace = persisted.Cluster.Redis.Namespace
+		case "PROCTOR_CLUSTER_REDIS_LEASE_TTL":
+			candidate.Cluster.Redis.LeaseTTL = persisted.Cluster.Redis.LeaseTTL
+		case "PROCTOR_CLUSTER_REDIS_HEARTBEAT":
+			candidate.Cluster.Redis.Heartbeat = persisted.Cluster.Redis.Heartbeat
+		case "PROCTOR_CLUSTER_REDIS_RELIABLE_MAXIMUM":
+			candidate.Cluster.Redis.ReliableMaximum = persisted.Cluster.Redis.ReliableMaximum
 		case "PROCTOR_MAIL_ENABLED":
 			candidate.Mail.Enabled = persisted.Mail.Enabled
 		case "PROCTOR_MAIL_BACKEND":

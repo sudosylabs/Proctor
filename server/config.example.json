@@ -32,7 +32,17 @@
   },
   "cluster": {
     "backend": "local",
-    "node_id": "local"
+    "node_id": "local",
+    "redis": {
+      "addresses": ["127.0.0.1:6379"],
+      "database": 0,
+      "tls": false,
+      "connect_timeout": "5s",
+      "namespace": "proctor",
+      "lease_ttl": "15s",
+      "heartbeat": "5s",
+      "reliable_maximum": 10000
+    }
   },
   "mail": {
     "enabled": false,

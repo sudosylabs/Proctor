@@ -139,6 +139,7 @@ func (a *App) PatchRole(
 	); appErr != nil {
 		return nil, appErr
 	}
+	a.realtime.InvalidateAuthorization(ctx, "")
 	return updated, nil
 }
 
@@ -176,6 +177,7 @@ func (a *App) DeleteRole(
 	); appErr != nil {
 		return appErr
 	}
+	a.realtime.InvalidateAuthorization(ctx, "")
 	return nil
 }
 
@@ -280,6 +282,7 @@ func (a *App) CreateRoleBinding(
 	); appErr != nil {
 		return nil, appErr
 	}
+	a.realtime.InvalidateAuthorization(ctx, saved.UserId)
 	return saved, nil
 }
 
@@ -316,6 +319,7 @@ func (a *App) EndRoleBinding(
 	); appErr != nil {
 		return nil, appErr
 	}
+	a.realtime.InvalidateAuthorization(ctx, ended.UserId)
 	return ended, nil
 }
 

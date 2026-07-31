@@ -40,6 +40,8 @@ type Params struct {
 	ClientType            string
 	DeviceId              string
 	DeviceName            string
+	ConnectionId          string
+	SequenceNumber        string
 }
 
 func ParamsFromRequest(request *http.Request) Params {
@@ -64,6 +66,8 @@ func ParamsFromRequest(request *http.Request) Params {
 		ClientType:            strings.TrimSpace(query.Get("client_type")),
 		DeviceId:              strings.TrimSpace(query.Get("device_id")),
 		DeviceName:            strings.TrimSpace(query.Get("device_name")),
+		ConnectionId:          strings.TrimSpace(query.Get("connection_id")),
+		SequenceNumber:        strings.TrimSpace(query.Get("sequence_number")),
 	}
 }
 

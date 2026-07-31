@@ -239,6 +239,12 @@ func (a *App) ActivateMFA(
 		return nil, a.failMFAMutation(ctx, attempt.Id, "ActivateMFA.activate", err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, activated.AccessTokenHashes)
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		principal.UserId,
+		[]string{principal.SessionId},
+		activated.AccessTokenHashes,
+	)
 	if _, appErr := a.audit.CompleteCriticalAction(
 		ctx, attempt.Id, model.AuditStatusSuccess, "",
 		map[string]any{
@@ -298,6 +304,12 @@ func (a *App) ChallengeMFA(
 		return nil, a.failMFAMutation(ctx, attempt.Id, "ChallengeMFA.upgrade", err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		principal.UserId,
+		[]string{principal.SessionId},
+		hashes,
+	)
 	session, err := a.Store().Session().Get(ctx, principal.SessionId)
 	if err != nil {
 		return nil, a.failMFAMutation(ctx, attempt.Id, "ChallengeMFA.session", err)
@@ -397,6 +409,12 @@ func (a *App) DisableMFA(
 		return a.failMFAMutation(ctx, attempt.Id, "DisableMFA.disable", err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, result.AccessTokenHashes)
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		principal.UserId,
+		nil,
+		result.AccessTokenHashes,
+	)
 	if _, appErr := a.audit.CompleteCriticalAction(
 		ctx, attempt.Id, model.AuditStatusSuccess, "",
 		map[string]any{"disabled": true},

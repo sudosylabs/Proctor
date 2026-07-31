@@ -203,10 +203,16 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 		MaxBodyBytes: applicationPlatform.Config().Server.MaxBodyBytes,
 		RecentAuthenticationTTL: applicationPlatform.Config().
 			Authentication.RecentAuthenticationTTL.Duration,
+		NodeID: applicationPlatform.Cluster().NodeID(),
 	})
 	if err != nil {
 		_ = applicationPlatform.Close()
 		return nil, fmt.Errorf("construct HTTP API: %w", err)
+	}
+	if err := application.AttachRealtimeSink(httpAPI); err != nil {
+		_ = httpAPI.Close()
+		_ = applicationPlatform.Close()
+		return nil, fmt.Errorf("attach realtime sink: %w", err)
 	}
 
 	return &Server{
@@ -373,7 +379,10 @@ func (s *Server) shutdownHTTP(timeout time.Duration) error {
 
 func (s *Server) closePlatform() error {
 	s.platformCloseOnce.Do(func() {
-		s.platformCloseErr = s.platform.Close()
+		// Connections are drained before the cluster transport is stopped so
+		// no socket remains attached to a node that can no longer receive
+		// revocation or authorization invalidations.
+		s.platformCloseErr = errors.Join(s.api.Close(), s.platform.Close())
 	})
 	return s.platformCloseErr
 }

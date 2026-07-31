@@ -103,6 +103,7 @@ type Routes struct {
 	Affiliation          *mux.Router
 	AcademicUnitMember   *mux.Router
 	ClassMember          *mux.Router
+	WebSocket            *mux.Router
 }
 
 type Options struct {
@@ -113,6 +114,7 @@ type Options struct {
 	PublicURL               string
 	MaxBodyBytes            int64
 	RecentAuthenticationTTL time.Duration
+	NodeID                  string
 }
 
 type Authenticator interface {
@@ -377,6 +379,16 @@ type RoleBindings interface {
 	) (*model.RoleBinding, *model.AppError)
 }
 
+type Realtime interface {
+	AuthorizeWebSocketSubscription(
+		context.Context,
+		model.Principal,
+		model.RequestMetadata,
+		model.WebSocketSubscription,
+	) *model.AppError
+	ValidateWebSocketPrincipal(context.Context, model.Principal) *model.AppError
+}
+
 // Application is the cohesive application-facing API contract. Its component
 // interfaces keep domain ownership visible without turning authentication into
 // an unrelated service locator.
@@ -394,6 +406,7 @@ type Application interface {
 	RoleBindings
 	AcademicAdministration
 	MembershipAdministration
+	Realtime
 }
 
 type API struct {
@@ -410,6 +423,7 @@ type API struct {
 	routeMatchers           []routeMatcher
 	routeKeys               map[string]struct{}
 	prefixes                map[*mux.Router]string
+	webSocketHub            *WebSocketHub
 }
 
 func New(options Options) (*API, error) {
@@ -428,6 +442,9 @@ func New(options Options) (*API, error) {
 	if options.RecentAuthenticationTTL <= 0 {
 		return nil, errors.New("recent authentication TTL must be greater than zero")
 	}
+	if options.NodeID == "" {
+		return nil, errors.New("cluster node ID is required")
+	}
 	cookies, err := newBrowserCookies(options.PublicURL)
 	if err != nil {
 		return nil, fmt.Errorf("configure browser cookies: %w", err)
@@ -442,6 +459,15 @@ func New(options Options) (*API, error) {
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
 		routeKeys:               make(map[string]struct{}),
 		prefixes:                make(map[*mux.Router]string),
+	}
+	api.webSocketHub, err = NewWebSocketHub(
+		options.Application,
+		options.Logger,
+		options.PublicURL,
+		options.NodeID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("construct WebSocket hub: %w", err)
 	}
 	api.initializeBaseRoutes(model.APIURLSuffix)
 	initializers := []func() error{
@@ -463,6 +489,7 @@ func New(options Options) (*API, error) {
 		api.InitAcademicPeriods,
 		api.InitClasses,
 		api.InitMemberships,
+		api.InitWebSocket,
 	}
 	for _, initialize := range initializers {
 		if err := initialize(); err != nil {
@@ -587,6 +614,30 @@ func (a *API) initializeBaseRoutes(apiURLSuffix string) {
 		a.BaseRoutes.APIRoot,
 		"/class-members/{class_member_id:"+canonicalIDRoutePattern()+"}",
 	)
+	a.BaseRoutes.WebSocket = a.subrouter(a.BaseRoutes.APIRoot, "/websocket")
+}
+
+func (a *API) Close() error {
+	if a.webSocketHub == nil {
+		return nil
+	}
+	return a.webSocketHub.Close()
+}
+
+func (a *API) PublishLocal(ctx context.Context, event *model.WebSocketEvent) {
+	a.webSocketHub.PublishLocal(ctx, event)
+}
+
+func (a *API) CloseSession(sessionID string, code int, reason string) {
+	a.webSocketHub.CloseSession(sessionID, code, reason)
+}
+
+func (a *API) CloseUser(userID string, code int, reason string) {
+	a.webSocketHub.CloseUser(userID, code, reason)
+}
+
+func (a *API) CloseAll(code int, reason string) {
+	a.webSocketHub.CloseAll(code, reason)
 }
 
 func canonicalIDRoutePattern() string {

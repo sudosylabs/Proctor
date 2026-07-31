@@ -4,7 +4,9 @@
 package api
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -118,6 +120,26 @@ func (r *responseRecorder) Write(data []byte) (int, error) {
 
 func (r *responseRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
+}
+
+func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response writer does not support hijacking")
+	}
+	connection, buffered, err := hijacker.Hijack()
+	if err == nil && r.status == 0 {
+		// The WebSocket upgrader writes the handshake after hijacking, so the
+		// recorder must track the protocol switch without calling WriteHeader.
+		r.status = http.StatusSwitchingProtocols
+	}
+	return connection, buffered, err
+}
+
+func (r *responseRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func logRequests(next http.Handler, logger *mlog.Logger) http.Handler {

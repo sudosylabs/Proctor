@@ -79,6 +79,12 @@ func (a *App) RevokeSession(
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
 	a.authentication.deleteActivityCache(ctx, session.Id)
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		principal.UserId,
+		[]string{session.Id},
+		hashes,
+	)
 	return nil
 }
 
@@ -102,6 +108,12 @@ func (a *App) RevokeAllSessions(
 	for _, session := range sessions {
 		a.authentication.deleteActivityCache(ctx, session.Id)
 	}
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		principal.UserId,
+		sessionIds(sessions),
+		hashes,
+	)
 	return nil
 }
 
@@ -207,6 +219,12 @@ func (a *App) RevokeUserSession(
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
 	a.authentication.deleteActivityCache(ctx, sessionID)
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		userID,
+		[]string{sessionID},
+		hashes,
+	)
 	_, appErr = a.audit.CompleteCriticalAction(
 		ctx,
 		attempt.Id,

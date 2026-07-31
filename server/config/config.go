@@ -90,12 +90,27 @@ type Cache struct {
 	Redis     CacheRedis `json:"redis"`
 }
 
+type ClusterRedis struct {
+	Addresses       []string `json:"addresses"`
+	Username        string   `json:"username,omitempty"`
+	Password        string   `json:"password,omitempty"`
+	Database        int      `json:"database"`
+	TLS             bool     `json:"tls"`
+	ConnectTimeout  Duration `json:"connect_timeout"`
+	Namespace       string   `json:"namespace"`
+	LeaseTTL        Duration `json:"lease_ttl"`
+	Heartbeat       Duration `json:"heartbeat"`
+	ReliableMaximum int      `json:"reliable_maximum"`
+}
+
 // Cluster selects the inter-node transport and gives this process its stable
-// runtime identity. "local" is the single-node degenerate transport; a
-// multi-node backend will be added only after its delivery contract is chosen.
+// runtime identity. "local" is the single-node degenerate transport. "redis"
+// uses Pub/Sub for best-effort messages and per-node Streams for reliable,
+// acknowledged messages.
 type Cluster struct {
-	Backend string `json:"backend"`
-	NodeID  string `json:"node_id"`
+	Backend string       `json:"backend"`
+	NodeID  string       `json:"node_id"`
+	Redis   ClusterRedis `json:"redis"`
 }
 
 type MailSMTP struct {
@@ -248,6 +263,14 @@ func Default() Config {
 		Cluster: Cluster{
 			Backend: "local",
 			NodeID:  "local",
+			Redis: ClusterRedis{
+				Addresses:       []string{"127.0.0.1:6379"},
+				ConnectTimeout:  Duration{Duration: 5 * time.Second},
+				Namespace:       "proctor",
+				LeaseTTL:        Duration{Duration: 15 * time.Second},
+				Heartbeat:       Duration{Duration: 5 * time.Second},
+				ReliableMaximum: 10000,
+			},
 		},
 		Mail: Mail{
 			Enabled:     false,
@@ -335,6 +358,7 @@ func (c Config) Clone() Config {
 	cloned := c
 	cloned.Log.Targets = append([]LogTarget(nil), c.Log.Targets...)
 	cloned.Cache.Redis.Addresses = append([]string(nil), c.Cache.Redis.Addresses...)
+	cloned.Cluster.Redis.Addresses = append([]string(nil), c.Cluster.Redis.Addresses...)
 	cloned.Authentication.MFA.DecryptionKeys = append(
 		[]string(nil),
 		c.Authentication.MFA.DecryptionKeys...,
@@ -381,6 +405,7 @@ func (c Config) Redacted() Config {
 		redacted.Database.DataSource = "[redacted]"
 	}
 	redacted.Cache.Redis.Password = redactSecret(redacted.Cache.Redis.Password)
+	redacted.Cluster.Redis.Password = redactSecret(redacted.Cluster.Redis.Password)
 	redacted.Mail.SMTP.Password = redactSecret(redacted.Mail.SMTP.Password)
 	redacted.VFS.S3.AccessKey = redactSecret(redacted.VFS.S3.AccessKey)
 	redacted.VFS.S3.SecretKey = redactSecret(redacted.VFS.S3.SecretKey)
@@ -475,6 +500,11 @@ func (c Config) Validate() error {
 	validateCluster(c.Cluster, add)
 	validateMail(c.Mail, add)
 	validateVFS(c.VFS, add)
+	if c.Cluster.Backend == "redis" {
+		if c.VFS.Backend == "local" {
+			add("vfs.backend", "must be shared when cluster.backend is redis")
+		}
+	}
 	validateAuthentication(c.Authentication, add)
 
 	if c.Log.MaxFieldBytes < 256 || c.Log.MaxFieldBytes > 1<<20 {
@@ -526,8 +556,40 @@ func (c Config) Validate() error {
 }
 
 func validateCluster(cluster Cluster, add func(string, string)) {
-	if cluster.Backend != "local" {
-		add("cluster.backend", "must be local")
+	switch cluster.Backend {
+	case "local":
+	case "redis":
+		if len(cluster.Redis.Addresses) == 0 {
+			add("cluster.redis.addresses", "must contain at least one address")
+		}
+		for index, address := range cluster.Redis.Addresses {
+			if !validHostPort(address) {
+				add(
+					fmt.Sprintf("cluster.redis.addresses[%d]", index),
+					"must be a host:port TCP address",
+				)
+			}
+		}
+		if cluster.Redis.Database < 0 {
+			add("cluster.redis.database", "must not be negative")
+		}
+		if cluster.Redis.ConnectTimeout.Duration <= 0 {
+			add("cluster.redis.connect_timeout", "must be greater than zero")
+		}
+		if cluster.Redis.LeaseTTL.Duration < 3*time.Second {
+			add("cluster.redis.lease_ttl", "must be at least 3s")
+		}
+		if cluster.Redis.Heartbeat.Duration <= 0 ||
+			cluster.Redis.Heartbeat.Duration*2 >= cluster.Redis.LeaseTTL.Duration {
+			add("cluster.redis.heartbeat", "must be greater than zero and less than half the lease TTL")
+		}
+		if cluster.Redis.ReliableMaximum < 128 ||
+			cluster.Redis.ReliableMaximum > 1_000_000 {
+			add("cluster.redis.reliable_maximum", "must be between 128 and 1000000")
+		}
+		validateNamespace("cluster.redis.namespace", cluster.Redis.Namespace, add)
+	default:
+		add("cluster.backend", "must be local or redis")
 	}
 	if len(cluster.NodeID) == 0 || len(cluster.NodeID) > 128 {
 		add("cluster.node_id", "must contain between 1 and 128 characters")
@@ -539,6 +601,22 @@ func validateCluster(cluster Cluster, add func(string, string)) {
 			(character < '0' || character > '9') &&
 			character != '.' && character != '_' && character != '-' {
 			add("cluster.node_id", "contains an invalid character")
+			return
+		}
+	}
+}
+
+func validateNamespace(field, namespace string, add func(string, string)) {
+	if len(namespace) == 0 || len(namespace) > 128 {
+		add(field, "must contain between 1 and 128 characters")
+		return
+	}
+	for _, character := range namespace {
+		if (character < 'a' || character > 'z') &&
+			(character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') &&
+			character != '.' && character != '_' && character != '-' {
+			add(field, "contains an invalid character")
 			return
 		}
 	}
@@ -565,19 +643,7 @@ func validateCache(cache Cache, add func(string, string)) {
 	default:
 		add("cache.backend", "must be memory or redis")
 	}
-	if len(cache.Namespace) == 0 || len(cache.Namespace) > 128 {
-		add("cache.namespace", "must contain between 1 and 128 characters")
-	} else {
-		for _, character := range cache.Namespace {
-			if (character < 'a' || character > 'z') &&
-				(character < 'A' || character > 'Z') &&
-				(character < '0' || character > '9') &&
-				character != '.' && character != '_' && character != '-' {
-				add("cache.namespace", "contains an invalid character")
-				break
-			}
-		}
-	}
+	validateNamespace("cache.namespace", cache.Namespace, add)
 }
 
 func validateMail(mailConfig Mail, add func(string, string)) {

@@ -35,11 +35,13 @@ const (
 )
 
 type AuthenticationService struct {
-	platform *platform.Service
-	hasher   *passwordHasher
-	mfa      *MFAService
-	settings config.Authentication
-	now      func() time.Time
+	platform                                 *platform.Service
+	hasher                                   *passwordHasher
+	mfa                                      *MFAService
+	settings                                 config.Authentication
+	now                                      func() time.Time
+	propagateAuthenticationCacheInvalidation func(context.Context, string, []string)
+	propagateSessionRevocation               func(context.Context, string, []string, []string)
 }
 
 type cachedAuthentication struct {
@@ -641,6 +643,20 @@ func (s *AuthenticationService) refresh(
 		return nil, nil, internalAuthenticationError("RefreshSession.rotate", err)
 	}
 	s.deleteAuthenticationCache(ctx, rotation.RevokedAccessHashes)
+	if rotation.ReplayDetected && s.propagateSessionRevocation != nil {
+		s.propagateSessionRevocation(
+			ctx,
+			rotation.Session.UserId,
+			[]string{rotation.Session.Id},
+			rotation.RevokedAccessHashes,
+		)
+	} else if s.propagateAuthenticationCacheInvalidation != nil {
+		s.propagateAuthenticationCacheInvalidation(
+			ctx,
+			rotation.Session.UserId,
+			rotation.RevokedAccessHashes,
+		)
+	}
 	if rotation.ReplayDetected {
 		return nil, nil, invalidTokenError("RefreshSession.replay")
 	}
@@ -658,6 +674,14 @@ func (s *AuthenticationService) refresh(
 			if err == nil {
 				s.deleteAuthenticationCache(ctx, revokedAccessHashes)
 				s.deleteActivityCache(ctx, rotation.Session.Id)
+				if s.propagateSessionRevocation != nil {
+					s.propagateSessionRevocation(
+						ctx,
+						rotation.Session.UserId,
+						[]string{rotation.Session.Id},
+						revokedAccessHashes,
+					)
+				}
 			}
 		}
 		return nil, nil, invalidTokenError("RefreshSession.user")
@@ -692,6 +716,12 @@ func (a *App) Logout(ctx context.Context, principal model.Principal) *model.AppE
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
 	a.authentication.deleteActivityCache(ctx, principal.SessionId)
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		principal.UserId,
+		[]string{principal.SessionId},
+		hashes,
+	)
 	return nil
 }
 

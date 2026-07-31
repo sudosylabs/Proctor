@@ -22,7 +22,12 @@ const (
 
 type ClusterEvent string
 
-const ClusterEventNone ClusterEvent = "none"
+const (
+	ClusterEventNone                     ClusterEvent = "none"
+	ClusterEventWebSocketPublish         ClusterEvent = "websocket.publish"
+	ClusterEventSessionRevoked           ClusterEvent = "authentication.session_revoked"
+	ClusterEventAuthorizationInvalidated ClusterEvent = "authorization.invalidated"
+)
 
 type ClusterSendType string
 

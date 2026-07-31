@@ -198,6 +198,7 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	cfg := Default()
 	cfg.Database.DataSource = "postgres://proctor:secret@db.example/proctor?sslmode=require"
 	cfg.Cache.Redis.Password = "cache-secret"
+	cfg.Cluster.Redis.Password = "cluster-secret"
 	cfg.Mail.SMTP.Password = "mail-secret"
 	cfg.VFS.S3.AccessKey = "vfs-access-key"
 	cfg.VFS.S3.SecretKey = "vfs-secret-key"
@@ -212,6 +213,7 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"cache-secret",
+		"cluster-secret",
 		"mail-secret",
 		"db.example",
 		"vfs-access-key",
@@ -258,6 +260,28 @@ func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
 	}
 	if len(validationError.Fields) < 10 {
 		t.Fatalf("Validate() fields = %#v, want aggregate infrastructure failures", validationError.Fields)
+	}
+}
+
+func TestRedisClusterAllowsMemoryCacheButRequiresSharedVFS(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Cluster.Backend = "redis"
+	err := cfg.Validate()
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("Validate() error = %v, want ValidationError", err)
+	}
+	fields := make(map[string]string, len(validationError.Fields))
+	for _, field := range validationError.Fields {
+		fields[field.Field] = field.Message
+	}
+	if fields["cache.backend"] != "" {
+		t.Fatalf("cluster unexpectedly requires a shared cache: %#v", validationError.Fields)
+	}
+	if fields["vfs.backend"] == "" {
+		t.Fatalf("cluster shared-infrastructure fields = %#v", validationError.Fields)
 	}
 }
 

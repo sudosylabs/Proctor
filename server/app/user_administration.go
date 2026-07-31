@@ -108,6 +108,12 @@ func (a *App) SetUserDisabled(
 		for _, session := range sessions {
 			a.authentication.deleteActivityCache(ctx, session.Id)
 		}
+		a.realtime.PropagateSessionRevocation(
+			ctx,
+			userID,
+			sessionIds(sessions),
+			hashes,
+		)
 		if appErr := a.completeAdministrationMutation(ctx, attempt.Id, updated); appErr != nil {
 			return nil, appErr
 		}
@@ -157,6 +163,12 @@ func (a *App) RevokeUserSessions(
 	for _, session := range sessions {
 		a.authentication.deleteActivityCache(ctx, session.Id)
 	}
+	a.realtime.PropagateSessionRevocation(
+		ctx,
+		userID,
+		sessionIds(sessions),
+		hashes,
+	)
 	_, appErr = a.audit.CompleteCriticalAction(
 		ctx,
 		attempt.Id,

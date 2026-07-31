@@ -19,6 +19,7 @@ var (
 	ErrClusterNotStarted      = errors.New("cluster transport is not started")
 	ErrClusterHandlerExists   = errors.New("cluster message handler is already registered")
 	ErrClusterNodeUnavailable = errors.New("cluster node is unavailable")
+	ErrClusterNodeIDInUse     = errors.New("cluster node ID is already in use")
 )
 
 type ClusterMessageHandler func(context.Context, *model.ClusterMessage) error
@@ -40,6 +41,8 @@ func newCluster(settings config.Cluster, logger *mlog.Logger) (Cluster, error) {
 	switch settings.Backend {
 	case "local":
 		return newLocalCluster(settings.NodeID, logger)
+	case "redis":
+		return newRedisCluster(settings, logger)
 	default:
 		return nil, fmt.Errorf("unsupported cluster backend %q", settings.Backend)
 	}

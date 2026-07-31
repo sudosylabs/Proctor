@@ -24,6 +24,7 @@ type App struct {
 	mfa                    *MFAService
 	authorization          *AuthorizationService
 	audit                  *AuditService
+	realtime               *RealtimeService
 }
 
 func New(applicationPlatform *platform.Service) (*App, error) {
@@ -45,10 +46,18 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		audit,
 	)
 	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
+	realtime, err := newRealtimeService(applicationPlatform, authentication)
+	if err != nil {
+		return nil, err
+	}
+	authentication.propagateAuthenticationCacheInvalidation =
+		realtime.PropagateAuthenticationCacheInvalidation
+	authentication.propagateSessionRevocation =
+		realtime.PropagateSessionRevocation
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
-		authorization: authorization, audit: audit,
+		authorization: authorization, audit: audit, realtime: realtime,
 	}, nil
 }
 
