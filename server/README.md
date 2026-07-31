@@ -28,7 +28,9 @@ The flat `model` package now establishes the durable model contract:
   expiring personal access tokens;
 - hashed, expiring, single-use password-reset and email-verification tokens;
 - encrypted TOTP MFA credentials and independently hashed, single-use recovery
-  codes.
+  codes;
+- provider-neutral external identities and durable, hashed, browser-bound,
+  one-use external login transactions.
 
 The server also includes:
 
@@ -91,16 +93,22 @@ The server also includes:
   metadata, reversible disable/enable, and immediate self-service revocation.
 - TOTP MFA with AES-256-GCM encrypted secrets, expiring pending setup,
   transactionally replay-protected codes, hashed one-time recovery codes,
-  login-time enforcement, assurance upgrades, and account-wide downgrade on
-  disable;
+  local-password login-time enforcement, assurance upgrades, and account-wide
+  downgrade on disable;
 - dedicated `session.view` and `session.manage` authorization for
   administrator listing, individual revocation, and revoke-all, with visible
   handler preflights, durable mutation audits, and immediate cache
-  invalidation.
+  invalidation;
+- an instance-scoped external-provider registry with independent direct CAS 3
+  and generic OIDC adapters, strict CAS back-channel XML validation, OIDC
+  discovery and Authorization Code with S256 PKCE, exact callback binding,
+  institution/home-organization allowlists, explicit MFA-assurance mapping,
+  collision-safe auto-provisioning, ordinary Proctor session creation, and
+  durable provisioning/login audits.
 
-External identity login, service accounts, exams, a concrete multi-node
+Service accounts, account-linking administration, exams, a concrete multi-node
 cluster backend, and WebSockets remain intentionally unimplemented until their
-next vertical slices.
+next vertical slices. SAML remains a future external-provider adapter.
 
 ## Run locally
 
@@ -128,6 +136,11 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `POST /api/v1/auth/email-verification/complete` (public token consumption)
 - `POST /api/v1/auth/password-reset/request` (generic public acceptance)
 - `POST /api/v1/auth/password-reset/complete` (public token consumption)
+- `GET /api/v1/auth/providers` (safe provider discovery)
+- `GET /api/v1/auth/providers/{provider_id}/login` (provider browser
+  initiation)
+- `GET /api/v1/auth/providers/{provider_id}/callback` (browser-bound provider
+  callback)
 - `GET /api/v1/users/me`
 - `GET /api/v1/users/me/sessions`
 - `POST /api/v1/users/me/sessions/revoke`
@@ -195,6 +208,31 @@ rotates the full cookie set. Production cookie security follows the configured
 HTTPS public URL. Electron is expected to load the installation's server
 origin so SameSite=Lax remains effective.
 
+External login uses the same browser session transport. The initiation endpoint
+stores only hashes of a one-use state and browser-binding credential in
+PostgreSQL, places the raw binding in a host-only HttpOnly SameSite=Lax cookie,
+and delegates protocol construction to the configured provider adapter. The
+callback consumes the state exactly once, asks that adapter to validate the
+provider response, resolves `(provider ID, opaque subject)`, and creates an
+ordinary Proctor session before redirecting to the validated local `return_to`
+path. CAS tickets, OIDC codes/tokens, subjects, released claims, and binding
+credentials are never logged or audited.
+
+The provider registry is instance-scoped and atomically replaced on relevant
+configuration reloads. The application flow contains no CAS/OIDC switch:
+adapters own challenge construction, callback-state extraction, and assertion
+validation, then return the same normalized assertion contract. Adding a
+protocol requires a factory and strict configuration block at the composition
+boundary, not another branch in the application login service.
+
+Auto-provisioning never merges accounts by email. A username or email collision
+requires an explicit future account-linking operation. Released affiliation
+attributes do not create role bindings, class enrollments, or permissions.
+Provider MFA is trusted only when an operator-configured released attribute
+matches an explicit accepted value. Without that evidence the resulting session
+is single-factor and may use Proctor's MFA challenge endpoint for step-up
+authentication.
+
 CLI login (`client_type: "cli"`) returns the one-time access and refresh
 credentials in the response body. CLI requests send exactly one
 `Authorization: Bearer <credential>` header. Credentials are never accepted in
@@ -218,18 +256,110 @@ node identity, mail, VFS, logging, password hashing, session lifetimes,
 concurrent-session limits, and login rate limits. Secret fields are explicitly
 redacted. Authentication configuration also controls the recent-authentication
 window, verification/reset lifetimes, recovery throttles, MFA issuer and setup
-lifetime, recovery-code count, and a rotatable AES-256 encryption-key ring.
+lifetime, recovery-code count, a rotatable AES-256 encryption-key ring, and
+operator-owned external-provider definitions.
 When MFA is enabled, `authentication.mfa.encryption_key` must be a standard
 base64-encoded 32-byte key. Previous keys may remain in `decryption_keys`
 during rotation.
+
+The first external provider types are `cas` and `oidc`. Every enabled provider
+has a stable lowercase ID, display name, one matching protocol block, explicit
+claim mappings, optional home-organization allowlisting, and optional trusted
+MFA values. The checked-in example leaves the provider list empty so local
+development does not depend on an identity service.
+
+For CAS, `subject: "user"` selects `<cas:user>`; another released attribute may
+be selected explicitly. Proctor never assumes that `<cas:user>` is an ePPN and
+never uses email as the external identity key. CAS email is considered verified
+only when `trust_email` is explicitly enabled or a mapped boolean released
+attribute says so.
+
+Example provider entry:
+
+```json
+{
+  "id": "campus-cas",
+  "type": "cas",
+  "display_name": "Campus CAS",
+  "enabled": true,
+  "auto_provision": true,
+  "cas": {
+    "base_url": "https://cas.example.edu/cas",
+    "validation_path": "/p3/serviceValidate",
+    "timeout": "5s",
+    "max_response_bytes": 65536
+  },
+  "claims": {
+    "subject": "user",
+    "username": "uid",
+    "email": "mail",
+    "first_name": "givenName",
+    "last_name": "sn",
+    "home_organization": "schacHomeOrganization",
+    "affiliation": "eduPersonAffiliation",
+    "allowed_home_organizations": ["example.edu"],
+    "trust_email": true,
+    "multi_factor_attribute": "authnContext",
+    "multi_factor_values": ["mfa"]
+  }
+}
+```
+
+OIDC uses issuer discovery, Authorization Code flow, S256 PKCE, and a
+transaction-bound nonce. Proctor verifies ID-token signature, issuer, audience,
+expiry, nonce, and `at_hash` when present. If `use_userinfo` is enabled, its
+`sub` must match the ID token and it cannot replace ID-token authentication-time
+or MFA claims. The callback URL registered at the provider is:
+
+`https://<proctor-origin>/api/v1/auth/providers/<provider-id>/callback`
+
+An Apereo CAS installation must enable its OIDC provider support and register
+this Proctor callback as an OIDC relying party; installing Apereo CAS alone
+does not make OIDC endpoints available.
+
+Example OIDC provider entry:
+
+```json
+{
+  "id": "campus-oidc",
+  "type": "oidc",
+  "display_name": "Campus Login",
+  "enabled": true,
+  "auto_provision": true,
+  "oidc": {
+    "issuer": "https://cas.example.edu/cas/oidc",
+    "client_id": "proctor",
+    "client_secret": "replace-with-a-secret",
+    "scopes": ["openid", "profile", "email"],
+    "use_userinfo": false,
+    "timeout": "5s",
+    "max_response_bytes": 262144
+  },
+  "claims": {
+    "subject": "sub",
+    "username": "preferred_username",
+    "email": "email",
+    "email_verified_claim": "email_verified",
+    "first_name": "given_name",
+    "last_name": "family_name",
+    "home_organization": "schacHomeOrganization",
+    "affiliation": "eduPersonAffiliation",
+    "allowed_home_organizations": ["example.edu"],
+    "trust_email": false,
+    "multi_factor_attribute": "amr",
+    "multi_factor_values": ["mfa"]
+  }
+}
+```
+
 Environment-overridden values are effective only for the running process and
 are never persisted back into the configuration file.
 
 The active configuration is owned by one concurrency-safe store. It separates
 persisted values from environment overrides, returns cloned snapshots, supports
-atomic file writes, reload/set listeners, and structured diffs. Logging is the
-first dynamically reconfigurable consumer; HTTP listener and timeout changes
-require a process restart.
+atomic file writes, reload/set listeners, and structured diffs. Logging and the
+external-provider registry are dynamically reconfigurable; HTTP listener and
+timeout changes require a process restart.
 
 Logging supports multiple independently filtered console or file targets,
 text/JSON formatting, contextual fields, bounded field sizes, runtime

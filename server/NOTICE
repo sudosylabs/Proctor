@@ -172,16 +172,24 @@ Corresponding Proctor paths:
 - server/store/sqlstore/academic_unit_member_store_test.go
 - server/store/sqlstore/class_member_store_test.go
 - server/store/sqlstore/user_store.go
+- server/store/sqlstore/external_identity_store.go
+- server/store/sqlstore/external_login_state_store.go
+- server/store/sqlstore/external_identity_store_test.go
+- server/store/sqlstore/external_login_state_store_test.go
 - server/store/sqlstore/password_credential_store.go
 - server/store/sqlstore/session_store.go
 - server/store/sqlstore/session_credential_store.go
 - server/store/sqlstore/personal_access_token_store.go
 - server/store/sqlstore/personal_access_token_store_test.go
 - server/store/storetest/user_store.go
+- server/store/storetest/external_identity_store.go
+- server/store/storetest/external_login_state_store.go
 - server/store/storetest/password_credential_store.go
 - server/store/storetest/session_store.go
 - server/store/storetest/personal_access_token_store.go
 - server/store/sqlstore/migrate_test.go
+- server/migrations/postgres/000010_create_external_login_states.up.sql
+- server/migrations/postgres/000010_create_external_login_states.down.sql
 
 Modifications:
 
@@ -209,7 +217,10 @@ Modifications:
 - adapted Mattermost member-store structure into independent affiliation,
   academic-unit-member, and class-member stores, adding effective-range
   advisory locking, non-overlap checks, atomic student transfer, and retained
-  enrollment history.
+  enrollment history;
+- extended the same per-model store and conformance structure with
+  Proctor-specific external-identity resolution, collision-safe provisioning,
+  and durable one-use external-login-state persistence.
 
 Mattermost authentication and session implementation
 -----------------------------------------------------
@@ -332,6 +343,41 @@ Modifications:
 - adapted administrative session listing and revocation around Proctor's
   dedicated `session.view` and `session.manage` actions and user-resource
   authorization.
+
+The provider-neutral external-authentication flow, instance-scoped factory
+registry, and CAS/OIDC adapters in:
+
+- `server/app/external_authentication.go`;
+- `server/app/api/external_authentication.go`;
+- `server/platform/externalauth/provider.go`;
+- `server/platform/externalauth/cas/provider.go`;
+- `server/platform/externalauth/oidc/provider.go`;
+
+are Proctor-specific implementations. Their separation was behaviorally
+compared with Mattermost revision
+10b780cb097b2ec94ab0f9df7ebcbd5b7850f13f, particularly:
+
+- `server/einterfaces/oauthproviders.go`;
+- `server/channels/app/oauth.go`;
+- `server/channels/app/oauthproviders/gitlab/gitlab.go`;
+- `server/channels/web/oauth.go`;
+- `server/einterfaces/saml.go`;
+- `server/channels/web/saml.go`;
+- `server/channels/app/enterprise.go`.
+
+Proctor retains the useful provider-interface/registration/application-flow
+separation but uses an instance registry instead of Mattermost's global mutable
+provider map, a protocol-neutral callback contract, durable hashed browser
+binding, S256 PKCE, nonce validation, bounded provider responses, and Proctor's
+separate external-identity/session models. No Mattermost CAS, SAML, OpenID, or
+commercial identity-provider implementation was copied.
+
+OIDC verification and OAuth2 protocol construction use:
+
+- `github.com/coreos/go-oidc/v3`, Apache License 2.0;
+- `golang.org/x/oauth2`, BSD 3-Clause License.
+
+These dependencies remain governed by their respective upstream licenses.
 
 Mattermost authorization and audit implementation
 -------------------------------------------------

@@ -183,24 +183,32 @@ walking skeleton is operational and includes:
 - TOTP MFA with AES-256-GCM encrypted secrets, expiring pending setup,
   transactionally replay-protected activation and challenges, hashed
   single-use recovery codes, one-time recovery-code display and regeneration,
-  login-time second-factor enforcement, current-session assurance upgrades,
-  and account-wide assurance downgrade on disable;
+  local-password login-time second-factor enforcement, current-session
+  assurance upgrades, and account-wide assurance downgrade on disable;
 - dedicated `session.view` and `session.manage` actions with visible API
   preflights, authorized active/history listing, audited individual and
   account-wide administrative revocation, and immediate access-cache
-  invalidation.
+  invalidation;
+- an instance-scoped external-identity provider registry with protocol-neutral
+  application contracts, independently configured direct CAS 3 and generic
+  OIDC adapters, durable hashed/browser-bound one-use login state, exact
+  callback binding, OIDC discovery and Authorization Code with PKCE, strict
+  assertion validation, collision-safe user provisioning, ordinary Proctor
+  sessions, explicit provider MFA mapping, safe public provider discovery, and
+  durable provisioning/login audits.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
 Mattermost-shaped root store with per-model contracts, and all structural
 academic SQL stores: institution, academic unit, programme, programme level,
 academic period, and class. It also includes user, password-credential,
-session, session-credential, user-token, personal-access-token, MFA credential,
-MFA recovery-code, affiliation, academic-unit-member, class-member, role,
-role-binding, and audit SQL stores with reusable conformance tests, plus the
-atomic installation-bootstrap store.
-External identity login, service accounts, exam-domain, WebSocket, and a
-concrete multi-node cluster transport remain unimplemented.
+external-identity, external-login-state, session, session-credential,
+user-token, personal-access-token, MFA credential, MFA recovery-code,
+affiliation, academic-unit-member, class-member, role, role-binding, and audit
+SQL stores with reusable conformance tests, plus the atomic
+installation-bootstrap store.
+External account-linking administration, service accounts, exam-domain,
+WebSocket, and a concrete multi-node cluster transport remain unimplemented.
 
 Do not:
 
@@ -445,8 +453,101 @@ The identity area owns:
 - security-related audit events.
 
 External identity providers must be adapters. The core must not be coupled to
-OIDC, CAS, SAML, LDAP, or a particular university directory. The initial
-provider support order is still to be confirmed.
+OIDC, CAS, SAML, LDAP, or a particular university directory. Providers are
+constructed through an instance-scoped registry owned by the platform
+composition root; do not introduce global mutable provider registration or
+protocol switches in the application login orchestration. Direct institutional
+CAS and generic OIDC are the first adapters. SAML/RENATER may be added behind
+the same boundary; LDAP and service-account priority remain undecided.
+
+Provider boundary rules:
+
+- each protocol lives in its own adapter package beneath
+  `server/platform/externalauth`;
+- factories are explicitly assembled once at the platform composition root and
+  registered on an instance registry, following the useful separation in
+  Mattermost's OAuth-provider design without Mattermost's process-global
+  mutable registry;
+- the application sees only provider descriptors, a generic begin challenge,
+  protocol-owned callback-state extraction, and a normalized trusted
+  assertion;
+- provider callbacks are bounded opaque fields at the HTTP boundary. The API
+  and application must not learn the meaning of `ticket`, `code`,
+  `SAMLResponse`, or future protocol-specific values;
+- configuration is a strict discriminated union: exactly one protocol block
+  must correspond to the selected provider type;
+- configuration reload builds a complete replacement provider set before
+  atomically swapping it into the registry. In-flight requests retain their
+  already-resolved provider instance;
+- provider network clients use bounded responses, timeouts, and redirect
+  rejection. Errors exposed to logs or `AppError` must redact provider
+  credentials, codes, tickets, tokens, response bodies, and claims.
+
+Do not register a generic SAML HTTP-POST callback prematurely. The current
+browser proof cookie is SameSite=Lax and is intentionally not sent on a
+cross-site IdP POST. A future SAML adapter needs a reviewed two-stage design:
+validate and retain the bounded signed response as an intermediate one-use
+transaction, redirect to a same-origin GET where the browser proof is present,
+then finalize the Proctor session. Do not weaken the cookie globally to
+SameSite=None merely to make SAML POST appear to work.
+
+CAS identity rules:
+
+- a configured provider has a stable lowercase ID independent of its protocol
+  endpoint, and the durable identity key is `(provider ID, opaque subject)`;
+- the authoritative subject is explicitly mapped to `<cas:user>` or a released
+  attribute; never assume `<cas:user>` is an ePPN and never use email as the
+  identity key;
+- external login initiation creates a PostgreSQL-backed, hashed, expiring,
+  one-use state bound to a separate host-only HttpOnly SameSite=Lax cookie so
+  any application node can receive the callback without enabling login CSRF;
+- the callback consumes state once, validates the ticket through the CAS back
+  channel against the exact service URL, and then creates an ordinary Proctor
+  session through the shared session service;
+- CAS ticket, raw state/binding credentials, subjects, and released attributes
+  must never appear in operational logs or audit data;
+- auto-provisioning may create a new user and `ExternalIdentity` atomically but
+  must never merge with an existing user merely because username or email
+  matches; collisions require explicit future account linking;
+- released affiliation values do not create role bindings, permissions, class
+  memberships, or academic-unit memberships. Affiliation reconciliation is
+  deferred until provider ownership and deprovisioning semantics are modeled;
+- provider MFA satisfies `AuthenticationMultiFactor` only when an explicitly
+  configured trusted assertion value is present. CAS success or `renew=true`
+  alone does not prove MFA; otherwise the session starts single-factor and may
+  use Proctor's MFA challenge for step-up authentication;
+- proxy-granting tickets, proxy tickets, gateway login, and CAS single logout
+  are outside the first slice. Local Proctor logout always remains available;
+- direct CAS is for the institution owning the installation. A future
+  multi-institution federation use case belongs in SAML/RENATER or OIDC, not
+  implicit tenant routing inside the CAS adapter.
+
+OIDC identity rules:
+
+- use issuer discovery and verify the discovered issuer exactly; never
+  configure independent authorization, token, user-info, and JWKS endpoints
+  that can silently drift apart;
+- use Authorization Code flow with S256 PKCE even for the confidential Proctor
+  server client;
+- bind state to the durable one-use transaction and HttpOnly browser proof. The
+  same high-entropy proof is the PKCE verifier, and a domain-separated digest
+  of it is the OIDC nonce;
+- require and cryptographically verify the ID token signature, issuer,
+  audience, expiry, and nonce. Verify `at_hash` whenever the ID token includes
+  it;
+- if user-info retrieval is enabled, require its `sub` to exactly equal the ID
+  token subject. User-info data may enrich profile claims but may never
+  override ID-token authentication time or MFA claims;
+- `sub` is always the OIDC external-identity subject. Do not substitute email,
+  username, ePPN, or another profile claim;
+- provider access tokens, refresh tokens, authorization codes, ID tokens, and
+  raw claims are ephemeral login material. Do not persist, return, log, or
+  audit them;
+- OIDC MFA is recognized only from an explicitly configured trusted ID-token
+  claim/value. An arbitrary successful OIDC login is not automatically MFA;
+- Apereo CAS can act as an OIDC provider only when that support is enabled and
+  Proctor is registered as an OIDC relying party. A CAS deployment does not
+  imply that its OIDC or SAML endpoints are available.
 
 Identity model rules:
 
@@ -658,9 +759,15 @@ uses a different origin, do not weaken SameSite or CORS casually: route
 credential operations through a trusted Electron main-process boundary or
 design and review an explicit cross-origin contract.
 
-For external university login, prefer system-browser authorization with
-Authorization Code and PKCE. The desktop application should not collect
-university passwords when a proper external flow is available.
+The current CAS and OIDC adapters use a server-origin browser login/callback
+flow. CAS has no OAuth authorization code or PKCE; OIDC uses Authorization Code
+with S256 PKCE and nonce validation. When Electron loads the installation
+origin, either flow may run in its browser session and the resulting host-only
+cookies remain in the same cookie jar. Do not claim that opening either flow in
+the operating-system browser automatically authenticates Electron: that
+requires a separately designed, one-time desktop handoff through a trusted
+main-process boundary. The desktop application must not collect university
+passwords when a proper external flow is available.
 
 ### CLI credentials
 
@@ -893,6 +1000,8 @@ Deployment configuration includes:
 - cluster transport;
 - VFS backend and credentials;
 - SMTP transport;
+- external identity-provider endpoints, claim mappings, provisioning policy,
+  home-organization restrictions, and trusted assurance values;
 - logging;
 - security and process-level limits.
 
@@ -931,9 +1040,10 @@ Configuration rules:
   are present, while a database backing may be added when clustered
   configuration requirements are finalized;
 - listeners receive cloned old/current values after successful changes;
-- runtime reconfiguration is capability-specific: logging currently
-  reconfigures dynamically, while listener addresses, HTTP limits, cluster
-  backend, and cluster node identity require a process restart;
+- runtime reconfiguration is capability-specific: logging and the
+  external-provider registry reconfigure dynamically, while listener
+  addresses, HTTP limits, cluster backend, and cluster node identity require a
+  process restart;
 - configuration backing conformance must be reusable when another backing is
   introduced.
 
@@ -1514,8 +1624,9 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     session listing/individual/revoke-all management, strong/recent route
     assurance contracts, target-bound email verification, password reset, and
     finite explicitly scoped personal access tokens, encrypted TOTP MFA,
-    single-use recovery codes, and administrative session management;
-    external identity and service accounts remain;
+    single-use recovery codes, administrative session management, and
+    registry-backed direct CAS and generic OIDC external identity login;
+    external account-linking administration, SAML, and service accounts remain;
 12. scoped authorization and audit — complete for action/resource contracts,
     current-state institution/academic-unit/class evaluation, role and binding
     stores, durable decision/critical-action auditing, the privileged audit
@@ -1527,9 +1638,9 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     handler-level permission preflights, audited mutations, authorized scoped
     reads, PostgreSQL conformance, and end-to-end API integration;
 14. remaining identity phase: personal access tokens, MFA/recovery codes, and
-    administrative session management — complete; service accounts and
-    external identity remain, with external identity waiting for the first
-    provider to be selected;
+    administrative session management — complete; registry-backed direct CAS
+    and generic OIDC external identity login are also complete, while
+    account-linking administration, SAML, and service accounts remain;
 15. first two-node cluster tests;
 16. WebSocket hub, cluster fan-out, and replay;
 17. exam/proctoring vertical slices after their state models are confirmed.
@@ -1673,6 +1784,11 @@ Before handing off:
   `store/storetest` and a thin corresponding SQL adapter test.
 - Electron desktop and CLI clients are primary API consumers. Electron/web
   sessions use cookie plus CSRF transport; CLI sessions use bearer transport.
+- Direct institutional CAS and generic OIDC are the first external identity
+  providers. Instance-registered adapters normalize assertions into the shared
+  external-identity/session flow; provider ID plus opaque subject is
+  authoritative, email collisions never auto-link accounts, and released
+  affiliations never grant roles.
 - This `AGENTS.md` is a living document and must be maintained as the project
   evolves.
 
@@ -1681,8 +1797,10 @@ Before handing off:
 Keep this list current; remove items when decided and record the resulting rule
 above.
 
-- Exact initial identity-provider support order: OIDC, CAS, SAML, LDAP, and/or
-  local accounts.
+- Priority and exact requirements for the next external provider after CAS and
+  OIDC: SAML/RENATER or LDAP.
+- External account-linking, profile-ownership, affiliation reconciliation, and
+  provider-driven deprovisioning policies.
 - Whether roles may bind directly to programme and programme-level scopes in
   addition to academic unit, class, and exam.
 - Exam ownership and targeting: one class, several classes, programme level, or
