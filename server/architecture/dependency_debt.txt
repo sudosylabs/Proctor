@@ -1,0 +1,64 @@
+# Exact production import violations that predate the architecture gate.
+#
+# Format: <module-relative Go file><tab><forbidden import path>
+# Entries are sorted. Delete an entry in the same change that removes its import;
+# new entries are forbidden because this ledger may only shrink.
+app/academic_administration.go	net/http
+app/account_recovery.go	github.com/sudosylabs/proctor/packages/mail
+app/account_recovery.go	github.com/sudosylabs/proctor/server/mlog
+app/account_recovery.go	github.com/sudosylabs/proctor/server/platform
+app/account_recovery.go	net/http
+app/api/api.go	github.com/sudosylabs/proctor/server/mlog
+app/api/api.go	github.com/sudosylabs/proctor/server/store
+app/api/authentication.go	github.com/sudosylabs/proctor/server/mlog
+app/api/handler.go	github.com/sudosylabs/proctor/server/mlog
+app/api/middleware.go	github.com/sudosylabs/proctor/server/mlog
+app/api/user_administration.go	github.com/sudosylabs/proctor/server/store
+app/api/websocket.go	github.com/sudosylabs/proctor/server/mlog
+app/app.go	github.com/sudosylabs/proctor/packages/vfs
+app/app.go	github.com/sudosylabs/proctor/server/config
+app/app.go	github.com/sudosylabs/proctor/server/mlog
+app/app.go	github.com/sudosylabs/proctor/server/platform
+app/audit.go	net/http
+app/authentication.go	github.com/sudosylabs/proctor/server/config
+app/authentication.go	github.com/sudosylabs/proctor/server/mlog
+app/authentication.go	github.com/sudosylabs/proctor/server/platform
+app/authentication.go	net/http
+app/authorization.go	net/http
+app/bootstrap.go	net/http
+app/external_authentication.go	github.com/sudosylabs/proctor/server/mlog
+app/external_authentication.go	github.com/sudosylabs/proctor/server/platform
+app/external_authentication.go	github.com/sudosylabs/proctor/server/platform/externalauth
+app/external_authentication.go	net/http
+app/membership_administration.go	net/http
+app/mfa.go	github.com/sudosylabs/proctor/server/config
+app/mfa.go	github.com/sudosylabs/proctor/server/platform
+app/mfa.go	net/http
+app/password.go	github.com/sudosylabs/proctor/server/config
+app/personal_access_token.go	net/http
+app/realtime.go	github.com/sudosylabs/proctor/server/mlog
+app/realtime.go	github.com/sudosylabs/proctor/server/platform
+app/realtime.go	net/http
+app/role_administration.go	net/http
+app/server.go	github.com/sudosylabs/proctor/packages/vfs
+app/server.go	github.com/sudosylabs/proctor/server/app/api
+app/server.go	github.com/sudosylabs/proctor/server/config
+app/server.go	github.com/sudosylabs/proctor/server/mlog
+app/server.go	github.com/sudosylabs/proctor/server/platform
+app/server.go	net/http
+app/session_management.go	net/http
+app/version.go	github.com/sudosylabs/proctor/server/app/api
+cmd/proctor/main.go	github.com/sudosylabs/proctor/server/app
+cmd/proctor/main.go	github.com/sudosylabs/proctor/server/config
+cmd/proctor/main.go	github.com/sudosylabs/proctor/server/store/sqlstore
+model/app_error.go	net/http
+platform/cluster_redis.go	github.com/redis/rueidis
+platform/infrastructure.go	github.com/redis/rueidis
+platform/infrastructure.go	github.com/sudosylabs/proctor/packages/cache/memory
+platform/infrastructure.go	github.com/sudosylabs/proctor/packages/cache/redis
+platform/infrastructure.go	github.com/sudosylabs/proctor/packages/mail/smtp
+platform/infrastructure.go	github.com/sudosylabs/proctor/packages/vfs/local
+platform/infrastructure.go	github.com/sudosylabs/proctor/packages/vfs/s3
+platform/service.go	github.com/sudosylabs/proctor/server/platform/externalauth/cas
+platform/service.go	github.com/sudosylabs/proctor/server/platform/externalauth/oidc
+platform/service.go	github.com/sudosylabs/proctor/server/store/sqlstore

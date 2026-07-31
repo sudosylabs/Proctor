@@ -7,9 +7,12 @@ PROCTOR_TEST_REDIS_ADDRESS ?= 127.0.0.1:$(PROCTOR_REDIS_PORT)
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT
 
-.PHONY: check test test-race vet build postgres-up postgres-down postgres-logs redis-up redis-logs integration-all integration-postgres integration-redis integration-providers integration-realtime conformance-postgres conformance-realtime
+.PHONY: check architecture test test-race vet build postgres-up postgres-down postgres-logs redis-up redis-logs integration-all integration-postgres integration-redis integration-providers integration-realtime conformance-postgres conformance-realtime
 
 check: test test-race vet
+
+architecture:
+	go test ./architecture
 
 test:
 	go test ./...

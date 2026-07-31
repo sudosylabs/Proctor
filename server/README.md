@@ -395,6 +395,19 @@ node-local storage.
 make -C server check
 ```
 
+`check` includes the production import-boundary gate. Run that gate alone with:
+
+```sh
+make -C server architecture
+```
+
+Current migration exceptions are exact file/import pairs in
+`server/architecture/dependency_debt.txt`. Remove the corresponding entry in
+the same change that removes a forbidden import, and never expand this reviewed
+baseline. The gate rejects unlisted forbidden imports, stale entries,
+duplicates, and unsorted debt. An immutable initial ceiling in the architecture
+test prevents a new violation from being legalized by adding it to the ledger.
+
 The default `test`, `test-race`, and `check` targets are hermetic: they do not
 require PostgreSQL, Redis, SMTP, S3, or another external service. Tests backed
 only by local `httptest` servers remain in the default suite.
