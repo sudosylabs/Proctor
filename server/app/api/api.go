@@ -73,6 +73,8 @@ type Routes struct {
 	Health               *mux.Router
 	System               *mux.Router
 	Authentication       *mux.Router
+	IdentityProviders    *mux.Router
+	IdentityProvider     *mux.Router
 	Users                *mux.Router
 	CurrentUser          *mux.Router
 	MFA                  *mux.Router
@@ -161,6 +163,26 @@ type Authentication interface {
 		model.RequestMetadata,
 		string,
 	) (*model.User, *model.AppError)
+}
+
+type ExternalAuthentication interface {
+	ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
+	BeginExternalAuthentication(
+		context.Context,
+		string,
+		string,
+		model.SessionClientType,
+		string,
+		string,
+		string,
+	) (*model.ExternalAuthenticationStart, *model.AppError)
+	CompleteExternalAuthentication(
+		context.Context,
+		string,
+		string,
+		model.ExternalAuthenticationCallback,
+		model.RequestMetadata,
+	) (*model.ExternalAuthenticationCompletion, *model.AppError)
 }
 
 type Users interface {
@@ -360,6 +382,7 @@ type RoleBindings interface {
 // an unrelated service locator.
 type Application interface {
 	Authentication
+	ExternalAuthentication
 	PermissionChecker
 	Users
 	Sessions
@@ -424,6 +447,7 @@ func New(options Options) (*API, error) {
 	initializers := []func() error{
 		api.InitSystem,
 		api.InitAuthentication,
+		api.InitExternalAuthentication,
 		api.InitUsers,
 		api.InitSessions,
 		api.InitMFA,
@@ -485,6 +509,14 @@ func (a *API) initializeBaseRoutes(apiURLSuffix string) {
 	a.BaseRoutes.Health = a.subrouter(root, "/health")
 	a.BaseRoutes.System = a.subrouter(a.BaseRoutes.APIRoot, "/system")
 	a.BaseRoutes.Authentication = a.subrouter(a.BaseRoutes.APIRoot, "/auth")
+	a.BaseRoutes.IdentityProviders = a.subrouter(
+		a.BaseRoutes.Authentication,
+		"/providers",
+	)
+	a.BaseRoutes.IdentityProvider = a.subrouter(
+		a.BaseRoutes.IdentityProviders,
+		"/{provider_id:"+providerIDRoutePattern()+"}",
+	)
 	a.BaseRoutes.Users = a.subrouter(a.BaseRoutes.APIRoot, "/users")
 	a.BaseRoutes.CurrentUser = a.subrouter(a.BaseRoutes.Users, "/me")
 	a.BaseRoutes.MFA = a.subrouter(a.BaseRoutes.CurrentUser, "/mfa")
@@ -559,6 +591,10 @@ func (a *API) initializeBaseRoutes(apiURLSuffix string) {
 
 func canonicalIDRoutePattern() string {
 	return "[" + model.IdAlphabet + "]{" + strconv.Itoa(model.IdLength) + "}"
+}
+
+func providerIDRoutePattern() string {
+	return "[a-z0-9][a-z0-9._-]{0,63}"
 }
 
 func (a *API) subrouter(parent *mux.Router, pathPrefix string) *mux.Router {

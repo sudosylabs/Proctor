@@ -13,7 +13,6 @@ package app
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -231,7 +230,58 @@ func (s *AuthenticationService) login(
 		}
 	}
 
-	nowMillis := now.UnixMilli()
+	savedSession, tokens, appErr := s.createSession(
+		ctx,
+		user,
+		clientType,
+		deviceID,
+		deviceName,
+		"password",
+		authenticationStrength,
+		now.UnixMilli(),
+		mfaCompletedAt,
+	)
+	if appErr != nil {
+		return nil, nil, nil, appErr
+	}
+	if err := s.platform.Cache().Delete(ctx, identityRateKey); err != nil {
+		s.platform.Log().WarnContext(ctx, "login rate-limit reset failed", mlog.Err(err))
+	}
+	return user, savedSession, tokens, nil
+}
+
+func (s *AuthenticationService) createSession(
+	ctx context.Context,
+	user *model.User,
+	clientType model.SessionClientType,
+	deviceID string,
+	deviceName string,
+	method string,
+	strength model.AuthenticationStrength,
+	authenticatedAt int64,
+	mfaCompletedAt int64,
+) (*model.Session, *model.AuthenticationTokens, *model.AppError) {
+	if user == nil || !user.IsActive() || !clientType.IsValid() ||
+		!strength.IsValid() || authenticatedAt <= 0 {
+		return nil, nil, model.NewAppError(
+			"AuthenticationService.createSession",
+			"authentication.session.invalid",
+			nil,
+			"",
+			http.StatusBadRequest,
+		)
+	}
+	nowMillis := s.now().UnixMilli()
+	if authenticatedAt > nowMillis {
+		authenticatedAt = nowMillis
+	}
+	if strength == model.AuthenticationMultiFactor {
+		if mfaCompletedAt < authenticatedAt || mfaCompletedAt > nowMillis {
+			mfaCompletedAt = authenticatedAt
+		}
+	} else {
+		mfaCompletedAt = 0
+	}
 	settings := s.settings.Sessions
 	absoluteExpiresAt := nowMillis + settings.AbsoluteTTL.Milliseconds()
 	accessExpiresAt := min(nowMillis+settings.AccessTTL.Milliseconds(), absoluteExpiresAt)
@@ -241,13 +291,16 @@ func (s *AuthenticationService) login(
 		ClientType:             clientType,
 		DeviceId:               deviceID,
 		DeviceName:             deviceName,
-		AuthenticationMethod:   "password",
-		AuthenticationStrength: authenticationStrength,
-		AuthenticatedAt:        nowMillis,
+		AuthenticationMethod:   method,
+		AuthenticationStrength: strength,
+		AuthenticatedAt:        authenticatedAt,
 		MFACompletedAt:         mfaCompletedAt,
 		LastActivityAt:         nowMillis,
-		IdleExpiresAt:          min(nowMillis+settings.IdleTTL.Milliseconds(), absoluteExpiresAt),
-		ExpiresAt:              absoluteExpiresAt,
+		IdleExpiresAt: min(
+			nowMillis+settings.IdleTTL.Milliseconds(),
+			absoluteExpiresAt,
+		),
+		ExpiresAt: absoluteExpiresAt,
 	}
 	accessToken := model.NewCredentialToken()
 	refreshToken := model.NewCredentialToken()
@@ -270,16 +323,20 @@ func (s *AuthenticationService) login(
 	)
 	if saveErr != nil {
 		var conflict *store.ErrConflict
-		if errors.As(saveErr, &conflict) && conflict.Constraint == "sessions_maximum_per_user" {
-			return nil, nil, nil, model.NewAppError(
-				"Login",
+		if errors.As(saveErr, &conflict) &&
+			conflict.Constraint == "sessions_maximum_per_user" {
+			return nil, nil, model.NewAppError(
+				"AuthenticationService.createSession",
 				"authentication.sessions.maximum_reached",
 				nil,
 				"",
 				http.StatusConflict,
 			)
 		}
-		return nil, nil, nil, internalAuthenticationError("Login.save_session", saveErr)
+		return nil, nil, internalAuthenticationError(
+			"AuthenticationService.createSession",
+			saveErr,
+		)
 	}
 
 	var accessCredential *model.SessionCredential
@@ -290,8 +347,8 @@ func (s *AuthenticationService) login(
 		}
 	}
 	if accessCredential == nil {
-		return nil, nil, nil, internalAuthenticationError(
-			"Login.save_session",
+		return nil, nil, internalAuthenticationError(
+			"AuthenticationService.createSession",
 			errors.New("saved session has no access credential"),
 		)
 	}
@@ -300,10 +357,7 @@ func (s *AuthenticationService) login(
 		Session:    savedSession,
 		User:       user,
 	}, nowMillis)
-	if err := s.platform.Cache().Delete(ctx, identityRateKey); err != nil {
-		s.platform.Log().WarnContext(ctx, "login rate-limit reset failed", mlog.Err(err))
-	}
-	return user, savedSession, &model.AuthenticationTokens{
+	return savedSession, &model.AuthenticationTokens{
 		AccessToken:      accessToken,
 		RefreshToken:     refreshToken,
 		AccessExpiresAt:  accessExpiresAt,
@@ -726,8 +780,7 @@ func (s *AuthenticationService) deleteActivityCache(ctx context.Context, session
 }
 
 func validRawCredential(token string) bool {
-	decoded, err := base64.RawURLEncoding.Strict().DecodeString(token)
-	return err == nil && len(decoded) == 32
+	return model.IsValidCredentialToken(token)
 }
 
 func invalidCredentialsError(where string) *model.AppError {

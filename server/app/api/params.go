@@ -22,6 +22,7 @@ type paramsContextKey struct{}
 // Params contains normalized variables selected by the matched route. Handlers
 // consume this object instead of reaching into mux or parsing URL paths.
 type Params struct {
+	ProviderId            string
 	RoleId                string
 	RoleBindingId         string
 	UserId                string
@@ -35,11 +36,17 @@ type Params struct {
 	ClassMemberId         string
 	PersonalAccessTokenId string
 	SessionId             string
+	ReturnTo              string
+	ClientType            string
+	DeviceId              string
+	DeviceName            string
 }
 
 func ParamsFromRequest(request *http.Request) Params {
 	variables := mux.Vars(request)
+	query := request.URL.Query()
 	return Params{
+		ProviderId:            strings.ToLower(strings.TrimSpace(variables["provider_id"])),
 		RoleId:                strings.TrimSpace(variables["role_id"]),
 		RoleBindingId:         strings.TrimSpace(variables["role_binding_id"]),
 		UserId:                strings.TrimSpace(variables["user_id"]),
@@ -53,7 +60,18 @@ func ParamsFromRequest(request *http.Request) Params {
 		ClassMemberId:         strings.TrimSpace(variables["class_member_id"]),
 		PersonalAccessTokenId: strings.TrimSpace(variables["personal_access_token_id"]),
 		SessionId:             strings.TrimSpace(variables["session_id"]),
+		ReturnTo:              strings.TrimSpace(query.Get("return_to")),
+		ClientType:            strings.TrimSpace(query.Get("client_type")),
+		DeviceId:              strings.TrimSpace(query.Get("device_id")),
+		DeviceName:            strings.TrimSpace(query.Get("device_name")),
 	}
+}
+
+func (p Params) RequireProviderId() (string, *model.AppError) {
+	if len(p.ProviderId) == 0 || len(p.ProviderId) > model.IdentityProviderMaxLength {
+		return "", invalidRequestError("provider_id", nil)
+	}
+	return p.ProviderId, nil
 }
 
 func (p Params) RequireUserId() (string, *model.AppError) {

@@ -192,13 +192,14 @@ type MFA struct {
 }
 
 type Authentication struct {
-	Password                Password             `json:"password"`
-	Sessions                Sessions             `json:"sessions"`
-	RecentAuthenticationTTL Duration             `json:"recent_authentication_ttl"`
-	LoginRateLimit          LoginRateLimit       `json:"login_rate_limit"`
-	AccountRecovery         AccountRecovery      `json:"account_recovery"`
-	PersonalAccessTokens    PersonalAccessTokens `json:"personal_access_tokens"`
-	MFA                     MFA                  `json:"mfa"`
+	Password                Password               `json:"password"`
+	Sessions                Sessions               `json:"sessions"`
+	RecentAuthenticationTTL Duration               `json:"recent_authentication_ttl"`
+	LoginRateLimit          LoginRateLimit         `json:"login_rate_limit"`
+	AccountRecovery         AccountRecovery        `json:"account_recovery"`
+	PersonalAccessTokens    PersonalAccessTokens   `json:"personal_access_tokens"`
+	MFA                     MFA                    `json:"mfa"`
+	External                ExternalAuthentication `json:"external"`
 }
 
 type Config struct {
@@ -313,6 +314,10 @@ func Default() Config {
 				SetupTTL:          Duration{Duration: 10 * time.Minute},
 				RecoveryCodeCount: 10,
 			},
+			External: ExternalAuthentication{
+				LoginStateTTL: Duration{Duration: 10 * time.Minute},
+				Providers:     []ExternalAuthenticationProvider{},
+			},
 		},
 		Log: Log{
 			MaxFieldBytes: 16 << 10,
@@ -334,6 +339,38 @@ func (c Config) Clone() Config {
 		[]string(nil),
 		c.Authentication.MFA.DecryptionKeys...,
 	)
+	if c.Authentication.External.Providers != nil {
+		cloned.Authentication.External.Providers = append(
+			make([]ExternalAuthenticationProvider, 0, len(c.Authentication.External.Providers)),
+			c.Authentication.External.Providers...,
+		)
+	}
+	for index := range cloned.Authentication.External.Providers {
+		provider := &cloned.Authentication.External.Providers[index]
+		sourceProvider := c.Authentication.External.Providers[index]
+		source := sourceProvider.Claims
+		if source.AllowedHomeOrganizations != nil {
+			provider.Claims.AllowedHomeOrganizations = append(
+				make([]string, 0, len(source.AllowedHomeOrganizations)),
+				source.AllowedHomeOrganizations...,
+			)
+		}
+		if source.MultiFactorValues != nil {
+			provider.Claims.MultiFactorValues = append(
+				make([]string, 0, len(source.MultiFactorValues)),
+				source.MultiFactorValues...,
+			)
+		}
+		if sourceProvider.CAS != nil {
+			cas := *sourceProvider.CAS
+			provider.CAS = &cas
+		}
+		if sourceProvider.OIDC != nil {
+			oidc := *sourceProvider.OIDC
+			oidc.Scopes = append([]string(nil), sourceProvider.OIDC.Scopes...)
+			provider.OIDC = &oidc
+		}
+	}
 	return cloned
 }
 
@@ -355,6 +392,14 @@ func (c Config) Redacted() Config {
 		redacted.Authentication.MFA.DecryptionKeys[index] = redactSecret(
 			redacted.Authentication.MFA.DecryptionKeys[index],
 		)
+	}
+	for index := range redacted.Authentication.External.Providers {
+		provider := &redacted.Authentication.External.Providers[index]
+		if provider.OIDC != nil {
+			provider.OIDC.ClientSecret = redactSecret(
+				provider.OIDC.ClientSecret,
+			)
+		}
 	}
 	return redacted
 }
@@ -779,6 +824,8 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 		}
 		seenKeys[key] = struct{}{}
 	}
+
+	validateExternalAuthentication(authentication.External, add)
 }
 
 func validateAuthenticationRateLimit(

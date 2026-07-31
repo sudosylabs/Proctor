@@ -27,6 +27,117 @@ func newAuditService(persistence store.Store, nodeID string) *AuditService {
 	return &AuditService{store: persistence, nodeID: nodeID, now: time.Now}
 }
 
+func (s *AuditService) BeginAuthentication(
+	ctx context.Context,
+	userID string,
+	method string,
+	providerID string,
+	clientType model.SessionClientType,
+	metadata model.RequestMetadata,
+	institutionID string,
+) (*model.AuditEvent, *model.AppError) {
+	if !model.IsValidId(userID) || !model.IsValidId(institutionID) ||
+		!clientType.IsValid() || method == "" {
+		return nil, model.NewAppError(
+			"AuditService.BeginAuthentication",
+			"audit.event.invalid",
+			nil,
+			"",
+			http.StatusInternalServerError,
+		)
+	}
+	if s.store == nil || s.store.Audit() == nil {
+		return nil, auditUnavailableError(
+			"AuditService.BeginAuthentication",
+			store.NewErrNotFound("audit_store", ""),
+		)
+	}
+	parameters, appErr := model.EncodeAuditData(map[string]string{
+		"provider": providerID,
+	})
+	if appErr != nil {
+		return nil, appErr
+	}
+	event := &model.AuditEvent{
+		ActorId: userID,
+		Action:  "authentication.external_login",
+		Resource: model.Resource{
+			Type: model.ResourceUser,
+			Id:   userID,
+		},
+		ScopeType:  model.RoleScopeInstitution,
+		ScopeId:    institutionID,
+		Status:     model.AuditStatusAttempt,
+		RequestId:  metadata.RequestId,
+		NodeId:     s.nodeID,
+		ClientType: string(clientType),
+		AuthMethod: method,
+		IPAddress:  metadata.IPAddress,
+		UserAgent:  metadata.UserAgent,
+		Parameters: parameters,
+	}
+	saved, err := s.store.Audit().Save(ctx, event)
+	if err != nil {
+		return nil, auditUnavailableError("AuditService.BeginAuthentication", err)
+	}
+	return saved, nil
+}
+
+func (s *AuditService) RecordExternalAuthenticationFailure(
+	ctx context.Context,
+	providerID string,
+	method string,
+	metadata model.RequestMetadata,
+	institutionID string,
+	errorCode string,
+) *model.AppError {
+	if method == "" {
+		return model.NewAppError(
+			"AuditService.RecordExternalAuthenticationFailure",
+			"audit.event.invalid",
+			nil,
+			"",
+			http.StatusInternalServerError,
+		)
+	}
+	parameters, appErr := model.EncodeAuditData(map[string]string{
+		"provider": providerID,
+	})
+	if appErr != nil {
+		return appErr
+	}
+	if s.store == nil || s.store.Audit() == nil {
+		return auditUnavailableError(
+			"AuditService.RecordExternalAuthenticationFailure",
+			store.NewErrNotFound("audit_store", ""),
+		)
+	}
+	event := &model.AuditEvent{
+		Action: "authentication.external_login",
+		Resource: model.Resource{
+			Type: model.ResourceInstitution,
+			Id:   institutionID,
+		},
+		ScopeType:  model.RoleScopeInstitution,
+		ScopeId:    institutionID,
+		Status:     model.AuditStatusFail,
+		RequestId:  metadata.RequestId,
+		NodeId:     s.nodeID,
+		AuthMethod: method,
+		IPAddress:  metadata.IPAddress,
+		UserAgent:  metadata.UserAgent,
+		ErrorCode:  errorCode,
+		Parameters: parameters,
+	}
+	if _, err := s.store.Audit().Save(ctx, event); err != nil {
+		return auditUnavailableError(
+			"AuditService.RecordExternalAuthenticationFailure",
+			err,
+		)
+	}
+	return nil
+}
+
 // BeginCriticalAction persists an attempt before a security-sensitive mutation
 // is allowed to start. Callers must pass only bounded safe values or Auditable
 // projections; credentials and secrets are never acceptable audit parameters.

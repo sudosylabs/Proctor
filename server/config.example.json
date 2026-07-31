@@ -106,6 +106,10 @@
       "decryption_keys": [],
       "setup_ttl": "10m",
       "recovery_code_count": 10
+    },
+    "external": {
+      "login_state_ttl": "10m",
+      "providers": []
     }
   },
   "log": {

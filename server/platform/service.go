@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -16,6 +17,10 @@ import (
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/platform/externalauth"
+	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
+	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 )
@@ -32,16 +37,17 @@ type ServiceConfig struct {
 }
 
 type Service struct {
-	configStore    *config.Store
-	logger         *mlog.Logger
-	store          store.Store
-	cache          Cache
-	cluster        Cluster
-	mailer         Mailer
-	vfs            vfspkg.FileSystem
-	configListener string
-	shutdownOnce   sync.Once
-	shutdownErr    error
+	configStore            *config.Store
+	logger                 *mlog.Logger
+	store                  store.Store
+	cache                  Cache
+	cluster                Cluster
+	mailer                 Mailer
+	vfs                    vfspkg.FileSystem
+	externalAuthentication *externalauth.Registry
+	configListener         string
+	shutdownOnce           sync.Once
+	shutdownErr            error
 }
 
 func New(serviceConfig ServiceConfig) (*Service, error) {
@@ -147,15 +153,46 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 			return nil, fmt.Errorf("open cluster transport: %w", err)
 		}
 	}
+	externalAuthentication, err := externalauth.NewRegistry(
+		externalauthcas.NewFactory(),
+		externalauthoidc.NewFactory(),
+	)
+	if err != nil {
+		if closer, ok := filesystem.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
+		_ = mailer.Close()
+		_ = cacheStore.Close()
+		_ = persistence.Close()
+		if serviceConfig.Logger == nil {
+			_ = logger.Shutdown()
+		}
+		return nil, err
+	}
+	if err := externalAuthentication.Configure(
+		serviceConfig.ConfigStore.Get().Authentication.External,
+	); err != nil {
+		if closer, ok := filesystem.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
+		_ = mailer.Close()
+		_ = cacheStore.Close()
+		_ = persistence.Close()
+		if serviceConfig.Logger == nil {
+			_ = logger.Shutdown()
+		}
+		return nil, err
+	}
 
 	service := &Service{
-		configStore: serviceConfig.ConfigStore,
-		logger:      logger,
-		store:       persistence,
-		cache:       cacheStore,
-		cluster:     clusterTransport,
-		mailer:      mailer,
-		vfs:         filesystem,
+		configStore:            serviceConfig.ConfigStore,
+		logger:                 logger,
+		store:                  persistence,
+		cache:                  cacheStore,
+		cluster:                clusterTransport,
+		mailer:                 mailer,
+		vfs:                    filesystem,
+		externalAuthentication: externalAuthentication,
 	}
 	checkCtx, cancelCheck := context.WithTimeout(constructionCtx, 15*time.Second)
 	defer cancelCheck()
@@ -174,12 +211,27 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 		return nil, fmt.Errorf("check platform dependencies: %w", err)
 	}
 	service.configListener = service.configStore.AddListener(func(old, current config.Config) {
-		if !logConfigurationChanged(old, current) {
-			return
+		if !reflect.DeepEqual(
+			old.Authentication.External,
+			current.Authentication.External,
+		) {
+			if err := service.externalAuthentication.Configure(
+				current.Authentication.External,
+			); err != nil {
+				service.logger.Error(
+					"failed to reconfigure external authentication providers",
+					mlog.Err(err),
+				)
+			}
 		}
-		if err := configureLogger(service.logger, current.Log); err != nil &&
-			!errors.Is(err, mlog.ErrConfigurationLocked) {
-			service.logger.Error("failed to reconfigure logger", mlog.Err(err))
+		if logConfigurationChanged(old, current) {
+			if err := configureLogger(service.logger, current.Log); err != nil &&
+				!errors.Is(err, mlog.ErrConfigurationLocked) {
+				service.logger.Error(
+					"failed to reconfigure logger",
+					mlog.Err(err),
+				)
+			}
 		}
 	})
 	service.logger.Info(
@@ -222,6 +274,16 @@ func (s *Service) Mailer() Mailer {
 
 func (s *Service) VFS() vfspkg.FileSystem {
 	return s.vfs
+}
+
+func (s *Service) ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider {
+	return s.externalAuthentication.Descriptors()
+}
+
+func (s *Service) ExternalAuthenticationProvider(
+	id string,
+) (externalauth.Provider, bool) {
+	return s.externalAuthentication.Provider(id)
 }
 
 func (s *Service) Start(ctx context.Context) error {

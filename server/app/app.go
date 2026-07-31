@@ -18,11 +18,12 @@ import (
 // App is the long-lived application facade. Product capabilities will be
 // composed here as their contracts become concrete.
 type App struct {
-	platform       *platform.Service
-	authentication *AuthenticationService
-	mfa            *MFAService
-	authorization  *AuthorizationService
-	audit          *AuditService
+	platform               *platform.Service
+	authentication         *AuthenticationService
+	externalAuthentication *ExternalAuthenticationService
+	mfa                    *MFAService
+	authorization          *AuthorizationService
+	audit                  *AuditService
 }
 
 func New(applicationPlatform *platform.Service) (*App, error) {
@@ -38,10 +39,16 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		applicationPlatform.Store(),
 		applicationPlatform.Cluster().NodeID(),
 	)
+	externalAuthentication := newExternalAuthenticationService(
+		applicationPlatform,
+		authentication,
+		audit,
+	)
 	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
-		mfa: mfa, authorization: authorization, audit: audit,
+		externalAuthentication: externalAuthentication, mfa: mfa,
+		authorization: authorization, audit: audit,
 	}, nil
 }
 

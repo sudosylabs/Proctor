@@ -50,7 +50,13 @@ func (testStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
 func (testStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
 func (testStore) Class() store.ClassStore                   { return nil }
 func (testStore) User() store.UserStore                     { return nil }
-func (testStore) UserToken() store.UserTokenStore           { return nil }
+func (testStore) ExternalIdentity() store.ExternalIdentityStore {
+	return nil
+}
+func (testStore) ExternalLoginState() store.ExternalLoginStateStore {
+	return nil
+}
+func (testStore) UserToken() store.UserTokenStore { return nil }
 func (testStore) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return nil
 }
@@ -207,6 +213,66 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 	}
 	if !strings.Contains(string(secondData), "second target") {
 		t.Fatalf("second target = %q", secondData)
+	}
+}
+
+func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{
+			LookupEnv: func(string) (string, bool) { return "", false },
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := configuration.Get()
+	initial.Authentication.External.Providers =
+		[]config.ExternalAuthenticationProvider{{
+			ID: "campus-cas", Type: config.ExternalAuthenticationTypeCAS,
+			DisplayName: "Campus CAS", Enabled: true,
+			CAS: &config.CASProvider{
+				BaseURL:          "https://cas.example.edu/cas",
+				ValidationPath:   "/p3/serviceValidate",
+				Timeout:          config.Duration{Duration: 5 * time.Second},
+				MaxResponseBytes: 64 * 1024,
+			},
+			Claims: config.ExternalClaimMapping{Subject: "user"},
+		}}
+	if _, _, err := configuration.Set(
+		context.Background(),
+		initial,
+	); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(ServiceConfig{
+		ConfigStore: configuration,
+		Store:       testStore{},
+		Cache:       testCache{},
+		Mailer:      testMailer{},
+		VFS:         memoryvfs.New(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if providers := service.ExternalAuthenticationProviders(); len(providers) != 1 || providers[0].Id != "campus-cas" {
+		t.Fatalf("initial external providers = %#v", providers)
+	}
+
+	updated := configuration.Get()
+	updated.Authentication.External.Providers[0].Enabled = false
+	if _, _, err := configuration.Set(
+		context.Background(),
+		updated,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if providers := service.ExternalAuthenticationProviders(); len(providers) != 0 {
+		t.Fatalf("reconfigured external providers = %#v", providers)
 	}
 }
 

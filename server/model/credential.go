@@ -30,6 +30,11 @@ func HashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func IsValidCredentialToken(token string) bool {
+	decoded, err := base64.RawURLEncoding.Strict().DecodeString(token)
+	return err == nil && len(decoded) == 32
+}
+
 func IsValidTokenHash(value string) bool {
 	if len(value) != TokenHashLength {
 		return false
