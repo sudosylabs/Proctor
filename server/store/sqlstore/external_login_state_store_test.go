@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestExternalLoginStateStore(t *testing.T) {
-	StoreTest(t, storetest.TestExternalLoginStateStore)
-}
 
 func TestExternalLoginStateRowConversion(t *testing.T) {
 	state := &model.ExternalLoginState{

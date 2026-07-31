@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -19,7 +21,7 @@ import (
 func TestRedisClusterTwoNodeConformance(t *testing.T) {
 	address := os.Getenv("PROCTOR_TEST_REDIS_ADDRESS")
 	if address == "" {
-		t.Skip("PROCTOR_TEST_REDIS_ADDRESS is not set")
+		t.Fatal("PROCTOR_TEST_REDIS_ADDRESS is not set")
 	}
 	logger, err := mlog.New()
 	if err != nil {

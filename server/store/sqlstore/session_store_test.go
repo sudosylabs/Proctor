@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestSessionStores(t *testing.T) {
-	StoreTest(t, storetest.TestSessionStores)
-}
 
 func TestSessionRowConversion(t *testing.T) {
 	session := &model.Session{

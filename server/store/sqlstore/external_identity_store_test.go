@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestExternalIdentityStore(t *testing.T) {
-	StoreTest(t, storetest.TestExternalIdentityStore)
-}
 
 func TestExternalIdentityRowConversion(t *testing.T) {
 	identity := &model.ExternalIdentity{

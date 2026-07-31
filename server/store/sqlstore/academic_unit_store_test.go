@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestAcademicUnitStore(t *testing.T) {
-	StoreTest(t, storetest.TestAcademicUnitStore)
-}
 
 func TestAcademicUnitRowConversion(t *testing.T) {
 	unit := &model.AcademicUnit{

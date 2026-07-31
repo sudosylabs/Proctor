@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestPasswordCredentialStore(t *testing.T) {
-	StoreTest(t, storetest.TestPasswordCredentialStore)
-}
 
 func TestPasswordCredentialRowConversion(t *testing.T) {
 	credential := &model.PasswordCredential{

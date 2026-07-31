@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestProgrammeLevelStore(t *testing.T) {
-	StoreTest(t, storetest.TestProgrammeLevelStore)
-}
 
 func TestProgrammeLevelRowConversion(t *testing.T) {
 	level := &model.ProgrammeLevel{

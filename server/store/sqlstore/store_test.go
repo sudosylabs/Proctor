@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: Apache-2.0
@@ -72,7 +74,7 @@ func testSettings(t *testing.T) Settings {
 	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	return Settings{
 		DataSource:            dataSource,

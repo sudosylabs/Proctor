@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -19,7 +21,7 @@ import (
 func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
@@ -103,7 +105,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
@@ -216,7 +218,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(

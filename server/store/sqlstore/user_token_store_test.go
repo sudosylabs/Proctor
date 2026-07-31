@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestUserTokenStore(t *testing.T) {
-	StoreTest(t, storetest.TestUserTokenStore)
-}
 
 func TestUserTokenRowConversion(t *testing.T) {
 	token := &model.UserToken{

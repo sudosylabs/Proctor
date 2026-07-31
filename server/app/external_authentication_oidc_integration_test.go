@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -32,7 +34,7 @@ import (
 func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestMFAStore(t *testing.T) {
-	StoreTest(t, storetest.TestMFAStore)
-}
 
 func TestMFACredentialRowConversion(t *testing.T) {
 	row := mfaCredentialRow{

@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -27,7 +29,7 @@ import (
 func TestWebSocketIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
@@ -241,7 +243,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	redisAddress := os.Getenv("PROCTOR_TEST_REDIS_ADDRESS")
 	if dataSource == "" || redisAddress == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL and PROCTOR_TEST_REDIS_ADDRESS are required")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL and PROCTOR_TEST_REDIS_ADDRESS are required")
 	}
 	persistenceA := openAuthenticationStore(t, dataSource)
 	database := config.Default().Database

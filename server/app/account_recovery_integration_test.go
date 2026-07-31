@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -248,7 +250,7 @@ func requireAuthenticationDatabase(t *testing.T) string {
 	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	return dataSource
 }

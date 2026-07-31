@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -21,7 +23,7 @@ import (
 func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
-		t.Skip("PROCTOR_TEST_DATABASE_URL is not set")
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(t, testlib.WithServerOptions(app.WithStore(persistence)))

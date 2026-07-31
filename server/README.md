@@ -395,15 +395,51 @@ node-local storage.
 make -C server check
 ```
 
-Run the PostgreSQL-backed store, migration, and authentication tests with:
+The default `test`, `test-race`, and `check` targets are hermetic: they do not
+require PostgreSQL, Redis, SMTP, S3, or another external service. Tests backed
+only by local `httptest` servers remain in the default suite.
+
+External-service tests use the `integration` build tag and are invoked through
+targets that start and stop their required Docker services. A selected
+integration suite fails when its configured dependency is unavailable rather
+than silently skipping coverage.
+
+Run every tagged integration test through the exhaustive CI entrypoint with:
+
+```sh
+make -C server integration-all
+```
+
+Run the PostgreSQL-backed store, migration, application, and authentication
+suite with:
+
+```sh
+make -C server integration-postgres
+```
+
+Run only Redis cluster compatibility with:
+
+```sh
+make -C server integration-redis
+```
+
+Run the CAS and OIDC application integrations, using local provider test
+servers and PostgreSQL, with:
+
+```sh
+make -C server integration-providers
+```
+
+Run the Redis and two-node WebSocket/cluster suite with:
+
+```sh
+make -C server integration-realtime
+```
+
+The established conformance aliases remain available:
 
 ```sh
 make -C server conformance-postgres
-```
-
-Run the Redis and two-node WebSocket/cluster conformance suite with:
-
-```sh
 make -C server conformance-realtime
 ```
 

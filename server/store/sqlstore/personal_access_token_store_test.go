@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestPersonalAccessTokenStore(t *testing.T) {
-	StoreTest(t, storetest.TestPersonalAccessTokenStore)
-}
 
 func TestPersonalAccessTokenRowConversion(t *testing.T) {
 	unitID := model.NewId()

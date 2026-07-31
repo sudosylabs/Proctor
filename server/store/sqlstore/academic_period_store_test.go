@@ -7,12 +7,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store/storetest"
 )
-
-func TestAcademicPeriodStore(t *testing.T) {
-	StoreTest(t, storetest.TestAcademicPeriodStore)
-}
 
 func TestAcademicPeriodRowConversion(t *testing.T) {
 	period := &model.AcademicPeriod{
