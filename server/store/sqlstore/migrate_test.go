@@ -29,7 +29,7 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		t.Fatalf("Pending() = %d, %v", len(pending), err)
 	}
 	version, err := migrator.SchemaVersion(context.Background())
-	if err != nil || version != 9 {
+	if err != nil || version != 10 {
 		t.Fatalf("SchemaVersion() = %d, %v", version, err)
 	}
 
@@ -37,6 +37,19 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	rolledBack, err := migrator.Down(1)
 	if err != nil || rolledBack != 1 {
 		t.Fatalf("Down(1) = %d, %v", rolledBack, err)
+	}
+	var externalStateTableRemoved bool
+	if err := migrator.store.GetMaster().Get(ctx, &externalStateTableRemoved, `
+		SELECT to_regclass('public.external_login_states') IS NULL
+	`); err != nil || !externalStateTableRemoved {
+		t.Fatalf("external-login-state rollback = %v, %v", externalStateTableRemoved, err)
+	}
+	if err := migrator.Up(); err != nil {
+		t.Fatalf("restore external-login-state migration: %v", err)
+	}
+	rolledBack, err = migrator.Down(2)
+	if err != nil || rolledBack != 2 {
+		t.Fatalf("Down(2) = %d, %v", rolledBack, err)
 	}
 	var sessionActionsRemoved bool
 	if err := migrator.store.GetMaster().Get(ctx, &sessionActionsRemoved, `
@@ -50,9 +63,9 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("restore session-action migration: %v", err)
 	}
-	rolledBack, err = migrator.Down(5)
-	if err != nil || rolledBack != 5 {
-		t.Fatalf("Down(5) = %d, %v", rolledBack, err)
+	rolledBack, err = migrator.Down(6)
+	if err != nil || rolledBack != 6 {
+		t.Fatalf("Down(6) = %d, %v", rolledBack, err)
 	}
 	if _, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
@@ -89,9 +102,9 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	); err != nil || !reconciled {
 		t.Fatalf("system administrator reconciliation = %v, %v", reconciled, err)
 	}
-	rolledBack, err = migrator.Down(5)
-	if err != nil || rolledBack != 5 {
-		t.Fatalf("reconciliation Down(5) = %d, %v", rolledBack, err)
+	rolledBack, err = migrator.Down(6)
+	if err != nil || rolledBack != 6 {
+		t.Fatalf("reconciliation Down(6) = %d, %v", rolledBack, err)
 	}
 	var removed bool
 	if err := migrator.store.GetMaster().Get(
@@ -110,7 +123,7 @@ func TestMigrationsRoundTrip(t *testing.T) {
 
 	if _, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
-			installation_state, audit_events, mfa_recovery_codes, mfa_credentials,
+			external_login_states, installation_state, audit_events, mfa_recovery_codes, mfa_credentials,
 			user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,
@@ -118,9 +131,9 @@ func TestMigrationsRoundTrip(t *testing.T) {
 			academic_units, institutions CASCADE`); err != nil {
 		t.Fatalf("truncate before down migrations: %v", err)
 	}
-	rolledBack, err = migrator.Down(9)
-	if err != nil || rolledBack != 9 {
-		t.Fatalf("Down(9) = %d, %v", rolledBack, err)
+	rolledBack, err = migrator.Down(10)
+	if err != nil || rolledBack != 10 {
+		t.Fatalf("Down(10) = %d, %v", rolledBack, err)
 	}
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("second Up() error = %v", err)

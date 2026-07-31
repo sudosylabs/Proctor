@@ -83,6 +83,14 @@ func (s *Store) User() store.UserStore {
 	return nil
 }
 
+func (s *Store) ExternalIdentity() store.ExternalIdentityStore {
+	return nil
+}
+
+func (s *Store) ExternalLoginState() store.ExternalLoginStateStore {
+	return nil
+}
+
 func (s *Store) UserToken() store.UserTokenStore {
 	return nil
 }

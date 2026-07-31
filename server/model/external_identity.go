@@ -4,6 +4,7 @@
 package model
 
 import (
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -12,6 +13,8 @@ const (
 	IdentityProviderMaxLength = 64
 	IdentitySubjectMaxRunes   = 512
 )
+
+var validIdentityProvider = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // ExternalIdentity links a User to one identity-provider subject. A user can
 // have several links, while the store must keep (Provider, Subject) globally
@@ -31,6 +34,9 @@ type ExternalIdentity struct {
 func (ei *ExternalIdentity) PreSave() {
 	preSave(&ei.Id, &ei.CreateAt, &ei.UpdateAt)
 	ei.Provider = strings.ToLower(SanitizeUnicode(ei.Provider))
+	if ei.LastSeenAt != 0 && ei.LastSeenAt < ei.CreateAt {
+		ei.LastSeenAt = ei.CreateAt
+	}
 }
 
 func (ei *ExternalIdentity) PreUpdate() {
@@ -53,7 +59,9 @@ func (ei *ExternalIdentity) IsValid() *AppError {
 	if !IsValidId(ei.UserId) {
 		return invalidModelError(where, "external_identity", "user_id", "must be a valid identifier", details)
 	}
-	if len(ei.Provider) == 0 || len(ei.Provider) > IdentityProviderMaxLength || !validName.MatchString(ei.Provider) {
+	if len(ei.Provider) == 0 ||
+		len(ei.Provider) > IdentityProviderMaxLength ||
+		!validIdentityProvider.MatchString(ei.Provider) {
 		return invalidModelError(where, "external_identity", "provider", "has an invalid format", details)
 	}
 	if utf8.RuneCountInString(ei.Subject) == 0 || utf8.RuneCountInString(ei.Subject) > IdentitySubjectMaxRunes {

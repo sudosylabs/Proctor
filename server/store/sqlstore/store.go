@@ -79,6 +79,8 @@ type SqlStoreStores struct {
 	academicPeriod      store.AcademicPeriodStore
 	class               store.ClassStore
 	user                store.UserStore
+	externalIdentity    store.ExternalIdentityStore
+	externalLoginState  store.ExternalLoginStateStore
 	userToken           store.UserTokenStore
 	personalAccessToken store.PersonalAccessTokenStore
 	mfa                 store.MFAStore
@@ -135,6 +137,8 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 	sqlStore.stores.academicPeriod = newSqlAcademicPeriodStore(sqlStore)
 	sqlStore.stores.class = newSqlClassStore(sqlStore)
 	sqlStore.stores.user = newSqlUserStore(sqlStore)
+	sqlStore.stores.externalIdentity = newSqlExternalIdentityStore(sqlStore)
+	sqlStore.stores.externalLoginState = newSqlExternalLoginStateStore(sqlStore)
 	sqlStore.stores.userToken = newSqlUserTokenStore(sqlStore)
 	sqlStore.stores.personalAccessToken = newSqlPersonalAccessTokenStore(sqlStore)
 	sqlStore.stores.mfa = newSqlMFAStore(sqlStore)
@@ -192,6 +196,14 @@ func (ss *SqlStore) Class() store.ClassStore {
 
 func (ss *SqlStore) User() store.UserStore {
 	return ss.stores.user
+}
+
+func (ss *SqlStore) ExternalIdentity() store.ExternalIdentityStore {
+	return ss.stores.externalIdentity
+}
+
+func (ss *SqlStore) ExternalLoginState() store.ExternalLoginStateStore {
+	return ss.stores.externalLoginState
 }
 
 func (ss *SqlStore) UserToken() store.UserTokenStore {

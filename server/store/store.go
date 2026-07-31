@@ -21,6 +21,8 @@ type Store interface {
 	AcademicPeriod() AcademicPeriodStore
 	Class() ClassStore
 	User() UserStore
+	ExternalIdentity() ExternalIdentityStore
+	ExternalLoginState() ExternalLoginStateStore
 	UserToken() UserTokenStore
 	PersonalAccessToken() PersonalAccessTokenStore
 	MFA() MFAStore
@@ -137,6 +139,43 @@ type UserStore interface {
 		string,
 	) (*model.User, []*model.Session, []string, error)
 	UpdateLastLogin(context.Context, string, int64) error
+}
+
+type ExternalIdentityResolution struct {
+	Identity    *model.ExternalIdentity
+	User        *model.User
+	Provisioned bool
+}
+
+// ExternalIdentityStore persists provider-subject links and owns the
+// transaction that either resolves an existing link or provisions a new user
+// and link without email-based account merging.
+type ExternalIdentityStore interface {
+	Save(context.Context, *model.ExternalIdentity) (*model.ExternalIdentity, error)
+	Get(context.Context, string) (*model.ExternalIdentity, error)
+	GetByProviderSubject(context.Context, string, string) (*model.ExternalIdentity, error)
+	ListByUser(context.Context, string) ([]*model.ExternalIdentity, error)
+	ResolveOrProvision(
+		context.Context,
+		*model.ExternalIdentity,
+		*model.User,
+		bool,
+		*model.AuditEvent,
+	) (*ExternalIdentityResolution, error)
+}
+
+// ExternalLoginStateStore persists hashed, browser-bound, one-use login
+// transactions so any node may receive the provider callback.
+type ExternalLoginStateStore interface {
+	Save(context.Context, *model.ExternalLoginState) (*model.ExternalLoginState, error)
+	GetByStateHash(context.Context, string) (*model.ExternalLoginState, error)
+	Consume(
+		context.Context,
+		string,
+		string,
+		string,
+		int64,
+	) (*model.ExternalLoginState, error)
 }
 
 type EmailVerificationResult struct {
