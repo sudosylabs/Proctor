@@ -86,10 +86,13 @@ walking skeleton is operational and includes:
   unit, programme, programme level, academic period, and class;
 - identity and authorization model foundations: user, external identity, local
   password credential, affiliation, academic-unit member, class member, role,
-  role binding, session, hashed session credential, and personal access token;
-- typed Mattermost-style `APIHandler`, `APISessionRequired`, and
-  `APIRefreshCredentialRequired` wrappers that make the authentication
-  contract explicit for every registered route;
+  role binding, session, hashed session credential, personal access token,
+  purpose-specific user token, encrypted MFA credential, and hashed MFA
+  recovery code;
+- typed Mattermost-style `APIHandler`, `APISessionRequired`,
+  `APIStrongSessionRequired`, `APIRecentSessionRequired`, composed
+  strong/recent, and `APIRefreshCredentialRequired` wrappers that make the
+  authentication contract explicit for every registered route;
 - Mattermost-style per-domain `Init*` API registration, with one central
   `BaseRoutes` tree and registrar enforcing explicit authentication policy,
   duplicate detection, regex-constrained path variables, centralized typed
@@ -158,19 +161,46 @@ walking skeleton is operational and includes:
   enrollment operations;
 - teacher-to-student visibility derived from current class enrollment and
   inherited `class.members.view`, while unrelated and cross-scope users remain
-  hidden by default.
+  hidden by default;
+- explicit strong, recent, and combined strong/recent session route
+  requirements backed by the immutable request principal;
+- a transactional user-token SQL store with target-bound, hashed, expiring,
+  single-use email-verification and password-reset credentials;
+- email-verification and password-reset application/API slices with
+  shared-cache throttling, generic public reset responses, fragment-delivered
+  mail links, durable success audits, and atomic account-wide session
+  revocation after a password reset;
+- a complete personal-access-token vertical slice with bounded finite
+  lifetimes, one-time raw credential delivery, hashed PostgreSQL persistence,
+  explicit known-action scopes, optional academic-unit subtree constraints,
+  debounced last-used metadata, self-service listing/disable/enable/revocation,
+  recent-session creation and re-enablement, durable audits, and bearer
+  authentication on ordinary principal routes;
+- separate `APIPrincipalRequired` and `APISessionRequired` route contracts:
+  PATs may call ordinary application resources subject to both current roles
+  and token ceilings, but can never satisfy interactive session, recent
+  authentication, refresh, or token-management requirements.
+- TOTP MFA with AES-256-GCM encrypted secrets, expiring pending setup,
+  transactionally replay-protected activation and challenges, hashed
+  single-use recovery codes, one-time recovery-code display and regeneration,
+  login-time second-factor enforcement, current-session assurance upgrades,
+  and account-wide assurance downgrade on disable;
+- dedicated `session.view` and `session.manage` actions with visible API
+  preflights, authorized active/history listing, audited individual and
+  account-wide administrative revocation, and immediate access-cache
+  invalidation.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
 Mattermost-shaped root store with per-model contracts, and all structural
 academic SQL stores: institution, academic unit, programme, programme level,
 academic period, and class. It also includes user, password-credential,
-session, session-credential, affiliation, academic-unit-member, class-member,
-role, role-binding, and audit SQL stores with reusable conformance tests, plus
-the atomic installation-bootstrap store.
-External identity login, password reset/verification, MFA, personal access
-token services, exam-domain, WebSocket, and a concrete multi-node cluster
-transport remain unimplemented.
+session, session-credential, user-token, personal-access-token, MFA credential,
+MFA recovery-code, affiliation, academic-unit-member, class-member, role,
+role-binding, and audit SQL stores with reusable conformance tests, plus the
+atomic installation-bootstrap store.
+External identity login, service accounts, exam-domain, WebSocket, and a
+concrete multi-node cluster transport remain unimplemented.
 
 Do not:
 
@@ -666,6 +696,21 @@ tokens must be:
 - single-use where applicable;
 - consumed transactionally;
 - redacted from logs and API responses after creation.
+
+Implemented email-verification and password-reset tokens are additionally
+bound to the normalized account email that existed when they were issued.
+Changing the account email invalidates consumption rather than verifying or
+resetting a different address. Issuing a new token transactionally invalidates
+the prior active token of the same purpose. Browser links carry the raw
+credential in the URL fragment so it is not sent in HTTP request targets; the
+client must submit it in a bounded JSON body to the completion endpoint.
+
+Public password-reset requests return the same accepted response for unknown,
+disabled, external-only, and eligible local accounts. Known-account
+persistence or delivery failures are logged without the email or credential
+and do not change the public response. Password-reset completion atomically
+updates the password credential, consumes the token, revokes all account
+sessions, and inserts the terminal security audit.
 
 CLI API credentials are accepted from the `Authorization` header. Electron/web
 sessions use the cookie contract above. Never accept access or refresh tokens
@@ -1466,9 +1511,11 @@ Unless the user reprioritizes, build the server as a walking skeleton:
 11. identity/authentication services, credential rotation, and authentication
     middleware — complete for the first local-password, access/refresh session,
     login/refresh/logout/current-user vertical slice and self-service active
-    session listing/individual/revoke-all management; external identity,
-    password recovery, MFA, personal/service credentials, and administrative
-    session management remain;
+    session listing/individual/revoke-all management, strong/recent route
+    assurance contracts, target-bound email verification, password reset, and
+    finite explicitly scoped personal access tokens, encrypted TOTP MFA,
+    single-use recovery codes, and administrative session management;
+    external identity and service accounts remain;
 12. scoped authorization and audit — complete for action/resource contracts,
     current-state institution/academic-unit/class evaluation, role and binding
     stores, durable decision/critical-action auditing, the privileged audit
@@ -1479,9 +1526,13 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     user vertical slices — complete for application services, visible
     handler-level permission preflights, audited mutations, authorized scoped
     reads, PostgreSQL conformance, and end-to-end API integration;
-14. first two-node cluster tests;
-15. WebSocket hub, cluster fan-out, and replay;
-16. exam/proctoring vertical slices after their state models are confirmed.
+14. remaining identity phase: personal access tokens, MFA/recovery codes, and
+    administrative session management — complete; service accounts and
+    external identity remain, with external identity waiting for the first
+    provider to be selected;
+15. first two-node cluster tests;
+16. WebSocket hub, cluster fan-out, and replay;
+17. exam/proctoring vertical slices after their state models are confirmed.
 
 Do not create every future domain entity or model-store interface up front.
 Complete one vertical path through transport, use case, authorization,

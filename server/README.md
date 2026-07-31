@@ -26,7 +26,9 @@ The flat `model` package now establishes the durable model contract:
 - roles and scoped role bindings;
 - sessions separated from hashed access/refresh credentials, plus scoped
   expiring personal access tokens;
-- hashed, expiring, single-use password-reset and email-verification tokens.
+- hashed, expiring, single-use password-reset and email-verification tokens;
+- encrypted TOTP MFA credentials and independently hashed, single-use recovery
+  codes.
 
 The server also includes:
 
@@ -46,7 +48,8 @@ The server also includes:
   bearer credentials for the CLI and rejecting mixed credential sources;
 - login throttling through the configured shared cache;
 - an immutable request principal and typed Mattermost-style authentication
-  wrapper on every route;
+  wrapper on every route, including composable strong and recent
+  authentication requirements;
 - active-session listing and self-service individual or account-wide
   revocation, with serialized refresh/login races and complete access-cache
   invalidation;
@@ -77,11 +80,27 @@ The server also includes:
 - effective-dated affiliations and academic-unit membership, plus serialized
   student enrollment and transfer with retained history;
 - user search/profile administration, enable/disable, affiliation and
-  membership management, and administrative session revocation.
+  membership management, and administrative session revocation;
+- target-bound, hashed, expiring, single-use email-verification and
+  password-reset credentials with shared-cache throttling, generic public
+  reset responses, SMTP delivery, transactional audits, and account-wide
+  session revocation after password reset;
+- finite personal access tokens with explicit known-action scopes, optional
+  academic-unit subtree constraints, hashed storage, one-time credential
+  display, recent-session creation, durable audits, debounced last-used
+  metadata, reversible disable/enable, and immediate self-service revocation.
+- TOTP MFA with AES-256-GCM encrypted secrets, expiring pending setup,
+  transactionally replay-protected codes, hashed one-time recovery codes,
+  login-time enforcement, assurance upgrades, and account-wide downgrade on
+  disable;
+- dedicated `session.view` and `session.manage` authorization for
+  administrator listing, individual revocation, and revoke-all, with visible
+  handler preflights, durable mutation audits, and immediate cache
+  invalidation.
 
-External identity login, password recovery, MFA, personal access-token
-services, exams, a concrete multi-node cluster backend, and WebSockets remain
-intentionally unimplemented until their next vertical slices.
+External identity login, service accounts, exams, a concrete multi-node
+cluster backend, and WebSockets remain intentionally unimplemented until their
+next vertical slices.
 
 ## Run locally
 
@@ -105,10 +124,28 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/email-verification/request` (session required)
+- `POST /api/v1/auth/email-verification/complete` (public token consumption)
+- `POST /api/v1/auth/password-reset/request` (generic public acceptance)
+- `POST /api/v1/auth/password-reset/complete` (public token consumption)
 - `GET /api/v1/users/me`
 - `GET /api/v1/users/me/sessions`
 - `POST /api/v1/users/me/sessions/revoke`
 - `POST /api/v1/users/me/sessions/revoke-all`
+- `GET /api/v1/users/me/mfa`
+- `POST /api/v1/users/me/mfa/setup` (recent session; returns the TOTP secret
+  once)
+- `POST /api/v1/users/me/mfa/activate` and `/challenge`
+- `POST /api/v1/users/me/mfa/recovery-codes/regenerate` (strong and recent;
+  returns replacement codes once)
+- `POST /api/v1/users/me/mfa/disable` (strong and recent)
+- `POST /api/v1/users/me/tokens` (recent interactive session required; returns
+  the raw credential once)
+- `GET /api/v1/users/me/tokens` and
+  `DELETE /api/v1/users/me/tokens/{personal_access_token_id}` (interactive
+  session required)
+- `POST /api/v1/users/me/tokens/{personal_access_token_id}/disable` (interactive
+  session required) and `/enable` (recent interactive session required)
 - `GET /api/v1/audits` (requires an institution-scoped role granting
   `audit.view`; accepts `limit`, opaque `cursor`, `actor_id`, `action`,
   `resource_type`, and `resource_id` filters)
@@ -125,12 +162,17 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET|POST /api/v1/academic-periods` and resource `GET|PATCH|DELETE`
 - class resource `GET|PATCH|DELETE` and nested `/members`
 - `GET /api/v1/users`, user resource `GET|PATCH`, `/enable`, `/disable`,
-  `/sessions/revoke-all`, and nested `/affiliations`
+  nested `/affiliations`, `GET /sessions`, `DELETE /sessions/{session_id}`,
+  and `POST /sessions/revoke-all`
 - effective-dated membership endings at `/affiliations/{id}`,
   `/academic-unit-members/{id}`, and `/class-members/{id}`
 
-All academic and user-administration endpoints require a session and perform
-their scoped `PrincipalHasPermissionTo*` check before decoding mutation bodies.
+All academic and user-administration endpoints require an authenticated
+principal and perform their scoped `PrincipalHasPermissionTo*` check before
+decoding mutation bodies. An interactive session or PAT may supply that
+principal. PAT actions are intersected with current role permissions and, when
+configured, restricted to one academic-unit subtree; tokens never grant an
+action absent from current roles.
 Programme and programme-level operations authorize against their owning
 academic unit; academic periods are institution-managed. Membership lists
 default to records active now and accept `active_at`; `history=true` returns
@@ -157,7 +199,9 @@ CLI login (`client_type: "cli"`) returns the one-time access and refresh
 credentials in the response body. CLI requests send exactly one
 `Authorization: Bearer <credential>` header. Credentials are never accepted in
 URLs, and requests containing both a relevant cookie and bearer header are
-rejected.
+rejected. PATs use the same header but are not sessions: they cannot refresh,
+log out, manage sessions, create/revoke PATs, or satisfy strong/recent
+authentication wrappers.
 
 Validate a configuration without starting the server:
 
@@ -172,8 +216,14 @@ invalid values are rejected at startup.
 The deployment schema covers HTTP, PostgreSQL, cache, cluster transport and
 node identity, mail, VFS, logging, password hashing, session lifetimes,
 concurrent-session limits, and login rate limits. Secret fields are explicitly
-redacted. Environment-overridden values are effective only for the running
-process and are never persisted back into the configuration file.
+redacted. Authentication configuration also controls the recent-authentication
+window, verification/reset lifetimes, recovery throttles, MFA issuer and setup
+lifetime, recovery-code count, and a rotatable AES-256 encryption-key ring.
+When MFA is enabled, `authentication.mfa.encryption_key` must be a standard
+base64-encoded 32-byte key. Previous keys may remain in `decryption_keys`
+during rotation.
+Environment-overridden values are effective only for the running process and
+are never persisted back into the configuration file.
 
 The active configuration is owned by one concurrency-safe store. It separates
 persisted values from environment overrides, returns cloned snapshots, supports

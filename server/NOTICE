@@ -47,6 +47,7 @@ Upstream paths:
 - server/public/model/session.go
 - server/public/model/user_access_token.go
 - server/public/model/token.go
+- server/public/model/mfa_secret.go
 
 Corresponding Proctor paths:
 
@@ -74,6 +75,7 @@ Corresponding Proctor paths:
 - server/model/session_credential.go
 - server/model/personal_access_token.go
 - server/model/user_token.go
+- server/model/mfa.go
 
 Modifications:
 
@@ -125,8 +127,10 @@ Upstream paths:
 - server/channels/store/sqlstore/migrate.go
 - server/channels/store/sqlstore/team_store.go
 - server/channels/store/sqlstore/channel_store.go
+- server/channels/store/sqlstore/user_access_token_store.go
 - server/channels/store/storetest/team_store.go
 - server/channels/store/storetest/channel_store.go
+- server/channels/store/storetest/user_access_token_store.go
 - server/channels/store/sqlstore/store_test.go
 - server/channels/store/sqlstore/migrate_test.go
 
@@ -171,9 +175,12 @@ Corresponding Proctor paths:
 - server/store/sqlstore/password_credential_store.go
 - server/store/sqlstore/session_store.go
 - server/store/sqlstore/session_credential_store.go
+- server/store/sqlstore/personal_access_token_store.go
+- server/store/sqlstore/personal_access_token_store_test.go
 - server/store/storetest/user_store.go
 - server/store/storetest/password_credential_store.go
 - server/store/storetest/session_store.go
+- server/store/storetest/personal_access_token_store.go
 - server/store/sqlstore/migrate_test.go
 
 Modifications:
@@ -219,30 +226,60 @@ Upstream paths:
 - server/channels/app/authentication.go
 - server/channels/app/login.go
 - server/channels/app/session.go
+- server/channels/app/email/email.go
 - server/channels/app/platform/session.go
+- server/platform/shared/mfa/mfa.go
 - server/channels/api4/user.go
 - server/channels/web/handlers.go
+- server/channels/store/sqlstore/token_store.go
 - server/channels/store/sqlstore/user_store.go
 - server/channels/store/sqlstore/session_store.go
+- server/channels/store/sqlstore/user_access_token_store.go
+- server/channels/store/storetest/token_store.go
 - server/channels/store/storetest/user_store.go
 - server/channels/store/storetest/session_store.go
+- server/channels/store/storetest/user_access_token_store.go
 
 Corresponding Proctor paths:
 
 - server/app/authentication.go
 - server/app/authentication_integration_test.go
+- server/app/account_recovery.go
+- server/app/account_recovery_integration_test.go
 - server/app/session_management.go
+- server/app/personal_access_token.go
+- server/app/mfa.go
+- server/app/mfa_integration_test.go
 - server/app/api/authentication.go
 - server/app/api/cookies.go
 - server/app/api/handler.go
 - server/app/api/session.go
+- server/app/api/personal_access_token.go
+- server/app/api/mfa.go
 - server/store/sqlstore/user_store.go
+- server/store/sqlstore/user_token_store.go
+- server/store/sqlstore/user_token_store_test.go
 - server/store/sqlstore/password_credential_store.go
 - server/store/sqlstore/session_store.go
 - server/store/sqlstore/session_credential_store.go
+- server/store/sqlstore/personal_access_token_store.go
+- server/store/sqlstore/personal_access_token_store_test.go
+- server/store/sqlstore/mfa_store.go
+- server/store/sqlstore/mfa_store_test.go
 - server/store/storetest/user_store.go
+- server/store/storetest/user_token_store.go
 - server/store/storetest/password_credential_store.go
 - server/store/storetest/session_store.go
+- server/store/storetest/personal_access_token_store.go
+- server/store/storetest/mfa_store.go
+- server/migrations/postgres/000006_bind_user_tokens_to_target.up.sql
+- server/migrations/postgres/000006_bind_user_tokens_to_target.down.sql
+- server/migrations/postgres/000007_add_personal_access_token_disabled_state.up.sql
+- server/migrations/postgres/000007_add_personal_access_token_disabled_state.down.sql
+- server/migrations/postgres/000008_create_mfa_credentials.up.sql
+- server/migrations/postgres/000008_create_mfa_credentials.down.sql
+- server/migrations/postgres/000009_add_session_administration_actions.up.sql
+- server/migrations/postgres/000009_add_session_administration_actions.down.sql
 
 Modifications:
 
@@ -267,7 +304,34 @@ Modifications:
   revocation while retaining ownership checks and sanitized responses;
 - added a Proctor-specific per-user PostgreSQL advisory-lock protocol shared by
   login, refresh rotation, individual revocation, and revoke-all so concurrent
-  credentials cannot escape an account security reset.
+  credentials cannot escape an account security reset;
+- adapted Mattermost's purpose-token and account-email flows into
+  target-bound, hashed, expiring credentials with atomic replacement and
+  single-use consumption;
+- made email verification and password reset transactional with their account
+  mutation and terminal security audit, and made password reset revoke every
+  active session in the same transaction;
+- added generic public reset responses, shared-cache request/completion
+  throttling, fragment-delivered browser links, in-memory mail integration
+  tests, and explicit strong/recent session wrappers;
+- added finite, explicitly scoped personal access tokens with hashed
+  persistence, one-time credential delivery, optional academic-unit ceilings,
+  recent-session creation and re-enablement, reversible disablement, debounced
+  usage metadata, durable audits, and a separate ordinary-principal route class
+  that does not weaken interactive session boundaries.
+- retained Mattermost's TOTP setup, activation, verification-window, and
+  replay-prevention behavior while storing the secret in a separate
+  AES-256-GCM encrypted aggregate and storing recovery-code hashes separately;
+- implemented the RFC 6238 code calculation with Go's standard cryptography
+  packages rather than taking a dependency on Mattermost's unlicensed TOTP
+  helper module;
+- coupled MFA activation, challenge, disablement, recovery-code replacement,
+  and session-assurance changes to durable audits, transactional replay
+  prevention, and immediate access-cache invalidation, while enforcing the
+  same replay-protected second-factor aggregate during login;
+- adapted administrative session listing and revocation around Proctor's
+  dedicated `session.view` and `session.manage` actions and user-resource
+  authorization.
 
 Mattermost authorization and audit implementation
 -------------------------------------------------
