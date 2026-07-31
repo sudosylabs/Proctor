@@ -17,6 +17,17 @@ import (
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
+type compatibilityProblem struct {
+	Type      string            `json:"type"`
+	Title     string            `json:"title"`
+	Status    int               `json:"status"`
+	Detail    string            `json:"detail"`
+	Instance  string            `json:"instance"`
+	Code      string            `json:"code"`
+	RequestID string            `json:"request_id"`
+	Fields    map[string]string `json:"fields"`
+}
+
 func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -110,6 +121,17 @@ func TestHealthVersionAndCommonHeaders(t *testing.T) {
 	if liveness.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Error("security headers were not applied")
 	}
+	if liveness.Header().Get("Content-Type") != "application/json" ||
+		liveness.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("liveness headers = %#v", liveness.Header())
+	}
+	var health map[string]string
+	if err := json.Unmarshal(liveness.Body.Bytes(), &health); err != nil {
+		t.Fatal(err)
+	}
+	if health["status"] != "ok" {
+		t.Fatalf("liveness response = %#v", health)
+	}
 
 	readiness := performRequest(helper.Server.Handler(), http.MethodGet, "/health/ready", "")
 	if readiness.Code != http.StatusServiceUnavailable {
@@ -136,17 +158,35 @@ func TestRoutingFailuresUseProblemDetails(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	tests := []struct {
-		method string
-		path   string
-		status int
-		code   string
-		allow  string
+		method  string
+		path    string
+		status  int
+		code    string
+		allow   string
+		typeURI string
+		title   string
+		detail  string
 	}{
-		{http.MethodGet, "/missing", http.StatusNotFound, "not_found", ""},
-		{http.MethodPost, "/health/live", http.StatusMethodNotAllowed, "method_not_allowed", http.MethodGet},
+		{
+			http.MethodGet, "/missing", http.StatusNotFound, "not_found", "",
+			"https://proctor.sudosylabs.com/problems/not-found",
+			"Resource not found", "The requested resource was not found.",
+		},
+		{
+			http.MethodPost, "/health/live", http.StatusMethodNotAllowed,
+			"method_not_allowed", http.MethodGet,
+			"https://proctor.sudosylabs.com/problems/method-not-allowed",
+			"Method not allowed",
+			"The request method is not allowed for this resource.",
+		},
 	}
 	for _, test := range tests {
-		response := performRequest(helper.Server.Handler(), test.method, test.path, "")
+		response := performRequest(
+			helper.Server.Handler(),
+			test.method,
+			test.path,
+			"compatibility-request",
+		)
 		if response.Code != test.status {
 			t.Errorf("%s %s status = %d", test.method, test.path, response.Code)
 		}
@@ -156,10 +196,16 @@ func TestRoutingFailuresUseProblemDetails(t *testing.T) {
 		if response.Header().Get("Allow") != test.allow {
 			t.Errorf("Allow = %q", response.Header().Get("Allow"))
 		}
-		var problem api.Problem
+		var problem compatibilityProblem
 		if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 			t.Error(err)
-		} else if problem.Code != test.code || problem.RequestID == "" {
+		} else if problem.Type != test.typeURI ||
+			problem.Title != test.title ||
+			problem.Status != test.status ||
+			problem.Detail != test.detail ||
+			problem.Instance != test.path ||
+			problem.Code != test.code ||
+			problem.RequestID != "compatibility-request" {
 			t.Errorf("problem = %#v", problem)
 		}
 	}
@@ -231,6 +277,7 @@ func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testi
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(test.method, test.path, nil)
+			request.Header.Set(api.RequestIDHeader, "compatibility-request")
 			if test.configure != nil {
 				test.configure(request)
 			}
@@ -239,12 +286,20 @@ func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testi
 			if response.Code != http.StatusUnauthorized {
 				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 			}
-			var problem api.Problem
+			var problem compatibilityProblem
 			if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 				t.Fatal(err)
 			}
 			if problem.Code != "authentication.required" {
 				t.Fatalf("problem = %#v", problem)
+			}
+			if problem.Type != "https://proctor.sudosylabs.com/problems/authentication.required" ||
+				problem.Title != "Authentication required" ||
+				problem.Status != http.StatusUnauthorized ||
+				problem.Detail != "Authentication is required." ||
+				problem.Instance != request.URL.Path ||
+				problem.RequestID != "compatibility-request" {
+				t.Fatalf("authentication problem contract = %#v", problem)
 			}
 		})
 	}

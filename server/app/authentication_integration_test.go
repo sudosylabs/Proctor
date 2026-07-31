@@ -623,6 +623,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 			missingLogoutCSRF.Body.String(),
 		)
 	}
+	assertProblemCode(t, missingLogoutCSRF, "authentication.csrf.invalid")
 	missingRefreshCSRF := performBrowserJSONRequest(
 		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/refresh",
 		nil, loginCookies, "", "",
@@ -634,6 +635,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 			missingRefreshCSRF.Body.String(),
 		)
 	}
+	assertProblemCode(t, missingRefreshCSRF, "authentication.csrf.invalid")
 
 	refresh := performBrowserJSONRequest(
 		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/refresh",
@@ -1027,21 +1029,52 @@ func assertBrowserCookieContract(
 	cookies map[string]*http.Cookie,
 ) {
 	t.Helper()
+	if api.BrowserAccessCookieName != "PROCTOR_ACCESS" ||
+		api.BrowserRefreshCookieName != "PROCTOR_REFRESH" ||
+		api.BrowserCSRFBindingCookieName != "PROCTOR_CSRF_BINDING" ||
+		api.BrowserCSRFCookieName != "PROCTOR_CSRF" ||
+		api.BrowserCSRFHeader != "X-Proctor-CSRF-Token" {
+		t.Fatal("browser cookie or CSRF public name changed")
+	}
 	if len(cookies) != 4 {
 		t.Fatalf("browser cookies = %#v", cookies)
 	}
-	access := cookies[api.BrowserAccessCookieName]
-	refresh := cookies[api.BrowserRefreshCookieName]
-	binding := cookies[api.BrowserCSRFBindingCookieName]
-	csrf := cookies[api.BrowserCSRFCookieName]
+	access := cookies["PROCTOR_ACCESS"]
+	refresh := cookies["PROCTOR_REFRESH"]
+	binding := cookies["PROCTOR_CSRF_BINDING"]
+	csrf := cookies["PROCTOR_CSRF"]
 	if access == nil || refresh == nil || binding == nil || csrf == nil ||
 		!access.HttpOnly || !refresh.HttpOnly || !binding.HttpOnly ||
 		csrf.HttpOnly || !access.Secure || !refresh.Secure ||
 		!binding.Secure || !csrf.Secure ||
 		access.SameSite != http.SameSiteLaxMode ||
 		refresh.SameSite != http.SameSiteLaxMode ||
-		refresh.Path != model.APIURLSuffix+"/auth/refresh" {
+		binding.SameSite != http.SameSiteLaxMode ||
+		csrf.SameSite != http.SameSiteLaxMode ||
+		access.Domain != "" || refresh.Domain != "" ||
+		binding.Domain != "" || csrf.Domain != "" ||
+		access.Path != "/" ||
+		refresh.Path != "/api/v1/auth/refresh" ||
+		binding.Path != "/" || csrf.Path != "/" {
 		t.Fatalf("browser cookie contract = %#v", cookies)
+	}
+}
+
+func assertProblemCode(
+	t *testing.T,
+	response *httptest.ResponseRecorder,
+	want string,
+) {
+	t.Helper()
+	if response.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("problem Content-Type = %q", response.Header().Get("Content-Type"))
+	}
+	var problem api.Problem
+	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Code != want {
+		t.Fatalf("problem code = %q, want %q", problem.Code, want)
 	}
 }
 
