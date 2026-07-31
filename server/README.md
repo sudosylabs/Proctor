@@ -53,9 +53,9 @@ The server also includes:
 - current-state scoped authorization with institution and ancestor
   academic-unit inheritance, exact class scope, additive roles, and default
   denial;
-- reusable principal/resource permission helpers and default-deny user
-  visibility, with audited application-layer `user.view` enforcement that
-  keeps the target user separate from its institution authorization scope;
+- reusable principal/resource permission helpers and contextual user
+  visibility: institution-wide `user.view` or inherited
+  `class.members.view` over a student's current enrollment;
 - dedicated role and role-binding stores with overlap-safe effective periods;
 - durable PostgreSQL security audits with fail-closed decision recording,
   bounded prior/result data, request/node correlation, and keyset pagination.
@@ -71,12 +71,17 @@ The server also includes:
   authoritative application authorization by a sealed, request-bound,
   one-use receipt so the same decision is not queried or audited twice. Each
   privileged handler calls its scoped `PrincipalHasPermissionTo*` method
-  directly rather than hiding the check behind a generic preflight helper.
+  directly rather than hiding the check behind a generic preflight helper;
+- audited structural administration for the institution, academic-unit tree,
+  programmes, levels, periods, and classes;
+- effective-dated affiliations and academic-unit membership, plus serialized
+  student enrollment and transfer with retained history;
+- user search/profile administration, enable/disable, affiliation and
+  membership management, and administrative session revocation.
 
 External identity login, password recovery, MFA, personal access-token
-services, academic enrollment services, exams, a concrete multi-node cluster
-backend, and WebSockets remain intentionally unimplemented until their next
-vertical slices.
+services, exams, a concrete multi-node cluster backend, and WebSockets remain
+intentionally unimplemented until their next vertical slices.
 
 ## Run locally
 
@@ -112,6 +117,24 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET|POST /api/v1/role-bindings` and
   `DELETE /api/v1/role-bindings/{role_binding_id}` (requires `role.manage`;
   list by `user_id` or by `scope_type` plus `scope_id`)
+- `GET|PATCH /api/v1/institution`
+- `GET|POST /api/v1/academic-units`, resource
+  `GET|PATCH|DELETE`, and nested `/children`, `/programmes`, and `/members`
+- programme resource `GET|PATCH|DELETE` and nested `/levels`
+- programme-level resource `GET|PATCH|DELETE` and nested `/classes`
+- `GET|POST /api/v1/academic-periods` and resource `GET|PATCH|DELETE`
+- class resource `GET|PATCH|DELETE` and nested `/members`
+- `GET /api/v1/users`, user resource `GET|PATCH`, `/enable`, `/disable`,
+  `/sessions/revoke-all`, and nested `/affiliations`
+- effective-dated membership endings at `/affiliations/{id}`,
+  `/academic-unit-members/{id}`, and `/class-members/{id}`
+
+All academic and user-administration endpoints require a session and perform
+their scoped `PrincipalHasPermissionTo*` check before decoding mutation bodies.
+Programme and programme-level operations authorize against their owning
+academic unit; academic periods are institution-managed. Membership lists
+default to records active now and accept `active_at`; `history=true` returns
+the retained effective-dated history.
 
 Bootstrap is explicit: normal account creation never promotes a “first user.”
 The successful transaction creates the institution, administrator and password

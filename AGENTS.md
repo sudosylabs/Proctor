@@ -121,9 +121,9 @@ walking skeleton is operational and includes:
   institution and ancestor academic-unit inheritance, exact class scope,
   deleted-role exclusion, and no permission snapshots in sessions;
 - reusable principal permission predicates, typed institution/academic-unit/
-  class/user helpers, an explicitly default-deny cross-user visibility policy,
-  and transport-safe user reads that enforce and audit `user.view` in the
-  application layer;
+  class/user helpers, contextual cross-user visibility through institution
+  `user.view` or inherited `class.members.view`, and transport-safe user reads
+  that retain default denial outside those relationships;
 - complete role, role-binding, and durable audit SQL stores with reusable
   conformance suites, role batch resolution, serialized time-range overlap
   protection, polymorphic scope-reference validation, hierarchy resolution,
@@ -145,18 +145,32 @@ walking skeleton is operational and includes:
   role-binding, and audit administration routes, with a private, sealed,
   request-bound, one-use decision receipt that prevents duplicate
   authorization queries/audits while preserving authoritative application
-  authorization for direct and non-HTTP callers.
+  authorization for direct and non-HTTP callers;
+- complete audited structural-academic administration through application and
+  HTTP layers for the singleton institution, academic-unit hierarchy,
+  programmes, programme levels, academic periods, and classes;
+- effective-dated affiliation and academic-unit membership administration,
+  plus transactionally serialized class enrollment, transfer, progression
+  history, and enforcement of one non-overlapping class enrollment per student
+  and academic period;
+- administrative user search/profile updates, enable/disable, immediate
+  account-session revocation, affiliations, organizational membership, and
+  enrollment operations;
+- teacher-to-student visibility derived from current class enrollment and
+  inherited `class.members.view`, while unrelated and cross-scope users remain
+  hidden by default.
 
 The server now includes PostgreSQL connection management, embedded versioned
 migrations, a separate migration command, platform-owned schema validation, a
 Mattermost-shaped root store with per-model contracts, and all structural
 academic SQL stores: institution, academic unit, programme, programme level,
 academic period, and class. It also includes user, password-credential,
-session, session-credential, role, role-binding, and audit SQL stores with
-reusable conformance tests, plus the atomic installation-bootstrap store.
+session, session-credential, affiliation, academic-unit-member, class-member,
+role, role-binding, and audit SQL stores with reusable conformance tests, plus
+the atomic installation-bootstrap store.
 External identity login, password reset/verification, MFA, personal access
-token services, academic membership services, exam-domain, WebSocket, and a
-concrete multi-node cluster transport remain unimplemented.
+token services, exam-domain, WebSocket, and a concrete multi-node cluster
+transport remain unimplemented.
 
 Do not:
 
@@ -1369,7 +1383,7 @@ Future server tests should include:
 - route authentication classification tests;
 - session creation, expiry, rotation, reuse, and revocation tests;
 - authorization matrices across institution, academic unit, class, and exam;
-- student single-active-class constraint and enrollment-history tests;
+- further enrollment concurrency and progression-policy tests;
 - PostgreSQL repository integration tests;
 - two-node cluster tests sharing PostgreSQL, Redis/transport, and VFS;
 - cross-node session and permission invalidation tests;
@@ -1461,7 +1475,10 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     listing slice, atomic installation bootstrap, and audited role/binding
     administration with last-administrator protection, plus user resource
     actions, default-deny visibility helpers, and audited cross-user reads;
-13. institution/academic hierarchy and enrollment vertical slice;
+13. institution/academic hierarchy, membership/enrollment, and administrative
+    user vertical slices — complete for application services, visible
+    handler-level permission preflights, audited mutations, authorized scoped
+    reads, PostgreSQL conformance, and end-to-end API integration;
 14. first two-node cluster tests;
 15. WebSocket hub, cluster fan-out, and replay;
 16. exam/proctoring vertical slices after their state models are confirmed.

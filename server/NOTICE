@@ -65,6 +65,7 @@ Corresponding Proctor paths:
 - server/model/affiliation.go
 - server/model/academic_unit_member.go
 - server/model/class_member.go
+- server/model/class_enrollment.go
 - server/model/role.go
 - server/model/role_binding.go
 - server/model/installation.go
@@ -123,7 +124,9 @@ Upstream paths:
 - server/channels/store/sqlstore/sqlx_wrapper.go
 - server/channels/store/sqlstore/migrate.go
 - server/channels/store/sqlstore/team_store.go
+- server/channels/store/sqlstore/channel_store.go
 - server/channels/store/storetest/team_store.go
+- server/channels/store/storetest/channel_store.go
 - server/channels/store/sqlstore/store_test.go
 - server/channels/store/sqlstore/migrate_test.go
 
@@ -142,12 +145,18 @@ Corresponding Proctor paths:
 - server/store/sqlstore/programme_level_store.go
 - server/store/sqlstore/academic_period_store.go
 - server/store/sqlstore/class_store.go
+- server/store/sqlstore/affiliation_store.go
+- server/store/sqlstore/academic_unit_member_store.go
+- server/store/sqlstore/class_member_store.go
 - server/store/storetest/institution_store.go
 - server/store/storetest/academic_unit_store.go
 - server/store/storetest/programme_store.go
 - server/store/storetest/programme_level_store.go
 - server/store/storetest/academic_period_store.go
 - server/store/storetest/class_store.go
+- server/store/storetest/affiliation_store.go
+- server/store/storetest/academic_unit_member_store.go
+- server/store/storetest/class_member_store.go
 - server/store/sqlstore/store_test.go
 - server/store/sqlstore/institution_store_test.go
 - server/store/sqlstore/academic_unit_store_test.go
@@ -155,6 +164,9 @@ Corresponding Proctor paths:
 - server/store/sqlstore/programme_level_store_test.go
 - server/store/sqlstore/academic_period_store_test.go
 - server/store/sqlstore/class_store_test.go
+- server/store/sqlstore/affiliation_store_test.go
+- server/store/sqlstore/academic_unit_member_store_test.go
+- server/store/sqlstore/class_member_store_test.go
 - server/store/sqlstore/user_store.go
 - server/store/sqlstore/password_credential_store.go
 - server/store/sqlstore/session_store.go
@@ -186,7 +198,11 @@ Modifications:
 - added Proctor-specific singleton-institution, generic academic hierarchy,
   hierarchy-cycle serialization, and same-parent-institution behavior;
 - added PostgreSQL constraints for identity, enrollment, hashed credentials,
-  and one active class per student and academic period.
+  and one active class per student and academic period;
+- adapted Mattermost member-store structure into independent affiliation,
+  academic-unit-member, and class-member stores, adding effective-range
+  advisory locking, non-overlap checks, atomic student transfer, and retained
+  enrollment history.
 
 Mattermost authentication and session implementation
 -----------------------------------------------------
@@ -304,6 +320,9 @@ Corresponding Proctor paths:
 - server/app/authorization.go
 - server/app/authorization_decision.go
 - server/app/permissions.go
+- server/app/academic_administration.go
+- server/app/membership_administration.go
+- server/app/user_administration.go
 - server/app/audit.go
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go
@@ -318,6 +337,12 @@ Corresponding Proctor paths:
 - server/app/api/authentication.go
 - server/app/api/middleware.go
 - server/app/api/params.go
+- server/app/api/institution.go
+- server/app/api/programme.go
+- server/app/api/academic_period.go
+- server/app/api/class.go
+- server/app/api/membership.go
+- server/app/api/user_administration.go
 - server/store/store.go
 - server/store/sqlstore/role_store.go
 - server/store/sqlstore/role_binding_store.go
@@ -355,8 +380,8 @@ Modifications:
   attempt-before-mutation primitives for future security-sensitive use cases;
 - adapted Mattermost's reusable permission and user-visibility helpers around
   Proctor's immutable principal, current PostgreSQL role bindings, typed
-  resources, default-deny cross-user policy, and separate audited resource and
-  academic-scope fields;
+  resources, default-deny fallback, current class relationships, and separate
+  audited resource and academic-scope fields;
 - retained Mattermost's visible permission checks at privileged API handlers
   while keeping application use cases as independent authorization boundaries;
 - added a Proctor-specific per-process sealed, request-bound, one-use
@@ -378,6 +403,15 @@ Modifications:
 - adapted role administration around Proctor's scoped bindings and closed
   action registry, including immutable built-ins, institution-only
   system-administrator grants, and serialized last-administrator protection.
+- adapted Mattermost's application-owned academic/team/channel administration
+  flow into audited Proctor institution, hierarchy, programme, period, class,
+  affiliation, membership, enrollment-transfer, and user-administration
+  vertical slices;
+- retained direct, resource-specific permission checks in each API handler and
+  applied the same authorization independently in application use cases;
+- replaced default-deny placeholder user visibility with current,
+  effective-dated student-class relationships and inherited
+  `class.members.view`, without granting permissions from membership itself.
 
 Mattermost cluster messaging implementation
 -------------------------------------------
