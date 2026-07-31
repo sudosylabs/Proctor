@@ -10,6 +10,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -44,6 +45,192 @@ func (a *App) PrincipalHasPermissionToSystem(
 		return ctx, false, nil
 	}
 	return contextWithAuthorizationDecision(ctx, decision), true, nil
+}
+
+func (a *App) principalHasPermissionToResourceForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	decision, allowed, appErr := a.authorization.preauthorize(
+		ctx, principal, action, resource, metadata,
+	)
+	if appErr != nil || !allowed {
+		return ctx, false, appErr
+	}
+	return contextWithAuthorizationDecision(ctx, decision), true, nil
+}
+
+func (a *App) PrincipalHasPermissionToAcademicUnitForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	academicUnitID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	return a.principalHasPermissionToResourceForRequest(
+		ctx,
+		principal,
+		action,
+		model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID},
+		metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToClassForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	classID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	return a.principalHasPermissionToResourceForRequest(
+		ctx,
+		principal,
+		action,
+		model.Resource{Type: model.ResourceClass, Id: classID},
+		metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToProgrammeForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	programmeID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	_, unitID, appErr := a.programmeAcademicUnit(ctx, programmeID)
+	if appErr != nil {
+		return ctx, false, appErr
+	}
+	return a.PrincipalHasPermissionToAcademicUnitForRequest(
+		ctx, principal, unitID, action, metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToProgrammeLevelForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	levelID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	_, unitID, appErr := a.programmeLevelAcademicUnit(ctx, levelID)
+	if appErr != nil {
+		return ctx, false, appErr
+	}
+	return a.PrincipalHasPermissionToAcademicUnitForRequest(
+		ctx, principal, unitID, action, metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToClassAdministrationForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	classID string,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	unitID, err := a.Store().Class().GetAcademicUnitId(ctx, classID)
+	if err != nil {
+		return ctx, false, administrationError(
+			"PrincipalHasPermissionToClassAdministrationForRequest",
+			"academic_unit",
+			err,
+		)
+	}
+	return a.PrincipalHasPermissionToAcademicUnitForRequest(
+		ctx, principal, unitID, model.ActionAcademicUnitManage, metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToAffiliationForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	affiliationID string,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	affiliation, err := a.Store().Affiliation().Get(ctx, affiliationID)
+	if err != nil {
+		return ctx, false, administrationError(
+			"PrincipalHasPermissionToAffiliationForRequest", "affiliation", err,
+		)
+	}
+	return a.PrincipalHasPermissionToUserForRequest(
+		ctx, principal, affiliation.UserId, model.ActionUserManage, metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToAcademicUnitMemberForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	memberID string,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	member, err := a.Store().AcademicUnitMember().Get(ctx, memberID)
+	if err != nil {
+		return ctx, false, administrationError(
+			"PrincipalHasPermissionToAcademicUnitMemberForRequest",
+			"academic_unit_member",
+			err,
+		)
+	}
+	return a.PrincipalHasPermissionToAcademicUnitForRequest(
+		ctx, principal, member.AcademicUnitId, model.ActionAcademicUnitManage, metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToClassMemberForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	memberID string,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	member, err := a.Store().ClassMember().Get(ctx, memberID)
+	if err != nil {
+		return ctx, false, administrationError(
+			"PrincipalHasPermissionToClassMemberForRequest", "class_member", err,
+		)
+	}
+	return a.PrincipalHasPermissionToClassForRequest(
+		ctx, principal, member.ClassId, model.ActionClassMembersManage, metadata,
+	)
+}
+
+func (a *App) PrincipalHasPermissionToUserForRequest(
+	ctx context.Context,
+	principal model.Principal,
+	userID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (context.Context, bool, *model.AppError) {
+	if action == model.ActionUserView && principal.UserId == userID {
+		return ctx, true, nil
+	}
+	if action == model.ActionUserView {
+		allowed, appErr := a.userVisibilityPermission(ctx, principal, userID)
+		if appErr != nil {
+			return ctx, false, appErr
+		}
+		if allowed.Type != "" {
+			receiptAction := model.ActionUserView
+			if allowed.Type == model.ResourceClass {
+				receiptAction = model.ActionClassMembersView
+			}
+			return a.principalHasPermissionToResourceForRequest(
+				ctx, principal, receiptAction, allowed, metadata,
+			)
+		}
+	}
+	return a.principalHasPermissionToResourceForRequest(
+		ctx,
+		principal,
+		action,
+		model.Resource{Type: model.ResourceUser, Id: userID},
+		metadata,
+	)
 }
 
 func (a *App) authorizePrincipalToSystem(
@@ -176,6 +363,27 @@ func (a *App) AuthorizePrincipalToAcademicUnit(
 	)
 }
 
+func (a *App) authorizePrincipalToAcademicUnit(
+	ctx context.Context,
+	principal model.Principal,
+	academicUnitID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (model.Resource, *model.AppError) {
+	if resource, ok := a.authorization.consumePreauthorizedResource(
+		ctx, principal, action, model.ResourceAcademicUnit, metadata,
+	); ok && resource.Id == academicUnitID {
+		return resource, nil
+	}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID}
+	if appErr := a.AuthorizePrincipalTo(
+		ctx, principal, action, resource, metadata,
+	); appErr != nil {
+		return model.Resource{}, appErr
+	}
+	return resource, nil
+}
+
 func (a *App) AuthorizePrincipalToClass(
 	ctx context.Context,
 	principal model.Principal,
@@ -192,6 +400,27 @@ func (a *App) AuthorizePrincipalToClass(
 	)
 }
 
+func (a *App) authorizePrincipalToClass(
+	ctx context.Context,
+	principal model.Principal,
+	classID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (model.Resource, *model.AppError) {
+	if resource, ok := a.authorization.consumePreauthorizedResource(
+		ctx, principal, action, model.ResourceClass, metadata,
+	); ok && resource.Id == classID {
+		return resource, nil
+	}
+	resource := model.Resource{Type: model.ResourceClass, Id: classID}
+	if appErr := a.AuthorizePrincipalTo(
+		ctx, principal, action, resource, metadata,
+	); appErr != nil {
+		return model.Resource{}, appErr
+	}
+	return resource, nil
+}
+
 func (a *App) AuthorizePrincipalToUser(
 	ctx context.Context,
 	principal model.Principal,
@@ -206,6 +435,27 @@ func (a *App) AuthorizePrincipalToUser(
 		model.Resource{Type: model.ResourceUser, Id: userID},
 		metadata,
 	)
+}
+
+func (a *App) authorizePrincipalToUser(
+	ctx context.Context,
+	principal model.Principal,
+	userID string,
+	action model.Action,
+	metadata model.RequestMetadata,
+) (model.Resource, *model.AppError) {
+	if resource, ok := a.authorization.consumePreauthorizedResource(
+		ctx, principal, action, model.ResourceUser, metadata,
+	); ok && resource.Id == userID {
+		return resource, nil
+	}
+	resource := model.Resource{Type: model.ResourceUser, Id: userID}
+	if appErr := a.AuthorizePrincipalTo(
+		ctx, principal, action, resource, metadata,
+	); appErr != nil {
+		return model.Resource{}, appErr
+	}
+	return resource, nil
 }
 
 // PrincipalHasPermissionToUser combines self-access with institution-wide user
@@ -226,6 +476,10 @@ func (a *App) PrincipalHasPermissionToUser(
 	}
 	if action == model.ActionUserView && principal.UserId == userID {
 		return true, nil
+	}
+	if action == model.ActionUserView {
+		resource, appErr := a.userVisibilityPermission(ctx, principal, userID)
+		return resource.Type != "", appErr
 	}
 	return a.PrincipalHasPermissionTo(
 		ctx,
@@ -252,6 +506,44 @@ func (a *App) UserCanSeeOtherUser(
 	)
 }
 
+func (a *App) userVisibilityPermission(
+	ctx context.Context,
+	principal model.Principal,
+	otherUserID string,
+) (model.Resource, *model.AppError) {
+	userResource := model.Resource{Type: model.ResourceUser, Id: otherUserID}
+	allowed, appErr := a.PrincipalHasPermissionTo(
+		ctx, principal, model.ActionUserView, userResource,
+	)
+	if appErr != nil || allowed {
+		if allowed {
+			return userResource, nil
+		}
+		return model.Resource{}, appErr
+	}
+	memberships, err := a.Store().ClassMember().ListActiveByUser(
+		ctx, otherUserID, time.Now().UnixMilli(),
+	)
+	if err != nil {
+		return model.Resource{}, administrationError(
+			"userVisibilityPermission", "class_member", err,
+		)
+	}
+	for _, membership := range memberships {
+		classResource := model.Resource{Type: model.ResourceClass, Id: membership.ClassId}
+		allowed, appErr = a.PrincipalHasPermissionTo(
+			ctx, principal, model.ActionClassMembersView, classResource,
+		)
+		if appErr != nil {
+			return model.Resource{}, appErr
+		}
+		if allowed {
+			return classResource, nil
+		}
+	}
+	return model.Resource{}, nil
+}
+
 // GetUserForPrincipal is the transport-safe user read use case. Self-access is
 // allowed directly; cross-user reads require and durably audit user.view.
 func (a *App) GetUserForPrincipal(
@@ -264,15 +556,49 @@ func (a *App) GetUserForPrincipal(
 		return nil, invalidTokenError("GetUserForPrincipal")
 	}
 	if principal.UserId != userID {
-		if appErr := a.AuthorizePrincipalToUser(
-			ctx,
-			principal,
-			userID,
-			model.ActionUserView,
-			metadata,
+		if appErr := a.authorizeUserVisibility(
+			ctx, principal, userID, metadata,
 		); appErr != nil {
 			return nil, appErr
 		}
 	}
 	return a.GetUser(ctx, userID)
+}
+
+func (a *App) authorizeUserVisibility(
+	ctx context.Context,
+	principal model.Principal,
+	userID string,
+	metadata model.RequestMetadata,
+) *model.AppError {
+	resource, appErr := a.userVisibilityPermission(ctx, principal, userID)
+	if appErr != nil {
+		return appErr
+	}
+	switch resource.Type {
+	case model.ResourceUser:
+		if receipt, ok := a.authorization.consumePreauthorizedResource(
+			ctx, principal, model.ActionUserView, model.ResourceUser, metadata,
+		); ok && receipt.Id == userID {
+			return nil
+		}
+		return a.AuthorizePrincipalToUser(
+			ctx, principal, userID, model.ActionUserView, metadata,
+		)
+	case model.ResourceClass:
+		if receipt, ok := a.authorization.consumePreauthorizedResource(
+			ctx, principal, model.ActionClassMembersView, model.ResourceClass, metadata,
+		); ok && receipt.Id == resource.Id {
+			return nil
+		}
+		return a.AuthorizePrincipalToClass(
+			ctx, principal, resource.Id, model.ActionClassMembersView, metadata,
+		)
+	default:
+		// Record the final denial against the resource the caller attempted to
+		// see, rather than leaking which academic relationship was absent.
+		return a.AuthorizePrincipalToUser(
+			ctx, principal, userID, model.ActionUserView, metadata,
+		)
+	}
 }
