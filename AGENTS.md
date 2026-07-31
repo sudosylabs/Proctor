@@ -104,6 +104,19 @@ walking skeleton is operational and includes:
   with typed handlers, explicit best-effort/reliable delivery classes, stable
   node identity, bounded messages, startup/readiness/shutdown ownership, and a
   loop-safe single-node local transport;
+- a Proctor-owned Redis multi-node transport with lease-backed node discovery,
+  Pub/Sub best-effort fan-out, per-node acknowledged Streams for at-least-once
+  reliable delivery, retry-after-handler-failure, bounded reliable queues, and
+  duplicate node-ID rejection;
+- a Mattermost-shaped WebSocket hub with authenticated session upgrades,
+  CPU-sharded connection ownership, cookie-origin enforcement,
+  resource/action-authorized subscriptions,
+  bounded outbound and replay queues, monotonically increasing per-connection
+  sequences, ping/pong liveness, backpressure disconnects, local reconnection
+  replay, and explicit client resynchronization when replay is unavailable;
+- application-owned local-first event publication with loop-free cluster
+  fan-out, plus reliable cross-node session revocation, authentication-cache
+  invalidation, and role/permission-change connection invalidation;
 - the first complete identity slice: transactional local-user/password
   persistence, bounded Argon2id password hashing, generic login failures,
   server-side sessions, hashed opaque access and refresh credentials, refresh
@@ -207,8 +220,10 @@ user-token, personal-access-token, MFA credential, MFA recovery-code,
 affiliation, academic-unit-member, class-member, role, role-binding, and audit
 SQL stores with reusable conformance tests, plus the atomic
 installation-bootstrap store.
-External account-linking administration, service accounts, exam-domain,
-WebSocket, and a concrete multi-node cluster transport remain unimplemented.
+External account-linking administration, service accounts, exam-domain, and
+SAML/LDAP providers remain unimplemented. Cross-node WebSocket replay handoff
+is also not implemented: reconnecting on a node without the prior bounded
+queue receives an explicit resynchronization instruction.
 
 Do not:
 
@@ -1183,7 +1198,7 @@ Load balancer
 Proctor A   Proctor B
   ↘           ↙
 shared PostgreSQL
-shared Redis/coordination
+Redis cluster transport
 shared VFS
 shared SMTP/provider
 ```
@@ -1216,8 +1231,7 @@ maintenance operations when appropriate.
 WebSocket events and cache invalidations are application cluster messages.
 PostgreSQL is not their transport.
 
-Define a narrow cluster transport owned by the server. It should eventually
-support:
+The narrow server-owned cluster transport supports:
 
 - starting/stopping inter-node communication;
 - node discovery and health;
@@ -1228,10 +1242,11 @@ support:
 - reliable messages where required;
 - cache and session invalidation;
 - WebSocket event fan-out;
-- cross-node WebSocket reconnection support.
+- local WebSocket reconnection replay.
 
-The initial concrete transport may use Redis, NATS, or another suitable
-technology, but business code must depend on the port, not that technology.
+Business code depends on the port, not Redis. Cross-node WebSocket queue
+handoff may extend the port later, but ordinary event publication and
+invalidation must not depend on that future feature.
 Do not turn the cache package into a message-bus package.
 
 Do not extract the cluster transport into `packages/` until its API is stable
@@ -1254,14 +1269,34 @@ The current implementation establishes the transport-independent contract:
 - the platform constructs and health-checks the transport, the server starts
   it before becoming ready, and platform shutdown stops it before shared
   infrastructure is closed;
-- `local` is the only concrete backend today. It is the valid single-node
-  degenerate transport: peer broadcasts succeed without local delivery, while
-  self-targeted messages exercise registered handlers synchronously.
-
-The reliable send class is part of the application contract, but the local
-backend has no remote delivery to acknowledge. No multi-node backend may claim
-reliable delivery until retry, acknowledgement, ordering, duplicate handling,
-backpressure, and node-failure behavior are explicitly defined and tested.
+- `local` is the valid single-node degenerate transport: peer broadcasts
+  succeed without local delivery, while self-targeted messages exercise
+  registered handlers synchronously;
+- `redis` is the multi-node backend. A lease key and expiry-indexed node set
+  establish live node identity; duplicate live node IDs are rejected;
+- cluster transport and cache selection are independent. A clustered node may
+  use a local memory cache or a shared Redis cache; node-local cache entries
+  remain disposable and security-sensitive invalidations use reliable cluster
+  messages;
+- Redis Pub/Sub carries best-effort messages and therefore has at-most-once
+  delivery: a disconnected subscriber can miss them;
+- reliable broadcasts are copied to each currently live peer's dedicated
+  Redis Stream. A stable per-node consumer acknowledges and deletes an entry
+  only after its handler succeeds. Handler failure leaves the entry pending
+  and retries it with backoff;
+- reliable delivery is at least once and ordered by each target stream.
+  Handlers for reliable events must be idempotent because a process can fail
+  after applying a message and before acknowledging it;
+- the reliable stream has a hard configured entry ceiling. Sending fails
+  visibly when a target queue is full; unacknowledged entries are never
+  silently trimmed;
+- when a node lease expires, new broadcasts no longer target it. Pending
+  entries already in its stream are consumed if that stable node ID returns;
+  clients must resynchronize authoritative state missed while the node was
+  absent;
+- two-node conformance verifies peer-only fan-out, best-effort delivery,
+  reliable retry, duplicate-node rejection, application event publication,
+  permission invalidation, and session revocation.
 
 ## WebSocket Architecture
 
@@ -1291,11 +1326,25 @@ Reconnection requirements:
 
 - the client sends its prior connection ID and last received sequence;
 - the current node first attempts local recovery;
-- in cluster mode it may request queue state from peer nodes;
+- the current implementation attempts recovery only on the node retaining the
+  prior connection state;
 - recoverable events are replayed in order;
 - if the replay window is unavailable, create a fresh connection and tell the
   client to resynchronize authoritative state through HTTP;
 - replay queues are bounded and not durable business storage.
+
+The session-authenticated endpoint is `/api/v1/websocket`, derived from the
+single versioned API root. Cookie-authenticated upgrades require an exact
+configured public-origin match; bearer-authenticated native clients may omit
+`Origin`. The connection keeps the immutable session principal and periodically
+revalidates the authoritative session and account.
+
+Clients subscribe with an explicit action/resource pair. The application uses
+the ordinary durable authorization boundary before the hub stores the
+subscription. Published resource events are delivered only to matching
+authorized subscriptions. Direct user events are explicitly server-targeted.
+Role, binding, MFA-assurance, account, and session security changes invalidate
+affected connections rather than allowing a stale subscription to survive.
 
 Event delivery classes:
 
@@ -1614,10 +1663,11 @@ Unless the user reprioritizes, build the server as a walking skeleton:
 9. cache, VFS, and mail adapters — complete for memory/Redis,
    disabled/SMTP, and local/S3 configuration, platform lifecycle, dependency
    checking, and memory test doubles;
-10. cluster transport port and local implementation — complete for typed,
-    bounded messages, one-handler-per-event dispatch, stable local node
-    identity, peer-only broadcast semantics, self-targeted delivery, platform
-    health/lifecycle ownership, and startup readiness gating;
+10. cluster transport — complete for typed, bounded messages,
+    one-handler-per-event dispatch, stable node identity, peer-only broadcast
+    semantics, self-targeted local delivery, platform health/lifecycle
+    ownership, startup readiness gating, and the lease/Streams-backed Redis
+    multi-node adapter;
 11. identity/authentication services, credential rotation, and authentication
     middleware — complete for the first local-password, access/refresh session,
     login/refresh/logout/current-user vertical slice and self-service active
@@ -1641,8 +1691,13 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     administrative session management — complete; registry-backed direct CAS
     and generic OIDC external identity login are also complete, while
     account-linking administration, SAML, and service accounts remain;
-15. first two-node cluster tests;
-16. WebSocket hub, cluster fan-out, and replay;
+15. first two-node cluster tests — complete for reliable and best-effort
+    transport, handler retry, duplicate node identity, application event
+    fan-out, permission invalidation, and session revocation;
+16. WebSocket hub, cluster fan-out, and replay — complete for authenticated
+    sockets, authorized subscriptions, bounded local replay, explicit
+    resynchronization, and cross-node events; cross-node replay handoff remains
+    open;
 17. exam/proctoring vertical slices after their state models are confirmed.
 
 Do not create every future domain entity or model-store interface up front.
@@ -1738,6 +1793,12 @@ Before handing off:
 - Clustered/horizontally scaled deployment will not be commercially gated.
 - WebSocket fan-out is application-side and uses inter-node messages, not the
   database as an event transport.
+- Redis is the concrete multi-node cluster backend. Pub/Sub is at-most-once for
+  transient events, while per-node Streams provide bounded, acknowledged,
+  at-least-once reliable delivery with idempotent handlers.
+- Cache and cluster-transport backends are independent: clustered nodes may use
+  per-node memory caches or a shared Redis cache, while reliable cluster
+  invalidation preserves current security state.
 - Authentication route wrappers, sessions, tokens, scoped permissions, and
   audit behavior should be inspired by Mattermost while using Proctor's
   immutable principal and current durable role bindings.
@@ -1807,10 +1868,8 @@ above.
   individually selected candidates.
 - Exam lifecycle and concurrency/state-transition rules.
 - Proctor assignment and violation review model.
-- Concrete cluster transport: Redis, NATS, direct node protocol, or another
-  implementation.
-- Exact reliable cluster-delivery semantics and queue ownership across node
-  failure.
+- Whether cross-node WebSocket reconnection should transfer bounded replay
+  queues between nodes or always require authoritative HTTP resynchronization.
 - Whether a generated client SDK belongs in this monorepo and which languages
   are required by the desktop application.
 - Coderunner threat model and service boundary.

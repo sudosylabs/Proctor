@@ -40,7 +40,16 @@ The server also includes:
 - platform-owned memory/Redis cache, disabled/SMTP mail, and local/S3 VFS
   adapters with startup dependency checks and deterministic shutdown;
 - a typed, bounded cluster message contract and server-owned transport port,
-  with a loop-safe `local` backend as the single-node form of the architecture;
+  with a loop-safe `local` backend and a Redis multi-node backend using
+  lease-backed discovery, Pub/Sub best effort, and acknowledged per-node
+  Streams for reliable delivery;
+- authenticated WebSocket sessions with exact-origin cookie upgrades,
+  CPU-sharded connection ownership, resource/action-authorized subscriptions,
+  bounded send and replay queues, per-connection sequences, ping/pong
+  liveness, backpressure handling, and local reconnection replay;
+- local-first application event publication with loop-free cluster fan-out,
+  reliable session revocation, cache invalidation, and permission-change
+  propagation across nodes;
 - bounded Argon2id local-password authentication;
 - revocable server-side sessions with separately hashed opaque access and
   rotating refresh credentials, replay detection, activity debouncing, and
@@ -106,9 +115,8 @@ The server also includes:
   collision-safe auto-provisioning, ordinary Proctor session creation, and
   durable provisioning/login audits.
 
-Service accounts, account-linking administration, exams, a concrete multi-node
-cluster backend, and WebSockets remain intentionally unimplemented until their
-next vertical slices. SAML remains a future external-provider adapter.
+Service accounts, account-linking administration, exams, cross-node WebSocket
+replay handoff, and SAML remain future vertical slices.
 
 ## Run locally
 
@@ -368,8 +376,18 @@ reconfiguration, flush/shutdown, and locked test capture.
 The default `cluster.backend` is `local`, with `node_id` set to `local`. This
 backend has no peers: broadcast is deliberately a no-op and never loops back
 into local handlers. The transport still participates in dependency checks and
-is started before readiness and stopped through the platform lifecycle. A
-multi-node backend and its reliable-delivery semantics are not selected yet.
+is started before readiness and stopped through the platform lifecycle.
+
+Set `cluster.backend` to `redis` and give every process a unique stable
+`cluster.node_id` for a multi-node installation. Redis Pub/Sub carries
+best-effort messages with at-most-once semantics. Reliable messages use one
+acknowledged Stream per live node, remain pending when a handler fails, and are
+retried with at-least-once semantics; reliable handlers must therefore be
+idempotent. `reliable_maximum` is a hard queue ceiling and messages are not
+silently trimmed. The cache backend is selected independently: each node may
+use its own memory cache, with reliable cluster invalidation, or use Redis as a
+shared cache. Clustered configuration requires shared VFS rather than
+node-local storage.
 
 ## Verify
 
@@ -381,6 +399,12 @@ Run the PostgreSQL-backed store, migration, and authentication tests with:
 
 ```sh
 make -C server conformance-postgres
+```
+
+Run the Redis and two-node WebSocket/cluster conformance suite with:
+
+```sh
+make -C server conformance-realtime
 ```
 
 The individual `test`, `test-race`, `vet`, and `build` targets use the root
