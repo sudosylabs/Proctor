@@ -19,10 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
-	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
-	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/store/sqlstore"
 )
 
 type ServiceConfig struct {
@@ -64,130 +61,6 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 		logger:        true,
 		configuration: true,
 	})
-}
-
-// NewLegacy preserves the pre-migration optional-dependency construction path
-// for app.NewServer callers. New production composition must use New with
-// explicitly constructed capabilities. Remove this function after the CLI and
-// testlib migrate to server.New.
-func NewLegacy(serviceConfig ServiceConfig) (*Service, error) {
-	if serviceConfig.ConfigStore == nil {
-		return nil, errors.New("configuration store is required")
-	}
-	constructionCtx := serviceConfig.Context
-	if constructionCtx == nil {
-		constructionCtx = context.Background()
-	}
-	var err error
-	createdLogger := false
-	if serviceConfig.Logger == nil {
-		serviceConfig.Logger, err = mlog.New()
-		if err != nil {
-			return nil, fmt.Errorf("create logger: %w", err)
-		}
-		createdLogger = true
-	}
-	if serviceConfig.Store == nil {
-		serviceConfig.Store, err = sqlstore.New(
-			constructionCtx,
-			sqlstore.SettingsFromConfig(serviceConfig.ConfigStore.Get().Database),
-		)
-		if err != nil {
-			var cleanupErr error
-			if createdLogger {
-				cleanupErr = serviceConfig.Logger.Shutdown()
-			}
-			return nil, errors.Join(fmt.Errorf("open database: %w", err), cleanupErr)
-		}
-	}
-	if serviceConfig.Cache == nil {
-		serviceConfig.Cache, err = newCache(serviceConfig.ConfigStore.Get().Cache)
-		if err != nil {
-			return nil, errors.Join(
-				fmt.Errorf("open cache: %w", err),
-				closeLegacyServiceConfig(serviceConfig, createdLogger),
-			)
-		}
-	}
-	if serviceConfig.Mailer == nil {
-		serviceConfig.Mailer, err = newMailer(serviceConfig.ConfigStore.Get().Mail)
-		if err != nil {
-			return nil, errors.Join(
-				fmt.Errorf("open mail transport: %w", err),
-				closeLegacyServiceConfig(serviceConfig, createdLogger),
-			)
-		}
-	}
-	if serviceConfig.VFS == nil {
-		serviceConfig.VFS, err = newVFS(serviceConfig.ConfigStore.Get().VFS)
-		if err != nil {
-			return nil, errors.Join(
-				fmt.Errorf("open VFS: %w", err),
-				closeLegacyServiceConfig(serviceConfig, createdLogger),
-			)
-		}
-	}
-	if serviceConfig.Cluster == nil {
-		serviceConfig.Cluster, err = newCluster(
-			serviceConfig.ConfigStore.Get().Cluster,
-			serviceConfig.Logger,
-		)
-		if err != nil {
-			return nil, errors.Join(
-				fmt.Errorf("open cluster transport: %w", err),
-				closeLegacyServiceConfig(serviceConfig, createdLogger),
-			)
-		}
-	}
-	if serviceConfig.ExternalAuthentication == nil {
-		serviceConfig.ExternalAuthentication, err = externalauth.NewRegistry(
-			externalauthcas.NewFactory(),
-			externalauthoidc.NewFactory(),
-		)
-		if err != nil {
-			return nil, errors.Join(
-				err,
-				closeLegacyServiceConfig(serviceConfig, createdLogger),
-			)
-		}
-	}
-	if err := validateServiceConfig(serviceConfig); err != nil {
-		return nil, errors.Join(
-			err,
-			closeLegacyServiceConfig(serviceConfig, createdLogger),
-		)
-	}
-	return newService(serviceConfig, constructionCleanupPolicy{logger: createdLogger})
-}
-
-func closeLegacyServiceConfig(serviceConfig ServiceConfig, closeLogger bool) error {
-	var clusterErr error
-	if serviceConfig.Cluster != nil {
-		stopCtx, cancelStop := context.WithTimeout(context.Background(), 15*time.Second)
-		clusterErr = serviceConfig.Cluster.Stop(stopCtx)
-		cancelStop()
-	}
-	var vfsErr error
-	if closer, ok := serviceConfig.VFS.(interface{ Close() error }); ok {
-		vfsErr = closer.Close()
-	}
-	var mailErr error
-	if serviceConfig.Mailer != nil {
-		mailErr = serviceConfig.Mailer.Close()
-	}
-	var cacheErr error
-	if serviceConfig.Cache != nil {
-		cacheErr = serviceConfig.Cache.Close()
-	}
-	var storeErr error
-	if serviceConfig.Store != nil {
-		storeErr = serviceConfig.Store.Close()
-	}
-	var loggerErr error
-	if closeLogger && serviceConfig.Logger != nil {
-		loggerErr = serviceConfig.Logger.Shutdown()
-	}
-	return errors.Join(clusterErr, vfsErr, mailErr, cacheErr, storeErr, loggerErr)
 }
 
 func validateServiceConfig(serviceConfig ServiceConfig) error {

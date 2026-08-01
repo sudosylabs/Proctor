@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -35,17 +34,6 @@ type Cluster interface {
 	RegisterMessageHandler(model.ClusterEvent, ClusterMessageHandler) error
 	Broadcast(context.Context, *model.ClusterMessage) error
 	SendToNode(context.Context, string, *model.ClusterMessage) error
-}
-
-func newCluster(settings config.Cluster, logger *mlog.Logger) (Cluster, error) {
-	switch settings.Backend {
-	case "local":
-		return NewLocalCluster(settings.NodeID, logger)
-	case "redis":
-		return NewRedisCluster(settings, logger)
-	default:
-		return nil, fmt.Errorf("unsupported cluster backend %q", settings.Backend)
-	}
 }
 
 // NewLocalCluster constructs the single-node cluster transport. Backend

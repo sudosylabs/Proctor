@@ -19,6 +19,8 @@ import (
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
+	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
+	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -50,6 +52,33 @@ type trackedMailer struct {
 type trackedCluster struct {
 	started atomic.Bool
 	stopped atomic.Bool
+}
+
+func completeServiceConfig(t *testing.T, configuration *config.Store) ServiceConfig {
+	t.Helper()
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers, err := externalauth.NewRegistry(
+		externalauthcas.NewFactory(),
+		externalauthoidc.NewFactory(),
+	)
+	if err != nil {
+		_ = logger.Shutdown()
+		t.Fatal(err)
+	}
+	return ServiceConfig{
+		Context:                context.Background(),
+		ConfigStore:            configuration,
+		Logger:                 logger,
+		Store:                  testStore{},
+		Cache:                  testCache{},
+		Cluster:                &trackedCluster{},
+		Mailer:                 testMailer{},
+		VFS:                    memoryvfs.New(),
+		ExternalAuthentication: providers,
+	}
 }
 
 func TestServiceRequiresConstructedCapabilities(t *testing.T) {
@@ -263,13 +292,7 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service, err := NewLegacy(ServiceConfig{
-		ConfigStore: store,
-		Store:       testStore{},
-		Cache:       testCache{},
-		Mailer:      testMailer{},
-		VFS:         memoryvfs.New(),
-	})
+	service, err := New(completeServiceConfig(t, store))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,13 +360,7 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	service, err := NewLegacy(ServiceConfig{
-		ConfigStore: configuration,
-		Store:       testStore{},
-		Cache:       testCache{},
-		Mailer:      testMailer{},
-		VFS:         memoryvfs.New(),
-	})
+	service, err := New(completeServiceConfig(t, configuration))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,46 +472,6 @@ func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
 	}
 }
 
-func TestLegacyConstructionFailureKeepsCallerLoggerOpen(t *testing.T) {
-	t.Parallel()
-
-	configuration, err := config.NewStore(
-		context.Background(),
-		config.NewMemoryStore(nil),
-		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = configuration.Close() })
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
-
-	_, err = NewLegacy(ServiceConfig{
-		ConfigStore: configuration,
-		Logger:      logger,
-		Store:       testStore{},
-		Cache:       &unhealthyCache{},
-		Cluster:     &trackedCluster{},
-		Mailer:      testMailer{},
-		VFS:         memoryvfs.New(),
-	})
-	if err == nil {
-		t.Fatal("NewLegacy() succeeded with an unhealthy cache")
-	}
-	if err := logger.Configure(mlog.Config{
-		MaxFieldBytes: 1024,
-		Targets: []mlog.Target{{
-			Name: "console", Type: "console", Level: "info", Format: "text",
-		}},
-	}); err != nil {
-		t.Fatalf("caller logger was closed after construction failure: %v", err)
-	}
-}
-
 func TestServiceOwnsClusterLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -507,14 +484,9 @@ func TestServiceOwnsClusterLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := &trackedCluster{}
-	service, err := NewLegacy(ServiceConfig{
-		ConfigStore: configuration,
-		Store:       testStore{},
-		Cache:       testCache{},
-		Cluster:     cluster,
-		Mailer:      testMailer{},
-		VFS:         memoryvfs.New(),
-	})
+	settings := completeServiceConfig(t, configuration)
+	settings.Cluster = cluster
+	service, err := New(settings)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -63,6 +63,36 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 			wantCode:   "authorization.denied",
 		},
+		{
+			name:       "invalid authentication token",
+			err:        app.NewError("authentication.invalid_token"),
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "authentication.invalid_token",
+		},
+		{
+			name:       "invalid authorization request",
+			err:        app.NewError("authorization.request.invalid"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "authorization.request.invalid",
+		},
+		{
+			name:       "fail closed audit unavailable",
+			err:        app.NewError("audit.unavailable"),
+			wantStatus: http.StatusInternalServerError,
+			wantCode:   "audit.unavailable",
+		},
+		{
+			name:       "institution conflict",
+			err:        app.NewError("institution.conflict"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "institution.conflict",
+		},
+		{
+			name:       "institution invalid",
+			err:        app.NewError("institution.invalid"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "institution.invalid",
+		},
 	}
 
 	for _, tt := range tests {

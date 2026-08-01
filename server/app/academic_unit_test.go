@@ -1,0 +1,286 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app
+
+import (
+	"context"
+	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
+)
+
+type academicUnitReadAuthorizerFunc func(
+	context.Context,
+	Invocation,
+	model.Action,
+	model.Resource,
+) error
+
+type academicUnitReadAuthorizerStub struct {
+	authorize             academicUnitReadAuthorizerFunc
+	authorizeInstallation func(context.Context, Invocation, model.Action) (model.Resource, error)
+}
+
+func (s academicUnitReadAuthorizerStub) Authorize(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+) error {
+	return s.authorize(ctx, invocation, action, resource)
+}
+
+func (s academicUnitReadAuthorizerStub) Installation(
+	context.Context,
+) (model.Resource, error) {
+	panic("unexpected Installation")
+}
+
+func (s academicUnitReadAuthorizerStub) AuthorizeInstallation(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+) (model.Resource, error) {
+	return s.authorizeInstallation(ctx, invocation, action)
+}
+
+func (f academicUnitReadAuthorizerFunc) Authorize(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+) error {
+	return f(ctx, invocation, action, resource)
+}
+
+func (f academicUnitReadAuthorizerFunc) AuthorizeInstallation(
+	context.Context, Invocation, model.Action,
+) (model.Resource, error) {
+	panic("unexpected AuthorizeInstallation")
+}
+
+func (f academicUnitReadAuthorizerFunc) Installation(
+	context.Context,
+) (model.Resource, error) {
+	panic("unexpected Installation")
+}
+
+type academicUnitReadStore struct {
+	getCalls      int
+	listCalls     int
+	searchCalls   int
+	unit          *model.AcademicUnit
+	children      []*model.AcademicUnit
+	searchResults []*model.AcademicUnit
+	lastParentID  string
+	lastQuery     string
+	lastLimit     int
+	err           error
+}
+
+func (s *academicUnitReadStore) Save(
+	context.Context, *model.AcademicUnit,
+) (*model.AcademicUnit, error) {
+	panic("unexpected Save")
+}
+func (s *academicUnitReadStore) Get(
+	context.Context, string,
+) (*model.AcademicUnit, error) {
+	s.getCalls++
+	return s.unit, s.err
+}
+func (s *academicUnitReadStore) ListChildren(
+	_ context.Context, _ string, parentID string,
+) ([]*model.AcademicUnit, error) {
+	s.listCalls++
+	s.lastParentID = parentID
+	return s.children, s.err
+}
+func (s *academicUnitReadStore) ListAncestors(
+	context.Context, string,
+) ([]*model.AcademicUnit, error) {
+	panic("unexpected ListAncestors")
+}
+func (s *academicUnitReadStore) Search(
+	_ context.Context, _ string, query string, limit int,
+) ([]*model.AcademicUnit, error) {
+	s.searchCalls++
+	s.lastQuery, s.lastLimit = query, limit
+	return s.searchResults, s.err
+}
+func (s *academicUnitReadStore) Update(
+	context.Context, *model.AcademicUnit,
+) (*model.AcademicUnit, error) {
+	panic("unexpected Update")
+}
+func (s *academicUnitReadStore) Delete(
+	context.Context, string, int64,
+) (*model.AcademicUnit, error) {
+	panic("unexpected Delete")
+}
+
+func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
+	t.Parallel()
+
+	units := &academicUnitReadStore{}
+	service := newAcademicUnitQueryService(
+		units,
+		academicUnitReadAuthorizerFunc(func(
+			context.Context, Invocation, model.Action, model.Resource,
+		) error {
+			return NewError("authorization.denied")
+		}),
+	)
+	_, err := service.Get(
+		context.Background(),
+		NewInvocation(model.Principal{}, model.RequestMetadata{}),
+		GetAcademicUnitQuery{ID: model.NewId()},
+	)
+	if !Is(err, "authorization.denied") {
+		t.Fatalf("Get() error = %v, want authorization.denied", err)
+	}
+	if units.getCalls != 0 {
+		t.Fatalf("persistence reads after denial = %d, want 0", units.getCalls)
+	}
+}
+
+func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
+	t.Parallel()
+
+	unit := &model.AcademicUnit{Id: model.NewId(), InstitutionId: model.NewId()}
+	units := &academicUnitReadStore{unit: unit}
+	var gotAction model.Action
+	var gotResource model.Resource
+	service := newAcademicUnitQueryService(
+		units,
+		academicUnitReadAuthorizerFunc(func(
+			_ context.Context, _ Invocation, action model.Action, resource model.Resource,
+		) error {
+			gotAction, gotResource = action, resource
+			return nil
+		}),
+	)
+	got, err := service.Get(
+		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.Id},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != unit {
+		t.Fatalf("Get() = %#v, want %#v", got, unit)
+	}
+	if gotAction != model.ActionAcademicUnitView ||
+		gotResource != (model.Resource{Type: model.ResourceAcademicUnit, Id: unit.Id}) {
+		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
+	}
+}
+
+func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testing.T) {
+	t.Parallel()
+
+	institution := &model.Institution{Id: model.NewId()}
+	units := &academicUnitReadStore{}
+	var gotAction model.Action
+	var gotResource model.Resource
+	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+			panic("unexpected Authorize")
+		},
+		authorizeInstallation: func(
+			_ context.Context, _ Invocation, action model.Action,
+		) (model.Resource, error) {
+			gotAction = action
+			gotResource = model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
+			return gotResource, nil
+		},
+	})
+	got, err := service.List(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Fatalf("List() = %#v, want non-nil empty result", got)
+	}
+	if gotAction != model.ActionInstitutionManage ||
+		gotResource != (model.Resource{Type: model.ResourceInstitution, Id: institution.Id}) {
+		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
+	}
+}
+
+func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
+	t.Parallel()
+
+	institution := &model.Institution{Id: model.NewId()}
+	units := &academicUnitReadStore{}
+	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+			panic("unexpected Authorize")
+		},
+		authorizeInstallation: func(
+			context.Context, Invocation, model.Action,
+		) (model.Resource, error) {
+			return model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, nil
+		},
+	})
+	got, err := service.Search(
+		context.Background(), Invocation{},
+		SearchAcademicUnitsQuery{Query: "  computing  ", Limit: 0},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || units.lastQuery != "computing" ||
+		units.lastLimit != defaultAdministrationListLimit {
+		t.Fatalf(
+			"Search() = %#v, query = %q, limit = %d",
+			got, units.lastQuery, units.lastLimit,
+		)
+	}
+}
+
+func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {
+	t.Parallel()
+
+	units := &academicUnitReadStore{}
+	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+			panic("unexpected Authorize")
+		},
+		authorizeInstallation: func(
+			context.Context, Invocation, model.Action,
+		) (model.Resource, error) {
+			return model.Resource{}, NewError("authorization.denied")
+		},
+	})
+	_, err := service.List(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
+	if !Is(err, "authorization.denied") {
+		t.Fatalf("List() error = %v, want authorization.denied", err)
+	}
+	if units.listCalls != 0 {
+		t.Fatalf("query store changed after denial: %#v", units)
+	}
+}
+
+func TestAcademicUnitSearchDenialDoesNotReadQueryStore(t *testing.T) {
+	t.Parallel()
+
+	units := &academicUnitReadStore{}
+	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
+			panic("unexpected Authorize")
+		},
+		authorizeInstallation: func(
+			context.Context, Invocation, model.Action,
+		) (model.Resource, error) {
+			return model.Resource{}, NewError("authorization.denied")
+		},
+	})
+	_, err := service.Search(context.Background(), Invocation{}, SearchAcademicUnitsQuery{})
+	if !Is(err, "authorization.denied") {
+		t.Fatalf("Search() error = %v, want authorization.denied", err)
+	}
+	if units.searchCalls != 0 {
+		t.Fatalf("query store called after denial: %#v", units)
+	}
+}

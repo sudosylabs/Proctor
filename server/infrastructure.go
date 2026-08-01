@@ -88,12 +88,17 @@ func assembleRuntime(
 	cfg := applicationPlatform.Config()
 	buildInfo := overrides.BuildInfo
 	if buildInfo == (api.BuildInfo{}) {
-		buildInfo = app.CurrentBuildInfo()
+		current := app.CurrentBuildInfo()
+		buildInfo = api.BuildInfo{
+			Version: current.Version, Commit: current.Commit,
+			BuildTime: current.BuildTime, GoVersion: current.GoVersion,
+		}
 	}
 	httpAPI, err := api.New(api.Options{
 		Logger:                  applicationPlatform.Log(),
 		Health:                  readiness,
 		Application:             application,
+		AcademicUnits:           application,
 		BuildInfo:               buildInfo,
 		PublicURL:               cfg.Server.PublicURL,
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,

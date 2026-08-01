@@ -459,16 +459,41 @@ func writeApplicationError(
 	writer http.ResponseWriter,
 	request *http.Request,
 	logger *mlog.Logger,
-	appErr *model.AppError,
+	appErr error,
 ) {
-	if appErr.HTTPStatus() >= http.StatusInternalServerError {
+	if applicationErrorRequiresLogging(appErr) {
 		logger.ErrorContext(
 			request.Context(),
 			"application request failed",
 			mlog.String("request_id", RequestID(request.Context())),
-			mlog.String("error_id", appErr.ErrorCode()),
+			mlog.String("error_id", applicationErrorCode(appErr)),
 			mlog.Err(appErr),
 		)
 	}
 	WriteError(writer, request, appErr)
+}
+
+func applicationErrorCode(err error) string {
+	var failure applicationFailure
+	if errors.As(err, &failure) {
+		return failure.Code()
+	}
+	var legacy legacyApplicationError
+	if errors.As(err, &legacy) {
+		return legacy.ErrorCode()
+	}
+	return "internal"
+}
+
+func applicationErrorRequiresLogging(err error) bool {
+	var failure applicationFailure
+	if errors.As(err, &failure) {
+		mapping, ok := applicationErrorMappings[failure.Code()]
+		return !ok || mapping.status >= http.StatusInternalServerError
+	}
+	var legacy legacyApplicationError
+	if errors.As(err, &legacy) {
+		return legacy.HTTPStatus() >= http.StatusInternalServerError
+	}
+	return true
 }

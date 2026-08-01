@@ -39,9 +39,10 @@ readiness, plus the narrow operator-command capabilities behind the CLI
 (`ValidateConfig`, `MigrateUp`, `MigrateStatus`, and `CurrentBuildInfo`). The
 CLI is a thin caller of this root API, and the shared `testlib` constructs the
 same root graph through the typed `server.NewForTesting` capability overrides.
-The old `app.NewServer`/`platform.NewLegacy` compatibility path has no
-remaining production callers and is removed by the debt-closure migration.
-Application services are narrowed away from the platform locator
+The obsolete `app.NewServer` composition path was removed after the CLI and
+`testlib` moved to the root graph. Platform construction now requires every
+concrete capability to be selected explicitly by the module-root composition
+package. Application services are narrowed away from the platform locator
 capability-by-capability; ticket #41 removes the locator after those seams are
 available.
 
@@ -67,6 +68,9 @@ The flat `model` package now establishes the durable model contract:
 
 The server also includes:
 
+- transport-neutral Academic Unit get/list/search queries using immutable
+  application invocations, a focused query service, application-owned
+  authorization, and HTTP-owned response DTOs;
 - PostgreSQL connection and schema management with explicit migrations;
 - Mattermost-shaped per-model stores for the complete structural academic
   hierarchy and the first identity/session slice;

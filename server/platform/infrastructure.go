@@ -19,8 +19,6 @@ import (
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	smtpmail "github.com/sudosylabs/proctor/packages/mail/smtp"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
-	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/config"
 )
 
@@ -61,17 +59,6 @@ type Mailer interface {
 type cacheAdapter struct {
 	store  cachepkg.Store[[]byte]
 	client rueidis.Client
-}
-
-func newCache(settings config.Cache) (*cacheAdapter, error) {
-	switch settings.Backend {
-	case "memory":
-		return newMemoryCache()
-	case "redis":
-		return newRedisCache(settings)
-	default:
-		return nil, fmt.Errorf("unsupported cache backend %q", settings.Backend)
-	}
 }
 
 // NewMemoryCache constructs the platform cache adapter backed by process-local
@@ -198,13 +185,6 @@ type mailAdapter struct {
 	sender  mailpkg.Sender
 }
 
-func newMailer(settings config.Mail) (*mailAdapter, error) {
-	if !settings.Enabled {
-		return newDisabledMailer(settings), nil
-	}
-	return newSMTPMailer(settings)
-}
-
 // NewDisabledMailer constructs an explicitly disabled mail capability.
 func NewDisabledMailer(settings config.Mail) Mailer {
 	return newDisabledMailer(settings)
@@ -283,26 +263,6 @@ func (m *mailAdapter) Test(ctx context.Context) error {
 
 func (m *mailAdapter) Close() error {
 	return nil
-}
-
-func newVFS(settings config.VFS) (vfspkg.FileSystem, error) {
-	switch settings.Backend {
-	case "local":
-		return localvfs.New(settings.Local.Root)
-	case "s3":
-		return s3vfs.New(s3vfs.Config{
-			Endpoint:     settings.S3.Endpoint,
-			AccessKey:    settings.S3.AccessKey,
-			SecretKey:    settings.S3.SecretKey,
-			SessionToken: settings.S3.SessionToken,
-			Bucket:       settings.S3.Bucket,
-			Prefix:       settings.S3.Prefix,
-			Region:       settings.S3.Region,
-			Secure:       settings.S3.Secure,
-		})
-	default:
-		return nil, fmt.Errorf("unsupported VFS backend %q", settings.Backend)
-	}
 }
 
 func checkVFS(ctx context.Context, filesystem vfspkg.FileSystem) error {

@@ -30,12 +30,19 @@ type applicationErrorMapping struct {
 // migrate off model.AppError. An unmapped code fails safe as a generic 500.
 var applicationErrorMappings = map[string]applicationErrorMapping{
 	"authentication.invalid_credentials": {status: http.StatusUnauthorized},
+	"authentication.invalid_token":       {status: http.StatusUnauthorized},
 	"authentication.required":            {status: http.StatusUnauthorized},
 	"authorization.denied":               {status: http.StatusForbidden},
+	"authorization.request.invalid":      {status: http.StatusBadRequest},
+	"authorization.unavailable":          {status: http.StatusInternalServerError},
+	"audit.unavailable":                  {status: http.StatusInternalServerError},
+	"administration.unavailable":         {status: http.StatusInternalServerError},
 	"academic_unit.conflict":             {status: http.StatusConflict},
 	"academic_unit.invalid":              {status: http.StatusBadRequest},
 	"academic_unit.not_found":            {status: http.StatusNotFound},
 	"class.enrollment_conflict":          {status: http.StatusConflict},
+	"institution.conflict":               {status: http.StatusConflict},
+	"institution.invalid":                {status: http.StatusBadRequest},
 	"request.invalid":                    {status: http.StatusBadRequest},
 	"resource.not_found":                 {status: http.StatusNotFound},
 }

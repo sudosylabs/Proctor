@@ -12,6 +12,7 @@ import (
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
 	"github.com/sudosylabs/proctor/server/config"
 )
 
@@ -20,7 +21,7 @@ func TestMemoryCacheAdapterPortableSemantics(t *testing.T) {
 
 	settings := config.Default().Cache
 	settings.Backend = "memory"
-	cache, err := newCache(settings)
+	cache, err := NewMemoryCache()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,10 +70,7 @@ func TestDisabledMailerIsExplicitlyUnavailable(t *testing.T) {
 
 	settings := config.Default().Mail
 	settings.Enabled = false
-	mailer, err := newMailer(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	mailer := NewDisabledMailer(settings)
 	if mailer.Enabled() {
 		t.Fatal("disabled mailer reported itself enabled")
 	}
@@ -93,7 +91,7 @@ func TestLocalVFSAdapterIsUsableAndHealthy(t *testing.T) {
 	settings := config.Default().VFS
 	settings.Backend = "local"
 	settings.Local.Root = t.TempDir()
-	filesystem, err := newVFS(settings)
+	filesystem, err := localvfs.New(settings.Local.Root)
 	if err != nil {
 		t.Fatal(err)
 	}

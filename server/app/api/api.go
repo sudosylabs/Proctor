@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -110,6 +111,7 @@ type Options struct {
 	Logger                  *mlog.Logger
 	Health                  Health
 	Application             Application
+	AcademicUnits           AcademicUnitReads
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -202,12 +204,15 @@ type Users interface {
 	RevokeUserSession(context.Context, model.Principal, model.RequestMetadata, string, string) *model.AppError
 }
 
+type AcademicUnitReads interface {
+	GetAcademicUnit(context.Context, application.Invocation, application.GetAcademicUnitQuery) (*model.AcademicUnit, error)
+	ListAcademicUnits(context.Context, application.Invocation, application.ListAcademicUnitsQuery) ([]*model.AcademicUnit, error)
+	SearchAcademicUnits(context.Context, application.Invocation, application.SearchAcademicUnitsQuery) ([]*model.AcademicUnit, error)
+}
+
 type AcademicAdministration interface {
 	GetInstitution(context.Context, model.Principal, model.RequestMetadata) (*model.Institution, *model.AppError)
 	PatchInstitution(context.Context, model.Principal, model.RequestMetadata, *model.InstitutionPatch) (*model.Institution, *model.AppError)
-	GetAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string) (*model.AcademicUnit, *model.AppError)
-	ListAcademicUnits(context.Context, model.Principal, model.RequestMetadata, string) ([]*model.AcademicUnit, *model.AppError)
-	SearchAcademicUnits(context.Context, model.Principal, model.RequestMetadata, string, int) ([]*model.AcademicUnit, *model.AppError)
 	CreateAcademicUnit(context.Context, model.Principal, model.RequestMetadata, *model.AcademicUnit) (*model.AcademicUnit, *model.AppError)
 	PatchAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string, *model.AcademicUnitPatch) (*model.AcademicUnit, *model.AppError)
 	ArchiveAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
@@ -414,6 +419,7 @@ type API struct {
 	router                  *mux.Router
 	BaseRoutes              *Routes
 	application             Application
+	academicUnits           AcademicUnitReads
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -436,6 +442,9 @@ func New(options Options) (*API, error) {
 	if options.Application == nil {
 		return nil, errors.New("application is required")
 	}
+	if options.AcademicUnits == nil {
+		return nil, errors.New("academic unit reads are required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -452,6 +461,7 @@ func New(options Options) (*API, error) {
 
 	api := &API{
 		application:             options.Application,
+		academicUnits:           options.AcademicUnits,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -483,7 +493,7 @@ func New(options Options) (*API, error) {
 		api.InitRoles,
 		api.InitRoleBindings,
 		api.InitInstitution,
-		api.InitAcademicUnits,
+		api.registerAcademicUnitRoutes,
 		api.InitProgrammes,
 		api.InitProgrammeLevels,
 		api.InitAcademicPeriods,

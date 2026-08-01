@@ -5,8 +5,6 @@ package app
 
 import (
 	"runtime"
-
-	"github.com/sudosylabs/proctor/server/app/api"
 )
 
 var (
@@ -15,8 +13,15 @@ var (
 	BuildTime = "unknown"
 )
 
-func CurrentBuildInfo() api.BuildInfo {
-	return api.BuildInfo{
+type BuildInfo struct {
+	Version   string
+	Commit    string
+	BuildTime string
+	GoVersion string
+}
+
+func CurrentBuildInfo() BuildInfo {
+	return BuildInfo{
 		Version:   Version,
 		Commit:    Commit,
 		BuildTime: BuildTime,

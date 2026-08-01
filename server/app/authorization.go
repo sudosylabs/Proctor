@@ -175,6 +175,19 @@ func (s *AuthorizationService) Authorize(
 	if s.consumePreauthorization(ctx, principal, action, resource, metadata) {
 		return nil
 	}
+	return s.authorizeCurrentState(ctx, principal, action, resource, metadata)
+}
+
+// authorizeCurrentState performs and audits a fresh authorization decision.
+// Migrated use cases call this path so they cannot consume a transport-issued
+// preauthorization receipt.
+func (s *AuthorizationService) authorizeCurrentState(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	metadata model.RequestMetadata,
+) *model.AppError {
 	_, allowed, appErr := s.preauthorize(ctx, principal, action, resource, metadata)
 	if appErr != nil {
 		return appErr

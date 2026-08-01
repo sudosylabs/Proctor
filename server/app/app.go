@@ -1,7 +1,7 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package app owns Proctor's process and application flow.
+// Package app owns Proctor's application use cases and orchestration.
 package app
 
 import (
@@ -23,6 +23,7 @@ type App struct {
 	externalAuthentication *ExternalAuthenticationService
 	mfa                    *MFAService
 	authorization          *AuthorizationService
+	academicUnits          *academicUnitQueryService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -46,6 +47,13 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		audit,
 	)
 	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
+	academicUnits := newAcademicUnitQueryService(
+		applicationPlatform.Store().AcademicUnit(),
+		academicUnitReadAuthorization{
+			authorization: authorization,
+			institutions:  applicationPlatform.Store().Institution(),
+		},
+	)
 	realtime, err := newRealtimeService(applicationPlatform, authentication)
 	if err != nil {
 		return nil, err
@@ -57,7 +65,8 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
-		authorization: authorization, audit: audit, realtime: realtime,
+		authorization: authorization, academicUnits: academicUnits,
+		audit: audit, realtime: realtime,
 	}, nil
 }
 
