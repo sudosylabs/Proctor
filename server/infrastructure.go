@@ -36,10 +36,32 @@ type runtimeInfrastructure struct {
 	externalAuthentication *externalauth.Registry
 }
 
+// assembledRuntime retains the assembled graph handles beside the lifecycle
+// components so test construction can inspect the same graph production runs.
+type assembledRuntime struct {
+	components  runtimeComponents
+	platform    *platform.Service
+	application *app.App
+	transport   *api.API
+	readiness   *app.Health
+}
+
 func constructRuntime(ctx context.Context, configPath string) (runtimeComponents, error) {
-	infrastructure, err := openRuntimeInfrastructure(ctx, configPath)
+	assembled, err := assembleRuntime(ctx, configPath, TestingOverrides{})
 	if err != nil {
 		return runtimeComponents{}, err
+	}
+	return assembled.components, nil
+}
+
+func assembleRuntime(
+	ctx context.Context,
+	configPath string,
+	overrides TestingOverrides,
+) (*assembledRuntime, error) {
+	infrastructure, err := openRuntimeInfrastructure(ctx, configPath, overrides)
+	if err != nil {
+		return nil, err
 	}
 	applicationPlatform, err := platform.New(platform.ServiceConfig{
 		Context:                ctx,
@@ -53,52 +75,63 @@ func constructRuntime(ctx context.Context, configPath string) (runtimeComponents
 		ExternalAuthentication: infrastructure.externalAuthentication,
 	})
 	if err != nil {
-		return runtimeComponents{}, err
+		return nil, err
 	}
 	application, err := app.New(applicationPlatform)
 	if err != nil {
-		return runtimeComponents{}, errors.Join(
+		return nil, errors.Join(
 			fmt.Errorf("construct application: %w", err),
 			applicationPlatform.Close(),
 		)
 	}
 	readiness := &app.Health{}
 	cfg := applicationPlatform.Config()
+	buildInfo := overrides.BuildInfo
+	if buildInfo == (api.BuildInfo{}) {
+		buildInfo = app.CurrentBuildInfo()
+	}
 	httpAPI, err := api.New(api.Options{
 		Logger:                  applicationPlatform.Log(),
 		Health:                  readiness,
 		Application:             application,
-		BuildInfo:               app.CurrentBuildInfo(),
+		BuildInfo:               buildInfo,
 		PublicURL:               cfg.Server.PublicURL,
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,
 		RecentAuthenticationTTL: cfg.Authentication.RecentAuthenticationTTL.Duration,
 		NodeID:                  applicationPlatform.Cluster().NodeID(),
 	})
 	if err != nil {
-		return runtimeComponents{}, errors.Join(
+		return nil, errors.Join(
 			fmt.Errorf("construct HTTP API: %w", err),
 			applicationPlatform.Close(),
 		)
 	}
 	if err := application.AttachRealtimeSink(httpAPI); err != nil {
-		return runtimeComponents{}, errors.Join(
+		return nil, errors.Join(
 			fmt.Errorf("attach realtime sink: %w", err),
 			httpAPI.Close(),
 			applicationPlatform.Close(),
 		)
 	}
-	return runtimeComponents{
-		platform:  applicationPlatform,
-		transport: httpAPI,
-		readiness: readiness,
-		listen:    net.Listen,
-		newHTTP:   newHTTPServer,
+	return &assembledRuntime{
+		components: runtimeComponents{
+			platform:  applicationPlatform,
+			transport: httpAPI,
+			readiness: readiness,
+			listen:    net.Listen,
+			newHTTP:   newHTTPServer,
+		},
+		platform:    applicationPlatform,
+		application: application,
+		transport:   httpAPI,
+		readiness:   readiness,
 	}, nil
 }
 
 func openRuntimeInfrastructure(
 	ctx context.Context,
 	configPath string,
+	overrides TestingOverrides,
 ) (result runtimeInfrastructure, resultErr error) {
 	defer func() {
 		if resultErr != nil {
@@ -106,41 +139,77 @@ func openRuntimeInfrastructure(
 		}
 	}()
 
-	configuration, err := openConfiguration(ctx, configPath)
-	if err != nil {
-		return result, err
+	if overrides.Configuration != nil {
+		result.configuration = overrides.Configuration
+	} else {
+		configuration, err := openConfiguration(ctx, configPath)
+		if err != nil {
+			return result, err
+		}
+		result.configuration = configuration
 	}
-	result.configuration = configuration
 
-	result.logger, err = mlog.New()
-	if err != nil {
-		return result, fmt.Errorf("create logger: %w", err)
+	if overrides.Logger != nil {
+		result.logger = overrides.Logger
+	} else {
+		logger, err := mlog.New()
+		if err != nil {
+			return result, fmt.Errorf("create logger: %w", err)
+		}
+		result.logger = logger
 	}
-	cfg := configuration.Get()
-	result.persistence, err = sqlstore.New(ctx, sqlstore.SettingsFromConfig(cfg.Database))
-	if err != nil {
-		return result, fmt.Errorf("open database: %w", err)
+
+	cfg := result.configuration.Get()
+	if overrides.Persistence != nil {
+		result.persistence = overrides.Persistence
+	} else {
+		persistence, err := sqlstore.New(ctx, sqlstore.SettingsFromConfig(cfg.Database))
+		if err != nil {
+			return result, fmt.Errorf("open database: %w", err)
+		}
+		result.persistence = persistence
 	}
-	result.cache, err = newCache(cfg.Cache)
-	if err != nil {
-		return result, fmt.Errorf("open cache: %w", err)
+	if overrides.Cache != nil {
+		result.cache = overrides.Cache
+	} else {
+		cache, err := newCache(cfg.Cache)
+		if err != nil {
+			return result, fmt.Errorf("open cache: %w", err)
+		}
+		result.cache = cache
 	}
-	result.mailer, err = newMailer(cfg.Mail)
-	if err != nil {
-		return result, fmt.Errorf("open mail transport: %w", err)
+	if overrides.Mailer != nil {
+		result.mailer = overrides.Mailer
+	} else {
+		mailer, err := newMailer(cfg.Mail)
+		if err != nil {
+			return result, fmt.Errorf("open mail transport: %w", err)
+		}
+		result.mailer = mailer
 	}
-	result.filesystem, err = newVFS(cfg.VFS)
-	if err != nil {
-		return result, fmt.Errorf("open VFS: %w", err)
+	if overrides.Filesystem != nil {
+		result.filesystem = overrides.Filesystem
+	} else {
+		filesystem, err := newVFS(cfg.VFS)
+		if err != nil {
+			return result, fmt.Errorf("open VFS: %w", err)
+		}
+		result.filesystem = filesystem
 	}
-	result.cluster, err = newCluster(cfg.Cluster, result.logger)
-	if err != nil {
-		return result, fmt.Errorf("open cluster transport: %w", err)
+	if overrides.Cluster != nil {
+		result.cluster = overrides.Cluster
+	} else {
+		cluster, err := newCluster(cfg.Cluster, result.logger)
+		if err != nil {
+			return result, fmt.Errorf("open cluster transport: %w", err)
+		}
+		result.cluster = cluster
 	}
-	result.externalAuthentication, err = newExternalAuthenticationRegistry()
+	externalAuthentication, err := newExternalAuthenticationRegistry()
 	if err != nil {
 		return result, fmt.Errorf("construct external authentication registry: %w", err)
 	}
+	result.externalAuthentication = externalAuthentication
 	return result, nil
 }
 

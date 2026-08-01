@@ -34,7 +34,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
 		t,
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	if err := helper.Platform.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestWebSocketIntegration(t *testing.T) {
 
 	password := "correct horse battery staple"
 	bootstrap := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/bootstrap",
 		map[string]any{
@@ -66,14 +66,14 @@ func TestWebSocketIntegration(t *testing.T) {
 	}
 	login := loginIntegrationUser(
 		t,
-		helper.Server.Handler(),
+		helper.Handler(),
 		installation.Administrator.Username,
 		password,
 		model.SessionClientCLI,
 		"websocket-test",
 	)
 
-	server := httptest.NewServer(helper.Server.Handler())
+	server := httptest.NewServer(helper.Handler())
 	t.Cleanup(server.Close)
 	socketURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/websocket"
 	headers := http.Header{"Authorization": []string{"Bearer " + login.Tokens.AccessToken}}
@@ -272,12 +272,12 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	nodeA := testlib.Setup(
 		t,
 		nodeConfig("node-a"),
-		testlib.WithServerOptions(app.WithStore(persistenceA)),
+		testlib.WithStore(persistenceA),
 	)
 	nodeB := testlib.Setup(
 		t,
 		nodeConfig("node-b"),
-		testlib.WithServerOptions(app.WithStore(persistenceB)),
+		testlib.WithStore(persistenceB),
 	)
 	if err := nodeA.Platform.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 
 	password := "correct horse battery staple"
 	bootstrap := performJSONRequest(
-		nodeA.Server.Handler(),
+		nodeA.Handler(),
 		http.MethodPost,
 		"/api/v1/bootstrap",
 		map[string]any{
@@ -312,14 +312,14 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	}
 	login := loginIntegrationUser(
 		t,
-		nodeA.Server.Handler(),
+		nodeA.Handler(),
 		installation.Administrator.Username,
 		password,
 		model.SessionClientCLI,
 		"two-node-websocket",
 	)
 
-	serverB := httptest.NewServer(nodeB.Server.Handler())
+	serverB := httptest.NewServer(nodeB.Handler())
 	t.Cleanup(serverB.Close)
 	socketURL := "ws" + strings.TrimPrefix(serverB.URL, "http") + "/api/v1/websocket"
 	headers := http.Header{"Authorization": []string{"Bearer " + login.Tokens.AccessToken}}

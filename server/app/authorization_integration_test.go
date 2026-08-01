@@ -12,7 +12,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -26,7 +25,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
 		t,
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	ctx := context.Background()
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
@@ -44,12 +43,12 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	login := loginIntegrationUser(
-		t, helper.Server.Handler(), user.Username, password,
+		t, helper.Handler(), user.Username, password,
 		model.SessionClientCLI, "audit-cli",
 	)
 
 	denied := performJSONRequest(
-		helper.Server.Handler(), http.MethodGet, "/api/v1/audits", nil,
+		helper.Handler(), http.MethodGet, "/api/v1/audits", nil,
 		login.Tokens.AccessToken,
 	)
 	if denied.Code != http.StatusForbidden {
@@ -71,7 +70,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	}
 
 	allowed := performJSONRequest(
-		helper.Server.Handler(), http.MethodGet, "/api/v1/audits?limit=20", nil,
+		helper.Handler(), http.MethodGet, "/api/v1/audits?limit=20", nil,
 		login.Tokens.AccessToken,
 	)
 	if allowed.Code != http.StatusOK {
@@ -110,7 +109,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
 		t,
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	ctx := context.Background()
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
@@ -168,7 +167,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	login := loginIntegrationUser(
-		t, helper.Server.Handler(), user.Username, password,
+		t, helper.Handler(), user.Username, password,
 		model.SessionClientCLI, "hierarchy-device",
 	)
 	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
@@ -223,7 +222,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
 		t,
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	ctx := context.Background()
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
@@ -248,7 +247,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	login := loginIntegrationUser(
-		t, helper.Server.Handler(), viewer.Username, password,
+		t, helper.Handler(), viewer.Username, password,
 		model.SessionClientCLI, "directory-device",
 	)
 	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)

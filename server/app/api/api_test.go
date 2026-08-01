@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -32,7 +31,7 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
-	routes := helper.Server.API().Routes()
+	routes := helper.API.Routes()
 	if len(routes) != 87 {
 		t.Fatalf("route count = %d, want 87", len(routes))
 	}
@@ -98,7 +97,7 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 		t.Fatalf("missing routes = %#v", expected)
 	}
 	routes[0].Path = "/mutated"
-	if helper.Server.API().Routes()[0].Path == "/mutated" {
+	if helper.API.Routes()[0].Path == "/mutated" {
 		t.Fatal("Routes exposed mutable internal state")
 	}
 }
@@ -109,9 +108,9 @@ func TestHealthVersionAndCommonHeaders(t *testing.T) {
 	buildInfo := api.BuildInfo{
 		Version: "test-version", Commit: "test-commit", BuildTime: "test-time", GoVersion: "test-go",
 	}
-	helper := testlib.Setup(t, testlib.WithServerOptions(app.WithBuildInfo(buildInfo)))
+	helper := testlib.Setup(t, testlib.WithBuildInfo(buildInfo))
 
-	liveness := performRequest(helper.Server.Handler(), http.MethodGet, "/health/live", "desktop-client-1")
+	liveness := performRequest(helper.Handler(), http.MethodGet, "/health/live", "desktop-client-1")
 	if liveness.Code != http.StatusOK {
 		t.Fatalf("liveness status = %d: %s", liveness.Code, liveness.Body.String())
 	}
@@ -133,17 +132,17 @@ func TestHealthVersionAndCommonHeaders(t *testing.T) {
 		t.Fatalf("liveness response = %#v", health)
 	}
 
-	readiness := performRequest(helper.Server.Handler(), http.MethodGet, "/health/ready", "")
+	readiness := performRequest(helper.Handler(), http.MethodGet, "/health/ready", "")
 	if readiness.Code != http.StatusServiceUnavailable {
 		t.Fatalf("not-ready status = %d", readiness.Code)
 	}
-	helper.Server.Health().SetReady(true)
-	readiness = performRequest(helper.Server.Handler(), http.MethodGet, "/health/ready", "")
+	helper.Health.SetReady(true)
+	readiness = performRequest(helper.Handler(), http.MethodGet, "/health/ready", "")
 	if readiness.Code != http.StatusOK {
 		t.Fatalf("ready status = %d", readiness.Code)
 	}
 
-	version := performRequest(helper.Server.Handler(), http.MethodGet, "/api/v1/system/version", "")
+	version := performRequest(helper.Handler(), http.MethodGet, "/api/v1/system/version", "")
 	var got api.BuildInfo
 	if err := json.Unmarshal(version.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -182,7 +181,7 @@ func TestRoutingFailuresUseProblemDetails(t *testing.T) {
 	}
 	for _, test := range tests {
 		response := performRequest(
-			helper.Server.Handler(),
+			helper.Handler(),
 			test.method,
 			test.path,
 			"compatibility-request",
@@ -282,7 +281,7 @@ func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testi
 				test.configure(request)
 			}
 			response := httptest.NewRecorder()
-			helper.Server.Handler().ServeHTTP(response, request)
+			helper.Handler().ServeHTTP(response, request)
 			if response.Code != http.StatusUnauthorized {
 				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 			}
@@ -321,7 +320,7 @@ func TestAuthenticationRequestsUseStrictJSON(t *testing.T) {
 		)
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
-		helper.Server.Handler().ServeHTTP(response, request)
+		helper.Handler().ServeHTTP(response, request)
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("body %q: status = %d, response = %s", body, response.Code, response.Body.String())
 		}

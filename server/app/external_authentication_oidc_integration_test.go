@@ -23,7 +23,6 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	"golang.org/x/oauth2"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -143,7 +142,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 					},
 				}}
 		}),
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	if _, err := persistence.Institution().Save(
 		context.Background(),
@@ -156,7 +155,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	}
 
 	begin := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/auth/providers/"+providerID+
 			"/login?client_type=desktop&return_to=%2Foidc-complete",
@@ -198,7 +197,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	)
 	callbackRequest.AddCookie(bindingCookie)
 	callback := httptest.NewRecorder()
-	helper.Server.Handler().ServeHTTP(callback, callbackRequest)
+	helper.Handler().ServeHTTP(callback, callbackRequest)
 	if callback.Code != http.StatusSeeOther ||
 		callback.Header().Get("Location") != "/oidc-complete" {
 		t.Fatalf(
@@ -239,7 +238,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	}
 
 	deniedBegin := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/auth/providers/"+providerID+
 			"/login?client_type=desktop",
@@ -276,7 +275,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	)
 	deniedCallbackRequest.AddCookie(deniedBindingCookie)
 	deniedCallback := httptest.NewRecorder()
-	helper.Server.Handler().ServeHTTP(
+	helper.Handler().ServeHTTP(
 		deniedCallback,
 		deniedCallbackRequest,
 	)

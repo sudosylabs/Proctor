@@ -35,11 +35,15 @@ never started. Moving that background lifecycle into explicit transport start
 and stop methods is part of the subsequent migration.
 
 The facade intentionally exposes only construction, start, close, and
-readiness. The old `app.NewServer` path temporarily uses the named
-`platform.NewLegacy` compatibility constructor until the CLI and shared
-`testlib` move to this root graph in migration tickets #07 and #08. Application
-services are narrowed away from the platform locator capability-by-capability;
-ticket #41 removes the locator after those seams are available.
+readiness, plus the narrow operator-command capabilities behind the CLI
+(`ValidateConfig`, `MigrateUp`, `MigrateStatus`, and `CurrentBuildInfo`). The
+CLI is a thin caller of this root API, and the shared `testlib` constructs the
+same root graph through the typed `server.NewForTesting` capability overrides.
+The old `app.NewServer`/`platform.NewLegacy` compatibility path has no
+remaining production callers and is removed by the debt-closure migration.
+Application services are narrowed away from the platform locator
+capability-by-capability; ticket #41 removes the locator after those seams are
+available.
 
 The flat `model` package now establishes the durable model contract:
 

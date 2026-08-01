@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -88,7 +87,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 				},
 			}}
 		}),
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	institution, err := persistence.Institution().Save(
 		context.Background(),
@@ -102,7 +101,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 
 	providers := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/auth/providers",
 		nil,
@@ -118,7 +117,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 
 	begin := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/auth/providers/"+providerID+
 			"/login?client_type=desktop&device_id=electron-1&return_to=%2Fafter-login",
@@ -156,7 +155,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	callbackRequest.RemoteAddr = "127.0.0.1:4321"
 	callbackRequest.AddCookie(bindingCookie)
 	callback := httptest.NewRecorder()
-	helper.Server.Handler().ServeHTTP(callback, callbackRequest)
+	helper.Handler().ServeHTTP(callback, callbackRequest)
 	if callback.Code != http.StatusSeeOther ||
 		callback.Header().Get("Location") != "/after-login" ||
 		validatedService != serviceURL {
@@ -225,7 +224,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	meRequest := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	meRequest.AddCookie(accessCookie)
 	me := httptest.NewRecorder()
-	helper.Server.Handler().ServeHTTP(me, meRequest)
+	helper.Handler().ServeHTTP(me, meRequest)
 	if me.Code != http.StatusOK {
 		t.Fatalf("cookie-authenticated current user = %d: %s", me.Code, me.Body.String())
 	}
@@ -233,7 +232,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	replayRequest := httptest.NewRequest(http.MethodGet, callbackPath, nil)
 	replayRequest.AddCookie(bindingCookie)
 	replay := httptest.NewRecorder()
-	helper.Server.Handler().ServeHTTP(replay, replayRequest)
+	helper.Handler().ServeHTTP(replay, replayRequest)
 	if replay.Code != http.StatusUnauthorized {
 		t.Fatalf("callback replay status = %d: %s", replay.Code, replay.Body.String())
 	}

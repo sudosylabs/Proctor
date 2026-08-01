@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -26,8 +25,8 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
-	helper := testlib.Setup(t, testlib.WithServerOptions(app.WithStore(persistence)))
-	handler := helper.Server.Handler()
+	helper := testlib.Setup(t, testlib.WithStore(persistence))
+	handler := helper.Handler()
 	password := "correct horse battery staple"
 
 	bootstrap := performJSONRequest(handler, http.MethodPost, "/api/v1/bootstrap", map[string]any{

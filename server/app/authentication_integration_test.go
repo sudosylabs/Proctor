@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -33,7 +32,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
 		t,
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	institution, err := persistence.Institution().Save(
 		context.Background(),
@@ -106,7 +105,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	login := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -120,7 +119,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	}
 	session := decodeAuthenticationResponse(t, login)
 	create := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/tokens",
 		map[string]any{
@@ -144,7 +143,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatalf("create PAT response = %#v", created)
 	}
 	me := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -154,7 +153,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatalf("PAT current-user status = %d: %s", me.Code, me.Body.String())
 	}
 	descendant := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/academic-units/"+childUnit.Id,
 		nil,
@@ -168,7 +167,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		)
 	}
 	outsideConstraint := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/academic-units/"+siblingUnit.Id,
 		nil,
@@ -182,7 +181,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		)
 	}
 	outsideScope := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/institution",
 		nil,
@@ -196,7 +195,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		)
 	}
 	sessionOnly := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/logout",
 		nil,
@@ -206,7 +205,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatalf("PAT session-only status = %d: %s", sessionOnly.Code, sessionOnly.Body.String())
 	}
 	list := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me/tokens",
 		nil,
@@ -233,7 +232,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatal("personal access token credential or hash leaked into audit events")
 	}
 	disable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/tokens/"+created.Token.Id+"/disable",
 		nil,
@@ -243,7 +242,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatalf("disable PAT status = %d: %s", disable.Code, disable.Body.String())
 	}
 	whileDisabled := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -257,7 +256,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		)
 	}
 	enable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/tokens/"+created.Token.Id+"/enable",
 		nil,
@@ -267,7 +266,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatalf("enable PAT status = %d: %s", enable.Code, enable.Body.String())
 	}
 	afterEnable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -281,7 +280,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		)
 	}
 	revoke := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodDelete,
 		"/api/v1/users/me/tokens/"+created.Token.Id,
 		nil,
@@ -291,7 +290,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatalf("revoke PAT status = %d: %s", revoke.Code, revoke.Body.String())
 	}
 	afterRevoke := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -314,7 +313,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 			cfg.Authentication.LoginRateLimit.MaximumAttempts = 2
 			cfg.Authentication.LoginRateLimit.MaximumSourceAttempts = 100
 		}),
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 
 	password := "correct horse battery staple"
@@ -328,7 +327,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 
 	wrong := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -342,7 +341,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 
 	login := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -365,7 +364,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 
 	me := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -376,7 +375,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 
 	refresh := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/refresh",
 		nil,
@@ -391,7 +390,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatal("refresh did not rotate both credentials")
 	}
 	oldAccess := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -402,7 +401,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 
 	replay := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/refresh",
 		nil,
@@ -412,7 +411,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("refresh replay status = %d: %s", replay.Code, replay.Body.String())
 	}
 	revokedByReplay := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -423,7 +422,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 
 	loginAgain := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -437,7 +436,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 	third := decodeAuthenticationResponse(t, loginAgain)
 	logout := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/logout",
 		nil,
@@ -447,7 +446,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("logout status = %d: %s", logout.Code, logout.Body.String())
 	}
 	afterLogout := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -458,7 +457,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 
 	loginBeforeDisable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -484,7 +483,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	refreshAfterDisable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/refresh",
 		nil,
@@ -494,7 +493,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("disabled-user refresh status = %d", refreshAfterDisable.Code)
 	}
 	cachedAccessAfterDisable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -506,7 +505,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 
 	for attempt := 1; attempt <= 3; attempt++ {
 		rateLimited := performJSONRequest(
-			helper.Server.Handler(),
+			helper.Handler(),
 			http.MethodPost,
 			"/api/v1/auth/login",
 			map[string]any{
@@ -559,7 +558,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 		testlib.WithConfig(func(cfg *config.Config) {
 			cfg.Server.PublicURL = "https://proctor.example.edu"
 		}),
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
@@ -571,7 +570,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	}
 
 	login := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -600,14 +599,14 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	}
 
 	me := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, loginCookies, "", "",
 	)
 	if me.Code != http.StatusOK {
 		t.Fatalf("browser current-user status = %d: %s", me.Code, me.Body.String())
 	}
 	ambiguous := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, loginCookies, "another-access-token", "",
 	)
 	if ambiguous.Code != http.StatusBadRequest {
@@ -615,7 +614,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	}
 
 	missingLogoutCSRF := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/logout",
+		helper.Handler(), http.MethodPost, "/api/v1/auth/logout",
 		nil, loginCookies, "", "",
 	)
 	if missingLogoutCSRF.Code != http.StatusForbidden {
@@ -627,7 +626,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	}
 	assertProblemCode(t, missingLogoutCSRF, "authentication.csrf.invalid")
 	missingRefreshCSRF := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/refresh",
+		helper.Handler(), http.MethodPost, "/api/v1/auth/refresh",
 		nil, loginCookies, "", "",
 	)
 	if missingRefreshCSRF.Code != http.StatusForbidden {
@@ -640,7 +639,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	assertProblemCode(t, missingRefreshCSRF, "authentication.csrf.invalid")
 
 	refresh := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/refresh",
+		helper.Handler(), http.MethodPost, "/api/v1/auth/refresh",
 		nil, loginCookies, "",
 		loginCookies[api.BrowserCSRFCookieName].Value,
 	)
@@ -663,14 +662,14 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	}
 
 	oldAccess := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, loginCookies, "", "",
 	)
 	if oldAccess.Code != http.StatusUnauthorized {
 		t.Fatalf("old browser access status = %d", oldAccess.Code)
 	}
 	currentAccess := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodGet, "/api/v1/users/me",
+		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, refreshedCookies, "", "",
 	)
 	if currentAccess.Code != http.StatusOK {
@@ -678,7 +677,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	}
 
 	logout := performBrowserJSONRequest(
-		helper.Server.Handler(), http.MethodPost, "/api/v1/auth/logout",
+		helper.Handler(), http.MethodPost, "/api/v1/auth/logout",
 		nil, refreshedCookies, "",
 		refreshedCookies[api.BrowserCSRFCookieName].Value,
 	)
@@ -702,7 +701,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
-	helper := testlib.Setup(t, testlib.WithServerOptions(app.WithStore(persistence)))
+	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
 		Username:    "session-user",
@@ -715,7 +714,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 
 	firstLogin := loginIntegrationUser(
 		t,
-		helper.Server.Handler(),
+		helper.Handler(),
 		user.Username,
 		password,
 		model.SessionClientCLI,
@@ -723,7 +722,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	)
 	secondLogin := loginIntegrationUser(
 		t,
-		helper.Server.Handler(),
+		helper.Handler(),
 		user.Username,
 		password,
 		model.SessionClientCLI,
@@ -731,7 +730,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	)
 
 	list := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me/sessions",
 		nil,
@@ -759,7 +758,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	}
 
 	unknownField := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke",
 		map[string]any{"session_id": firstLogin.Session.Id, "unknown": true},
@@ -770,7 +769,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	}
 
 	revokeFirst := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke",
 		map[string]any{"session_id": firstLogin.Session.Id},
@@ -780,7 +779,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatalf("revoke session status = %d: %s", revokeFirst.Code, revokeFirst.Body.String())
 	}
 	firstAfterRevoke := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -790,7 +789,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatalf("revoked access status = %d", firstAfterRevoke.Code)
 	}
 	secondStillActive := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -801,7 +800,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	}
 
 	invalidID := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke",
 		map[string]any{"session_id": "not-an-id"},
@@ -821,14 +820,14 @@ func TestSessionManagementIntegration(t *testing.T) {
 	}
 	otherLogin := loginIntegrationUser(
 		t,
-		helper.Server.Handler(),
+		helper.Handler(),
 		otherUser.Username,
 		password,
 		model.SessionClientCLI,
 		"other-device",
 	)
 	crossUserRevoke := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke",
 		map[string]any{"session_id": otherLogin.Session.Id},
@@ -842,7 +841,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		)
 	}
 	otherStillActive := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -853,7 +852,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	}
 
 	revokeAll := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke-all",
 		nil,
@@ -863,7 +862,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatalf("revoke-all status = %d: %s", revokeAll.Code, revokeAll.Body.String())
 	}
 	secondAfterRevokeAll := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -875,14 +874,14 @@ func TestSessionManagementIntegration(t *testing.T) {
 
 	thirdLogin := loginIntegrationUser(
 		t,
-		helper.Server.Handler(),
+		helper.Handler(),
 		user.Username,
 		password,
 		model.SessionClientCLI,
 		"third-device",
 	)
 	activeAfterRevokeAll := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me/sessions",
 		nil,

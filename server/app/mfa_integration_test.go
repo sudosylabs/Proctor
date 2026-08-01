@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -46,7 +45,7 @@ func TestMFAIntegration(t *testing.T) {
 			cfg.Authentication.MFA.Enabled = true
 			cfg.Authentication.MFA.EncryptionKey = encryptionKey
 		}),
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	institution, err := persistence.Institution().Save(
 		context.Background(),
@@ -72,14 +71,14 @@ func TestMFAIntegration(t *testing.T) {
 	}
 	initial := loginIntegrationUser(
 		t,
-		helper.Server.Handler(),
+		helper.Handler(),
 		user.Username,
 		password,
 		model.SessionClientCLI,
 		"mfa-initial",
 	)
 	setupResponse := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/mfa/setup",
 		nil,
@@ -111,7 +110,7 @@ func TestMFAIntegration(t *testing.T) {
 	}
 	code := integrationTOTP(t, setup.Secret, time.Now().UTC().Unix()/30)
 	activateResponse := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/mfa/activate",
 		map[string]any{"code": code},
@@ -133,7 +132,7 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatalf("MFA recovery codes = %#v", activation.RecoveryCodes)
 	}
 	statusResponse := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me/mfa",
 		nil,
@@ -155,7 +154,7 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatalf("MFA status = %#v", status)
 	}
 	rechallenge := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/mfa/challenge",
 		map[string]any{"code": activation.RecoveryCodes[1]},
@@ -177,7 +176,7 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatalf("MFA rechallenge session = %#v", rechallenged)
 	}
 	withoutSecondFactor := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -195,7 +194,7 @@ func TestMFAIntegration(t *testing.T) {
 	}
 	recoveryCode := activation.RecoveryCodes[0]
 	recoveryLogin := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -218,7 +217,7 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatalf("MFA login session = %#v", recovered.Session)
 	}
 	replay := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -235,7 +234,7 @@ func TestMFAIntegration(t *testing.T) {
 		)
 	}
 	regenerate := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/mfa/recovery-codes/regenerate",
 		nil,
@@ -259,7 +258,7 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatalf("regenerated MFA recovery codes = %#v", regenerated)
 	}
 	disable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/mfa/disable",
 		nil,
@@ -269,7 +268,7 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatalf("MFA disable = %d: %s", disable.Code, disable.Body.String())
 	}
 	afterDisable := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{

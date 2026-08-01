@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -28,9 +27,9 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
 		t,
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
-	handler := helper.Server.Handler()
+	handler := helper.Handler()
 	password := "correct horse battery staple"
 
 	status := performJSONRequest(

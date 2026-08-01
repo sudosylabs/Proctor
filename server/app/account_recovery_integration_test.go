@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/packages/mail"
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -31,7 +30,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 			cfg.Authentication.AccountRecovery.RateLimit.MaximumAttempts = 20
 			cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts = 100
 		}),
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	institution, err := persistence.Institution().Save(context.Background(), &model.Institution{
 		Name: "recovery-university", DisplayName: "Recovery University",
@@ -50,7 +49,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 	}
 	login := loginIntegrationUser(
 		t,
-		helper.Server.Handler(),
+		helper.Handler(),
 		user.Email,
 		oldPassword,
 		model.SessionClientCLI,
@@ -58,7 +57,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 	)
 
 	verificationRequest := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/email-verification/request",
 		nil,
@@ -80,7 +79,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		t.Fatal("verification token appeared in logs")
 	}
 	verificationComplete := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/email-verification/complete",
 		map[string]any{"token": verificationToken},
@@ -98,7 +97,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		t.Fatalf("verified user = %#v, %v", verified, err)
 	}
 	verificationReplay := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/email-verification/complete",
 		map[string]any{"token": verificationToken},
@@ -109,14 +108,14 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 	}
 
 	unknownReset := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/password-reset/request",
 		map[string]any{"email": "unknown@example.edu"},
 		"",
 	)
 	knownReset := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/password-reset/request",
 		map[string]any{"email": user.Email},
@@ -139,7 +138,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		t.Fatal("password reset token appeared in logs")
 	}
 	resetComplete := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/password-reset/complete",
 		map[string]any{"token": resetToken, "password": newPassword},
@@ -153,7 +152,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		)
 	}
 	oldSession := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/users/me",
 		nil,
@@ -163,7 +162,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		t.Fatalf("pre-reset session status = %d", oldSession.Code)
 	}
 	oldLogin := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -176,7 +175,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		t.Fatalf("old password login status = %d", oldLogin.Code)
 	}
 	newLogin := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/login",
 		map[string]any{
@@ -189,7 +188,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		t.Fatalf("new password login status = %d: %s", newLogin.Code, newLogin.Body.String())
 	}
 	resetReplay := performJSONRequest(
-		helper.Server.Handler(),
+		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/auth/password-reset/complete",
 		map[string]any{"token": resetToken, "password": newPassword},
@@ -221,11 +220,11 @@ func TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence(
 			cfg.Authentication.AccountRecovery.RateLimit.MaximumAttempts = 1
 			cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts = 100
 		}),
-		testlib.WithServerOptions(app.WithStore(persistence)),
+		testlib.WithStore(persistence),
 	)
 	for attempt := 1; attempt <= 2; attempt++ {
 		response := performJSONRequest(
-			helper.Server.Handler(),
+			helper.Handler(),
 			http.MethodPost,
 			"/api/v1/auth/password-reset/request",
 			map[string]any{"email": "unknown@example.edu"},

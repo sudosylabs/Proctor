@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -58,10 +57,7 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
-	if helper.Server.App() != helper.App {
-		t.Fatal("server and test helper do not share the same application")
-	}
-	if helper.App.Platform() != helper.Platform || helper.Server.Platform() != helper.Platform {
+	if helper.App.Platform() != helper.Platform {
 		t.Fatal("application graph contains more than one platform service")
 	}
 	if helper.Platform.ConfigStore() != helper.ConfigStore {
@@ -78,6 +74,9 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	}
 	if helper.App.Cluster() != helper.Cluster || helper.Platform.Cluster() != helper.Cluster {
 		t.Fatal("application graph contains more than one cluster transport")
+	}
+	if helper.Handler() != helper.API {
+		t.Fatal("test helper does not serve the assembled HTTP transport")
 	}
 }
 
@@ -109,12 +108,12 @@ func TestClusterStartFailurePreventsReadinessAndClosesPlatform(t *testing.T) {
 	t.Parallel()
 
 	cluster := &failingStartCluster{}
-	helper := testlib.Setup(t, testlib.WithServerOptions(app.WithCluster(cluster)))
+	helper := testlib.Setup(t, testlib.WithCluster(cluster))
 	err := helper.Server.Start(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "start cluster transport") {
 		t.Fatalf("Start() error = %v", err)
 	}
-	if helper.Server.Health().Ready() {
+	if helper.Server.Ready() {
 		t.Fatal("server became ready after cluster transport start failed")
 	}
 	if !cluster.stopped.Load() {
@@ -152,7 +151,7 @@ func TestCloseStopsARunningServerAndWaitsForItsLifecycle(t *testing.T) {
 	}()
 
 	deadline := time.After(2 * time.Second)
-	for !helper.Server.Health().Ready() {
+	for !helper.Server.Ready() {
 		select {
 		case err := <-done:
 			t.Fatalf("server stopped before readiness: %v", err)
