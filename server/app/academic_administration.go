@@ -77,55 +77,6 @@ func (a *App) PatchInstitution(
 	return updated, nil
 }
 
-func (a *App) CreateAcademicUnit(
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	unit *model.AcademicUnit,
-) (*model.AcademicUnit, *model.AppError) {
-	if unit == nil {
-		return nil, invalidAdministrationRequest("CreateAcademicUnit", "academic_unit")
-	}
-	institution, err := a.Store().Institution().GetSingleton(ctx)
-	if err != nil {
-		return nil, administrationError("CreateAcademicUnit.institution", "institution", err)
-	}
-	candidate := *unit
-	candidate.Id, candidate.CreateAt, candidate.UpdateAt, candidate.DeleteAt = "", 0, 0, 0
-	candidate.InstitutionId = institution.Id
-	var resource model.Resource
-	var appErr *model.AppError
-	if candidate.ParentId == "" {
-		resource, appErr = a.authorizePrincipalToSystem(
-			ctx, principal, model.ActionInstitutionManage, metadata,
-		)
-	} else {
-		resource, appErr = a.authorizePrincipalToAcademicUnit(
-			ctx, principal, candidate.ParentId, model.ActionAcademicUnitManage, metadata,
-		)
-	}
-	if appErr != nil {
-		return nil, appErr
-	}
-	attempt, appErr := a.beginAdministrationMutation(
-		ctx, principal, mutationAction(resource), resource, metadata,
-		"create", candidate.Auditable(), nil,
-	)
-	if appErr != nil {
-		return nil, appErr
-	}
-	saved, err := a.Store().AcademicUnit().Save(ctx, &candidate)
-	if err != nil {
-		return nil, a.failAdministrationMutation(
-			ctx, attempt.Id, "CreateAcademicUnit", "academic_unit", err,
-		)
-	}
-	if appErr := a.completeAdministrationMutation(ctx, attempt.Id, saved); appErr != nil {
-		return nil, appErr
-	}
-	return saved, nil
-}
-
 func (a *App) PatchAcademicUnit(
 	ctx context.Context,
 	principal model.Principal,

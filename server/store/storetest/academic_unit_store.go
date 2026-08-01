@@ -5,6 +5,7 @@ package storetest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 )
 
 func TestAcademicUnitStore(t *testing.T, ss store.Store) {
+	t.Run("CreateWithAudit", func(t *testing.T) { testAcademicUnitStoreCreateWithAudit(t, ss) })
 	t.Run("Save", func(t *testing.T) { testAcademicUnitStoreSave(t, ss) })
 	t.Run("Get", func(t *testing.T) { testAcademicUnitStoreGet(t, ss) })
 	t.Run("ListChildren", func(t *testing.T) { testAcademicUnitStoreListChildren(t, ss) })
@@ -28,6 +30,60 @@ func TestAcademicUnitStore(t *testing.T, ss store.Store) {
 	t.Run("SearchAndArchive", func(t *testing.T) {
 		testAcademicUnitStoreSearchAndArchive(t, ss)
 	})
+}
+
+func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		Action:    string(model.ActionInstitutionManage),
+		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		Status: model.AuditStatusAttempt, NodeId: "test-node",
+	})
+	requireNoError(t, err)
+	unit := &model.AcademicUnit{
+		InstitutionId: institution.Id, Name: "audited-engineering",
+		DisplayName: "Audited Engineering",
+	}
+	unit.PrepareCreate(model.NewId(), model.GetMillis())
+	saved, err := ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
+		Unit:         unit,
+		AuditEventID: attempt.Id,
+		AuditAt:      model.GetMillis(),
+	})
+	requireNoError(t, err)
+	completed, err := ss.Audit().Get(ctx, attempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("audit status = %q, want success", completed.Status)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(completed.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result["id"] != saved.Id {
+		t.Fatalf("audit result = %#v, want unit ID %q", result, saved.Id)
+	}
+
+	rolledBack := &model.AcademicUnit{
+		InstitutionId: institution.Id, Name: "rolled-back-unit",
+		DisplayName: "Rolled Back Unit",
+	}
+	rolledBack.PrepareCreate(model.NewId(), model.GetMillis())
+	_, err = ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
+		Unit:         rolledBack,
+		AuditEventID: model.NewId(),
+		AuditAt:      model.GetMillis(),
+	})
+	if err == nil {
+		t.Fatal("Create() succeeded without its audit attempt")
+	}
+	found, searchErr := ss.AcademicUnit().Search(ctx, institution.Id, "rolled-back-unit", 10)
+	requireNoError(t, searchErr)
+	if len(found) != 0 {
+		t.Fatalf("unit survived audit rollback: %#v", found)
+	}
 }
 
 func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {

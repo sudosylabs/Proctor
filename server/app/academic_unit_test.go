@@ -19,6 +19,7 @@ type academicUnitReadAuthorizerFunc func(
 
 type academicUnitReadAuthorizerStub struct {
 	authorize             academicUnitReadAuthorizerFunc
+	installation          func(context.Context) (model.Resource, error)
 	authorizeInstallation func(context.Context, Invocation, model.Action) (model.Resource, error)
 }
 
@@ -32,8 +33,11 @@ func (s academicUnitReadAuthorizerStub) Authorize(
 }
 
 func (s academicUnitReadAuthorizerStub) Installation(
-	context.Context,
+	ctx context.Context,
 ) (model.Resource, error) {
+	if s.installation != nil {
+		return s.installation(ctx)
+	}
 	panic("unexpected Installation")
 }
 

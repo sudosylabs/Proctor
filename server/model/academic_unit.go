@@ -48,6 +48,16 @@ func (au *AcademicUnit) PreSave() {
 	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)
 }
 
+// PrepareCreate applies the explicit identity and time chosen by the
+// application and normalizes the local Academic Unit fields for validation.
+func (au *AcademicUnit) PrepareCreate(id string, at int64) {
+	au.Id = id
+	au.CreateAt = at
+	au.UpdateAt = at
+	au.DeleteAt = 0
+	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)
+}
+
 func (au *AcademicUnit) PreUpdate() {
 	preUpdate(&au.UpdateAt)
 	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)

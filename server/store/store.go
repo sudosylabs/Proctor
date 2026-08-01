@@ -53,8 +53,17 @@ type InstitutionStore interface {
 	Delete(context.Context, string, int64) error
 }
 
+// AcademicUnitCreation is the complete durable input for creating an Academic
+// Unit and completing its already-persisted mutation audit in one transaction.
+type AcademicUnitCreation struct {
+	Unit         *model.AcademicUnit
+	AuditEventID string
+	AuditAt      int64
+}
+
 // AcademicUnitStore persists nodes in the institution's academic-unit tree.
 type AcademicUnitStore interface {
+	Create(context.Context, *AcademicUnitCreation) (*model.AcademicUnit, error)
 	Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
 	Get(context.Context, string) (*model.AcademicUnit, error)
 	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)

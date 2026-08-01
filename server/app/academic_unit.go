@@ -84,12 +84,18 @@ func (a academicUnitReadAuthorization) AuthorizeInstallation(
 }
 
 type academicUnitQueryService struct {
-	academicUnits store.AcademicUnitStore
+	academicUnits academicUnitReader
 	authorization academicUnitReadAuthorizer
 }
 
+type academicUnitReader interface {
+	Get(context.Context, string) (*model.AcademicUnit, error)
+	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)
+	Search(context.Context, string, string, int) ([]*model.AcademicUnit, error)
+}
+
 func newAcademicUnitQueryService(
-	academicUnits store.AcademicUnitStore,
+	academicUnits academicUnitReader,
 	authorization academicUnitReadAuthorizer,
 ) *academicUnitQueryService {
 	return &academicUnitQueryService{

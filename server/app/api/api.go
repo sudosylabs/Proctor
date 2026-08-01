@@ -208,12 +208,12 @@ type AcademicUnitReads interface {
 	GetAcademicUnit(context.Context, application.Invocation, application.GetAcademicUnitQuery) (*model.AcademicUnit, error)
 	ListAcademicUnits(context.Context, application.Invocation, application.ListAcademicUnitsQuery) ([]*model.AcademicUnit, error)
 	SearchAcademicUnits(context.Context, application.Invocation, application.SearchAcademicUnitsQuery) ([]*model.AcademicUnit, error)
+	CreateAcademicUnit(context.Context, application.Invocation, application.CreateAcademicUnitCommand) (*model.AcademicUnit, error)
 }
 
 type AcademicAdministration interface {
 	GetInstitution(context.Context, model.Principal, model.RequestMetadata) (*model.Institution, *model.AppError)
 	PatchInstitution(context.Context, model.Principal, model.RequestMetadata, *model.InstitutionPatch) (*model.Institution, *model.AppError)
-	CreateAcademicUnit(context.Context, model.Principal, model.RequestMetadata, *model.AcademicUnit) (*model.AcademicUnit, *model.AppError)
 	PatchAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string, *model.AcademicUnitPatch) (*model.AcademicUnit, *model.AppError)
 	ArchiveAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
 	GetProgramme(context.Context, model.Principal, model.RequestMetadata, string) (*model.Programme, *model.AppError)

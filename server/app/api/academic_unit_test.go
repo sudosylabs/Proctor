@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,8 @@ type academicUnitHTTPApplication struct {
 	Application
 	principal model.Principal
 	unit      *model.AcademicUnit
+	created   *model.AcademicUnit
+	command   application.CreateAcademicUnitCommand
 }
 
 func (a *academicUnitHTTPApplication) AuthenticateAccess(
@@ -61,6 +64,18 @@ func (a *academicUnitHTTPApplication) SearchAcademicUnits(
 	application.SearchAcademicUnitsQuery,
 ) ([]*model.AcademicUnit, error) {
 	return nil, nil
+}
+
+func (a *academicUnitHTTPApplication) CreateAcademicUnit(
+	_ context.Context,
+	invocation application.Invocation,
+	command application.CreateAcademicUnitCommand,
+) (*model.AcademicUnit, error) {
+	if invocation.Principal().UserId != a.principal.UserId {
+		return nil, application.NewError("request.invalid")
+	}
+	a.command = command
+	return a.created, nil
 }
 
 type academicUnitHTTPHealth struct{}
@@ -157,5 +172,93 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	if string(encoded) != string(want) {
 		t.Fatalf("response = %s, want %s", encoded, want)
+	}
+}
+
+func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.T) {
+	t.Parallel()
+
+	parentID := model.NewId()
+	tests := []struct {
+		name         string
+		path         string
+		wantParentID string
+	}{
+		{name: "root", path: "/api/v1/academic-units"},
+		{
+			name: "child", path: "/api/v1/academic-units/" + parentID + "/children",
+			wantParentID: parentID,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			logger, err := mlog.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = logger.Shutdown() })
+			created := &model.AcademicUnit{
+				Id: model.NewId(), CreateAt: 10, UpdateAt: 10,
+				InstitutionId: model.NewId(), ParentId: tt.wantParentID,
+				Name: "computing", DisplayName: "Computing", Description: "School",
+			}
+			fakeApplication := &academicUnitHTTPApplication{
+				principal: model.Principal{
+					UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+					CredentialType:       model.CredentialSessionAccess,
+					AuthenticationMethod: "password", ClientType: model.SessionClientCLI,
+					AuthenticationStrength: model.AuthenticationSingleFactor,
+					AuthenticatedAt:        time.Now().UnixMilli(),
+				},
+				unit: created, created: created,
+			}
+			httpAPI, err := New(Options{
+				Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
+				AcademicUnits: fakeApplication, BuildInfo: BuildInfo{Version: "test"},
+				PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
+				RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = httpAPI.Close() })
+
+			request := httptest.NewRequest(
+				http.MethodPost, tt.path,
+				strings.NewReader(`{
+					"id":"client-owned-id",
+					"create_at":1,
+					"update_at":2,
+					"delete_at":3,
+					"institution_id":"client-institution",
+					"parent_id":"client-parent",
+					"name":"computing",
+					"display_name":"Computing",
+					"description":"School"
+				}`),
+			)
+			request.Header.Set("Authorization", "Bearer test-credential")
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusCreated {
+				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+			}
+			wantCommand := application.CreateAcademicUnitCommand{
+				ParentID: tt.wantParentID, Name: "computing",
+				DisplayName: "Computing", Description: "School",
+			}
+			if fakeApplication.command != wantCommand {
+				t.Fatalf("command = %#v, want %#v", fakeApplication.command, wantCommand)
+			}
+			var got academicUnitResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.ID != created.Id || got.ParentID != tt.wantParentID {
+				t.Fatalf("response = %#v", got)
+			}
+		})
 	}
 }

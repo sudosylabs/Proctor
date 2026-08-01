@@ -217,9 +217,9 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	malformed.Header.Set("Content-Type", "application/json")
 	malformedResponse := httptest.NewRecorder()
 	handler.ServeHTTP(malformedResponse, malformed)
-	if malformedResponse.Code != http.StatusForbidden {
+	if malformedResponse.Code != http.StatusBadRequest {
 		t.Fatalf(
-			"academic permission preflight followed body decode: %d: %s",
+			"malformed academic unit body was not rejected at transport: %d: %s",
 			malformedResponse.Code,
 			malformedResponse.Body.String(),
 		)

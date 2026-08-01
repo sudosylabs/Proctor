@@ -142,6 +142,19 @@ func (s *RealtimeService) publishLocal(
 	}
 }
 
+func (s *RealtimeService) reportTransientFailure(
+	ctx context.Context,
+	event string,
+	err error,
+) {
+	s.platform.Log().ErrorContext(
+		ctx,
+		"transient realtime publication failed",
+		mlog.String("event", event),
+		mlog.Err(err),
+	)
+}
+
 func (s *RealtimeService) PropagateSessionRevocation(
 	ctx context.Context,
 	userID string,

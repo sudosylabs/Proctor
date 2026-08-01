@@ -128,6 +128,20 @@ func (s SqlAuditStore) Complete(
 	result []byte,
 	updateAt int64,
 ) (*model.AuditEvent, error) {
+	return completeAuditEvent(
+		ctx, s.GetMaster(), id, status, errorCode, result, updateAt,
+	)
+}
+
+func completeAuditEvent(
+	ctx context.Context,
+	executor sqlxExecutor,
+	id string,
+	status model.AuditStatus,
+	errorCode string,
+	result []byte,
+	updateAt int64,
+) (*model.AuditEvent, error) {
 	if status != model.AuditStatusSuccess && status != model.AuditStatusFail {
 		return nil, store.NewErrInvalidInput("audit_event", "status", status)
 	}
@@ -136,7 +150,7 @@ func (s SqlAuditStore) Complete(
 		return nil, store.NewErrInvalidInput("audit_event", "completion", nil)
 	}
 	var row auditRow
-	err := s.GetMaster().Get(ctx, &row, `
+	err := executor.Get(ctx, &row, `
 		UPDATE audit_events
 		   SET update_at = $1, status = $2, error_code = $3, result = $4
 		 WHERE id = $5 AND status = 'attempt'

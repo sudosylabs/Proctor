@@ -71,6 +71,9 @@ The server also includes:
 - transport-neutral Academic Unit get/list/search queries using immutable
   application invocations, a focused query service, application-owned
   authorization, and HTTP-owned response DTOs;
+- transport-neutral root/child Academic Unit creation with typed commands,
+  application-owned authorization and validation, atomic success auditing,
+  and post-commit best-effort realtime publication;
 - PostgreSQL connection and schema management with explicit migrations;
 - Mattermost-shaped per-model stores for the complete structural academic
   hierarchy and the first identity/session slice;

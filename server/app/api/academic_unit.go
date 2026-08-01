@@ -23,6 +23,20 @@ type academicUnitResponse struct {
 	Description   string `json:"description"`
 }
 
+type createAcademicUnitRequest struct {
+	// Server-owned fields remain accepted for v1 compatibility with the prior
+	// domain-shaped request. Mapping deliberately ignores them.
+	ID            string `json:"id"`
+	CreateAt      int64  `json:"create_at"`
+	UpdateAt      int64  `json:"update_at"`
+	DeleteAt      int64  `json:"delete_at"`
+	InstitutionID string `json:"institution_id"`
+	ParentID      string `json:"parent_id"`
+	Name          string `json:"name"`
+	DisplayName   string `json:"display_name"`
+	Description   string `json:"description"`
+}
+
 func (a *API) registerAcademicUnitRoutes() error {
 	routes := []struct {
 		base    *mux.Router
@@ -80,23 +94,23 @@ func (a *API) createRootAcademicUnit(writer http.ResponseWriter, request *http.R
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		request.Context(), principal, model.ActionInstitutionManage,
-		RequestMetadata(request.Context()),
-	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	var body createAcademicUnitRequest
+	if !decodeJSON(writer, request, &body, "createRootAcademicUnit") {
 		return
 	}
-	request = request.WithContext(ctx)
-	var unit model.AcademicUnit
-	if !decodeJSON(writer, request, &unit, "createRootAcademicUnit") {
+	saved, err := a.academicUnits.CreateAcademicUnit(
+		request.Context(),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.CreateAcademicUnitCommand{
+			Name: body.Name, DisplayName: body.DisplayName,
+			Description: body.Description,
+		},
+	)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	unit.ParentId = ""
-	saved, appErr := a.application.CreateAcademicUnit(
-		ctx, principal, RequestMetadata(ctx), &unit,
-	)
-	writeResult(writer, request, a, http.StatusCreated, saved, appErr)
+	writeJSON(writer, http.StatusCreated, academicUnitResponseFromModel(saved))
 }
 
 func (a *API) getAcademicUnit(writer http.ResponseWriter, request *http.Request) {
@@ -183,23 +197,23 @@ func (a *API) createAcademicUnitChild(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		request.Context(), principal, id, model.ActionAcademicUnitManage,
-		RequestMetadata(request.Context()),
-	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	var body createAcademicUnitRequest
+	if !decodeJSON(writer, request, &body, "createAcademicUnitChild") {
 		return
 	}
-	request = request.WithContext(ctx)
-	var unit model.AcademicUnit
-	if !decodeJSON(writer, request, &unit, "createAcademicUnitChild") {
+	saved, err := a.academicUnits.CreateAcademicUnit(
+		request.Context(),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.CreateAcademicUnitCommand{
+			ParentID: id, Name: body.Name, DisplayName: body.DisplayName,
+			Description: body.Description,
+		},
+	)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	unit.ParentId = id
-	saved, appErr := a.application.CreateAcademicUnit(
-		ctx, principal, RequestMetadata(ctx), &unit,
-	)
-	writeResult(writer, request, a, http.StatusCreated, saved, appErr)
+	writeJSON(writer, http.StatusCreated, academicUnitResponseFromModel(saved))
 }
 
 func writeAcademicUnitResult(

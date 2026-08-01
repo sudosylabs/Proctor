@@ -55,6 +55,74 @@ func newSqlAcademicUnitStore(sqlStore *SqlStore) store.AcademicUnitStore {
 	return s
 }
 
+func (s SqlAcademicUnitStore) Create(
+	ctx context.Context,
+	input *store.AcademicUnitCreation,
+) (*model.AcademicUnit, error) {
+	if input == nil || input.Unit == nil {
+		return nil, store.NewErrInvalidInput("academic_unit", "creation", nil)
+	}
+	if !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit", "audit", nil)
+	}
+	if !model.IsValidId(input.Unit.Id) {
+		return nil, store.NewErrInvalidInput("academic_unit", "id", input.Unit.Id)
+	}
+	candidate := *input.Unit
+	if appErr := candidate.IsValid(); appErr != nil {
+		return nil, store.NewErrInvalidInput(
+			"academic_unit", "value", nil,
+		).Wrap(appErr)
+	}
+	result, appErr := model.EncodeAuditData(candidate.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin academic unit creation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := validateAcademicUnitParent(
+		ctx, tx, candidate.Id, candidate.InstitutionId, candidate.ParentId,
+	); err != nil {
+		return nil, err
+	}
+	row := newAcademicUnitRow(&candidate)
+	if _, err := tx.NamedExec(ctx, `
+		INSERT INTO academic_units (
+			id, create_at, update_at, delete_at, institution_id, parent_id,
+			name, display_name, description
+		) VALUES (
+			:id, :create_at, :update_at, :delete_at, :institution_id,
+			:parent_id, :name, :display_name, :description
+		)`, &row); err != nil {
+		return nil, fmt.Errorf(
+			"create academic unit: %w",
+			translateError("academic_unit", candidate.Id, err),
+		)
+	}
+	if _, err := completeAuditEvent(
+		ctx,
+		tx,
+		input.AuditEventID,
+		model.AuditStatusSuccess,
+		"",
+		result,
+		input.AuditAt,
+	); err != nil {
+		return nil, fmt.Errorf("complete academic unit creation audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit academic unit creation: %w", err)
+	}
+	return &candidate, nil
+}
+
 func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
 	if unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)

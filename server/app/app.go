@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
@@ -24,6 +25,7 @@ type App struct {
 	mfa                    *MFAService
 	authorization          *AuthorizationService
 	academicUnits          *academicUnitQueryService
+	academicUnitCommands   *academicUnitCommandService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -47,12 +49,12 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		audit,
 	)
 	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
+	academicUnitAuthorization := academicUnitReadAuthorization{
+		authorization: authorization,
+		institutions:  applicationPlatform.Store().Institution(),
+	}
 	academicUnits := newAcademicUnitQueryService(
-		applicationPlatform.Store().AcademicUnit(),
-		academicUnitReadAuthorization{
-			authorization: authorization,
-			institutions:  applicationPlatform.Store().Institution(),
-		},
+		applicationPlatform.Store().AcademicUnit(), academicUnitAuthorization,
 	)
 	realtime, err := newRealtimeService(applicationPlatform, authentication)
 	if err != nil {
@@ -62,11 +64,19 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		realtime.PropagateAuthenticationCacheInvalidation
 	authentication.propagateSessionRevocation =
 		realtime.PropagateSessionRevocation
+	academicUnitCommands := newAcademicUnitCommandService(
+		applicationPlatform.Store().AcademicUnit(), academicUnitAuthorization,
+		academicUnitAuditAdapter{audit: audit},
+		academicUnitRealtimeEffects{realtime: realtime},
+		academicUnitEffectReporter{realtime: realtime},
+		time.Now, model.NewId,
+	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
 		authorization: authorization, academicUnits: academicUnits,
-		audit: audit, realtime: realtime,
+		academicUnitCommands: academicUnitCommands,
+		audit:                audit, realtime: realtime,
 	}, nil
 }
 
