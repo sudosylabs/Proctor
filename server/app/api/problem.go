@@ -20,7 +20,10 @@ type Problem struct {
 	Fields    map[string]string `json:"fields,omitempty"`
 }
 
-type applicationError interface {
+// legacyApplicationError is the temporary bridge surface implemented by
+// model.AppError. Migrated capabilities return *app.Error instead; this
+// interface is removed with ticket 39 once no callers remain.
+type legacyApplicationError interface {
 	error
 	HTTPStatus() int
 	ErrorCode() string
@@ -48,8 +51,20 @@ func WriteProblem(writer http.ResponseWriter, problem Problem) {
 	_ = json.NewEncoder(writer).Encode(problem)
 }
 
+// WriteError maps a failure to RFC 9457 Problem Details. Transport-neutral
+// application failures (*app.Error) use the centralized code table through the
+// applicationFailure interface. Unmigrated *model.AppError values continue
+// through the legacy bridge so existing capabilities keep compiling and
+// preserve their characterized responses. Unexpected errors become a generic
+// correlated internal response with no internal detail.
 func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
-	var classified applicationError
+	var failure applicationFailure
+	if errors.As(err, &failure) {
+		WriteProblem(writer, problemFromApplicationFailure(request, failure))
+		return
+	}
+
+	var classified legacyApplicationError
 	if !errors.As(err, &classified) {
 		WriteProblem(writer, internalProblem(request))
 		return
@@ -60,16 +75,14 @@ func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
 	if message := classified.ClientMessage(); message != "" && message != classified.ErrorCode() {
 		detail = message
 	}
-	WriteProblem(writer, Problem{
-		Type:      "https://proctor.sudosylabs.com/problems/" + classified.ErrorCode(),
-		Title:     title,
-		Status:    status,
-		Detail:    detail,
-		Instance:  request.URL.Path,
-		Code:      classified.ErrorCode(),
-		RequestID: RequestID(request.Context()),
-		Fields:    classified.SafeFields(),
-	})
+	WriteProblem(writer, newProblem(
+		request,
+		classified.ErrorCode(),
+		status,
+		title,
+		detail,
+		classified.SafeFields(),
+	))
 }
 
 func internalProblem(request *http.Request) Problem {
