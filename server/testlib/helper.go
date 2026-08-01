@@ -72,11 +72,14 @@ type Helper struct {
 	Health      *app.Health
 	ConfigStore *config.Store
 	Logs        *mlog.Buffer
-	Store       *Store
-	Cache       *Cache
-	Cluster     platform.Cluster
-	Mailer      *Mailer
-	VFS         *memoryvfs.FS
+	// Store is the default fake persistence capability. It is nil when the
+	// graph was constructed with WithStore; integration suites use their own
+	// real store handle instead.
+	Store   *Store
+	Cache   *Cache
+	Cluster platform.Cluster
+	Mailer  *Mailer
+	VFS     *memoryvfs.FS
 }
 
 // Handler returns the HTTP transport of the assembled graph.

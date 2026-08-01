@@ -63,8 +63,8 @@ func (m *hookMailer) Send(context.Context, mailpkg.Message) (mailpkg.Receipt, er
 func (m *hookMailer) Test(context.Context) error { return nil }
 func (m *hookMailer) Close() error               { m.closed.Store(true); return nil }
 
-func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
-	t.Parallel()
+func newHookOverrides(t *testing.T) (server.TestingOverrides, *hookStore, *hookCache, *hookMailer) {
+	t.Helper()
 
 	configuration, err := config.NewStore(
 		context.Background(),
@@ -74,29 +74,37 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logs := &mlog.Buffer{}
 	logger, err := mlog.New()
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := logger.Configure(mlog.Config{
-		MaxFieldBytes: configuration.Get().Log.MaxFieldBytes,
-		Targets:       []mlog.Target{{Name: "test", Type: "console", Level: "trace", Format: "json", Writer: logs}},
-	}); err != nil {
 		t.Fatal(err)
 	}
 	persistence := &hookStore{}
 	cache := &hookCache{}
 	mailer := &hookMailer{}
-
-	runtime, err := server.NewForTesting(context.Background(), server.TestingOverrides{
+	return server.TestingOverrides{
 		Configuration: configuration,
 		Logger:        logger,
 		Persistence:   persistence,
 		Cache:         cache,
 		Mailer:        mailer,
 		Filesystem:    memoryvfs.New(),
-	})
+	}, persistence, cache, mailer
+}
+
+func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, cache, mailer := newHookOverrides(t)
+	configuration := overrides.Configuration
+	logs := &mlog.Buffer{}
+	if err := overrides.Logger.Configure(mlog.Config{
+		MaxFieldBytes: configuration.Get().Log.MaxFieldBytes,
+		Targets:       []mlog.Target{{Name: "test", Type: "console", Level: "trace", Format: "json", Writer: logs}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime, err := server.NewForTesting(context.Background(), overrides)
 	if err != nil {
 		t.Fatalf("NewForTesting() error = %v", err)
 	}
@@ -132,34 +140,16 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 func TestNewForTestingServesTheProvidedBuildInfo(t *testing.T) {
 	t.Parallel()
 
-	configuration, err := config.NewStore(
-		context.Background(),
-		config.NewMemoryStore(nil),
-		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	overrides, _, _, _ := newHookOverrides(t)
 	buildInfo := api.BuildInfo{
 		Version:   "test-version",
 		Commit:    "test-commit",
 		BuildTime: "test-time",
 		GoVersion: "test-go",
 	}
+	overrides.BuildInfo = buildInfo
 
-	runtime, err := server.NewForTesting(context.Background(), server.TestingOverrides{
-		Configuration: configuration,
-		Logger:        logger,
-		Persistence:   &hookStore{},
-		Cache:         &hookCache{},
-		Mailer:        &hookMailer{},
-		Filesystem:    memoryvfs.New(),
-		BuildInfo:     buildInfo,
-	})
+	runtime, err := server.NewForTesting(context.Background(), overrides)
 	if err != nil {
 		t.Fatalf("NewForTesting() error = %v", err)
 	}
