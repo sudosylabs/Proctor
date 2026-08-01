@@ -171,7 +171,7 @@ func NewServer(ctx context.Context, options ...Option) (*Server, error) {
 		}
 	}
 
-	applicationPlatform, err := platform.New(platform.ServiceConfig{
+	applicationPlatform, err := platform.NewLegacy(platform.ServiceConfig{
 		Context:     ctx,
 		ConfigStore: configStore,
 		Logger:      settings.logger,

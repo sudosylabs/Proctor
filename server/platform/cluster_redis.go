@@ -84,10 +84,12 @@ type redisCluster struct {
 	token    string
 }
 
-func newRedisCluster(
+// NewRedisCluster constructs the Redis-backed multi-node cluster transport.
+// Backend selection remains the composition root's job.
+func NewRedisCluster(
 	settings config.Cluster,
 	logger *mlog.Logger,
-) (*redisCluster, error) {
+) (Cluster, error) {
 	if logger == nil {
 		return nil, errors.New("cluster logger is required")
 	}

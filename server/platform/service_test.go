@@ -5,6 +5,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,9 @@ import (
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -33,6 +36,12 @@ type unhealthyCache struct {
 	closed atomic.Bool
 }
 
+var errCacheCleanup = errors.New("cache cleanup failed")
+
+type cleanupErrorCache struct {
+	unhealthyCache
+}
+
 type trackedMailer struct {
 	testMailer
 	closed atomic.Bool
@@ -41,6 +50,81 @@ type trackedMailer struct {
 type trackedCluster struct {
 	started atomic.Bool
 	stopped atomic.Bool
+}
+
+func TestServiceRequiresConstructedCapabilities(t *testing.T) {
+	t.Parallel()
+
+	newConfiguration := func(t *testing.T) *config.Store {
+		t.Helper()
+		configuration, err := config.NewStore(
+			context.Background(),
+			config.NewMemoryStore(nil),
+			config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return configuration
+	}
+	newLogger := func(t *testing.T) *mlog.Logger {
+		t.Helper()
+		logger, err := mlog.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return logger
+	}
+	newProviders := func(t *testing.T) *externalauth.Registry {
+		t.Helper()
+		providers, err := externalauth.NewRegistry()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return providers
+	}
+
+	tests := []struct {
+		name   string
+		remove func(*ServiceConfig)
+	}{
+		{name: "configuration store", remove: func(settings *ServiceConfig) { settings.ConfigStore = nil }},
+		{name: "logger", remove: func(settings *ServiceConfig) { settings.Logger = nil }},
+		{name: "persistence store", remove: func(settings *ServiceConfig) { settings.Store = nil }},
+		{name: "cache", remove: func(settings *ServiceConfig) { settings.Cache = nil }},
+		{name: "cluster", remove: func(settings *ServiceConfig) { settings.Cluster = nil }},
+		{name: "mailer", remove: func(settings *ServiceConfig) { settings.Mailer = nil }},
+		{name: "VFS", remove: func(settings *ServiceConfig) { settings.VFS = nil }},
+		{name: "external authentication", remove: func(settings *ServiceConfig) {
+			settings.ExternalAuthentication = nil
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			configuration := newConfiguration(t)
+			logger := newLogger(t)
+			settings := ServiceConfig{
+				Context:                context.Background(),
+				ConfigStore:            configuration,
+				Logger:                 logger,
+				Store:                  testStore{},
+				Cache:                  testCache{},
+				Cluster:                &trackedCluster{},
+				Mailer:                 testMailer{},
+				VFS:                    memoryvfs.New(),
+				ExternalAuthentication: newProviders(t),
+			}
+			t.Cleanup(func() {
+				_ = configuration.Close()
+				_ = logger.Shutdown()
+			})
+			tt.remove(&settings)
+			if _, err := New(settings); err == nil || !strings.Contains(err.Error(), "required") {
+				t.Fatalf("New() error = %v, want required dependency failure", err)
+			}
+		})
+	}
 }
 
 func (testStore) Institution() store.InstitutionStore       { return nil }
@@ -112,6 +196,11 @@ func (c *unhealthyCache) Close() error {
 	return nil
 }
 
+func (c *cleanupErrorCache) Close() error {
+	c.closed.Store(true)
+	return errCacheCleanup
+}
+
 func (m *trackedMailer) Close() error {
 	m.closed.Store(true)
 	return nil
@@ -174,7 +263,7 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service, err := New(ServiceConfig{
+	service, err := NewLegacy(ServiceConfig{
 		ConfigStore: store,
 		Store:       testStore{},
 		Cache:       testCache{},
@@ -248,7 +337,7 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	service, err := New(ServiceConfig{
+	service, err := NewLegacy(ServiceConfig{
 		ConfigStore: configuration,
 		Store:       testStore{},
 		Cache:       testCache{},
@@ -293,13 +382,23 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 	cache := &unhealthyCache{}
 	mailer := &trackedMailer{}
 	cluster := &trackedCluster{}
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers, err := externalauth.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = New(ServiceConfig{
-		ConfigStore: configuration,
-		Store:       persistence,
-		Cache:       cache,
-		Cluster:     cluster,
-		Mailer:      mailer,
-		VFS:         memoryvfs.New(),
+		ConfigStore:            configuration,
+		Logger:                 logger,
+		Store:                  persistence,
+		Cache:                  cache,
+		Cluster:                cluster,
+		Mailer:                 mailer,
+		VFS:                    memoryvfs.New(),
+		ExternalAuthentication: providers,
 	})
 	if err == nil || !strings.Contains(err.Error(), "cache") {
 		t.Fatalf("New() error = %v", err)
@@ -318,6 +417,84 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 	}
 }
 
+func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers, err := externalauth.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := &cleanupErrorCache{}
+	_, err = New(ServiceConfig{
+		ConfigStore:            configuration,
+		Logger:                 logger,
+		Store:                  testStore{},
+		Cache:                  cache,
+		Cluster:                &trackedCluster{},
+		Mailer:                 testMailer{},
+		VFS:                    memoryvfs.New(),
+		ExternalAuthentication: providers,
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("New() error = %v, want dependency failure", err)
+	}
+	if !errors.Is(err, errCacheCleanup) {
+		t.Fatalf("New() error = %v, want cleanup failure", err)
+	}
+}
+
+func TestLegacyConstructionFailureKeepsCallerLoggerOpen(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configuration.Close() })
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+
+	_, err = NewLegacy(ServiceConfig{
+		ConfigStore: configuration,
+		Logger:      logger,
+		Store:       testStore{},
+		Cache:       &unhealthyCache{},
+		Cluster:     &trackedCluster{},
+		Mailer:      testMailer{},
+		VFS:         memoryvfs.New(),
+	})
+	if err == nil {
+		t.Fatal("NewLegacy() succeeded with an unhealthy cache")
+	}
+	if err := logger.Configure(mlog.Config{
+		MaxFieldBytes: 1024,
+		Targets: []mlog.Target{{
+			Name: "console", Type: "console", Level: "info", Format: "text",
+		}},
+	}); err != nil {
+		t.Fatalf("caller logger was closed after construction failure: %v", err)
+	}
+}
+
 func TestServiceOwnsClusterLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -330,7 +507,7 @@ func TestServiceOwnsClusterLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := &trackedCluster{}
-	service, err := New(ServiceConfig{
+	service, err := NewLegacy(ServiceConfig{
 		ConfigStore: configuration,
 		Store:       testStore{},
 		Cache:       testCache{},

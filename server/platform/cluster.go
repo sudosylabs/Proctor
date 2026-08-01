@@ -40,12 +40,18 @@ type Cluster interface {
 func newCluster(settings config.Cluster, logger *mlog.Logger) (Cluster, error) {
 	switch settings.Backend {
 	case "local":
-		return newLocalCluster(settings.NodeID, logger)
+		return NewLocalCluster(settings.NodeID, logger)
 	case "redis":
-		return newRedisCluster(settings, logger)
+		return NewRedisCluster(settings, logger)
 	default:
 		return nil, fmt.Errorf("unsupported cluster backend %q", settings.Backend)
 	}
+}
+
+// NewLocalCluster constructs the single-node cluster transport. Backend
+// selection remains the composition root's job.
+func NewLocalCluster(nodeID string, logger *mlog.Logger) (Cluster, error) {
+	return newLocalCluster(nodeID, logger)
 }
 
 type localClusterState uint8

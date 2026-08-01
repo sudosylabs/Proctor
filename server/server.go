@@ -7,11 +7,10 @@
 // As the composition root, this package may depend on the components it wires;
 // those components must not depend back on the module-root package.
 //
-// During the architecture migration, New delegates component construction to
-// the existing app server while this package owns startup, readiness, graceful
-// HTTP shutdown, and cleanup. The legacy constructor starts bounded WebSocket
-// replay maintenance during construction; callers must call Close even when
-// Start is never called.
+// New selects and assembles infrastructure while this package owns startup,
+// readiness, graceful HTTP shutdown, and cleanup. WebSocket replay maintenance
+// currently starts during transport construction; callers must call Close even
+// when Start is never called.
 package server
 
 import (
@@ -119,7 +118,7 @@ type Server struct {
 // so callers must call Close on every successfully constructed Server even if
 // Start is never called.
 func New(ctx context.Context, optionValues ...Option) (*Server, error) {
-	settings := options{runtimeFactory: newLegacyRuntime}
+	settings := options{runtimeFactory: constructRuntime}
 	for _, option := range optionValues {
 		if option == nil {
 			return nil, errors.New("server option is nil")
@@ -134,24 +133,6 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 		return nil, fmt.Errorf("construct server: %w", err)
 	}
 	return &Server{components: components}, nil
-}
-
-func newLegacyRuntime(ctx context.Context, configPath string) (runtimeComponents, error) {
-	var legacyOptions []app.Option
-	if configPath != "" {
-		legacyOptions = append(legacyOptions, app.WithConfigPath(configPath))
-	}
-	legacy, err := app.NewServer(ctx, legacyOptions...)
-	if err != nil {
-		return runtimeComponents{}, err
-	}
-	return runtimeComponents{
-		platform:  legacy.Platform(),
-		transport: legacy.API(),
-		readiness: legacy.Health(),
-		listen:    net.Listen,
-		newHTTP:   newHTTPServer,
-	}, nil
 }
 
 func newHTTPServer(settings httpServerSettings) httpRuntime {

@@ -14,24 +14,32 @@ defer node.Close()
 return node.Start(ctx)
 ```
 
-The module-root facade owns platform startup, HTTP serving, readiness, bounded
-HTTP drain, transport cleanup, and platform shutdown. During the incremental
-architecture migration, component construction still delegates to the existing
-cohesive graph:
+The module-root facade selects concrete infrastructure and owns platform
+startup, HTTP serving, readiness, bounded HTTP drain, transport cleanup, and
+platform shutdown:
 
 ```text
-server.New → app.NewServer → config.Store → platform.Service → app.App → app/api
+server.New → config.Store → concrete adapters → platform.Service
+                                                   ├─→ app.App
+                                                   └─→ app/api
 ```
 
-The legacy constructor currently starts bounded WebSocket replay maintenance
-during construction. A successfully constructed node must therefore always be
-closed, even if it is never started. Moving that background lifecycle into the
-module-root owner is part of the subsequent migration.
+`platform.New` accepts already-constructed store, cache, mail, VFS, cluster,
+logging, configuration, and external-authentication capabilities. It owns
+their shared health and lifecycle, but does not select their implementations.
+The root translates deployment configuration into those concrete choices.
+
+Transport construction currently starts bounded WebSocket replay maintenance.
+A successfully constructed node must therefore always be closed, even if it is
+never started. Moving that background lifecycle into explicit transport start
+and stop methods is part of the subsequent migration.
 
 The facade intentionally exposes only construction, start, close, and
-readiness. Concrete infrastructure selection moves into the module-root package
-in the next migration ticket; existing callers and the shared `testlib`
-continue using the legacy constructor until their dedicated migrations.
+readiness. The old `app.NewServer` path temporarily uses the named
+`platform.NewLegacy` compatibility constructor until the CLI and shared
+`testlib` move to this root graph in migration tickets #07 and #08. Application
+services are narrowed away from the platform locator capability-by-capability;
+ticket #41 removes the locator after those seams are available.
 
 The flat `model` package now establishes the durable model contract:
 

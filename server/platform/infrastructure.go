@@ -64,42 +64,65 @@ type cacheAdapter struct {
 }
 
 func newCache(settings config.Cache) (*cacheAdapter, error) {
-	codec := cachepkg.BytesCodec()
 	switch settings.Backend {
 	case "memory":
-		store, err := memorycache.New(codec)
-		if err != nil {
-			return nil, err
-		}
-		return &cacheAdapter{store: store}, nil
+		return newMemoryCache()
 	case "redis":
-		clientOption := rueidis.ClientOption{
-			InitAddress: append([]string(nil), settings.Redis.Addresses...),
-			Username:    settings.Redis.Username,
-			Password:    settings.Redis.Password,
-			SelectDB:    settings.Redis.Database,
-			ClientName:  "proctor",
-			Dialer: net.Dialer{
-				Timeout:   settings.Redis.ConnectTimeout.Duration,
-				KeepAlive: 30 * time.Second,
-			},
-		}
-		if settings.Redis.TLS {
-			clientOption.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-		}
-		client, err := rueidis.NewClient(clientOption)
-		if err != nil {
-			return nil, fmt.Errorf("create Redis client: %w", err)
-		}
-		store, err := rediscache.New(client, codec, rediscache.Config{Namespace: settings.Namespace})
-		if err != nil {
-			client.Close()
-			return nil, err
-		}
-		return &cacheAdapter{store: store, client: client}, nil
+		return newRedisCache(settings)
 	default:
 		return nil, fmt.Errorf("unsupported cache backend %q", settings.Backend)
 	}
+}
+
+// NewMemoryCache constructs the platform cache adapter backed by process-local
+// disposable memory. Backend selection remains the composition root's job.
+func NewMemoryCache() (Cache, error) {
+	return newMemoryCache()
+}
+
+func newMemoryCache() (*cacheAdapter, error) {
+	store, err := memorycache.New(cachepkg.BytesCodec())
+	if err != nil {
+		return nil, err
+	}
+	return &cacheAdapter{store: store}, nil
+}
+
+// NewRedisCache constructs the platform cache adapter backed by Redis.
+// Backend selection remains the composition root's job.
+func NewRedisCache(settings config.Cache) (Cache, error) {
+	return newRedisCache(settings)
+}
+
+func newRedisCache(settings config.Cache) (*cacheAdapter, error) {
+	clientOption := rueidis.ClientOption{
+		InitAddress: append([]string(nil), settings.Redis.Addresses...),
+		Username:    settings.Redis.Username,
+		Password:    settings.Redis.Password,
+		SelectDB:    settings.Redis.Database,
+		ClientName:  "proctor",
+		Dialer: net.Dialer{
+			Timeout:   settings.Redis.ConnectTimeout.Duration,
+			KeepAlive: 30 * time.Second,
+		},
+	}
+	if settings.Redis.TLS {
+		clientOption.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	client, err := rueidis.NewClient(clientOption)
+	if err != nil {
+		return nil, fmt.Errorf("create Redis client: %w", err)
+	}
+	store, err := rediscache.New(
+		client,
+		cachepkg.BytesCodec(),
+		rediscache.Config{Namespace: settings.Namespace},
+	)
+	if err != nil {
+		client.Close()
+		return nil, err
+	}
+	return &cacheAdapter{store: store, client: client}, nil
 }
 
 func (c *cacheAdapter) Get(ctx context.Context, key string) ([]byte, error) {
@@ -176,17 +199,36 @@ type mailAdapter struct {
 }
 
 func newMailer(settings config.Mail) (*mailAdapter, error) {
+	if !settings.Enabled {
+		return newDisabledMailer(settings), nil
+	}
+	return newSMTPMailer(settings)
+}
+
+// NewDisabledMailer constructs an explicitly disabled mail capability.
+func NewDisabledMailer(settings config.Mail) Mailer {
+	return newDisabledMailer(settings)
+}
+
+func newDisabledMailer(settings config.Mail) *mailAdapter {
+	return &mailAdapter{
+		from: mailpkg.Address{Name: settings.FromName, Address: settings.FromAddress},
+	}
+}
+
+// NewSMTPMailer constructs the configured SMTP-backed mail capability.
+func NewSMTPMailer(settings config.Mail) (Mailer, error) {
+	return newSMTPMailer(settings)
+}
+
+func newSMTPMailer(settings config.Mail) (*mailAdapter, error) {
 	adapter := &mailAdapter{
-		enabled: settings.Enabled,
+		enabled: true,
 		from: mailpkg.Address{
 			Name:    settings.FromName,
 			Address: settings.FromAddress,
 		},
 	}
-	if !settings.Enabled {
-		return adapter, nil
-	}
-
 	sender, err := smtpmail.New(smtpmail.Config{
 		Address:         settings.SMTP.Address,
 		ServerName:      settings.SMTP.ServerName,

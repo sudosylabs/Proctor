@@ -44,11 +44,11 @@ func TestRedisClusterTwoNodeConformance(t *testing.T) {
 			},
 		}
 	}
-	nodeA, err := newRedisCluster(settings("node-a"), logger)
+	nodeA, err := NewRedisCluster(settings("node-a"), logger)
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeB, err := newRedisCluster(settings("node-b"), logger)
+	nodeB, err := NewRedisCluster(settings("node-b"), logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ bestEffortDone:
 		t.Fatal("pending reliable message was not retried")
 	}
 
-	duplicate, err := newRedisCluster(settings("node-a"), logger)
+	duplicate, err := NewRedisCluster(settings("node-a"), logger)
 	if err != nil {
 		t.Fatal(err)
 	}

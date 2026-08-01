@@ -26,14 +26,15 @@ import (
 )
 
 type ServiceConfig struct {
-	Context     context.Context
-	ConfigStore *config.Store
-	Logger      *mlog.Logger
-	Store       store.Store
-	Cache       Cache
-	Cluster     Cluster
-	Mailer      Mailer
-	VFS         vfspkg.FileSystem
+	Context                context.Context
+	ConfigStore            *config.Store
+	Logger                 *mlog.Logger
+	Store                  store.Store
+	Cache                  Cache
+	Cluster                Cluster
+	Mailer                 Mailer
+	VFS                    vfspkg.FileSystem
+	ExternalAuthentication *externalauth.Registry
 }
 
 type Service struct {
@@ -50,25 +51,178 @@ type Service struct {
 	shutdownErr            error
 }
 
+type constructionCleanupPolicy struct {
+	logger        bool
+	configuration bool
+}
+
 func New(serviceConfig ServiceConfig) (*Service, error) {
+	if err := validateServiceConfig(serviceConfig); err != nil {
+		return nil, err
+	}
+	return newService(serviceConfig, constructionCleanupPolicy{
+		logger:        true,
+		configuration: true,
+	})
+}
+
+// NewLegacy preserves the pre-migration optional-dependency construction path
+// for app.NewServer callers. New production composition must use New with
+// explicitly constructed capabilities. Remove this function after the CLI and
+// testlib migrate to server.New.
+func NewLegacy(serviceConfig ServiceConfig) (*Service, error) {
 	if serviceConfig.ConfigStore == nil {
 		return nil, errors.New("configuration store is required")
 	}
-
-	logger := serviceConfig.Logger
-	if logger == nil {
-		var err error
-		logger, err = mlog.New()
+	constructionCtx := serviceConfig.Context
+	if constructionCtx == nil {
+		constructionCtx = context.Background()
+	}
+	var err error
+	createdLogger := false
+	if serviceConfig.Logger == nil {
+		serviceConfig.Logger, err = mlog.New()
 		if err != nil {
 			return nil, fmt.Errorf("create logger: %w", err)
 		}
+		createdLogger = true
 	}
+	if serviceConfig.Store == nil {
+		serviceConfig.Store, err = sqlstore.New(
+			constructionCtx,
+			sqlstore.SettingsFromConfig(serviceConfig.ConfigStore.Get().Database),
+		)
+		if err != nil {
+			var cleanupErr error
+			if createdLogger {
+				cleanupErr = serviceConfig.Logger.Shutdown()
+			}
+			return nil, errors.Join(fmt.Errorf("open database: %w", err), cleanupErr)
+		}
+	}
+	if serviceConfig.Cache == nil {
+		serviceConfig.Cache, err = newCache(serviceConfig.ConfigStore.Get().Cache)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("open cache: %w", err),
+				closeLegacyServiceConfig(serviceConfig, createdLogger),
+			)
+		}
+	}
+	if serviceConfig.Mailer == nil {
+		serviceConfig.Mailer, err = newMailer(serviceConfig.ConfigStore.Get().Mail)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("open mail transport: %w", err),
+				closeLegacyServiceConfig(serviceConfig, createdLogger),
+			)
+		}
+	}
+	if serviceConfig.VFS == nil {
+		serviceConfig.VFS, err = newVFS(serviceConfig.ConfigStore.Get().VFS)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("open VFS: %w", err),
+				closeLegacyServiceConfig(serviceConfig, createdLogger),
+			)
+		}
+	}
+	if serviceConfig.Cluster == nil {
+		serviceConfig.Cluster, err = newCluster(
+			serviceConfig.ConfigStore.Get().Cluster,
+			serviceConfig.Logger,
+		)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("open cluster transport: %w", err),
+				closeLegacyServiceConfig(serviceConfig, createdLogger),
+			)
+		}
+	}
+	if serviceConfig.ExternalAuthentication == nil {
+		serviceConfig.ExternalAuthentication, err = externalauth.NewRegistry(
+			externalauthcas.NewFactory(),
+			externalauthoidc.NewFactory(),
+		)
+		if err != nil {
+			return nil, errors.Join(
+				err,
+				closeLegacyServiceConfig(serviceConfig, createdLogger),
+			)
+		}
+	}
+	if err := validateServiceConfig(serviceConfig); err != nil {
+		return nil, errors.Join(
+			err,
+			closeLegacyServiceConfig(serviceConfig, createdLogger),
+		)
+	}
+	return newService(serviceConfig, constructionCleanupPolicy{logger: createdLogger})
+}
+
+func closeLegacyServiceConfig(serviceConfig ServiceConfig, closeLogger bool) error {
+	var clusterErr error
+	if serviceConfig.Cluster != nil {
+		stopCtx, cancelStop := context.WithTimeout(context.Background(), 15*time.Second)
+		clusterErr = serviceConfig.Cluster.Stop(stopCtx)
+		cancelStop()
+	}
+	var vfsErr error
+	if closer, ok := serviceConfig.VFS.(interface{ Close() error }); ok {
+		vfsErr = closer.Close()
+	}
+	var mailErr error
+	if serviceConfig.Mailer != nil {
+		mailErr = serviceConfig.Mailer.Close()
+	}
+	var cacheErr error
+	if serviceConfig.Cache != nil {
+		cacheErr = serviceConfig.Cache.Close()
+	}
+	var storeErr error
+	if serviceConfig.Store != nil {
+		storeErr = serviceConfig.Store.Close()
+	}
+	var loggerErr error
+	if closeLogger && serviceConfig.Logger != nil {
+		loggerErr = serviceConfig.Logger.Shutdown()
+	}
+	return errors.Join(clusterErr, vfsErr, mailErr, cacheErr, storeErr, loggerErr)
+}
+
+func validateServiceConfig(serviceConfig ServiceConfig) error {
+	required := []struct {
+		name    string
+		missing bool
+	}{
+		{name: "configuration store", missing: serviceConfig.ConfigStore == nil},
+		{name: "logger", missing: serviceConfig.Logger == nil},
+		{name: "persistence store", missing: serviceConfig.Store == nil},
+		{name: "cache", missing: serviceConfig.Cache == nil},
+		{name: "cluster transport", missing: serviceConfig.Cluster == nil},
+		{name: "mailer", missing: serviceConfig.Mailer == nil},
+		{name: "VFS", missing: serviceConfig.VFS == nil},
+		{name: "external authentication registry", missing: serviceConfig.ExternalAuthentication == nil},
+	}
+	for _, dependency := range required {
+		if dependency.missing {
+			return fmt.Errorf("%s is required", dependency.name)
+		}
+	}
+	return nil
+}
+
+func newService(
+	serviceConfig ServiceConfig,
+	cleanupPolicy constructionCleanupPolicy,
+) (*Service, error) {
+	logger := serviceConfig.Logger
 	if err := configureLogger(logger, serviceConfig.ConfigStore.Get().Log); err != nil &&
 		!errors.Is(err, mlog.ErrConfigurationLocked) {
-		if serviceConfig.Logger == nil {
-			_ = logger.Shutdown()
-		}
-		return nil, fmt.Errorf("configure logger: %w", err)
+		return nil, errors.Join(
+			fmt.Errorf("configure logger: %w", err),
+			closeServiceConfig(serviceConfig, cleanupPolicy),
+		)
 	}
 
 	constructionCtx := serviceConfig.Context
@@ -76,112 +230,22 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 		constructionCtx = context.Background()
 	}
 	persistence := serviceConfig.Store
-	if persistence == nil {
-		var err error
-		persistence, err = sqlstore.New(
-			constructionCtx,
-			sqlstore.SettingsFromConfig(serviceConfig.ConfigStore.Get().Database),
-		)
-		if err != nil {
-			if serviceConfig.Logger == nil {
-				_ = logger.Shutdown()
-			}
-			return nil, fmt.Errorf("open database: %w", err)
-		}
-	}
 	if err := persistence.ValidateSchema(constructionCtx); err != nil {
-		_ = persistence.Close()
-		if serviceConfig.Logger == nil {
-			_ = logger.Shutdown()
-		}
-		return nil, fmt.Errorf("validate database schema: %w", err)
+		return nil, errors.Join(
+			fmt.Errorf("validate database schema: %w", err),
+			closeServiceConfig(serviceConfig, cleanupPolicy),
+		)
 	}
 
 	cacheStore := serviceConfig.Cache
-	if cacheStore == nil {
-		var err error
-		cacheStore, err = newCache(serviceConfig.ConfigStore.Get().Cache)
-		if err != nil {
-			_ = persistence.Close()
-			if serviceConfig.Logger == nil {
-				_ = logger.Shutdown()
-			}
-			return nil, fmt.Errorf("open cache: %w", err)
-		}
-	}
 	mailer := serviceConfig.Mailer
-	if mailer == nil {
-		var err error
-		mailer, err = newMailer(serviceConfig.ConfigStore.Get().Mail)
-		if err != nil {
-			_ = cacheStore.Close()
-			_ = persistence.Close()
-			if serviceConfig.Logger == nil {
-				_ = logger.Shutdown()
-			}
-			return nil, fmt.Errorf("open mail transport: %w", err)
-		}
-	}
 	filesystem := serviceConfig.VFS
-	if filesystem == nil {
-		var err error
-		filesystem, err = newVFS(serviceConfig.ConfigStore.Get().VFS)
-		if err != nil {
-			_ = mailer.Close()
-			_ = cacheStore.Close()
-			_ = persistence.Close()
-			if serviceConfig.Logger == nil {
-				_ = logger.Shutdown()
-			}
-			return nil, fmt.Errorf("open VFS: %w", err)
-		}
-	}
 	clusterTransport := serviceConfig.Cluster
-	if clusterTransport == nil {
-		var err error
-		clusterTransport, err = newCluster(serviceConfig.ConfigStore.Get().Cluster, logger)
-		if err != nil {
-			if closer, ok := filesystem.(interface{ Close() error }); ok {
-				_ = closer.Close()
-			}
-			_ = mailer.Close()
-			_ = cacheStore.Close()
-			_ = persistence.Close()
-			if serviceConfig.Logger == nil {
-				_ = logger.Shutdown()
-			}
-			return nil, fmt.Errorf("open cluster transport: %w", err)
-		}
-	}
-	externalAuthentication, err := externalauth.NewRegistry(
-		externalauthcas.NewFactory(),
-		externalauthoidc.NewFactory(),
-	)
-	if err != nil {
-		if closer, ok := filesystem.(interface{ Close() error }); ok {
-			_ = closer.Close()
-		}
-		_ = mailer.Close()
-		_ = cacheStore.Close()
-		_ = persistence.Close()
-		if serviceConfig.Logger == nil {
-			_ = logger.Shutdown()
-		}
-		return nil, err
-	}
+	externalAuthentication := serviceConfig.ExternalAuthentication
 	if err := externalAuthentication.Configure(
 		serviceConfig.ConfigStore.Get().Authentication.External,
 	); err != nil {
-		if closer, ok := filesystem.(interface{ Close() error }); ok {
-			_ = closer.Close()
-		}
-		_ = mailer.Close()
-		_ = cacheStore.Close()
-		_ = persistence.Close()
-		if serviceConfig.Logger == nil {
-			_ = logger.Shutdown()
-		}
-		return nil, err
+		return nil, errors.Join(err, closeServiceConfig(serviceConfig, cleanupPolicy))
 	}
 
 	service := &Service{
@@ -197,18 +261,10 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 	checkCtx, cancelCheck := context.WithTimeout(constructionCtx, 15*time.Second)
 	defer cancelCheck()
 	if err := service.CheckDependencies(checkCtx); err != nil {
-		stopCtx, cancelStop := context.WithTimeout(
-			context.Background(),
-			service.Config().Server.ShutdownTimeout.Duration,
+		return nil, errors.Join(
+			fmt.Errorf("check platform dependencies: %w", err),
+			closeServiceConfig(serviceConfig, cleanupPolicy),
 		)
-		_ = service.cluster.Stop(stopCtx)
-		cancelStop()
-		_ = service.closeInfrastructure()
-		_ = persistence.Close()
-		if serviceConfig.Logger == nil {
-			_ = logger.Shutdown()
-		}
-		return nil, fmt.Errorf("check platform dependencies: %w", err)
 	}
 	service.configListener = service.configStore.AddListener(func(old, current config.Config) {
 		if !reflect.DeepEqual(
@@ -242,6 +298,38 @@ func New(serviceConfig ServiceConfig) (*Service, error) {
 		mlog.String("cluster_backend", service.Config().Cluster.Backend),
 	)
 	return service, nil
+}
+
+func closeServiceConfig(
+	serviceConfig ServiceConfig,
+	policy constructionCleanupPolicy,
+) error {
+	stopCtx, cancelStop := context.WithTimeout(
+		context.Background(),
+		serviceConfig.ConfigStore.Get().Server.ShutdownTimeout.Duration,
+	)
+	defer cancelStop()
+	var vfsErr error
+	if closer, ok := serviceConfig.VFS.(interface{ Close() error }); ok {
+		vfsErr = closer.Close()
+	}
+	var loggerErr error
+	if policy.logger {
+		loggerErr = serviceConfig.Logger.Shutdown()
+	}
+	var configErr error
+	if policy.configuration {
+		configErr = serviceConfig.ConfigStore.Close()
+	}
+	return errors.Join(
+		serviceConfig.Cluster.Stop(stopCtx),
+		vfsErr,
+		serviceConfig.Mailer.Close(),
+		serviceConfig.Cache.Close(),
+		serviceConfig.Store.Close(),
+		loggerErr,
+		configErr,
+	)
 }
 
 func (s *Service) Config() config.Config {
