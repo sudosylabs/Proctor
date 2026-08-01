@@ -73,8 +73,19 @@ func (s SqlProgrammeLevelStore) Save(
 		return nil, appErr
 	}
 
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin programme level save: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeId); err != nil {
+		return nil, err
+	}
 	row := newProgrammeLevelRow(&candidate)
-	if _, err := s.GetMaster().NamedExec(ctx, `
+	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO programme_levels (
 			id, create_at, update_at, delete_at, programme_id,
 			name, display_name, description
@@ -86,6 +97,9 @@ func (s SqlProgrammeLevelStore) Save(
 			"save programme level: %w",
 			translateError("programme_level", candidate.Id, err),
 		)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit programme level save: %w", err)
 	}
 	return &candidate, nil
 }
@@ -181,8 +195,19 @@ func (s SqlProgrammeLevelStore) Update(
 		return nil, appErr
 	}
 
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin programme level update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeId); err != nil {
+		return nil, err
+	}
 	row := newProgrammeLevelRow(&candidate)
-	result, err := s.GetMaster().NamedExec(ctx, `
+	result, err := tx.NamedExec(ctx, `
 		UPDATE programme_levels
 		   SET update_at = :update_at,
 		       programme_id = :programme_id,
@@ -198,6 +223,9 @@ func (s SqlProgrammeLevelStore) Update(
 	}
 	if err := requireAffected(result, "programme_level", candidate.Id); err != nil {
 		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit programme level update: %w", err)
 	}
 	return &candidate, nil
 }

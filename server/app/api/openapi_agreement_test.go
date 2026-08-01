@@ -162,6 +162,9 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 		if !strings.HasPrefix(path, model.APIURLSuffix+"/academic-units") {
 			continue
 		}
+		if strings.Contains(path, "/programmes") {
+			continue
+		}
 		for method, raw := range pathItem {
 			upperMethod := strings.ToUpper(method)
 			if !isHTTPMethod(upperMethod) {

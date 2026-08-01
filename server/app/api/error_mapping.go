@@ -43,6 +43,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"class.enrollment_conflict":          {status: http.StatusConflict},
 	"institution.conflict":               {status: http.StatusConflict},
 	"institution.invalid":                {status: http.StatusBadRequest},
+	"programme.invalid":                  {status: http.StatusBadRequest},
+	"programme.conflict":                 {status: http.StatusConflict},
 	"request.invalid":                    {status: http.StatusBadRequest},
 	"resource.not_found":                 {status: http.StatusNotFound},
 }

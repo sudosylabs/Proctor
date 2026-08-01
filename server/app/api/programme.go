@@ -7,10 +7,39 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func (a *API) InitProgrammes() error {
+type programmeResponse struct {
+	ID             string `json:"id"`
+	CreateAt       int64  `json:"create_at"`
+	UpdateAt       int64  `json:"update_at"`
+	DeleteAt       int64  `json:"delete_at"`
+	AcademicUnitID string `json:"academic_unit_id"`
+	Name           string `json:"name"`
+	DisplayName    string `json:"display_name"`
+	Description    string `json:"description"`
+}
+
+type createProgrammeRequest struct {
+	ID             string `json:"id"`
+	CreateAt       int64  `json:"create_at"`
+	UpdateAt       int64  `json:"update_at"`
+	DeleteAt       int64  `json:"delete_at"`
+	AcademicUnitID string `json:"academic_unit_id"`
+	Name           string `json:"name"`
+	DisplayName    string `json:"display_name"`
+	Description    string `json:"description"`
+}
+
+type updateProgrammeRequest struct {
+	Name        Optional[string] `json:"name"`
+	DisplayName Optional[string] `json:"display_name"`
+	Description Optional[string] `json:"description"`
+}
+
+func (a *API) registerProgrammeRoutes() error {
 	routes := []struct {
 		base         *mux.Router
 		path, method string
@@ -36,20 +65,23 @@ func (a *API) listProgrammes(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		r.Context(), principal, unitID, model.ActionAcademicUnitView, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
 	limit, ok := queryLimit(w, r)
 	if !ok {
 		return
 	}
-	programmes, appErr := a.application.ListProgrammes(
-		ctx, principal, RequestMetadata(ctx), unitID, r.URL.Query().Get("q"), limit,
+	programmes, err := a.programmes.ListProgrammes(
+		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.ListProgrammesQuery{AcademicUnitID: unitID, Query: r.URL.Query().Get("q"), Limit: limit},
 	)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, programmes, appErr)
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
+		return
+	}
+	responses := make([]programmeResponse, 0, len(programmes))
+	for _, programme := range programmes {
+		responses = append(responses, programmeResponseFromModel(programme))
+	}
+	writeJSON(w, http.StatusOK, responses)
 }
 
 func (a *API) createProgramme(w http.ResponseWriter, r *http.Request) {
@@ -57,20 +89,19 @@ func (a *API) createProgramme(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		r.Context(), principal, unitID, model.ActionAcademicUnitManage, RequestMetadata(r.Context()),
+	var body createProgrammeRequest
+	if !decodeJSON(w, r, &body, "createProgramme") {
+		return
+	}
+	saved, err := a.programmes.CreateProgramme(
+		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.CreateProgrammeCommand{AcademicUnitID: unitID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	r = r.WithContext(ctx)
-	var programme model.Programme
-	if !decodeJSON(w, r, &programme, "createProgramme") {
-		return
-	}
-	programme.AcademicUnitId = unitID
-	saved, appErr := a.application.CreateProgramme(ctx, principal, RequestMetadata(ctx), &programme)
-	writeResult(w, r, a, http.StatusCreated, saved, appErr)
+	writeJSON(w, http.StatusCreated, programmeResponseFromModel(saved))
 }
 
 func (a *API) getProgramme(w http.ResponseWriter, r *http.Request) {
@@ -78,14 +109,15 @@ func (a *API) getProgramme(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToProgrammeForRequest(
-		r.Context(), principal, id, model.ActionAcademicUnitView, RequestMetadata(r.Context()),
+	programme, err := a.programmes.GetProgramme(
+		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.GetProgrammeQuery{ID: id},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	programme, appErr := a.application.GetProgramme(ctx, principal, RequestMetadata(ctx), id)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, programme, appErr)
+	writeJSON(w, http.StatusOK, programmeResponseFromModel(programme))
 }
 
 func (a *API) patchProgramme(w http.ResponseWriter, r *http.Request) {
@@ -93,19 +125,19 @@ func (a *API) patchProgramme(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToProgrammeForRequest(
-		r.Context(), principal, id, model.ActionAcademicUnitManage, RequestMetadata(r.Context()),
+	var body updateProgrammeRequest
+	if !decodeJSON(w, r, &body, "patchProgramme") {
+		return
+	}
+	programme, err := a.programmes.UpdateProgramme(
+		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.UpdateProgrammeCommand{ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	r = r.WithContext(ctx)
-	var patch model.ProgrammePatch
-	if !decodeJSON(w, r, &patch, "patchProgramme") {
-		return
-	}
-	programme, appErr := a.application.PatchProgramme(ctx, principal, RequestMetadata(ctx), id, &patch)
-	writeResult(w, r, a, http.StatusOK, programme, appErr)
+	writeJSON(w, http.StatusOK, programmeResponseFromModel(programme))
 }
 
 func (a *API) archiveProgramme(w http.ResponseWriter, r *http.Request) {
@@ -113,14 +145,27 @@ func (a *API) archiveProgramme(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToProgrammeForRequest(
-		r.Context(), principal, id, model.ActionAcademicUnitManage, RequestMetadata(r.Context()),
+	err := a.programmes.ArchiveProgramme(
+		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.ArchiveProgrammeCommand{ID: id},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	appErr = a.application.ArchiveProgramme(ctx, principal, RequestMetadata(ctx), id)
-	writeNoContent(w, r.WithContext(ctx), a, appErr)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func programmeResponseFromModel(programme *model.Programme) programmeResponse {
+	if programme == nil {
+		return programmeResponse{}
+	}
+	return programmeResponse{
+		ID: programme.Id, CreateAt: programme.CreateAt, UpdateAt: programme.UpdateAt,
+		DeleteAt: programme.DeleteAt, AcademicUnitID: programme.AcademicUnitId,
+		Name: programme.Name, DisplayName: programme.DisplayName, Description: programme.Description,
+	}
 }
 
 func (a *API) InitProgrammeLevels() error {

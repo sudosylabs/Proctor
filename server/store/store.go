@@ -96,7 +96,29 @@ type AcademicUnitStore interface {
 }
 
 // ProgrammeStore persists courses of study owned by academic units.
+type ProgrammeCreation struct {
+	Programme    *model.Programme
+	AuditEventID string
+	AuditAt      int64
+}
+
+type ProgrammeUpdate struct {
+	Programme    *model.Programme
+	AuditEventID string
+	AuditAt      int64
+}
+
+type ProgrammeArchive struct {
+	ID           string
+	ArchiveAt    int64
+	AuditEventID string
+	AuditAt      int64
+}
+
 type ProgrammeStore interface {
+	Create(context.Context, *ProgrammeCreation) (*model.Programme, error)
+	UpdateWithAudit(context.Context, *ProgrammeUpdate) (*model.Programme, error)
+	ArchiveWithAudit(context.Context, *ProgrammeArchive) (*model.Programme, error)
 	Save(context.Context, *model.Programme) (*model.Programme, error)
 	Get(context.Context, string) (*model.Programme, error)
 	GetByName(context.Context, string, string) (*model.Programme, error)

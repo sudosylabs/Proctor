@@ -17,26 +17,23 @@ type Programme struct {
 	Description    string `json:"description"`
 }
 
-type ProgrammePatch struct {
-	Name        *string `json:"name,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
-	Description *string `json:"description,omitempty"`
-}
-
-func (p *Programme) Patch(patch *ProgrammePatch) {
-	if patch.Name != nil {
-		p.Name = *patch.Name
-	}
-	if patch.DisplayName != nil {
-		p.DisplayName = *patch.DisplayName
-	}
-	if patch.Description != nil {
-		p.Description = *patch.Description
-	}
-}
-
 func (p *Programme) PreSave() {
 	preSave(&p.Id, &p.CreateAt, &p.UpdateAt)
+	sanitizeNamed(&p.Name, &p.DisplayName, &p.Description)
+}
+
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (p *Programme) PrepareCreate(id string, at int64) {
+	p.Id = id
+	p.CreateAt = at
+	p.UpdateAt = at
+	p.DeleteAt = 0
+	sanitizeNamed(&p.Name, &p.DisplayName, &p.Description)
+}
+
+// PrepareUpdate applies the application-selected transition time.
+func (p *Programme) PrepareUpdate(at int64) {
+	p.UpdateAt = at
 	sanitizeNamed(&p.Name, &p.DisplayName, &p.Description)
 }
 

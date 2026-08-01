@@ -135,6 +135,96 @@
         }
       }
     },
+    "/api/v1/academic-units/{academic_unit_id}/programmes": {
+      "parameters": [{"$ref": "#/components/parameters/AcademicUnitID"}],
+      "get": {
+        "operationId": "listProgrammes",
+        "summary": "List or search Programmes owned by an Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ProgrammeListOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createProgramme",
+        "summary": "Create a Programme owned by an Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "programme.invalid", "programme.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateProgramme"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/ProgrammeCreated"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/programmes/{programme_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ProgrammeID"}],
+      "get": {
+        "operationId": "getProgramme",
+        "summary": "Get a Programme",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ProgrammeOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "patch": {
+        "operationId": "updateProgramme",
+        "summary": "Update a Programme without changing its Academic Unit owner",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "programme.invalid", "programme.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateProgramme"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/ProgrammeOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "delete": {
+        "operationId": "archiveProgramme",
+        "summary": "Archive a Programme that has no active Programme Levels",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "programme.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/ProgrammeArchived"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -196,6 +286,12 @@
         "in": "path",
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "ProgrammeID": {
+        "name": "programme_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
       }
     },
     "requestBodies": {
@@ -214,6 +310,14 @@
       "UpdateInstitution": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateInstitutionRequest"}}}
+      },
+      "CreateProgramme": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateProgrammeRequest"}}}
+      },
+      "UpdateProgramme": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateProgrammeRequest"}}}
       }
     },
     "responses": {
@@ -231,6 +335,10 @@
       },
       "AcademicUnitArchived": {"description": "Academic Unit archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
       "InstitutionOK": {"description": "Installation Institution", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstitutionResponse"}}}},
+      "ProgrammeOK": {"description": "Programme", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeResponse"}}}},
+      "ProgrammeCreated": {"description": "Programme created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeResponse"}}}},
+      "ProgrammeListOK": {"description": "Programme collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeListResponse"}}}},
+      "ProgrammeArchived": {"description": "Programme archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -314,6 +422,46 @@
                   "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
                   "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."}
                 }
+      },
+      "ProgrammeResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "academic_unit_id", "name", "display_name", "description"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"},
+          "delete_at": {"type": "integer", "format": "int64"},
+          "academic_unit_id": {"$ref": "#/components/schemas/ID"},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      },
+      "ProgrammeListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/ProgrammeResponse"}},
+      "CreateProgrammeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "display_name"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "academic_unit_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      },
+      "UpdateProgrammeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."}
+        }
       },
       "ProblemDetails": {
         "type": "object",

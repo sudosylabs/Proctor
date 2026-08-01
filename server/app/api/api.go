@@ -113,6 +113,7 @@ type Options struct {
 	Application             Application
 	AcademicUnits           AcademicUnitApplication
 	Institutions            InstitutionApplication
+	Programmes              ProgrammeApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -219,12 +220,15 @@ type InstitutionApplication interface {
 	UpdateInstitution(context.Context, application.Invocation, application.UpdateInstitutionCommand) (*model.Institution, error)
 }
 
+type ProgrammeApplication interface {
+	GetProgramme(context.Context, application.Invocation, application.GetProgrammeQuery) (*model.Programme, error)
+	ListProgrammes(context.Context, application.Invocation, application.ListProgrammesQuery) ([]*model.Programme, error)
+	CreateProgramme(context.Context, application.Invocation, application.CreateProgrammeCommand) (*model.Programme, error)
+	UpdateProgramme(context.Context, application.Invocation, application.UpdateProgrammeCommand) (*model.Programme, error)
+	ArchiveProgramme(context.Context, application.Invocation, application.ArchiveProgrammeCommand) error
+}
+
 type AcademicAdministration interface {
-	GetProgramme(context.Context, model.Principal, model.RequestMetadata, string) (*model.Programme, *model.AppError)
-	ListProgrammes(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.Programme, *model.AppError)
-	CreateProgramme(context.Context, model.Principal, model.RequestMetadata, *model.Programme) (*model.Programme, *model.AppError)
-	PatchProgramme(context.Context, model.Principal, model.RequestMetadata, string, *model.ProgrammePatch) (*model.Programme, *model.AppError)
-	ArchiveProgramme(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
 	GetProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, string) (*model.ProgrammeLevel, *model.AppError)
 	ListProgrammeLevels(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.ProgrammeLevel, *model.AppError)
 	CreateProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, *model.ProgrammeLevel) (*model.ProgrammeLevel, *model.AppError)
@@ -426,6 +430,7 @@ type API struct {
 	application             Application
 	academicUnits           AcademicUnitApplication
 	institutions            InstitutionApplication
+	programmes              ProgrammeApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -454,6 +459,9 @@ func New(options Options) (*API, error) {
 	if options.Institutions == nil {
 		return nil, errors.New("institution application is required")
 	}
+	if options.Programmes == nil {
+		return nil, errors.New("programme application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -472,6 +480,7 @@ func New(options Options) (*API, error) {
 		application:             options.Application,
 		academicUnits:           options.AcademicUnits,
 		institutions:            options.Institutions,
+		programmes:              options.Programmes,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -504,7 +513,7 @@ func New(options Options) (*API, error) {
 		api.InitRoleBindings,
 		api.registerInstitutionRoutes,
 		api.registerAcademicUnitRoutes,
-		api.InitProgrammes,
+		api.registerProgrammeRoutes,
 		api.InitProgrammeLevels,
 		api.InitAcademicPeriods,
 		api.InitClasses,
