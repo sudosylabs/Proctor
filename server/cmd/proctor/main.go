@@ -15,9 +15,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/store/sqlstore"
+	server "github.com/sudosylabs/proctor/server"
 )
 
 func main() {
@@ -28,12 +26,17 @@ func runMain() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	return reportError(run(ctx, os.Args[1:], os.Stdout, os.Stderr), os.Stderr)
+}
+
+// reportError writes a single operational failure line and maps it to the
+// process exit code: 0 for success, 2 for usage failures, 1 otherwise.
+func reportError(err error, stderr io.Writer) int {
 	if err == nil {
 		return 0
 	}
 
-	_, _ = fmt.Fprintln(os.Stderr, "proctor:", err)
+	_, _ = fmt.Fprintln(stderr, "proctor:", err)
 	var usageError *UsageError
 	if errors.As(err, &usageError) {
 		return 2
@@ -90,59 +93,25 @@ func runMigrate(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		return &UsageError{Message: "migrate does not accept positional arguments after its action"}
 	}
 
-	var backing config.BackingStore = config.NewMemoryStore(nil)
-	if *path != "" {
-		fileStore, err := config.NewFileStore(*path)
-		if err != nil {
-			return err
-		}
-		backing = fileStore
-	}
-	configStore, err := config.NewStore(ctx, backing, config.StoreOptions{})
-	if err != nil {
-		return err
-	}
-	defer configStore.Close()
-
-	migrator, err := sqlstore.NewMigrator(
-		ctx,
-		sqlstore.SettingsFromConfig(configStore.Get().Database),
-	)
-	if err != nil {
-		return err
-	}
-	defer migrator.Close()
-
 	switch action {
 	case "up":
-		if err := migrator.Up(); err != nil {
-			return err
-		}
-		version, err := migrator.SchemaVersion(ctx)
+		version, err := server.MigrateUp(ctx, *path)
 		if err != nil {
 			return err
 		}
 		_, err = fmt.Fprintf(stdout, "database schema migrated to version %d\n", version)
 		return err
 	default:
-		current, err := migrator.SchemaVersion(ctx)
-		if err != nil {
-			return err
-		}
-		local, err := sqlstore.LocalSchemaVersion()
-		if err != nil {
-			return err
-		}
-		pending, err := migrator.Pending()
+		status, err := server.MigrateStatus(ctx, *path)
 		if err != nil {
 			return err
 		}
 		_, err = fmt.Fprintf(
 			stdout,
 			"database schema version %d; server schema version %d; pending migrations %d\n",
-			current,
-			local,
-			len(pending),
+			status.DatabaseVersion,
+			status.ServerVersion,
+			status.PendingMigrations,
 		)
 		return err
 	}
@@ -158,15 +127,15 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 		return &UsageError{Message: "serve does not accept positional arguments"}
 	}
 
-	var options []app.Option
+	var options []server.Option
 	if *path != "" {
-		options = append(options, app.WithConfigPath(*path))
+		options = append(options, server.WithConfigPath(*path))
 	}
-	server, err := app.NewServer(ctx, options...)
+	node, err := server.New(ctx, options...)
 	if err != nil {
 		return err
 	}
-	return server.Start(ctx)
+	return node.Start(ctx)
 }
 
 func runConfig(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -183,22 +152,10 @@ func runConfig(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return &UsageError{Message: "config validate does not accept positional arguments"}
 	}
 
-	var backing config.BackingStore = config.NewMemoryStore(nil)
-	if *path != "" {
-		fileStore, err := config.NewFileStore(*path)
-		if err != nil {
-			return err
-		}
-		backing = fileStore
-	}
-	store, err := config.NewStore(ctx, backing, config.StoreOptions{})
-	if err != nil {
+	if err := server.ValidateConfig(ctx, *path); err != nil {
 		return err
 	}
-	if err := store.Close(); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(stdout, "configuration is valid")
+	_, err := fmt.Fprintln(stdout, "configuration is valid")
 	return err
 }
 
@@ -212,7 +169,7 @@ func runVersion(args []string, stdout, stderr io.Writer) error {
 		return &UsageError{Message: "version does not accept positional arguments"}
 	}
 
-	info := app.CurrentBuildInfo()
+	info := server.CurrentBuildInfo()
 	if *asJSON {
 		encoder := json.NewEncoder(stdout)
 		encoder.SetIndent("", "  ")

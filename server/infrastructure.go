@@ -106,17 +106,7 @@ func openRuntimeInfrastructure(
 		}
 	}()
 
-	var backing config.BackingStore
-	if configPath == "" {
-		backing = config.NewMemoryStore(nil)
-	} else {
-		fileStore, err := config.NewFileStore(configPath)
-		if err != nil {
-			return result, err
-		}
-		backing = fileStore
-	}
-	configuration, err := config.NewStore(ctx, backing, config.StoreOptions{})
+	configuration, err := openConfiguration(ctx, configPath)
 	if err != nil {
 		return result, err
 	}

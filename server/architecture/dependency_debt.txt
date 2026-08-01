@@ -48,9 +48,6 @@ app/server.go	github.com/sudosylabs/proctor/server/platform
 app/server.go	net/http
 app/session_management.go	net/http
 app/version.go	github.com/sudosylabs/proctor/server/app/api
-cmd/proctor/main.go	github.com/sudosylabs/proctor/server/app
-cmd/proctor/main.go	github.com/sudosylabs/proctor/server/config
-cmd/proctor/main.go	github.com/sudosylabs/proctor/server/store/sqlstore
 model/app_error.go	net/http
 platform/cluster_redis.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/redis/rueidis
