@@ -1,0 +1,273 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Proctor Server API",
+    "version": "1.0.0",
+    "description": "The reviewed public HTTP contract. Coverage begins with the Academic Unit reference slice and expands incrementally with each migrated capability."
+  },
+  "servers": [
+    {"url": "/"}
+  ],
+  "paths": {
+    "/api/v1/academic-units": {
+      "get": {
+        "operationId": "listAcademicUnits",
+        "summary": "List or search Academic Units",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicUnitListOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createRootAcademicUnit",
+        "summary": "Create a root Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "administration.unavailable", "academic_unit.invalid", "academic_unit.conflict"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateAcademicUnit"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/AcademicUnitCreated"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/academic-units/{academic_unit_id}": {
+      "parameters": [
+        {"$ref": "#/components/parameters/AcademicUnitID"}
+      ],
+      "get": {
+        "operationId": "getAcademicUnit",
+        "summary": "Get an Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicUnitOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "patch": {
+        "operationId": "updateAcademicUnit",
+        "summary": "Update or reparent an Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateAcademicUnit"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicUnitOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "delete": {
+        "operationId": "archiveAcademicUnit",
+        "summary": "Archive an Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/AcademicUnitArchived"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/academic-units/{academic_unit_id}/children": {
+      "parameters": [
+        {"$ref": "#/components/parameters/AcademicUnitID"}
+      ],
+      "get": {
+        "operationId": "listAcademicUnitChildren",
+        "summary": "List an Academic Unit's direct children",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicUnitListOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createAcademicUnitChild",
+        "summary": "Create a child Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateAcademicUnit"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/AcademicUnitCreated"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A Proctor session access credential or Personal Access Token, subject to the route's x-proctor-auth requirement."
+      },
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "PROCTOR_ACCESS",
+        "description": "The host-only HttpOnly browser session access cookie."
+      },
+      "csrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Proctor-CSRF-Token",
+        "description": "Required with the session cookie for state-changing requests."
+      }
+    },
+    "parameters": {
+      "AcademicUnitID": {
+        "name": "academic_unit_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      }
+    },
+    "requestBodies": {
+      "CreateAcademicUnit": {
+        "required": true,
+        "content": {
+          "application/json": {"schema": {"$ref": "#/components/schemas/CreateAcademicUnitRequest"}}
+        }
+      },
+      "UpdateAcademicUnit": {
+        "required": true,
+        "content": {
+          "application/json": {"schema": {"$ref": "#/components/schemas/UpdateAcademicUnitRequest"}}
+        }
+      }
+    },
+    "responses": {
+      "AcademicUnitOK": {
+        "description": "Academic Unit",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitResponse"}}}
+      },
+      "AcademicUnitCreated": {
+        "description": "Academic Unit created",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitResponse"}}}
+      },
+      "AcademicUnitListOK": {
+        "description": "Academic Unit collection",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitListResponse"}}}
+      },
+      "AcademicUnitArchived": {"description": "Academic Unit archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
+      "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
+      "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
+      "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
+      "NotFound": {"description": "Resource not found", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
+      "Conflict": {"description": "Conflict", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
+      "InternalError": {"description": "Internal server error", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
+    },
+    "headers": {
+      "NoStore": {"description": "Prevents storage of sensitive responses.", "schema": {"type": "string", "const": "no-store"}}
+    },
+    "schemas": {
+      "ID": {
+        "type": "string",
+        "pattern": "^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$"
+      },
+      "AcademicUnitResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "institution_id", "name", "display_name", "description"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"},
+          "delete_at": {"type": "integer", "format": "int64"},
+          "institution_id": {"$ref": "#/components/schemas/ID"},
+          "parent_id": {"$ref": "#/components/schemas/ID"},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      },
+      "AcademicUnitListResponse": {
+        "type": "array",
+        "items": {"$ref": "#/components/schemas/AcademicUnitResponse"}
+      },
+      "CreateAcademicUnitRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "display_name"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "institution_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "parent_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      },
+      "UpdateAcademicUnitRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "parent_id": {"type": ["string", "null"], "pattern": "^$|^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$"},
+          "name": {"type": ["string", "null"]},
+          "display_name": {"type": ["string", "null"]},
+          "description": {"type": ["string", "null"]}
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "code"],
+        "properties": {
+          "type": {"type": "string", "format": "uri-reference"},
+          "title": {"type": "string"},
+          "status": {"type": "integer", "minimum": 400, "maximum": 599},
+          "detail": {"type": "string"},
+          "instance": {"type": "string", "format": "uri-reference"},
+          "code": {"type": "string"},
+          "request_id": {"type": "string"},
+          "fields": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

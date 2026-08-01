@@ -25,6 +25,7 @@ type academicUnitHTTPApplication struct {
 	createCommand  application.CreateAcademicUnitCommand
 	updateCommand  application.UpdateAcademicUnitCommand
 	archiveCommand application.ArchiveAcademicUnitCommand
+	getErr         error
 }
 
 func (a *academicUnitHTTPApplication) AuthenticateAccess(
@@ -48,6 +49,9 @@ func (a *academicUnitHTTPApplication) GetAcademicUnit(
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserId != a.principal.UserId || query.ID != a.unit.Id {
 		return nil, application.NewError("request.invalid")
+	}
+	if a.getErr != nil {
+		return nil, a.getErr
 	}
 	return a.unit, nil
 }
@@ -198,6 +202,61 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	if string(encoded) != string(want) {
 		t.Fatalf("response = %s, want %s", encoded, want)
+	}
+}
+
+func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
+	t.Parallel()
+
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	unit := &model.AcademicUnit{Id: model.NewId()}
+	fakeApplication := &academicUnitHTTPApplication{
+		principal: model.Principal{
+			UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+			CredentialType:         model.CredentialSessionAccess,
+			AuthenticationMethod:   "password",
+			AuthenticationStrength: model.AuthenticationSingleFactor,
+			ClientType:             model.SessionClientCLI,
+			AuthenticatedAt:        time.Now().UnixMilli(),
+		},
+		unit: unit,
+		getErr: application.NewError("resource.not_found").
+			WithField("resource", "academic_unit"),
+	}
+	httpAPI, err := New(Options{
+		Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
+		AcademicUnits: fakeApplication, BuildInfo: BuildInfo{Version: "test"},
+		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
+		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = httpAPI.Close() })
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/academic-units/"+unit.Id, nil)
+	request.Header.Set("Authorization", "Bearer test-credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Content-Type") != "application/problem+json" ||
+		response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("problem headers = %#v", response.Header())
+	}
+	var problem Problem
+	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Code != "resource.not_found" || problem.Status != http.StatusNotFound ||
+		problem.Type != "https://proctor.sudosylabs.com/problems/resource.not_found" ||
+		problem.Fields["resource"] != "academic_unit" {
+		t.Fatalf("problem = %#v", problem)
 	}
 }
 
