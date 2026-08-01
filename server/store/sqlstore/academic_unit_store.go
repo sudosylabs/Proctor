@@ -264,6 +264,28 @@ func (s SqlAcademicUnitStore) Search(
 	return units, nil
 }
 
+type academicUnitAuditCompletion struct {
+	eventID string
+	at      int64
+}
+
+func (s SqlAcademicUnitStore) UpdateWithAudit(
+	ctx context.Context,
+	input *store.AcademicUnitUpdate,
+) (*model.AcademicUnit, error) {
+	if input == nil || input.Unit == nil ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit", "update", nil)
+	}
+	candidate := *input.Unit
+	if appErr := candidate.IsValid(); appErr != nil {
+		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(appErr)
+	}
+	return s.updateAcademicUnit(ctx, &candidate, &academicUnitAuditCompletion{
+		eventID: input.AuditEventID, at: input.AuditAt,
+	})
+}
+
 func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
 	if unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
@@ -273,7 +295,14 @@ func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUn
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
 	}
+	return s.updateAcademicUnit(ctx, &candidate, nil)
+}
 
+func (s SqlAcademicUnitStore) updateAcademicUnit(
+	ctx context.Context,
+	candidate *model.AcademicUnit,
+	audit *academicUnitAuditCompletion,
+) (*model.AcademicUnit, error) {
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin academic unit update: %w", err)
@@ -286,7 +315,7 @@ func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUn
 	if err := validateAcademicUnitParent(ctx, tx, candidate.Id, candidate.InstitutionId, candidate.ParentId); err != nil {
 		return nil, err
 	}
-	row := newAcademicUnitRow(&candidate)
+	row := newAcademicUnitRow(candidate)
 	result, err := tx.NamedExec(ctx, `
 		UPDATE academic_units
 		   SET update_at = :update_at,
@@ -301,10 +330,35 @@ func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUn
 	if err := requireAffected(result, "academic_unit", candidate.Id); err != nil {
 		return nil, err
 	}
+	if audit != nil {
+		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, audit.eventID, model.AuditStatusSuccess, "", encoded, audit.at,
+		); err != nil {
+			return nil, fmt.Errorf("complete academic unit update audit: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit academic unit update: %w", err)
 	}
-	return &candidate, nil
+	return candidate, nil
+}
+
+func (s SqlAcademicUnitStore) ArchiveWithAudit(
+	ctx context.Context,
+	input *store.AcademicUnitArchive,
+) (*model.AcademicUnit, error) {
+	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit", "archive", nil)
+	}
+	return s.archiveAcademicUnit(
+		ctx, input.ID, input.ArchiveAt,
+		&academicUnitAuditCompletion{eventID: input.AuditEventID, at: input.AuditAt},
+	)
 }
 
 func (s SqlAcademicUnitStore) Delete(
@@ -315,6 +369,15 @@ func (s SqlAcademicUnitStore) Delete(
 	if deleteAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "delete_at", deleteAt)
 	}
+	return s.archiveAcademicUnit(ctx, id, deleteAt, nil)
+}
+
+func (s SqlAcademicUnitStore) archiveAcademicUnit(
+	ctx context.Context,
+	id string,
+	deleteAt int64,
+	audit *academicUnitAuditCompletion,
+) (*model.AcademicUnit, error) {
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin academic unit archive: %w", err)
@@ -350,6 +413,17 @@ func (s SqlAcademicUnitStore) Delete(
 	}
 	current.UpdateAt = deleteAt
 	current.DeleteAt = deleteAt
+	if audit != nil {
+		encoded, appErr := model.EncodeAuditData(current.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, audit.eventID, model.AuditStatusSuccess, "", encoded, audit.at,
+		); err != nil {
+			return nil, fmt.Errorf("complete academic unit archive audit: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit academic unit archive: %w", err)
 	}

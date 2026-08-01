@@ -31,6 +31,18 @@ func (s *academicUnitCreateStore) Create(
 	return s.result, s.err
 }
 
+func (s *academicUnitCreateStore) UpdateWithAudit(
+	context.Context, *store.AcademicUnitUpdate,
+) (*model.AcademicUnit, error) {
+	panic("unexpected UpdateWithAudit")
+}
+
+func (s *academicUnitCreateStore) ArchiveWithAudit(
+	context.Context, *store.AcademicUnitArchive,
+) (*model.AcademicUnit, error) {
+	panic("unexpected ArchiveWithAudit")
+}
+
 func (*academicUnitCreateStore) Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
 	panic("unexpected Save")
 }
@@ -53,7 +65,7 @@ func (*academicUnitCreateStore) Delete(context.Context, string, int64) (*model.A
 	panic("unexpected Delete")
 }
 
-type academicUnitCreateAuditor struct {
+type academicUnitCommandAuditor struct {
 	events    *[]string
 	beginID   string
 	beginErr  error
@@ -70,7 +82,7 @@ type academicUnitMutationAudit struct {
 	prior     map[string]any
 }
 
-func (a *academicUnitCreateAuditor) Begin(
+func (a *academicUnitCommandAuditor) Begin(
 	_ context.Context,
 	_ Invocation,
 	action model.Action,
@@ -87,7 +99,7 @@ func (a *academicUnitCreateAuditor) Begin(
 	return a.beginID, a.beginErr
 }
 
-func (a *academicUnitCreateAuditor) Fail(
+func (a *academicUnitCommandAuditor) Fail(
 	_ context.Context,
 	auditID string,
 	errorCode string,
@@ -100,30 +112,51 @@ func (a *academicUnitCreateAuditor) Fail(
 	return a.failErr
 }
 
-type academicUnitCreateEffects struct {
+type academicUnitCommandEffectsFake struct {
 	events *[]string
 	err    error
 	unitID string
 }
 
-type academicUnitCreateFailureReporter struct {
-	events *[]string
-	err    error
+type academicUnitEffectFailureReporterFake struct {
+	events    *[]string
+	operation string
+	err       error
 }
 
-func (r *academicUnitCreateFailureReporter) Report(
+func (r *academicUnitEffectFailureReporterFake) Report(
 	_ context.Context,
+	operation string,
 	err error,
 ) {
 	*r.events = append(*r.events, "effect-report")
+	r.operation = operation
 	r.err = err
 }
 
-func (e *academicUnitCreateEffects) Created(
+func (e *academicUnitCommandEffectsFake) Created(
 	_ context.Context,
 	unitID string,
 ) error {
 	*e.events = append(*e.events, "effect")
+	e.unitID = unitID
+	return e.err
+}
+
+func (e *academicUnitCommandEffectsFake) Updated(
+	_ context.Context,
+	unitID string,
+) error {
+	*e.events = append(*e.events, "effect-update")
+	e.unitID = unitID
+	return e.err
+}
+
+func (e *academicUnitCommandEffectsFake) Archived(
+	_ context.Context,
+	unitID string,
+) error {
+	*e.events = append(*e.events, "effect-archive")
 	e.unitID = unitID
 	return e.err
 }
@@ -138,8 +171,8 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	}
 	events := []string{}
 	creator := &academicUnitCreateStore{events: &events, result: saved}
-	auditor := &academicUnitCreateAuditor{events: &events, beginID: model.NewId()}
-	effects := &academicUnitCreateEffects{events: &events}
+	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
+	effects := &academicUnitCommandEffectsFake{events: &events}
 	createdID := model.NewId()
 	service := newAcademicUnitCommandService(
 		creator,
@@ -156,7 +189,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 		},
 		auditor,
 		effects,
-		&academicUnitCreateFailureReporter{events: &events},
+		&academicUnitEffectFailureReporterFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 		func() string { return createdID },
 	)
@@ -199,9 +232,9 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 				return model.Resource{}, NewError("authorization.denied")
 			},
 		},
-		&academicUnitCreateAuditor{events: &events},
-		&academicUnitCreateEffects{events: &events},
-		&academicUnitCreateFailureReporter{events: &events},
+		&academicUnitCommandAuditor{events: &events},
+		&academicUnitCommandEffectsFake{events: &events},
+		&academicUnitEffectFailureReporterFake{events: &events},
 		time.Now,
 		model.NewId,
 	)
@@ -224,7 +257,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 		events: &events,
 		err:    store.NewErrConflict("academic_unit", "name", errors.New("duplicate")),
 	}
-	auditor := &academicUnitCreateAuditor{events: &events, beginID: model.NewId()}
+	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
 	service := newAcademicUnitCommandService(
 		creator,
 		academicUnitReadAuthorizerStub{
@@ -242,8 +275,8 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 			},
 		},
 		auditor,
-		&academicUnitCreateEffects{events: &events},
-		&academicUnitCreateFailureReporter{events: &events},
+		&academicUnitCommandEffectsFake{events: &events},
+		&academicUnitEffectFailureReporterFake{events: &events},
 		time.Now,
 		model.NewId,
 	)
@@ -265,7 +298,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 	events := []string{}
 	saved := &model.AcademicUnit{Id: model.NewId(), InstitutionId: model.NewId(), Name: "engineering"}
 	creator := &academicUnitCreateStore{events: &events, result: saved}
-	reporter := &academicUnitCreateFailureReporter{events: &events}
+	reporter := &academicUnitEffectFailureReporterFake{events: &events}
 	effectErr := errors.New("cluster unavailable")
 	service := newAcademicUnitCommandService(
 		creator,
@@ -276,8 +309,8 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 				return model.Resource{Type: model.ResourceInstitution, Id: saved.InstitutionId}, nil
 			},
 		},
-		&academicUnitCreateAuditor{events: &events, beginID: model.NewId()},
-		&academicUnitCreateEffects{events: &events, err: effectErr},
+		&academicUnitCommandAuditor{events: &events, beginID: model.NewId()},
+		&academicUnitCommandEffectsFake{events: &events, err: effectErr},
 		reporter,
 		time.Now,
 		model.NewId,
@@ -290,6 +323,9 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 	}
 	if !errors.Is(reporter.err, effectErr) {
 		t.Fatalf("reported effect error = %v, want %v", reporter.err, effectErr)
+	}
+	if reporter.operation != "academic_unit_created" {
+		t.Fatalf("reported operation = %q", reporter.operation)
 	}
 	assertAcademicUnitCreateEvents(t, events, "audit-begin", "store", "effect", "effect-report")
 }

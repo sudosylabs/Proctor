@@ -111,7 +111,7 @@ type Options struct {
 	Logger                  *mlog.Logger
 	Health                  Health
 	Application             Application
-	AcademicUnits           AcademicUnitReads
+	AcademicUnits           AcademicUnitApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -204,18 +204,18 @@ type Users interface {
 	RevokeUserSession(context.Context, model.Principal, model.RequestMetadata, string, string) *model.AppError
 }
 
-type AcademicUnitReads interface {
+type AcademicUnitApplication interface {
 	GetAcademicUnit(context.Context, application.Invocation, application.GetAcademicUnitQuery) (*model.AcademicUnit, error)
 	ListAcademicUnits(context.Context, application.Invocation, application.ListAcademicUnitsQuery) ([]*model.AcademicUnit, error)
 	SearchAcademicUnits(context.Context, application.Invocation, application.SearchAcademicUnitsQuery) ([]*model.AcademicUnit, error)
 	CreateAcademicUnit(context.Context, application.Invocation, application.CreateAcademicUnitCommand) (*model.AcademicUnit, error)
+	UpdateAcademicUnit(context.Context, application.Invocation, application.UpdateAcademicUnitCommand) (*model.AcademicUnit, error)
+	ArchiveAcademicUnit(context.Context, application.Invocation, application.ArchiveAcademicUnitCommand) error
 }
 
 type AcademicAdministration interface {
 	GetInstitution(context.Context, model.Principal, model.RequestMetadata) (*model.Institution, *model.AppError)
 	PatchInstitution(context.Context, model.Principal, model.RequestMetadata, *model.InstitutionPatch) (*model.Institution, *model.AppError)
-	PatchAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string, *model.AcademicUnitPatch) (*model.AcademicUnit, *model.AppError)
-	ArchiveAcademicUnit(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
 	GetProgramme(context.Context, model.Principal, model.RequestMetadata, string) (*model.Programme, *model.AppError)
 	ListProgrammes(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.Programme, *model.AppError)
 	CreateProgramme(context.Context, model.Principal, model.RequestMetadata, *model.Programme) (*model.Programme, *model.AppError)
@@ -419,7 +419,7 @@ type API struct {
 	router                  *mux.Router
 	BaseRoutes              *Routes
 	application             Application
-	academicUnits           AcademicUnitReads
+	academicUnits           AcademicUnitApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo

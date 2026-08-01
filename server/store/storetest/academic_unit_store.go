@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -20,7 +21,13 @@ func TestAcademicUnitStore(t *testing.T, ss store.Store) {
 	t.Run("ListChildren", func(t *testing.T) { testAcademicUnitStoreListChildren(t, ss) })
 	t.Run("ListAncestors", func(t *testing.T) { testAcademicUnitStoreListAncestors(t, ss) })
 	t.Run("Update", func(t *testing.T) { testAcademicUnitStoreUpdate(t, ss) })
+	t.Run("MutationAuditAtomicity", func(t *testing.T) {
+		testAcademicUnitStoreMutationAuditAtomicity(t, ss)
+	})
 	t.Run("RejectCycle", func(t *testing.T) { testAcademicUnitStoreRejectCycle(t, ss) })
+	t.Run("RejectConcurrentCycle", func(t *testing.T) {
+		testAcademicUnitStoreRejectConcurrentCycle(t, ss)
+	})
 	t.Run("RejectCrossInstitutionParent", func(t *testing.T) {
 		testAcademicUnitStoreRejectCrossInstitutionParent(t, ss)
 	})
@@ -30,6 +37,88 @@ func TestAcademicUnitStore(t *testing.T, ss store.Store) {
 	t.Run("SearchAndArchive", func(t *testing.T) {
 		testAcademicUnitStoreSearchAndArchive(t, ss)
 	})
+}
+
+func saveAcademicUnitAuditAttempt(
+	t *testing.T,
+	ctx context.Context,
+	ss store.Store,
+	unitID string,
+) *model.AuditEvent {
+	t.Helper()
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		Action:    string(model.ActionAcademicUnitManage),
+		Resource:  model.Resource{Type: model.ResourceAcademicUnit, Id: unitID},
+		ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID,
+		Status: model.AuditStatusAttempt, NodeId: "test-node",
+	})
+	requireNoError(t, err)
+	return attempt
+}
+
+func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.Id, "", "audited-update")
+	attempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.Id)
+	candidate := *unit
+	candidate.DisplayName = "Audited Update"
+	candidate.PrepareUpdate(model.GetMillis())
+	updated, err := ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+		Unit: &candidate, AuditEventID: attempt.Id, AuditAt: model.GetMillis(),
+	})
+	requireNoError(t, err)
+	if updated.DisplayName != "Audited Update" {
+		t.Fatalf("UpdateWithAudit() = %#v", updated)
+	}
+	completed, err := ss.Audit().Get(ctx, attempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("update audit status = %q, want success", completed.Status)
+	}
+
+	rolledBack := *updated
+	rolledBack.DisplayName = "Must Roll Back"
+	rolledBack.PrepareUpdate(model.GetMillis())
+	_, err = ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+		Unit: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+	})
+	if err == nil {
+		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
+	}
+	persisted, getErr := ss.AcademicUnit().Get(ctx, unit.Id)
+	requireNoError(t, getErr)
+	if persisted.DisplayName != updated.DisplayName {
+		t.Fatalf("update survived audit rollback: %#v", persisted)
+	}
+
+	archiveUnit := saveAcademicUnit(t, ctx, ss, institution.Id, "", "audited-archive")
+	archiveAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, archiveUnit.Id)
+	archived, err := ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
+		ID: archiveUnit.Id, ArchiveAt: model.GetMillis(),
+		AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis(),
+	})
+	requireNoError(t, err)
+	if archived.DeleteAt == 0 {
+		t.Fatalf("ArchiveWithAudit() = %#v", archived)
+	}
+	completed, err = ss.Audit().Get(ctx, archiveAttempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("archive audit status = %q, want success", completed.Status)
+	}
+
+	rollbackArchive := saveAcademicUnit(t, ctx, ss, institution.Id, "", "rollback-archive")
+	_, err = ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
+		ID: rollbackArchive.Id, ArchiveAt: model.GetMillis(),
+		AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+	})
+	if err == nil {
+		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
+	}
+	if _, getErr = ss.AcademicUnit().Get(ctx, rollbackArchive.Id); getErr != nil {
+		t.Fatalf("archive survived audit rollback: %v", getErr)
+	}
 }
 
 func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
@@ -195,6 +284,17 @@ func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {
 	if updated.ParentId != secondRoot.Id || updated.DisplayName != "Applied Computing" {
 		t.Fatalf("Update() = %#v", updated)
 	}
+	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, updated.Id)
+	requireNoError(t, err)
+	if len(ancestors) != 2 || ancestors[0].Id != updated.Id ||
+		ancestors[1].Id != secondRoot.Id {
+		t.Fatalf("ancestors after reparent = %#v", ancestors)
+	}
+	for _, ancestor := range ancestors {
+		if ancestor.Id == firstRoot.Id {
+			t.Fatalf("old parent remains after reparent: %#v", ancestors)
+		}
+	}
 
 	missing := *updated
 	missing.Id = model.NewId()
@@ -216,6 +316,52 @@ func testAcademicUnitStoreRejectCycle(t *testing.T, ss store.Store) {
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) || conflict.Constraint != "academic_units_acyclic" {
 		t.Fatalf("cycle Update() error = %v, want hierarchy conflict", err)
+	}
+}
+
+func testAcademicUnitStoreRejectConcurrentCycle(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	first := saveAcademicUnit(t, ctx, ss, institution.Id, "", "concurrent-first")
+	second := saveAcademicUnit(t, ctx, ss, institution.Id, "", "concurrent-second")
+	first.ParentId = second.Id
+	second.ParentId = first.Id
+
+	start := make(chan struct{})
+	errorsByUpdate := make(chan error, 2)
+	var ready sync.WaitGroup
+	ready.Add(2)
+	update := func(unit *model.AcademicUnit) {
+		defer ready.Done()
+		<-start
+		_, err := ss.AcademicUnit().Update(ctx, unit)
+		errorsByUpdate <- err
+	}
+	go update(first)
+	go update(second)
+	close(start)
+	ready.Wait()
+	close(errorsByUpdate)
+
+	successes, conflicts := 0, 0
+	for err := range errorsByUpdate {
+		switch {
+		case err == nil:
+			successes++
+		case store.IsConflict(err):
+			conflicts++
+		default:
+			t.Fatalf("concurrent Update() error = %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent updates: successes=%d conflicts=%d", successes, conflicts)
+	}
+	if _, err := ss.AcademicUnit().ListAncestors(ctx, first.Id); err != nil {
+		t.Fatalf("first hierarchy after concurrent updates: %v", err)
+	}
+	if _, err := ss.AcademicUnit().ListAncestors(ctx, second.Id); err != nil {
+		t.Fatalf("second hierarchy after concurrent updates: %v", err)
 	}
 }
 

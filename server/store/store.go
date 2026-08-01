@@ -61,9 +61,24 @@ type AcademicUnitCreation struct {
 	AuditAt      int64
 }
 
+type AcademicUnitUpdate struct {
+	Unit         *model.AcademicUnit
+	AuditEventID string
+	AuditAt      int64
+}
+
+type AcademicUnitArchive struct {
+	ID           string
+	ArchiveAt    int64
+	AuditEventID string
+	AuditAt      int64
+}
+
 // AcademicUnitStore persists nodes in the institution's academic-unit tree.
 type AcademicUnitStore interface {
 	Create(context.Context, *AcademicUnitCreation) (*model.AcademicUnit, error)
+	UpdateWithAudit(context.Context, *AcademicUnitUpdate) (*model.AcademicUnit, error)
+	ArchiveWithAudit(context.Context, *AcademicUnitArchive) (*model.AcademicUnit, error)
 	Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
 	Get(context.Context, string) (*model.AcademicUnit, error)
 	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)

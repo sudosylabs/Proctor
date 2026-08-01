@@ -21,28 +21,6 @@ type AcademicUnit struct {
 	Description   string `json:"description"`
 }
 
-type AcademicUnitPatch struct {
-	ParentId    *string `json:"parent_id,omitempty"`
-	Name        *string `json:"name,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
-	Description *string `json:"description,omitempty"`
-}
-
-func (au *AcademicUnit) Patch(p *AcademicUnitPatch) {
-	if p.ParentId != nil {
-		au.ParentId = *p.ParentId
-	}
-	if p.Name != nil {
-		au.Name = *p.Name
-	}
-	if p.DisplayName != nil {
-		au.DisplayName = *p.DisplayName
-	}
-	if p.Description != nil {
-		au.Description = *p.Description
-	}
-}
-
 func (au *AcademicUnit) PreSave() {
 	preSave(&au.Id, &au.CreateAt, &au.UpdateAt)
 	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)
@@ -55,6 +33,13 @@ func (au *AcademicUnit) PrepareCreate(id string, at int64) {
 	au.CreateAt = at
 	au.UpdateAt = at
 	au.DeleteAt = 0
+	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)
+}
+
+// PrepareUpdate applies the application-selected transition time and
+// normalizes mutable local fields before validation.
+func (au *AcademicUnit) PrepareUpdate(at int64) {
+	au.UpdateAt = at
 	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)
 }
 

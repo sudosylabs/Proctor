@@ -19,10 +19,12 @@ import (
 
 type academicUnitHTTPApplication struct {
 	Application
-	principal model.Principal
-	unit      *model.AcademicUnit
-	created   *model.AcademicUnit
-	command   application.CreateAcademicUnitCommand
+	principal      model.Principal
+	unit           *model.AcademicUnit
+	created        *model.AcademicUnit
+	createCommand  application.CreateAcademicUnitCommand
+	updateCommand  application.UpdateAcademicUnitCommand
+	archiveCommand application.ArchiveAcademicUnitCommand
 }
 
 func (a *academicUnitHTTPApplication) AuthenticateAccess(
@@ -74,8 +76,32 @@ func (a *academicUnitHTTPApplication) CreateAcademicUnit(
 	if invocation.Principal().UserId != a.principal.UserId {
 		return nil, application.NewError("request.invalid")
 	}
-	a.command = command
+	a.createCommand = command
 	return a.created, nil
+}
+
+func (a *academicUnitHTTPApplication) UpdateAcademicUnit(
+	_ context.Context,
+	invocation application.Invocation,
+	command application.UpdateAcademicUnitCommand,
+) (*model.AcademicUnit, error) {
+	if invocation.Principal().UserId != a.principal.UserId {
+		return nil, application.NewError("request.invalid")
+	}
+	a.updateCommand = command
+	return a.unit, nil
+}
+
+func (a *academicUnitHTTPApplication) ArchiveAcademicUnit(
+	_ context.Context,
+	invocation application.Invocation,
+	command application.ArchiveAcademicUnitCommand,
+) error {
+	if invocation.Principal().UserId != a.principal.UserId {
+		return application.NewError("request.invalid")
+	}
+	a.archiveCommand = command
+	return nil
 }
 
 type academicUnitHTTPHealth struct{}
@@ -249,8 +275,8 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 				ParentID: tt.wantParentID, Name: "computing",
 				DisplayName: "Computing", Description: "School",
 			}
-			if fakeApplication.command != wantCommand {
-				t.Fatalf("command = %#v, want %#v", fakeApplication.command, wantCommand)
+			if fakeApplication.createCommand != wantCommand {
+				t.Fatalf("command = %#v, want %#v", fakeApplication.createCommand, wantCommand)
 			}
 			var got academicUnitResponse
 			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
@@ -260,5 +286,77 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 				t.Fatalf("response = %#v", got)
 			}
 		})
+	}
+}
+
+func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testing.T) {
+	t.Parallel()
+
+	unit := &model.AcademicUnit{
+		Id: model.NewId(), CreateAt: 10, UpdateAt: 20,
+		InstitutionId: model.NewId(), ParentId: model.NewId(),
+		Name: "computing", DisplayName: "Computing", Description: "School",
+	}
+	fakeApplication := &academicUnitHTTPApplication{
+		principal: model.Principal{
+			UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+			CredentialType:       model.CredentialSessionAccess,
+			AuthenticationMethod: "password", ClientType: model.SessionClientCLI,
+			AuthenticationStrength: model.AuthenticationSingleFactor,
+			AuthenticatedAt:        time.Now().UnixMilli(),
+		},
+		unit: unit,
+	}
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	httpAPI, err := New(Options{
+		Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
+		AcademicUnits: fakeApplication, BuildInfo: BuildInfo{Version: "test"},
+		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
+		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = httpAPI.Close() })
+
+	parentID := model.NewId()
+	name := "engineering"
+	patchRequest := httptest.NewRequest(
+		http.MethodPatch, "/api/v1/academic-units/"+unit.Id,
+		strings.NewReader(`{"parent_id":"`+parentID+`","name":"`+name+`"}`),
+	)
+	patchRequest.Header.Set("Authorization", "Bearer test-credential")
+	patchRequest.Header.Set("Content-Type", "application/json")
+	patchResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(patchResponse, patchRequest)
+	if patchResponse.Code != http.StatusOK {
+		t.Fatalf("patch status = %d: %s", patchResponse.Code, patchResponse.Body.String())
+	}
+	if fakeApplication.updateCommand.ID != unit.Id ||
+		fakeApplication.updateCommand.ParentID == nil ||
+		*fakeApplication.updateCommand.ParentID != parentID ||
+		fakeApplication.updateCommand.Name == nil ||
+		*fakeApplication.updateCommand.Name != name {
+		t.Fatalf("update command = %#v", fakeApplication.updateCommand)
+	}
+
+	archiveRequest := httptest.NewRequest(
+		http.MethodDelete, "/api/v1/academic-units/"+unit.Id, nil,
+	)
+	archiveRequest.Header.Set("Authorization", "Bearer test-credential")
+	archiveResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(archiveResponse, archiveRequest)
+	if archiveResponse.Code != http.StatusNoContent {
+		t.Fatalf("archive status = %d: %s", archiveResponse.Code, archiveResponse.Body.String())
+	}
+	if archiveResponse.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("archive cache control = %q", archiveResponse.Header().Get("Cache-Control"))
+	}
+	if fakeApplication.archiveCommand.ID != unit.Id {
+		t.Fatalf("archive command = %#v", fakeApplication.archiveCommand)
 	}
 }

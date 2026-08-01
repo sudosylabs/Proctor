@@ -37,6 +37,13 @@ type createAcademicUnitRequest struct {
 	Description   string `json:"description"`
 }
 
+type updateAcademicUnitRequest struct {
+	ParentID    *string `json:"parent_id"`
+	Name        *string `json:"name"`
+	DisplayName *string `json:"display_name"`
+	Description *string `json:"description"`
+}
+
 func (a *API) registerAcademicUnitRoutes() error {
 	routes := []struct {
 		base    *mux.Router
@@ -139,22 +146,23 @@ func (a *API) patchAcademicUnit(writer http.ResponseWriter, request *http.Reques
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		request.Context(), principal, id, model.ActionAcademicUnitManage,
-		RequestMetadata(request.Context()),
-	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	var body updateAcademicUnitRequest
+	if !decodeJSON(writer, request, &body, "patchAcademicUnit") {
 		return
 	}
-	request = request.WithContext(ctx)
-	var patch model.AcademicUnitPatch
-	if !decodeJSON(writer, request, &patch, "patchAcademicUnit") {
+	unit, err := a.academicUnits.UpdateAcademicUnit(
+		request.Context(),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.UpdateAcademicUnitCommand{
+			ID: id, ParentID: body.ParentID, Name: body.Name,
+			DisplayName: body.DisplayName, Description: body.Description,
+		},
+	)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	unit, appErr := a.application.PatchAcademicUnit(
-		ctx, principal, RequestMetadata(ctx), id, &patch,
-	)
-	writeResult(writer, request, a, http.StatusOK, unit, appErr)
+	writeJSON(writer, http.StatusOK, academicUnitResponseFromModel(unit))
 }
 
 func (a *API) archiveAcademicUnit(writer http.ResponseWriter, request *http.Request) {
@@ -164,15 +172,17 @@ func (a *API) archiveAcademicUnit(writer http.ResponseWriter, request *http.Requ
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		request.Context(), principal, id, model.ActionAcademicUnitManage,
-		RequestMetadata(request.Context()),
+	err := a.academicUnits.ArchiveAcademicUnit(
+		request.Context(),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.ArchiveAcademicUnitCommand{ID: id},
 	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	appErr = a.application.ArchiveAcademicUnit(ctx, principal, RequestMetadata(ctx), id)
-	writeNoContent(writer, request.WithContext(ctx), a, appErr)
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) listAcademicUnitChildren(writer http.ResponseWriter, request *http.Request) {
