@@ -22,7 +22,50 @@ func TestInstitutionStore(t *testing.T, ss store.Store) {
 	t.Run("Get", func(t *testing.T) { testInstitutionStoreGet(t, ss) })
 	t.Run("GetSingleton", func(t *testing.T) { testInstitutionStoreGetSingleton(t, ss) })
 	t.Run("Update", func(t *testing.T) { testInstitutionStoreUpdate(t, ss) })
+	t.Run("UpdateWithAudit", func(t *testing.T) { testInstitutionStoreUpdateWithAudit(t, ss) })
 	t.Run("Delete", func(t *testing.T) { testInstitutionStoreDelete(t, ss) })
+}
+
+func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		Action:    string(model.ActionInstitutionManage),
+		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		Status: model.AuditStatusAttempt, NodeId: "test-node",
+	})
+	requireNoError(t, err)
+	candidate := *institution
+	candidate.DisplayName = "Audited Northbridge"
+	candidate.PrepareUpdate(model.GetMillis())
+	updated, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
+		Institution: &candidate, AuditEventID: attempt.Id, AuditAt: model.GetMillis(),
+	})
+	requireNoError(t, err)
+	if updated.DisplayName != "Audited Northbridge" {
+		t.Fatalf("UpdateWithAudit() = %#v", updated)
+	}
+	completed, err := ss.Audit().Get(ctx, attempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("audit status = %q", completed.Status)
+	}
+
+	rolledBack := *updated
+	rolledBack.DisplayName = "Must Roll Back"
+	rolledBack.PrepareUpdate(model.GetMillis())
+	_, err = ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
+		Institution: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+	})
+	if err == nil {
+		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
+	}
+	persisted, getErr := ss.Institution().GetSingleton(ctx)
+	requireNoError(t, getErr)
+	if persisted.DisplayName != updated.DisplayName {
+		t.Fatalf("update survived audit rollback: %#v", persisted)
+	}
 }
 
 func testInstitutionStoreSave(t *testing.T, ss store.Store) {

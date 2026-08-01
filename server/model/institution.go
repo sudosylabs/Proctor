@@ -16,26 +16,15 @@ type Institution struct {
 	Description string `json:"description"`
 }
 
-type InstitutionPatch struct {
-	Name        *string `json:"name,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
-	Description *string `json:"description,omitempty"`
-}
-
-func (i *Institution) Patch(p *InstitutionPatch) {
-	if p.Name != nil {
-		i.Name = *p.Name
-	}
-	if p.DisplayName != nil {
-		i.DisplayName = *p.DisplayName
-	}
-	if p.Description != nil {
-		i.Description = *p.Description
-	}
-}
-
 func (i *Institution) PreSave() {
 	preSave(&i.Id, &i.CreateAt, &i.UpdateAt)
+	sanitizeNamed(&i.Name, &i.DisplayName, &i.Description)
+}
+
+// PrepareUpdate applies the application-selected transition time and
+// normalizes mutable fields before validation.
+func (i *Institution) PrepareUpdate(at int64) {
+	i.UpdateAt = at
 	sanitizeNamed(&i.Name, &i.DisplayName, &i.Description)
 }
 

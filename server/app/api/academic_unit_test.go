@@ -171,6 +171,7 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	httpAPI, err := New(Options{
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: application,
 		AcademicUnits: application,
+		Institutions:  application,
 		BuildInfo:     BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
 		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
@@ -229,7 +230,8 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 	}
 	httpAPI, err := New(Options{
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
-		AcademicUnits: fakeApplication, BuildInfo: BuildInfo{Version: "test"},
+		AcademicUnits: fakeApplication, Institutions: fakeApplication,
+		BuildInfo: BuildInfo{Version: "test"},
 		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
@@ -300,7 +302,8 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			}
 			httpAPI, err := New(Options{
 				Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
-				AcademicUnits: fakeApplication, BuildInfo: BuildInfo{Version: "test"},
+				AcademicUnits: fakeApplication, Institutions: fakeApplication,
+				BuildInfo: BuildInfo{Version: "test"},
 				PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 				RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 			})
@@ -373,7 +376,8 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	httpAPI, err := New(Options{
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
-		AcademicUnits: fakeApplication, BuildInfo: BuildInfo{Version: "test"},
+		AcademicUnits: fakeApplication, Institutions: fakeApplication,
+		BuildInfo: BuildInfo{Version: "test"},
 		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})

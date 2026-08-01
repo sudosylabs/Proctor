@@ -7,10 +7,27 @@ import (
 	"net/http"
 	"strconv"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func (a *API) InitInstitution() error {
+type institutionResponse struct {
+	ID          string `json:"id"`
+	CreateAt    int64  `json:"create_at"`
+	UpdateAt    int64  `json:"update_at"`
+	DeleteAt    int64  `json:"delete_at"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+}
+
+type updateInstitutionRequest struct {
+	Name        Optional[string] `json:"name"`
+	DisplayName Optional[string] `json:"display_name"`
+	Description Optional[string] `json:"description"`
+}
+
+func (a *API) registerInstitutionRoutes() error {
 	if err := a.Register(a.BaseRoutes.Institution, "", http.MethodGet,
 		a.APIPrincipalRequired(http.HandlerFunc(a.getInstitution))); err != nil {
 		return err
@@ -24,16 +41,15 @@ func (a *API) getInstitution(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		r.Context(), principal, model.ActionInstitutionManage, RequestMetadata(r.Context()),
+	institution, err := a.institutions.GetInstitution(
+		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.GetInstitutionQuery{},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	institution, appErr := a.application.GetInstitution(
-		ctx, principal, RequestMetadata(ctx),
-	)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, institution, appErr)
+	writeJSON(w, http.StatusOK, institutionResponseFromModel(institution))
 }
 
 func (a *API) patchInstitution(w http.ResponseWriter, r *http.Request) {
@@ -41,21 +57,34 @@ func (a *API) patchInstitution(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		r.Context(), principal, model.ActionInstitutionManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	var body updateInstitutionRequest
+	if !decodeJSON(w, r, &body, "patchInstitution") {
 		return
 	}
-	r = r.WithContext(ctx)
-	var patch model.InstitutionPatch
-	if !decodeJSON(w, r, &patch, "patchInstitution") {
+	institution, err := a.institutions.UpdateInstitution(
+		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.UpdateInstitutionCommand{
+			Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(),
+			Description: body.Description.ValuePointer(),
+		},
+	)
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	institution, appErr := a.application.PatchInstitution(
-		ctx, principal, RequestMetadata(ctx), &patch,
-	)
-	writeResult(w, r, a, http.StatusOK, institution, appErr)
+	writeJSON(w, http.StatusOK, institutionResponseFromModel(institution))
+}
+
+func institutionResponseFromModel(institution *model.Institution) institutionResponse {
+	if institution == nil {
+		return institutionResponse{}
+	}
+	return institutionResponse{
+		ID: institution.Id, CreateAt: institution.CreateAt,
+		UpdateAt: institution.UpdateAt, DeleteAt: institution.DeleteAt,
+		Name: institution.Name, DisplayName: institution.DisplayName,
+		Description: institution.Description,
+	}
 }
 
 func queryLimit(w http.ResponseWriter, r *http.Request) (int, bool) {

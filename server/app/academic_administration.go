@@ -20,63 +20,6 @@ import (
 
 const defaultAdministrationListLimit = 100
 
-func (a *App) GetInstitution(
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-) (*model.Institution, *model.AppError) {
-	if _, appErr := a.authorizePrincipalToSystem(
-		ctx, principal, model.ActionInstitutionManage, metadata,
-	); appErr != nil {
-		return nil, appErr
-	}
-	institution, err := a.Store().Institution().GetSingleton(ctx)
-	if err != nil {
-		return nil, administrationError("GetInstitution", "institution", err)
-	}
-	return institution, nil
-}
-
-func (a *App) PatchInstitution(
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	patch *model.InstitutionPatch,
-) (*model.Institution, *model.AppError) {
-	resource, appErr := a.authorizePrincipalToSystem(
-		ctx, principal, model.ActionInstitutionManage, metadata,
-	)
-	if appErr != nil {
-		return nil, appErr
-	}
-	if patch == nil {
-		return nil, invalidAdministrationRequest("PatchInstitution", "patch")
-	}
-	current, err := a.Store().Institution().GetSingleton(ctx)
-	if err != nil {
-		return nil, administrationError("PatchInstitution.get", "institution", err)
-	}
-	candidate := *current
-	candidate.Patch(patch)
-	attempt, appErr := a.beginAdministrationMutation(
-		ctx, principal, model.ActionInstitutionManage, resource, metadata,
-		"patch", candidate.Auditable(), current.Auditable(),
-	)
-	if appErr != nil {
-		return nil, appErr
-	}
-	updated, err := a.Store().Institution().Update(ctx, &candidate)
-	if err != nil {
-		return nil, a.failAdministrationMutation(
-			ctx, attempt.Id, "PatchInstitution", "institution", err,
-		)
-	}
-	if appErr := a.completeAdministrationMutation(ctx, attempt.Id, updated); appErr != nil {
-		return nil, appErr
-	}
-	return updated, nil
-}
-
 func (a *App) programmeAcademicUnit(ctx context.Context, programmeID string) (*model.Programme, string, *model.AppError) {
 	programme, err := a.Store().Programme().Get(ctx, programmeID)
 	if err != nil {

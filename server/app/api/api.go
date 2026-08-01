@@ -112,6 +112,7 @@ type Options struct {
 	Health                  Health
 	Application             Application
 	AcademicUnits           AcademicUnitApplication
+	Institutions            InstitutionApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -213,9 +214,12 @@ type AcademicUnitApplication interface {
 	ArchiveAcademicUnit(context.Context, application.Invocation, application.ArchiveAcademicUnitCommand) error
 }
 
+type InstitutionApplication interface {
+	GetInstitution(context.Context, application.Invocation, application.GetInstitutionQuery) (*model.Institution, error)
+	UpdateInstitution(context.Context, application.Invocation, application.UpdateInstitutionCommand) (*model.Institution, error)
+}
+
 type AcademicAdministration interface {
-	GetInstitution(context.Context, model.Principal, model.RequestMetadata) (*model.Institution, *model.AppError)
-	PatchInstitution(context.Context, model.Principal, model.RequestMetadata, *model.InstitutionPatch) (*model.Institution, *model.AppError)
 	GetProgramme(context.Context, model.Principal, model.RequestMetadata, string) (*model.Programme, *model.AppError)
 	ListProgrammes(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.Programme, *model.AppError)
 	CreateProgramme(context.Context, model.Principal, model.RequestMetadata, *model.Programme) (*model.Programme, *model.AppError)
@@ -410,6 +414,7 @@ type Application interface {
 	Roles
 	RoleBindings
 	AcademicAdministration
+	InstitutionApplication
 	MembershipAdministration
 	Realtime
 }
@@ -420,6 +425,7 @@ type API struct {
 	BaseRoutes              *Routes
 	application             Application
 	academicUnits           AcademicUnitApplication
+	institutions            InstitutionApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -445,6 +451,9 @@ func New(options Options) (*API, error) {
 	if options.AcademicUnits == nil {
 		return nil, errors.New("academic unit reads are required")
 	}
+	if options.Institutions == nil {
+		return nil, errors.New("institution application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -462,6 +471,7 @@ func New(options Options) (*API, error) {
 	api := &API{
 		application:             options.Application,
 		academicUnits:           options.AcademicUnits,
+		institutions:            options.Institutions,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -492,7 +502,7 @@ func New(options Options) (*API, error) {
 		api.InitBootstrap,
 		api.InitRoles,
 		api.InitRoleBindings,
-		api.InitInstitution,
+		api.registerInstitutionRoutes,
 		api.registerAcademicUnitRoutes,
 		api.InitProgrammes,
 		api.InitProgrammeLevels,

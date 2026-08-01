@@ -114,22 +114,65 @@ func (s SqlInstitutionStore) Update(ctx context.Context, institution *model.Inst
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
 	}
+	return s.updateInstitution(ctx, &candidate, "", 0)
+}
 
-	row := newInstitutionRow(&candidate)
-	result, err := s.GetMaster().NamedExec(ctx, `
+func (s SqlInstitutionStore) UpdateWithAudit(
+	ctx context.Context,
+	input *store.InstitutionUpdate,
+) (*model.Institution, error) {
+	if input == nil || input.Institution == nil ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("institution", "update", nil)
+	}
+	candidate := *input.Institution
+	if appErr := candidate.IsValid(); appErr != nil {
+		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(appErr)
+	}
+	return s.updateInstitution(ctx, &candidate, input.AuditEventID, input.AuditAt)
+}
+
+func (s SqlInstitutionStore) updateInstitution(
+	ctx context.Context,
+	candidate *model.Institution,
+	auditEventID string,
+	auditAt int64,
+) (*model.Institution, error) {
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin institution update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	row := newInstitutionRow(candidate)
+	result, err := tx.NamedExec(ctx, `
 		UPDATE institutions
 		   SET update_at = :update_at,
 		       name = :name,
 		       display_name = :display_name,
 		       description = :description
-		 WHERE id = :id AND delete_at = 0`, &row)
+		 WHERE id = :id AND singleton = TRUE AND delete_at = 0`, &row)
 	if err != nil {
 		return nil, fmt.Errorf("update institution: %w", translateError("institution", candidate.Id, err))
 	}
 	if err := requireAffected(result, "institution", candidate.Id); err != nil {
 		return nil, err
 	}
-	return &candidate, nil
+	if auditEventID != "" {
+		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete institution update audit: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit institution update: %w", err)
+	}
+	return candidate, nil
 }
 
 func (s SqlInstitutionStore) Delete(ctx context.Context, id string, deleteAt int64) error {

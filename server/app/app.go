@@ -26,6 +26,7 @@ type App struct {
 	authorization          *AuthorizationService
 	academicUnits          *academicUnitQueryService
 	academicUnitCommands   *academicUnitCommandService
+	institutions           *institutionService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -66,16 +67,21 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		realtime.PropagateSessionRevocation
 	academicUnitCommands := newAcademicUnitCommandService(
 		applicationPlatform.Store().AcademicUnit(), academicUnitAuthorization,
-		academicUnitAuditAdapter{audit: audit},
+		mutationAuditAdapter{audit: audit},
 		academicUnitRealtimeEffects{realtime: realtime},
 		academicUnitEffectReporter{realtime: realtime},
 		time.Now, model.NewId,
+	)
+	institutions := newInstitutionService(
+		applicationPlatform.Store().Institution(), academicUnitAuthorization,
+		mutationAuditAdapter{audit: audit}, time.Now,
 	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
 		authorization: authorization, academicUnits: academicUnits,
 		academicUnitCommands: academicUnitCommands,
+		institutions:         institutions,
 		audit:                audit, realtime: realtime,
 	}, nil
 }

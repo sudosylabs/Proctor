@@ -50,7 +50,14 @@ type InstitutionStore interface {
 	Get(context.Context, string) (*model.Institution, error)
 	GetSingleton(context.Context) (*model.Institution, error)
 	Update(context.Context, *model.Institution) (*model.Institution, error)
+	UpdateWithAudit(context.Context, *InstitutionUpdate) (*model.Institution, error)
 	Delete(context.Context, string, int64) error
+}
+
+type InstitutionUpdate struct {
+	Institution  *model.Institution
+	AuditEventID string
+	AuditAt      int64
 }
 
 // AcademicUnitCreation is the complete durable input for creating an Academic

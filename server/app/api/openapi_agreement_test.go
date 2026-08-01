@@ -62,7 +62,7 @@ type openAPIRequestBody struct {
 	} `json:"content"`
 }
 
-type academicUnitOperationContract struct {
+type openAPIOperationContract struct {
 	requestBodyRef string
 	requestSchema  string
 	successStatus  string
@@ -98,11 +98,11 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
 	statuses["authentication.csrf.invalid"] = http.StatusForbidden
-	expectedContracts := map[string]academicUnitOperationContract{
+	expectedContracts := map[string]openAPIOperationContract{
 		"GET /api/v1/academic-units": {
 			successStatus: "200", successRef: "#/components/responses/AcademicUnitListOK",
 			successSchema: "AcademicUnitListResponse",
-			errorCodes: academicUnitContractCodes(
+			errorCodes: principalContractCodes(
 				"request.invalid", "administration.unavailable",
 			),
 		},
@@ -111,7 +111,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 			requestSchema:  "CreateAcademicUnitRequest",
 			successStatus:  "201", successRef: "#/components/responses/AcademicUnitCreated",
 			successSchema: "AcademicUnitResponse",
-			errorCodes: academicUnitMutationContractCodes(
+			errorCodes: principalMutationContractCodes(
 				"request.invalid", "administration.unavailable",
 				"academic_unit.invalid", "academic_unit.conflict",
 			),
@@ -119,7 +119,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 		"GET /api/v1/academic-units/{academic_unit_id}": {
 			successStatus: "200", successRef: "#/components/responses/AcademicUnitOK",
 			successSchema: "AcademicUnitResponse",
-			errorCodes: academicUnitContractCodes(
+			errorCodes: principalContractCodes(
 				"resource.not_found", "administration.unavailable",
 			),
 		},
@@ -128,14 +128,14 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 			requestSchema:  "UpdateAcademicUnitRequest",
 			successStatus:  "200", successRef: "#/components/responses/AcademicUnitOK",
 			successSchema: "AcademicUnitResponse",
-			errorCodes: academicUnitMutationContractCodes(
+			errorCodes: principalMutationContractCodes(
 				"request.invalid", "resource.not_found", "academic_unit.invalid",
 				"academic_unit.conflict", "administration.unavailable",
 			),
 		},
 		"DELETE /api/v1/academic-units/{academic_unit_id}": {
 			successStatus: "204", successRef: "#/components/responses/AcademicUnitArchived",
-			errorCodes: academicUnitMutationContractCodes(
+			errorCodes: principalMutationContractCodes(
 				"request.invalid", "resource.not_found", "academic_unit.conflict",
 				"administration.unavailable",
 			),
@@ -143,7 +143,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 		"GET /api/v1/academic-units/{academic_unit_id}/children": {
 			successStatus: "200", successRef: "#/components/responses/AcademicUnitListOK",
 			successSchema: "AcademicUnitListResponse",
-			errorCodes: academicUnitContractCodes(
+			errorCodes: principalContractCodes(
 				"resource.not_found", "administration.unavailable",
 			),
 		},
@@ -152,7 +152,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 			requestSchema:  "CreateAcademicUnitRequest",
 			successStatus:  "201", successRef: "#/components/responses/AcademicUnitCreated",
 			successSchema: "AcademicUnitResponse",
-			errorCodes: academicUnitMutationContractCodes(
+			errorCodes: principalMutationContractCodes(
 				"request.invalid", "resource.not_found", "academic_unit.invalid",
 				"academic_unit.conflict", "administration.unavailable",
 			),
@@ -183,7 +183,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 			if operation.Auth != AuthPrincipalRequired {
 				t.Errorf("%s auth = %q, want %q", key, operation.Auth, AuthPrincipalRequired)
 			}
-			assertAcademicUnitSecurity(t, key, upperMethod, operation.Security)
+			assertPrincipalSecurity(t, key, upperMethod, operation.Security)
 			contract, exists := expectedContracts[key]
 			if !exists {
 				t.Errorf("%s is not an expected Academic Unit operation", key)
@@ -249,7 +249,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 	}
 }
 
-func academicUnitContractCodes(extra ...string) []string {
+func principalContractCodes(extra ...string) []string {
 	return append([]string{
 		"authentication.required",
 		"authentication.invalid_token",
@@ -260,8 +260,8 @@ func academicUnitContractCodes(extra ...string) []string {
 	}, extra...)
 }
 
-func academicUnitMutationContractCodes(extra ...string) []string {
-	return academicUnitContractCodes(append([]string{
+func principalMutationContractCodes(extra ...string) []string {
+	return principalContractCodes(append([]string{
 		"authentication.csrf.invalid",
 		"audit.unavailable",
 	}, extra...)...)
@@ -271,7 +271,7 @@ func assertOpenAPIRequestBody(
 	t *testing.T,
 	document openAPIDocument,
 	operation string,
-	contract academicUnitOperationContract,
+	contract openAPIOperationContract,
 ) {
 	t.Helper()
 	if contract.requestBodyRef == "" {
@@ -298,7 +298,7 @@ func assertOpenAPISuccessResponse(
 	t *testing.T,
 	document openAPIDocument,
 	operation string,
-	contract academicUnitOperationContract,
+	contract openAPIOperationContract,
 ) {
 	t.Helper()
 	const prefix = "#/components/responses/"
@@ -324,7 +324,7 @@ func assertOpenAPISuccessResponse(
 	}
 }
 
-func assertAcademicUnitSecurity(
+func assertPrincipalSecurity(
 	t *testing.T,
 	operation string,
 	method string,

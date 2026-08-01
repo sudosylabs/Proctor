@@ -39,14 +39,6 @@ type academicUnitCommandStore interface {
 	ArchiveWithAudit(context.Context, *store.AcademicUnitArchive) (*model.AcademicUnit, error)
 }
 
-type academicUnitMutationAuditor interface {
-	Begin(
-		context.Context, Invocation, model.Action, model.Resource, string,
-		map[string]any, map[string]any,
-	) (string, error)
-	Fail(context.Context, string, string) error
-}
-
 type academicUnitCommandEffects interface {
 	Created(context.Context, string) error
 	Updated(context.Context, string) error
@@ -55,39 +47,6 @@ type academicUnitCommandEffects interface {
 
 type academicUnitEffectFailures interface {
 	Report(context.Context, string, error)
-}
-
-type academicUnitAuditAdapter struct{ audit *AuditService }
-
-func (a academicUnitAuditAdapter) Begin(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-	operation string,
-	value map[string]any,
-	prior map[string]any,
-) (string, error) {
-	event, appErr := a.audit.BeginCriticalAction(
-		ctx, invocation.Principal(), action, resource,
-		invocation.RequestMetadata(),
-		map[string]any{"operation": operation, "value": value}, prior,
-	)
-	if appErr != nil {
-		return "", fromLegacyAppError(appErr)
-	}
-	return event.Id, nil
-}
-
-func (a academicUnitAuditAdapter) Fail(
-	ctx context.Context,
-	auditID string,
-	errorCode string,
-) error {
-	_, appErr := a.audit.CompleteCriticalAction(
-		ctx, auditID, model.AuditStatusFail, errorCode, nil,
-	)
-	return fromLegacyAppError(appErr)
 }
 
 type academicUnitRealtimeEffects struct{ realtime *RealtimeService }
@@ -141,7 +100,7 @@ func (r academicUnitEffectReporter) Report(
 type academicUnitCommandService struct {
 	store          academicUnitCommandStore
 	authorization  academicUnitReadAuthorizer
-	audit          academicUnitMutationAuditor
+	audit          mutationAuditor
 	effects        academicUnitCommandEffects
 	effectFailures academicUnitEffectFailures
 	now            func() time.Time
@@ -151,7 +110,7 @@ type academicUnitCommandService struct {
 func newAcademicUnitCommandService(
 	persistence academicUnitCommandStore,
 	authorization academicUnitReadAuthorizer,
-	audit academicUnitMutationAuditor,
+	audit mutationAuditor,
 	effects academicUnitCommandEffects,
 	effectFailures academicUnitEffectFailures,
 	now func() time.Time,

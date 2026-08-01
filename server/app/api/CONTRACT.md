@@ -1,9 +1,8 @@
 # HTTP contract conventions
 
 [`../../openapi.json`](../../openapi.json) is the reviewed public HTTP contract.
-Its initial coverage is the migrated Academic Unit reference slice; later
-vertical migrations extend the same document without weakening existing
-contracts.
+Its coverage began with the migrated Academic Unit reference slice and now
+expands with each migrated capability without weakening existing contracts.
 
 Use the Academic Unit slice as the conceptual pattern for later capabilities:
 

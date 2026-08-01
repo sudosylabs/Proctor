@@ -99,6 +99,7 @@ func assembleRuntime(
 		Health:                  readiness,
 		Application:             application,
 		AcademicUnits:           application,
+		Institutions:            application,
 		BuildInfo:               buildInfo,
 		PublicURL:               cfg.Server.PublicURL,
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,

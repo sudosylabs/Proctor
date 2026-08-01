@@ -3,7 +3,7 @@
   "info": {
     "title": "Proctor Server API",
     "version": "1.0.0",
-    "description": "The reviewed public HTTP contract. Coverage begins with the Academic Unit reference slice and expands incrementally with each migrated capability."
+    "description": "The reviewed public HTTP contract. Coverage currently includes the Academic Unit reference slice and Institution capability and expands incrementally with each migrated capability."
   },
   "servers": [
     {"url": "/"}
@@ -134,6 +134,40 @@
           "500": {"$ref": "#/components/responses/InternalError"}
         }
       }
+    },
+    "/api/v1/institution": {
+      "get": {
+        "operationId": "getInstitution",
+        "summary": "Get the installation Institution",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/InstitutionOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "patch": {
+        "operationId": "updateInstitution",
+        "summary": "Update the installation Institution",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "institution.invalid", "institution.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateInstitution"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/InstitutionOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
     }
   },
   "components": {
@@ -176,6 +210,10 @@
         "content": {
           "application/json": {"schema": {"$ref": "#/components/schemas/UpdateAcademicUnitRequest"}}
         }
+      },
+      "UpdateInstitution": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateInstitutionRequest"}}}
       }
     },
     "responses": {
@@ -192,6 +230,7 @@
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitListResponse"}}}
       },
       "AcademicUnitArchived": {"description": "Academic Unit archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
+      "InstitutionOK": {"description": "Installation Institution", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstitutionResponse"}}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -248,10 +287,33 @@
         "additionalProperties": false,
         "properties": {
           "parent_id": {"type": ["string", "null"], "pattern": "^$|^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$"},
-          "name": {"type": ["string", "null"]},
-          "display_name": {"type": ["string", "null"]},
-          "description": {"type": ["string", "null"]}
+          "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."}
         }
+      },
+      "InstitutionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "name", "display_name", "description"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"},
+          "delete_at": {"type": "integer", "format": "int64"},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      },
+      "UpdateInstitutionRequest": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+                  "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+                  "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."}
+                }
       },
       "ProblemDetails": {
         "type": "object",

@@ -15,7 +15,7 @@ architecture:
 	go test ./architecture
 
 openapi-agreement:
-	go test ./app/api -run '^TestAcademicUnitOpenAPIAgreesWithRuntime$$'
+	go test ./app/api -run 'OpenAPIAgreesWithRuntime$$'
 
 test:
 	go test ./...
