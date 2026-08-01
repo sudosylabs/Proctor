@@ -14,8 +14,10 @@ defer node.Close()
 return node.Start(ctx)
 ```
 
-During the incremental architecture migration, this facade delegates to the
-existing cohesive construction flow:
+The module-root facade owns platform startup, HTTP serving, readiness, bounded
+HTTP drain, transport cleanup, and platform shutdown. During the incremental
+architecture migration, component construction still delegates to the existing
+cohesive graph:
 
 ```text
 server.New → app.NewServer → config.Store → platform.Service → app.App → app/api
@@ -27,10 +29,9 @@ closed, even if it is never started. Moving that background lifecycle into the
 module-root owner is part of the subsequent migration.
 
 The facade intentionally exposes only construction, start, close, and
-readiness. Runtime ownership moves from `app.NewServer` into the module-root
-package in subsequent migration tickets; existing callers and the shared
-`testlib` continue using the legacy constructor until their dedicated
-migrations.
+readiness. Concrete infrastructure selection moves into the module-root package
+in the next migration ticket; existing callers and the shared `testlib`
+continue using the legacy constructor until their dedicated migrations.
 
 The flat `model` package now establishes the durable model contract:
 
