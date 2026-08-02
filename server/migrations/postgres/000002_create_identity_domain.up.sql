@@ -51,6 +51,7 @@ CREATE TABLE affiliations (
     create_at bigint NOT NULL,
     update_at bigint NOT NULL,
     delete_at bigint NOT NULL DEFAULT 0,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     user_id varchar(26) NOT NULL REFERENCES users(id),
     kind varchar(32) NOT NULL CHECK (kind IN ('student', 'teacher', 'staff', 'external')),
     start_at bigint NOT NULL,

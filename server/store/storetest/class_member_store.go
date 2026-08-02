@@ -19,6 +19,8 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	secondClass := saveClass(t, ctx, ss, fixture.level.Id, fixture.period.Id, "class-member-b")
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
+	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start - 1})
+	requireNoError(t, err)
 
 	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
 		ClassId: firstClass.Id, AcademicPeriodId: model.NewId(),

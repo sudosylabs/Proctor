@@ -45,6 +45,9 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStudent, StartAt: 1}); err != nil {
+		t.Fatal(err)
+	}
 	role, err := persistence.Role().Save(ctx, &model.Role{Name: "class-reader", DisplayName: "Class Reader", Permissions: []string{string(model.ActionClassView)}})
 	if err != nil {
 		t.Fatal(err)

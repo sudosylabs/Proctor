@@ -56,7 +56,7 @@ func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
-		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: levels, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{},
+		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: levels, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{},
 		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
@@ -93,7 +93,7 @@ func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
-		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: levels, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{},
+		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: levels, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{},
 		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})

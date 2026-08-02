@@ -28,6 +28,24 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 		wantValue  string
 	}{
 		{
+			name:       "affiliation invalid",
+			err:        app.NewError("affiliation.invalid"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "affiliation.invalid",
+		},
+		{
+			name:       "affiliation conflict",
+			err:        app.NewError("affiliation.conflict"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "affiliation.conflict",
+		},
+		{
+			name:       "student affiliation with active enrollment",
+			err:        app.NewError("affiliation.student_has_active_enrollment"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "affiliation.student_has_active_enrollment",
+		},
+		{
 			name: "not found preserves safe fields",
 			err: app.NewError("academic_unit.not_found").
 				WithField("academic_unit_id", "unit123").

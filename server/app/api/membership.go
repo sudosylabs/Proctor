@@ -17,9 +17,6 @@ func (a *API) InitMemberships() error {
 		path, method string
 		handler      http.HandlerFunc
 	}{
-		{a.BaseRoutes.User, "/affiliations", http.MethodGet, a.listAffiliations},
-		{a.BaseRoutes.User, "/affiliations", http.MethodPost, a.createAffiliation},
-		{a.BaseRoutes.Affiliation, "", http.MethodDelete, a.endAffiliation},
 		{a.BaseRoutes.AcademicUnit, "/members", http.MethodGet, a.listAcademicUnitMembers},
 		{a.BaseRoutes.AcademicUnit, "/members", http.MethodPost, a.createAcademicUnitMember},
 		{a.BaseRoutes.AcademicUnitMember, "", http.MethodDelete, a.endAcademicUnitMember},
@@ -34,57 +31,6 @@ func (a *API) InitMemberships() error {
 		}
 	}
 	return nil
-}
-
-func (a *API) listAffiliations(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
-	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToUserForRequest(
-		r.Context(), principal, userID, model.ActionUserManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
-	values, appErr := a.application.ListAffiliations(ctx, principal, RequestMetadata(ctx), userID)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, values, appErr)
-}
-
-func (a *API) createAffiliation(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
-	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToUserForRequest(
-		r.Context(), principal, userID, model.ActionUserManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
-	r = r.WithContext(ctx)
-	var affiliation model.Affiliation
-	if !decodeJSON(w, r, &affiliation, "createAffiliation") {
-		return
-	}
-	affiliation.UserId = userID
-	saved, appErr := a.application.CreateAffiliation(ctx, principal, RequestMetadata(ctx), &affiliation)
-	writeResult(w, r, a, http.StatusCreated, saved, appErr)
-}
-
-func (a *API) endAffiliation(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireAffiliationId)
-	if !ok {
-		return
-	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAffiliationForRequest(
-		r.Context(), principal, id, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
-	ended, appErr := a.application.EndAffiliation(ctx, principal, RequestMetadata(ctx), id)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, ended, appErr)
 }
 
 func (a *API) listAcademicUnitMembers(w http.ResponseWriter, r *http.Request) {

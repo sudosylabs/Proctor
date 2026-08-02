@@ -392,12 +392,28 @@ type MFAStore interface {
 }
 
 // AffiliationStore persists non-exclusive institution relationships.
+type AffiliationCreation struct {
+	Affiliation  *model.Affiliation
+	AuditEventID string
+	AuditAt      int64
+}
+
+type AffiliationEnd struct {
+	ID               string
+	ExpectedRevision int64
+	EndAt            int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
 type AffiliationStore interface {
+	Create(context.Context, *AffiliationCreation) (*model.Affiliation, error)
+	EndWithAudit(context.Context, *AffiliationEnd) (*model.Affiliation, error)
 	Save(context.Context, *model.Affiliation) (*model.Affiliation, error)
 	Get(context.Context, string) (*model.Affiliation, error)
 	ListByUser(context.Context, string) ([]*model.Affiliation, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.Affiliation, error)
-	End(context.Context, string, int64) (*model.Affiliation, error)
+	End(context.Context, string, int64, int64) (*model.Affiliation, error)
 }
 
 // AcademicUnitMemberStore persists organizational membership without roles.

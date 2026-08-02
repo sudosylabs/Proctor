@@ -489,6 +489,48 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/affiliations": {
+      "parameters": [{"$ref": "#/components/parameters/UserID"}],
+      "get": {
+        "operationId": "listAffiliations", "summary": "List a User's effective-dated Affiliations",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AffiliationListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createAffiliation", "summary": "Create a non-exclusive effective-dated Affiliation",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "affiliation.invalid", "affiliation.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateAffiliation"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/AffiliationCreated"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/affiliations/{affiliation_id}": {
+      "parameters": [{"$ref": "#/components/parameters/AffiliationID"}],
+      "delete": {
+        "operationId": "endAffiliation", "summary": "End an Affiliation while retaining history",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "affiliation.student_has_active_enrollment", "affiliation.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AffiliationEnded"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -572,6 +614,14 @@
       "ClassID": {
         "name": "class_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "UserID": {
+        "name": "user_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "AffiliationID": {
+        "name": "affiliation_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
       }
     },
     "requestBodies": {
@@ -622,6 +672,10 @@
       "UpdateClass": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateClassRequest"}}}
+      },
+      "CreateAffiliation": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAffiliationRequest"}}}
       }
     },
     "responses": {
@@ -655,6 +709,9 @@
       "ClassCreated": {"description": "Class created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassResponse"}}}},
       "ClassListOK": {"description": "Class collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassListResponse"}}}},
       "ClassArchived": {"description": "Class archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
+      "AffiliationCreated": {"description": "Affiliation created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AffiliationResponse"}}}},
+      "AffiliationListOK": {"description": "Affiliation collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AffiliationListResponse"}}}},
+      "AffiliationEnded": {"description": "Affiliation ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AffiliationResponse"}}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -897,6 +954,30 @@
           "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged."},
           "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged."},
           "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged."}
+        }
+      },
+      "AffiliationKind": {"type": "string", "enum": ["student", "teacher", "staff", "external"]},
+      "AffiliationResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "user_id", "kind", "start_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "kind": {"$ref": "#/components/schemas/AffiliationKind"},
+          "start_at": {"type": "integer", "format": "int64"}, "end_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "AffiliationListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/AffiliationResponse"}},
+      "CreateAffiliationRequest": {
+        "type": "object", "additionalProperties": false, "required": ["kind"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "user_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
+          "kind": {"$ref": "#/components/schemas/AffiliationKind"}, "start_at": {"type": "integer", "format": "int64"},
+          "end_at": {"type": "integer", "format": "int64"}
         }
       },
       "ProblemDetails": {

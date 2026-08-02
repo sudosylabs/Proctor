@@ -117,6 +117,7 @@ type Options struct {
 	ProgrammeLevels         ProgrammeLevelApplication
 	AcademicPeriods         AcademicPeriodApplication
 	Classes                 ClassApplication
+	Affiliations            AffiliationApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -256,10 +257,13 @@ type ClassApplication interface {
 	ArchiveClass(context.Context, application.Invocation, application.ArchiveClassCommand) error
 }
 
+type AffiliationApplication interface {
+	ListAffiliations(context.Context, application.Invocation, application.ListAffiliationsQuery) ([]*model.Affiliation, error)
+	CreateAffiliation(context.Context, application.Invocation, application.CreateAffiliationCommand) (*model.Affiliation, error)
+	EndAffiliation(context.Context, application.Invocation, application.EndAffiliationCommand) (*model.Affiliation, error)
+}
+
 type MembershipAdministration interface {
-	ListAffiliations(context.Context, model.Principal, model.RequestMetadata, string) ([]*model.Affiliation, *model.AppError)
-	CreateAffiliation(context.Context, model.Principal, model.RequestMetadata, *model.Affiliation) (*model.Affiliation, *model.AppError)
-	EndAffiliation(context.Context, model.Principal, model.RequestMetadata, string) (*model.Affiliation, *model.AppError)
 	ListAcademicUnitMembers(context.Context, model.Principal, model.RequestMetadata, string, int64) ([]*model.AcademicUnitMember, *model.AppError)
 	CreateAcademicUnitMember(context.Context, model.Principal, model.RequestMetadata, *model.AcademicUnitMember) (*model.AcademicUnitMember, *model.AppError)
 	EndAcademicUnitMember(context.Context, model.Principal, model.RequestMetadata, string) (*model.AcademicUnitMember, *model.AppError)
@@ -442,6 +446,7 @@ type API struct {
 	programmeLevels         ProgrammeLevelApplication
 	academicPeriods         AcademicPeriodApplication
 	classes                 ClassApplication
+	affiliations            AffiliationApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -482,6 +487,9 @@ func New(options Options) (*API, error) {
 	if options.Classes == nil {
 		return nil, errors.New("class application is required")
 	}
+	if options.Affiliations == nil {
+		return nil, errors.New("affiliation application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -504,6 +512,7 @@ func New(options Options) (*API, error) {
 		programmeLevels:         options.ProgrammeLevels,
 		academicPeriods:         options.AcademicPeriods,
 		classes:                 options.Classes,
+		affiliations:            options.Affiliations,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -540,6 +549,7 @@ func New(options Options) (*API, error) {
 		api.registerProgrammeLevelRoutes,
 		api.registerAcademicPeriodRoutes,
 		api.registerClassRoutes,
+		api.registerAffiliationRoutes,
 		api.InitMemberships,
 		api.InitWebSocket,
 	}

@@ -65,6 +65,9 @@ func (s SqlClassMemberStore) Enroll(
 		return nil, fmt.Errorf("begin class enrollment: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
 	if err := lockClassLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
@@ -85,6 +88,16 @@ func (s SqlClassMemberStore) Enroll(
 	candidate.PreSave()
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
+	}
+	var student bool
+	if err := tx.Get(ctx, &student, `SELECT EXISTS (
+		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND delete_at = 0
+		 AND start_at <= ? AND end_at = 0
+	)`, candidate.UserId, model.AffiliationStudent, candidate.StartAt); err != nil {
+		return nil, fmt.Errorf("validate student affiliation: %w", err)
+	}
+	if !student {
+		return nil, store.NewErrConflict("class_member", "class_member_student_affiliation_required", nil)
 	}
 
 	var previousRow classMemberRow
