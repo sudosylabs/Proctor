@@ -176,7 +176,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	createdID := model.NewId()
 	service := newAcademicUnitCommandService(
 		creator,
-		academicUnitReadAuthorizerStub{
+		academicUnitAuthorizerStub{
 			authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
 				panic("unexpected Authorize")
 			},
@@ -222,7 +222,7 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 	creator := &academicUnitCreateStore{}
 	service := newAcademicUnitCommandService(
 		creator,
-		academicUnitReadAuthorizerStub{
+		academicUnitAuthorizerStub{
 			authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
 				panic("unexpected Authorize")
 			},
@@ -260,7 +260,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
 	service := newAcademicUnitCommandService(
 		creator,
-		academicUnitReadAuthorizerStub{
+		academicUnitAuthorizerStub{
 			authorize: func(
 				_ context.Context, _ Invocation, action model.Action, resource model.Resource,
 			) error {
@@ -302,7 +302,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 	effectErr := errors.New("cluster unavailable")
 	service := newAcademicUnitCommandService(
 		creator,
-		academicUnitReadAuthorizerStub{
+		academicUnitAuthorizerStub{
 			authorizeInstallation: func(
 				context.Context, Invocation, model.Action,
 			) (model.Resource, error) {

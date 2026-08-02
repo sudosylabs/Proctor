@@ -89,7 +89,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 	effects := &academicUnitCommandEffectsFake{events: &events}
 	service := newAcademicUnitCommandService(
 		persistence,
-		academicUnitReadAuthorizerStub{
+		academicUnitAuthorizerStub{
 			authorize: func(
 				_ context.Context, _ Invocation, action model.Action, resource model.Resource,
 			) error {
@@ -142,7 +142,7 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
 	service := newAcademicUnitCommandService(
 		persistence,
-		academicUnitReadAuthorizerFunc(func(
+		academicUnitAuthorizerFunc(func(
 			context.Context, Invocation, model.Action, model.Resource,
 		) error {
 			events = append(events, "authorize")
@@ -179,7 +179,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 	auditor := &academicUnitCommandAuditor{events: &events, beginID: model.NewId()}
 	service := newAcademicUnitCommandService(
 		persistence,
-		academicUnitReadAuthorizerFunc(func(
+		academicUnitAuthorizerFunc(func(
 			context.Context, Invocation, model.Action, model.Resource,
 		) error {
 			events = append(events, "authorize")

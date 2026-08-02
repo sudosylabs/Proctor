@@ -30,7 +30,7 @@ type SearchAcademicUnitsQuery struct {
 	Limit int
 }
 
-type academicUnitReadAuthorizer interface {
+type academicUnitAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
 	Installation(context.Context) (model.Resource, error)
 	AuthorizeInstallation(
@@ -85,7 +85,7 @@ func (a academicUnitReadAuthorization) AuthorizeInstallation(
 
 type academicUnitQueryService struct {
 	academicUnits academicUnitReader
-	authorization academicUnitReadAuthorizer
+	authorization academicUnitAuthorizer
 }
 
 type academicUnitReader interface {
@@ -96,7 +96,7 @@ type academicUnitReader interface {
 
 func newAcademicUnitQueryService(
 	academicUnits academicUnitReader,
-	authorization academicUnitReadAuthorizer,
+	authorization academicUnitAuthorizer,
 ) *academicUnitQueryService {
 	return &academicUnitQueryService{
 		academicUnits: academicUnits, authorization: authorization,

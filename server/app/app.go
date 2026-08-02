@@ -28,6 +28,7 @@ type App struct {
 	academicUnitCommands   *academicUnitCommandService
 	institutions           *institutionService
 	programmes             *programmeService
+	programmeLevels        *programmeLevelService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -81,6 +82,10 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		applicationPlatform.Store().Programme(), academicUnitAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
+	programmeLevels := newProgrammeLevelService(
+		applicationPlatform.Store().ProgrammeLevel(), applicationPlatform.Store().Programme(),
+		academicUnitAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
+	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
@@ -88,6 +93,7 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		academicUnitCommands: academicUnitCommands,
 		institutions:         institutions,
 		programmes:           programmes,
+		programmeLevels:      programmeLevels,
 		audit:                audit, realtime: realtime,
 	}, nil
 }

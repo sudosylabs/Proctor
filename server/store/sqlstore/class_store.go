@@ -74,9 +74,19 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
 	}
-
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin class save: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+		return nil, err
+	}
 	row := newClassRow(&candidate)
-	if _, err := s.GetMaster().NamedExec(ctx, `
+	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO classes (
 			id, create_at, update_at, delete_at, programme_level_id,
 			academic_period_id, name, display_name, description
@@ -85,6 +95,9 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 			:academic_period_id, :name, :display_name, :description
 		)`, &row); err != nil {
 		return nil, fmt.Errorf("save class: %w", translateError("class", candidate.Id, err))
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit class save: %w", err)
 	}
 	return &candidate, nil
 }
@@ -218,9 +231,19 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
 	}
-
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin class update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+		return nil, err
+	}
 	row := newClassRow(&candidate)
-	result, err := s.GetMaster().NamedExec(ctx, `
+	result, err := tx.NamedExec(ctx, `
 		UPDATE classes
 		   SET update_at = :update_at,
 		       programme_level_id = :programme_level_id,
@@ -234,6 +257,9 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	}
 	if err := requireAffected(result, "class", candidate.Id); err != nil {
 		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit class update: %w", err)
 	}
 	return &candidate, nil
 }

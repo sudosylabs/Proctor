@@ -61,7 +61,8 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	httpAPI, err := New(Options{
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
 		AcademicUnits: transport, Institutions: transport, Programmes: programmes,
-		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
+		ProgrammeLevels: &programmeLevelHTTPApplication{},
+		BuildInfo:       BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
 		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
 	if err != nil {

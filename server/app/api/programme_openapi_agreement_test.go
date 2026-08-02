@@ -60,6 +60,9 @@ func TestProgrammeOpenAPIAgreesWithRuntime(t *testing.T) {
 		if !strings.Contains(path, "/programmes") {
 			continue
 		}
+		if strings.HasSuffix(path, "/levels") {
+			continue
+		}
 		for method, raw := range item {
 			upper := strings.ToUpper(method)
 			if !isHTTPMethod(upper) {

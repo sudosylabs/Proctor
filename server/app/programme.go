@@ -44,7 +44,7 @@ type programmeStore interface {
 
 type programmeService struct {
 	store         programmeStore
-	authorization academicUnitReadAuthorizer
+	authorization academicUnitAuthorizer
 	audit         mutationAuditor
 	now           func() time.Time
 	newID         func() string
@@ -52,7 +52,7 @@ type programmeService struct {
 
 func newProgrammeService(
 	persistence programmeStore,
-	authorization academicUnitReadAuthorizer,
+	authorization academicUnitAuthorizer,
 	audit mutationAuditor,
 	now func() time.Time,
 	newID func() string,

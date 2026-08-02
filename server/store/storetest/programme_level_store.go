@@ -18,6 +18,7 @@ import (
 )
 
 func TestProgrammeLevelStore(t *testing.T, ss store.Store) {
+	t.Run("MutationAuditAtomicity", func(t *testing.T) { testProgrammeLevelStoreMutationAuditAtomicity(t, ss) })
 	t.Run("Save", func(t *testing.T) { testProgrammeLevelStoreSave(t, ss) })
 	t.Run("Get", func(t *testing.T) { testProgrammeLevelStoreGet(t, ss) })
 	t.Run("GetByName", func(t *testing.T) { testProgrammeLevelStoreGetByName(t, ss) })
@@ -32,6 +33,84 @@ func TestProgrammeLevelStore(t *testing.T, ss store.Store) {
 	t.Run("SearchAndArchive", func(t *testing.T) {
 		testProgrammeLevelStoreSearchAndArchive(t, ss)
 	})
+}
+
+func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	unit, programme := saveProgrammeParents(t, ctx, ss, "audited-level-programme")
+	createAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	candidate := &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: "audited-level", DisplayName: "Audited Level"}
+	candidate.PrepareCreate(model.NewId(), model.GetMillis())
+	created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	completed, err := ss.Audit().Get(ctx, createAttempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("create audit status = %q", completed.Status)
+	}
+
+	rolledBackCreate := &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: "rolled-back-create", DisplayName: "Rolled Back Create"}
+	rolledBackCreate.PrepareCreate(model.NewId(), model.GetMillis())
+	if _, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: rolledBackCreate, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("Create() succeeded without its audit attempt")
+	}
+	if _, err := ss.ProgrammeLevel().Get(ctx, rolledBackCreate.Id); !store.IsNotFound(err) {
+		t.Fatalf("create survived audit rollback: %v", err)
+	}
+
+	updateAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	updatedCandidate := *created
+	updatedCandidate.DisplayName = "Updated Level"
+	updatedCandidate.PrepareUpdate(model.GetMillis())
+	updated, err := ss.ProgrammeLevel().UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{Level: &updatedCandidate, AuditEventID: updateAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	completed, err = ss.Audit().Get(ctx, updateAttempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("update audit status = %q", completed.Status)
+	}
+
+	rolledBack := *updated
+	rolledBack.DisplayName = "Must Roll Back"
+	rolledBack.PrepareUpdate(model.GetMillis())
+	if _, err := ss.ProgrammeLevel().UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{Level: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
+	}
+	persisted, err := ss.ProgrammeLevel().Get(ctx, updated.Id)
+	requireNoError(t, err)
+	if persisted.DisplayName != updated.DisplayName {
+		t.Fatalf("update survived audit rollback: %#v", persisted)
+	}
+
+	archiveAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	archived, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: updated.Id, ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	if archived.DeleteAt == 0 {
+		t.Fatalf("ArchiveWithAudit() = %#v", archived)
+	}
+
+	archiveRollback := saveProgrammeLevel(t, ctx, ss, programme.Id, "rolled-back-archive")
+	if _, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: archiveRollback.Id, ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
+	}
+	if _, err := ss.ProgrammeLevel().Get(ctx, archiveRollback.Id); err != nil {
+		t.Fatalf("archive survived audit rollback: %v", err)
+	}
+
+	withClass := saveProgrammeLevel(t, ctx, ss, programme.Id, "level-with-class")
+	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionId, "2026-2027", 1_800_000_000_000)
+	saveClass(t, ctx, ss, withClass.Id, period.Id, "class-a")
+	blockedAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	if _, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: withClass.Id, ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("archive with active class error = %v, want conflict", err)
+	}
+}
+
+func saveProgrammeLevelAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, unitID string) *model.AuditEvent {
+	t.Helper()
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+	requireNoError(t, err)
+	return attempt
 }
 
 func testProgrammeLevelStoreSearchAndArchive(t *testing.T, ss store.Store) {
@@ -150,6 +229,17 @@ func testProgrammeLevelStoreUpdate(t *testing.T, ss store.Store) {
 	_, err = ss.ProgrammeLevel().Update(ctx, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
+	}
+	archivedProgramme := saveProgramme(t, ctx, ss, unit.Id, "archived-programme")
+	if _, err := ss.Programme().Delete(ctx, archivedProgramme.Id, model.GetMillis()); err != nil {
+		t.Fatalf("archive destination programme: %v", err)
+	}
+	invalidMove := *updated
+	invalidMove.ProgrammeId = archivedProgramme.Id
+	_, err = ss.ProgrammeLevel().Update(ctx, &invalidMove)
+	var reference *store.ErrReference
+	if !errors.As(err, &reference) {
+		t.Fatalf("Update(archived programme) error = %v, want reference", err)
 	}
 }
 

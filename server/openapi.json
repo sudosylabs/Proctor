@@ -3,7 +3,7 @@
   "info": {
     "title": "Proctor Server API",
     "version": "1.0.0",
-    "description": "The reviewed public HTTP contract. Coverage currently includes the Academic Unit reference slice and Institution capability and expands incrementally with each migrated capability."
+    "description": "The reviewed public HTTP contract. Coverage currently includes Academic Unit, Institution, Programme, and Programme Level capabilities and expands incrementally with each migrated capability."
   },
   "servers": [
     {"url": "/"}
@@ -225,6 +225,96 @@
         }
       }
     },
+    "/api/v1/programmes/{programme_id}/levels": {
+      "parameters": [{"$ref": "#/components/parameters/ProgrammeID"}],
+      "get": {
+        "operationId": "listProgrammeLevels",
+        "summary": "List or search Programme Levels owned by a Programme",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ProgrammeLevelListOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createProgrammeLevel",
+        "summary": "Create a Programme Level owned by a Programme",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "programme_level.invalid", "programme_level.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateProgrammeLevel"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/ProgrammeLevelCreated"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/programme-levels/{programme_level_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ProgrammeLevelID"}],
+      "get": {
+        "operationId": "getProgrammeLevel",
+        "summary": "Get a Programme Level",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ProgrammeLevelOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "patch": {
+        "operationId": "updateProgrammeLevel",
+        "summary": "Update a Programme Level without changing its Programme owner",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "programme_level.invalid", "programme_level.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateProgrammeLevel"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/ProgrammeLevelOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "delete": {
+        "operationId": "archiveProgrammeLevel",
+        "summary": "Archive a Programme Level that has no active Classes",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "programme_level.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/ProgrammeLevelArchived"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -292,6 +382,12 @@
         "in": "path",
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "ProgrammeLevelID": {
+        "name": "programme_level_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
       }
     },
     "requestBodies": {
@@ -318,6 +414,14 @@
       "UpdateProgramme": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateProgrammeRequest"}}}
+      },
+      "CreateProgrammeLevel": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateProgrammeLevelRequest"}}}
+      },
+      "UpdateProgrammeLevel": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateProgrammeLevelRequest"}}}
       }
     },
     "responses": {
@@ -339,6 +443,10 @@
       "ProgrammeCreated": {"description": "Programme created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeResponse"}}}},
       "ProgrammeListOK": {"description": "Programme collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeListResponse"}}}},
       "ProgrammeArchived": {"description": "Programme archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
+      "ProgrammeLevelOK": {"description": "Programme Level", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeLevelResponse"}}}},
+      "ProgrammeLevelCreated": {"description": "Programme Level created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeLevelResponse"}}}},
+      "ProgrammeLevelListOK": {"description": "Programme Level collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeLevelListResponse"}}}},
+      "ProgrammeLevelArchived": {"description": "Programme Level archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -455,6 +563,46 @@
         }
       },
       "UpdateProgrammeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."}
+        }
+      },
+      "ProgrammeLevelResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "programme_id", "name", "display_name", "description"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"},
+          "delete_at": {"type": "integer", "format": "int64"},
+          "programme_id": {"$ref": "#/components/schemas/ID"},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      },
+      "ProgrammeLevelListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/ProgrammeLevelResponse"}},
+      "CreateProgrammeLevelRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "display_name"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "programme_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      },
+      "UpdateProgrammeLevelRequest": {
         "type": "object",
         "additionalProperties": false,
         "properties": {

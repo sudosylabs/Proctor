@@ -129,7 +129,29 @@ type ProgrammeStore interface {
 }
 
 // ProgrammeLevelStore persists reusable curriculum stages owned by programmes.
+type ProgrammeLevelCreation struct {
+	Level        *model.ProgrammeLevel
+	AuditEventID string
+	AuditAt      int64
+}
+
+type ProgrammeLevelUpdate struct {
+	Level        *model.ProgrammeLevel
+	AuditEventID string
+	AuditAt      int64
+}
+
+type ProgrammeLevelArchive struct {
+	ID           string
+	ArchiveAt    int64
+	AuditEventID string
+	AuditAt      int64
+}
+
 type ProgrammeLevelStore interface {
+	Create(context.Context, *ProgrammeLevelCreation) (*model.ProgrammeLevel, error)
+	UpdateWithAudit(context.Context, *ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
+	ArchiveWithAudit(context.Context, *ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
 	Save(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
 	Get(context.Context, string) (*model.ProgrammeLevel, error)
 	GetByName(context.Context, string, string) (*model.ProgrammeLevel, error)

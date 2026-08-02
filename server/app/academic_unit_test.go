@@ -10,20 +10,20 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-type academicUnitReadAuthorizerFunc func(
+type academicUnitAuthorizerFunc func(
 	context.Context,
 	Invocation,
 	model.Action,
 	model.Resource,
 ) error
 
-type academicUnitReadAuthorizerStub struct {
-	authorize             academicUnitReadAuthorizerFunc
+type academicUnitAuthorizerStub struct {
+	authorize             academicUnitAuthorizerFunc
 	installation          func(context.Context) (model.Resource, error)
 	authorizeInstallation func(context.Context, Invocation, model.Action) (model.Resource, error)
 }
 
-func (s academicUnitReadAuthorizerStub) Authorize(
+func (s academicUnitAuthorizerStub) Authorize(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,
@@ -32,7 +32,7 @@ func (s academicUnitReadAuthorizerStub) Authorize(
 	return s.authorize(ctx, invocation, action, resource)
 }
 
-func (s academicUnitReadAuthorizerStub) Installation(
+func (s academicUnitAuthorizerStub) Installation(
 	ctx context.Context,
 ) (model.Resource, error) {
 	if s.installation != nil {
@@ -41,7 +41,7 @@ func (s academicUnitReadAuthorizerStub) Installation(
 	panic("unexpected Installation")
 }
 
-func (s academicUnitReadAuthorizerStub) AuthorizeInstallation(
+func (s academicUnitAuthorizerStub) AuthorizeInstallation(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,
@@ -49,7 +49,7 @@ func (s academicUnitReadAuthorizerStub) AuthorizeInstallation(
 	return s.authorizeInstallation(ctx, invocation, action)
 }
 
-func (f academicUnitReadAuthorizerFunc) Authorize(
+func (f academicUnitAuthorizerFunc) Authorize(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,
@@ -58,13 +58,13 @@ func (f academicUnitReadAuthorizerFunc) Authorize(
 	return f(ctx, invocation, action, resource)
 }
 
-func (f academicUnitReadAuthorizerFunc) AuthorizeInstallation(
+func (f academicUnitAuthorizerFunc) AuthorizeInstallation(
 	context.Context, Invocation, model.Action,
 ) (model.Resource, error) {
 	panic("unexpected AuthorizeInstallation")
 }
 
-func (f academicUnitReadAuthorizerFunc) Installation(
+func (f academicUnitAuthorizerFunc) Installation(
 	context.Context,
 ) (model.Resource, error) {
 	panic("unexpected Installation")
@@ -130,7 +130,7 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 	units := &academicUnitReadStore{}
 	service := newAcademicUnitQueryService(
 		units,
-		academicUnitReadAuthorizerFunc(func(
+		academicUnitAuthorizerFunc(func(
 			context.Context, Invocation, model.Action, model.Resource,
 		) error {
 			return NewError("authorization.denied")
@@ -158,7 +158,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 	var gotResource model.Resource
 	service := newAcademicUnitQueryService(
 		units,
-		academicUnitReadAuthorizerFunc(func(
+		academicUnitAuthorizerFunc(func(
 			_ context.Context, _ Invocation, action model.Action, resource model.Resource,
 		) error {
 			gotAction, gotResource = action, resource
@@ -187,7 +187,7 @@ func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testin
 	units := &academicUnitReadStore{}
 	var gotAction model.Action
 	var gotResource model.Resource
-	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
 		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},
@@ -217,7 +217,7 @@ func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 
 	institution := &model.Institution{Id: model.NewId()}
 	units := &academicUnitReadStore{}
-	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
 		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},
@@ -247,7 +247,7 @@ func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {
 	t.Parallel()
 
 	units := &academicUnitReadStore{}
-	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
 		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},
@@ -270,7 +270,7 @@ func TestAcademicUnitSearchDenialDoesNotReadQueryStore(t *testing.T) {
 	t.Parallel()
 
 	units := &academicUnitReadStore{}
-	service := newAcademicUnitQueryService(units, academicUnitReadAuthorizerStub{
+	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
 		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
 			panic("unexpected Authorize")
 		},

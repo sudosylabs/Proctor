@@ -99,7 +99,7 @@ func (r academicUnitEffectReporter) Report(
 
 type academicUnitCommandService struct {
 	store          academicUnitCommandStore
-	authorization  academicUnitReadAuthorizer
+	authorization  academicUnitAuthorizer
 	audit          mutationAuditor
 	effects        academicUnitCommandEffects
 	effectFailures academicUnitEffectFailures
@@ -109,7 +109,7 @@ type academicUnitCommandService struct {
 
 func newAcademicUnitCommandService(
 	persistence academicUnitCommandStore,
-	authorization academicUnitReadAuthorizer,
+	authorization academicUnitAuthorizer,
 	audit mutationAuditor,
 	effects academicUnitCommandEffects,
 	effectFailures academicUnitEffectFailures,

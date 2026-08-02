@@ -45,6 +45,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"institution.invalid":                {status: http.StatusBadRequest},
 	"programme.invalid":                  {status: http.StatusBadRequest},
 	"programme.conflict":                 {status: http.StatusConflict},
+	"programme_level.invalid":            {status: http.StatusBadRequest},
+	"programme_level.conflict":           {status: http.StatusConflict},
 	"request.invalid":                    {status: http.StatusBadRequest},
 	"resource.not_found":                 {status: http.StatusNotFound},
 }

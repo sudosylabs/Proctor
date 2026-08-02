@@ -114,6 +114,7 @@ type Options struct {
 	AcademicUnits           AcademicUnitApplication
 	Institutions            InstitutionApplication
 	Programmes              ProgrammeApplication
+	ProgrammeLevels         ProgrammeLevelApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -228,12 +229,15 @@ type ProgrammeApplication interface {
 	ArchiveProgramme(context.Context, application.Invocation, application.ArchiveProgrammeCommand) error
 }
 
+type ProgrammeLevelApplication interface {
+	GetProgrammeLevel(context.Context, application.Invocation, application.GetProgrammeLevelQuery) (*model.ProgrammeLevel, error)
+	ListProgrammeLevels(context.Context, application.Invocation, application.ListProgrammeLevelsQuery) ([]*model.ProgrammeLevel, error)
+	CreateProgrammeLevel(context.Context, application.Invocation, application.CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error)
+	UpdateProgrammeLevel(context.Context, application.Invocation, application.UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error)
+	ArchiveProgrammeLevel(context.Context, application.Invocation, application.ArchiveProgrammeLevelCommand) error
+}
+
 type AcademicAdministration interface {
-	GetProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, string) (*model.ProgrammeLevel, *model.AppError)
-	ListProgrammeLevels(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.ProgrammeLevel, *model.AppError)
-	CreateProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, *model.ProgrammeLevel) (*model.ProgrammeLevel, *model.AppError)
-	PatchProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, string, *model.ProgrammeLevelPatch) (*model.ProgrammeLevel, *model.AppError)
-	ArchiveProgrammeLevel(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
 	GetAcademicPeriod(context.Context, model.Principal, model.RequestMetadata, string) (*model.AcademicPeriod, *model.AppError)
 	ListAcademicPeriods(context.Context, model.Principal, model.RequestMetadata, string, int) ([]*model.AcademicPeriod, *model.AppError)
 	CreateAcademicPeriod(context.Context, model.Principal, model.RequestMetadata, *model.AcademicPeriod) (*model.AcademicPeriod, *model.AppError)
@@ -431,6 +435,7 @@ type API struct {
 	academicUnits           AcademicUnitApplication
 	institutions            InstitutionApplication
 	programmes              ProgrammeApplication
+	programmeLevels         ProgrammeLevelApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -462,6 +467,9 @@ func New(options Options) (*API, error) {
 	if options.Programmes == nil {
 		return nil, errors.New("programme application is required")
 	}
+	if options.ProgrammeLevels == nil {
+		return nil, errors.New("programme level application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -481,6 +489,7 @@ func New(options Options) (*API, error) {
 		academicUnits:           options.AcademicUnits,
 		institutions:            options.Institutions,
 		programmes:              options.Programmes,
+		programmeLevels:         options.ProgrammeLevels,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -514,7 +523,7 @@ func New(options Options) (*API, error) {
 		api.registerInstitutionRoutes,
 		api.registerAcademicUnitRoutes,
 		api.registerProgrammeRoutes,
-		api.InitProgrammeLevels,
+		api.registerProgrammeLevelRoutes,
 		api.InitAcademicPeriods,
 		api.InitClasses,
 		api.InitMemberships,
