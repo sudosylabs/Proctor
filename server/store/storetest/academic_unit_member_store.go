@@ -39,7 +39,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	if !errors.As(err, &conflict) {
 		t.Fatalf("duplicate active membership error = %v", err)
 	}
-	ended, err := ss.AcademicUnitMember().End(ctx, saved.Id, start+10)
+	ended, err := ss.AcademicUnitMember().End(ctx, saved.Id, saved.Revision, start+10)
 	requireNoError(t, err)
 	if ended.EndAt != start+10 {
 		t.Fatalf("End() = %#v", ended)
@@ -53,4 +53,19 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 		AcademicUnitId: unit.Id, UserId: user.Id, StartAt: start + 10,
 	})
 	requireNoError(t, err)
+	auditedUser := saveUser(t, ctx, ss)
+	createAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.Id)
+	candidate := &model.AcademicUnitMember{AcademicUnitId: unit.Id, UserId: auditedUser.Id, StartAt: start}
+	candidate.PrepareCreate(model.NewId(), model.GetMillis())
+	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	endAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.Id)
+	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.Id, ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	if endedAudited.Revision != created.Revision+1 {
+		t.Fatalf("EndWithAudit() = %#v", endedAudited)
+	}
+	if _, err := ss.AcademicUnitMember().End(ctx, created.Id, created.Revision, start+21); !store.IsConflict(err) {
+		t.Fatalf("stale End() error = %v", err)
+	}
 }

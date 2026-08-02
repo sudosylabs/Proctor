@@ -489,6 +489,52 @@
         }
       }
     },
+    "/api/v1/academic-units/{academic_unit_id}/members": {
+      "parameters": [{"$ref": "#/components/parameters/AcademicUnitID"}],
+      "get": {
+        "operationId": "listAcademicUnitMembers", "summary": "List effective-dated organizational members",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "active_at", "in": "query", "required": false, "schema": {"type": "integer", "format": "int64", "minimum": 1}},
+          {"name": "history", "in": "query", "required": false, "description": "When true, return membership history and ignore active_at.", "schema": {"type": "boolean", "default": false}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicUnitMemberListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createAcademicUnitMember", "summary": "Create organizational membership without granting permissions",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit_member.invalid", "academic_unit_member.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateAcademicUnitMember"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/AcademicUnitMemberCreated"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/academic-unit-members/{academic_unit_member_id}": {
+      "parameters": [{"$ref": "#/components/parameters/AcademicUnitMemberID"}],
+      "delete": {
+        "operationId": "endAcademicUnitMember", "summary": "End organizational membership while retaining history",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_unit_member.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicUnitMemberEnded"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/users/{user_id}/affiliations": {
       "parameters": [{"$ref": "#/components/parameters/UserID"}],
       "get": {
@@ -622,6 +668,10 @@
       "AffiliationID": {
         "name": "affiliation_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "AcademicUnitMemberID": {
+        "name": "academic_unit_member_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
       }
     },
     "requestBodies": {
@@ -676,6 +726,10 @@
       "CreateAffiliation": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAffiliationRequest"}}}
+      },
+      "CreateAcademicUnitMember": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAcademicUnitMemberRequest"}}}
       }
     },
     "responses": {
@@ -712,6 +766,9 @@
       "AffiliationCreated": {"description": "Affiliation created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AffiliationResponse"}}}},
       "AffiliationListOK": {"description": "Affiliation collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AffiliationListResponse"}}}},
       "AffiliationEnded": {"description": "Affiliation ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AffiliationResponse"}}}},
+      "AcademicUnitMemberCreated": {"description": "Academic Unit Member created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitMemberResponse"}}}},
+      "AcademicUnitMemberListOK": {"description": "Academic Unit Member collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitMemberListResponse"}}}},
+      "AcademicUnitMemberEnded": {"description": "Academic Unit Member ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitMemberResponse"}}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -978,6 +1035,29 @@
           "user_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
           "kind": {"$ref": "#/components/schemas/AffiliationKind"}, "start_at": {"type": "integer", "format": "int64"},
           "end_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "AcademicUnitMemberResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "academic_unit_id", "user_id", "start_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "academic_unit_id": {"$ref": "#/components/schemas/ID"}, "user_id": {"$ref": "#/components/schemas/ID"},
+          "start_at": {"type": "integer", "format": "int64"}, "end_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "AcademicUnitMemberListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/AcademicUnitMemberResponse"}},
+      "CreateAcademicUnitMemberRequest": {
+        "type": "object", "additionalProperties": false, "required": ["user_id"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "academic_unit_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "start_at": {"type": "integer", "format": "int64"},
+          "end_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored; memberships are ended through DELETE."}
         }
       },
       "ProblemDetails": {

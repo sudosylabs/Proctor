@@ -28,6 +28,18 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 		wantValue  string
 	}{
 		{
+			name:       "academic unit member invalid",
+			err:        app.NewError("academic_unit_member.invalid"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "academic_unit_member.invalid",
+		},
+		{
+			name:       "academic unit member conflict",
+			err:        app.NewError("academic_unit_member.conflict"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "academic_unit_member.conflict",
+		},
+		{
 			name:       "affiliation invalid",
 			err:        app.NewError("affiliation.invalid"),
 			wantStatus: http.StatusBadRequest,

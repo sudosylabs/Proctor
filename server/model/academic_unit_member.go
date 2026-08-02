@@ -16,14 +16,25 @@ type AcademicUnitMember struct {
 	CreateAt       int64  `json:"create_at"`
 	UpdateAt       int64  `json:"update_at"`
 	DeleteAt       int64  `json:"delete_at"`
+	Revision       int64  `json:"revision"`
 	AcademicUnitId string `json:"academic_unit_id"`
 	UserId         string `json:"user_id"`
 	StartAt        int64  `json:"start_at"`
 	EndAt          int64  `json:"end_at,omitempty"`
 }
 
+func (m *AcademicUnitMember) PrepareCreate(id string, at int64) {
+	m.Id, m.CreateAt, m.UpdateAt, m.DeleteAt, m.Revision = id, at, at, 0, 1
+	if m.StartAt == 0 {
+		m.StartAt = at
+	}
+}
+
 func (m *AcademicUnitMember) PreSave() {
 	preSaveMembership(&m.Id, &m.CreateAt, &m.UpdateAt, &m.StartAt)
+	if m.Revision == 0 {
+		m.Revision = 1
+	}
 }
 
 func (m *AcademicUnitMember) PreUpdate() {
@@ -40,6 +51,9 @@ func (m *AcademicUnitMember) IsValid() *AppError {
 		m.UpdateAt,
 	); appErr != nil {
 		return appErr
+	}
+	if m.Revision <= 0 {
+		return invalidModelError(where, "academic_unit_member", "revision", "must be positive", "id="+m.Id)
 	}
 	details := "id=" + m.Id
 	if !IsValidId(m.AcademicUnitId) {
@@ -75,6 +89,7 @@ func (m *AcademicUnitMember) IsActiveAt(now int64) bool {
 
 func (m *AcademicUnitMember) Auditable() map[string]any {
 	fields := auditFields(m.Id, m.CreateAt, m.UpdateAt, m.DeleteAt)
+	fields["revision"] = m.Revision
 	fields["academic_unit_id"] = m.AcademicUnitId
 	fields["user_id"] = m.UserId
 	fields["start_at"] = m.StartAt

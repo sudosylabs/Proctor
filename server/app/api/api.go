@@ -118,6 +118,7 @@ type Options struct {
 	AcademicPeriods         AcademicPeriodApplication
 	Classes                 ClassApplication
 	Affiliations            AffiliationApplication
+	AcademicUnitMembers     AcademicUnitMemberApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -263,10 +264,13 @@ type AffiliationApplication interface {
 	EndAffiliation(context.Context, application.Invocation, application.EndAffiliationCommand) (*model.Affiliation, error)
 }
 
+type AcademicUnitMemberApplication interface {
+	ListAcademicUnitMembers(context.Context, application.Invocation, application.ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error)
+	CreateAcademicUnitMember(context.Context, application.Invocation, application.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
+	EndAcademicUnitMember(context.Context, application.Invocation, application.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
+}
+
 type MembershipAdministration interface {
-	ListAcademicUnitMembers(context.Context, model.Principal, model.RequestMetadata, string, int64) ([]*model.AcademicUnitMember, *model.AppError)
-	CreateAcademicUnitMember(context.Context, model.Principal, model.RequestMetadata, *model.AcademicUnitMember) (*model.AcademicUnitMember, *model.AppError)
-	EndAcademicUnitMember(context.Context, model.Principal, model.RequestMetadata, string) (*model.AcademicUnitMember, *model.AppError)
 	ListClassMembers(context.Context, model.Principal, model.RequestMetadata, string, int64) ([]*model.ClassMember, *model.AppError)
 	EnrollClassMember(context.Context, model.Principal, model.RequestMetadata, *model.ClassMember) (*model.ClassEnrollment, *model.AppError)
 	EndClassMember(context.Context, model.Principal, model.RequestMetadata, string) (*model.ClassMember, *model.AppError)
@@ -447,6 +451,7 @@ type API struct {
 	academicPeriods         AcademicPeriodApplication
 	classes                 ClassApplication
 	affiliations            AffiliationApplication
+	academicUnitMembers     AcademicUnitMemberApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -490,6 +495,9 @@ func New(options Options) (*API, error) {
 	if options.Affiliations == nil {
 		return nil, errors.New("affiliation application is required")
 	}
+	if options.AcademicUnitMembers == nil {
+		return nil, errors.New("academic unit member application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -513,6 +521,7 @@ func New(options Options) (*API, error) {
 		academicPeriods:         options.AcademicPeriods,
 		classes:                 options.Classes,
 		affiliations:            options.Affiliations,
+		academicUnitMembers:     options.AcademicUnitMembers,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -550,6 +559,7 @@ func New(options Options) (*API, error) {
 		api.registerAcademicPeriodRoutes,
 		api.registerClassRoutes,
 		api.registerAffiliationRoutes,
+		api.registerAcademicUnitMemberRoutes,
 		api.InitMemberships,
 		api.InitWebSocket,
 	}

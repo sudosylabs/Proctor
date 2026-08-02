@@ -417,13 +417,29 @@ type AffiliationStore interface {
 }
 
 // AcademicUnitMemberStore persists organizational membership without roles.
+type AcademicUnitMemberCreation struct {
+	Member       *model.AcademicUnitMember
+	AuditEventID string
+	AuditAt      int64
+}
+
+type AcademicUnitMemberEnd struct {
+	ID               string
+	ExpectedRevision int64
+	EndAt            int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
 type AcademicUnitMemberStore interface {
+	Create(context.Context, *AcademicUnitMemberCreation) (*model.AcademicUnitMember, error)
+	EndWithAudit(context.Context, *AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
 	Save(context.Context, *model.AcademicUnitMember) (*model.AcademicUnitMember, error)
 	Get(context.Context, string) (*model.AcademicUnitMember, error)
 	ListByUser(context.Context, string) ([]*model.AcademicUnitMember, error)
 	ListByAcademicUnit(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
-	End(context.Context, string, int64) (*model.AcademicUnitMember, error)
+	End(context.Context, string, int64, int64) (*model.AcademicUnitMember, error)
 }
 
 type ClassEnrollmentResult struct {

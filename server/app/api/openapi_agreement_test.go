@@ -165,6 +165,9 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 		if strings.HasSuffix(path, "/classes") {
 			continue
 		}
+		if strings.HasSuffix(path, "/members") {
+			continue
+		}
 		if strings.Contains(path, "/programmes") {
 			continue
 		}

@@ -17,9 +17,6 @@ func (a *API) InitMemberships() error {
 		path, method string
 		handler      http.HandlerFunc
 	}{
-		{a.BaseRoutes.AcademicUnit, "/members", http.MethodGet, a.listAcademicUnitMembers},
-		{a.BaseRoutes.AcademicUnit, "/members", http.MethodPost, a.createAcademicUnitMember},
-		{a.BaseRoutes.AcademicUnitMember, "", http.MethodDelete, a.endAcademicUnitMember},
 		{a.BaseRoutes.Class, "/members", http.MethodGet, a.listClassMembers},
 		{a.BaseRoutes.Class, "/members", http.MethodPost, a.enrollClassMember},
 		{a.BaseRoutes.ClassMember, "", http.MethodDelete, a.endClassMember},
@@ -31,63 +28,6 @@ func (a *API) InitMemberships() error {
 		}
 	}
 	return nil
-}
-
-func (a *API) listAcademicUnitMembers(w http.ResponseWriter, r *http.Request) {
-	principal, unitID, ok := requiredResourceID(w, r, Params.RequireAcademicUnitId)
-	if !ok {
-		return
-	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		r.Context(), principal, unitID, model.ActionAcademicUnitManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
-	activeAt, ok := queryActiveAt(w, r)
-	if !ok {
-		return
-	}
-	members, appErr := a.application.ListAcademicUnitMembers(
-		ctx, principal, RequestMetadata(ctx), unitID, activeAt,
-	)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, members, appErr)
-}
-
-func (a *API) createAcademicUnitMember(w http.ResponseWriter, r *http.Request) {
-	principal, unitID, ok := requiredResourceID(w, r, Params.RequireAcademicUnitId)
-	if !ok {
-		return
-	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		r.Context(), principal, unitID, model.ActionAcademicUnitManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
-	r = r.WithContext(ctx)
-	var member model.AcademicUnitMember
-	if !decodeJSON(w, r, &member, "createAcademicUnitMember") {
-		return
-	}
-	member.AcademicUnitId = unitID
-	saved, appErr := a.application.CreateAcademicUnitMember(ctx, principal, RequestMetadata(ctx), &member)
-	writeResult(w, r, a, http.StatusCreated, saved, appErr)
-}
-
-func (a *API) endAcademicUnitMember(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireAcademicUnitMemberId)
-	if !ok {
-		return
-	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitMemberForRequest(
-		r.Context(), principal, id, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
-	ended, appErr := a.application.EndAcademicUnitMember(ctx, principal, RequestMetadata(ctx), id)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, ended, appErr)
 }
 
 func (a *API) listClassMembers(w http.ResponseWriter, r *http.Request) {
@@ -148,8 +88,15 @@ func (a *API) endClassMember(w http.ResponseWriter, r *http.Request) {
 }
 
 func queryActiveAt(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	if r.URL.Query().Get("history") == "true" {
-		return 0, true
+	history := r.URL.Query().Get("history")
+	if history != "" {
+		if history != "true" && history != "false" {
+			WriteError(w, r, invalidRequestError("history", nil))
+			return 0, false
+		}
+		if history == "true" {
+			return 0, true
+		}
 	}
 	value := r.URL.Query().Get("active_at")
 	if value == "" {

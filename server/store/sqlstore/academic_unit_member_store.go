@@ -27,6 +27,7 @@ type academicUnitMemberRow struct {
 	CreateAt       int64  `db:"create_at"`
 	UpdateAt       int64  `db:"update_at"`
 	DeleteAt       int64  `db:"delete_at"`
+	Revision       int64  `db:"revision"`
 	AcademicUnitID string `db:"academic_unit_id"`
 	UserID         string `db:"user_id"`
 	StartAt        int64  `db:"start_at"`
@@ -37,9 +38,55 @@ func academicUnitMemberColumns() []string {
 	return []string{
 		"academic_unit_members.id", "academic_unit_members.create_at",
 		"academic_unit_members.update_at", "academic_unit_members.delete_at",
+		"academic_unit_members.revision",
 		"academic_unit_members.academic_unit_id", "academic_unit_members.user_id",
 		"academic_unit_members.start_at", "academic_unit_members.end_at",
 	}
+}
+
+const academicUnitMemberLifecycleLock = "proctor:academic-unit-member-lifecycle"
+
+func (s SqlAcademicUnitMemberStore) Create(ctx context.Context, input *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error) {
+	if input == nil || input.Member == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "creation", nil)
+	}
+	candidate := *input.Member
+	if appErr := candidate.IsValid(); appErr != nil {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "value", nil).Wrap(appErr)
+	}
+	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin academic unit member creation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitId, candidate.UserId); err != nil {
+		return nil, err
+	}
+	if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
+		return nil, err
+	}
+	row := newAcademicUnitMemberRow(&candidate)
+	if _, err := tx.NamedExec(ctx, `INSERT INTO academic_unit_members (
+		id, create_at, update_at, delete_at, revision, academic_unit_id, user_id, start_at, end_at
+	) VALUES (
+		:id, :create_at, :update_at, :delete_at, :revision, :academic_unit_id, :user_id, :start_at, :end_at
+	)`, &row); err != nil {
+		return nil, fmt.Errorf("create academic unit member: %w", translateError("academic_unit_member", candidate.Id, err))
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete academic unit member creation audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit academic unit member creation: %w", err)
+	}
+	return &candidate, nil
 }
 
 func newSqlAcademicUnitMemberStore(ss *SqlStore) store.AcademicUnitMemberStore {
@@ -68,43 +115,21 @@ func (s SqlAcademicUnitMemberStore) Save(
 		return nil, fmt.Errorf("begin academic unit member save: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(
-		ctx,
-		"SELECT pg_advisory_xact_lock(hashtext(?))",
-		"proctor:academic-unit-member:"+candidate.AcademicUnitId+":"+candidate.UserId,
-	); err != nil {
-		return nil, fmt.Errorf("lock academic unit member: %w", err)
+	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+		return nil, err
 	}
-	var overlaps bool
-	if err := tx.Get(ctx, &overlaps, `
-		SELECT EXISTS (
-			SELECT 1
-			  FROM academic_unit_members
-			 WHERE academic_unit_id = ? AND user_id = ? AND delete_at = 0
-			   AND (end_at = 0 OR end_at > ?)
-			   AND (? = 0 OR start_at < ?)
-		)`,
-		candidate.AcademicUnitId,
-		candidate.UserId,
-		candidate.StartAt,
-		candidate.EndAt,
-		candidate.EndAt,
-	); err != nil {
-		return nil, fmt.Errorf("check academic unit member overlap: %w", err)
+	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitId, candidate.UserId); err != nil {
+		return nil, err
 	}
-	if overlaps {
-		return nil, store.NewErrConflict(
-			"academic_unit_member",
-			"academic_unit_members_effective_range_overlap",
-			nil,
-		)
+	if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
+		return nil, err
 	}
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO academic_unit_members (
-			id, create_at, update_at, delete_at, academic_unit_id,
+			id, create_at, update_at, delete_at, revision, academic_unit_id,
 			user_id, start_at, end_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :academic_unit_id,
+			:id, :create_at, :update_at, :delete_at, :revision, :academic_unit_id,
 			:user_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
@@ -174,28 +199,108 @@ func (s SqlAcademicUnitMemberStore) ListActiveByUser(
 func (s SqlAcademicUnitMemberStore) End(
 	ctx context.Context,
 	id string,
+	expectedRevision int64,
 	endAt int64,
 ) (*model.AcademicUnitMember, error) {
-	if endAt <= 0 {
-		return nil, store.NewErrInvalidInput("academic_unit_member", "end_at", endAt)
+	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
-	result, err := s.GetMaster().Exec(ctx, `
-		UPDATE academic_unit_members
-		   SET update_at = ?, end_at = ?
-		 WHERE id = ? AND delete_at = 0 AND start_at < ?
-		   AND (end_at = 0 OR end_at > ?)`,
-		endAt, endAt, id, endAt, endAt,
-	)
+	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"end academic unit member: %w",
-			translateError("academic_unit_member", id, err),
-		)
+		return nil, fmt.Errorf("begin academic unit member end: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	ended, err := s.endAcademicUnitMember(ctx, tx, id, expectedRevision, endAt)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit academic unit member end: %w", err)
+	}
+	return ended, nil
+}
+
+func (s SqlAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
+	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin academic unit member audited end: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
+	ended, err := s.endAcademicUnitMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
+	if err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(ended.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete academic unit member end audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit academic unit member audited end: %w", err)
+	}
+	return ended, nil
+}
+
+func (s SqlAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
+	var row academicUnitMemberRow
+	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.delete_at": int64(0)})); err != nil {
+		return nil, translateError("academic_unit_member", id, err)
+	}
+	current := row.model()
+	if current.Revision != expectedRevision {
+		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_changed", nil)
+	}
+	if endAt <= current.StartAt || (current.EndAt != 0 && endAt >= current.EndAt) {
+		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_end_time", nil)
+	}
+	result, err := tx.Exec(ctx, `UPDATE academic_unit_members SET update_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND delete_at = 0 AND revision = ?`, endAt, endAt, id, expectedRevision)
+	if err != nil {
+		return nil, fmt.Errorf("end academic unit member: %w", err)
 	}
 	if err := requireAffected(result, "academic_unit_member", id); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	current.UpdateAt, current.EndAt, current.Revision = endAt, endAt, expectedRevision+1
+	return current, nil
+}
+
+func lockAcademicUnitMemberLifecycle(ctx context.Context, executor sqlxExecutor) error {
+	if _, err := executor.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", academicUnitMemberLifecycleLock); err != nil {
+		return fmt.Errorf("lock academic unit member lifecycle: %w", err)
+	}
+	return nil
+}
+
+func lockAcademicUnitMember(ctx context.Context, executor sqlxExecutor, unitID, userID string) error {
+	if _, err := executor.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", "proctor:academic-unit-member:"+unitID+":"+userID); err != nil {
+		return fmt.Errorf("lock academic unit member: %w", err)
+	}
+	return nil
+}
+
+func ensureAcademicUnitMemberRangeAvailable(ctx context.Context, executor sqlxExecutor, candidate *model.AcademicUnitMember) error {
+	var overlaps bool
+	if err := executor.Get(ctx, &overlaps, `SELECT EXISTS (
+		SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND user_id = ? AND delete_at = 0
+		 AND (end_at = 0 OR end_at > ?) AND (? = 0 OR start_at < ?)
+	)`, candidate.AcademicUnitId, candidate.UserId, candidate.StartAt, candidate.EndAt, candidate.EndAt); err != nil {
+		return fmt.Errorf("check academic unit member overlap: %w", err)
+	}
+	if overlaps {
+		return store.NewErrConflict("academic_unit_member", "academic_unit_members_effective_range_overlap", nil)
+	}
+	return nil
 }
 
 func (s SqlAcademicUnitMemberStore) selectMembers(
@@ -217,7 +322,8 @@ func newAcademicUnitMemberRow(m *model.AcademicUnitMember) academicUnitMemberRow
 	return academicUnitMemberRow{
 		ID: m.Id, CreateAt: m.CreateAt, UpdateAt: m.UpdateAt,
 		DeleteAt: m.DeleteAt, AcademicUnitID: m.AcademicUnitId,
-		UserID: m.UserId, StartAt: m.StartAt, EndAt: m.EndAt,
+		Revision: m.Revision,
+		UserID:   m.UserId, StartAt: m.StartAt, EndAt: m.EndAt,
 	}
 }
 
@@ -225,7 +331,8 @@ func (r academicUnitMemberRow) model() *model.AcademicUnitMember {
 	return &model.AcademicUnitMember{
 		Id: r.ID, CreateAt: r.CreateAt, UpdateAt: r.UpdateAt,
 		DeleteAt: r.DeleteAt, AcademicUnitId: r.AcademicUnitID,
-		UserId: r.UserID, StartAt: r.StartAt, EndAt: r.EndAt,
+		Revision: r.Revision,
+		UserId:   r.UserID, StartAt: r.StartAt, EndAt: r.EndAt,
 	}
 }
 

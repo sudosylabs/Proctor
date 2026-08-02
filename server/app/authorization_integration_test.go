@@ -174,6 +174,20 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
+	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitId: root.Id,
+		UserId:         user.Id,
+		StartAt:        model.GetMillis() - 1_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	allowed, appErr := helper.App.Can(
+		ctx, *principal, model.ActionClassView,
+		model.Resource{Type: model.ResourceClass, Id: class.Id},
+	)
+	if appErr != nil || allowed {
+		t.Fatalf("academic-unit membership unexpectedly granted class permission = %v, %v", allowed, appErr)
+	}
 	role, err := persistence.Role().Save(ctx, &model.Role{
 		Name: "academic-unit-teacher", DisplayName: "Academic Unit Teacher",
 		Permissions: []string{string(model.ActionClassView)},
@@ -188,7 +202,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed, appErr := helper.App.Can(
+	allowed, appErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, Id: class.Id},
 	)

@@ -67,6 +67,7 @@ CREATE TABLE academic_unit_members (
     create_at bigint NOT NULL,
     update_at bigint NOT NULL,
     delete_at bigint NOT NULL DEFAULT 0,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     academic_unit_id varchar(26) NOT NULL REFERENCES academic_units(id),
     user_id varchar(26) NOT NULL REFERENCES users(id),
     start_at bigint NOT NULL,
