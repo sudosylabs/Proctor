@@ -43,6 +43,9 @@ func TestProgrammeLevelOpenAPIAgreesWithRuntime(t *testing.T) {
 		if !strings.HasPrefix(path, model.APIURLSuffix+"/programme-levels") && !strings.HasSuffix(path, "/levels") {
 			continue
 		}
+		if strings.HasSuffix(path, "/classes") {
+			continue
+		}
 		for method, raw := range item {
 			upper := strings.ToUpper(method)
 			if !isHTTPMethod(upper) {

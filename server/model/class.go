@@ -11,6 +11,7 @@ type Class struct {
 	CreateAt         int64  `json:"create_at"`
 	UpdateAt         int64  `json:"update_at"`
 	DeleteAt         int64  `json:"delete_at"`
+	Revision         int64  `json:"revision"`
 	ProgrammeLevelId string `json:"programme_level_id"`
 	AcademicPeriodId string `json:"academic_period_id"`
 	Name             string `json:"name"`
@@ -18,34 +19,21 @@ type Class struct {
 	Description      string `json:"description"`
 }
 
-type ClassPatch struct {
-	ProgrammeLevelId *string `json:"programme_level_id,omitempty"`
-	AcademicPeriodId *string `json:"academic_period_id,omitempty"`
-	Name             *string `json:"name,omitempty"`
-	DisplayName      *string `json:"display_name,omitempty"`
-	Description      *string `json:"description,omitempty"`
+func (c *Class) PrepareCreate(id string, at int64) {
+	c.Id, c.CreateAt, c.UpdateAt, c.DeleteAt, c.Revision = id, at, at, 0, 1
+	sanitizeNamed(&c.Name, &c.DisplayName, &c.Description)
 }
 
-func (c *Class) Patch(p *ClassPatch) {
-	if p.ProgrammeLevelId != nil {
-		c.ProgrammeLevelId = *p.ProgrammeLevelId
-	}
-	if p.AcademicPeriodId != nil {
-		c.AcademicPeriodId = *p.AcademicPeriodId
-	}
-	if p.Name != nil {
-		c.Name = *p.Name
-	}
-	if p.DisplayName != nil {
-		c.DisplayName = *p.DisplayName
-	}
-	if p.Description != nil {
-		c.Description = *p.Description
-	}
+func (c *Class) PrepareUpdate(at int64) {
+	c.UpdateAt = at
+	sanitizeNamed(&c.Name, &c.DisplayName, &c.Description)
 }
 
 func (c *Class) PreSave() {
 	preSave(&c.Id, &c.CreateAt, &c.UpdateAt)
+	if c.Revision == 0 {
+		c.Revision = 1
+	}
 	sanitizeNamed(&c.Name, &c.DisplayName, &c.Description)
 }
 
@@ -64,6 +52,9 @@ func (c *Class) IsValid() *AppError {
 		c.UpdateAt,
 	); appErr != nil {
 		return appErr
+	}
+	if c.Revision <= 0 {
+		return invalidModelError(where, "class", "revision", "must be positive", "id="+c.Id)
 	}
 	details := "id=" + c.Id
 	if !IsValidId(c.ProgrammeLevelId) {
@@ -89,6 +80,7 @@ func (c *Class) IsValid() *AppError {
 
 func (c *Class) Auditable() map[string]any {
 	fields := auditFields(c.Id, c.CreateAt, c.UpdateAt, c.DeleteAt)
+	fields["revision"] = c.Revision
 	fields["programme_level_id"] = c.ProgrammeLevelId
 	fields["academic_period_id"] = c.AcademicPeriodId
 	fields["name"] = c.Name

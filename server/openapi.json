@@ -3,7 +3,7 @@
   "info": {
     "title": "Proctor Server API",
     "version": "1.0.0",
-    "description": "The reviewed public HTTP contract. Coverage currently includes Academic Unit, Institution, Programme, Programme Level, and Academic Period capabilities and expands incrementally with each migrated capability."
+    "description": "The reviewed public HTTP contract. Coverage currently includes Academic Unit, Institution, Programme, Programme Level, Academic Period, and Class capabilities and expands incrementally with each migrated capability."
   },
   "servers": [
     {"url": "/"}
@@ -404,6 +404,91 @@
         }
       }
     },
+    "/api/v1/academic-units/{academic_unit_id}/classes": {
+      "parameters": [{"$ref": "#/components/parameters/AcademicUnitID"}],
+      "get": {
+        "operationId": "searchClasses", "summary": "Search Classes owned by an Academic Unit",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ClassListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/programme-levels/{programme_level_id}/classes": {
+      "parameters": [{"$ref": "#/components/parameters/ProgrammeLevelID"}],
+      "get": {
+        "operationId": "listClasses", "summary": "List Classes for a Programme Level",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ClassListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createClass", "summary": "Create a Class for a Programme Level and Academic Period",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class.invalid", "class.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateClass"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/ClassCreated"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/classes/{class_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ClassID"}],
+      "get": {
+        "operationId": "getClass", "summary": "Get a Class using exact Class scope authorization",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ClassOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "patch": {
+        "operationId": "updateClass", "summary": "Update a Class and optionally move its parent references",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class.invalid", "class.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateClass"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/ClassOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "delete": {
+        "operationId": "archiveClass", "summary": "Archive a Class with no active members or role bindings",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/ClassArchived"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -483,6 +568,10 @@
         "in": "path",
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "ClassID": {
+        "name": "class_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
       }
     },
     "requestBodies": {
@@ -525,6 +614,14 @@
       "UpdateAcademicPeriod": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateAcademicPeriodRequest"}}}
+      },
+      "CreateClass": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateClassRequest"}}}
+      },
+      "UpdateClass": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateClassRequest"}}}
       }
     },
     "responses": {
@@ -554,6 +651,10 @@
       "AcademicPeriodCreated": {"description": "Academic Period created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicPeriodResponse"}}}},
       "AcademicPeriodListOK": {"description": "Academic Period collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicPeriodListResponse"}}}},
       "AcademicPeriodArchived": {"description": "Academic Period archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
+      "ClassOK": {"description": "Class", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassResponse"}}}},
+      "ClassCreated": {"description": "Class created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassResponse"}}}},
+      "ClassListOK": {"description": "Class collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassListResponse"}}}},
+      "ClassArchived": {"description": "Class archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -762,6 +863,40 @@
           "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
           "start_at": {"type": ["integer", "null"], "format": "int64", "description": "Omitted or null leaves the inclusive start unchanged."},
           "end_at": {"type": ["integer", "null"], "format": "int64", "description": "Omitted or null leaves the exclusive end unchanged."}
+        }
+      },
+      "ClassResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "programme_level_id", "academic_period_id", "name", "display_name", "description"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "programme_level_id": {"$ref": "#/components/schemas/ID"}, "academic_period_id": {"$ref": "#/components/schemas/ID"},
+          "name": {"type": "string"}, "display_name": {"type": "string"}, "description": {"type": "string"}
+        }
+      },
+      "ClassListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/ClassResponse"}},
+      "CreateClassRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["academic_period_id", "name", "display_name"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "programme_level_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
+          "academic_period_id": {"$ref": "#/components/schemas/ID"}, "name": {"type": "string"},
+          "display_name": {"type": "string"}, "description": {"type": "string"}
+        }
+      },
+      "UpdateClassRequest": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "programme_level_id": {"type": ["string", "null"], "description": "Omitted or null leaves the Programme Level unchanged."},
+          "academic_period_id": {"type": ["string", "null"], "description": "Omitted or null leaves the Academic Period unchanged."},
+          "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged."},
+          "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged."},
+          "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged."}
         }
       },
       "ProblemDetails": {

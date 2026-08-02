@@ -15,6 +15,7 @@ func TestClassRowConversion(t *testing.T) {
 		CreateAt:         1,
 		UpdateAt:         2,
 		DeleteAt:         3,
+		Revision:         4,
 		ProgrammeLevelId: model.NewId(),
 		AcademicPeriodId: model.NewId(),
 		Name:             "class-a",

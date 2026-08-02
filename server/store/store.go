@@ -195,7 +195,33 @@ type AcademicPeriodStore interface {
 }
 
 // ClassStore persists concrete programme-level rosters for academic periods.
+type ClassCreation struct {
+	Class        *model.Class
+	AuditEventID string
+	AuditAt      int64
+}
+
+type ClassUpdate struct {
+	Class                  *model.Class
+	ExpectedAcademicUnitID string
+	ExpectedRevision       int64
+	AuditEventID           string
+	AuditAt                int64
+}
+
+type ClassArchive struct {
+	ID                     string
+	ExpectedAcademicUnitID string
+	ExpectedRevision       int64
+	ArchiveAt              int64
+	AuditEventID           string
+	AuditAt                int64
+}
+
 type ClassStore interface {
+	Create(context.Context, *ClassCreation) (*model.Class, error)
+	UpdateWithAudit(context.Context, *ClassUpdate) (*model.Class, error)
+	ArchiveWithAudit(context.Context, *ClassArchive) (*model.Class, error)
 	Save(context.Context, *model.Class) (*model.Class, error)
 	Get(context.Context, string) (*model.Class, error)
 	GetByName(context.Context, string, string, string) (*model.Class, error)

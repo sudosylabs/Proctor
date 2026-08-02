@@ -65,6 +65,9 @@ func (s SqlClassMemberStore) Enroll(
 		return nil, fmt.Errorf("begin class enrollment: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockClassLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
 
 	if err := tx.Get(ctx, &candidate.AcademicPeriodId, `
 		SELECT academic_period_id FROM classes WHERE id = ? AND delete_at = 0`,

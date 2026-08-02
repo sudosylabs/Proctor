@@ -154,6 +154,7 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 				Id:               NewId(),
 				CreateAt:         1,
 				UpdateAt:         1,
+				Revision:         1,
 				ProgrammeLevelId: NewId(),
 				Name:             "year-1-a",
 				DisplayName:      "Year 1 - Class A",

@@ -129,6 +129,18 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "academic_period.invalid",
 		},
+		{
+			name:       "class conflict",
+			err:        app.NewError("class.conflict"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "class.conflict",
+		},
+		{
+			name:       "class invalid",
+			err:        app.NewError("class.invalid"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "class.invalid",
+		},
 	}
 
 	for _, tt := range tests {

@@ -75,6 +75,11 @@ func (s SqlRoleBindingStore) Save(
 		return nil, fmt.Errorf("begin role binding save: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if candidate.ScopeType == model.RoleScopeClass {
+		if err := lockClassLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
 
 	lockKey := candidate.UserId + ":" + candidate.RoleId + ":" +
 		string(candidate.ScopeType) + ":" + candidate.ScopeId

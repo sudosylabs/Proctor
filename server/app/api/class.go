@@ -7,10 +7,41 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func (a *API) InitClasses() error {
+type classResponse struct {
+	ID               string `json:"id"`
+	CreateAt         int64  `json:"create_at"`
+	UpdateAt         int64  `json:"update_at"`
+	DeleteAt         int64  `json:"delete_at"`
+	ProgrammeLevelID string `json:"programme_level_id"`
+	AcademicPeriodID string `json:"academic_period_id"`
+	Name             string `json:"name"`
+	DisplayName      string `json:"display_name"`
+	Description      string `json:"description"`
+}
+type createClassRequest struct {
+	ID               string `json:"id"`
+	CreateAt         int64  `json:"create_at"`
+	UpdateAt         int64  `json:"update_at"`
+	DeleteAt         int64  `json:"delete_at"`
+	ProgrammeLevelID string `json:"programme_level_id"`
+	AcademicPeriodID string `json:"academic_period_id"`
+	Name             string `json:"name"`
+	DisplayName      string `json:"display_name"`
+	Description      string `json:"description"`
+}
+type updateClassRequest struct {
+	ProgrammeLevelID Optional[string] `json:"programme_level_id"`
+	AcademicPeriodID Optional[string] `json:"academic_period_id"`
+	Name             Optional[string] `json:"name"`
+	DisplayName      Optional[string] `json:"display_name"`
+	Description      Optional[string] `json:"description"`
+}
+
+func (a *API) registerClassRoutes() error {
 	routes := []struct {
 		base         *mux.Router
 		path, method string
@@ -24,8 +55,7 @@ func (a *API) InitClasses() error {
 		{a.BaseRoutes.Class, "", http.MethodDelete, a.archiveClass},
 	}
 	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method,
-			a.APIPrincipalRequired(route.handler)); err != nil {
+		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}
 	}
@@ -37,104 +67,96 @@ func (a *API) searchClasses(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToAcademicUnitForRequest(
-		r.Context(), principal, unitID, model.ActionAcademicUnitView, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
 	limit, ok := queryLimit(w, r)
 	if !ok {
 		return
 	}
-	classes, appErr := a.application.SearchClasses(
-		ctx, principal, RequestMetadata(ctx), unitID, r.URL.Query().Get("q"), limit,
-	)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, classes, appErr)
+	classes, err := a.classes.SearchClasses(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.SearchClassesQuery{AcademicUnitID: unitID, Query: r.URL.Query().Get("q"), Limit: limit})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, classResponses(classes))
 }
-
 func (a *API) listClasses(w http.ResponseWriter, r *http.Request) {
 	principal, levelID, ok := requiredResourceID(w, r, Params.RequireProgrammeLevelId)
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToProgrammeLevelForRequest(
-		r.Context(), principal, levelID, model.ActionAcademicUnitView, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	classes, err := a.classes.ListClasses(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListClassesQuery{ProgrammeLevelID: levelID})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	classes, appErr := a.application.ListClasses(ctx, principal, RequestMetadata(ctx), levelID)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, classes, appErr)
+	writeJSON(w, http.StatusOK, classResponses(classes))
 }
-
 func (a *API) createClass(w http.ResponseWriter, r *http.Request) {
 	principal, levelID, ok := requiredResourceID(w, r, Params.RequireProgrammeLevelId)
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToProgrammeLevelForRequest(
-		r.Context(), principal, levelID, model.ActionAcademicUnitManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	var body createClassRequest
+	if !decodeJSON(w, r, &body, "createClass") {
 		return
 	}
-	r = r.WithContext(ctx)
-	var class model.Class
-	if !decodeJSON(w, r, &class, "createClass") {
+	class, err := a.classes.CreateClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: body.AcademicPeriodID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	class.ProgrammeLevelId = levelID
-	saved, appErr := a.application.CreateClass(ctx, principal, RequestMetadata(ctx), &class)
-	writeResult(w, r, a, http.StatusCreated, saved, appErr)
+	writeJSON(w, http.StatusCreated, classResponseFromModel(class))
 }
-
 func (a *API) getClass(w http.ResponseWriter, r *http.Request) {
 	principal, id, ok := requiredResourceID(w, r, Params.RequireClassId)
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToClassForRequest(
-		r.Context(), principal, id, model.ActionClassView, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	class, err := a.classes.GetClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetClassQuery{ID: id})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	class, appErr := a.application.GetClass(ctx, principal, RequestMetadata(ctx), id)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, class, appErr)
+	writeJSON(w, http.StatusOK, classResponseFromModel(class))
 }
-
 func (a *API) patchClass(w http.ResponseWriter, r *http.Request) {
 	principal, id, ok := requiredResourceID(w, r, Params.RequireClassId)
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToClassAdministrationForRequest(
-		r.Context(), principal, id, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	var body updateClassRequest
+	if !decodeJSON(w, r, &body, "patchClass") {
 		return
 	}
-	r = r.WithContext(ctx)
-	var patch model.ClassPatch
-	if !decodeJSON(w, r, &patch, "patchClass") {
+	class, err := a.classes.UpdateClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UpdateClassCommand{ID: id, ProgrammeLevelID: body.ProgrammeLevelID.ValuePointer(), AcademicPeriodID: body.AcademicPeriodID.ValuePointer(), Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	class, appErr := a.application.PatchClass(ctx, principal, RequestMetadata(ctx), id, &patch)
-	writeResult(w, r, a, http.StatusOK, class, appErr)
+	writeJSON(w, http.StatusOK, classResponseFromModel(class))
 }
-
 func (a *API) archiveClass(w http.ResponseWriter, r *http.Request) {
 	principal, id, ok := requiredResourceID(w, r, Params.RequireClassId)
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToClassAdministrationForRequest(
-		r.Context(), principal, id, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err := a.classes.ArchiveClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ArchiveClassCommand{ID: id}); err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	appErr = a.application.ArchiveClass(ctx, principal, RequestMetadata(ctx), id)
-	writeNoContent(w, r.WithContext(ctx), a, appErr)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func classResponseFromModel(class *model.Class) classResponse {
+	if class == nil {
+		return classResponse{}
+	}
+	return classResponse{ID: class.Id, CreateAt: class.CreateAt, UpdateAt: class.UpdateAt, DeleteAt: class.DeleteAt, ProgrammeLevelID: class.ProgrammeLevelId, AcademicPeriodID: class.AcademicPeriodId, Name: class.Name, DisplayName: class.DisplayName, Description: class.Description}
+}
+func classResponses(classes []*model.Class) []classResponse {
+	result := make([]classResponse, 0, len(classes))
+	for _, class := range classes {
+		result = append(result, classResponseFromModel(class))
+	}
+	return result
 }

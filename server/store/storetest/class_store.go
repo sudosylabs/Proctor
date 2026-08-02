@@ -18,6 +18,7 @@ import (
 )
 
 func TestClassStore(t *testing.T, ss store.Store) {
+	t.Run("MutationAuditAtomicity", func(t *testing.T) { testClassStoreMutationAuditAtomicity(t, ss) })
 	t.Run("Save", func(t *testing.T) { testClassStoreSave(t, ss) })
 	t.Run("Get", func(t *testing.T) { testClassStoreGet(t, ss) })
 	t.Run("GetByName", func(t *testing.T) { testClassStoreGetByName(t, ss) })
@@ -37,6 +38,91 @@ func TestClassStore(t *testing.T, ss store.Store) {
 	t.Run("SearchAndArchive", func(t *testing.T) {
 		testClassStoreSearchAndArchive(t, ss)
 	})
+}
+
+func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture := saveClassFixture(t, ctx, ss)
+	createAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitId)
+	candidate := &model.Class{ProgrammeLevelId: fixture.level.Id, AcademicPeriodId: fixture.period.Id, Name: "audited-class", DisplayName: "Audited Class"}
+	candidate.PrepareCreate(model.NewId(), model.GetMillis())
+	created, err := ss.Class().Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	completed, err := ss.Audit().Get(ctx, createAttempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("create audit status = %q", completed.Status)
+	}
+
+	rolledBackCreate := &model.Class{ProgrammeLevelId: fixture.level.Id, AcademicPeriodId: fixture.period.Id, Name: "rolled-back-class", DisplayName: "Rolled Back"}
+	rolledBackCreate.PrepareCreate(model.NewId(), model.GetMillis())
+	if _, err := ss.Class().Create(ctx, &store.ClassCreation{Class: rolledBackCreate, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("Create() succeeded without audit attempt")
+	}
+	if _, err := ss.Class().Get(ctx, rolledBackCreate.Id); !store.IsNotFound(err) {
+		t.Fatalf("create survived rollback: %v", err)
+	}
+
+	updateAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitId)
+	updatedCandidate := *created
+	updatedCandidate.DisplayName = "Updated Class"
+	updatedCandidate.PrepareUpdate(created.UpdateAt + 1)
+	updated, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitId, ExpectedRevision: created.Revision, AuditEventID: updateAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	if updated.Revision != created.Revision+1 {
+		t.Fatalf("update revision = %d, want %d", updated.Revision, created.Revision+1)
+	}
+	staleLegacy := *created
+	staleLegacy.DisplayName = "Stale Legacy Update"
+	if _, err := ss.Class().Update(ctx, &staleLegacy); !store.IsConflict(err) {
+		t.Fatalf("stale Update() error = %v", err)
+	}
+	staleAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitId)
+	staleCandidate := *updated
+	staleCandidate.DisplayName = "Stale Update"
+	staleCandidate.PrepareUpdate(updated.UpdateAt + 1)
+	if _, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitId, ExpectedRevision: created.Revision, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("stale UpdateWithAudit() error = %v", err)
+	}
+	wrongOwnerAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitId)
+	if _, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.Id, ExpectedAcademicUnitID: model.NewId(), ExpectedRevision: updated.Revision, ArchiveAt: updated.UpdateAt + 1, AuditEventID: wrongOwnerAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("wrong-owner ArchiveWithAudit() error = %v", err)
+	}
+	rolledBack := *updated
+	rolledBack.DisplayName = "Must Roll Back"
+	rolledBack.PrepareUpdate(updated.UpdateAt + 1)
+	if _, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &rolledBack, ExpectedAcademicUnitID: fixture.programme.AcademicUnitId, ExpectedRevision: updated.Revision, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("UpdateWithAudit() succeeded without audit attempt")
+	}
+	persisted, err := ss.Class().Get(ctx, updated.Id)
+	requireNoError(t, err)
+	if persisted.DisplayName != updated.DisplayName {
+		t.Fatalf("update survived rollback: %#v", persisted)
+	}
+
+	archiveAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitId)
+	archived, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.Id, ExpectedAcademicUnitID: fixture.programme.AcademicUnitId, ExpectedRevision: updated.Revision, ArchiveAt: updated.UpdateAt + 1, AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	if archived.Revision != updated.Revision+1 {
+		t.Fatalf("archive revision = %d, want %d", archived.Revision, updated.Revision+1)
+	}
+	if archived.DeleteAt == 0 {
+		t.Fatalf("ArchiveWithAudit() = %#v", archived)
+	}
+	archiveRollback := saveClass(t, ctx, ss, fixture.level.Id, fixture.period.Id, "rolled-back-archive")
+	if _, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: archiveRollback.Id, ExpectedAcademicUnitID: fixture.programme.AcademicUnitId, ExpectedRevision: archiveRollback.Revision, ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+		t.Fatal("ArchiveWithAudit() succeeded without audit attempt")
+	}
+	if _, err := ss.Class().Get(ctx, archiveRollback.Id); err != nil {
+		t.Fatalf("archive survived rollback: %v", err)
+	}
+}
+
+func saveClassAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, unitID string) *model.AuditEvent {
+	t.Helper()
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+	requireNoError(t, err)
+	return attempt
 }
 
 func testClassStoreSearchAndArchive(t *testing.T, ss store.Store) {

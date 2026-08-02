@@ -116,6 +116,7 @@ type Options struct {
 	Programmes              ProgrammeApplication
 	ProgrammeLevels         ProgrammeLevelApplication
 	AcademicPeriods         AcademicPeriodApplication
+	Classes                 ClassApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -246,13 +247,13 @@ type AcademicPeriodApplication interface {
 	ArchiveAcademicPeriod(context.Context, application.Invocation, application.ArchiveAcademicPeriodCommand) error
 }
 
-type AcademicAdministration interface {
-	GetClass(context.Context, model.Principal, model.RequestMetadata, string) (*model.Class, *model.AppError)
-	ListClasses(context.Context, model.Principal, model.RequestMetadata, string) ([]*model.Class, *model.AppError)
-	SearchClasses(context.Context, model.Principal, model.RequestMetadata, string, string, int) ([]*model.Class, *model.AppError)
-	CreateClass(context.Context, model.Principal, model.RequestMetadata, *model.Class) (*model.Class, *model.AppError)
-	PatchClass(context.Context, model.Principal, model.RequestMetadata, string, *model.ClassPatch) (*model.Class, *model.AppError)
-	ArchiveClass(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+type ClassApplication interface {
+	GetClass(context.Context, application.Invocation, application.GetClassQuery) (*model.Class, error)
+	ListClasses(context.Context, application.Invocation, application.ListClassesQuery) ([]*model.Class, error)
+	SearchClasses(context.Context, application.Invocation, application.SearchClassesQuery) ([]*model.Class, error)
+	CreateClass(context.Context, application.Invocation, application.CreateClassCommand) (*model.Class, error)
+	UpdateClass(context.Context, application.Invocation, application.UpdateClassCommand) (*model.Class, error)
+	ArchiveClass(context.Context, application.Invocation, application.ArchiveClassCommand) error
 }
 
 type MembershipAdministration interface {
@@ -425,7 +426,6 @@ type Application interface {
 	Bootstrap
 	Roles
 	RoleBindings
-	AcademicAdministration
 	InstitutionApplication
 	MembershipAdministration
 	Realtime
@@ -441,6 +441,7 @@ type API struct {
 	programmes              ProgrammeApplication
 	programmeLevels         ProgrammeLevelApplication
 	academicPeriods         AcademicPeriodApplication
+	classes                 ClassApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -478,6 +479,9 @@ func New(options Options) (*API, error) {
 	if options.AcademicPeriods == nil {
 		return nil, errors.New("academic period application is required")
 	}
+	if options.Classes == nil {
+		return nil, errors.New("class application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -499,6 +503,7 @@ func New(options Options) (*API, error) {
 		programmes:              options.Programmes,
 		programmeLevels:         options.ProgrammeLevels,
 		academicPeriods:         options.AcademicPeriods,
+		classes:                 options.Classes,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -534,7 +539,7 @@ func New(options Options) (*API, error) {
 		api.registerProgrammeRoutes,
 		api.registerProgrammeLevelRoutes,
 		api.registerAcademicPeriodRoutes,
-		api.InitClasses,
+		api.registerClassRoutes,
 		api.InitMemberships,
 		api.InitWebSocket,
 	}
