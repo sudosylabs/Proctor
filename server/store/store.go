@@ -162,7 +162,29 @@ type ProgrammeLevelStore interface {
 }
 
 // AcademicPeriodStore persists institution-wide enrollment periods.
+type AcademicPeriodCreation struct {
+	Period       *model.AcademicPeriod
+	AuditEventID string
+	AuditAt      int64
+}
+
+type AcademicPeriodUpdate struct {
+	Period       *model.AcademicPeriod
+	AuditEventID string
+	AuditAt      int64
+}
+
+type AcademicPeriodArchive struct {
+	ID           string
+	ArchiveAt    int64
+	AuditEventID string
+	AuditAt      int64
+}
+
 type AcademicPeriodStore interface {
+	Create(context.Context, *AcademicPeriodCreation) (*model.AcademicPeriod, error)
+	UpdateWithAudit(context.Context, *AcademicPeriodUpdate) (*model.AcademicPeriod, error)
+	ArchiveWithAudit(context.Context, *AcademicPeriodArchive) (*model.AcademicPeriod, error)
 	Save(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
 	Get(context.Context, string) (*model.AcademicPeriod, error)
 	GetByName(context.Context, string, string) (*model.AcademicPeriod, error)

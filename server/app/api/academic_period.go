@@ -7,10 +7,45 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func (a *API) InitAcademicPeriods() error {
+type academicPeriodResponse struct {
+	ID            string `json:"id"`
+	CreateAt      int64  `json:"create_at"`
+	UpdateAt      int64  `json:"update_at"`
+	DeleteAt      int64  `json:"delete_at"`
+	InstitutionID string `json:"institution_id"`
+	Name          string `json:"name"`
+	DisplayName   string `json:"display_name"`
+	Description   string `json:"description"`
+	StartAt       int64  `json:"start_at"`
+	EndAt         int64  `json:"end_at"`
+}
+
+type createAcademicPeriodRequest struct {
+	ID            string `json:"id"`
+	CreateAt      int64  `json:"create_at"`
+	UpdateAt      int64  `json:"update_at"`
+	DeleteAt      int64  `json:"delete_at"`
+	InstitutionID string `json:"institution_id"`
+	Name          string `json:"name"`
+	DisplayName   string `json:"display_name"`
+	Description   string `json:"description"`
+	StartAt       int64  `json:"start_at"`
+	EndAt         int64  `json:"end_at"`
+}
+
+type updateAcademicPeriodRequest struct {
+	Name        Optional[string] `json:"name"`
+	DisplayName Optional[string] `json:"display_name"`
+	Description Optional[string] `json:"description"`
+	StartAt     Optional[int64]  `json:"start_at"`
+	EndAt       Optional[int64]  `json:"end_at"`
+}
+
+func (a *API) registerAcademicPeriodRoutes() error {
 	routes := []struct {
 		base         *mux.Router
 		path, method string
@@ -23,8 +58,7 @@ func (a *API) InitAcademicPeriods() error {
 		{a.BaseRoutes.AcademicPeriod, "", http.MethodDelete, a.archiveAcademicPeriod},
 	}
 	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method,
-			a.APIPrincipalRequired(route.handler)); err != nil {
+		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}
 	}
@@ -36,20 +70,20 @@ func (a *API) listAcademicPeriods(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		r.Context(), principal, model.ActionInstitutionManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
 	limit, ok := queryLimit(w, r)
 	if !ok {
 		return
 	}
-	periods, appErr := a.application.ListAcademicPeriods(
-		ctx, principal, RequestMetadata(ctx), r.URL.Query().Get("q"), limit,
-	)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, periods, appErr)
+	periods, err := a.academicPeriods.ListAcademicPeriods(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListAcademicPeriodsQuery{Query: r.URL.Query().Get("q"), Limit: limit})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
+		return
+	}
+	responses := make([]academicPeriodResponse, 0, len(periods))
+	for _, period := range periods {
+		responses = append(responses, academicPeriodResponseFromModel(period))
+	}
+	writeJSON(w, http.StatusOK, responses)
 }
 
 func (a *API) createAcademicPeriod(w http.ResponseWriter, r *http.Request) {
@@ -57,19 +91,16 @@ func (a *API) createAcademicPeriod(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		r.Context(), principal, model.ActionInstitutionManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	var body createAcademicPeriodRequest
+	if !decodeJSON(w, r, &body, "createAcademicPeriod") {
 		return
 	}
-	r = r.WithContext(ctx)
-	var period model.AcademicPeriod
-	if !decodeJSON(w, r, &period, "createAcademicPeriod") {
+	period, err := a.academicPeriods.CreateAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.CreateAcademicPeriodCommand{Name: body.Name, DisplayName: body.DisplayName, Description: body.Description, StartAt: body.StartAt, EndAt: body.EndAt})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	saved, appErr := a.application.CreateAcademicPeriod(ctx, principal, RequestMetadata(ctx), &period)
-	writeResult(w, r, a, http.StatusCreated, saved, appErr)
+	writeJSON(w, http.StatusCreated, academicPeriodResponseFromModel(period))
 }
 
 func (a *API) getAcademicPeriod(w http.ResponseWriter, r *http.Request) {
@@ -77,14 +108,12 @@ func (a *API) getAcademicPeriod(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		r.Context(), principal, model.ActionInstitutionManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	period, err := a.academicPeriods.GetAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetAcademicPeriodQuery{ID: id})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	period, appErr := a.application.GetAcademicPeriod(ctx, principal, RequestMetadata(ctx), id)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, period, appErr)
+	writeJSON(w, http.StatusOK, academicPeriodResponseFromModel(period))
 }
 
 func (a *API) patchAcademicPeriod(w http.ResponseWriter, r *http.Request) {
@@ -92,19 +121,16 @@ func (a *API) patchAcademicPeriod(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		r.Context(), principal, model.ActionInstitutionManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	var body updateAcademicPeriodRequest
+	if !decodeJSON(w, r, &body, "patchAcademicPeriod") {
 		return
 	}
-	r = r.WithContext(ctx)
-	var patch model.AcademicPeriodPatch
-	if !decodeJSON(w, r, &patch, "patchAcademicPeriod") {
+	period, err := a.academicPeriods.UpdateAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UpdateAcademicPeriodCommand{ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer(), StartAt: body.StartAt.ValuePointer(), EndAt: body.EndAt.ValuePointer()})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	period, appErr := a.application.PatchAcademicPeriod(ctx, principal, RequestMetadata(ctx), id, &patch)
-	writeResult(w, r, a, http.StatusOK, period, appErr)
+	writeJSON(w, http.StatusOK, academicPeriodResponseFromModel(period))
 }
 
 func (a *API) archiveAcademicPeriod(w http.ResponseWriter, r *http.Request) {
@@ -112,12 +138,17 @@ func (a *API) archiveAcademicPeriod(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		r.Context(), principal, model.ActionInstitutionManage, RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err := a.academicPeriods.ArchiveAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ArchiveAcademicPeriodCommand{ID: id}); err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	appErr = a.application.ArchiveAcademicPeriod(ctx, principal, RequestMetadata(ctx), id)
-	writeNoContent(w, r.WithContext(ctx), a, appErr)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func academicPeriodResponseFromModel(period *model.AcademicPeriod) academicPeriodResponse {
+	if period == nil {
+		return academicPeriodResponse{}
+	}
+	return academicPeriodResponse{ID: period.Id, CreateAt: period.CreateAt, UpdateAt: period.UpdateAt, DeleteAt: period.DeleteAt, InstitutionID: period.InstitutionId, Name: period.Name, DisplayName: period.DisplayName, Description: period.Description, StartAt: period.StartAt, EndAt: period.EndAt}
 }

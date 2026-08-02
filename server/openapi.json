@@ -3,7 +3,7 @@
   "info": {
     "title": "Proctor Server API",
     "version": "1.0.0",
-    "description": "The reviewed public HTTP contract. Coverage currently includes Academic Unit, Institution, Programme, and Programme Level capabilities and expands incrementally with each migrated capability."
+    "description": "The reviewed public HTTP contract. Coverage currently includes Academic Unit, Institution, Programme, Programme Level, and Academic Period capabilities and expands incrementally with each migrated capability."
   },
   "servers": [
     {"url": "/"}
@@ -315,6 +315,95 @@
         }
       }
     },
+    "/api/v1/academic-periods": {
+      "get": {
+        "operationId": "listAcademicPeriods",
+        "summary": "List or search institution-defined Academic Periods",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicPeriodListOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createAcademicPeriod",
+        "summary": "Create an institution-defined Academic Period",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateAcademicPeriod"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/AcademicPeriodCreated"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/academic-periods/{academic_period_id}": {
+      "parameters": [{"$ref": "#/components/parameters/AcademicPeriodID"}],
+      "get": {
+        "operationId": "getAcademicPeriod",
+        "summary": "Get an Academic Period",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicPeriodOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "patch": {
+        "operationId": "updateAcademicPeriod",
+        "summary": "Update an Academic Period without changing its Institution owner",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateAcademicPeriod"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/AcademicPeriodOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "delete": {
+        "operationId": "archiveAcademicPeriod",
+        "summary": "Archive an Academic Period with no active Classes or enrollments",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_period.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/AcademicPeriodArchived"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -388,6 +477,12 @@
         "in": "path",
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "AcademicPeriodID": {
+        "name": "academic_period_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
       }
     },
     "requestBodies": {
@@ -422,6 +517,14 @@
       "UpdateProgrammeLevel": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateProgrammeLevelRequest"}}}
+      },
+      "CreateAcademicPeriod": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAcademicPeriodRequest"}}}
+      },
+      "UpdateAcademicPeriod": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateAcademicPeriodRequest"}}}
       }
     },
     "responses": {
@@ -447,6 +550,10 @@
       "ProgrammeLevelCreated": {"description": "Programme Level created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeLevelResponse"}}}},
       "ProgrammeLevelListOK": {"description": "Programme Level collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProgrammeLevelListResponse"}}}},
       "ProgrammeLevelArchived": {"description": "Programme Level archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
+      "AcademicPeriodOK": {"description": "Academic Period", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicPeriodResponse"}}}},
+      "AcademicPeriodCreated": {"description": "Academic Period created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicPeriodResponse"}}}},
+      "AcademicPeriodListOK": {"description": "Academic Period collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicPeriodListResponse"}}}},
+      "AcademicPeriodArchived": {"description": "Academic Period archived", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -609,6 +716,52 @@
           "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
           "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
           "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."}
+        }
+      },
+      "AcademicPeriodResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "institution_id", "name", "display_name", "description", "start_at", "end_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"},
+          "delete_at": {"type": "integer", "format": "int64"},
+          "institution_id": {"$ref": "#/components/schemas/ID"},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"},
+          "start_at": {"type": "integer", "format": "int64", "minimum": 1, "description": "Inclusive start time in Unix milliseconds."},
+          "end_at": {"type": "integer", "format": "int64", "minimum": 1, "description": "Exclusive end time in Unix milliseconds; must be after start_at."}
+        }
+      },
+      "AcademicPeriodListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/AcademicPeriodResponse"}},
+      "CreateAcademicPeriodRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "display_name", "start_at", "end_at"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "institution_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; installation Institution is authoritative."},
+          "name": {"type": "string"},
+          "display_name": {"type": "string"},
+          "description": {"type": "string"},
+          "start_at": {"type": "integer", "format": "int64", "minimum": 1},
+          "end_at": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "UpdateAcademicPeriodRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "start_at": {"type": ["integer", "null"], "format": "int64", "description": "Omitted or null leaves the inclusive start unchanged."},
+          "end_at": {"type": ["integer", "null"], "format": "int64", "description": "Omitted or null leaves the exclusive end unchanged."}
         }
       },
       "ProblemDetails": {

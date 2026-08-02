@@ -82,7 +82,13 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
+	if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
 	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+		return nil, err
+	}
+	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodId); err != nil {
 		return nil, err
 	}
 	row := newClassRow(&candidate)
@@ -239,7 +245,13 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
+	if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
+		return nil, err
+	}
 	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+		return nil, err
+	}
+	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodId); err != nil {
 		return nil, err
 	}
 	row := newClassRow(&candidate)

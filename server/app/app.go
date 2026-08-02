@@ -29,6 +29,7 @@ type App struct {
 	institutions           *institutionService
 	programmes             *programmeService
 	programmeLevels        *programmeLevelService
+	academicPeriods        *academicPeriodService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -52,12 +53,12 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		audit,
 	)
 	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
-	academicUnitAuthorization := academicUnitReadAuthorization{
+	academicAuthorization := academicUnitAuthorization{
 		authorization: authorization,
 		institutions:  applicationPlatform.Store().Institution(),
 	}
 	academicUnits := newAcademicUnitQueryService(
-		applicationPlatform.Store().AcademicUnit(), academicUnitAuthorization,
+		applicationPlatform.Store().AcademicUnit(), academicAuthorization,
 	)
 	realtime, err := newRealtimeService(applicationPlatform, authentication)
 	if err != nil {
@@ -68,23 +69,27 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 	authentication.propagateSessionRevocation =
 		realtime.PropagateSessionRevocation
 	academicUnitCommands := newAcademicUnitCommandService(
-		applicationPlatform.Store().AcademicUnit(), academicUnitAuthorization,
+		applicationPlatform.Store().AcademicUnit(), academicAuthorization,
 		mutationAuditAdapter{audit: audit},
 		academicUnitRealtimeEffects{realtime: realtime},
 		academicUnitEffectReporter{realtime: realtime},
 		time.Now, model.NewId,
 	)
 	institutions := newInstitutionService(
-		applicationPlatform.Store().Institution(), academicUnitAuthorization,
+		applicationPlatform.Store().Institution(), academicAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now,
 	)
 	programmes := newProgrammeService(
-		applicationPlatform.Store().Programme(), academicUnitAuthorization,
+		applicationPlatform.Store().Programme(), academicAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	programmeLevels := newProgrammeLevelService(
 		applicationPlatform.Store().ProgrammeLevel(), applicationPlatform.Store().Programme(),
-		academicUnitAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
+		academicAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
+	)
+	academicPeriods := newAcademicPeriodService(
+		applicationPlatform.Store().AcademicPeriod(), academicAuthorization,
+		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
@@ -94,6 +99,7 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		institutions:         institutions,
 		programmes:           programmes,
 		programmeLevels:      programmeLevels,
+		academicPeriods:      academicPeriods,
 		audit:                audit, realtime: realtime,
 	}, nil
 }

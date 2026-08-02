@@ -102,6 +102,7 @@ func assembleRuntime(
 		Institutions:            application,
 		Programmes:              application,
 		ProgrammeLevels:         application,
+		AcademicPeriods:         application,
 		BuildInfo:               buildInfo,
 		PublicURL:               cfg.Server.PublicURL,
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,

@@ -88,6 +88,7 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 		AcademicUnits: transportApplication, Institutions: fakeApplication,
 		Programmes:      &programmeHTTPApplication{},
 		ProgrammeLevels: &programmeLevelHTTPApplication{},
+		AcademicPeriods: &academicPeriodHTTPApplication{},
 		BuildInfo:       BuildInfo{Version: "test"},
 		PublicURL:       "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",

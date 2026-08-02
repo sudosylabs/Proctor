@@ -38,7 +38,7 @@ type academicUnitAuthorizer interface {
 	) (model.Resource, error)
 }
 
-func (a academicUnitReadAuthorization) Installation(
+func (a academicUnitAuthorization) Installation(
 	ctx context.Context,
 ) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
@@ -48,12 +48,12 @@ func (a academicUnitReadAuthorization) Installation(
 	return model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, nil
 }
 
-type academicUnitReadAuthorization struct {
+type academicUnitAuthorization struct {
 	authorization *AuthorizationService
 	institutions  store.InstitutionStore
 }
 
-func (a academicUnitReadAuthorization) Authorize(
+func (a academicUnitAuthorization) Authorize(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,
@@ -68,7 +68,7 @@ func (a academicUnitReadAuthorization) Authorize(
 	))
 }
 
-func (a academicUnitReadAuthorization) AuthorizeInstallation(
+func (a academicUnitAuthorization) AuthorizeInstallation(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,

@@ -62,6 +62,7 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
 		AcademicUnits: transport, Institutions: transport, Programmes: programmes,
 		ProgrammeLevels: &programmeLevelHTTPApplication{},
+		AcademicPeriods: &academicPeriodHTTPApplication{},
 		BuildInfo:       BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
 		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
