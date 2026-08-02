@@ -91,9 +91,9 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 		AcademicPeriods:     &academicPeriodHTTPApplication{},
 		Classes:             &classHTTPApplication{},
 		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{},
-		BuildInfo:           BuildInfo{Version: "test"},
-		PublicURL:           "http://localhost:8065", MaxBodyBytes: 1 << 20,
+		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
+		BuildInfo: BuildInfo{Version: "test"},
+		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
 	if err != nil {

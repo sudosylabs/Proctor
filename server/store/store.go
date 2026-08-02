@@ -447,14 +447,33 @@ type ClassEnrollmentResult struct {
 	Previous   *model.ClassMember
 }
 
+// ClassMemberEnrollment is the complete durable input for an enrollment or
+// transfer and its already-persisted mutation audit. A transfer closes the
+// previous membership and creates Member in the same transaction.
+type ClassMemberEnrollment struct {
+	Member       *model.ClassMember
+	AuditEventID string
+	AuditAt      int64
+}
+
+type ClassMemberEnd struct {
+	ID               string
+	ExpectedRevision int64
+	EndAt            int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
 // ClassMemberStore owns transactional student enrollment and history.
 type ClassMemberStore interface {
+	EnrollWithAudit(context.Context, *ClassMemberEnrollment) (*ClassEnrollmentResult, error)
+	EndWithAudit(context.Context, *ClassMemberEnd) (*model.ClassMember, error)
 	Enroll(context.Context, *model.ClassMember) (*ClassEnrollmentResult, error)
 	Get(context.Context, string) (*model.ClassMember, error)
 	ListByUser(context.Context, string) ([]*model.ClassMember, error)
 	ListByClass(context.Context, string, int64) ([]*model.ClassMember, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.ClassMember, error)
-	End(context.Context, string, int64) (*model.ClassMember, error)
+	End(context.Context, string, int64, int64) (*model.ClassMember, error)
 }
 
 // PasswordCredentialStore persists one encoded password hash per local user.

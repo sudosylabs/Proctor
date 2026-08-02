@@ -431,7 +431,7 @@ Corresponding Proctor paths:
 - server/app/authorization_decision.go
 - server/app/permissions.go
 - server/app/academic_administration.go
-- server/app/membership_administration.go
+- server/app/class_member.go
 - server/app/user_administration.go
 - server/app/audit.go
 - server/app/authorization_test.go

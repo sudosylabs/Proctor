@@ -29,6 +29,7 @@ type classMemberRow struct {
 	CreateAt         int64  `db:"create_at"`
 	UpdateAt         int64  `db:"update_at"`
 	DeleteAt         int64  `db:"delete_at"`
+	Revision         int64  `db:"revision"`
 	ClassID          string `db:"class_id"`
 	AcademicPeriodID string `db:"academic_period_id"`
 	UserID           string `db:"user_id"`
@@ -39,7 +40,7 @@ type classMemberRow struct {
 func classMemberColumns() []string {
 	return []string{
 		"class_members.id", "class_members.create_at", "class_members.update_at",
-		"class_members.delete_at", "class_members.class_id",
+		"class_members.delete_at", "class_members.revision", "class_members.class_id",
 		"class_members.academic_period_id", "class_members.user_id",
 		"class_members.start_at", "class_members.end_at",
 	}
@@ -60,6 +61,31 @@ func (s SqlClassMemberStore) Enroll(
 		return nil, store.NewErrInvalidInput("class_member", "value", nil)
 	}
 	candidate := *member
+	candidate.PreSave()
+	return s.enroll(ctx, &candidate, "", 0)
+}
+
+func (s SqlClassMemberStore) EnrollWithAudit(
+	ctx context.Context,
+	input *store.ClassMemberEnrollment,
+) (*store.ClassEnrollmentResult, error) {
+	if input == nil || input.Member == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("class_member", "enrollment", nil)
+	}
+	candidate := *input.Member
+	if !model.IsValidId(candidate.Id) || candidate.CreateAt <= 0 || candidate.UpdateAt <= 0 || candidate.Revision <= 0 ||
+		!model.IsValidId(candidate.ClassId) || !model.IsValidId(candidate.UserId) {
+		return nil, store.NewErrInvalidInput("class_member", "value", nil)
+	}
+	return s.enroll(ctx, &candidate, input.AuditEventID, input.AuditAt)
+}
+
+func (s SqlClassMemberStore) enroll(
+	ctx context.Context,
+	candidate *model.ClassMember,
+	auditEventID string,
+	auditAt int64,
+) (*store.ClassEnrollmentResult, error) {
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin class enrollment: %w", err)
@@ -71,21 +97,15 @@ func (s SqlClassMemberStore) Enroll(
 	if err := lockClassLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-
 	if err := tx.Get(ctx, &candidate.AcademicPeriodId, `
 		SELECT academic_period_id FROM classes WHERE id = ? AND delete_at = 0`,
 		candidate.ClassId,
 	); err != nil {
 		return nil, translateError("class", candidate.ClassId, err)
 	}
-	if _, err := tx.Exec(
-		ctx,
-		"SELECT pg_advisory_xact_lock(hashtext(?))",
-		"proctor:class-enrollment:"+candidate.UserId+":"+candidate.AcademicPeriodId,
-	); err != nil {
-		return nil, fmt.Errorf("lock class enrollment: %w", err)
+	if err := lockClassEnrollment(ctx, tx, candidate.UserId, candidate.AcademicPeriodId); err != nil {
+		return nil, err
 	}
-	candidate.PreSave()
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
 	}
@@ -102,14 +122,15 @@ func (s SqlClassMemberStore) Enroll(
 
 	var previousRow classMemberRow
 	err = tx.Get(ctx, &previousRow, `
-		SELECT id, create_at, update_at, delete_at, class_id,
+		SELECT id, create_at, update_at, delete_at, revision, class_id,
 		       academic_period_id, user_id, start_at, end_at
 		  FROM class_members
 		 WHERE user_id = ? AND academic_period_id = ?
 		   AND delete_at = 0 AND end_at = 0
+		 ORDER BY start_at DESC, id
+		 LIMIT 1
 		 FOR UPDATE`,
-		candidate.UserId,
-		candidate.AcademicPeriodId,
+		candidate.UserId, candidate.AcademicPeriodId,
 	)
 	var previous *model.ClassMember
 	switch {
@@ -131,7 +152,7 @@ func (s SqlClassMemberStore) Enroll(
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE class_members
-			   SET update_at = ?, end_at = ?
+			SET update_at = ?, end_at = ?, revision = revision + 1
 			 WHERE id = ? AND delete_at = 0 AND end_at = 0`,
 			candidate.StartAt, candidate.StartAt, previous.Id,
 		); err != nil {
@@ -139,6 +160,7 @@ func (s SqlClassMemberStore) Enroll(
 		}
 		previous.UpdateAt = candidate.StartAt
 		previous.EndAt = candidate.StartAt
+		previous.Revision++
 	case err != nil && !isNoRows(err):
 		return nil, fmt.Errorf("find current class enrollment: %w", err)
 	}
@@ -172,13 +194,13 @@ func (s SqlClassMemberStore) Enroll(
 		)
 	}
 
-	row := newClassMemberRow(&candidate)
+	row := newClassMemberRow(candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO class_members (
-			id, create_at, update_at, delete_at, class_id,
+			id, create_at, update_at, delete_at, revision, class_id,
 			academic_period_id, user_id, start_at, end_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :class_id,
+			:id, :create_at, :update_at, :delete_at, :revision, :class_id,
 			:academic_period_id, :user_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
@@ -186,10 +208,21 @@ func (s SqlClassMemberStore) Enroll(
 			translateError("class_member", candidate.Id, err),
 		)
 	}
+	result := &store.ClassEnrollmentResult{Membership: candidate, Previous: previous}
+	if auditEventID != "" {
+		enrollment := &model.ClassEnrollment{Membership: candidate, Previous: previous}
+		encoded, appErr := model.EncodeAuditData(enrollment.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt); err != nil {
+			return nil, fmt.Errorf("complete class enrollment audit: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit class enrollment: %w", err)
 	}
-	return &store.ClassEnrollmentResult{Membership: &candidate, Previous: previous}, nil
+	return result, nil
 }
 
 func isNoRows(err error) bool {
@@ -248,28 +281,120 @@ func (s SqlClassMemberStore) ListActiveByUser(
 func (s SqlClassMemberStore) End(
 	ctx context.Context,
 	id string,
+	expectedRevision int64,
 	endAt int64,
 ) (*model.ClassMember, error) {
-	if endAt <= 0 {
-		return nil, store.NewErrInvalidInput("class_member", "end_at", endAt)
+	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
+		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
-	result, err := s.GetMaster().Exec(ctx, `
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin class member end: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var row classMemberRow
+	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
+		"class_members.id": id, "class_members.delete_at": int64(0),
+	})); err != nil {
+		return nil, translateError("class_member", id, err)
+	}
+	if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
+		return nil, err
+	}
+	ended, err := s.endClassMember(ctx, tx, id, expectedRevision, endAt)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit class member end: %w", err)
+	}
+	return ended, nil
+}
+
+func (s SqlClassMemberStore) EndWithAudit(
+	ctx context.Context,
+	input *store.ClassMemberEnd,
+) (*model.ClassMember, error) {
+	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 ||
+		input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("class_member", "end", nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin class member audited end: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var row classMemberRow
+	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
+		"class_members.id": input.ID, "class_members.delete_at": int64(0),
+	})); err != nil {
+		return nil, translateError("class_member", input.ID, err)
+	}
+	if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
+		return nil, err
+	}
+	ended, err := s.endClassMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
+	if err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(ended.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete class member end audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit class member audited end: %w", err)
+	}
+	return ended, nil
+}
+
+func (s SqlClassMemberStore) endClassMember(
+	ctx context.Context,
+	executor sqlxExecutor,
+	id string,
+	expectedRevision int64,
+	endAt int64,
+) (*model.ClassMember, error) {
+	var row classMemberRow
+	if err := executor.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
+		"class_members.id": id, "class_members.delete_at": int64(0),
+	})); err != nil {
+		return nil, translateError("class_member", id, err)
+	}
+	current := row.model()
+	if current.Revision != expectedRevision {
+		return nil, store.NewErrConflict("class_member", "class_member_changed", nil)
+	}
+	if endAt <= current.StartAt || (current.EndAt != 0 && endAt >= current.EndAt) {
+		return nil, store.NewErrConflict("class_member", "class_member_end_time", nil)
+	}
+	result, err := executor.Exec(ctx, `
 		UPDATE class_members
-		   SET update_at = ?, end_at = ?
-		 WHERE id = ? AND delete_at = 0 AND start_at < ?
-		   AND (end_at = 0 OR end_at > ?)`,
-		endAt, endAt, id, endAt, endAt,
+		   SET update_at = ?, end_at = ?, revision = revision + 1
+		 WHERE id = ? AND delete_at = 0 AND revision = ?`,
+		endAt, endAt, id, expectedRevision,
 	)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"end class enrollment: %w",
-			translateError("class_member", id, err),
-		)
+		return nil, fmt.Errorf("end class member: %w", err)
 	}
 	if err := requireAffected(result, "class_member", id); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	current.UpdateAt, current.EndAt, current.Revision = endAt, endAt, expectedRevision+1
+	return current, nil
+}
+
+func lockClassEnrollment(ctx context.Context, executor sqlxExecutor, userID, periodID string) error {
+	if _, err := executor.Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock(hashtext(?))",
+		"proctor:class-enrollment:"+userID+":"+periodID,
+	); err != nil {
+		return fmt.Errorf("lock class enrollment: %w", err)
+	}
+	return nil
 }
 
 func (s SqlClassMemberStore) selectMembers(
@@ -291,6 +416,7 @@ func newClassMemberRow(m *model.ClassMember) classMemberRow {
 	return classMemberRow{
 		ID: m.Id, CreateAt: m.CreateAt, UpdateAt: m.UpdateAt,
 		DeleteAt: m.DeleteAt, ClassID: m.ClassId,
+		Revision:         m.Revision,
 		AcademicPeriodID: m.AcademicPeriodId, UserID: m.UserId,
 		StartAt: m.StartAt, EndAt: m.EndAt,
 	}
@@ -300,6 +426,7 @@ func (r classMemberRow) model() *model.ClassMember {
 	return &model.ClassMember{
 		Id: r.ID, CreateAt: r.CreateAt, UpdateAt: r.UpdateAt,
 		DeleteAt: r.DeleteAt, ClassId: r.ClassID,
+		Revision:         r.Revision,
 		AcademicPeriodId: r.AcademicPeriodID, UserId: r.UserID,
 		StartAt: r.StartAt, EndAt: r.EndAt,
 	}

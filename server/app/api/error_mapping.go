@@ -48,6 +48,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"affiliation.conflict":                      {status: http.StatusConflict},
 	"affiliation.student_has_active_enrollment": {status: http.StatusConflict},
 	"class.enrollment_conflict":                 {status: http.StatusConflict},
+	"class_member.invalid":                      {status: http.StatusBadRequest},
+	"class_member.student_affiliation_required": {status: http.StatusConflict},
 	"class.invalid":                             {status: http.StatusBadRequest},
 	"class.conflict":                            {status: http.StatusConflict},
 	"institution.conflict":                      {status: http.StatusConflict},

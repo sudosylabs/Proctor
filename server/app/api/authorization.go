@@ -75,12 +75,6 @@ type PermissionChecker interface {
 		string,
 		model.RequestMetadata,
 	) (context.Context, bool, *model.AppError)
-	PrincipalHasPermissionToClassMemberForRequest(
-		context.Context,
-		model.Principal,
-		string,
-		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
 }
 
 func (a *API) requirePermission(

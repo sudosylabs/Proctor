@@ -83,6 +83,7 @@ CREATE TABLE class_members (
     create_at bigint NOT NULL,
     update_at bigint NOT NULL,
     delete_at bigint NOT NULL DEFAULT 0,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     class_id varchar(26) NOT NULL,
     academic_period_id varchar(26) NOT NULL REFERENCES academic_periods(id),
     user_id varchar(26) NOT NULL REFERENCES users(id),

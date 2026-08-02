@@ -489,6 +489,52 @@
         }
       }
     },
+    "/api/v1/classes/{class_id}/members": {
+      "parameters": [{"$ref": "#/components/parameters/ClassID"}],
+      "get": {
+        "operationId": "listClassMembers", "summary": "List active or historical student enrollments for a Class",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "active_at", "in": "query", "required": false, "schema": {"type": "integer", "format": "int64", "minimum": 1}},
+          {"name": "history", "in": "query", "required": false, "description": "When true, return enrollment history and ignore active_at.", "schema": {"type": "boolean", "default": false}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ClassMemberListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "enrollClassMember", "summary": "Enroll, transfer, or progress a student transactionally",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/EnrollClassMember"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/ClassMemberEnrolled"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/class-members/{class_member_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ClassMemberID"}],
+      "delete": {
+        "operationId": "endClassMember", "summary": "End an enrollment while retaining history",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class.enrollment_conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ClassMemberEnded"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/academic-units/{academic_unit_id}/members": {
       "parameters": [{"$ref": "#/components/parameters/AcademicUnitID"}],
       "get": {
@@ -661,6 +707,10 @@
         "name": "class_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "ClassMemberID": {
+        "name": "class_member_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "UserID": {
         "name": "user_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -731,6 +781,11 @@
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateAcademicUnitMemberRequest"}}}
       }
+      ,
+      "EnrollClassMember": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EnrollClassMemberRequest"}}}
+      }
     },
     "responses": {
       "AcademicUnitOK": {
@@ -769,6 +824,9 @@
       "AcademicUnitMemberCreated": {"description": "Academic Unit Member created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitMemberResponse"}}}},
       "AcademicUnitMemberListOK": {"description": "Academic Unit Member collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitMemberListResponse"}}}},
       "AcademicUnitMemberEnded": {"description": "Academic Unit Member ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitMemberResponse"}}}},
+      "ClassMemberListOK": {"description": "Class Member collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassMemberListResponse"}}}},
+      "ClassMemberEnrolled": {"description": "Enrollment or transfer completed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassEnrollmentResponse"}}}},
+      "ClassMemberEnded": {"description": "Class Member ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassMemberResponse"}}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -1058,6 +1116,35 @@
           "academic_unit_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
           "user_id": {"$ref": "#/components/schemas/ID"}, "start_at": {"type": "integer", "format": "int64"},
           "end_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored; memberships are ended through DELETE."}
+        }
+      },
+      "ClassMemberResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "class_id", "academic_period_id", "user_id", "start_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "class_id": {"$ref": "#/components/schemas/ID"}, "academic_period_id": {"$ref": "#/components/schemas/ID"},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "start_at": {"type": "integer", "format": "int64"},
+          "end_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "ClassMemberListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/ClassMemberResponse"}},
+      "ClassEnrollmentResponse": {
+        "type": "object", "additionalProperties": false, "required": ["membership"],
+        "properties": {"membership": {"$ref": "#/components/schemas/ClassMemberResponse"}, "previous": {"$ref": "#/components/schemas/ClassMemberResponse"}}
+      },
+      "EnrollClassMemberRequest": {
+        "type": "object", "additionalProperties": false, "required": ["user_id"],
+        "properties": {
+          "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
+          "class_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; route scope is authoritative."},
+          "academic_period_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; destination Class is authoritative."},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "start_at": {"type": "integer", "format": "int64"},
+          "end_at": {"type": "integer", "format": "int64"}
         }
       },
       "ProblemDetails": {

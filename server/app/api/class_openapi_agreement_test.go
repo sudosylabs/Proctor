@@ -45,6 +45,9 @@ func TestClassOpenAPIAgreesWithRuntime(t *testing.T) {
 		if !strings.HasSuffix(path, "/classes") && !strings.HasPrefix(path, model.APIURLSuffix+"/classes/") {
 			continue
 		}
+		if strings.HasSuffix(path, "/members") {
+			continue
+		}
 		for method, raw := range item {
 			upper := strings.ToUpper(method)
 			if !isHTTPMethod(upper) {

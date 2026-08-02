@@ -182,23 +182,6 @@ func (a *App) PrincipalHasPermissionToAcademicUnitMemberForRequest(
 	)
 }
 
-func (a *App) PrincipalHasPermissionToClassMemberForRequest(
-	ctx context.Context,
-	principal model.Principal,
-	memberID string,
-	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
-	member, err := a.Store().ClassMember().Get(ctx, memberID)
-	if err != nil {
-		return ctx, false, administrationError(
-			"PrincipalHasPermissionToClassMemberForRequest", "class_member", err,
-		)
-	}
-	return a.PrincipalHasPermissionToClassForRequest(
-		ctx, principal, member.ClassId, model.ActionClassMembersManage, metadata,
-	)
-}
-
 func (a *App) PrincipalHasPermissionToUserForRequest(
 	ctx context.Context,
 	principal model.Principal,

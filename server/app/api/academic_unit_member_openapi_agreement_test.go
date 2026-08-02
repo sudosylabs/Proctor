@@ -38,7 +38,7 @@ func TestAcademicUnitMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 	statuses["authentication.csrf.invalid"] = http.StatusForbidden
 	documented := make(map[string]AuthRequirement)
 	for path, item := range document.Paths {
-		if !strings.HasSuffix(path, "/members") && !strings.HasPrefix(path, model.APIURLSuffix+"/academic-unit-members/") {
+		if path != "/api/v1/academic-units/{academic_unit_id}/members" && !strings.HasPrefix(path, model.APIURLSuffix+"/academic-unit-members/") {
 			continue
 		}
 		for method, raw := range item {

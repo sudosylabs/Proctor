@@ -106,6 +106,7 @@ func assembleRuntime(
 		Classes:                 application,
 		Affiliations:            application,
 		AcademicUnitMembers:     application,
+		ClassMembers:            application,
 		BuildInfo:               buildInfo,
 		PublicURL:               cfg.Server.PublicURL,
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,

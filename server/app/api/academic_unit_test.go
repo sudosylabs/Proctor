@@ -177,8 +177,8 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 		AcademicPeriods:     &academicPeriodHTTPApplication{},
 		Classes:             &classHTTPApplication{},
 		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{},
-		BuildInfo:           BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
+		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
+		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
 		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
 	if err != nil {
@@ -242,9 +242,9 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 		AcademicPeriods:     &academicPeriodHTTPApplication{},
 		Classes:             &classHTTPApplication{},
 		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{},
-		BuildInfo:           BuildInfo{Version: "test"},
-		PublicURL:           "http://localhost:8065", MaxBodyBytes: 1 << 20,
+		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
+		BuildInfo: BuildInfo{Version: "test"},
+		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
 	if err != nil {
@@ -320,9 +320,9 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 				AcademicPeriods:     &academicPeriodHTTPApplication{},
 				Classes:             &classHTTPApplication{},
 				Affiliations:        &affiliationHTTPApplication{},
-				AcademicUnitMembers: &academicUnitMemberHTTPApplication{},
-				BuildInfo:           BuildInfo{Version: "test"},
-				PublicURL:           "http://localhost:8065", MaxBodyBytes: 1 << 20,
+				AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
+				BuildInfo: BuildInfo{Version: "test"},
+				PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 				RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 			})
 			if err != nil {
@@ -400,9 +400,9 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 		AcademicPeriods:     &academicPeriodHTTPApplication{},
 		Classes:             &classHTTPApplication{},
 		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{},
-		BuildInfo:           BuildInfo{Version: "test"},
-		PublicURL:           "http://localhost:8065", MaxBodyBytes: 1 << 20,
+		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
+		BuildInfo: BuildInfo{Version: "test"},
+		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
 		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})
 	if err != nil {

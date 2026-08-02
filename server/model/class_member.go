@@ -18,6 +18,7 @@ type ClassMember struct {
 	CreateAt         int64  `json:"create_at"`
 	UpdateAt         int64  `json:"update_at"`
 	DeleteAt         int64  `json:"delete_at"`
+	Revision         int64  `json:"revision"`
 	ClassId          string `json:"class_id"`
 	AcademicPeriodId string `json:"academic_period_id"`
 	UserId           string `json:"user_id"`
@@ -25,8 +26,18 @@ type ClassMember struct {
 	EndAt            int64  `json:"end_at,omitempty"`
 }
 
+func (cm *ClassMember) PrepareCreate(id string, at int64) {
+	cm.Id, cm.CreateAt, cm.UpdateAt, cm.DeleteAt, cm.Revision = id, at, at, 0, 1
+	if cm.StartAt == 0 {
+		cm.StartAt = at
+	}
+}
+
 func (cm *ClassMember) PreSave() {
 	preSaveMembership(&cm.Id, &cm.CreateAt, &cm.UpdateAt, &cm.StartAt)
+	if cm.Revision == 0 {
+		cm.Revision = 1
+	}
 }
 
 func (cm *ClassMember) PreUpdate() {
@@ -43,6 +54,9 @@ func (cm *ClassMember) IsValid() *AppError {
 		cm.UpdateAt,
 	); appErr != nil {
 		return appErr
+	}
+	if cm.Revision <= 0 {
+		return invalidModelError(where, "class_member", "revision", "must be positive", "id="+cm.Id)
 	}
 	details := "id=" + cm.Id
 	if !IsValidId(cm.ClassId) {
@@ -69,6 +83,7 @@ func (cm *ClassMember) IsActiveAt(now int64) bool {
 
 func (cm *ClassMember) Auditable() map[string]any {
 	fields := auditFields(cm.Id, cm.CreateAt, cm.UpdateAt, cm.DeleteAt)
+	fields["revision"] = cm.Revision
 	fields["class_id"] = cm.ClassId
 	fields["academic_period_id"] = cm.AcademicPeriodId
 	fields["user_id"] = cm.UserId
