@@ -12,58 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
-
-func (a *App) ListUsers(
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	options store.UserListOptions,
-) ([]*model.User, *model.AppError) {
-	if _, appErr := a.authorizePrincipalToSystem(
-		ctx, principal, model.ActionInstitutionManage, metadata,
-	); appErr != nil {
-		return nil, appErr
-	}
-	if options.Limit == 0 {
-		options.Limit = defaultAdministrationListLimit
-	}
-	users, err := a.Store().User().List(ctx, options)
-	if err != nil {
-		return nil, administrationError("ListUsers", "user", err)
-	}
-	return users, nil
-}
-
-func (a *App) PatchUser(
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	userID string,
-	patch *model.UserPatch,
-) (*model.User, *model.AppError) {
-	resource, appErr := a.authorizePrincipalToUser(
-		ctx, principal, userID, model.ActionUserManage, metadata,
-	)
-	if appErr != nil {
-		return nil, appErr
-	}
-	if patch == nil {
-		return nil, invalidAdministrationRequest("PatchUser", "patch")
-	}
-	current, err := a.Store().User().Get(ctx, userID)
-	if err != nil {
-		return nil, administrationError("PatchUser.get", "user", err)
-	}
-	candidate := *current
-	candidate.Patch(patch)
-	return updateAcademicEntity(
-		a, ctx, principal, metadata, model.ActionUserManage, resource,
-		"PatchUser", "user", candidate.Auditable(), current.Auditable(),
-		func() (*model.User, error) { return a.Store().User().Update(ctx, &candidate) },
-	)
-}
 
 func (a *App) SetUserDisabled(
 	ctx context.Context,

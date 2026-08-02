@@ -12,6 +12,7 @@ import (
 	"os"
 	"testing"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -290,11 +291,10 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	if appErr != nil || allowed {
 		t.Fatalf("unbound cross-user visibility = %v, %v", allowed, appErr)
 	}
-	if _, appErr = helper.App.GetUserForPrincipal(
-		ctx, *principal, metadata, target.Id,
-	); appErr == nil || appErr.Id != "authorization.denied" ||
-		appErr.HTTPStatus() != http.StatusForbidden {
-		t.Fatalf("unbound cross-user read error = %v", appErr)
+	if _, err := helper.App.GetUserProfile(
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
+	); !application.Is(err, "authorization.denied") {
+		t.Fatalf("unbound cross-user read error = %v", err)
 	}
 
 	role, err := persistence.Role().Save(ctx, &model.Role{
@@ -316,11 +316,11 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	if appErr != nil || !allowed {
 		t.Fatalf("bound cross-user visibility = %v, %v", allowed, appErr)
 	}
-	visible, appErr := helper.App.GetUserForPrincipal(
-		ctx, *principal, metadata, target.Id,
+	visible, err := helper.App.GetUserProfile(
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
 	)
-	if appErr != nil || visible.Id != target.Id {
-		t.Fatalf("authorized cross-user read = %#v, %v", visible, appErr)
+	if err != nil || visible.Id != target.Id {
+		t.Fatalf("authorized cross-user read = %#v, %v", visible, err)
 	}
 	allowed, appErr = helper.App.PrincipalHasPermissionToUser(
 		ctx, *principal, target.Id, model.ActionUserManage,
@@ -336,10 +336,10 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	if appErr != nil || allowed {
 		t.Fatalf("ended binding visibility = %v, %v", allowed, appErr)
 	}
-	if _, appErr = helper.App.GetUserForPrincipal(
-		ctx, *principal, metadata, target.Id,
-	); appErr == nil || appErr.Id != "authorization.denied" {
-		t.Fatalf("ended binding cross-user read error = %v", appErr)
+	if _, err := helper.App.GetUserProfile(
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
+	); !application.Is(err, "authorization.denied") {
+		t.Fatalf("ended binding cross-user read error = %v", err)
 	}
 
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{

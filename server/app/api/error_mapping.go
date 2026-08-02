@@ -60,6 +60,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"programme_level.conflict":                  {status: http.StatusConflict},
 	"request.invalid":                           {status: http.StatusBadRequest},
 	"resource.not_found":                        {status: http.StatusNotFound},
+	"user.invalid":                              {status: http.StatusBadRequest},
+	"user.conflict":                             {status: http.StatusConflict},
 }
 
 // ApplicationErrorStatuses returns a copy of the registered application-code

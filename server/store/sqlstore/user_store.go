@@ -11,6 +11,7 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -26,21 +27,23 @@ type SqlUserStore struct {
 }
 
 type userRow struct {
-	ID             string `db:"id"`
-	CreateAt       int64  `db:"create_at"`
-	UpdateAt       int64  `db:"update_at"`
-	DeleteAt       int64  `db:"delete_at"`
-	Username       string `db:"username"`
-	Email          string `db:"email"`
-	EmailVerified  bool   `db:"email_verified"`
-	DisplayName    string `db:"display_name"`
-	FirstName      string `db:"first_name"`
-	LastName       string `db:"last_name"`
-	Locale         string `db:"locale"`
-	Timezone       string `db:"timezone"`
-	LastLoginAt    int64  `db:"last_login_at"`
-	LastActivityAt int64  `db:"last_activity_at"`
-	DisabledAt     int64  `db:"disabled_at"`
+	ID               string `db:"id"`
+	CreateAt         int64  `db:"create_at"`
+	UpdateAt         int64  `db:"update_at"`
+	DeleteAt         int64  `db:"delete_at"`
+	Revision         int64  `db:"revision"`
+	Username         string `db:"username"`
+	Email            string `db:"email"`
+	EmailVerified    bool   `db:"email_verified"`
+	DisplayName      string `db:"display_name"`
+	FirstName        string `db:"first_name"`
+	LastName         string `db:"last_name"`
+	Locale           string `db:"locale"`
+	Timezone         string `db:"timezone"`
+	LastLoginAt      int64  `db:"last_login_at"`
+	LastActivityAt   int64  `db:"last_activity_at"`
+	DisabledAt       int64  `db:"disabled_at"`
+	ExpectedRevision int64  `db:"expected_revision"`
 }
 
 func userSliceColumns() []string {
@@ -49,6 +52,7 @@ func userSliceColumns() []string {
 		"users.create_at",
 		"users.update_at",
 		"users.delete_at",
+		"users.revision",
 		"users.username",
 		"users.email",
 		"users.email_verified",
@@ -133,11 +137,11 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 	row := newUserRow(user)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO users (
-			id, create_at, update_at, delete_at, username, email,
+			id, create_at, update_at, delete_at, revision, username, email,
 			email_verified, display_name, first_name, last_name, locale,
 			timezone, last_login_at, last_activity_at, disabled_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :username, :email,
+			:id, :create_at, :update_at, :delete_at, :revision, :username, :email,
 			:email_verified, :display_name, :first_name, :last_name, :locale,
 			:timezone, :last_login_at, :last_activity_at, :disabled_at
 		)`, &row); err != nil {
@@ -223,19 +227,93 @@ func (s SqlUserStore) get(
 }
 
 func (s SqlUserStore) Update(ctx context.Context, user *model.User) (*model.User, error) {
-	if user == nil {
+	if user == nil || user.Revision <= 0 {
 		return nil, store.NewErrInvalidInput("user", "value", nil)
 	}
 	candidate := *user
+	expectedRevision := candidate.Revision
 	candidate.PreUpdate()
+	candidate.Revision++
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
 	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin user update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := updateUserProfile(ctx, tx, &candidate, expectedRevision); err != nil {
+		return nil, err
+	}
+	updated, err := getUserByID(ctx, tx, candidate.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit user update: %w", err)
+	}
+	return updated, nil
+}
 
-	row := newUserRow(&candidate)
-	result, err := s.GetMaster().NamedExec(ctx, `
+func (s SqlUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
+	if input == nil || input.User == nil || input.ExpectedRevision <= 0 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("user", "profile_update", nil)
+	}
+	candidate := *input.User
+	if candidate.Revision != input.ExpectedRevision {
+		return nil, store.NewErrInvalidInput("user", "revision", candidate.Revision)
+	}
+	candidate.PrepareUpdate(input.AuditAt)
+	candidate.Revision = input.ExpectedRevision + 1
+	if appErr := candidate.IsValid(); appErr != nil {
+		return nil, store.NewErrInvalidInput("user", "value", nil).Wrap(appErr)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin audited user profile update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := updateUserProfile(ctx, tx, &candidate, input.ExpectedRevision); err != nil {
+		return nil, err
+	}
+	updated, err := getUserByID(ctx, tx, candidate.Id)
+	if err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(updated.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete user profile update audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit audited user profile update: %w", err)
+	}
+	return updated, nil
+}
+
+func getUserByID(ctx context.Context, executor sqlxExecutor, id string) (*model.User, error) {
+	var row userRow
+	if err := executor.Get(ctx, &row, `
+		SELECT id, create_at, update_at, delete_at, revision, username, email,
+		       email_verified, display_name, first_name, last_name, locale,
+		       timezone, last_login_at, last_activity_at, disabled_at
+		  FROM users
+		 WHERE id = ? AND delete_at = 0`, id); err != nil {
+		return nil, translateError("user", id, err)
+	}
+	return row.model(), nil
+}
+
+func updateUserProfile(ctx context.Context, executor sqlxExecutor, candidate *model.User, expectedRevision int64) error {
+	row := newUserRow(candidate)
+	row.ExpectedRevision = expectedRevision
+	result, err := executor.NamedExec(ctx, `
 		UPDATE users
-		   SET update_at = :update_at,
+		   SET update_at = GREATEST(update_at, :update_at),
+		       revision = :revision,
 		       username = :username,
 		       email = :email,
 		       email_verified = :email_verified,
@@ -243,18 +321,33 @@ func (s SqlUserStore) Update(ctx context.Context, user *model.User) (*model.User
 		       first_name = :first_name,
 		       last_name = :last_name,
 		       locale = :locale,
-		       timezone = :timezone,
-		       last_login_at = :last_login_at,
-		       last_activity_at = :last_activity_at,
-		       disabled_at = :disabled_at
-		 WHERE id = :id AND delete_at = 0`, &row)
+		       timezone = :timezone
+		 WHERE id = :id AND delete_at = 0 AND revision = :expected_revision`, &row)
 	if err != nil {
-		return nil, fmt.Errorf("update user: %w", translateError("user", candidate.Id, err))
+		return fmt.Errorf("update user profile: %w", translateError("user", candidate.Id, err))
 	}
-	if err := requireAffected(result, "user", candidate.Id); err != nil {
-		return nil, err
+	if err := requireUserRevisionAffected(ctx, executor, result, candidate.Id); err != nil {
+		return err
 	}
-	return &candidate, nil
+	return nil
+}
+
+func requireUserRevisionAffected(ctx context.Context, executor sqlxExecutor, result sql.Result, id string) error {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read user affected rows: %w", err)
+	}
+	if affected != 0 {
+		return nil
+	}
+	var exists bool
+	if err := executor.Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM users WHERE id = ? AND delete_at = 0)`, id); err != nil {
+		return fmt.Errorf("check user revision conflict: %w", err)
+	}
+	if exists {
+		return store.NewErrConflict("user", "user_changed", nil)
+	}
+	return store.NewErrNotFound("user", id).Wrap(sql.ErrNoRows)
 }
 
 func (s SqlUserStore) SetDisabled(
@@ -381,9 +474,9 @@ func setUserDisabled(
 	var row userRow
 	if err := tx.Get(ctx, &row, `
 		UPDATE users
-		   SET update_at = ?, disabled_at = ?
+		   SET update_at = ?, disabled_at = ?, revision = revision + 1
 		 WHERE id = ? AND delete_at = 0
-		RETURNING id, create_at, update_at, delete_at, username, email,
+		RETURNING id, create_at, update_at, delete_at, revision, username, email,
 		          email_verified, display_name, first_name, last_name, locale,
 		          timezone, last_login_at, last_activity_at, disabled_at`,
 		updateAt, disabledAt, id,
@@ -420,6 +513,7 @@ func newUserRow(user *model.User) userRow {
 		CreateAt:       user.CreateAt,
 		UpdateAt:       user.UpdateAt,
 		DeleteAt:       user.DeleteAt,
+		Revision:       user.Revision,
 		Username:       user.Username,
 		Email:          user.Email,
 		EmailVerified:  user.EmailVerified,
@@ -440,6 +534,7 @@ func (row userRow) model() *model.User {
 		CreateAt:       row.CreateAt,
 		UpdateAt:       row.UpdateAt,
 		DeleteAt:       row.DeleteAt,
+		Revision:       row.Revision,
 		Username:       row.Username,
 		Email:          row.Email,
 		EmailVerified:  row.EmailVerified,

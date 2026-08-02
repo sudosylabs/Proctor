@@ -26,7 +26,6 @@ import (
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
 
 type BuildInfo struct {
@@ -120,6 +119,7 @@ type Options struct {
 	Affiliations            AffiliationApplication
 	AcademicUnitMembers     AcademicUnitMemberApplication
 	ClassMembers            ClassMemberApplication
+	UserProfiles            UserProfileApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -198,18 +198,16 @@ type ExternalAuthentication interface {
 }
 
 type Users interface {
-	GetUserForPrincipal(
-		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) (*model.User, *model.AppError)
-	ListUsers(context.Context, model.Principal, model.RequestMetadata, store.UserListOptions) ([]*model.User, *model.AppError)
-	PatchUser(context.Context, model.Principal, model.RequestMetadata, string, *model.UserPatch) (*model.User, *model.AppError)
 	SetUserDisabled(context.Context, model.Principal, model.RequestMetadata, string, bool) (*model.User, *model.AppError)
 	RevokeUserSessions(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
 	ListUserSessions(context.Context, model.Principal, model.RequestMetadata, string, bool) ([]*model.Session, *model.AppError)
 	RevokeUserSession(context.Context, model.Principal, model.RequestMetadata, string, string) *model.AppError
+}
+
+type UserProfileApplication interface {
+	SearchUsers(context.Context, application.Invocation, application.SearchUsersQuery) ([]*model.User, error)
+	GetUserProfile(context.Context, application.Invocation, application.GetUserProfileQuery) (*model.User, error)
+	UpdateUserProfile(context.Context, application.Invocation, application.UpdateUserProfileCommand) (*model.User, error)
 }
 
 type AcademicUnitApplication interface {
@@ -453,6 +451,7 @@ type API struct {
 	affiliations            AffiliationApplication
 	academicUnitMembers     AcademicUnitMemberApplication
 	classMembers            ClassMemberApplication
+	userProfiles            UserProfileApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -502,6 +501,9 @@ func New(options Options) (*API, error) {
 	if options.ClassMembers == nil {
 		return nil, errors.New("class member application is required")
 	}
+	if options.UserProfiles == nil {
+		return nil, errors.New("user profile application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -527,6 +529,7 @@ func New(options Options) (*API, error) {
 		affiliations:            options.Affiliations,
 		academicUnitMembers:     options.AcademicUnitMembers,
 		classMembers:            options.ClassMembers,
+		userProfiles:            options.UserProfiles,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
@@ -557,6 +560,7 @@ func New(options Options) (*API, error) {
 		api.InitBootstrap,
 		api.InitRoles,
 		api.InitRoleBindings,
+		api.registerUserProfileRoutes,
 		api.registerInstitutionRoutes,
 		api.registerAcademicUnitRoutes,
 		api.registerProgrammeRoutes,

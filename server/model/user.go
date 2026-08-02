@@ -49,6 +49,7 @@ type User struct {
 	CreateAt       int64  `json:"create_at"`
 	UpdateAt       int64  `json:"update_at"`
 	DeleteAt       int64  `json:"delete_at"`
+	Revision       int64  `json:"-"`
 	Username       string `json:"username"`
 	Email          string `json:"email"`
 	EmailVerified  bool   `json:"email_verified"`
@@ -60,6 +61,20 @@ type User struct {
 	LastLoginAt    int64  `json:"last_login_at,omitempty"`
 	LastActivityAt int64  `json:"last_activity_at,omitempty"`
 	DisabledAt     int64  `json:"disabled_at,omitempty"`
+}
+
+func (u *User) PrepareCreate(id string, at int64) {
+	if u.Username == "" {
+		u.Username = "u" + NewId()
+	}
+	u.normalize()
+	u.Id, u.CreateAt, u.UpdateAt, u.DeleteAt, u.Revision = id, at, at, 0, 1
+	if u.Locale == "" {
+		u.Locale = DefaultLocale
+	}
+	if u.Timezone == "" {
+		u.Timezone = DefaultTimezone
+	}
 }
 
 type UserPatch struct {
@@ -110,12 +125,20 @@ func (u *User) PreSave() {
 	}
 	u.normalize()
 	preSave(&u.Id, &u.CreateAt, &u.UpdateAt)
+	if u.Revision == 0 {
+		u.Revision = 1
+	}
 	if u.Locale == "" {
 		u.Locale = DefaultLocale
 	}
 	if u.Timezone == "" {
 		u.Timezone = DefaultTimezone
 	}
+}
+
+func (u *User) PrepareUpdate(at int64) {
+	u.UpdateAt = at
+	u.normalize()
 }
 
 func (u *User) PreUpdate() {
@@ -137,6 +160,9 @@ func (u *User) IsValid() *AppError {
 	const where = "User.IsValid"
 	if appErr := validatePersistentFields(where, "user", u.Id, u.CreateAt, u.UpdateAt); appErr != nil {
 		return appErr
+	}
+	if u.Revision <= 0 {
+		return invalidModelError(where, "user", "revision", "must be positive", "id="+u.Id)
 	}
 	details := "id=" + u.Id
 	if !IsValidUsername(u.Username) {
@@ -172,6 +198,7 @@ func (u *User) IsActive() bool {
 
 func (u *User) Auditable() map[string]any {
 	fields := auditFields(u.Id, u.CreateAt, u.UpdateAt, u.DeleteAt)
+	fields["revision"] = u.Revision
 	fields["username"] = u.Username
 	fields["email_verified"] = u.EmailVerified
 	fields["disabled_at"] = u.DisabledAt

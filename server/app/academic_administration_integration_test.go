@@ -165,6 +165,24 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	if visible.Code != http.StatusOK {
 		t.Fatalf("teacher student visibility = %d: %s", visible.Code, visible.Body.String())
 	}
+	visibilityEvents, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
+		ActorId: teacher.Id,
+		Action:  string(model.ActionUserView),
+		Resource: &model.Resource{
+			Type: model.ResourceUser,
+			Id:   student.Id,
+		},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(visibilityEvents) != 1 ||
+		visibilityEvents[0].Status != model.AuditStatusSuccess ||
+		visibilityEvents[0].ScopeType != model.RoleScopeInstitution ||
+		visibilityEvents[0].ScopeId != installation.Institution.Id {
+		t.Fatalf("teacher student visibility audit = %#v", visibilityEvents)
+	}
 	hidden := performJSONRequest(
 		handler, http.MethodGet, "/api/v1/users/"+unrelated.Id, nil,
 		teacherLogin.Tokens.AccessToken,

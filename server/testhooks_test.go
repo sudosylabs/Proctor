@@ -37,6 +37,7 @@ func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore         { return 
 func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore         { return nil }
 func (s *hookStore) Class() store.ClassStore                           { return nil }
 func (s *hookStore) Affiliation() store.AffiliationStore               { return nil }
+func (s *hookStore) User() store.UserStore                             { return nil }
 func (s *hookStore) ClassMember() store.ClassMemberStore               { return nil }
 func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
 func (s *hookStore) Ping(context.Context) error                        { return nil }

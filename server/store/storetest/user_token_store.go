@@ -85,7 +85,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.Id),
 	)
 	requireNoError(t, err)
-	if !result.User.EmailVerified || result.Token.ConsumedAt != now {
+	if !result.User.EmailVerified || result.User.Revision != user.Revision+1 || result.Token.ConsumedAt != now {
 		t.Fatalf("verification result = %#v", result)
 	}
 	if _, err := ss.UserToken().ConsumeEmailVerification(

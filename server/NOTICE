@@ -433,6 +433,7 @@ Corresponding Proctor paths:
 - server/app/academic_administration.go
 - server/app/class_member.go
 - server/app/user_administration.go
+- server/app/user_profile.go
 - server/app/audit.go
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go
@@ -453,6 +454,7 @@ Corresponding Proctor paths:
 - server/app/api/class.go
 - server/app/api/membership.go
 - server/app/api/user_administration.go
+- server/app/api/user_profile.go
 - server/store/store.go
 - server/store/sqlstore/role_store.go
 - server/store/sqlstore/role_binding_store.go

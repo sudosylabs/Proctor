@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strings"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -118,7 +119,7 @@ func (a *API) InitUsers() error {
 		a.BaseRoutes.CurrentUser,
 		"",
 		http.MethodGet,
-		a.APIPrincipalRequired(currentUserHandler(a.application, a.logger)),
+		a.APIPrincipalRequired(currentUserHandler(a.userProfiles, a.logger)),
 	); err != nil {
 		return err
 	}
@@ -307,24 +308,19 @@ func logoutHandler(
 	})
 }
 
-func currentUserHandler(application Users, logger *mlog.Logger) http.Handler {
+func currentUserHandler(profiles UserProfileApplication, logger *mlog.Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {
 			WriteError(writer, request, authenticationRequiredError())
 			return
 		}
-		user, appErr := application.GetUserForPrincipal(
-			request.Context(),
-			principal,
-			RequestMetadata(request.Context()),
-			principal.UserId,
-		)
-		if appErr != nil {
-			writeApplicationError(writer, request, logger, appErr)
+		user, err := profiles.GetUserProfile(request.Context(), application.NewInvocation(principal, RequestMetadata(request.Context())), application.GetUserProfileQuery{ID: principal.UserId})
+		if err != nil {
+			writeApplicationError(writer, request, logger, err)
 			return
 		}
-		writeJSON(writer, http.StatusOK, user)
+		writeJSON(writer, http.StatusOK, userProfileResponseFromModel(user))
 	})
 }
 

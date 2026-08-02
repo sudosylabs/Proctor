@@ -198,6 +198,40 @@ func (s *AuthorizationService) authorizeCurrentState(
 	return nil
 }
 
+// authorizeUserViewThroughClass evaluates the contextual class permission but
+// records the use-case decision against the user being viewed. The class is an
+// authorization input, not the application resource exposed by this decision.
+func (s *AuthorizationService) authorizeUserViewThroughClass(
+	ctx context.Context,
+	principal model.Principal,
+	userResource model.Resource,
+	classResource model.Resource,
+	metadata model.RequestMetadata,
+) *model.AppError {
+	allowed, resolved, appErr := s.evaluate(
+		ctx, principal, model.ActionClassMembersView, classResource,
+	)
+	if appErr != nil {
+		return appErr
+	}
+	if appErr = s.audit.RecordAuthorizationDecision(
+		ctx,
+		principal,
+		model.ActionUserView,
+		userResource,
+		model.RoleScopeInstitution,
+		resolved.institutionID,
+		metadata,
+		allowed,
+	); appErr != nil {
+		return appErr
+	}
+	if !allowed {
+		return authorizationDeniedError("AuthorizationService.authorizeUserViewThroughClass")
+	}
+	return nil
+}
+
 func (s *AuthorizationService) preauthorize(
 	ctx context.Context,
 	principal model.Principal,

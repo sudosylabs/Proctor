@@ -161,7 +161,7 @@ func (s SqlUserTokenStore) ConsumeEmailVerification(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET update_at = ?, email_verified = true
+		   SET update_at = ?, email_verified = true, revision = revision + 1
 		 WHERE id = ? AND delete_at = 0 AND disabled_at = 0`,
 		now, user.ID,
 	); err != nil {
@@ -187,6 +187,7 @@ func (s SqlUserTokenStore) ConsumeEmailVerification(
 	verified := user.model()
 	verified.UpdateAt = now
 	verified.EmailVerified = true
+	verified.Revision++
 	return &store.EmailVerificationResult{
 		Token: token.model(),
 		User:  verified,
@@ -346,7 +347,7 @@ func lockTokenUser(
 ) (*userRow, error) {
 	var user userRow
 	if err := executor.Get(ctx, &user, `
-		SELECT id, create_at, update_at, delete_at, username, email,
+		SELECT id, create_at, update_at, delete_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
 		  FROM users

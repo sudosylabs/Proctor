@@ -3,6 +3,7 @@ CREATE TABLE users (
     create_at bigint NOT NULL,
     update_at bigint NOT NULL,
     delete_at bigint NOT NULL DEFAULT 0,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     username varchar(64) NOT NULL,
     email varchar(254) NOT NULL,
     email_verified boolean NOT NULL DEFAULT false,

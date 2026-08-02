@@ -250,7 +250,7 @@ func resolveExternalIdentity(
 
 	var row userRow
 	if err := tx.Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, username, email,
+		SELECT id, create_at, update_at, delete_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
 		  FROM users

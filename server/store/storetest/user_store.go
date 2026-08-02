@@ -97,7 +97,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	at := model.GetMillis() + 100
 	disabled, err := ss.User().SetDisabled(ctx, first.Id, at, at)
 	requireNoError(t, err)
-	if disabled.DisabledAt != at {
+	if disabled.DisabledAt != at || disabled.Revision != first.Revision+1 {
 		t.Fatalf("SetDisabled() = %#v", disabled)
 	}
 	active, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
@@ -125,7 +125,7 @@ func testUserStoreSaveAndGet(t *testing.T, ss store.Store) {
 	input := newUser()
 	saved, err := ss.User().Save(ctx, input)
 	requireNoError(t, err)
-	if !model.IsValidId(saved.Id) || input.Id != "" {
+	if !model.IsValidId(saved.Id) || saved.Revision != 1 || input.Id != "" {
 		t.Fatalf("Save() saved=%#v input=%#v", saved, input)
 	}
 	got, err := ss.User().Get(ctx, saved.Id)
@@ -162,12 +162,59 @@ func testUserStoreNormalizedLookups(t *testing.T, ss store.Store) {
 func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
+	stale := *user
 	user.DisplayName = "Updated User"
 	user.EmailVerified = true
 	updated, err := ss.User().Update(ctx, user)
 	requireNoError(t, err)
-	if updated.DisplayName != "Updated User" || !updated.EmailVerified {
+	if updated.DisplayName != "Updated User" || !updated.EmailVerified || updated.Revision != user.Revision+1 {
 		t.Fatalf("Update() = %#v", updated)
+	}
+	stale.DisplayName = "Stale User"
+	if _, err := ss.User().Update(ctx, &stale); !store.IsConflict(err) {
+		t.Fatalf("stale Update() error = %v", err)
+	}
+
+	activityAt := model.GetMillis() + 100
+	requireNoError(t, ss.User().UpdateLastLogin(ctx, updated.Id, activityAt))
+	auditedCandidate := *updated
+	auditedCandidate.DisplayName = "Audited User"
+	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.Id)
+	audited, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+		User: &auditedCandidate, ExpectedRevision: updated.Revision,
+		AuditEventID: auditAttempt.Id, AuditAt: model.GetMillis(),
+	})
+	requireNoError(t, err)
+	if audited.DisplayName != "Audited User" || audited.Revision != updated.Revision+1 {
+		t.Fatalf("UpdateProfileWithAudit() = %#v", audited)
+	}
+	completed, err := ss.Audit().Get(ctx, auditAttempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("profile update audit = %#v", completed)
+	}
+
+	rolledBack := *audited
+	rolledBack.DisplayName = "Must Roll Back"
+	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+		User: &rolledBack, ExpectedRevision: audited.Revision,
+		AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+	}); err == nil {
+		t.Fatal("UpdateProfileWithAudit() succeeded without its audit attempt")
+	}
+	persisted, err := ss.User().Get(ctx, audited.Id)
+	requireNoError(t, err)
+	if persisted.DisplayName != audited.DisplayName || persisted.Revision != audited.Revision ||
+		persisted.LastLoginAt != activityAt || persisted.LastActivityAt != activityAt || persisted.UpdateAt < activityAt {
+		t.Fatalf("profile update survived audit rollback: %#v", persisted)
+	}
+
+	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.Id)
+	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+		User: updated, ExpectedRevision: updated.Revision,
+		AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis(),
+	}); !store.IsConflict(err) {
+		t.Fatalf("stale UpdateProfileWithAudit() error = %v", err)
 	}
 	missing := *updated
 	missing.Id = model.NewId()
@@ -176,14 +223,27 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	}
 }
 
+func saveUserProfileAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, userID string) *model.AuditEvent {
+	t.Helper()
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		Action:    string(model.ActionUserManage),
+		Resource:  model.Resource{Type: model.ResourceUser, Id: userID},
+		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(),
+		Status: model.AuditStatusAttempt, NodeId: "test-node",
+	})
+	requireNoError(t, err)
+	return attempt
+}
+
 func testUserStoreUpdateLastLogin(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
+	revision := user.Revision
 	at := model.GetMillis() + 100
 	requireNoError(t, ss.User().UpdateLastLogin(ctx, user.Id, at))
 	got, err := ss.User().Get(ctx, user.Id)
 	requireNoError(t, err)
-	if got.LastLoginAt != at || got.LastActivityAt != at || got.UpdateAt < at {
+	if got.LastLoginAt != at || got.LastActivityAt != at || got.UpdateAt < at || got.Revision != revision {
 		t.Fatalf("UpdateLastLogin() user = %#v", got)
 	}
 }

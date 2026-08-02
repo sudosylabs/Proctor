@@ -241,6 +241,13 @@ type UserListOptions struct {
 	IncludeDisabled bool
 }
 
+type UserProfileUpdate struct {
+	User             *model.User
+	ExpectedRevision int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
 // UserStore persists login-capable accounts without their credentials.
 type UserStore interface {
 	Save(context.Context, *model.User) (*model.User, error)
@@ -253,6 +260,7 @@ type UserStore interface {
 	GetByUsername(context.Context, string) (*model.User, error)
 	GetByEmail(context.Context, string) (*model.User, error)
 	List(context.Context, UserListOptions) ([]*model.User, error)
+	UpdateProfileWithAudit(context.Context, *UserProfileUpdate) (*model.User, error)
 	Update(context.Context, *model.User) (*model.User, error)
 	SetDisabled(context.Context, string, int64, int64) (*model.User, error)
 	DisableAndRevokeSessions(

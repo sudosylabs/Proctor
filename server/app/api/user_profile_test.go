@@ -1,0 +1,128 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
+)
+
+type userProfileHTTPApplication struct {
+	result        *model.User
+	values        []*model.User
+	searchQuery   application.SearchUsersQuery
+	updateCommand application.UpdateUserProfileCommand
+}
+
+type loginRevisionHTTPApplication struct {
+	Authentication
+	user *model.User
+}
+
+func (a *loginRevisionHTTPApplication) Login(
+	context.Context,
+	string,
+	string,
+	model.SessionClientType,
+	string,
+	string,
+	string,
+	string,
+) (*model.User, *model.Session, *model.AuthenticationTokens, *model.AppError) {
+	return a.user, &model.Session{Id: model.NewId()}, &model.AuthenticationTokens{AccessToken: "access"}, nil
+}
+
+func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ application.Invocation, query application.SearchUsersQuery) ([]*model.User, error) {
+	a.searchQuery = query
+	return a.values, nil
+}
+func (a *userProfileHTTPApplication) GetUserProfile(context.Context, application.Invocation, application.GetUserProfileQuery) (*model.User, error) {
+	return a.result, nil
+}
+func (a *userProfileHTTPApplication) UpdateUserProfile(_ context.Context, _ application.Invocation, command application.UpdateUserProfileCommand) (*model.User, error) {
+	a.updateCommand = command
+	return a.result, nil
+}
+
+func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
+	t.Parallel()
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
+	userID := model.NewId()
+	user := &model.User{Id: userID, CreateAt: 100, UpdateAt: 100, Revision: 7, Username: "student", Email: "student@example.edu", DisplayName: "Student", Locale: "en", Timezone: "UTC"}
+	profiles := &userProfileHTTPApplication{result: user}
+	transport := &academicUnitHTTPApplication{principal: principal}
+	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: profiles, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = httpAPI.Close() })
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+userID, strings.NewReader(`{"display_name":"Updated"}`))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	if profiles.updateCommand.ID != userID || profiles.updateCommand.DisplayName == nil || *profiles.updateCommand.DisplayName != "Updated" {
+		t.Fatalf("command = %#v", profiles.updateCommand)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"revision", "password", "password_hash", "external_subject", "mfa_secret", "access_token", "refresh_token"} {
+		if _, exposed := body[forbidden]; exposed {
+			t.Fatalf("sensitive field %q exposed: %#v", forbidden, body)
+		}
+	}
+}
+
+func TestLoginResponseDoesNotExposeUserRevision(t *testing.T) {
+	t.Parallel()
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	application := &loginRevisionHTTPApplication{user: &model.User{
+		Id: model.NewId(), Revision: 7, Username: "student",
+	}}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/login",
+		strings.NewReader(`{"login_id":"student","password":"password","client_type":"cli"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	loginHandler(application, logger, browserCookies{}).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	user, ok := body["user"].(map[string]any)
+	if !ok {
+		t.Fatalf("user response = %#v", body["user"])
+	}
+	if _, exposed := user["revision"]; exposed {
+		t.Fatalf("revision exposed by login: %#v", user)
+	}
+}
