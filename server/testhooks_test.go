@@ -42,6 +42,7 @@ func (s *hookStore) Session() store.SessionStore                       { return 
 func (s *hookStore) Role() store.RoleStore                             { return nil }
 func (s *hookStore) RoleBinding() store.RoleBindingStore               { return nil }
 func (s *hookStore) Audit() store.AuditStore                           { return nil }
+func (s *hookStore) Installation() store.InstallationStore             { return nil }
 func (s *hookStore) ClassMember() store.ClassMemberStore               { return nil }
 func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
 func (s *hookStore) Ping(context.Context) error                        { return nil }

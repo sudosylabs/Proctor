@@ -874,6 +874,30 @@
         }
       }
     },
+    "/api/v1/bootstrap": {
+      "get": {
+        "operationId": "getInstallationStatus", "summary": "Get installation bootstrap status",
+        "x-proctor-auth": "public",
+        "x-proctor-error-codes": ["installation.unavailable"],
+        "responses": {
+          "200": {"$ref": "#/components/responses/InstallationStatusOK"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "bootstrapInstallation", "summary": "Bootstrap the installation",
+        "x-proctor-auth": "public",
+        "x-proctor-error-codes": ["request.invalid", "installation.already_initialized", "installation.unavailable", "authentication.password.invalid", "authentication.rate_limited"],
+        "requestBody": {"$ref": "#/components/requestBodies/BootstrapInstallation"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/InstallationBootstrapCreated"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "429": {"$ref": "#/components/responses/TooManyRequests"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -1060,6 +1084,10 @@
       "CreateRoleBinding": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateRoleBindingRequest"}}}
+      },
+      "BootstrapInstallation": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BootstrapInstallationRequest"}}}
       }
     },
     "responses": {
@@ -1517,6 +1545,30 @@
           "resource": {"type": "object"}, "scope_type": {"type": "string"}, "scope_id": {"type": "string"},
           "status": {"type": "string"}, "request_id": {"type": "string"}, "node_id": {"type": "string"},
           "client_type": {"type": "string"}, "authentication_method": {"type": "string"}, "error_code": {"type": "string"}
+        }
+      },
+      "InstallationStatusResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["initialized"],
+        "properties": {"initialized": {"type": "boolean"}}
+      },
+      "BootstrapInstallationRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["institution", "administrator", "password"],
+        "properties": {
+          "institution": {"type": "object"},
+          "administrator": {"type": "object"},
+          "password": {"type": "string"}
+        }
+      },
+      "InstallationBootstrapResult": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "state": {"type": "object"},
+          "institution": {"type": "object"},
+          "administrator": {"type": "object"},
+          "role": {"type": "object"},
+          "role_binding": {"type": "object"}
         }
       },
       "AuditListResponse": {

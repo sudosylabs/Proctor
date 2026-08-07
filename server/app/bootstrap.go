@@ -10,86 +10,118 @@ package app
 import (
 	"context"
 	"errors"
-	"net/http"
+	"strings"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (a *App) GetInstallationStatus(
-	ctx context.Context,
-) (*model.InstallationStatus, *model.AppError) {
-	if a.Store() == nil || a.Store().Installation() == nil {
-		return nil, bootstrapUnavailableError(
-			"GetInstallationStatus",
-			store.NewErrNotFound("installation_store", ""),
-		)
+type GetInstallationStatusQuery struct{}
+
+type BootstrapInstallationCommand struct {
+	InstitutionName          string
+	InstitutionDisplayName   string
+	InstitutionDescription   string
+	AdministratorUsername    string
+	AdministratorEmail       string
+	AdministratorDisplayName string
+	AdministratorFirstName   string
+	AdministratorLastName    string
+	AdministratorLocale      string
+	AdministratorTimezone    string
+	Password                 string
+	Source                   string
+}
+
+type installationStore interface {
+	Get(context.Context) (*model.InstallationState, error)
+	Bootstrap(context.Context, *store.InstallationBootstrap) (*model.InstallationBootstrapResult, error)
+}
+
+type passwordHash interface {
+	Hash(string) (string, error)
+}
+
+type bootstrapRateLimiter interface {
+	Allow(context.Context, string) error
+}
+
+type bootstrapService struct {
+	installations installationStore
+	hasher        passwordHash
+	rateLimit     bootstrapRateLimiter
+	nodeID        string
+	now           func() time.Time
+}
+
+func newBootstrapService(
+	installations installationStore,
+	hasher passwordHash,
+	rateLimit bootstrapRateLimiter,
+	nodeID string,
+	now func() time.Time,
+) *bootstrapService {
+	return &bootstrapService{
+		installations: installations, hasher: hasher, rateLimit: rateLimit,
+		nodeID: nodeID, now: now,
 	}
-	state, err := a.Store().Installation().Get(ctx)
+}
+
+func (a *App) GetInstallationStatus(ctx context.Context, _ GetInstallationStatusQuery) (*model.InstallationStatus, error) {
+	return a.bootstrap.GetStatus(ctx)
+}
+
+func (s *bootstrapService) GetStatus(ctx context.Context) (*model.InstallationStatus, error) {
+	state, err := s.installations.Get(ctx)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return &model.InstallationStatus{Initialized: false}, nil
 		}
-		return nil, bootstrapUnavailableError("GetInstallationStatus", err)
+		return nil, NewError("installation.unavailable").Wrap(err)
 	}
 	if !state.IsValid() {
-		return nil, bootstrapUnavailableError(
-			"GetInstallationStatus",
-			errors.New("persisted installation state is invalid"),
-		)
+		return nil, NewError("installation.unavailable").Wrap(errors.New("persisted installation state is invalid"))
 	}
 	return &model.InstallationStatus{Initialized: true}, nil
 }
 
-func (a *App) BootstrapInstallation(
-	ctx context.Context,
-	institution *model.Institution,
-	administrator *model.User,
-	password string,
-	metadata model.RequestMetadata,
-	source string,
-) (*model.InstallationBootstrapResult, *model.AppError) {
-	if institution == nil || administrator == nil {
-		return nil, model.NewAppError(
-			"BootstrapInstallation", "request.invalid", nil, "", http.StatusBadRequest,
-		).WithSafeFields(map[string]string{"field": "bootstrap"})
+func (a *App) BootstrapInstallation(ctx context.Context, invocation Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+	return a.bootstrap.Bootstrap(ctx, invocation, command)
+}
+
+func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+	if strings.TrimSpace(command.InstitutionName) == "" || strings.TrimSpace(command.AdministratorUsername) == "" ||
+		strings.TrimSpace(command.AdministratorEmail) == "" || command.Password == "" {
+		return nil, NewError("request.invalid").WithField("field", "bootstrap")
 	}
-	if a.Store() == nil || a.Store().Installation() == nil {
-		return nil, bootstrapUnavailableError(
-			"BootstrapInstallation",
-			store.NewErrNotFound("installation_store", ""),
-		)
-	}
-	status, appErr := a.GetInstallationStatus(ctx)
-	if appErr != nil {
-		return nil, appErr
+	status, err := s.GetStatus(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if status.Initialized {
-		return nil, model.NewAppError(
-			"BootstrapInstallation",
-			"installation.already_initialized",
-			nil,
-			"",
-			http.StatusConflict,
-		)
+		return nil, NewError("installation.already_initialized")
 	}
-	if appErr := a.checkBootstrapRateLimit(ctx, source); appErr != nil {
-		return nil, appErr
+	if err := s.rateLimit.Allow(ctx, command.Source); err != nil {
+		return nil, err
 	}
-	hash, err := a.authentication.hasher.Hash(password)
+	hash, err := s.hasher.Hash(command.Password)
 	if err != nil {
-		return nil, model.NewAppError(
-			"BootstrapInstallation",
-			"authentication.password.invalid",
-			nil,
-			"",
-			http.StatusBadRequest,
-		).WithSafeFields(map[string]string{"field": "password"})
+		return nil, NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
 	}
-	result, err := a.Store().Installation().Bootstrap(ctx, &store.InstallationBootstrap{
-		Institution:   institution,
-		Administrator: administrator,
-		PasswordHash:  hash,
+	metadata := invocation.RequestMetadata()
+	result, err := s.installations.Bootstrap(ctx, &store.InstallationBootstrap{
+		Institution: &model.Institution{
+			Name: command.InstitutionName, DisplayName: command.InstitutionDisplayName,
+			Description: command.InstitutionDescription,
+		},
+		Administrator: &model.User{
+			Username: command.AdministratorUsername, Email: command.AdministratorEmail,
+			DisplayName: command.AdministratorDisplayName, FirstName: command.AdministratorFirstName,
+			LastName: command.AdministratorLastName, Locale: command.AdministratorLocale,
+			Timezone: command.AdministratorTimezone,
+		},
+		PasswordHash: hash,
 		Role: &model.Role{
 			Name:        model.SystemAdministratorRoleName,
 			DisplayName: "System Administrator",
@@ -101,7 +133,7 @@ func (a *App) BootstrapInstallation(
 		AuditEvent: &model.AuditEvent{
 			Action:     "installation.bootstrap",
 			RequestId:  metadata.RequestId,
-			NodeId:     a.Cluster().NodeID(),
+			NodeId:     s.nodeID,
 			ClientType: "bootstrap",
 			AuthMethod: "bootstrap",
 			IPAddress:  metadata.IPAddress,
@@ -109,49 +141,32 @@ func (a *App) BootstrapInstallation(
 		},
 	})
 	if err != nil {
-		var conflict *store.ErrConflict
-		if errors.As(err, &conflict) {
-			return nil, model.NewAppError(
-				"BootstrapInstallation",
-				"installation.already_initialized",
-				nil,
-				"",
-				http.StatusConflict,
-			).Wrap(err)
+		if store.IsConflict(err) {
+			return nil, NewError("installation.already_initialized").Wrap(err)
 		}
-		return nil, bootstrapUnavailableError("BootstrapInstallation", err)
+		return nil, NewError("installation.unavailable").Wrap(err)
 	}
 	return result, nil
 }
 
-func (a *App) checkBootstrapRateLimit(
-	ctx context.Context,
-	source string,
-) *model.AppError {
-	settings := a.Config().Authentication.LoginRateLimit
-	key := "authentication/bootstrap/source/" + digestCacheKey(normalizeLoginSource(source))
-	count, err := a.Cache().Add(ctx, key, 1, settings.Window.Duration)
-	if err != nil {
-		return rateLimitUnavailableError("BootstrapInstallation.rate_limit", err)
-	}
-	if count > int64(settings.MaximumSourceAttempts) {
-		return model.NewAppError(
-			"BootstrapInstallation",
-			"authentication.rate_limited",
-			nil,
-			"",
-			http.StatusTooManyRequests,
-		)
-	}
-	return nil
+type bootstrapCounterCache interface {
+	Add(context.Context, string, int64, time.Duration) (int64, error)
 }
 
-func bootstrapUnavailableError(where string, err error) *model.AppError {
-	return model.NewAppError(
-		where,
-		"installation.unavailable",
-		nil,
-		"",
-		http.StatusInternalServerError,
-	).Wrap(err)
+type bootstrapRateLimit struct {
+	cache                 bootstrapCounterCache
+	window                time.Duration
+	maximumSourceAttempts int
+}
+
+func (r bootstrapRateLimit) Allow(ctx context.Context, source string) error {
+	key := "authentication/bootstrap/source/" + digestCacheKey(normalizeLoginSource(source))
+	count, err := r.cache.Add(ctx, key, 1, r.window)
+	if err != nil {
+		return NewError("administration.unavailable").Wrap(err)
+	}
+	if count > int64(r.maximumSourceAttempts) {
+		return NewError("authentication.rate_limited")
+	}
+	return nil
 }

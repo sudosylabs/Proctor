@@ -40,6 +40,7 @@ type App struct {
 	roles                  *roleService
 	roleBindings           *roleBindingService
 	auditListings          *auditListingService
+	bootstrap              *bootstrapService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -156,6 +157,18 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		applicationPlatform.Store().Audit(),
 		auditListingAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution()},
 	)
+	loginRateLimit := applicationPlatform.Config().Authentication.LoginRateLimit
+	bootstrap := newBootstrapService(
+		applicationPlatform.Store().Installation(),
+		authentication.hasher,
+		bootstrapRateLimit{
+			cache:                 applicationPlatform.Cache(),
+			window:                loginRateLimit.Window.Duration,
+			maximumSourceAttempts: loginRateLimit.MaximumSourceAttempts,
+		},
+		applicationPlatform.Cluster().NodeID(),
+		time.Now,
+	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
@@ -175,6 +188,7 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		roles:                  roles,
 		roleBindings:           roleBindings,
 		auditListings:          auditListings,
+		bootstrap:              bootstrap,
 		audit:                  audit, realtime: realtime,
 	}, nil
 }

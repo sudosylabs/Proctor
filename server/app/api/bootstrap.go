@@ -6,6 +6,7 @@ package api
 import (
 	"net/http"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -31,6 +32,10 @@ type bootstrapAdministratorRequest struct {
 	Timezone    string `json:"timezone,omitempty"`
 }
 
+type installationStatusResponse struct {
+	Initialized bool `json:"initialized"`
+}
+
 func (a *API) InitBootstrap() error {
 	if err := a.Register(
 		a.BaseRoutes.Bootstrap,
@@ -49,52 +54,46 @@ func (a *API) InitBootstrap() error {
 }
 
 func (a *API) getBootstrapStatus(writer http.ResponseWriter, request *http.Request) {
-	status, appErr := a.application.GetInstallationStatus(request.Context())
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	status, err := a.bootstrap.GetInstallationStatus(request.Context(), application.GetInstallationStatusQuery{})
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, status)
+	writeJSON(writer, http.StatusOK, installationStatusResponse{Initialized: status.Initialized})
 }
 
 func (a *API) bootstrapInstallation(writer http.ResponseWriter, request *http.Request) {
 	var input bootstrapRequest
 	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError("bootstrapInstallation", err))
+		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
 		return
 	}
-	result, appErr := a.application.BootstrapInstallation(
+	if input.Institution == nil || input.Administrator == nil {
+		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "bootstrap"))
+		return
+	}
+	result, err := a.bootstrap.BootstrapInstallation(
 		request.Context(),
-		bootstrapInstitution(input.Institution),
-		bootstrapAdministrator(input.Administrator),
-		input.Password,
-		RequestMetadata(request.Context()),
-		request.RemoteAddr,
+		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+		application.BootstrapInstallationCommand{
+			InstitutionName:          input.Institution.Name,
+			InstitutionDisplayName:   input.Institution.DisplayName,
+			InstitutionDescription:   input.Institution.Description,
+			AdministratorUsername:    input.Administrator.Username,
+			AdministratorEmail:       input.Administrator.Email,
+			AdministratorDisplayName: input.Administrator.DisplayName,
+			AdministratorFirstName:   input.Administrator.FirstName,
+			AdministratorLastName:    input.Administrator.LastName,
+			AdministratorLocale:      input.Administrator.Locale,
+			AdministratorTimezone:    input.Administrator.Timezone,
+			Password:                 input.Password,
+			Source:                   request.RemoteAddr,
+		},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
+	// Preserve existing v1 bootstrap response shape for integration clients.
 	writeJSON(writer, http.StatusCreated, result)
-}
-
-func bootstrapInstitution(input *bootstrapInstitutionRequest) *model.Institution {
-	if input == nil {
-		return nil
-	}
-	return &model.Institution{
-		Name: input.Name, DisplayName: input.DisplayName,
-		Description: input.Description,
-	}
-}
-
-func bootstrapAdministrator(input *bootstrapAdministratorRequest) *model.User {
-	if input == nil {
-		return nil
-	}
-	return &model.User{
-		Username: input.Username, Email: input.Email, DisplayName: input.DisplayName,
-		FirstName: input.FirstName, LastName: input.LastName,
-		Locale: input.Locale, Timezone: input.Timezone,
-	}
 }

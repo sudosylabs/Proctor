@@ -113,6 +113,7 @@ func assembleRuntime(
 		Roles:                   application,
 		RoleBindings:            application,
 		AuditListings:           application,
+		Bootstrap:               application,
 		BuildInfo:               buildInfo,
 		PublicURL:               cfg.Server.PublicURL,
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,

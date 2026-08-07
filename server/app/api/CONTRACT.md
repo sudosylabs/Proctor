@@ -2,7 +2,7 @@
 
 [`../../openapi.json`](../../openapi.json) is the reviewed public HTTP contract.
 Its coverage began with the migrated Academic Unit reference slice and now
-includes Institution, Programme, Programme Level, Academic Period, Class, Affiliation, Academic Unit Member, Class Member enrollment, User profiles, account enablement, administrative Session operations, Role administration, Role Binding administration, and Audit listing without weakening existing contracts.
+includes Institution, Programme, Programme Level, Academic Period, Class, Affiliation, Academic Unit Member, Class Member enrollment, User profiles, account enablement, administrative Session operations, Role administration, Role Binding administration, Audit listing, and installation bootstrap without weakening existing contracts.
 
 Use the Academic Unit slice as the conceptual pattern for later capabilities:
 

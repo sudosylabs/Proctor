@@ -125,6 +125,7 @@ type Options struct {
 	Roles                   RoleApplication
 	RoleBindings            RoleBindingApplication
 	AuditListings           AuditListingApplication
+	Bootstrap               BootstrapApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -357,16 +358,9 @@ type AuditListingApplication interface {
 	ListAuditEvents(context.Context, application.Invocation, application.ListAuditEventsQuery) ([]*model.AuditEvent, error)
 }
 
-type Bootstrap interface {
-	GetInstallationStatus(context.Context) (*model.InstallationStatus, *model.AppError)
-	BootstrapInstallation(
-		context.Context,
-		*model.Institution,
-		*model.User,
-		string,
-		model.RequestMetadata,
-		string,
-	) (*model.InstallationBootstrapResult, *model.AppError)
+type BootstrapApplication interface {
+	GetInstallationStatus(context.Context, application.GetInstallationStatusQuery) (*model.InstallationStatus, error)
+	BootstrapInstallation(context.Context, application.Invocation, application.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error)
 }
 
 type RoleApplication interface {
@@ -403,7 +397,6 @@ type Application interface {
 	Sessions
 	PersonalAccessTokens
 	MFA
-	Bootstrap
 	InstitutionApplication
 	Realtime
 }
@@ -428,6 +421,7 @@ type API struct {
 	roles                   RoleApplication
 	roleBindings            RoleBindingApplication
 	auditListings           AuditListingApplication
+	bootstrap               BootstrapApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -495,6 +489,9 @@ func New(options Options) (*API, error) {
 	if options.AuditListings == nil {
 		return nil, errors.New("audit listing application is required")
 	}
+	if options.Bootstrap == nil {
+		return nil, errors.New("bootstrap application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -526,6 +523,7 @@ func New(options Options) (*API, error) {
 		roles:                   options.Roles,
 		roleBindings:            options.RoleBindings,
 		auditListings:           options.AuditListings,
+		bootstrap:               options.Bootstrap,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,
