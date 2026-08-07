@@ -820,6 +820,60 @@
         }
       }
     },
+    "/api/v1/role-bindings": {
+      "get": {
+        "operationId": "listRoleBindings", "summary": "List Role Bindings by user or scope",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/RoleBindingListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createRoleBinding", "summary": "Create a Role Binding",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_requires_institution_scope", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateRoleBinding"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/RoleBindingCreated"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/role-bindings/{role_binding_id}": {
+      "parameters": [{"$ref": "#/components/parameters/RoleBindingID"}],
+      "delete": {
+        "operationId": "endRoleBinding", "summary": "End a Role Binding",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/RoleBindingEnded"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/audits": {
+      "get": {
+        "operationId": "listAuditEvents", "summary": "List Audit Events",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.query.invalid", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/AuditListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -1002,6 +1056,10 @@
       "UpdateRole": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateRoleRequest"}}}
+      },
+      "CreateRoleBinding": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateRoleBindingRequest"}}}
       }
     },
     "responses": {
@@ -1426,6 +1484,47 @@
         "properties": {
           "display_name": {"type": "string"}, "description": {"type": "string"},
           "permissions": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "RoleBindingResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "user_id", "role_id", "scope_type", "scope_id", "start_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "role_id": {"$ref": "#/components/schemas/ID"},
+          "scope_type": {"type": "string"}, "scope_id": {"$ref": "#/components/schemas/ID"},
+          "start_at": {"type": "integer", "format": "int64"}, "end_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "RoleBindingListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/RoleBindingResponse"}},
+      "CreateRoleBindingRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["user_id", "role_id", "scope_type", "scope_id"],
+        "properties": {
+          "user_id": {"$ref": "#/components/schemas/ID"}, "role_id": {"$ref": "#/components/schemas/ID"},
+          "scope_type": {"type": "string"}, "scope_id": {"$ref": "#/components/schemas/ID"},
+          "start_at": {"type": "integer", "format": "int64"}, "end_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "AuditEventResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "action", "resource", "status"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "actor_id": {"type": "string"},
+          "session_id": {"type": "string"}, "action": {"type": "string"},
+          "resource": {"type": "object"}, "scope_type": {"type": "string"}, "scope_id": {"type": "string"},
+          "status": {"type": "string"}, "request_id": {"type": "string"}, "node_id": {"type": "string"},
+          "client_type": {"type": "string"}, "authentication_method": {"type": "string"}, "error_code": {"type": "string"}
+        }
+      },
+      "AuditListResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["events"],
+        "properties": {
+          "events": {"type": "array", "items": {"$ref": "#/components/schemas/AuditEventResponse"}},
+          "next_cursor": {"type": "string"}
         }
       },
       "UpdateUserProfileRequest": {

@@ -63,7 +63,6 @@ app/personal_access_token.go	net/http
 app/realtime.go	github.com/sudosylabs/proctor/server/mlog
 app/realtime.go	github.com/sudosylabs/proctor/server/platform
 app/realtime.go	net/http
-app/role_administration.go	net/http
 app/server.go	github.com/sudosylabs/proctor/packages/vfs
 app/server.go	github.com/sudosylabs/proctor/server/app/api
 app/server.go	github.com/sudosylabs/proctor/server/config

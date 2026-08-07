@@ -41,7 +41,7 @@ func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 		Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{},
 		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
 		UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{},
-		SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: roles,
+		SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: roles, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{},
 		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
 		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
 	})

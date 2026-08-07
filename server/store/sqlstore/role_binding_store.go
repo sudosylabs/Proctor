@@ -69,28 +69,72 @@ func (s SqlRoleBindingStore) Save(
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, appErr
 	}
-
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin role binding save: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := insertRoleBinding(ctx, tx, &candidate); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit role binding save: %w", err)
+	}
+	return &candidate, nil
+}
+
+func (s SqlRoleBindingStore) SaveWithAudit(
+	ctx context.Context,
+	input *store.RoleBindingCreation,
+) (*model.RoleBinding, error) {
+	if input == nil || input.Binding == nil || input.Binding.Id != "" ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("role_binding", "creation", nil)
+	}
+	candidate := *input.Binding
+	candidate.PreSave()
+	if appErr := candidate.IsValid(); appErr != nil {
+		return nil, store.NewErrInvalidInput("role_binding", "value", nil).Wrap(appErr)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin audited role binding save: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := insertRoleBinding(ctx, tx, &candidate); err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err := completeAuditEvent(
+		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+	); err != nil {
+		return nil, fmt.Errorf("complete role binding creation audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit audited role binding save: %w", err)
+	}
+	return &candidate, nil
+}
+
+func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.RoleBinding) error {
 	if candidate.ScopeType == model.RoleScopeClass {
 		if err := lockClassLifecycle(ctx, tx); err != nil {
-			return nil, err
+			return err
 		}
 	}
-
 	lockKey := candidate.UserId + ":" + candidate.RoleId + ":" +
 		string(candidate.ScopeType) + ":" + candidate.ScopeId
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
-		return nil, fmt.Errorf("lock role binding grant: %w", err)
+		return fmt.Errorf("lock role binding grant: %w", err)
 	}
-	if err := validateRoleBindingReferences(ctx, tx, &candidate); err != nil {
-		return nil, err
+	if err := validateRoleBindingReferences(ctx, tx, candidate); err != nil {
+		return err
 	}
-	if err := validateSystemAdministratorScope(ctx, tx, &candidate); err != nil {
-		return nil, err
+	if err := validateSystemAdministratorScope(ctx, tx, candidate); err != nil {
+		return err
 	}
 	var overlap bool
 	if err := tx.Get(ctx, &overlap, `
@@ -103,14 +147,14 @@ func (s SqlRoleBindingStore) Save(
 			   AND (end_at = 0 OR end_at > $5)
 		)`, candidate.UserId, candidate.RoleId, candidate.ScopeType,
 		candidate.ScopeId, candidate.StartAt, candidate.EndAt); err != nil {
-		return nil, fmt.Errorf("check role binding overlap: %w", err)
+		return fmt.Errorf("check role binding overlap: %w", err)
 	}
 	if overlap {
-		return nil, store.NewErrConflict(
+		return store.NewErrConflict(
 			"role_binding", "role_bindings_effective_range_key", nil,
 		)
 	}
-	row := newRoleBindingRow(&candidate)
+	row := newRoleBindingRow(candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO role_bindings (
 			id, create_at, update_at, delete_at, user_id, role_id,
@@ -119,15 +163,12 @@ func (s SqlRoleBindingStore) Save(
 			:id, :create_at, :update_at, :delete_at, :user_id, :role_id,
 			:scope_type, :scope_id, :start_at, :end_at
 		)`, &row); err != nil {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"save role binding: %w",
 			translateError("role_binding", candidate.Id, err),
 		)
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit role binding save: %w", err)
-	}
-	return &candidate, nil
+	return nil
 }
 
 func validateRoleBindingReferences(
@@ -268,7 +309,49 @@ func (s SqlRoleBindingStore) End(
 		return nil, fmt.Errorf("begin role binding end: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	ended, err := endRoleBinding(ctx, tx, id, endAt)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit role binding end: %w", err)
+	}
+	return ended, nil
+}
 
+func (s SqlRoleBindingStore) EndWithAudit(
+	ctx context.Context,
+	input *store.RoleBindingEnd,
+) (*model.RoleBinding, error) {
+	if input == nil || !model.IsValidId(input.ID) || input.EndAt <= 0 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("role_binding", "end", nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin audited role binding end: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	ended, err := endRoleBinding(ctx, tx, input.ID, input.EndAt)
+	if err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(ended.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err := completeAuditEvent(
+		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+	); err != nil {
+		return nil, fmt.Errorf("complete role binding end audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit audited role binding end: %w", err)
+	}
+	return ended, nil
+}
+
+func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int64) (*model.RoleBinding, error) {
 	var current struct {
 		roleBindingRow
 		RoleName string `db:"role_name"`
@@ -331,9 +414,6 @@ func (s SqlRoleBindingStore) End(
 		RETURNING id, create_at, update_at, delete_at, user_id, role_id,
 		          scope_type, scope_id, start_at, end_at`, endAt, id); err != nil {
 		return nil, translateError("role_binding", id, err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit role binding end: %w", err)
 	}
 	return row.model(), nil
 }

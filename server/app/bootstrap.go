@@ -50,7 +50,9 @@ func (a *App) BootstrapInstallation(
 	source string,
 ) (*model.InstallationBootstrapResult, *model.AppError) {
 	if institution == nil || administrator == nil {
-		return nil, invalidAdministrationRequest("BootstrapInstallation", "bootstrap")
+		return nil, model.NewAppError(
+			"BootstrapInstallation", "request.invalid", nil, "", http.StatusBadRequest,
+		).WithSafeFields(map[string]string{"field": "bootstrap"})
 	}
 	if a.Store() == nil || a.Store().Installation() == nil {
 		return nil, bootstrapUnavailableError(

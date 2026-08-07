@@ -4,9 +4,9 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -17,6 +17,35 @@ type createRoleBindingRequest struct {
 	ScopeId   string              `json:"scope_id"`
 	StartAt   int64               `json:"start_at"`
 	EndAt     int64               `json:"end_at,omitempty"`
+}
+
+type roleBindingResponse struct {
+	ID        string              `json:"id"`
+	CreateAt  int64               `json:"create_at"`
+	UpdateAt  int64               `json:"update_at"`
+	DeleteAt  int64               `json:"delete_at"`
+	UserID    string              `json:"user_id"`
+	RoleID    string              `json:"role_id"`
+	ScopeType model.RoleScopeType `json:"scope_type"`
+	ScopeID   string              `json:"scope_id"`
+	StartAt   int64               `json:"start_at"`
+	EndAt     int64               `json:"end_at,omitempty"`
+}
+
+func roleBindingResponseFromModel(binding *model.RoleBinding) roleBindingResponse {
+	return roleBindingResponse{
+		ID: binding.Id, CreateAt: binding.CreateAt, UpdateAt: binding.UpdateAt, DeleteAt: binding.DeleteAt,
+		UserID: binding.UserId, RoleID: binding.RoleId, ScopeType: binding.ScopeType, ScopeID: binding.ScopeId,
+		StartAt: binding.StartAt, EndAt: binding.EndAt,
+	}
+}
+
+func roleBindingResponsesFromModels(bindings []*model.RoleBinding) []roleBindingResponse {
+	result := make([]roleBindingResponse, 0, len(bindings))
+	for _, binding := range bindings {
+		result = append(result, roleBindingResponseFromModel(binding))
+	}
+	return result
 }
 
 func (a *API) InitRoleBindings() error {
@@ -50,46 +79,20 @@ func (a *API) listRoleBindings(writer http.ResponseWriter, request *http.Request
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
-	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
-		return
-	}
-	request = request.WithContext(authorizedContext)
 	values := request.URL.Query()
-	userID := values.Get("user_id")
-	scopeType := model.RoleScopeType(values.Get("scope_type"))
-	scopeID := values.Get("scope_id")
-	var bindings []*model.RoleBinding
-	switch {
-	case userID != "" && scopeType == "" && scopeID == "" && model.IsValidId(userID):
-		bindings, appErr = a.application.ListRoleBindingsForUser(
-			request.Context(), principal, RequestMetadata(request.Context()), userID,
-		)
-	case userID == "" && scopeType.IsValid() && model.IsValidId(scopeID):
-		bindings, appErr = a.application.ListRoleBindingsForScope(
-			request.Context(), principal, RequestMetadata(request.Context()), scopeType, scopeID,
-		)
-	default:
-		WriteError(
-			writer,
-			request,
-			invalidRequestError(
-				"listRoleBindings",
-				errors.New("provide either user_id or scope_type and scope_id"),
-			),
-		)
+	bindings, err := a.roleBindings.ListRoleBindings(
+		request.Context(),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.ListRoleBindingsQuery{
+			UserID: values.Get("user_id"), ScopeType: model.RoleScopeType(values.Get("scope_type")),
+			ScopeID: values.Get("scope_id"),
+		},
+	)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, bindings)
+	writeJSON(writer, http.StatusOK, roleBindingResponsesFromModels(bindings))
 }
 
 func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Request) {
@@ -98,36 +101,24 @@ func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Reques
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
-	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
-		return
-	}
-	request = request.WithContext(authorizedContext)
 	var input createRoleBindingRequest
 	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError("createRoleBinding", err))
+		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
 		return
 	}
-	saved, appErr := a.application.CreateRoleBinding(
+	saved, err := a.roleBindings.CreateRoleBinding(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		&model.RoleBinding{
-			UserId: input.UserId, RoleId: input.RoleId,
-			ScopeType: input.ScopeType, ScopeId: input.ScopeId,
-			StartAt: input.StartAt, EndAt: input.EndAt,
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.CreateRoleBindingCommand{
+			UserID: input.UserId, RoleID: input.RoleId, ScopeType: input.ScopeType,
+			ScopeID: input.ScopeId, StartAt: input.StartAt, EndAt: input.EndAt,
 		},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	writeJSON(writer, http.StatusCreated, saved)
+	writeJSON(writer, http.StatusCreated, roleBindingResponseFromModel(saved))
 }
 
 func (a *API) endRoleBinding(writer http.ResponseWriter, request *http.Request) {
@@ -135,24 +126,16 @@ func (a *API) endRoleBinding(writer http.ResponseWriter, request *http.Request) 
 	if !ok {
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+	ended, err := a.roleBindings.EndRoleBinding(
 		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.EndRoleBindingCommand{ID: bindingID},
 	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	request = request.WithContext(authorizedContext)
-	ended, appErr := a.application.EndRoleBinding(
-		request.Context(), principal, RequestMetadata(request.Context()), bindingID,
-	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, ended)
+	writeJSON(writer, http.StatusOK, roleBindingResponseFromModel(ended))
 }
 
 func principalAndRoleBindingId(

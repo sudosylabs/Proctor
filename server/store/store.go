@@ -632,16 +632,35 @@ type RoleStore interface {
 	DeleteWithAudit(context.Context, *RoleDeletion) (*model.Role, error)
 }
 
+// RoleBindingCreation is the durable input for creating a binding under an
+// already-persisted audit attempt.
+type RoleBindingCreation struct {
+	Binding      *model.RoleBinding
+	AuditEventID string
+	AuditAt      int64
+}
+
+// RoleBindingEnd is the durable input for ending a binding under an
+// already-persisted audit attempt.
+type RoleBindingEnd struct {
+	ID           string
+	EndAt        int64
+	AuditEventID string
+	AuditAt      int64
+}
+
 // RoleBindingStore persists time-bounded role assignments. Scope references
 // are validated transactionally because PostgreSQL cannot express a foreign
 // key whose target table depends on scope_type.
 type RoleBindingStore interface {
 	Save(context.Context, *model.RoleBinding) (*model.RoleBinding, error)
+	SaveWithAudit(context.Context, *RoleBindingCreation) (*model.RoleBinding, error)
 	Get(context.Context, string) (*model.RoleBinding, error)
 	ListByUser(context.Context, string) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.RoleBinding, error)
 	End(context.Context, string, int64) (*model.RoleBinding, error)
+	EndWithAudit(context.Context, *RoleBindingEnd) (*model.RoleBinding, error)
 }
 
 type AuditListOptions struct {

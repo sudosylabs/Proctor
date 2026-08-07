@@ -123,6 +123,8 @@ type Options struct {
 	AccountStates           AccountStateApplication
 	SessionAdministrations  SessionAdministrationApplication
 	Roles                   RoleApplication
+	RoleBindings            RoleBindingApplication
+	AuditListings           AuditListingApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -351,13 +353,8 @@ type MFA interface {
 	) *model.AppError
 }
 
-type Audits interface {
-	ListAuditEvents(
-		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		model.AuditQuery,
-	) ([]*model.AuditEvent, *model.AppError)
+type AuditListingApplication interface {
+	ListAuditEvents(context.Context, application.Invocation, application.ListAuditEventsQuery) ([]*model.AuditEvent, error)
 }
 
 type Bootstrap interface {
@@ -380,32 +377,10 @@ type RoleApplication interface {
 	DeleteRole(context.Context, application.Invocation, application.DeleteRoleCommand) error
 }
 
-type RoleBindings interface {
-	ListRoleBindingsForUser(
-		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) ([]*model.RoleBinding, *model.AppError)
-	ListRoleBindingsForScope(
-		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		model.RoleScopeType,
-		string,
-	) ([]*model.RoleBinding, *model.AppError)
-	CreateRoleBinding(
-		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		*model.RoleBinding,
-	) (*model.RoleBinding, *model.AppError)
-	EndRoleBinding(
-		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) (*model.RoleBinding, *model.AppError)
+type RoleBindingApplication interface {
+	ListRoleBindings(context.Context, application.Invocation, application.ListRoleBindingsQuery) ([]*model.RoleBinding, error)
+	CreateRoleBinding(context.Context, application.Invocation, application.CreateRoleBindingCommand) (*model.RoleBinding, error)
+	EndRoleBinding(context.Context, application.Invocation, application.EndRoleBindingCommand) (*model.RoleBinding, error)
 }
 
 type Realtime interface {
@@ -428,9 +403,7 @@ type Application interface {
 	Sessions
 	PersonalAccessTokens
 	MFA
-	Audits
 	Bootstrap
-	RoleBindings
 	InstitutionApplication
 	Realtime
 }
@@ -453,6 +426,8 @@ type API struct {
 	accountStates           AccountStateApplication
 	sessionAdministrations  SessionAdministrationApplication
 	roles                   RoleApplication
+	roleBindings            RoleBindingApplication
+	auditListings           AuditListingApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -514,6 +489,12 @@ func New(options Options) (*API, error) {
 	if options.Roles == nil {
 		return nil, errors.New("role application is required")
 	}
+	if options.RoleBindings == nil {
+		return nil, errors.New("role binding application is required")
+	}
+	if options.AuditListings == nil {
+		return nil, errors.New("audit listing application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -543,6 +524,8 @@ func New(options Options) (*API, error) {
 		accountStates:           options.AccountStates,
 		sessionAdministrations:  options.SessionAdministrations,
 		roles:                   options.Roles,
+		roleBindings:            options.RoleBindings,
+		auditListings:           options.AuditListings,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,

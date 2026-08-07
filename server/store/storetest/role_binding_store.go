@@ -14,6 +14,26 @@ import (
 )
 
 func TestRoleBindingStore(t *testing.T, ss store.Store) {
+	t.Run("AuditedMutations", func(t *testing.T) {
+		ctx := context.Background()
+		institution := saveInstitution(t, ctx, ss)
+		user := saveUser(t, ctx, ss)
+		role, err := ss.Role().Save(ctx, &model.Role{Name: "audited-binding-role", DisplayName: "Audited", Permissions: []string{string(model.ActionClassView)}})
+		requireNoError(t, err)
+		at := model.GetMillis()
+		if _, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{Binding: &model.RoleBinding{UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id, StartAt: at}, AuditEventID: model.NewId(), AuditAt: at}); err == nil {
+			t.Fatal("SaveWithAudit succeeded without audit attempt")
+		}
+		attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRoleManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+		requireNoError(t, err)
+		saved, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{Binding: &model.RoleBinding{UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id, StartAt: at}, AuditEventID: attempt.Id, AuditAt: at})
+		requireNoError(t, err)
+		endAttempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRoleManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+		requireNoError(t, err)
+		ended, err := ss.RoleBinding().EndWithAudit(ctx, &store.RoleBindingEnd{ID: saved.Id, EndAt: at + 1, AuditEventID: endAttempt.Id, AuditAt: at + 1})
+		requireNoError(t, err)
+		if ended.EndAt != at+1 { t.Fatalf("EndWithAudit = %#v", ended) }
+	})
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	user := saveUser(t, ctx, ss)

@@ -38,6 +38,8 @@ type App struct {
 	accountStates          *accountStateService
 	sessionAdministrations *sessionAdministrationService
 	roles                  *roleService
+	roleBindings           *roleBindingService
+	auditListings          *auditListingService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -142,6 +144,18 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		roleRealtimeEffects{realtime: realtime},
 		time.Now,
 	)
+	roleBindings := newRoleBindingService(
+		applicationPlatform.Store().RoleBinding(),
+		applicationPlatform.Store().Role(),
+		roleAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution()},
+		mutationAuditAdapter{audit: audit},
+		roleBindingRealtimeEffects{realtime: realtime},
+		time.Now,
+	)
+	auditListings := newAuditListingService(
+		applicationPlatform.Store().Audit(),
+		auditListingAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution()},
+	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
@@ -159,25 +173,10 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		accountStates:          accountStates,
 		sessionAdministrations: sessionAdministrations,
 		roles:                  roles,
+		roleBindings:           roleBindings,
+		auditListings:          auditListings,
 		audit:                  audit, realtime: realtime,
 	}, nil
-}
-
-func (a *App) ListAuditEvents(
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	query model.AuditQuery,
-) ([]*model.AuditEvent, *model.AppError) {
-	if _, appErr := a.authorizePrincipalToSystem(
-		ctx,
-		principal,
-		model.ActionAuditView,
-		metadata,
-	); appErr != nil {
-		return nil, appErr
-	}
-	return a.audit.List(ctx, query)
 }
 
 func (a *App) Can(
