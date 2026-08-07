@@ -6,6 +6,7 @@ package api
 import (
 	"net/http"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -63,17 +64,16 @@ func (a *API) beginExternalAuthentication(
 	if params.ClientType != "" {
 		clientType = model.SessionClientType(params.ClientType)
 	}
-	start, appErr := a.application.BeginExternalAuthentication(
+	start, err := a.application.BeginExternalAuthentication(
 		request.Context(),
-		providerID,
-		params.ReturnTo,
-		clientType,
-		params.DeviceId,
-		params.DeviceName,
-		request.RemoteAddr,
+		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+		application.BeginExternalAuthenticationCommand{
+			ProviderID: providerID, ReturnTo: params.ReturnTo, ClientType: clientType,
+			DeviceID: params.DeviceId, DeviceName: params.DeviceName, Source: request.RemoteAddr,
+		},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	a.cookies.attachExternalLoginBinding(
@@ -122,15 +122,16 @@ func (a *API) completeExternalAuthentication(
 		WriteError(writer, request, appErr)
 		return
 	}
-	completion, appErr := a.application.CompleteExternalAuthentication(
+	completion, err := a.application.CompleteExternalAuthentication(
 		request.Context(),
-		providerID,
-		binding,
-		callback,
-		RequestMetadata(request.Context()),
+		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+		application.CompleteExternalAuthenticationCommand{
+			ProviderID: providerID, Binding: binding, Callback: callback,
+			Source: request.RemoteAddr,
+		},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	a.cookies.attach(writer, completion.Tokens)

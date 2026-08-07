@@ -178,20 +178,14 @@ type ExternalAuthentication interface {
 	ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
 	BeginExternalAuthentication(
 		context.Context,
-		string,
-		string,
-		model.SessionClientType,
-		string,
-		string,
-		string,
-	) (*model.ExternalAuthenticationStart, *model.AppError)
+		application.Invocation,
+		application.BeginExternalAuthenticationCommand,
+	) (*model.ExternalAuthenticationStart, error)
 	CompleteExternalAuthentication(
 		context.Context,
-		string,
-		string,
-		model.ExternalAuthenticationCallback,
-		model.RequestMetadata,
-	) (*model.ExternalAuthenticationCompletion, *model.AppError)
+		application.Invocation,
+		application.CompleteExternalAuthenticationCommand,
+	) (*model.ExternalAuthenticationCompletion, error)
 }
 
 type AccountStateApplication interface {

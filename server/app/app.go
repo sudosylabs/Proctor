@@ -89,9 +89,23 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		applicationPlatform.Cluster().NodeID(),
 	)
 	externalAuthentication := newExternalAuthenticationService(
-		applicationPlatform,
+		platformExternalProviders{service: applicationPlatform},
+		applicationPlatform.Store(),
+		platformAuthenticationCache{cache: applicationPlatform.Cache()},
 		authentication,
 		audit,
+		ExternalAuthenticationPolicy{
+			PublicURL:     applicationPlatform.Config().Server.PublicURL,
+			LoginStateTTL: authSettings.External.LoginStateTTL.Duration,
+			LoginRateLimit: LoginRateLimitPolicy{
+				Window:                authSettings.LoginRateLimit.Window.Duration,
+				MaximumAttempts:       authSettings.LoginRateLimit.MaximumAttempts,
+				MaximumSourceAttempts: authSettings.LoginRateLimit.MaximumSourceAttempts,
+			},
+			NodeID: applicationPlatform.Cluster().NodeID(),
+		},
+		mlogAuthenticationDiagnostics{log: applicationPlatform.Log()},
+		time.Now,
 	)
 	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
 	academicAuthorization := academicUnitAuthorization{

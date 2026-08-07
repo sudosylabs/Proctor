@@ -17,8 +17,6 @@ app/app.go	github.com/sudosylabs/proctor/server/mlog
 app/app.go	github.com/sudosylabs/proctor/server/platform
 app/audit.go	net/http
 app/authorization.go	net/http
-app/external_authentication.go	github.com/sudosylabs/proctor/server/mlog
-app/external_authentication.go	github.com/sudosylabs/proctor/server/platform
 app/external_authentication.go	github.com/sudosylabs/proctor/server/platform/externalauth
 app/external_authentication.go	net/http
 app/mfa.go	github.com/sudosylabs/proctor/server/config

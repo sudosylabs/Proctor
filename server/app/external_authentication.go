@@ -12,28 +12,55 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// externalProviderSource is the protocol-neutral registry surface consumed by
+// application external-login orchestration. Concrete CAS/OIDC adapters remain
+// outside package app (ADR-0010, ticket #35).
+type externalProviderSource interface {
+	Descriptors() []model.ExternalAuthenticationProvider
+	Provider(id string) (externalauth.Provider, bool)
+}
+
+// ExternalAuthenticationPolicy is the deployment projection for external login.
+type ExternalAuthenticationPolicy struct {
+	PublicURL     string
+	LoginStateTTL time.Duration
+	LoginRateLimit LoginRateLimitPolicy
+	NodeID        string
+}
+
 type ExternalAuthenticationService struct {
-	platform       *platform.Service
+	registry       externalProviderSource
+	store          store.Store
+	cache          authenticationCache
 	authentication *AuthenticationService
 	audit          *AuditService
+	policy         ExternalAuthenticationPolicy
+	diagnostics    authenticationDiagnostics
 	now            func() time.Time
 }
 
 func newExternalAuthenticationService(
-	applicationPlatform *platform.Service,
+	registry externalProviderSource,
+	persistence store.Store,
+	cache authenticationCache,
 	authentication *AuthenticationService,
 	audit *AuditService,
+	policy ExternalAuthenticationPolicy,
+	diagnostics authenticationDiagnostics,
+	now func() time.Time,
 ) *ExternalAuthenticationService {
+	if now == nil {
+		now = time.Now
+	}
 	return &ExternalAuthenticationService{
-		platform: applicationPlatform, authentication: authentication,
-		audit: audit, now: time.Now,
+		registry: registry, store: persistence, cache: cache,
+		authentication: authentication, audit: audit, policy: policy,
+		diagnostics: diagnostics, now: now,
 	}
 }
 
@@ -42,27 +69,42 @@ func (a *App) ExternalAuthenticationProviders() []model.ExternalAuthenticationPr
 }
 
 func (s *ExternalAuthenticationService) providers() []model.ExternalAuthenticationProvider {
-	return s.platform.ExternalAuthenticationProviders()
+	return s.registry.Descriptors()
+}
+
+// BeginExternalAuthenticationCommand starts a browser external login.
+type BeginExternalAuthenticationCommand struct {
+	ProviderID string
+	ReturnTo   string
+	ClientType model.SessionClientType
+	DeviceID   string
+	DeviceName string
+	Source     string
+}
+
+// CompleteExternalAuthenticationCommand finishes a browser external login.
+type CompleteExternalAuthenticationCommand struct {
+	ProviderID string
+	Callback   model.ExternalAuthenticationCallback
+	Binding    string
+	Source     string
 }
 
 func (a *App) BeginExternalAuthentication(
 	ctx context.Context,
-	providerID string,
-	returnTo string,
-	clientType model.SessionClientType,
-	deviceID string,
-	deviceName string,
-	source string,
-) (*model.ExternalAuthenticationStart, *model.AppError) {
-	return a.externalAuthentication.begin(
+	_ Invocation,
+	command BeginExternalAuthenticationCommand,
+) (*model.ExternalAuthenticationStart, error) {
+	result, appErr := a.externalAuthentication.begin(
 		ctx,
-		providerID,
-		returnTo,
-		clientType,
-		deviceID,
-		deviceName,
-		source,
+		command.ProviderID,
+		command.ReturnTo,
+		command.ClientType,
+		command.DeviceID,
+		command.DeviceName,
+		command.Source,
 	)
+	return result, fromLegacyAppError(appErr)
 }
 
 func (s *ExternalAuthenticationService) begin(
@@ -75,7 +117,7 @@ func (s *ExternalAuthenticationService) begin(
 	source string,
 ) (*model.ExternalAuthenticationStart, *model.AppError) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
-	provider, exists := s.platform.ExternalAuthenticationProvider(providerID)
+	provider, exists := s.registry.Provider(providerID)
 	if !exists {
 		return nil, externalProviderNotFoundError("BeginExternalAuthentication")
 	}
@@ -101,10 +143,9 @@ func (s *ExternalAuthenticationService) begin(
 	stateToken := model.NewCredentialToken()
 	bindingToken := model.NewCredentialToken()
 	now := s.now().UnixMilli()
-	expiresAt := now + s.platform.Config().
-		Authentication.External.LoginStateTTL.Milliseconds()
+	expiresAt := now + s.policy.LoginStateTTL.Milliseconds()
 	callbackURL, err := externalAuthenticationCallbackURL(
-		s.platform.Config().Server.PublicURL,
+		s.policy.PublicURL,
 		providerID,
 	)
 	if err != nil {
@@ -133,7 +174,7 @@ func (s *ExternalAuthenticationService) begin(
 			errors.New("external provider returned an empty login challenge"),
 		)
 	}
-	stateStore := s.platform.Store().ExternalLoginState()
+	stateStore := s.store.ExternalLoginState()
 	if stateStore == nil {
 		return nil, internalAuthenticationError(
 			"BeginExternalAuthentication.store",
@@ -160,18 +201,17 @@ func (s *ExternalAuthenticationService) begin(
 
 func (a *App) CompleteExternalAuthentication(
 	ctx context.Context,
-	providerID string,
-	bindingToken string,
-	callback model.ExternalAuthenticationCallback,
-	metadata model.RequestMetadata,
-) (*model.ExternalAuthenticationCompletion, *model.AppError) {
-	return a.externalAuthentication.complete(
+	invocation Invocation,
+	command CompleteExternalAuthenticationCommand,
+) (*model.ExternalAuthenticationCompletion, error) {
+	result, appErr := a.externalAuthentication.complete(
 		ctx,
-		providerID,
-		bindingToken,
-		callback,
-		metadata,
+		command.ProviderID,
+		command.Binding,
+		command.Callback,
+		invocation.RequestMetadata(),
 	)
+	return result, fromLegacyAppError(appErr)
 }
 
 func (s *ExternalAuthenticationService) complete(
@@ -182,7 +222,7 @@ func (s *ExternalAuthenticationService) complete(
 	metadata model.RequestMetadata,
 ) (*model.ExternalAuthenticationCompletion, *model.AppError) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
-	provider, exists := s.platform.ExternalAuthenticationProvider(providerID)
+	provider, exists := s.registry.Provider(providerID)
 	if !exists {
 		return nil, externalProviderNotFoundError("CompleteExternalAuthentication")
 	}
@@ -195,7 +235,7 @@ func (s *ExternalAuthenticationService) complete(
 			"CompleteExternalAuthentication.state",
 		)
 	}
-	stateStore := s.platform.Store().ExternalLoginState()
+	stateStore := s.store.ExternalLoginState()
 	if stateStore == nil {
 		return nil, internalAuthenticationError(
 			"CompleteExternalAuthentication.store",
@@ -218,7 +258,7 @@ func (s *ExternalAuthenticationService) complete(
 		)
 	}
 	callbackURL, err := externalAuthenticationCallbackURL(
-		s.platform.Config().Server.PublicURL,
+		s.policy.PublicURL,
 		providerID,
 	)
 	if err != nil {
@@ -246,7 +286,7 @@ func (s *ExternalAuthenticationService) complete(
 		)
 	}
 
-	institution, err := s.platform.Store().Institution().GetSingleton(ctx)
+	institution, err := s.store.Institution().GetSingleton(ctx)
 	if err != nil {
 		return nil, internalAuthenticationError(
 			"CompleteExternalAuthentication.institution",
@@ -313,7 +353,7 @@ func (s *ExternalAuthenticationService) complete(
 	if appErr != nil {
 		return nil, appErr
 	}
-	identityStore := s.platform.Store().ExternalIdentity()
+	identityStore := s.store.ExternalIdentity()
 	if identityStore == nil {
 		return nil, internalAuthenticationError(
 			"CompleteExternalAuthentication.identity_store",
@@ -332,7 +372,7 @@ func (s *ExternalAuthenticationService) complete(
 			ScopeType: model.RoleScopeInstitution,
 			ScopeId:   institution.Id, Status: model.AuditStatusSuccess,
 			RequestId:  metadata.RequestId,
-			NodeId:     s.platform.Cluster().NodeID(),
+			NodeId:     s.policy.NodeID,
 			ClientType: string(state.ClientType), AuthMethod: method,
 			IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
 			Parameters: provisionParameters,
@@ -457,14 +497,14 @@ func (s *ExternalAuthenticationService) checkInitiationRateLimit(
 	providerID string,
 	source string,
 ) *model.AppError {
-	settings := s.platform.Config().Authentication.LoginRateLimit
+	settings := s.policy.LoginRateLimit
 	key := "authentication/external/source/" +
 		digestCacheKey(providerID+"\x00"+normalizeLoginSource(source))
-	count, err := s.platform.Cache().Add(
+	count, err := s.cache.Add(
 		ctx,
 		key,
 		1,
-		settings.Window.Duration,
+		settings.Window,
 	)
 	if err != nil {
 		return rateLimitUnavailableError(
@@ -478,7 +518,7 @@ func (s *ExternalAuthenticationService) checkInitiationRateLimit(
 			"authentication.rate_limited",
 			nil,
 			"",
-			http.StatusTooManyRequests,
+			429,
 		)
 	}
 	return nil
@@ -488,7 +528,7 @@ func (s *ExternalAuthenticationService) revokeUnreportedSession(
 	ctx context.Context,
 	session *model.Session,
 ) {
-	hashes, err := s.platform.Store().Session().Revoke(
+	hashes, err := s.store.Session().Revoke(
 		ctx,
 		session.Id,
 		session.UserId,
@@ -496,12 +536,9 @@ func (s *ExternalAuthenticationService) revokeUnreportedSession(
 		"authentication audit completion failed",
 	)
 	if err != nil {
-		s.platform.Log().ErrorContext(
-			ctx,
-			"failed to revoke unaudited external session",
-			mlog.String("session_id", session.Id),
-			mlog.Err(err),
-		)
+		if s.diagnostics != nil {
+			s.diagnostics.WarnContext(ctx, "failed to revoke unaudited external session", err)
+		}
 		return
 	}
 	s.authentication.deleteAuthenticationCache(ctx, hashes)
@@ -583,4 +620,23 @@ func externalProviderOperationError(
 		).Wrap(err)
 	}
 	return internalAuthenticationError(where, err)
+}
+
+
+// platformExternalProviders adapts platform registry accessors to the narrow
+// application externalProviderSource port without exposing concrete protocol
+// adapters to application orchestration.
+type platformExternalProviders struct {
+	service interface {
+		ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
+		ExternalAuthenticationProvider(string) (externalauth.Provider, bool)
+	}
+}
+
+func (p platformExternalProviders) Descriptors() []model.ExternalAuthenticationProvider {
+	return p.service.ExternalAuthenticationProviders()
+}
+
+func (p platformExternalProviders) Provider(id string) (externalauth.Provider, bool) {
+	return p.service.ExternalAuthenticationProvider(id)
 }
