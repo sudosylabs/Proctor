@@ -121,6 +121,7 @@ type Options struct {
 	ClassMembers            ClassMemberApplication
 	UserProfiles            UserProfileApplication
 	AccountStates           AccountStateApplication
+	SessionAdministrations  SessionAdministrationApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -198,14 +199,14 @@ type ExternalAuthentication interface {
 	) (*model.ExternalAuthenticationCompletion, *model.AppError)
 }
 
-type Users interface {
-	RevokeUserSessions(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
-	ListUserSessions(context.Context, model.Principal, model.RequestMetadata, string, bool) ([]*model.Session, *model.AppError)
-	RevokeUserSession(context.Context, model.Principal, model.RequestMetadata, string, string) *model.AppError
-}
-
 type AccountStateApplication interface {
 	SetUserEnabled(context.Context, application.Invocation, application.SetUserEnabledCommand) (*model.User, error)
+}
+
+type SessionAdministrationApplication interface {
+	ListUserSessions(context.Context, application.Invocation, application.ListUserSessionsQuery) ([]*model.Session, error)
+	RevokeUserSession(context.Context, application.Invocation, application.RevokeUserSessionCommand) error
+	RevokeUserSessions(context.Context, application.Invocation, application.RevokeUserSessionsCommand) error
 }
 
 type UserProfileApplication interface {
@@ -429,7 +430,6 @@ type Application interface {
 	Authentication
 	ExternalAuthentication
 	PermissionChecker
-	Users
 	Sessions
 	PersonalAccessTokens
 	MFA
@@ -457,6 +457,7 @@ type API struct {
 	classMembers            ClassMemberApplication
 	userProfiles            UserProfileApplication
 	accountStates           AccountStateApplication
+	sessionAdministrations  SessionAdministrationApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -512,6 +513,9 @@ func New(options Options) (*API, error) {
 	if options.AccountStates == nil {
 		return nil, errors.New("account state application is required")
 	}
+	if options.SessionAdministrations == nil {
+		return nil, errors.New("session administration application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -539,6 +543,7 @@ func New(options Options) (*API, error) {
 		classMembers:            options.ClassMembers,
 		userProfiles:            options.UserProfiles,
 		accountStates:           options.AccountStates,
+		sessionAdministrations:  options.SessionAdministrations,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,

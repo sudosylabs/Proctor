@@ -60,6 +60,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"programme_level.conflict":                  {status: http.StatusConflict},
 	"request.invalid":                           {status: http.StatusBadRequest},
 	"resource.not_found":                        {status: http.StatusNotFound},
+	"session.not_found":                         {status: http.StatusNotFound},
 	"user.invalid":                              {status: http.StatusBadRequest},
 	"user.conflict":                             {status: http.StatusConflict},
 	"user.last_system_admin":                    {status: http.StatusConflict},

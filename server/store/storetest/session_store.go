@@ -23,7 +23,9 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("MaximumActive", func(t *testing.T) { testSessionMaximumActive(t, ss) })
 	t.Run("UpdateActivity", func(t *testing.T) { testSessionUpdateActivity(t, ss) })
 	t.Run("Revoke", func(t *testing.T) { testSessionRevoke(t, ss) })
+	t.Run("RevokeWithAudit", func(t *testing.T) { testSessionRevokeWithAudit(t, ss) })
 	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUser(t, ss) })
+	t.Run("RevokeAllForUserWithAudit", func(t *testing.T) { testSessionRevokeAllForUserWithAudit(t, ss) })
 	t.Run("RotateAndDetectReplay", func(t *testing.T) { testSessionRotateAndDetectReplay(t, ss) })
 	t.Run("ConcurrentRefreshReplay", func(t *testing.T) { testSessionConcurrentRefreshReplay(t, ss) })
 	t.Run("ConcurrentRefreshAndRevokeAll", func(t *testing.T) {
@@ -126,6 +128,54 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	}
 }
 
+func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	at := model.GetMillis() + 100
+
+	if _, err := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
+		SessionID: session.Id, UserID: user.Id, RevokedAt: at,
+		Reason: "session revoked by administrator", AuditEventID: model.NewId(), AuditAt: at,
+	}); err == nil {
+		t.Fatal("RevokeWithAudit() succeeded without its audit attempt")
+	}
+	unrevoked, err := ss.Session().Get(ctx, session.Id)
+	requireNoError(t, err)
+	if unrevoked.RevokedAt != 0 {
+		t.Fatalf("session survived audit rollback: %#v", unrevoked)
+	}
+	credential, _, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx, model.HashToken(raw.access), model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if credential.RevokedAt != 0 {
+		t.Fatalf("credential survived audit rollback: %#v", credential)
+	}
+
+	attempt := saveSessionAuditAttempt(t, ctx, ss, user.Id)
+	result, err := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
+		SessionID: session.Id, UserID: user.Id, RevokedAt: at,
+		Reason: "session revoked by administrator", AuditEventID: attempt.Id, AuditAt: at,
+	})
+	requireNoError(t, err)
+	if result.Session.RevokedAt != at || len(result.TokenHashes) != 2 {
+		t.Fatalf("RevokeWithAudit() = %#v", result)
+	}
+	audit, err := ss.Audit().Get(ctx, attempt.Id)
+	requireNoError(t, err)
+	if audit.Status != model.AuditStatusSuccess {
+		t.Fatalf("audit status = %#v", audit)
+	}
+	revokedCredential, got, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx, model.HashToken(raw.access), model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if revokedCredential.RevokedAt != at || got.RevokedAt != at {
+		t.Fatalf("revoked credential=%#v session=%#v", revokedCredential, got)
+	}
+}
+
 func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
@@ -154,6 +204,62 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	if gotOther.RevokedAt != 0 {
 		t.Fatalf("other user's session was revoked: %#v", gotOther)
 	}
+}
+
+func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	first, _, firstRaw := saveSession(t, ctx, ss, user.Id, 10)
+	second, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	at := model.GetMillis() + 100
+
+	if _, err := ss.Session().RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
+		UserID: user.Id, RevokedAt: at, Reason: "sessions revoked by administrator",
+		AuditEventID: model.NewId(), AuditAt: at,
+	}); err == nil {
+		t.Fatal("RevokeAllForUserWithAudit() succeeded without its audit attempt")
+	}
+	for _, id := range []string{first.Id, second.Id} {
+		got, getErr := ss.Session().Get(ctx, id)
+		requireNoError(t, getErr)
+		if got.RevokedAt != 0 {
+			t.Fatalf("session %s survived audit rollback: %#v", id, got)
+		}
+	}
+	credential, _, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx, model.HashToken(firstRaw.access), model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if credential.RevokedAt != 0 {
+		t.Fatalf("credential survived audit rollback: %#v", credential)
+	}
+
+	attempt := saveSessionAuditAttempt(t, ctx, ss, user.Id)
+	result, err := ss.Session().RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
+		UserID: user.Id, RevokedAt: at, Reason: "sessions revoked by administrator",
+		AuditEventID: attempt.Id, AuditAt: at,
+	})
+	requireNoError(t, err)
+	if len(result.Sessions) != 2 || len(result.TokenHashes) != 4 {
+		t.Fatalf("RevokeAllForUserWithAudit() = %#v", result)
+	}
+	audit, err := ss.Audit().Get(ctx, attempt.Id)
+	requireNoError(t, err)
+	if audit.Status != model.AuditStatusSuccess {
+		t.Fatalf("audit status = %#v", audit)
+	}
+}
+
+func saveSessionAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, userID string) *model.AuditEvent {
+	t.Helper()
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		Action:    string(model.ActionSessionManage),
+		Resource:  model.Resource{Type: model.ResourceUser, Id: userID},
+		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(),
+		Status: model.AuditStatusAttempt, NodeId: "test-node",
+	})
+	requireNoError(t, err)
+	return attempt
 }
 
 func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {

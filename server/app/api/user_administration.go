@@ -63,14 +63,17 @@ func (a *API) revokeUserSessions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToUserForRequest(
-		r.Context(), principal, userID, model.ActionSessionManage, RequestMetadata(r.Context()),
+	err := a.sessionAdministrations.RevokeUserSessions(
+		r.Context(),
+		application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.RevokeUserSessionsCommand{UserID: userID},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	appErr = a.application.RevokeUserSessions(ctx, principal, RequestMetadata(ctx), userID)
-	writeNoContent(w, r.WithContext(ctx), a, appErr)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) listUserSessions(w http.ResponseWriter, r *http.Request) {
@@ -78,31 +81,28 @@ func (a *API) listUserSessions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToUserForRequest(
-		r.Context(),
-		principal,
-		userID,
-		model.ActionSessionView,
-		RequestMetadata(r.Context()),
-	)
-	if !a.requirePermission(w, r, allowed, appErr) {
-		return
-	}
 	includeRevoked, err := strconv.ParseBool(
 		defaultQuery(r, "include_revoked", "false"),
 	)
 	if err != nil {
-		WriteError(w, r, invalidRequestError("include_revoked", err))
+		writeApplicationError(w, r, a.logger, application.NewError("request.invalid").WithField("field", "include_revoked"))
 		return
 	}
-	sessions, appErr := a.application.ListUserSessions(
-		ctx,
-		principal,
-		RequestMetadata(ctx),
-		userID,
-		includeRevoked,
+	sessions, listErr := a.sessionAdministrations.ListUserSessions(
+		r.Context(),
+		application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.ListUserSessionsQuery{UserID: userID, IncludeRevoked: includeRevoked},
 	)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, sessions, appErr)
+	if listErr != nil {
+		writeApplicationError(w, r, a.logger, listErr)
+		return
+	}
+	if sessions == nil {
+		sessions = []*model.Session{}
+	}
+	// Session models deliberately exclude bearer/refresh credentials; keep the
+	// existing bare-array wire shape for administrative listing.
+	writeJSON(w, http.StatusOK, sessions)
 }
 
 func (a *API) revokeUserSession(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +112,7 @@ func (a *API) revokeUserSession(w http.ResponseWriter, r *http.Request) {
 	}
 	params, ok := RequestParams(r.Context())
 	if !ok {
-		WriteError(w, r, invalidRequestError("route_params", nil))
+		writeApplicationError(w, r, a.logger, application.NewError("request.invalid").WithField("field", "route_params"))
 		return
 	}
 	sessionID, appErr := params.RequireSessionId()
@@ -120,24 +120,17 @@ func (a *API) revokeUserSession(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, appErr)
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToUserForRequest(
+	err := a.sessionAdministrations.RevokeUserSession(
 		r.Context(),
-		principal,
-		userID,
-		model.ActionSessionManage,
-		RequestMetadata(r.Context()),
+		application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.RevokeUserSessionCommand{UserID: userID, SessionID: sessionID},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	appErr = a.application.RevokeUserSession(
-		ctx,
-		principal,
-		RequestMetadata(ctx),
-		userID,
-		sessionID,
-	)
-	writeNoContent(w, r.WithContext(ctx), a, appErr)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func defaultQuery(r *http.Request, key, fallback string) string {

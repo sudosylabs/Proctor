@@ -38,6 +38,7 @@ func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore         { return 
 func (s *hookStore) Class() store.ClassStore                           { return nil }
 func (s *hookStore) Affiliation() store.AffiliationStore               { return nil }
 func (s *hookStore) User() store.UserStore                             { return nil }
+func (s *hookStore) Session() store.SessionStore                       { return nil }
 func (s *hookStore) ClassMember() store.ClassMemberStore               { return nil }
 func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
 func (s *hookStore) Ping(context.Context) error                        { return nil }

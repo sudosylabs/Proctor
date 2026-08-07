@@ -671,6 +671,49 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/sessions": {
+      "parameters": [{"$ref": "#/components/parameters/UserID"}],
+      "get": {
+        "operationId": "listUserSessions", "summary": "List a User's Sessions for administrative review",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "session.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "include_revoked", "in": "query", "required": false, "schema": {"type": "boolean", "default": false}}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/SessionAdministrationListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/sessions/revoke-all": {
+      "parameters": [{"$ref": "#/components/parameters/UserID"}],
+      "post": {
+        "operationId": "revokeUserSessions", "summary": "Revoke every active Session for a User",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "session.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/SessionAdministrationRevoked"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/sessions/{session_id}": {
+      "parameters": [{"$ref": "#/components/parameters/UserID"}, {"$ref": "#/components/parameters/SessionID"}],
+      "delete": {
+        "operationId": "revokeUserSession", "summary": "Revoke one Session belonging to a User",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "session.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/SessionAdministrationRevoked"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/users/{user_id}/affiliations": {
       "parameters": [{"$ref": "#/components/parameters/UserID"}],
       "get": {
@@ -805,6 +848,10 @@
         "name": "user_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "SessionID": {
+        "name": "session_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "AffiliationID": {
         "name": "affiliation_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -924,6 +971,8 @@
       "ClassMemberEnded": {"description": "Class Member ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassMemberResponse"}}}},
       "UserProfileOK": {"description": "User profile", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserProfileResponse"}}}},
       "UserProfileListOK": {"description": "User profile collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserProfileListResponse"}}}},
+      "SessionAdministrationListOK": {"description": "Administrative session list", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionAdministrationListResponse"}}}},
+      "SessionAdministrationRevoked": {"description": "Session(s) revoked"},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -1258,6 +1307,22 @@
         }
       },
       "UserProfileListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/UserProfileResponse"}},
+      "SessionAdministrationResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "user_id", "client_type", "authentication_method", "authentication_strength", "authenticated_at", "last_activity_at", "idle_expires_at", "expires_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "client_type": {"type": "string"},
+          "device_id": {"type": "string"}, "device_name": {"type": "string"},
+          "authentication_method": {"type": "string"}, "authentication_strength": {"type": "string"},
+          "authenticated_at": {"type": "integer", "format": "int64"}, "mfa_completed_at": {"type": "integer", "format": "int64"},
+          "last_activity_at": {"type": "integer", "format": "int64"}, "idle_expires_at": {"type": "integer", "format": "int64"},
+          "expires_at": {"type": "integer", "format": "int64"}, "revoked_at": {"type": "integer", "format": "int64"},
+          "revocation_reason": {"type": "string"}
+        }
+      },
+      "SessionAdministrationListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/SessionAdministrationResponse"}},
       "UpdateUserProfileRequest": {
         "type": "object", "additionalProperties": false,
         "properties": {

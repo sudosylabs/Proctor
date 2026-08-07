@@ -507,6 +507,43 @@ type PasswordCredentialStore interface {
 	Update(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
 }
 
+// SessionRevocation is the complete durable input for revoking one session
+// under an already-persisted audit attempt. AuditEventID must identify an
+// attempt that is completed successfully before the revocation may commit.
+type SessionRevocation struct {
+	SessionID    string
+	UserID       string
+	RevokedAt    int64
+	Reason       string
+	AuditEventID string
+	AuditAt      int64
+}
+
+// SessionRevocationResult contains the revoked session and token hashes needed
+// for post-commit cache and realtime effects.
+type SessionRevocationResult struct {
+	Session     *model.Session
+	TokenHashes []string
+}
+
+// UserSessionsRevocation is the complete durable input for revoking every
+// active session belonging to one user under an already-persisted audit
+// attempt.
+type UserSessionsRevocation struct {
+	UserID       string
+	RevokedAt    int64
+	Reason       string
+	AuditEventID string
+	AuditAt      int64
+}
+
+// UserSessionsRevocationResult contains the revoked sessions and token hashes
+// needed for post-commit cache and realtime effects.
+type UserSessionsRevocationResult struct {
+	Sessions    []*model.Session
+	TokenHashes []string
+}
+
 // SessionStore persists sessions and owns atomic session lifecycle changes.
 type SessionStore interface {
 	Save(
@@ -520,12 +557,14 @@ type SessionStore interface {
 	ListActiveByUser(context.Context, string, int64) ([]*model.Session, error)
 	UpdateActivity(context.Context, string, int64, int64) error
 	Revoke(context.Context, string, string, int64, string) ([]string, error)
+	RevokeWithAudit(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(
 		context.Context,
 		string,
 		int64,
 		string,
 	) ([]*model.Session, []string, error)
+	RevokeAllForUserWithAudit(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
 }
 
 type SessionRotation struct {
