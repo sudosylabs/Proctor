@@ -240,13 +240,13 @@ func (a roleAuthorization) AuthorizeManage(ctx context.Context, invocation Invoc
 		return model.Resource{}, roleError(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
-	if err := fromLegacyAppError(a.authorization.authorizeCurrentState(
+	if err := a.authorization.authorizeCurrentState(
 		ctx,
 		invocation.Principal(),
 		model.ActionRoleManage,
 		resource,
 		invocation.RequestMetadata(),
-	)); err != nil {
+	); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil
@@ -270,9 +270,9 @@ func (s *roleService) failMutation(ctx context.Context, auditID string, err erro
 }
 
 func roleError(err error) error {
-	var appErr *model.AppError
-	if errors.As(err, &appErr) {
-		return fromLegacyAppError(appErr)
+	var appFailure *Error
+	if errors.As(err, &appFailure) {
+		return err
 	}
 	switch {
 	case store.IsNotFound(err):

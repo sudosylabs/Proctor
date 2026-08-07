@@ -107,8 +107,7 @@ func (s *institutionService) Update(
 	}
 	candidate.PrepareUpdate(s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("institution.invalid").
-			WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("institution.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(
 		ctx, invocation, model.ActionInstitutionManage, resource,

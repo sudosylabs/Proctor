@@ -94,7 +94,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	candidate := &model.ClassMember{ClassId: classID, AcademicPeriodId: class.AcademicPeriodId, UserId: strings.TrimSpace(command.UserID), StartAt: command.StartAt, EndAt: command.EndAt}
 	candidate.PrepareCreate(s.newID(), at)
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("class_member.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("class_member.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionClassMembersManage, resource, "enroll", candidate.Auditable(), nil)
 	if err != nil {

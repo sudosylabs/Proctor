@@ -32,7 +32,7 @@ func preUpdate(updateAt *int64) {
 	*updateAt = GetMillis()
 }
 
-func validatePersistentFields(where, modelName, id string, createAt, updateAt int64) *AppError {
+func validatePersistentFields(where, modelName, id string, createAt, updateAt int64) error {
 	if !IsValidId(id) {
 		return invalidModelError(where, modelName, "id", "must be a valid identifier", "")
 	}

@@ -160,13 +160,12 @@ func TestPrincipalAssuranceRequirements(t *testing.T) {
 	}
 	if appErr := requirePrincipalAssurance(
 		recent, AuthStrongSessionRequired, now, 15*time.Minute,
-	); appErr == nil || appErr.ErrorCode() != "authentication.strong_required" {
+	); applicationErrorCode(appErr) != "authentication.strong_required" {
 		t.Fatalf("single-factor strong requirement error = %v", appErr)
 	}
 	if appErr := requirePrincipalAssurance(
 		strongOld, AuthRecentSessionRequired, now, 15*time.Minute,
-	); appErr == nil ||
-		appErr.ErrorCode() != "authentication.reauthentication_required" {
+	); applicationErrorCode(appErr) != "authentication.reauthentication_required" {
 		t.Fatalf("old recent requirement error = %v", appErr)
 	}
 	if appErr := requirePrincipalAssurance(

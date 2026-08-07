@@ -44,7 +44,7 @@ func (cm *ClassMember) PreUpdate() {
 	preUpdate(&cm.UpdateAt)
 }
 
-func (cm *ClassMember) IsValid() *AppError {
+func (cm *ClassMember) IsValid() error {
 	const where = "ClassMember.IsValid"
 	if appErr := validatePersistentFields(
 		where,

@@ -49,7 +49,7 @@ func (m *MFACredential) PreUpdate() {
 	m.EncryptionKeyId = SanitizeUnicode(m.EncryptionKeyId)
 }
 
-func (m *MFACredential) IsValid() *AppError {
+func (m *MFACredential) IsValid() error {
 	const where = "MFACredential.IsValid"
 	if appErr := validatePersistentFields(
 		where, "mfa_credential", m.Id, m.CreateAt, m.UpdateAt,
@@ -114,7 +114,7 @@ func (c *MFARecoveryCode) PreSave() {
 	preSave(&c.Id, &c.CreateAt, &c.UpdateAt)
 }
 
-func (c *MFARecoveryCode) IsValid() *AppError {
+func (c *MFARecoveryCode) IsValid() error {
 	const where = "MFARecoveryCode.IsValid"
 	if appErr := validatePersistentFields(
 		where, "mfa_recovery_code", c.Id, c.CreateAt, c.UpdateAt,

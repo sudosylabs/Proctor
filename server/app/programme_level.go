@@ -122,7 +122,7 @@ func (s *programmeLevelService) Create(ctx context.Context, invocation Invocatio
 	candidate := &model.ProgrammeLevel{ProgrammeId: programmeID, Name: command.Name, DisplayName: command.DisplayName, Description: command.Description}
 	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("programme_level.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("programme_level.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
@@ -160,7 +160,7 @@ func (s *programmeLevelService) Update(ctx context.Context, invocation Invocatio
 	}
 	candidate.PrepareUpdate(s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("programme_level.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("programme_level.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
 	if err != nil {

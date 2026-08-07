@@ -8,7 +8,7 @@ import "testing"
 type persistentModel interface {
 	PreSave()
 	PreUpdate()
-	IsValid() *AppError
+	IsValid() error
 	Auditable() map[string]any
 }
 
@@ -115,12 +115,12 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 
 	tests := []struct {
 		name string
-		err  *AppError
+		err  error
 		code string
 	}{
 		{
 			name: "self-parent academic unit",
-			err: func() *AppError {
+			err: func() error {
 				id := NewId()
 				return (&AcademicUnit{
 					Id:            id,
@@ -180,11 +180,15 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 			if test.err == nil {
 				t.Fatal("IsValid() returned nil")
 			}
-			if test.err.Id != test.code {
-				t.Fatalf("error id = %q, want %q", test.err.Id, test.code)
+			validation, ok := test.err.(*ValidationError)
+			if !ok {
+				t.Fatalf("error type = %T", test.err)
 			}
-			if test.err.SafeFields()["field"] == "" {
-				t.Fatalf("safe fields = %#v", test.err.SafeFields())
+			if validation.Code != test.code {
+				t.Fatalf("error code = %q, want %q", validation.Code, test.code)
+			}
+			if validation.SafeFields()["field"] == "" {
+				t.Fatalf("safe fields = %#v", validation.SafeFields())
 			}
 		})
 	}

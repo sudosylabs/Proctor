@@ -213,9 +213,9 @@ func (s *roleBindingService) failMutation(ctx context.Context, auditID string, e
 }
 
 func roleBindingError(err error) error {
-	var appErr *model.AppError
-	if errors.As(err, &appErr) {
-		return fromLegacyAppError(appErr)
+	var appFailure *Error
+	if errors.As(err, &appFailure) {
+		return err
 	}
 	switch {
 	case store.IsNotFound(err):

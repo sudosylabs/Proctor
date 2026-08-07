@@ -11,7 +11,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"time"
 
@@ -95,7 +94,7 @@ func (a *App) CreatePersonalAccessToken(
 		parameters, nil,
 	)
 	if appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	saved, err := a.Store().PersonalAccessToken().Save(
 		ctx,
@@ -112,7 +111,7 @@ func (a *App) CreatePersonalAccessToken(
 		"",
 		saved.Auditable(),
 	); appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	return &model.PersonalAccessTokenCreation{
 		Token: saved, Credential: rawCredential,
@@ -164,7 +163,7 @@ func (a *App) RevokePersonalAccessToken(
 		current.Auditable(),
 	)
 	if appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	revoked, err := a.Store().PersonalAccessToken().Revoke(
 		ctx,
@@ -182,7 +181,7 @@ func (a *App) RevokePersonalAccessToken(
 		"",
 		revoked.Auditable(),
 	); appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	return revoked, nil
 }
@@ -223,7 +222,7 @@ func (a *App) SetPersonalAccessTokenDisabled(
 		current.Auditable(),
 	)
 	if appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	updated, err := a.Store().PersonalAccessToken().SetDisabled(
 		ctx,
@@ -243,7 +242,7 @@ func (a *App) SetPersonalAccessTokenDisabled(
 		"",
 		updated.Auditable(),
 	); appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	return updated, nil
 }
@@ -301,7 +300,7 @@ func (a *App) failPersonalAccessTokenMutation(ctx context.Context, auditID strin
 		code,
 		nil,
 	); auditErr != nil {
-		return fromLegacyAppError(auditErr)
+		return auditErr
 	}
 	return mapped
 }
@@ -311,10 +310,6 @@ func invalidPersonalAccessTokenRequest(field string) error {
 }
 
 func personalAccessTokenFailure(resource string, err error) error {
-	var legacy *model.AppError
-	if errors.As(err, &legacy) {
-		return fromLegacyAppError(legacy)
-	}
 	code := "personal_access_token.unavailable"
 	switch {
 	case store.IsNotFound(err):

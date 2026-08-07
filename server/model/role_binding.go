@@ -38,7 +38,7 @@ func (rb *RoleBinding) PreUpdate() {
 	preUpdate(&rb.UpdateAt)
 }
 
-func (rb *RoleBinding) IsValid() *AppError {
+func (rb *RoleBinding) IsValid() error {
 	const where = "RoleBinding.IsValid"
 	if appErr := validatePersistentFields(
 		where,

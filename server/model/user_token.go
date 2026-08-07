@@ -42,7 +42,7 @@ func (t *UserToken) PreUpdate() {
 	preUpdate(&t.UpdateAt)
 }
 
-func (t *UserToken) IsValid() *AppError {
+func (t *UserToken) IsValid() error {
 	const where = "UserToken.IsValid"
 	if appErr := validatePersistentFields(
 		where,

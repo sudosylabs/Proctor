@@ -34,7 +34,7 @@ func (pc *PasswordCredential) PreUpdate() {
 	preUpdate(&pc.UpdateAt)
 }
 
-func (pc *PasswordCredential) IsValid() *AppError {
+func (pc *PasswordCredential) IsValid() error {
 	const where = "PasswordCredential.IsValid"
 	if appErr := validatePersistentFields(
 		where,

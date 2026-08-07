@@ -41,7 +41,7 @@ func (m *AcademicUnitMember) PreUpdate() {
 	preUpdate(&m.UpdateAt)
 }
 
-func (m *AcademicUnitMember) IsValid() *AppError {
+func (m *AcademicUnitMember) IsValid() error {
 	const where = "AcademicUnitMember.IsValid"
 	if appErr := validatePersistentFields(
 		where,

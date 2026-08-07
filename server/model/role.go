@@ -73,7 +73,7 @@ func (r *Role) PreUpdate() {
 	r.Permissions = cloneStrings(r.Permissions)
 }
 
-func (r *Role) IsValid() *AppError {
+func (r *Role) IsValid() error {
 	const where = "Role.IsValid"
 	if appErr := validatePersistentFields(where, "role", r.Id, r.CreateAt, r.UpdateAt); appErr != nil {
 		return appErr

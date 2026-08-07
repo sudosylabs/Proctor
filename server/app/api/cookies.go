@@ -10,6 +10,7 @@
 package api
 
 import (
+	application "github.com/sudosylabs/proctor/server/app"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -128,7 +129,7 @@ func (c browserCookies) clear(writer http.ResponseWriter) {
 	c.expire(writer, BrowserCSRFCookieName, "/", false)
 }
 
-func (c browserCookies) verifyCSRF(request *http.Request) *model.AppError {
+func (c browserCookies) verifyCSRF(request *http.Request) error {
 	binding, appErr := singleCookieValue(request, BrowserCSRFBindingCookieName)
 	if appErr != nil || binding == "" {
 		return csrfError()
@@ -199,12 +200,6 @@ func browserCSRFToken(binding string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-func csrfError() *model.AppError {
-	return model.NewAppError(
-		"browserCookies.verifyCSRF",
-		"authentication.csrf.invalid",
-		nil,
-		"",
-		http.StatusForbidden,
-	)
+func csrfError() error {
+	return application.NewError("authentication.csrf.invalid")
 }

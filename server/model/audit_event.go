@@ -74,7 +74,7 @@ func (ae *AuditEvent) PreSave() {
 	ae.Result = cloneRawMessage(ae.Result)
 }
 
-func (ae *AuditEvent) IsValid() *AppError {
+func (ae *AuditEvent) IsValid() error {
 	const where = "AuditEvent.IsValid"
 	if appErr := validatePersistentFields(where, "audit_event", ae.Id, ae.CreateAt, ae.UpdateAt); appErr != nil {
 		return appErr
@@ -129,7 +129,7 @@ func (ae *AuditEvent) Clone() *AuditEvent {
 	return &cloned
 }
 
-func EncodeAuditData(value any) (json.RawMessage, *AppError) {
+func EncodeAuditData(value any) (json.RawMessage, error) {
 	if value == nil {
 		return nil, nil
 	}

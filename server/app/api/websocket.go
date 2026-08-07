@@ -9,6 +9,7 @@
 package api
 
 import (
+	application "github.com/sudosylabs/proctor/server/app"
 	"context"
 	"encoding/json"
 	"errors"
@@ -49,8 +50,8 @@ type webSocketApplication interface {
 		model.Principal,
 		model.RequestMetadata,
 		model.WebSocketSubscription,
-	) *model.AppError
-	ValidateWebSocketPrincipal(context.Context, model.Principal) *model.AppError
+	) error
+	ValidateWebSocketPrincipal(context.Context, model.Principal) error
 }
 
 type outboundWebSocketMessage struct {
@@ -175,13 +176,7 @@ func (a *API) connectWebSocket(writer http.ResponseWriter, request *http.Request
 		WriteError(
 			writer,
 			request,
-			model.NewAppError(
-				"connectWebSocket",
-				"websocket.origin.invalid",
-				nil,
-				"",
-				http.StatusForbidden,
-			),
+			application.NewError("websocket.origin.invalid"),
 		)
 		return
 	}
@@ -221,7 +216,7 @@ func (a *API) connectWebSocket(writer http.ResponseWriter, request *http.Request
 	connection.pump(request.Context())
 }
 
-func parseWebSocketResume(params Params) (string, int64, *model.AppError) {
+func parseWebSocketResume(params Params) (string, int64, error) {
 	if params.ConnectionId == "" && params.SequenceNumber == "" {
 		return "", 0, nil
 	}
@@ -587,13 +582,17 @@ func (c *webSocketConnection) handleRequest(
 		}
 		metadata := c.metadata
 		metadata.RequestId = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-		if appErr := c.hub.application.AuthorizeWebSocketSubscription(
+		if err := c.hub.application.AuthorizeWebSocketSubscription(
 			ctx,
 			c.principal,
 			metadata,
 			subscription,
-		); appErr != nil {
-			c.enqueueError(request.Sequence, appErr.ErrorCode(), appErr.ClientMessage())
+		); err != nil {
+			code := "authorization.denied"
+			if failure, ok := application.As(err); ok {
+				code = failure.Code()
+			}
+			c.enqueueError(request.Sequence, code, "WebSocket subscription denied.")
 			return
 		}
 		c.mu.Lock()

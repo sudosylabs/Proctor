@@ -10,6 +10,7 @@
 package api
 
 import (
+	application "github.com/sudosylabs/proctor/server/app"
 	"context"
 	"net/http"
 	"time"
@@ -190,29 +191,17 @@ func requirePrincipalAssurance(
 	requirement AuthRequirement,
 	now time.Time,
 	recentAuthenticationTTL time.Duration,
-) *model.AppError {
+) error {
 	strongRequired := requirement == AuthStrongSessionRequired ||
 		requirement == AuthStrongRecentSessionRequired
 	recentRequired := requirement == AuthRecentSessionRequired ||
 		requirement == AuthStrongRecentSessionRequired
 	if strongRequired && !principal.HasStrongAuthentication() {
-		return model.NewAppError(
-			"requirePrincipalAssurance",
-			"authentication.strong_required",
-			nil,
-			"",
-			http.StatusForbidden,
-		)
+		return application.NewError("authentication.strong_required")
 	}
 	if recentRequired &&
 		!principal.IsRecentlyAuthenticated(now, recentAuthenticationTTL) {
-		return model.NewAppError(
-			"requirePrincipalAssurance",
-			"authentication.reauthentication_required",
-			nil,
-			"",
-			http.StatusForbidden,
-		)
+		return application.NewError("authentication.reauthentication_required")
 	}
 	return nil
 }

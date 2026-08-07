@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
-	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -338,22 +338,12 @@ func TestWriteErrorMapsApplicationErrorsWithoutLeakingCauses(t *testing.T) {
 	t.Parallel()
 
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		appErr := model.NewAppError(
-			"TestWriteErrorMapsApplicationErrorsWithoutLeakingCauses",
-			"invalid_email",
-			nil,
-			"database detail",
-			http.StatusBadRequest,
-		).WithSafeFields(map[string]string{"email": "invalid"}).Wrap(
-			errors.New("sensitive internal cause"),
-		)
-		appErr.Translate(func(string, ...any) string {
-			return "The email address is invalid."
-		})
 		api.WriteError(
 			writer,
 			request,
-			appErr,
+			application.NewError("request.invalid").
+				WithField("field", "email").
+				Wrap(errors.New("sensitive internal cause")),
 		)
 	})
 	response := performRequest(handler, http.MethodGet, "/users", "")
@@ -367,11 +357,8 @@ func TestWriteErrorMapsApplicationErrorsWithoutLeakingCauses(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Code != "invalid_email" || problem.Fields["email"] != "invalid" {
+	if problem.Code != "request.invalid" || problem.Fields["field"] != "email" {
 		t.Fatalf("problem = %#v", problem)
-	}
-	if problem.Detail != "The email address is invalid." {
-		t.Fatalf("problem detail = %q", problem.Detail)
 	}
 }
 

@@ -89,7 +89,7 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 	at := s.now().UnixMilli()
 	candidate.PrepareCreate(s.newID(), at)
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("affiliation.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("affiliation.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {

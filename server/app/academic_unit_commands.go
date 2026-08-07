@@ -174,9 +174,7 @@ func (s *academicUnitCommandService) Create(
 	}
 	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("academic_unit.invalid").
-			WithFields(appErr.SafeFields()).
-			Wrap(appErr)
+		return nil, domainInvalid("academic_unit.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(
 		ctx, invocation, action, authorized, "create", candidate.Auditable(), nil,
@@ -244,8 +242,7 @@ func (s *academicUnitCommandService) Update(
 	}
 	candidate.PrepareUpdate(s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("academic_unit.invalid").
-			WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("academic_unit.invalid", appErr)
 	}
 	if command.ParentID != nil && candidate.ParentId != "" &&
 		candidate.ParentId != current.ParentId {

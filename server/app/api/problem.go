@@ -20,17 +20,6 @@ type Problem struct {
 	Fields    map[string]string `json:"fields,omitempty"`
 }
 
-// legacyApplicationError is the temporary bridge surface implemented by
-// model.AppError. Migrated capabilities return *app.Error instead; this
-// interface is removed with ticket 39 once no callers remain.
-type legacyApplicationError interface {
-	error
-	HTTPStatus() int
-	ErrorCode() string
-	ClientMessage() string
-	SafeFields() map[string]string
-}
-
 func WriteProblem(writer http.ResponseWriter, problem Problem) {
 	if problem.Type == "" {
 		problem.Type = "about:blank"
@@ -53,36 +42,15 @@ func WriteProblem(writer http.ResponseWriter, problem Problem) {
 
 // WriteError maps a failure to RFC 9457 Problem Details. Transport-neutral
 // application failures (*app.Error) use the centralized code table through the
-// applicationFailure interface. Unmigrated *model.AppError values continue
-// through the legacy bridge so existing capabilities keep compiling and
-// preserve their characterized responses. Unexpected errors become a generic
-// correlated internal response with no internal detail.
+// applicationFailure interface. Unexpected errors become a generic correlated
+// internal response with no internal detail.
 func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
 	var failure applicationFailure
 	if errors.As(err, &failure) {
 		WriteProblem(writer, problemFromApplicationFailure(request, failure))
 		return
 	}
-
-	var classified legacyApplicationError
-	if !errors.As(err, &classified) {
-		WriteProblem(writer, internalProblem(request))
-		return
-	}
-
-	status := classified.HTTPStatus()
-	title, detail := problemPresentation(status)
-	if message := classified.ClientMessage(); message != "" && message != classified.ErrorCode() {
-		detail = message
-	}
-	WriteProblem(writer, newProblem(
-		request,
-		classified.ErrorCode(),
-		status,
-		title,
-		detail,
-		classified.SafeFields(),
-	))
+	WriteProblem(writer, internalProblem(request))
 }
 
 func internalProblem(request *http.Request) Problem {

@@ -130,7 +130,7 @@ func (s *ExternalLoginState) PreSave() {
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
 }
 
-func (s *ExternalLoginState) IsValid() *AppError {
+func (s *ExternalLoginState) IsValid() error {
 	const where = "ExternalLoginState.IsValid"
 	if appErr := validatePersistentFields(
 		where,

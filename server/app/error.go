@@ -6,6 +6,8 @@ package app
 import (
 	"errors"
 	"strings"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // Error is a transport-neutral application failure. It carries a stable
@@ -115,6 +117,19 @@ func Is(err error, code string) bool {
 }
 
 // As finds the first *Error in err's chain.
+// domainInvalid maps a domain ValidationError into a stable application code
+// while preserving safe field context for transport mapping.
+func domainInvalid(code string, err error) error {
+	out := NewError(code)
+	var validation *model.ValidationError
+	if errors.As(err, &validation) {
+		if fields := validation.SafeFields(); len(fields) > 0 {
+			out = out.WithFields(fields)
+		}
+	}
+	return out.Wrap(err)
+}
+
 func As(err error) (*Error, bool) {
 	var appErr *Error
 	if !errors.As(err, &appErr) {

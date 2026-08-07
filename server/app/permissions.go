@@ -29,7 +29,7 @@ func (a *App) PrincipalHasPermissionToSystem(
 	principal model.Principal,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	institution, err := a.Store().Institution().GetSingleton(ctx)
 	if err != nil {
 		return ctx, false, authorizationResourceError("institution", err)
@@ -50,7 +50,7 @@ func (a *App) principalHasPermissionToResourceForRequest(
 	action model.Action,
 	resource model.Resource,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	allowed, appErr := a.authorization.preauthorize(
 		ctx, principal, action, resource, metadata,
 	)
@@ -63,7 +63,7 @@ func (a *App) PrincipalHasPermissionToAcademicUnitForRequest(
 	academicUnitID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	return a.principalHasPermissionToResourceForRequest(
 		ctx,
 		principal,
@@ -79,7 +79,7 @@ func (a *App) PrincipalHasPermissionToClassForRequest(
 	classID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	return a.principalHasPermissionToResourceForRequest(
 		ctx,
 		principal,
@@ -95,7 +95,7 @@ func (a *App) PrincipalHasPermissionToProgrammeForRequest(
 	programmeID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	_, unitID, appErr := a.programmeAcademicUnit(ctx, programmeID)
 	if appErr != nil {
 		return ctx, false, appErr
@@ -111,7 +111,7 @@ func (a *App) PrincipalHasPermissionToProgrammeLevelForRequest(
 	levelID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	_, unitID, appErr := a.programmeLevelAcademicUnit(ctx, levelID)
 	if appErr != nil {
 		return ctx, false, appErr
@@ -126,7 +126,7 @@ func (a *App) PrincipalHasPermissionToClassAdministrationForRequest(
 	principal model.Principal,
 	classID string,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	unitID, err := a.Store().Class().GetAcademicUnitId(ctx, classID)
 	if err != nil {
 		return ctx, false, administrationError(
@@ -145,7 +145,7 @@ func (a *App) PrincipalHasPermissionToAffiliationForRequest(
 	principal model.Principal,
 	affiliationID string,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	affiliation, err := a.Store().Affiliation().Get(ctx, affiliationID)
 	if err != nil {
 		return ctx, false, administrationError(
@@ -162,7 +162,7 @@ func (a *App) PrincipalHasPermissionToAcademicUnitMemberForRequest(
 	principal model.Principal,
 	memberID string,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	member, err := a.Store().AcademicUnitMember().Get(ctx, memberID)
 	if err != nil {
 		return ctx, false, administrationError(
@@ -182,7 +182,7 @@ func (a *App) PrincipalHasPermissionToUserForRequest(
 	userID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (context.Context, bool, *model.AppError) {
+) (context.Context, bool, error) {
 	if action == model.ActionUserView && principal.UserId == userID {
 		return ctx, true, nil
 	}
@@ -215,7 +215,7 @@ func (a *App) authorizePrincipalToSystem(
 	principal model.Principal,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (model.Resource, *model.AppError) {
+) (model.Resource, error) {
 	institution, err := a.Store().Institution().GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, authorizationResourceError("institution", err)
@@ -241,7 +241,7 @@ func (a *App) PrincipalHasPermissionTo(
 	principal model.Principal,
 	action model.Action,
 	resource model.Resource,
-) (bool, *model.AppError) {
+) (bool, error) {
 	return a.authorization.Can(ctx, principal, action, resource)
 }
 
@@ -250,7 +250,7 @@ func (a *App) PrincipalHasPermissionToInstitution(
 	principal model.Principal,
 	institutionID string,
 	action model.Action,
-) (bool, *model.AppError) {
+) (bool, error) {
 	return a.PrincipalHasPermissionTo(
 		ctx,
 		principal,
@@ -264,7 +264,7 @@ func (a *App) PrincipalHasPermissionToAcademicUnit(
 	principal model.Principal,
 	academicUnitID string,
 	action model.Action,
-) (bool, *model.AppError) {
+) (bool, error) {
 	return a.PrincipalHasPermissionTo(
 		ctx,
 		principal,
@@ -278,7 +278,7 @@ func (a *App) PrincipalHasPermissionToClass(
 	principal model.Principal,
 	classID string,
 	action model.Action,
-) (bool, *model.AppError) {
+) (bool, error) {
 	return a.PrincipalHasPermissionTo(
 		ctx,
 		principal,
@@ -295,7 +295,7 @@ func (a *App) AuthorizePrincipalTo(
 	action model.Action,
 	resource model.Resource,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	return a.authorization.Authorize(ctx, principal, action, resource, metadata)
 }
 
@@ -305,7 +305,7 @@ func (a *App) AuthorizePrincipalToInstitution(
 	institutionID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	return a.AuthorizePrincipalTo(
 		ctx,
 		principal,
@@ -321,7 +321,7 @@ func (a *App) AuthorizePrincipalToAcademicUnit(
 	academicUnitID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	return a.AuthorizePrincipalTo(
 		ctx,
 		principal,
@@ -337,7 +337,7 @@ func (a *App) authorizePrincipalToAcademicUnit(
 	academicUnitID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (model.Resource, *model.AppError) {
+) (model.Resource, error) {
 	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
@@ -353,7 +353,7 @@ func (a *App) AuthorizePrincipalToClass(
 	classID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	return a.AuthorizePrincipalTo(
 		ctx,
 		principal,
@@ -369,7 +369,7 @@ func (a *App) authorizePrincipalToClass(
 	classID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (model.Resource, *model.AppError) {
+) (model.Resource, error) {
 	resource := model.Resource{Type: model.ResourceClass, Id: classID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
@@ -385,7 +385,7 @@ func (a *App) AuthorizePrincipalToUser(
 	userID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	return a.AuthorizePrincipalTo(
 		ctx,
 		principal,
@@ -401,7 +401,7 @@ func (a *App) authorizePrincipalToUser(
 	userID string,
 	action model.Action,
 	metadata model.RequestMetadata,
-) (model.Resource, *model.AppError) {
+) (model.Resource, error) {
 	resource := model.Resource{Type: model.ResourceUser, Id: userID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
@@ -420,9 +420,9 @@ func (a *App) PrincipalHasPermissionToUser(
 	principal model.Principal,
 	userID string,
 	action model.Action,
-) (bool, *model.AppError) {
+) (bool, error) {
 	if !principal.IsValid() {
-		return false, invalidTokenError("PrincipalHasPermissionToUser")
+		return false, invalidTokenAppError()
 	}
 	if !model.IsValidId(userID) {
 		return false, nil
@@ -450,7 +450,7 @@ func (a *App) UserCanSeeOtherUser(
 	ctx context.Context,
 	principal model.Principal,
 	otherUserID string,
-) (bool, *model.AppError) {
+) (bool, error) {
 	return a.PrincipalHasPermissionToUser(
 		ctx,
 		principal,
@@ -463,7 +463,7 @@ func (a *App) userVisibilityPermission(
 	ctx context.Context,
 	principal model.Principal,
 	otherUserID string,
-) (model.Resource, *model.AppError) {
+) (model.Resource, error) {
 	userResource := model.Resource{Type: model.ResourceUser, Id: otherUserID}
 	allowed, appErr := a.PrincipalHasPermissionTo(
 		ctx, principal, model.ActionUserView, userResource,
@@ -504,9 +504,9 @@ func (a *App) GetUserForPrincipal(
 	principal model.Principal,
 	metadata model.RequestMetadata,
 	userID string,
-) (*model.User, *model.AppError) {
+) (*model.User, error) {
 	if !principal.IsValid() {
-		return nil, invalidTokenError("GetUserForPrincipal")
+		return nil, invalidTokenAppError()
 	}
 	if principal.UserId != userID {
 		if appErr := a.authorizeUserVisibility(
@@ -517,7 +517,7 @@ func (a *App) GetUserForPrincipal(
 	}
 	user, err := a.GetUser(ctx, userID)
 	if err != nil {
-		return nil, toLegacyAppError("GetUserForPrincipal", err)
+		return nil, err
 	}
 	return user, nil
 }
@@ -527,7 +527,7 @@ func (a *App) authorizeUserVisibility(
 	principal model.Principal,
 	userID string,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	resource, appErr := a.userVisibilityPermission(ctx, principal, userID)
 	if appErr != nil {
 		return appErr

@@ -105,7 +105,7 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 	candidate := &model.AcademicPeriod{InstitutionId: resource.Id, Name: command.Name, DisplayName: command.DisplayName, Description: command.Description, StartAt: command.StartAt, EndAt: command.EndAt}
 	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("academic_period.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("academic_period.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionInstitutionManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 	}
 	candidate.PrepareUpdate(s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("academic_period.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("academic_period.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionInstitutionManage, resource, "patch", candidate.Auditable(), current.Auditable())
 	if err != nil {

@@ -22,7 +22,7 @@ func sanitizeNamed(name, displayName, description *string) {
 	*description = SanitizeUnicode(*description)
 }
 
-func validateNamed(where, modelName, id, name, displayName, description string) *AppError {
+func validateNamed(where, modelName, id, name, displayName, description string) error {
 	details := "id=" + id
 	if len(name) == 0 || len(name) > NameMaxLength || !validName.MatchString(name) {
 		return invalidModelError(

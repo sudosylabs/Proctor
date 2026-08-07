@@ -129,7 +129,7 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 	}
 	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("programme.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("programme.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
@@ -163,7 +163,7 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 	}
 	candidate.PrepareUpdate(s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("programme.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("programme.invalid", appErr)
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: current.AcademicUnitId}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())

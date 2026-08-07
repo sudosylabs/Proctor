@@ -56,8 +56,7 @@ func TestBrowserCookiesAreBoundedSecureAndCSRFSigned(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	request.Header.Set(BrowserCSRFHeader, "tampered")
-	if appErr := cookies.verifyCSRF(request); appErr == nil ||
-		appErr.Id != "authentication.csrf.invalid" {
+	if appErr := cookies.verifyCSRF(request); applicationErrorCode(appErr) != "authentication.csrf.invalid" {
 		t.Fatalf("tampered CSRF error = %v", appErr)
 	}
 
@@ -74,16 +73,14 @@ func TestRequestCredentialRejectsAmbiguousSourcesAndDuplicateCookies(t *testing.
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	request.Header.Set("Authorization", "Bearer header-token")
 	request.AddCookie(&http.Cookie{Name: BrowserAccessCookieName, Value: "cookie-token"})
-	if _, appErr := requestAccessCredential(request); appErr == nil ||
-		appErr.Id != "authentication.credential_ambiguous" {
+	if _, appErr := requestAccessCredential(request); applicationErrorCode(appErr) != "authentication.credential_ambiguous" {
 		t.Fatalf("header and cookie error = %v", appErr)
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	request.AddCookie(&http.Cookie{Name: BrowserAccessCookieName, Value: "first"})
 	request.AddCookie(&http.Cookie{Name: BrowserAccessCookieName, Value: "second"})
-	if _, appErr := requestAccessCredential(request); appErr == nil ||
-		appErr.Id != "authentication.credential_ambiguous" {
+	if _, appErr := requestAccessCredential(request); applicationErrorCode(appErr) != "authentication.credential_ambiguous" {
 		t.Fatalf("duplicate cookie error = %v", appErr)
 	}
 }

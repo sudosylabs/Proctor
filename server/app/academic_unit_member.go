@@ -83,7 +83,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	at := s.now().UnixMilli()
 	candidate.PrepareCreate(s.newID(), at)
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("academic_unit_member.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("academic_unit_member.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create_member", candidate.Auditable(), nil)
 	if err != nil {

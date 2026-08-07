@@ -360,8 +360,8 @@ type Realtime interface {
 		model.Principal,
 		model.RequestMetadata,
 		model.WebSocketSubscription,
-	) *model.AppError
-	ValidateWebSocketPrincipal(context.Context, model.Principal) *model.AppError
+	) error
+	ValidateWebSocketPrincipal(context.Context, model.Principal) error
 }
 
 // Application is the cohesive application-facing API contract. Its component

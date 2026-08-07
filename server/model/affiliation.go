@@ -47,7 +47,7 @@ func (a *Affiliation) PreUpdate() {
 	preUpdate(&a.UpdateAt)
 }
 
-func (a *Affiliation) IsValid() *AppError {
+func (a *Affiliation) IsValid() error {
 	const where = "Affiliation.IsValid"
 	if appErr := validatePersistentFields(
 		where,
@@ -101,7 +101,7 @@ func preSaveMembership(id *string, createAt, updateAt, startAt *int64) {
 	}
 }
 
-func validateEffectiveTimes(where, modelName, details string, startAt, endAt int64) *AppError {
+func validateEffectiveTimes(where, modelName, details string, startAt, endAt int64) error {
 	if startAt <= 0 {
 		return invalidModelError(where, modelName, "start_at", "must be set", details)
 	}

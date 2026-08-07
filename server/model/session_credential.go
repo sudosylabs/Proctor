@@ -40,7 +40,7 @@ func (sc *SessionCredential) PreUpdate() {
 	preUpdate(&sc.UpdateAt)
 }
 
-func (sc *SessionCredential) IsValid() *AppError {
+func (sc *SessionCredential) IsValid() error {
 	const where = "SessionCredential.IsValid"
 	if appErr := validatePersistentFields(
 		where,

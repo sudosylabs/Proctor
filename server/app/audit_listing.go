@@ -5,7 +5,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -78,19 +77,16 @@ func (a auditListingAuthorization) AuthorizeView(ctx context.Context, invocation
 	if err != nil {
 		return auditListingError(err)
 	}
-	return fromLegacyAppError(a.authorization.authorizeCurrentState(
+	return a.authorization.authorizeCurrentState(
 		ctx,
 		invocation.Principal(),
 		model.ActionAuditView,
 		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
 		invocation.RequestMetadata(),
-	))
+	)
 }
 
 func auditListingError(err error) error {
-	var appErr *model.AppError
-	if errors.As(err, &appErr) {
-		return fromLegacyAppError(appErr)
-	}
+	
 	return NewError("audit.unavailable").WithField("resource", "audit").Wrap(err)
 }

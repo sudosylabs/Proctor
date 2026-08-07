@@ -34,7 +34,7 @@ func (a mutationAuditAdapter) Begin(
 		map[string]any{"operation": operation, "value": value}, prior,
 	)
 	if appErr != nil {
-		return "", fromLegacyAppError(appErr)
+		return "", appErr
 	}
 	return event.Id, nil
 }
@@ -47,5 +47,5 @@ func (a mutationAuditAdapter) Fail(
 	_, appErr := a.audit.CompleteCriticalAction(
 		ctx, auditID, model.AuditStatusFail, errorCode, nil,
 	)
-	return fromLegacyAppError(appErr)
+	return appErr
 }

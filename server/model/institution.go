@@ -33,7 +33,7 @@ func (i *Institution) PreUpdate() {
 	sanitizeNamed(&i.Name, &i.DisplayName, &i.Description)
 }
 
-func (i *Institution) IsValid() *AppError {
+func (i *Institution) IsValid() error {
 	const where = "Institution.IsValid"
 	if appErr := validatePersistentFields(
 		where,

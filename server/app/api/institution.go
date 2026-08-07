@@ -108,7 +108,7 @@ func requiredPrincipal(w http.ResponseWriter, r *http.Request) (model.Principal,
 	return principal, ok
 }
 
-type idRequirement func(Params) (string, *model.AppError)
+type idRequirement func(Params) (string, error)
 
 func requiredResourceID(w http.ResponseWriter, r *http.Request, require idRequirement) (model.Principal, string, bool) {
 	return principalAndRequiredId(w, r, require)
@@ -122,7 +122,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any, where string
 	return true
 }
 
-func writeResult(w http.ResponseWriter, r *http.Request, a *API, status int, result any, appErr *model.AppError) {
+func writeResult(w http.ResponseWriter, r *http.Request, a *API, status int, result any, appErr error) {
 	if appErr != nil {
 		writeApplicationError(w, r, a.logger, appErr)
 		return
@@ -130,7 +130,7 @@ func writeResult(w http.ResponseWriter, r *http.Request, a *API, status int, res
 	writeJSON(w, status, result)
 }
 
-func writeNoContent(w http.ResponseWriter, r *http.Request, a *API, appErr *model.AppError) {
+func writeNoContent(w http.ResponseWriter, r *http.Request, a *API, appErr error) {
 	if appErr != nil {
 		writeApplicationError(w, r, a.logger, appErr)
 		return

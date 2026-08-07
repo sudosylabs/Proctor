@@ -146,7 +146,7 @@ func (a *API) completeExternalAuthentication(
 
 func externalAuthenticationCallbackFromRequest(
 	request *http.Request,
-) (model.ExternalAuthenticationCallback, *model.AppError) {
+) (model.ExternalAuthenticationCallback, error) {
 	valuesFromRequest := request.URL.Query()
 	if len(valuesFromRequest) == 0 ||
 		len(valuesFromRequest) > model.ExternalCallbackMaxFields {
@@ -169,12 +169,6 @@ func externalAuthenticationCallbackFromRequest(
 	return model.ExternalAuthenticationCallback{Values: values}, nil
 }
 
-func invalidExternalCallbackError() *model.AppError {
-	return model.NewAppError(
-		"completeExternalAuthentication",
-		"authentication.external.invalid",
-		nil,
-		"",
-		http.StatusUnauthorized,
-	)
+func invalidExternalCallbackError() error {
+	return application.NewError("authentication.external.invalid")
 }

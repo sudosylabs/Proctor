@@ -78,7 +78,7 @@ func (s *Session) PreUpdate() {
 	s.RevocationReason = SanitizeUnicode(s.RevocationReason)
 }
 
-func (s *Session) IsValid() *AppError {
+func (s *Session) IsValid() error {
 	const where = "Session.IsValid"
 	if appErr := validatePersistentFields(where, "session", s.Id, s.CreateAt, s.UpdateAt); appErr != nil {
 		return appErr

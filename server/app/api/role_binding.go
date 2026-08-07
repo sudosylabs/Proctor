@@ -142,7 +142,7 @@ func principalAndRoleBindingId(
 	writer http.ResponseWriter,
 	request *http.Request,
 ) (model.Principal, string, bool) {
-	return principalAndRequiredId(writer, request, func(params Params) (string, *model.AppError) {
+	return principalAndRequiredId(writer, request, func(params Params) (string, error) {
 		return params.RequireRoleBindingId()
 	})
 }

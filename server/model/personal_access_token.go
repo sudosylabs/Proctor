@@ -53,7 +53,7 @@ func (t *PersonalAccessToken) PreUpdate() {
 	t.Scopes = cloneStrings(t.Scopes)
 }
 
-func (t *PersonalAccessToken) IsValid() *AppError {
+func (t *PersonalAccessToken) IsValid() error {
 	const where = "PersonalAccessToken.IsValid"
 	if appErr := validatePersistentFields(
 		where,

@@ -13,7 +13,6 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
-	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
@@ -233,42 +232,24 @@ func TestWriteErrorFailsSafeForUnmappedApplicationCodes(t *testing.T) {
 	}
 }
 
-func TestWriteErrorPreservesLegacyModelAppErrorBridge(t *testing.T) {
+func TestWriteErrorMapsConflictWithoutLeakingCauses(t *testing.T) {
 	t.Parallel()
 
-	// Characterization of the temporary compatibility path: unmigrated
-	// capabilities still return *model.AppError and must keep the same
-	// Problem Details shape until ticket 39 removes the bridge.
-	appErr := model.NewAppError(
-		"TestWriteErrorPreservesLegacyModelAppErrorBridge",
-		"legacy.bridge",
-		nil,
-		"database detail",
-		http.StatusConflict,
-	).WithSafeFields(map[string]string{"resource_id": "r1"}).Wrap(
-		errors.New("sensitive internal cause"),
-	)
-	appErr.Translate(func(string, ...any) string {
-		return "The resource conflicts with current state."
-	})
-
-	response := writeErrorResponse(t, appErr)
+	response := writeErrorResponse(t, app.NewError("installation.already_initialized").
+		WithField("resource_id", "r1").
+		Wrap(errors.New("sensitive internal cause")))
 	if response.Code != http.StatusConflict {
 		t.Fatalf("status = %d", response.Code)
 	}
-	if strings.Contains(response.Body.String(), "sensitive") ||
-		strings.Contains(response.Body.String(), "database detail") {
-		t.Fatalf("legacy bridge leaked operator detail: %s", response.Body.String())
+	if strings.Contains(response.Body.String(), "sensitive") {
+		t.Fatalf("leaked operator detail: %s", response.Body.String())
 	}
 	var problem api.Problem
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Code != "legacy.bridge" || problem.Fields["resource_id"] != "r1" {
+	if problem.Code != "installation.already_initialized" || problem.Fields["resource_id"] != "r1" {
 		t.Fatalf("problem = %#v", problem)
-	}
-	if problem.Detail != "The resource conflicts with current state." {
-		t.Fatalf("detail = %q", problem.Detail)
 	}
 }
 

@@ -31,6 +31,7 @@ type applicationErrorMapping struct {
 var applicationErrorMappings = map[string]applicationErrorMapping{
 	"authentication.invalid_credentials":                   {status: http.StatusUnauthorized},
 	"authentication.invalid_token":                         {status: http.StatusUnauthorized},
+	"authentication.credential_ambiguous":                  {status: http.StatusBadRequest},
 	"authentication.required":                              {status: http.StatusUnauthorized},
 	"authentication.client_type.invalid":                   {status: http.StatusBadRequest},
 	"authentication.session.invalid":                       {status: http.StatusBadRequest},
@@ -109,6 +110,10 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"user.invalid":                                         {status: http.StatusBadRequest},
 	"user.conflict":                                        {status: http.StatusConflict},
 	"user.last_system_admin":                               {status: http.StatusConflict},
+	"websocket.origin.invalid": {status: http.StatusForbidden},
+	"authentication.strong_required": {status: http.StatusForbidden},
+	"authentication.csrf.invalid": {status: http.StatusForbidden},
+	"audit.event.invalid": {status: http.StatusInternalServerError},
 }
 
 // ApplicationErrorStatuses returns a copy of the registered application-code

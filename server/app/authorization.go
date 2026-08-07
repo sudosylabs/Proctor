@@ -11,7 +11,6 @@ package app
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -48,7 +47,7 @@ func (s *AuthorizationService) Can(
 	principal model.Principal,
 	action model.Action,
 	resource model.Resource,
-) (bool, *model.AppError) {
+) (bool, error) {
 	allowed, _, appErr := s.evaluate(ctx, principal, action, resource)
 	return allowed, appErr
 }
@@ -58,20 +57,14 @@ func (s *AuthorizationService) evaluate(
 	principal model.Principal,
 	action model.Action,
 	resource model.Resource,
-) (bool, resolvedAuthorizationResource, *model.AppError) {
+) (bool, resolvedAuthorizationResource, error) {
 	var unresolved resolvedAuthorizationResource
 	if !principal.IsValid() {
-		return false, unresolved, invalidTokenError("AuthorizationService.Can")
+		return false, unresolved, invalidTokenAppError()
 	}
 	definition, known := model.DefinitionForAction(action)
 	if !known || !resource.IsValid() || definition.ResourceType != resource.Type {
-		return false, unresolved, model.NewAppError(
-			"AuthorizationService.Can",
-			"authorization.request.invalid",
-			nil,
-			"",
-			http.StatusBadRequest,
-		)
+		return false, unresolved, NewError("authorization.request.invalid")
 	}
 	if s.store == nil || s.store.Role() == nil || s.store.RoleBinding() == nil {
 		return false, unresolved, authorizationUnavailableError(
@@ -163,7 +156,7 @@ func (s *AuthorizationService) Authorize(
 	action model.Action,
 	resource model.Resource,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	return s.authorizeCurrentState(ctx, principal, action, resource, metadata)
 }
 
@@ -176,7 +169,7 @@ func (s *AuthorizationService) authorizeCurrentState(
 	action model.Action,
 	resource model.Resource,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	allowed, appErr := s.preauthorize(ctx, principal, action, resource, metadata)
 	if appErr != nil {
 		return appErr
@@ -196,7 +189,7 @@ func (s *AuthorizationService) authorizeUserViewThroughClass(
 	userResource model.Resource,
 	classResource model.Resource,
 	metadata model.RequestMetadata,
-) *model.AppError {
+) error {
 	allowed, resolved, appErr := s.evaluate(
 		ctx, principal, model.ActionClassMembersView, classResource,
 	)
@@ -227,7 +220,7 @@ func (s *AuthorizationService) preauthorize(
 	action model.Action,
 	resource model.Resource,
 	metadata model.RequestMetadata,
-) (bool, *model.AppError) {
+) (bool, error) {
 	allowed, resolved, appErr := s.evaluate(ctx, principal, action, resource)
 	if appErr != nil {
 		return false, appErr
@@ -241,14 +234,9 @@ func (s *AuthorizationService) preauthorize(
 	return allowed, nil
 }
 
-func authorizationDeniedError(where string) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authorization.denied",
-		nil,
-		"",
-		http.StatusForbidden,
-	)
+func authorizationDeniedError(where string) error {
+	_ = where
+	return NewError("authorization.denied")
 }
 
 
@@ -276,7 +264,7 @@ func authorizationAuditScope(
 func (s *AuthorizationService) resolveResource(
 	ctx context.Context,
 	resource model.Resource,
-) (resolvedAuthorizationResource, *model.AppError) {
+) (resolvedAuthorizationResource, error) {
 	resolved := resolvedAuthorizationResource{
 		academicUnitID: make(map[string]struct{}),
 	}
@@ -346,25 +334,14 @@ func roleBindingApplies(
 	}
 }
 
-func authorizationResourceError(resource string, err error) *model.AppError {
+func authorizationResourceError(resource string, err error) error {
 	if store.IsNotFound(err) {
-		return model.NewAppError(
-			"AuthorizationService.resolveResource",
-			"resource.not_found",
-			nil,
-			"",
-			http.StatusNotFound,
-		).WithSafeFields(map[string]string{"resource": resource})
+		return NewError("resource.not_found").WithField("resource", resource).Wrap(err)
 	}
 	return authorizationUnavailableError("AuthorizationService.resolveResource", err)
 }
 
-func authorizationUnavailableError(where string, err error) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authorization.unavailable",
-		nil,
-		"",
-		http.StatusInternalServerError,
-	).Wrap(err)
+func authorizationUnavailableError(where string, err error) error {
+	_ = where
+	return NewError("authorization.unavailable").Wrap(err)
 }

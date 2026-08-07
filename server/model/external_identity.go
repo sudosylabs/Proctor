@@ -44,7 +44,7 @@ func (ei *ExternalIdentity) PreUpdate() {
 	ei.Provider = strings.ToLower(SanitizeUnicode(ei.Provider))
 }
 
-func (ei *ExternalIdentity) IsValid() *AppError {
+func (ei *ExternalIdentity) IsValid() error {
 	const where = "ExternalIdentity.IsValid"
 	if appErr := validatePersistentFields(
 		where,

@@ -227,13 +227,13 @@ func (a sessionAdministrationAuthorization) AuthorizeView(
 	invocation Invocation,
 	userID string,
 ) error {
-	return fromLegacyAppError(a.authorization.authorizeCurrentState(
+	return a.authorization.authorizeCurrentState(
 		ctx,
 		invocation.Principal(),
 		model.ActionSessionView,
 		model.Resource{Type: model.ResourceUser, Id: userID},
 		invocation.RequestMetadata(),
-	))
+	)
 }
 
 func (a sessionAdministrationAuthorization) AuthorizeManage(
@@ -241,13 +241,13 @@ func (a sessionAdministrationAuthorization) AuthorizeManage(
 	invocation Invocation,
 	userID string,
 ) error {
-	return fromLegacyAppError(a.authorization.authorizeCurrentState(
+	return a.authorization.authorizeCurrentState(
 		ctx,
 		invocation.Principal(),
 		model.ActionSessionManage,
 		model.Resource{Type: model.ResourceUser, Id: userID},
 		invocation.RequestMetadata(),
-	))
+	)
 }
 
 type sessionAdministrationRealtimeEffects struct {

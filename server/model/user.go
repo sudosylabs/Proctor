@@ -156,7 +156,7 @@ func (u *User) normalize() {
 	u.Timezone = SanitizeUnicode(u.Timezone)
 }
 
-func (u *User) IsValid() *AppError {
+func (u *User) IsValid() error {
 	const where = "User.IsValid"
 	if appErr := validatePersistentFields(where, "user", u.Id, u.CreateAt, u.UpdateAt); appErr != nil {
 		return appErr

@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -96,7 +95,7 @@ func (s *RealtimeService) Publish(
 	ctx context.Context,
 	event *model.WebSocketEvent,
 	sendType model.ClusterSendType,
-) *model.AppError {
+) error {
 	if event == nil {
 		return invalidRealtimeRequest("RealtimeService.Publish", "event")
 	}
@@ -383,24 +382,14 @@ func sessionIds(sessions []*model.Session) []string {
 	return ids
 }
 
-func invalidRealtimeRequest(where, field string) *model.AppError {
-	return model.NewAppError(
-		where,
-		"websocket.request.invalid",
-		nil,
-		"",
-		http.StatusBadRequest,
-	).WithSafeFields(map[string]string{"field": field})
+func invalidRealtimeRequest(where, field string) error {
+	_ = where
+	return NewError("websocket.request.invalid").WithField("field", field)
 }
 
-func internalRealtimeError(where string, err error) *model.AppError {
-	return model.NewAppError(
-		where,
-		"websocket.internal",
-		nil,
-		"",
-		http.StatusInternalServerError,
-	).Wrap(err)
+func internalRealtimeError(where string, err error) error {
+	_ = where
+	return NewError("websocket.internal").Wrap(err)
 }
 
 func (a *App) AttachRealtimeSink(sink RealtimeSink) error {
@@ -411,7 +400,7 @@ func (a *App) PublishWebSocketEvent(
 	ctx context.Context,
 	event *model.WebSocketEvent,
 	sendType model.ClusterSendType,
-) *model.AppError {
+) error {
 	return a.realtime.Publish(ctx, event, sendType)
 }
 
@@ -420,7 +409,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 	principal model.Principal,
 	metadata model.RequestMetadata,
 	subscription model.WebSocketSubscription,
-) *model.AppError {
+) error {
 	if !subscription.IsValid() {
 		return invalidRealtimeRequest("AuthorizeWebSocketSubscription", "subscription")
 	}
@@ -436,24 +425,24 @@ func (a *App) AuthorizeWebSocketSubscription(
 func (a *App) ValidateWebSocketPrincipal(
 	ctx context.Context,
 	principal model.Principal,
-) *model.AppError {
+) error {
 	if !principal.IsValid() || principal.CredentialType != model.CredentialSessionAccess {
-		return invalidTokenError("ValidateWebSocketPrincipal")
+		return invalidTokenAppError()
 	}
 	session, err := a.Store().Session().Get(ctx, principal.SessionId)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return invalidTokenError("ValidateWebSocketPrincipal.session")
+			return invalidTokenAppError()
 		}
-		return internalAuthenticationError("ValidateWebSocketPrincipal.session", err)
+		return authenticationUnavailable(err)
 	}
 	if session.UserId != principal.UserId ||
 		session.IsExpiredAt(time.Now().UnixMilli()) {
-		return invalidTokenError("ValidateWebSocketPrincipal.session")
+		return invalidTokenAppError()
 	}
 	user, err := a.Store().User().Get(ctx, principal.UserId)
 	if err != nil || !user.IsActive() {
-		return invalidTokenError("ValidateWebSocketPrincipal.user")
+		return invalidTokenAppError()
 	}
 	return nil
 }

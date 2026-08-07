@@ -71,54 +71,54 @@ func ParamsFromRequest(request *http.Request) Params {
 	}
 }
 
-func (p Params) RequireProviderId() (string, *model.AppError) {
+func (p Params) RequireProviderId() (string, error) {
 	if len(p.ProviderId) == 0 || len(p.ProviderId) > model.IdentityProviderMaxLength {
 		return "", invalidRequestError("provider_id", nil)
 	}
 	return p.ProviderId, nil
 }
 
-func (p Params) RequireUserId() (string, *model.AppError) {
+func (p Params) RequireUserId() (string, error) {
 	return requirePathId("user_id", p.UserId)
 }
 
-func (p Params) RequireAcademicUnitId() (string, *model.AppError) {
+func (p Params) RequireAcademicUnitId() (string, error) {
 	return requirePathId("academic_unit_id", p.AcademicUnitId)
 }
 
-func (p Params) RequireProgrammeId() (string, *model.AppError) {
+func (p Params) RequireProgrammeId() (string, error) {
 	return requirePathId("programme_id", p.ProgrammeId)
 }
 
-func (p Params) RequireProgrammeLevelId() (string, *model.AppError) {
+func (p Params) RequireProgrammeLevelId() (string, error) {
 	return requirePathId("programme_level_id", p.ProgrammeLevelId)
 }
 
-func (p Params) RequireAcademicPeriodId() (string, *model.AppError) {
+func (p Params) RequireAcademicPeriodId() (string, error) {
 	return requirePathId("academic_period_id", p.AcademicPeriodId)
 }
 
-func (p Params) RequireClassId() (string, *model.AppError) {
+func (p Params) RequireClassId() (string, error) {
 	return requirePathId("class_id", p.ClassId)
 }
 
-func (p Params) RequireAffiliationId() (string, *model.AppError) {
+func (p Params) RequireAffiliationId() (string, error) {
 	return requirePathId("affiliation_id", p.AffiliationId)
 }
 
-func (p Params) RequireAcademicUnitMemberId() (string, *model.AppError) {
+func (p Params) RequireAcademicUnitMemberId() (string, error) {
 	return requirePathId("academic_unit_member_id", p.AcademicUnitMemberId)
 }
 
-func (p Params) RequireClassMemberId() (string, *model.AppError) {
+func (p Params) RequireClassMemberId() (string, error) {
 	return requirePathId("class_member_id", p.ClassMemberId)
 }
 
-func (p Params) RequirePersonalAccessTokenId() (string, *model.AppError) {
+func (p Params) RequirePersonalAccessTokenId() (string, error) {
 	return requirePathId("personal_access_token_id", p.PersonalAccessTokenId)
 }
 
-func (p Params) RequireSessionId() (string, *model.AppError) {
+func (p Params) RequireSessionId() (string, error) {
 	return requirePathId("session_id", p.SessionId)
 }
 
@@ -135,15 +135,15 @@ func withRequestParams(next http.Handler) http.Handler {
 	})
 }
 
-func (p Params) RequireRoleId() (string, *model.AppError) {
+func (p Params) RequireRoleId() (string, error) {
 	return requirePathId("role_id", p.RoleId)
 }
 
-func (p Params) RequireRoleBindingId() (string, *model.AppError) {
+func (p Params) RequireRoleBindingId() (string, error) {
 	return requirePathId("role_binding_id", p.RoleBindingId)
 }
 
-func requirePathId(name, id string) (string, *model.AppError) {
+func requirePathId(name, id string) (string, error) {
 	if !model.IsValidId(id) {
 		return "", invalidRequestError(name, nil)
 	}
@@ -153,7 +153,7 @@ func requirePathId(name, id string) (string, *model.AppError) {
 func principalAndRequiredId(
 	writer http.ResponseWriter,
 	request *http.Request,
-	require func(Params) (string, *model.AppError),
+	require func(Params) (string, error),
 ) (model.Principal, string, bool) {
 	principal, ok := Principal(request.Context())
 	if !ok {

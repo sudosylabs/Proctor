@@ -10,7 +10,6 @@ package app
 import (
 	"context"
 	"errors"
-	"net/http"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -19,7 +18,7 @@ import (
 
 const defaultAdministrationListLimit = 100
 
-func (a *App) programmeAcademicUnit(ctx context.Context, programmeID string) (*model.Programme, string, *model.AppError) {
+func (a *App) programmeAcademicUnit(ctx context.Context, programmeID string) (*model.Programme, string, error) {
 	programme, err := a.Store().Programme().Get(ctx, programmeID)
 	if err != nil {
 		return nil, "", administrationError("programmeAcademicUnit", "programme", err)
@@ -30,7 +29,7 @@ func (a *App) programmeAcademicUnit(ctx context.Context, programmeID string) (*m
 func (a *App) programmeLevelAcademicUnit(
 	ctx context.Context,
 	levelID string,
-) (*model.ProgrammeLevel, string, *model.AppError) {
+) (*model.ProgrammeLevel, string, error) {
 	level, err := a.Store().ProgrammeLevel().Get(ctx, levelID)
 	if err != nil {
 		return nil, "", administrationError("programmeLevelAcademicUnit", "programme_level", err)
@@ -62,41 +61,50 @@ func (a *App) beginAdministrationMutation(
 	operation string,
 	value any,
 	prior any,
-) (*model.AuditEvent, *model.AppError) {
+) (*model.AuditEvent, error) {
 	return a.audit.BeginCriticalAction(
 		ctx, principal, action, resource, metadata,
 		map[string]any{"operation": operation, "value": value}, prior,
 	)
 }
 
-func (a *App) completeAdministrationMutation(ctx context.Context, auditID string, result model.Auditable) *model.AppError {
+func (a *App) completeAdministrationMutation(ctx context.Context, auditID string, result model.Auditable) error {
 	_, appErr := a.audit.CompleteCriticalAction(
 		ctx, auditID, model.AuditStatusSuccess, "", result.Auditable(),
 	)
 	return appErr
 }
 
-func (a *App) failAdministrationMutation(ctx context.Context, auditID, where, resource string, err error) *model.AppError {
+func (a *App) failAdministrationMutation(ctx context.Context, auditID, where, resource string, err error) error {
 	mapped := administrationError(where, resource, err)
+	code := "administration.unavailable"
+	if failure, ok := As(mapped); ok {
+		code = failure.Code()
+	}
 	if _, auditErr := a.audit.CompleteCriticalAction(
-		ctx, auditID, model.AuditStatusFail, mapped.ErrorCode(), nil,
+		ctx, auditID, model.AuditStatusFail, code, nil,
 	); auditErr != nil {
 		return auditErr
 	}
 	return mapped
 }
 
-func administrationError(where, resource string, err error) *model.AppError {
-	var appErr *model.AppError
-	if errors.As(err, &appErr) {
-		return appErr
+func administrationError(where, resource string, err error) error {
+	_ = where
+	var appFailure *Error
+	if errors.As(err, &appFailure) {
+		return err
 	}
-	status, code := http.StatusInternalServerError, "administration.unavailable"
+	var validation *model.ValidationError
+	if errors.As(err, &validation) {
+		return domainInvalid(resource+".invalid", err)
+	}
+	code := "administration.unavailable"
 	switch {
 	case store.IsNotFound(err):
-		status, code = http.StatusNotFound, "resource.not_found"
+		code = "resource.not_found"
 	case store.IsConflict(err):
-		status, code = http.StatusConflict, resource+".conflict"
+		code = resource + ".conflict"
 		var conflict *store.ErrConflict
 		if errors.As(err, &conflict) && conflict.Constraint == "users_last_system_admin" {
 			code = "user.last_system_admin"
@@ -105,12 +113,10 @@ func administrationError(where, resource string, err error) *model.AppError {
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			status, code = http.StatusBadRequest, resource+".invalid"
+			code = resource + ".invalid"
 		}
 	}
-	return model.NewAppError(where, code, nil, "", status).
-		WithSafeFields(map[string]string{"resource": resource}).
-		Wrap(err)
+	return NewError(code).WithField("resource", resource).Wrap(err)
 }
 
 func saveAcademicEntity[T model.Auditable](
@@ -124,7 +130,7 @@ func saveAcademicEntity[T model.Auditable](
 	entity string,
 	auditable map[string]any,
 	save func() (T, error),
-) (T, *model.AppError) {
+) (T, error) {
 	var zero T
 	attempt, appErr := a.beginAdministrationMutation(
 		ctx, principal, action, resource, metadata, "create", auditable, nil,
@@ -154,7 +160,7 @@ func updateAcademicEntity[T model.Auditable](
 	auditable map[string]any,
 	prior map[string]any,
 	update func() (T, error),
-) (T, *model.AppError) {
+) (T, error) {
 	var zero T
 	attempt, appErr := a.beginAdministrationMutation(
 		ctx, principal, action, resource, metadata, "patch", auditable, prior,
@@ -184,7 +190,7 @@ func archiveAcademicEntity[T model.Auditable](
 	id string,
 	prior map[string]any,
 	archive func(int64) (T, error),
-) *model.AppError {
+) error {
 	attempt, appErr := a.beginAdministrationMutation(
 		ctx, principal, action, resource, metadata,
 		"archive", map[string]any{"id": id}, prior,

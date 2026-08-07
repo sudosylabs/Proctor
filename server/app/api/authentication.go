@@ -422,18 +422,18 @@ func currentUserHandler(profiles UserProfileApplication, logger *mlog.Logger) ht
 	})
 }
 
-func requestAccessCredential(request *http.Request) (requestCredential, *model.AppError) {
+func requestAccessCredential(request *http.Request) (requestCredential, error) {
 	return requestCredentialFrom(request, BrowserAccessCookieName)
 }
 
-func requestRefreshCredential(request *http.Request) (requestCredential, *model.AppError) {
+func requestRefreshCredential(request *http.Request) (requestCredential, error) {
 	return requestCredentialFrom(request, BrowserRefreshCookieName)
 }
 
 func requestCredentialFrom(
 	request *http.Request,
 	cookieName string,
-) (requestCredential, *model.AppError) {
+) (requestCredential, error) {
 	bearer, hasBearer, appErr := optionalBearerCredential(request)
 	if appErr != nil {
 		return requestCredential{}, appErr
@@ -454,7 +454,7 @@ func requestCredentialFrom(
 	return requestCredential{}, authenticationRequiredError()
 }
 
-func optionalBearerCredential(request *http.Request) (string, bool, *model.AppError) {
+func optionalBearerCredential(request *http.Request) (string, bool, error) {
 	values := request.Header.Values("Authorization")
 	if len(values) == 0 {
 		return "", false, nil
@@ -472,7 +472,7 @@ func optionalBearerCredential(request *http.Request) (string, bool, *model.AppEr
 func singleCookieValue(
 	request *http.Request,
 	name string,
-) (string, *model.AppError) {
+) (string, error) {
 	var value string
 	for _, cookie := range request.Cookies() {
 		if cookie.Name != name {
@@ -519,34 +519,21 @@ func decodeRequestJSON(request *http.Request, target any) error {
 	return nil
 }
 
-func invalidRequestError(where string, err error) *model.AppError {
-	return model.NewAppError(
-		where,
-		"request.invalid",
-		nil,
-		"",
-		http.StatusBadRequest,
-	).Wrap(err)
+func invalidRequestError(where string, err error) error {
+	_ = where
+	out := application.NewError("request.invalid")
+	if err != nil {
+		out = out.Wrap(err)
+	}
+	return out
 }
 
-func authenticationRequiredError() *model.AppError {
-	return model.NewAppError(
-		"requireAuthentication",
-		"authentication.required",
-		nil,
-		"",
-		http.StatusUnauthorized,
-	)
+func authenticationRequiredError() error {
+	return application.NewError("authentication.required")
 }
 
-func ambiguousCredentialError() *model.AppError {
-	return model.NewAppError(
-		"requestCredentialFrom",
-		"authentication.credential_ambiguous",
-		nil,
-		"",
-		http.StatusBadRequest,
-	)
+func ambiguousCredentialError() error {
+	return application.NewError("authentication.credential_ambiguous").WithField("field", "credential")
 }
 
 func writeApplicationError(
@@ -572,10 +559,6 @@ func applicationErrorCode(err error) string {
 	if errors.As(err, &failure) {
 		return failure.Code()
 	}
-	var legacy legacyApplicationError
-	if errors.As(err, &legacy) {
-		return legacy.ErrorCode()
-	}
 	return "internal"
 }
 
@@ -584,10 +567,6 @@ func applicationErrorRequiresLogging(err error) bool {
 	if errors.As(err, &failure) {
 		mapping, ok := applicationErrorMappings[failure.Code()]
 		return !ok || mapping.status >= http.StatusInternalServerError
-	}
-	var legacy legacyApplicationError
-	if errors.As(err, &legacy) {
-		return legacy.HTTPStatus() >= http.StatusInternalServerError
 	}
 	return true
 }

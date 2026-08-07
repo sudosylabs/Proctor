@@ -59,13 +59,13 @@ func (a academicUnitAuthorization) Authorize(
 	action model.Action,
 	resource model.Resource,
 ) error {
-	return fromLegacyAppError(a.authorization.authorizeCurrentState(
+	return a.authorization.authorizeCurrentState(
 		ctx,
 		invocation.Principal(),
 		action,
 		resource,
 		invocation.RequestMetadata(),
-	))
+	)
 }
 
 func (a academicUnitAuthorization) AuthorizeInstallation(

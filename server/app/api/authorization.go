@@ -12,6 +12,7 @@ import (
 	"context"
 	"net/http"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -21,67 +22,67 @@ type PermissionChecker interface {
 		model.Principal,
 		model.Action,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToAcademicUnitForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.Action,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToClassForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.Action,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToProgrammeForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.Action,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToProgrammeLevelForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.Action,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToClassAdministrationForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToUserForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.Action,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToAffiliationForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 	PrincipalHasPermissionToAcademicUnitMemberForRequest(
 		context.Context,
 		model.Principal,
 		string,
 		model.RequestMetadata,
-	) (context.Context, bool, *model.AppError)
+	) (context.Context, bool, error)
 }
 
 func (a *API) requirePermission(
 	writer http.ResponseWriter,
 	request *http.Request,
 	allowed bool,
-	appErr *model.AppError,
+	appErr error,
 ) bool {
 	if appErr != nil {
 		writeApplicationError(writer, request, a.logger, appErr)
@@ -91,13 +92,7 @@ func (a *API) requirePermission(
 		WriteError(
 			writer,
 			request,
-			model.NewAppError(
-				"API.requirePermission",
-				"authorization.denied",
-				nil,
-				"",
-				http.StatusForbidden,
-			),
+			application.NewError("authorization.denied"),
 		)
 		return false
 	}

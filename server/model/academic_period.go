@@ -40,7 +40,7 @@ func (ap *AcademicPeriod) PreUpdate() {
 	sanitizeNamed(&ap.Name, &ap.DisplayName, &ap.Description)
 }
 
-func (ap *AcademicPeriod) IsValid() *AppError {
+func (ap *AcademicPeriod) IsValid() error {
 	const where = "AcademicPeriod.IsValid"
 	if appErr := validatePersistentFields(
 		where,

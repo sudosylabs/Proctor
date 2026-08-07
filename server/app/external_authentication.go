@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"errors"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -104,7 +103,7 @@ func (a *App) BeginExternalAuthentication(
 		command.DeviceName,
 		command.Source,
 	)
-	return result, fromLegacyAppError(appErr)
+	return result, appErr
 }
 
 func (s *ExternalAuthenticationService) begin(
@@ -115,7 +114,7 @@ func (s *ExternalAuthenticationService) begin(
 	deviceID string,
 	deviceName string,
 	source string,
-) (*model.ExternalAuthenticationStart, *model.AppError) {
+) (*model.ExternalAuthenticationStart, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
@@ -129,13 +128,7 @@ func (s *ExternalAuthenticationService) begin(
 		clientType == model.SessionClientCLI ||
 		len(deviceID) > model.SessionDeviceIdMaxLength ||
 		utf8.RuneCountInString(deviceName) > model.SessionDeviceNameMaxRunes {
-		return nil, model.NewAppError(
-			"BeginExternalAuthentication",
-			"authentication.external.request.invalid",
-			nil,
-			"",
-			http.StatusBadRequest,
-		)
+		return nil, NewError("authentication.external.request.invalid")
 	}
 	if appErr := s.checkInitiationRateLimit(ctx, providerID, source); appErr != nil {
 		return nil, appErr
@@ -149,9 +142,7 @@ func (s *ExternalAuthenticationService) begin(
 		providerID,
 	)
 	if err != nil {
-		return nil, internalAuthenticationError(
-			"BeginExternalAuthentication.callback_url",
-			err,
+		return nil, authenticationUnavailable(err,
 		)
 	}
 	challenge, err := provider.Begin(
@@ -169,16 +160,12 @@ func (s *ExternalAuthenticationService) begin(
 		)
 	}
 	if challenge == nil || challenge.RedirectURL == "" {
-		return nil, internalAuthenticationError(
-			"BeginExternalAuthentication.provider_url",
-			errors.New("external provider returned an empty login challenge"),
+		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"),
 		)
 	}
 	stateStore := s.store.ExternalLoginState()
 	if stateStore == nil {
-		return nil, internalAuthenticationError(
-			"BeginExternalAuthentication.store",
-			errors.New("external login state store is unavailable"),
+		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"),
 		)
 	}
 	if _, err := stateStore.Save(ctx, &model.ExternalLoginState{
@@ -187,9 +174,7 @@ func (s *ExternalAuthenticationService) begin(
 		ClientType: clientType, DeviceId: deviceID, DeviceName: deviceName,
 		ExpiresAt: expiresAt,
 	}); err != nil {
-		return nil, internalAuthenticationError(
-			"BeginExternalAuthentication.save_state",
-			err,
+		return nil, authenticationUnavailable(err,
 		)
 	}
 	return &model.ExternalAuthenticationStart{
@@ -211,7 +196,7 @@ func (a *App) CompleteExternalAuthentication(
 		command.Callback,
 		invocation.RequestMetadata(),
 	)
-	return result, fromLegacyAppError(appErr)
+	return result, appErr
 }
 
 func (s *ExternalAuthenticationService) complete(
@@ -220,7 +205,7 @@ func (s *ExternalAuthenticationService) complete(
 	bindingToken string,
 	callback model.ExternalAuthenticationCallback,
 	metadata model.RequestMetadata,
-) (*model.ExternalAuthenticationCompletion, *model.AppError) {
+) (*model.ExternalAuthenticationCompletion, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
@@ -237,9 +222,7 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	stateStore := s.store.ExternalLoginState()
 	if stateStore == nil {
-		return nil, internalAuthenticationError(
-			"CompleteExternalAuthentication.store",
-			errors.New("external login state store is unavailable"),
+		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"),
 		)
 	}
 	stateHash := model.HashToken(stateToken)
@@ -248,9 +231,7 @@ func (s *ExternalAuthenticationService) complete(
 	if err != nil || state == nil || state.Provider != providerID ||
 		state.ConsumedAt != 0 || state.ExpiresAt <= now {
 		if err != nil && !store.IsNotFound(err) {
-			return nil, internalAuthenticationError(
-				"CompleteExternalAuthentication.get_state",
-				err,
+			return nil, authenticationUnavailable(err,
 			)
 		}
 		return nil, invalidExternalAuthenticationError(
@@ -262,9 +243,7 @@ func (s *ExternalAuthenticationService) complete(
 		providerID,
 	)
 	if err != nil {
-		return nil, internalAuthenticationError(
-			"CompleteExternalAuthentication.callback_url",
-			err,
+		return nil, authenticationUnavailable(err,
 		)
 	}
 	state, err = stateStore.Consume(
@@ -280,17 +259,13 @@ func (s *ExternalAuthenticationService) complete(
 				"CompleteExternalAuthentication.consume_state",
 			)
 		}
-		return nil, internalAuthenticationError(
-			"CompleteExternalAuthentication.consume_state",
-			err,
+		return nil, authenticationUnavailable(err,
 		)
 	}
 
 	institution, err := s.store.Institution().GetSingleton(ctx)
 	if err != nil {
-		return nil, internalAuthenticationError(
-			"CompleteExternalAuthentication.institution",
-			err,
+		return nil, authenticationUnavailable(err,
 		)
 	}
 	assertion, providerErr := provider.Complete(
@@ -304,13 +279,11 @@ func (s *ExternalAuthenticationService) complete(
 	)
 	if providerErr != nil {
 		errorCode := "authentication.external.rejected"
-		status := http.StatusUnauthorized
 		if !errors.Is(
 			providerErr,
 			externalauth.ErrAuthenticationRejected,
 		) {
 			errorCode = "authentication.external.unavailable"
-			status = http.StatusBadGateway
 		}
 		if appErr := s.audit.RecordExternalAuthenticationFailure(
 			ctx,
@@ -322,13 +295,7 @@ func (s *ExternalAuthenticationService) complete(
 		); appErr != nil {
 			return nil, appErr
 		}
-		return nil, model.NewAppError(
-			"CompleteExternalAuthentication.provider",
-			errorCode,
-			nil,
-			"",
-			status,
-		).Wrap(providerErr)
+		return nil, NewError(errorCode).Wrap(providerErr)
 	}
 	if assertion == nil || assertion.ProviderId != providerID {
 		if auditErr := s.audit.RecordExternalAuthenticationFailure(
@@ -341,9 +308,7 @@ func (s *ExternalAuthenticationService) complete(
 		); auditErr != nil {
 			return nil, auditErr
 		}
-		return nil, internalAuthenticationError(
-			"CompleteExternalAuthentication.assertion",
-			errors.New("provider returned a mismatched assertion"),
+		return nil, authenticationUnavailable(errors.New("provider returned a mismatched assertion"),
 		)
 	}
 	userCandidate := externalUserCandidate(assertion)
@@ -355,9 +320,7 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	identityStore := s.store.ExternalIdentity()
 	if identityStore == nil {
-		return nil, internalAuthenticationError(
-			"CompleteExternalAuthentication.identity_store",
-			errors.New("external identity store is unavailable"),
+		return nil, authenticationUnavailable(errors.New("external identity store is unavailable"),
 		)
 	}
 	resolution, err := identityStore.ResolveOrProvision(
@@ -398,25 +361,11 @@ func (s *ExternalAuthenticationService) complete(
 		}
 		switch {
 		case errors.As(err, &conflict):
-			return nil, model.NewAppError(
-				"CompleteExternalAuthentication.resolve",
-				"authentication.external.account_conflict",
-				nil,
-				"",
-				http.StatusConflict,
-			).Wrap(err)
+			return nil, NewError("authentication.external.account_conflict").Wrap(err)
 		case store.IsNotFound(err):
-			return nil, model.NewAppError(
-				"CompleteExternalAuthentication.resolve",
-				"authentication.external.account_not_linked",
-				nil,
-				"",
-				http.StatusForbidden,
-			)
+			return nil, NewError("authentication.external.account_not_linked")
 		default:
-			return nil, internalAuthenticationError(
-				"CompleteExternalAuthentication.resolve",
-				err,
+			return nil, authenticationUnavailable(err,
 			)
 		}
 	}
@@ -464,12 +413,12 @@ func (s *ExternalAuthenticationService) complete(
 		mfaCompletedAt,
 	)
 	if sessionErr != nil {
-		legacy := toLegacyAppError("ExternalAuthentication.complete.session", sessionErr)
+		legacy := sessionErr
 		if _, completionErr := s.audit.CompleteCriticalAction(
 			ctx,
 			auditEvent.Id,
 			model.AuditStatusFail,
-			legacy.ErrorCode(),
+			func() string { if f,ok:=As(legacy); ok { return f.Code() }; return "authentication.internal" }(),
 			nil,
 		); completionErr != nil {
 			return nil, completionErr
@@ -496,7 +445,7 @@ func (s *ExternalAuthenticationService) checkInitiationRateLimit(
 	ctx context.Context,
 	providerID string,
 	source string,
-) *model.AppError {
+) error {
 	settings := s.policy.LoginRateLimit
 	key := "authentication/external/source/" +
 		digestCacheKey(providerID+"\x00"+normalizeLoginSource(source))
@@ -507,19 +456,10 @@ func (s *ExternalAuthenticationService) checkInitiationRateLimit(
 		settings.Window,
 	)
 	if err != nil {
-		return rateLimitUnavailableError(
-			"BeginExternalAuthentication.rate_limit",
-			err,
-		)
+		return rateLimitUnavailableAppError(err)
 	}
 	if count > int64(settings.MaximumSourceAttempts) {
-		return model.NewAppError(
-			"BeginExternalAuthentication",
-			"authentication.rate_limited",
-			nil,
-			"",
-			429,
-		)
+		return NewError("authentication.rate_limited")
 	}
 	return nil
 }
@@ -576,50 +516,29 @@ func externalAuthenticationCallbackURL(
 	return callback.String(), nil
 }
 
-func externalProviderNotFoundError(where string) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authentication.external.provider_not_found",
-		nil,
-		"",
-		http.StatusNotFound,
-	)
+func externalProviderNotFoundError(where string) error {
+	_ = where
+	return NewError("authentication.external.provider_not_found")
 }
 
-func invalidExternalAuthenticationError(where string) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authentication.external.invalid",
-		nil,
-		"",
-		http.StatusUnauthorized,
-	)
+func invalidExternalAuthenticationError(where string) error {
+	_ = where
+	return NewError("authentication.external.invalid")
 }
 
 func externalProviderOperationError(
 	where string,
 	err error,
-) *model.AppError {
+) error {
+	_ = where
 	if errors.Is(err, externalauth.ErrAuthenticationRejected) {
-		return model.NewAppError(
-			where,
-			"authentication.external.rejected",
-			nil,
-			"",
-			http.StatusUnauthorized,
-		).Wrap(err)
+		return NewError("authentication.external.rejected").Wrap(err)
 	}
 	if errors.Is(err, externalauth.ErrProviderUnavailable) ||
 		errors.Is(err, externalauth.ErrInvalidResponse) {
-		return model.NewAppError(
-			where,
-			"authentication.external.unavailable",
-			nil,
-			"",
-			http.StatusBadGateway,
-		).Wrap(err)
+		return NewError("authentication.external.unavailable").Wrap(err)
 	}
-	return internalAuthenticationError(where, err)
+	return authenticationUnavailable(err)
 }
 
 

@@ -130,7 +130,7 @@ func (a *API) setPersonalAccessTokenDisabled(
 	principal, tokenID, ok := principalAndRequiredId(
 		writer,
 		request,
-		func(params Params) (string, *model.AppError) {
+		func(params Params) (string, error) {
 			return params.RequirePersonalAccessTokenId()
 		},
 	)
@@ -215,7 +215,7 @@ func (a *API) revokePersonalAccessToken(
 	principal, tokenID, ok := principalAndRequiredId(
 		writer,
 		request,
-		func(params Params) (string, *model.AppError) {
+		func(params Params) (string, error) {
 			return params.RequirePersonalAccessTokenId()
 		},
 	)

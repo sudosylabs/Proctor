@@ -279,7 +279,7 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 	}
 	access.PreSave()
 	if appErr := access.IsValid(); appErr == nil ||
-		appErr.Id != "model.session_credential.is_valid.kind.app_error" {
+		appErr.(*ValidationError).Code != "model.session_credential.is_valid.kind.app_error" {
 		t.Fatalf("access credential error = %v", appErr)
 	}
 }
@@ -357,12 +357,12 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 	now := GetMillis()
 	tests := []struct {
 		name string
-		err  *AppError
+		err  error
 		code string
 	}{
 		{
 			name: "duplicate role permission",
-			err: func() *AppError {
+			err: func() error {
 				r := &Role{
 					Name:        "viewer",
 					DisplayName: "Viewer",
@@ -375,7 +375,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 		},
 		{
 			name: "personal token without expiry",
-			err: func() *AppError {
+			err: func() error {
 				token := &PersonalAccessToken{
 					UserId:      NewId(),
 					Description: "CLI",
@@ -389,7 +389,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 		},
 		{
 			name: "session idle deadline after absolute deadline",
-			err: func() *AppError {
+			err: func() error {
 				s := &Session{
 					UserId:                 NewId(),
 					ClientType:             SessionClientDesktop,
@@ -405,7 +405,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 		},
 		{
 			name: "external subject with direction control",
-			err: func() *AppError {
+			err: func() error {
 				identity := &ExternalIdentity{
 					UserId:   NewId(),
 					Provider: "oidc",
@@ -418,7 +418,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 		},
 		{
 			name: "class membership without period",
-			err: func() *AppError {
+			err: func() error {
 				member := &ClassMember{
 					ClassId: NewId(),
 					UserId:  NewId(),
@@ -432,7 +432,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.err == nil || test.err.Id != test.code {
+			if test.err == nil || test.err.(*ValidationError).Code != test.code {
 				t.Fatalf("error = %v, want %q", test.err, test.code)
 			}
 		})

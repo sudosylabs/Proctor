@@ -73,7 +73,7 @@ func TestAuditEventValidationCloningAndBounds(t *testing.T) {
 	invalid := event.Clone()
 	invalid.IPAddress = "not-an-address"
 	if appErr := invalid.IsValid(); appErr == nil ||
-		appErr.Id != "model.audit_event.is_valid.ip_address.app_error" {
+		appErr.(*ValidationError).Code != "model.audit_event.is_valid.ip_address.app_error" {
 		t.Fatalf("invalid IP error = %v", appErr)
 	}
 	if _, appErr := EncodeAuditData(strings.Repeat("x", AuditJSONMaxBytes)); appErr == nil {

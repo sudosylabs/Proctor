@@ -24,7 +24,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -188,7 +187,7 @@ func (a *App) SetupMFA(
 		ctx, principal, actionMFASetup, resource, invocation.RequestMetadata(), nil, nil,
 	)
 	if appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	saved, err := a.Store().MFA().SavePending(ctx, candidate)
 	if err != nil {
@@ -197,7 +196,7 @@ func (a *App) SetupMFA(
 	if _, appErr := a.audit.CompleteCriticalAction(
 		ctx, attempt.Id, model.AuditStatusSuccess, "", saved.Auditable(),
 	); appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	return &model.MFASetup{
 		Secret: secret,
@@ -230,7 +229,7 @@ func (a *App) ActivateMFA(
 	}
 	now := a.mfa.now()
 	if !credential.IsPendingAt(now.UnixMilli()) {
-		return nil, fromLegacyAppError(mfaInvalidCodeError("ActivateMFA"))
+		return nil, mfaInvalidCodeError("ActivateMFA")
 	}
 	secret, err := a.mfa.decrypt(principal.UserId, credential)
 	if err != nil {
@@ -238,7 +237,7 @@ func (a *App) ActivateMFA(
 	}
 	timeStep, valid := verifyTOTP(secret, code, 0, now)
 	if !valid {
-		return nil, fromLegacyAppError(mfaInvalidCodeError("ActivateMFA"))
+		return nil, mfaInvalidCodeError("ActivateMFA")
 	}
 	rawCodes, recoveryCodes, err := generateMFARecoveryCodes(
 		principal.UserId,
@@ -256,7 +255,7 @@ func (a *App) ActivateMFA(
 		credential.Auditable(),
 	)
 	if appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	activated, err := a.Store().MFA().Activate(
 		ctx,
@@ -284,7 +283,7 @@ func (a *App) ActivateMFA(
 			"recovery_code_count": len(rawCodes),
 		},
 	); appErr != nil {
-		return nil, fromLegacyAppError(appErr)
+		return nil, appErr
 	}
 	return &model.MFAActivation{RecoveryCodes: rawCodes}, nil
 }
@@ -320,11 +319,15 @@ func (a *App) ChallengeMFA(
 		code,
 		now,
 	); appErr != nil {
+		code := "authentication.mfa.invalid_code"
+		if failure, ok := As(appErr); ok {
+			code = failure.Code()
+		}
 		if _, auditErr := a.audit.CompleteCriticalAction(
 			ctx,
 			attempt.Id,
 			model.AuditStatusFail,
-			appErr.ErrorCode(),
+			code,
 			nil,
 		); auditErr != nil {
 			return nil, auditErr
@@ -374,10 +377,7 @@ func (a *App) RegenerateMFARecoveryCodes(
 		a.mfa.settings.RecoveryCodeCount,
 	)
 	if err != nil {
-		return nil, internalAuthenticationError(
-			"RegenerateMFARecoveryCodes.generate",
-			err,
-		)
+		return nil, authenticationUnavailable(err,)
 	}
 	resource, appErr := a.mfaAuditResource(ctx)
 	if appErr != nil {
@@ -464,7 +464,7 @@ func (a *App) consumeMFASecondFactor(
 	userID string,
 	code string,
 	now time.Time,
-) *model.AppError {
+) error {
 	return a.mfa.consumeSecondFactor(ctx, a.Store(), userID, code, now)
 }
 
@@ -474,7 +474,7 @@ func (s *MFAService) consumeSecondFactor(
 	userID string,
 	code string,
 	now time.Time,
-) *model.AppError {
+) error {
 	mfaPersistence := persistence.MFA()
 	if mfaPersistence == nil {
 		return mfaStoreError(
@@ -490,10 +490,7 @@ func (s *MFAService) consumeSecondFactor(
 	if len(strings.TrimSpace(code)) == 6 {
 		secret, decryptErr := s.decrypt(userID, credential)
 		if decryptErr != nil {
-			return internalAuthenticationError(
-				"ConsumeMFASecondFactor.decrypt",
-				decryptErr,
-			)
+			return authenticationUnavailable(decryptErr)
 		}
 		timeStep, valid := verifyTOTP(
 			secret,
@@ -538,49 +535,41 @@ func (a *App) requireMFAEnabled() error {
 	return NewError("authentication.mfa.disabled")
 }
 
-// requireMFAEnabledLegacy preserves *model.AppError for unmigrated call paths.
-func (a *App) requireMFAEnabledLegacy(where string) *model.AppError {
-	return toLegacyAppError(where, a.requireMFAEnabled())
-}
+
 
 func (a *App) requireStrongRecentSession(
 	principal model.Principal,
 	where string,
-) *model.AppError {
+) error {
+	_ = where
 	if err := a.requireInteractiveSession(principal, true); err != nil {
-		return toLegacyAppError(where, err)
+		return err
 	}
 	if !principal.HasStrongAuthentication() {
-		return model.NewAppError(
-			where,
-			"authentication.strong_authentication_required",
-			nil,
-			"",
-			http.StatusForbidden,
-		)
+		return NewError("authentication.strong_authentication_required")
 	}
 	return nil
 }
 
 func (a *App) requireStrongRecentSessionNeutral(principal model.Principal) error {
-	return fromLegacyAppError(a.requireStrongRecentSession(principal, "MFA"))
+	return a.requireStrongRecentSession(principal, "MFA")
 }
 
 func (a *App) mfaAuditResourceNeutral(ctx context.Context) (model.Resource, error) {
 	resource, appErr := a.mfaAuditResource(ctx)
 	if appErr != nil {
-		return model.Resource{}, fromLegacyAppError(appErr)
+		return model.Resource{}, appErr
 	}
 	return resource, nil
 }
 
 func (a *App) failMFAMutationNeutral(ctx context.Context, auditID string, err error) error {
-	return fromLegacyAppError(a.failMFAMutation(ctx, auditID, "MFA", err))
+	return a.failMFAMutation(ctx, auditID, "MFA", err)
 }
 
 func (a *App) mfaAuditResource(
 	ctx context.Context,
-) (model.Resource, *model.AppError) {
+) (model.Resource, error) {
 	institution, err := a.Store().Institution().GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, mfaStoreError("MFA.audit_resource", err)
@@ -593,10 +582,14 @@ func (a *App) failMFAMutation(
 	auditID string,
 	where string,
 	err error,
-) *model.AppError {
+) error {
 	mapped := mfaStoreError(where, err)
+	code := "authentication.mfa.unavailable"
+	if failure, ok := As(mapped); ok {
+		code = failure.Code()
+	}
 	if _, auditErr := a.audit.CompleteCriticalAction(
-		ctx, auditID, model.AuditStatusFail, mapped.ErrorCode(), nil,
+		ctx, auditID, model.AuditStatusFail, code, nil,
 	); auditErr != nil {
 		return auditErr
 	}
@@ -802,31 +795,22 @@ func mfaProvisioningURI(issuer string, accountName string, secret string) string
 	return value.String()
 }
 
-func mfaInvalidCodeError(where string) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authentication.mfa.invalid_code",
-		nil,
-		"",
-		http.StatusUnauthorized,
-	)
+func mfaInvalidCodeError(where string) error {
+	_ = where
+	return NewError("authentication.mfa.invalid_code")
 }
 
 func mfaStoreFailure(err error) error {
-	return fromLegacyAppError(mfaStoreError("MFA", err))
+	return mfaStoreError("MFA", err)
 }
 
-func mfaStoreError(where string, err error) *model.AppError {
-	var appErr *model.AppError
-	if errors.As(err, &appErr) {
-		return appErr
+func mfaStoreError(where string, err error) error {
+	_ = where
+	code := "authentication.mfa.unavailable"
+	if store.IsNotFound(err) {
+		code = "authentication.mfa.not_found"
+	} else if store.IsConflict(err) {
+		code = "authentication.mfa.conflict"
 	}
-	status, code := http.StatusInternalServerError, "authentication.mfa.unavailable"
-	switch {
-	case store.IsNotFound(err):
-		status, code = http.StatusNotFound, "authentication.mfa.not_found"
-	case store.IsConflict(err):
-		status, code = http.StatusConflict, "authentication.mfa.conflict"
-	}
-	return model.NewAppError(where, code, nil, "", status).Wrap(err)
+	return NewError(code).Wrap(err)
 }

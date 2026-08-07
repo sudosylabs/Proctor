@@ -241,7 +241,7 @@ func (a *App) Can(
 	principal model.Principal,
 	action model.Action,
 	resource model.Resource,
-) (bool, *model.AppError) {
+) (bool, error) {
 	return a.PrincipalHasPermissionTo(ctx, principal, action, resource)
 }
 

@@ -42,7 +42,7 @@ func (c *Class) PreUpdate() {
 	sanitizeNamed(&c.Name, &c.DisplayName, &c.Description)
 }
 
-func (c *Class) IsValid() *AppError {
+func (c *Class) IsValid() error {
 	const where = "Class.IsValid"
 	if appErr := validatePersistentFields(
 		where,

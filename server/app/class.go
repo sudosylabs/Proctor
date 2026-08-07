@@ -158,7 +158,7 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 	candidate := &model.Class{ProgrammeLevelId: levelID, AcademicPeriodId: strings.TrimSpace(command.AcademicPeriodID), Name: command.Name, DisplayName: command.DisplayName, Description: command.Description}
 	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("class.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("class.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
@@ -222,7 +222,7 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	}
 	candidate.PrepareUpdate(updateAt)
 	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, NewError("class.invalid").WithFields(appErr.SafeFields()).Wrap(appErr)
+		return nil, domainInvalid("class.invalid", appErr)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
 	if err != nil {

@@ -48,7 +48,7 @@ func (au *AcademicUnit) PreUpdate() {
 	sanitizeNamed(&au.Name, &au.DisplayName, &au.Description)
 }
 
-func (au *AcademicUnit) IsValid() *AppError {
+func (au *AcademicUnit) IsValid() error {
 	const where = "AcademicUnit.IsValid"
 	if appErr := validatePersistentFields(
 		where,
