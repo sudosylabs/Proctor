@@ -424,16 +424,17 @@ func (s *ExternalAuthenticationService) complete(
 		mfaCompletedAt,
 	)
 	if sessionErr != nil {
+		legacy := toLegacyAppError("ExternalAuthentication.complete.session", sessionErr)
 		if _, completionErr := s.audit.CompleteCriticalAction(
 			ctx,
 			auditEvent.Id,
 			model.AuditStatusFail,
-			sessionErr.ErrorCode(),
+			legacy.ErrorCode(),
 			nil,
 		); completionErr != nil {
 			return nil, completionErr
 		}
-		return nil, sessionErr
+		return nil, legacy
 	}
 	if _, appErr := s.audit.CompleteCriticalAction(
 		ctx,

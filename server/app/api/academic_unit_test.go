@@ -30,14 +30,14 @@ type academicUnitHTTPApplication struct {
 
 func (a *academicUnitHTTPApplication) AuthenticateAccess(
 	context.Context, string,
-) (*model.Principal, *model.AppError) {
+) (*model.Principal, error) {
 	principal := a.principal
 	return &principal, nil
 }
 
 func (a *academicUnitHTTPApplication) AuthenticateBearer(
 	context.Context, string,
-) (*model.Principal, *model.AppError) {
+) (*model.Principal, error) {
 	principal := a.principal
 	return &principal, nil
 }

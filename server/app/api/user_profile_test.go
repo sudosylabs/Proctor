@@ -141,15 +141,14 @@ type loginRevisionHTTPApplication struct {
 
 func (a *loginRevisionHTTPApplication) Login(
 	context.Context,
-	string,
-	string,
-	model.SessionClientType,
-	string,
-	string,
-	string,
-	string,
-) (*model.User, *model.Session, *model.AuthenticationTokens, *model.AppError) {
-	return a.user, &model.Session{Id: model.NewId()}, &model.AuthenticationTokens{AccessToken: "access"}, nil
+	application.Invocation,
+	application.LoginCommand,
+) (*application.LoginResult, error) {
+	return &application.LoginResult{
+		User:    a.user,
+		Session: &model.Session{Id: model.NewId()},
+		Tokens:  &model.AuthenticationTokens{AccessToken: "access"},
+	}, nil
 }
 
 func (a *userProfileHTTPApplication) SearchUsers(_ context.Context, _ application.Invocation, query application.SearchUsersQuery) ([]*model.User, error) {

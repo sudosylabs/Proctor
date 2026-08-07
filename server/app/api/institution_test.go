@@ -25,14 +25,14 @@ type institutionHTTPApplication struct {
 
 func (a *institutionHTTPApplication) AuthenticateAccess(
 	context.Context, string,
-) (*model.Principal, *model.AppError) {
+) (*model.Principal, error) {
 	principal := a.principal
 	return &principal, nil
 }
 
 func (a *institutionHTTPApplication) AuthenticateBearer(
 	context.Context, string,
-) (*model.Principal, *model.AppError) {
+) (*model.Principal, error) {
 	principal := a.principal
 	return &principal, nil
 }

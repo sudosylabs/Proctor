@@ -140,23 +140,24 @@ func requireAuthentication(
 				}
 			}
 			var principal *model.Principal
+			var authErr error
 			if requirement == AuthPrincipalRequired &&
 				credential.source == credentialSourceBearer {
-				principal, appErr = application.AuthenticateBearer(
+				principal, authErr = application.AuthenticateBearer(
 					request.Context(),
 					credential.token,
 				)
 			} else {
-				principal, appErr = application.AuthenticateAccess(
+				principal, authErr = application.AuthenticateAccess(
 					request.Context(),
 					credential.token,
 				)
 			}
-			if appErr != nil {
+			if authErr != nil {
 				if credential.source == credentialSourceCookie {
 					cookies.clear(writer)
 				}
-				writeApplicationError(writer, request, logger, appErr)
+				writeApplicationError(writer, request, logger, authErr)
 				return
 			}
 			if appErr := requirePrincipalAssurance(

@@ -134,28 +134,23 @@ type Options struct {
 }
 
 type Authenticator interface {
-	AuthenticateAccess(context.Context, string) (*model.Principal, *model.AppError)
-	AuthenticateBearer(context.Context, string) (*model.Principal, *model.AppError)
+	AuthenticateAccess(context.Context, string) (*model.Principal, error)
+	AuthenticateBearer(context.Context, string) (*model.Principal, error)
 }
 
 type Authentication interface {
 	Authenticator
 	Login(
 		context.Context,
-		string,
-		string,
-		model.SessionClientType,
-		string,
-		string,
-		string,
-		string,
-	) (*model.User, *model.Session, *model.AuthenticationTokens, *model.AppError)
-	AuthenticateAccess(context.Context, string) (*model.Principal, *model.AppError)
+		application.Invocation,
+		application.LoginCommand,
+	) (*application.LoginResult, error)
+	AuthenticateAccess(context.Context, string) (*model.Principal, error)
 	RefreshSession(
 		context.Context,
 		string,
-	) (*model.Session, *model.AuthenticationTokens, *model.AppError)
-	Logout(context.Context, model.Principal) *model.AppError
+	) (*model.Session, *model.AuthenticationTokens, error)
+	Logout(context.Context, model.Principal) error
 	RequestEmailVerification(
 		context.Context,
 		model.Principal,

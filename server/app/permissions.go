@@ -545,7 +545,11 @@ func (a *App) GetUserForPrincipal(
 			return nil, appErr
 		}
 	}
-	return a.GetUser(ctx, userID)
+	user, err := a.GetUser(ctx, userID)
+	if err != nil {
+		return nil, toLegacyAppError("GetUserForPrincipal", err)
+	}
+	return user, nil
 }
 
 func (a *App) authorizeUserVisibility(

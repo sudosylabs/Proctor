@@ -60,10 +60,103 @@ type emailVerificationCompletion struct {
 	Token string `json:"token"`
 }
 
+// authenticationResponse is the transport-owned login/refresh success body.
+// Field names match the historical v1 envelope so cookie and bearer clients
+// keep working while domain models no longer serialize directly (ADR-0013).
 type authenticationResponse struct {
-	User    *model.User                 `json:"user,omitempty"`
-	Session *model.Session              `json:"session"`
-	Tokens  *model.AuthenticationTokens `json:"tokens,omitempty"`
+	User    *userProfileResponse          `json:"user,omitempty"`
+	Session *sessionResponse              `json:"session"`
+	Tokens  *authenticationTokensResponse `json:"tokens,omitempty"`
+}
+
+type sessionResponse struct {
+	ID                     string `json:"id"`
+	CreateAt               int64  `json:"create_at"`
+	UpdateAt               int64  `json:"update_at"`
+	DeleteAt               int64  `json:"delete_at"`
+	UserID                 string `json:"user_id"`
+	ClientType             string `json:"client_type"`
+	DeviceID               string `json:"device_id,omitempty"`
+	DeviceName             string `json:"device_name,omitempty"`
+	AuthenticationMethod   string `json:"authentication_method"`
+	AuthenticationStrength string `json:"authentication_strength"`
+	AuthenticatedAt        int64  `json:"authenticated_at"`
+	MFACompletedAt         int64  `json:"mfa_completed_at,omitempty"`
+	LastActivityAt         int64  `json:"last_activity_at"`
+	IdleExpiresAt          int64  `json:"idle_expires_at"`
+	ExpiresAt              int64  `json:"expires_at"`
+	RevokedAt              int64  `json:"revoked_at,omitempty"`
+	RevocationReason       string `json:"revocation_reason,omitempty"`
+}
+
+type authenticationTokensResponse struct {
+	AccessToken      string `json:"access_token"`
+	RefreshToken     string `json:"refresh_token"`
+	AccessExpiresAt  int64  `json:"access_expires_at"`
+	RefreshExpiresAt int64  `json:"refresh_expires_at"`
+}
+
+func sessionResponseFromModel(session *model.Session) *sessionResponse {
+	if session == nil {
+		return nil
+	}
+	return &sessionResponse{
+		ID:                     session.Id,
+		CreateAt:               session.CreateAt,
+		UpdateAt:               session.UpdateAt,
+		DeleteAt:               session.DeleteAt,
+		UserID:                 session.UserId,
+		ClientType:             string(session.ClientType),
+		DeviceID:               session.DeviceId,
+		DeviceName:             session.DeviceName,
+		AuthenticationMethod:   session.AuthenticationMethod,
+		AuthenticationStrength: string(session.AuthenticationStrength),
+		AuthenticatedAt:        session.AuthenticatedAt,
+		MFACompletedAt:         session.MFACompletedAt,
+		LastActivityAt:         session.LastActivityAt,
+		IdleExpiresAt:          session.IdleExpiresAt,
+		ExpiresAt:              session.ExpiresAt,
+		RevokedAt:              session.RevokedAt,
+		RevocationReason:       session.RevocationReason,
+	}
+}
+
+func authenticationTokensResponseFromModel(tokens *model.AuthenticationTokens) *authenticationTokensResponse {
+	if tokens == nil {
+		return nil
+	}
+	return &authenticationTokensResponse{
+		AccessToken:      tokens.AccessToken,
+		RefreshToken:     tokens.RefreshToken,
+		AccessExpiresAt:  tokens.AccessExpiresAt,
+		RefreshExpiresAt: tokens.RefreshExpiresAt,
+	}
+}
+
+func authenticationResponseFromLogin(result *application.LoginResult) authenticationResponse {
+	if result == nil {
+		return authenticationResponse{}
+	}
+	var user *userProfileResponse
+	if result.User != nil {
+		mapped := userProfileResponseFromModel(result.User)
+		user = &mapped
+	}
+	return authenticationResponse{
+		User:    user,
+		Session: sessionResponseFromModel(result.Session),
+		Tokens:  authenticationTokensResponseFromModel(result.Tokens),
+	}
+}
+
+func authenticationResponseFromRefresh(
+	session *model.Session,
+	tokens *model.AuthenticationTokens,
+) authenticationResponse {
+	return authenticationResponse{
+		Session: sessionResponseFromModel(session),
+		Tokens:  authenticationTokensResponseFromModel(tokens),
+	}
 }
 
 func (a *API) InitAuthentication() error {
@@ -127,7 +220,7 @@ func (a *API) InitUsers() error {
 }
 
 func loginHandler(
-	application Authentication,
+	auth Authentication,
 	logger *mlog.Logger,
 	cookies browserCookies,
 ) http.Handler {
@@ -137,28 +230,32 @@ func loginHandler(
 			WriteError(writer, request, invalidRequestError("login", err))
 			return
 		}
-		user, session, tokens, appErr := application.Login(
+		result, err := auth.Login(
 			request.Context(),
-			input.LoginID,
-			input.Password,
-			input.ClientType,
-			input.DeviceID,
-			input.DeviceName,
-			input.MFACode,
-			request.RemoteAddr,
+			application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+			application.LoginCommand{
+				LoginID:    input.LoginID,
+				Password:   input.Password,
+				ClientType: input.ClientType,
+				DeviceID:   input.DeviceID,
+				DeviceName: input.DeviceName,
+				MFACode:    input.MFACode,
+				Source:     request.RemoteAddr,
+			},
 		)
-		if appErr != nil {
-			writeApplicationError(writer, request, logger, appErr)
+		if err != nil {
+			writeApplicationError(writer, request, logger, err)
 			return
 		}
 		writer.Header().Set("Cache-Control", "no-store")
+		response := authenticationResponseFromLogin(result)
 		if usesBrowserCookieTransport(input.ClientType) {
-			cookies.attach(writer, tokens)
-			tokens = nil
+			if result != nil {
+				cookies.attach(writer, result.Tokens)
+			}
+			response.Tokens = nil
 		}
-		writeJSON(writer, http.StatusOK, authenticationResponse{
-			User: user, Session: session, Tokens: tokens,
-		})
+		writeJSON(writer, http.StatusOK, response)
 	})
 }
 
@@ -253,7 +350,7 @@ func (a *API) completePasswordReset(
 }
 
 func refreshHandler(
-	application Authentication,
+	auth Authentication,
 	logger *mlog.Logger,
 	cookies browserCookies,
 ) http.Handler {
@@ -263,30 +360,29 @@ func refreshHandler(
 			WriteError(writer, request, authenticationRequiredError())
 			return
 		}
-		session, tokens, appErr := application.RefreshSession(
+		session, tokens, err := auth.RefreshSession(
 			request.Context(),
 			credential.token,
 		)
-		if appErr != nil {
+		if err != nil {
 			if credential.source == credentialSourceCookie {
 				cookies.clear(writer)
 			}
-			writeApplicationError(writer, request, logger, appErr)
+			writeApplicationError(writer, request, logger, err)
 			return
 		}
 		writer.Header().Set("Cache-Control", "no-store")
+		response := authenticationResponseFromRefresh(session, tokens)
 		if credential.source == credentialSourceCookie {
 			cookies.attach(writer, tokens)
-			tokens = nil
+			response.Tokens = nil
 		}
-		writeJSON(writer, http.StatusOK, authenticationResponse{
-			Session: session, Tokens: tokens,
-		})
+		writeJSON(writer, http.StatusOK, response)
 	})
 }
 
 func logoutHandler(
-	application Authentication,
+	auth Authentication,
 	logger *mlog.Logger,
 	cookies browserCookies,
 ) http.Handler {
@@ -296,8 +392,8 @@ func logoutHandler(
 			WriteError(writer, request, authenticationRequiredError())
 			return
 		}
-		if appErr := application.Logout(request.Context(), principal); appErr != nil {
-			writeApplicationError(writer, request, logger, appErr)
+		if err := auth.Logout(request.Context(), principal); err != nil {
+			writeApplicationError(writer, request, logger, err)
 			return
 		}
 		if credentialSourceFromContext(request.Context()) == credentialSourceCookie {
