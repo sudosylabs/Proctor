@@ -77,14 +77,15 @@ func (e academicUnitRealtimeEffects) publish(
 	event string,
 	unitID string,
 ) error {
-	return e.realtime.Publish(ctx, &model.WebSocketEvent{
-		Event:  event,
+	return e.realtime.Publish(ctx, RealtimeEvent{
+		Name:   event,
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
 			Id:   unitID,
 		},
-	}, model.ClusterSendBestEffort)
+		Delivery: DeliveryBestEffort,
+	})
 }
 
 type academicUnitEffectReporter struct{ realtime *RealtimeService }

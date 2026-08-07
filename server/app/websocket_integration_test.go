@@ -20,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -144,15 +145,15 @@ func TestWebSocketIntegration(t *testing.T) {
 	}
 
 	eventData := json.RawMessage(`{"version":1}`)
-	if appErr := helper.App.PublishWebSocketEvent(
+	if appErr := helper.App.PublishRealtimeEvent(
 		context.Background(),
-		&model.WebSocketEvent{
-			Event:    "institution.updated",
+		app.RealtimeEvent{
+			Name:     "institution.updated",
 			Action:   subscription.Action,
 			Resource: subscription.Resource,
 			Data:     eventData,
+			Delivery: app.DeliveryBestEffort,
 		},
-		model.ClusterSendBestEffort,
 	); appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -222,7 +223,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	_, _, err = connection.ReadMessage()
 	var closeError *websocket.CloseError
 	if !errors.As(err, &closeError) ||
-		closeError.Code != app.WebSocketCloseSessionRevoked {
+		closeError.Code != api.WebSocketCloseSessionRevoked {
 		t.Fatalf("revoked WebSocket close = %v", err)
 	}
 
@@ -345,15 +346,15 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		t.Fatalf("node B subscription = %#v", response)
 	}
 
-	if appErr := nodeA.App.PublishWebSocketEvent(
+	if appErr := nodeA.App.PublishRealtimeEvent(
 		context.Background(),
-		&model.WebSocketEvent{
-			Event:    "institution.cluster_updated",
+		app.RealtimeEvent{
+			Name:     "institution.cluster_updated",
 			Action:   subscription.Action,
 			Resource: subscription.Resource,
 			Data:     json.RawMessage(`{"source":"node-a"}`),
+			Delivery: app.DeliveryReliable,
 		},
-		model.ClusterSendReliable,
 	); appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -393,7 +394,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	_, _, err = connection.ReadMessage()
 	var closeError *websocket.CloseError
 	if !errors.As(err, &closeError) ||
-		closeError.Code != app.WebSocketCloseAuthorizationChanged {
+		closeError.Code != api.WebSocketCloseAuthorizationChanged {
 		t.Fatalf("node B authorization-change close = %v", err)
 	}
 
@@ -417,7 +418,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	_, _, err = connection.ReadMessage()
 	closeError = nil
 	if !errors.As(err, &closeError) ||
-		closeError.Code != app.WebSocketCloseSessionRevoked {
+		closeError.Code != api.WebSocketCloseSessionRevoked {
 		t.Fatalf("node B revocation close = %v", err)
 	}
 }

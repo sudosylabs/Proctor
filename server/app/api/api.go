@@ -676,20 +676,56 @@ func (a *API) Close() error {
 	return a.webSocketHub.Close()
 }
 
-func (a *API) PublishLocal(ctx context.Context, event *model.WebSocketEvent) {
-	a.webSocketHub.PublishLocal(ctx, event)
+// PublishLocal adapts a transport-neutral application event onto the current
+// WebSocket wire event. The hub still owns sequencing and subscription fan-out.
+func (a *API) PublishLocal(ctx context.Context, event application.RealtimeEvent) {
+	a.webSocketHub.PublishLocal(ctx, webSocketEventFromRealtime(event))
 }
 
-func (a *API) CloseSession(sessionID string, code int, reason string) {
-	a.webSocketHub.CloseSession(sessionID, code, reason)
+func (a *API) CloseSession(sessionID string, reason application.ConnectionCloseReason) {
+	code, text := webSocketCloseForReason(reason)
+	a.webSocketHub.CloseSession(sessionID, code, text)
 }
 
-func (a *API) CloseUser(userID string, code int, reason string) {
-	a.webSocketHub.CloseUser(userID, code, reason)
+func (a *API) CloseUser(userID string, reason application.ConnectionCloseReason) {
+	code, text := webSocketCloseForReason(reason)
+	a.webSocketHub.CloseUser(userID, code, text)
 }
 
-func (a *API) CloseAll(code int, reason string) {
-	a.webSocketHub.CloseAll(code, reason)
+func (a *API) CloseAll(reason application.ConnectionCloseReason) {
+	code, text := webSocketCloseForReason(reason)
+	a.webSocketHub.CloseAll(code, text)
+}
+
+// Stable WebSocket close codes for session and authorization invalidation.
+// Kept at the transport boundary; application code uses ConnectionCloseReason.
+const (
+	WebSocketCloseSessionRevoked       = 4001
+	WebSocketCloseAuthorizationChanged = 4003
+)
+
+var _ application.RealtimeSink = (*API)(nil)
+
+func webSocketEventFromRealtime(event application.RealtimeEvent) *model.WebSocketEvent {
+	return &model.WebSocketEvent{
+		Id:       event.ID,
+		Event:    event.Name,
+		UserId:   event.UserID,
+		Action:   event.Action,
+		Resource: event.Resource,
+		Data:     append(json.RawMessage(nil), event.Data...),
+	}
+}
+
+func webSocketCloseForReason(reason application.ConnectionCloseReason) (int, string) {
+	switch reason {
+	case application.ConnectionCloseSessionRevoked:
+		return WebSocketCloseSessionRevoked, "session revoked"
+	case application.ConnectionCloseAuthorizationChanged:
+		return WebSocketCloseAuthorizationChanged, "authorization changed"
+	default:
+		return 4000, "connection closed"
+	}
 }
 
 func canonicalIDRoutePattern() string {

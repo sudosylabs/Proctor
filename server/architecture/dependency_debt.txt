@@ -18,8 +18,6 @@ app/external_authentication.go	github.com/sudosylabs/proctor/server/platform/ext
 app/mfa.go	github.com/sudosylabs/proctor/server/config
 app/mfa.go	github.com/sudosylabs/proctor/server/platform
 app/password.go	github.com/sudosylabs/proctor/server/config
-app/realtime.go	github.com/sudosylabs/proctor/server/mlog
-app/realtime.go	github.com/sudosylabs/proctor/server/platform
 platform/cluster_redis.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/sudosylabs/proctor/packages/cache/memory

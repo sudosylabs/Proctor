@@ -84,6 +84,19 @@ func assembleRuntime(
 			applicationPlatform.Close(),
 		)
 	}
+	clusterFanout, err := newRealtimeClusterAdapter(applicationPlatform.Cluster())
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("construct realtime cluster adapter: %w", err),
+			applicationPlatform.Close(),
+		)
+	}
+	if err := application.AttachRealtimeClusterFanout(clusterFanout); err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("attach realtime cluster fan-out: %w", err),
+			applicationPlatform.Close(),
+		)
+	}
 	readiness := &app.Health{}
 	cfg := applicationPlatform.Config()
 	buildInfo := overrides.BuildInfo

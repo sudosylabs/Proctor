@@ -4,7 +4,8 @@
 //
 // Adapted from Mattermost's public application WebSocket publication and
 // cluster-handler flow. Proctor keeps the local-first, peer-local-only
-// delivery invariant while using its own event and authorization domains.
+// delivery invariant while using transport-neutral event intents and
+// composition-owned wire adapters.
 
 package app
 
@@ -16,36 +17,48 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-const (
-	WebSocketCloseSessionRevoked       = 4001
-	WebSocketCloseAuthorizationChanged = 4003
-)
-
-// RealtimeSink is implemented by the socket boundary. It deliberately
-// contains no HTTP or concrete WebSocket type so application publication is
-// independently testable.
+// RealtimeSink delivers already-authorized events and connection closes to the
+// local socket boundary. It deliberately contains no HTTP or WebSocket wire
+// types so application publication remains independently testable.
 type RealtimeSink interface {
-	PublishLocal(context.Context, *model.WebSocketEvent)
-	CloseSession(string, int, string)
-	CloseUser(string, int, string)
-	CloseAll(int, string)
+	PublishLocal(context.Context, RealtimeEvent)
+	CloseSession(string, ConnectionCloseReason)
+	CloseUser(string, ConnectionCloseReason)
+	CloseAll(ConnectionCloseReason)
 }
 
+// RealtimeClusterFanout is the composition-owned inter-node publication port.
+// Application code supplies opaque event names and payloads; the adapter owns
+// cluster wire envelopes, send classes, and handler registration.
+type RealtimeClusterFanout interface {
+	RegisterHandler(event string, handler func(context.Context, []byte) error) error
+	Broadcast(ctx context.Context, event string, data []byte, reliable bool) error
+}
+
+// RealtimeDiagnostics reports non-fatal publication failures without depending
+// on a concrete logger package.
+type RealtimeDiagnostics interface {
+	ErrorContext(ctx context.Context, message string, err error)
+	ErrorContextWithEvent(ctx context.Context, message, event string, err error)
+}
+
+// RealtimeService owns local-first, loop-free realtime publication policy and
+// security invalidation fan-out. It does not import platform, WebSocket wire,
+// or cluster wire contracts.
 type RealtimeService struct {
-	platform       *platform.Service
 	authentication *AuthenticationService
+	diagnostics    RealtimeDiagnostics
 	mu             sync.RWMutex
 	sink           RealtimeSink
+	cluster        RealtimeClusterFanout
 }
 
-type webSocketPublication struct {
-	Event *model.WebSocketEvent `json:"event"`
+type realtimePublication struct {
+	Event *RealtimeEvent `json:"event"`
 }
 
 type sessionRevocationMessage struct {
@@ -60,22 +73,40 @@ type authorizationInvalidationMessage struct {
 }
 
 func newRealtimeService(
-	applicationPlatform *platform.Service,
 	authentication *AuthenticationService,
-) (*RealtimeService, error) {
-	service := &RealtimeService{
-		platform: applicationPlatform, authentication: authentication,
+	diagnostics RealtimeDiagnostics,
+) *RealtimeService {
+	return &RealtimeService{
+		authentication: authentication,
+		diagnostics:    diagnostics,
 	}
-	for event, handler := range map[model.ClusterEvent]platform.ClusterMessageHandler{
-		model.ClusterEventWebSocketPublish:         service.handleClusterPublication,
-		model.ClusterEventSessionRevoked:           service.handleClusterSessionRevocation,
-		model.ClusterEventAuthorizationInvalidated: service.handleClusterAuthorizationInvalidation,
-	} {
-		if err := applicationPlatform.Cluster().RegisterMessageHandler(event, handler); err != nil {
-			return nil, fmt.Errorf("register %s cluster handler: %w", event, err)
+}
+
+// SetClusterFanout attaches the composition adapter and registers peer
+// handlers. Peer handlers apply only local effects so Broadcast never loops.
+func (s *RealtimeService) SetClusterFanout(fanout RealtimeClusterFanout) error {
+	if fanout == nil {
+		return errors.New("realtime cluster fan-out is nil")
+	}
+	s.mu.Lock()
+	if s.cluster != nil {
+		s.mu.Unlock()
+		return errors.New("realtime cluster fan-out is already attached")
+	}
+	s.cluster = fanout
+	s.mu.Unlock()
+
+	handlers := map[string]func(context.Context, []byte) error{
+		realtimeClusterEventPublication:              s.handlePeerPublication,
+		realtimeClusterEventSessionRevoked:           s.handlePeerSessionRevocation,
+		realtimeClusterEventAuthorizationInvalidated: s.handlePeerAuthorizationInvalidation,
+	}
+	for event, handler := range handlers {
+		if err := fanout.RegisterHandler(event, handler); err != nil {
+			return fmt.Errorf("register %s cluster handler: %w", event, err)
 		}
 	}
-	return service, nil
+	return nil
 }
 
 func (s *RealtimeService) SetSink(sink RealtimeSink) error {
@@ -91,48 +122,34 @@ func (s *RealtimeService) SetSink(sink RealtimeSink) error {
 	return nil
 }
 
-func (s *RealtimeService) Publish(
-	ctx context.Context,
-	event *model.WebSocketEvent,
-	sendType model.ClusterSendType,
-) error {
-	if event == nil {
-		return invalidRealtimeRequest("RealtimeService.Publish", "event")
-	}
+// Publish delivers a transport-neutral event locally first, then fans it out
+// to peers. Callers must invoke this only after durable commit.
+func (s *RealtimeService) Publish(ctx context.Context, event RealtimeEvent) error {
 	candidate := event.Clone()
-	if candidate.Id == "" {
-		candidate.Id = model.NewId()
+	if candidate.ID == "" {
+		candidate.ID = model.NewId()
+	}
+	if candidate.Delivery == "" {
+		candidate.Delivery = DeliveryBestEffort
 	}
 	if err := candidate.ValidateForPublish(); err != nil {
-		return invalidRealtimeRequest("RealtimeService.Publish", err.Error())
-	}
-	switch sendType {
-	case model.ClusterSendBestEffort, model.ClusterSendReliable:
-	default:
-		return invalidRealtimeRequest("RealtimeService.Publish", "send_type")
+		return invalidRealtimeRequest(err.Error())
 	}
 
-	// This is the same loop-prevention shape as Mattermost: publish locally
-	// once, then send to peers. The peer handler calls only publishLocal.
+	// Same loop-prevention shape as Mattermost: publish locally once, then
+	// send to peers. Peer handlers call only publishLocal.
 	s.publishLocal(ctx, candidate)
-	payload, err := json.Marshal(webSocketPublication{Event: candidate})
+	payload, err := json.Marshal(realtimePublication{Event: &candidate})
 	if err != nil {
-		return internalRealtimeError("RealtimeService.Publish.marshal", err)
+		return internalRealtimeError(err)
 	}
-	if err := s.platform.Cluster().Broadcast(ctx, &model.ClusterMessage{
-		Event:    model.ClusterEventWebSocketPublish,
-		SendType: sendType,
-		Data:     payload,
-	}); err != nil {
-		return internalRealtimeError("RealtimeService.Publish.cluster", err)
+	if err := s.broadcast(ctx, realtimeClusterEventPublication, payload, candidate.Delivery == DeliveryReliable); err != nil {
+		return internalRealtimeError(err)
 	}
 	return nil
 }
 
-func (s *RealtimeService) publishLocal(
-	ctx context.Context,
-	event *model.WebSocketEvent,
-) {
+func (s *RealtimeService) publishLocal(ctx context.Context, event RealtimeEvent) {
 	s.mu.RLock()
 	sink := s.sink
 	s.mu.RUnlock()
@@ -146,12 +163,10 @@ func (s *RealtimeService) reportTransientFailure(
 	event string,
 	err error,
 ) {
-	s.platform.Log().ErrorContext(
-		ctx,
-		"transient realtime publication failed",
-		mlog.String("event", event),
-		mlog.Err(err),
-	)
+	if s.diagnostics == nil {
+		return
+	}
+	s.diagnostics.ErrorContextWithEvent(ctx, "transient realtime publication failed", event, err)
 }
 
 func (s *RealtimeService) PropagateSessionRevocation(
@@ -167,11 +182,11 @@ func (s *RealtimeService) PropagateSessionRevocation(
 		CloseConnections:  true,
 	}
 	if err := validateSessionRevocation(message); err != nil {
-		s.platform.Log().ErrorContext(ctx, "refusing invalid session revocation propagation", mlog.Err(err))
+		s.reportInvalidPropagation(ctx, "refusing invalid session revocation propagation", err)
 		return
 	}
 	s.applySessionRevocation(ctx, message)
-	s.broadcastReliable(ctx, model.ClusterEventSessionRevoked, message)
+	s.broadcastReliable(ctx, realtimeClusterEventSessionRevoked, message)
 }
 
 func (s *RealtimeService) PropagateAuthenticationCacheInvalidation(
@@ -184,82 +199,82 @@ func (s *RealtimeService) PropagateAuthenticationCacheInvalidation(
 		AccessTokenHashes: append([]string(nil), accessTokenHashes...),
 	}
 	if err := validateSessionRevocation(message); err != nil {
-		s.platform.Log().ErrorContext(
-			ctx,
-			"refusing invalid authentication-cache invalidation",
-			mlog.Err(err),
-		)
+		s.reportInvalidPropagation(ctx, "refusing invalid authentication-cache invalidation", err)
 		return
 	}
 	s.applySessionRevocation(ctx, message)
-	s.broadcastReliable(ctx, model.ClusterEventSessionRevoked, message)
+	s.broadcastReliable(ctx, realtimeClusterEventSessionRevoked, message)
 }
 
-func (s *RealtimeService) InvalidateAuthorization(
-	ctx context.Context,
-	userID string,
-) {
+func (s *RealtimeService) InvalidateAuthorization(ctx context.Context, userID string) {
 	if userID != "" && !model.IsValidId(userID) {
-		s.platform.Log().ErrorContext(
+		s.reportInvalidPropagation(
 			ctx,
 			"refusing invalid authorization invalidation",
-			mlog.String("user_id", userID),
+			fmt.Errorf("user_id %q", userID),
 		)
 		return
 	}
 	s.applyAuthorizationInvalidation(userID)
 	s.broadcastReliable(
 		ctx,
-		model.ClusterEventAuthorizationInvalidated,
+		realtimeClusterEventAuthorizationInvalidated,
 		authorizationInvalidationMessage{UserId: userID},
 	)
 }
 
-func (s *RealtimeService) broadcastReliable(
-	ctx context.Context,
-	event model.ClusterEvent,
-	value any,
-) {
+func (s *RealtimeService) reportInvalidPropagation(ctx context.Context, message string, err error) {
+	if s.diagnostics == nil {
+		return
+	}
+	s.diagnostics.ErrorContext(ctx, message, err)
+}
+
+func (s *RealtimeService) broadcastReliable(ctx context.Context, event string, value any) {
 	payload, err := json.Marshal(value)
 	if err == nil {
-		err = s.platform.Cluster().Broadcast(ctx, &model.ClusterMessage{
-			Event: event, SendType: model.ClusterSendReliable, Data: payload,
-		})
+		err = s.broadcast(ctx, event, payload, true)
 	}
 	if err != nil {
-		s.platform.Log().ErrorContext(
-			ctx,
-			"reliable security invalidation broadcast failed",
-			mlog.String("event", string(event)),
-			mlog.Err(err),
-		)
+		s.reportInvalidPropagation(ctx, "reliable security invalidation broadcast failed", err)
 	}
 }
 
-func (s *RealtimeService) handleClusterPublication(
+func (s *RealtimeService) broadcast(
 	ctx context.Context,
-	message *model.ClusterMessage,
+	event string,
+	data []byte,
+	reliable bool,
 ) error {
-	var publication webSocketPublication
-	if err := decodeClusterData(message, &publication); err != nil {
+	s.mu.RLock()
+	cluster := s.cluster
+	s.mu.RUnlock()
+	if cluster == nil {
+		return errors.New("realtime cluster fan-out is not attached")
+	}
+	return cluster.Broadcast(ctx, event, data, reliable)
+}
+
+func (s *RealtimeService) handlePeerPublication(ctx context.Context, data []byte) error {
+	var publication realtimePublication
+	if err := decodeRealtimePayload(data, &publication); err != nil {
 		return err
 	}
 	if publication.Event == nil {
-		return errors.New("cluster WebSocket publication has no event")
+		return errors.New("cluster realtime publication has no event")
 	}
+	// Peer payloads must not re-specify delivery; local apply only.
+	publication.Event.Delivery = DeliveryBestEffort
 	if err := publication.Event.ValidateForPublish(); err != nil {
 		return err
 	}
-	s.publishLocal(ctx, publication.Event)
+	s.publishLocal(ctx, *publication.Event)
 	return nil
 }
 
-func (s *RealtimeService) handleClusterSessionRevocation(
-	ctx context.Context,
-	message *model.ClusterMessage,
-) error {
+func (s *RealtimeService) handlePeerSessionRevocation(ctx context.Context, data []byte) error {
 	var revocation sessionRevocationMessage
-	if err := decodeClusterData(message, &revocation); err != nil {
+	if err := decodeRealtimePayload(data, &revocation); err != nil {
 		return err
 	}
 	if err := validateSessionRevocation(revocation); err != nil {
@@ -287,28 +302,17 @@ func (s *RealtimeService) applySessionRevocation(
 		return
 	}
 	if len(revocation.SessionIds) == 0 {
-		sink.CloseUser(
-			revocation.UserId,
-			WebSocketCloseSessionRevoked,
-			"session revoked",
-		)
+		sink.CloseUser(revocation.UserId, ConnectionCloseSessionRevoked)
 		return
 	}
 	for _, sessionID := range revocation.SessionIds {
-		sink.CloseSession(
-			sessionID,
-			WebSocketCloseSessionRevoked,
-			"session revoked",
-		)
+		sink.CloseSession(sessionID, ConnectionCloseSessionRevoked)
 	}
 }
 
-func (s *RealtimeService) handleClusterAuthorizationInvalidation(
-	_ context.Context,
-	message *model.ClusterMessage,
-) error {
+func (s *RealtimeService) handlePeerAuthorizationInvalidation(_ context.Context, data []byte) error {
 	var invalidation authorizationInvalidationMessage
-	if err := decodeClusterData(message, &invalidation); err != nil {
+	if err := decodeRealtimePayload(data, &invalidation); err != nil {
 		return err
 	}
 	if invalidation.UserId != "" && !model.IsValidId(invalidation.UserId) {
@@ -326,30 +330,17 @@ func (s *RealtimeService) applyAuthorizationInvalidation(userID string) {
 		return
 	}
 	if userID == "" {
-		sink.CloseAll(
-			WebSocketCloseAuthorizationChanged,
-			"authorization changed",
-		)
+		sink.CloseAll(ConnectionCloseAuthorizationChanged)
 		return
 	}
-	sink.CloseUser(
-		userID,
-		WebSocketCloseAuthorizationChanged,
-		"authorization changed",
-	)
+	sink.CloseUser(userID, ConnectionCloseAuthorizationChanged)
 }
 
-func decodeClusterData(message *model.ClusterMessage, target any) error {
-	if message == nil {
-		return errors.New("cluster message is nil")
+func decodeRealtimePayload(data []byte, target any) error {
+	if len(data) == 0 {
+		return errors.New("realtime cluster payload is empty")
 	}
-	if err := message.Validate(); err != nil {
-		return err
-	}
-	if len(message.Data) == 0 {
-		return errors.New("cluster message data is empty")
-	}
-	return json.Unmarshal(message.Data, target)
+	return json.Unmarshal(data, target)
 }
 
 func validateSessionRevocation(message sessionRevocationMessage) error {
@@ -382,13 +373,11 @@ func sessionIds(sessions []*model.Session) []string {
 	return ids
 }
 
-func invalidRealtimeRequest(where, field string) error {
-	_ = where
+func invalidRealtimeRequest(field string) error {
 	return NewError("websocket.request.invalid").WithField("field", field)
 }
 
-func internalRealtimeError(where string, err error) error {
-	_ = where
+func internalRealtimeError(err error) error {
 	return NewError("websocket.internal").Wrap(err)
 }
 
@@ -396,12 +385,16 @@ func (a *App) AttachRealtimeSink(sink RealtimeSink) error {
 	return a.realtime.SetSink(sink)
 }
 
-func (a *App) PublishWebSocketEvent(
-	ctx context.Context,
-	event *model.WebSocketEvent,
-	sendType model.ClusterSendType,
-) error {
-	return a.realtime.Publish(ctx, event, sendType)
+// AttachRealtimeClusterFanout wires the composition-owned cluster adapter and
+// registers peer handlers. It must be called once before the node becomes ready.
+func (a *App) AttachRealtimeClusterFanout(fanout RealtimeClusterFanout) error {
+	return a.realtime.SetClusterFanout(fanout)
+}
+
+// PublishRealtimeEvent publishes a transport-neutral application event after
+// durable commit. Prefer this over any transport-shaped construction.
+func (a *App) PublishRealtimeEvent(ctx context.Context, event RealtimeEvent) error {
+	return a.realtime.Publish(ctx, event)
 }
 
 func (a *App) AuthorizeWebSocketSubscription(
@@ -411,7 +404,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 	subscription model.WebSocketSubscription,
 ) error {
 	if !subscription.IsValid() {
-		return invalidRealtimeRequest("AuthorizeWebSocketSubscription", "subscription")
+		return invalidRealtimeRequest("subscription")
 	}
 	return a.AuthorizePrincipalTo(
 		ctx,

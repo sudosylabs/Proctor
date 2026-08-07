@@ -115,10 +115,10 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 	academicUnits := newAcademicUnitQueryService(
 		applicationPlatform.Store().AcademicUnit(), academicAuthorization,
 	)
-	realtime, err := newRealtimeService(applicationPlatform, authentication)
-	if err != nil {
-		return nil, err
-	}
+	realtime := newRealtimeService(
+		authentication,
+		mlogRealtimeDiagnostics{log: applicationPlatform.Log()},
+	)
 	authentication.propagateAuthenticationCacheInvalidation =
 		realtime.PropagateAuthenticationCacheInvalidation
 	authentication.propagateSessionRevocation =
@@ -350,4 +350,36 @@ func (d mlogAuthenticationDiagnostics) WarnContext(ctx context.Context, message 
 		fields = append(fields, mlog.Err(err))
 	}
 	d.log.WarnContext(ctx, message, fields...)
+}
+
+// mlogRealtimeDiagnostics adapts mlog to the narrow RealtimeDiagnostics port so
+// RealtimeService never imports mlog or platform (ticket #40).
+type mlogRealtimeDiagnostics struct {
+	log *mlog.Logger
+}
+
+func (d mlogRealtimeDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
+	if d.log == nil {
+		return
+	}
+	fields := []mlog.Field{}
+	if err != nil {
+		fields = append(fields, mlog.Err(err))
+	}
+	d.log.ErrorContext(ctx, message, fields...)
+}
+
+func (d mlogRealtimeDiagnostics) ErrorContextWithEvent(
+	ctx context.Context,
+	message, event string,
+	err error,
+) {
+	if d.log == nil {
+		return
+	}
+	fields := []mlog.Field{mlog.String("event", event)}
+	if err != nil {
+		fields = append(fields, mlog.Err(err))
+	}
+	d.log.ErrorContext(ctx, message, fields...)
 }
