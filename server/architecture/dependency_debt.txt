@@ -31,7 +31,6 @@ app/personal_access_token.go	net/http
 app/realtime.go	github.com/sudosylabs/proctor/server/mlog
 app/realtime.go	github.com/sudosylabs/proctor/server/platform
 app/realtime.go	net/http
-app/session_management.go	net/http
 model/app_error.go	net/http
 platform/cluster_redis.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/redis/rueidis

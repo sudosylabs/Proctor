@@ -71,6 +71,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"request.invalid":                                      {status: http.StatusBadRequest},
 	"resource.not_found":                                   {status: http.StatusNotFound},
 	"session.not_found":                                    {status: http.StatusNotFound},
+	"session.id.invalid":                                   {status: http.StatusBadRequest},
 	"role.invalid":                                         {status: http.StatusBadRequest},
 	"role.conflict":                                        {status: http.StatusConflict},
 	"role.built_in.protected":                              {status: http.StatusConflict},

@@ -11,10 +11,25 @@ package api
 
 import (
 	"net/http"
+
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 type revokeSessionRequest struct {
 	SessionID string `json:"session_id"`
+}
+
+func sessionResponsesFromModels(sessions []*model.Session) []sessionResponse {
+	// Historical self-service listing returns a non-null array body. Prefer
+	// stability over introducing an envelope mid-migration.
+	items := make([]sessionResponse, 0, len(sessions))
+	for _, session := range sessions {
+		if mapped := sessionResponseFromModel(session); mapped != nil {
+			items = append(items, *mapped)
+		}
+	}
+	return items
 }
 
 func (a *API) InitSessions() error {
@@ -48,12 +63,16 @@ func (a *API) getSessions(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	sessions, appErr := a.application.GetSessions(request.Context(), principal)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	sessions, err := a.application.ListSessions(
+		request.Context(),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.ListSessionsQuery{},
+	)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, sessions)
+	writeJSON(writer, http.StatusOK, sessionResponsesFromModels(sessions))
 }
 
 func (a *API) revokeSession(writer http.ResponseWriter, request *http.Request) {
@@ -67,12 +86,12 @@ func (a *API) revokeSession(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, invalidRequestError("revokeSession", err))
 		return
 	}
-	if appErr := a.application.RevokeSession(
+	if err := a.application.RevokeSession(
 		request.Context(),
-		principal,
-		input.SessionID,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.RevokeSessionCommand{SessionID: input.SessionID},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	if input.SessionID == principal.SessionId &&
@@ -89,11 +108,12 @@ func (a *API) revokeAllSessions(writer http.ResponseWriter, request *http.Reques
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	if appErr := a.application.RevokeAllSessions(
+	if err := a.application.RevokeAllSessions(
 		request.Context(),
-		principal,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.RevokeAllSessionsCommand{},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	if credentialSourceFromContext(request.Context()) == credentialSourceCookie {

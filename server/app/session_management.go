@@ -12,18 +12,39 @@ package app
 
 import (
 	"context"
-	"net/http"
+	"strings"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func (a *App) GetSessions(
+// ListSessionsQuery lists the caller's active sessions.
+type ListSessionsQuery struct{}
+
+// RevokeSessionCommand revokes one of the caller's sessions by ID.
+type RevokeSessionCommand struct {
+	SessionID string
+}
+
+// RevokeAllSessionsCommand revokes every active session for the caller.
+type RevokeAllSessionsCommand struct{}
+
+// RefreshSessionCommand rotates access/refresh credentials for a valid refresh token.
+type RefreshSessionCommand struct {
+	RefreshToken string
+}
+
+// LogoutCommand ends the caller's current session.
+type LogoutCommand struct{}
+
+func (a *App) ListSessions(
 	ctx context.Context,
-	principal model.Principal,
-) ([]*model.Session, *model.AppError) {
+	invocation Invocation,
+	_ ListSessionsQuery,
+) ([]*model.Session, error) {
+	principal := invocation.Principal()
 	if !principal.IsValid() {
-		return nil, invalidTokenError("GetSessions")
+		return nil, invalidTokenAppError()
 	}
 	sessions, err := a.Store().Session().ListActiveByUser(
 		ctx,
@@ -31,37 +52,33 @@ func (a *App) GetSessions(
 		a.authentication.now().UnixMilli(),
 	)
 	if err != nil {
-		return nil, internalAuthenticationError("GetSessions", err)
+		return nil, authenticationUnavailable(err)
 	}
 	return sessions, nil
 }
 
 func (a *App) RevokeSession(
 	ctx context.Context,
-	principal model.Principal,
-	sessionID string,
-) *model.AppError {
+	invocation Invocation,
+	command RevokeSessionCommand,
+) error {
+	principal := invocation.Principal()
 	if !principal.IsValid() {
-		return invalidTokenError("RevokeSession")
+		return invalidTokenAppError()
 	}
+	sessionID := strings.TrimSpace(command.SessionID)
 	if !model.IsValidId(sessionID) {
-		return model.NewAppError(
-			"RevokeSession",
-			"session.id.invalid",
-			nil,
-			"",
-			http.StatusBadRequest,
-		).WithSafeFields(map[string]string{"field": "session_id"})
+		return NewError("session.id.invalid").WithField("field", "session_id")
 	}
 	session, err := a.Store().Session().Get(ctx, sessionID)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return sessionNotFoundError("RevokeSession")
+			return NewError("session.not_found")
 		}
-		return internalAuthenticationError("RevokeSession.get", err)
+		return authenticationUnavailable(err)
 	}
 	if session.UserId != principal.UserId {
-		return sessionNotFoundError("RevokeSession")
+		return NewError("session.not_found")
 	}
 
 	hashes, err := a.Store().Session().Revoke(
@@ -73,9 +90,9 @@ func (a *App) RevokeSession(
 	)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return sessionNotFoundError("RevokeSession")
+			return NewError("session.not_found")
 		}
-		return internalAuthenticationError("RevokeSession.revoke", err)
+		return authenticationUnavailable(err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
 	a.authentication.deleteActivityCache(ctx, session.Id)
@@ -90,10 +107,12 @@ func (a *App) RevokeSession(
 
 func (a *App) RevokeAllSessions(
 	ctx context.Context,
-	principal model.Principal,
-) *model.AppError {
+	invocation Invocation,
+	_ RevokeAllSessionsCommand,
+) error {
+	principal := invocation.Principal()
 	if !principal.IsValid() {
-		return invalidTokenError("RevokeAllSessions")
+		return invalidTokenAppError()
 	}
 	sessions, hashes, err := a.Store().Session().RevokeAllForUser(
 		ctx,
@@ -102,7 +121,7 @@ func (a *App) RevokeAllSessions(
 		"user revoked all sessions",
 	)
 	if err != nil {
-		return internalAuthenticationError("RevokeAllSessions", err)
+		return authenticationUnavailable(err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
 	for _, session := range sessions {
@@ -117,12 +136,3 @@ func (a *App) RevokeAllSessions(
 	return nil
 }
 
-func sessionNotFoundError(where string) *model.AppError {
-	return model.NewAppError(
-		where,
-		"session.not_found",
-		nil,
-		"",
-		http.StatusNotFound,
-	)
-}

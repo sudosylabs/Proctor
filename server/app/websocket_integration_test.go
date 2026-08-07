@@ -211,12 +211,12 @@ func TestWebSocketIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if appErr := helper.App.RevokeSession(
+	if err := helper.App.RevokeSession(
 		context.Background(),
-		*principal,
-		login.Session.Id,
-	); appErr != nil {
-		t.Fatal(appErr)
+		app.NewInvocation(*principal, model.RequestMetadata{}),
+		app.RevokeSessionCommand{SessionID: login.Session.Id},
+	); err != nil {
+		t.Fatal(err)
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, _, err = connection.ReadMessage()
@@ -406,12 +406,12 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = connection.Close() })
 	_ = readWebSocketEvent(t, connection)
-	if appErr := nodeA.App.RevokeSession(
+	if err := nodeA.App.RevokeSession(
 		context.Background(),
-		*principal,
-		login.Session.Id,
-	); appErr != nil {
-		t.Fatal(appErr)
+		app.NewInvocation(*principal, model.RequestMetadata{}),
+		app.RevokeSessionCommand{SessionID: login.Session.Id},
+	); err != nil {
+		t.Fatal(err)
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _, err = connection.ReadMessage()

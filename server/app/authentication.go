@@ -615,9 +615,10 @@ func (s *AuthenticationService) updateActivity(
 
 func (a *App) RefreshSession(
 	ctx context.Context,
-	rawRefreshToken string,
+	_ Invocation,
+	command RefreshSessionCommand,
 ) (*model.Session, *model.AuthenticationTokens, error) {
-	return a.authentication.refresh(ctx, rawRefreshToken)
+	return a.authentication.refresh(ctx, command.RefreshToken)
 }
 
 func (s *AuthenticationService) refresh(
@@ -709,7 +710,11 @@ func (s *AuthenticationService) refresh(
 	}, nil
 }
 
-func (a *App) Logout(ctx context.Context, principal model.Principal) error {
+func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) error {
+	principal := invocation.Principal()
+	if !principal.IsValid() {
+		return invalidTokenAppError()
+	}
 	now := a.authentication.now().UnixMilli()
 	hashes, err := a.Store().Session().Revoke(
 		ctx,

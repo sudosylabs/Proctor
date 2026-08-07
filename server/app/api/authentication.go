@@ -362,7 +362,8 @@ func refreshHandler(
 		}
 		session, tokens, err := auth.RefreshSession(
 			request.Context(),
-			credential.token,
+			application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+			application.RefreshSessionCommand{RefreshToken: credential.token},
 		)
 		if err != nil {
 			if credential.source == credentialSourceCookie {
@@ -392,7 +393,11 @@ func logoutHandler(
 			WriteError(writer, request, authenticationRequiredError())
 			return
 		}
-		if err := auth.Logout(request.Context(), principal); err != nil {
+		if err := auth.Logout(
+			request.Context(),
+			application.NewInvocation(principal, RequestMetadata(request.Context())),
+			application.LogoutCommand{},
+		); err != nil {
 			writeApplicationError(writer, request, logger, err)
 			return
 		}

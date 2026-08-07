@@ -148,9 +148,10 @@ type Authentication interface {
 	AuthenticateAccess(context.Context, string) (*model.Principal, error)
 	RefreshSession(
 		context.Context,
-		string,
+		application.Invocation,
+		application.RefreshSessionCommand,
 	) (*model.Session, *model.AuthenticationTokens, error)
-	Logout(context.Context, model.Principal) error
+	Logout(context.Context, application.Invocation, application.LogoutCommand) error
 	RequestEmailVerification(
 		context.Context,
 		model.Principal,
@@ -280,9 +281,9 @@ type ClassMemberApplication interface {
 }
 
 type Sessions interface {
-	GetSessions(context.Context, model.Principal) ([]*model.Session, *model.AppError)
-	RevokeSession(context.Context, model.Principal, string) *model.AppError
-	RevokeAllSessions(context.Context, model.Principal) *model.AppError
+	ListSessions(context.Context, application.Invocation, application.ListSessionsQuery) ([]*model.Session, error)
+	RevokeSession(context.Context, application.Invocation, application.RevokeSessionCommand) error
+	RevokeAllSessions(context.Context, application.Invocation, application.RevokeAllSessionsCommand) error
 }
 
 type PersonalAccessTokens interface {
