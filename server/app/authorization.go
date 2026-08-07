@@ -11,12 +11,7 @@ package app
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -24,10 +19,9 @@ import (
 )
 
 type AuthorizationService struct {
-	store       store.Store
-	audit       *AuditService
-	now         func() time.Time
-	decisionKey []byte
+	store store.Store
+	audit *AuditService
+	now   func() time.Time
 }
 
 type resolvedAuthorizationResource struct {
@@ -42,11 +36,9 @@ func newAuthorizationService(
 ) *AuthorizationService {
 	return &AuthorizationService{
 		store: persistence, audit: audit, now: time.Now,
-		decisionKey: []byte(model.NewCredentialToken()),
 	}
 }
 
-const authorizationDecisionTTL = time.Minute
 
 // Can resolves current durable bindings and roles. It performs no auditing and
 // is intended for composition inside an application use case. Use Authorize at
@@ -172,9 +164,6 @@ func (s *AuthorizationService) Authorize(
 	resource model.Resource,
 	metadata model.RequestMetadata,
 ) *model.AppError {
-	if s.consumePreauthorization(ctx, principal, action, resource, metadata) {
-		return nil
-	}
 	return s.authorizeCurrentState(ctx, principal, action, resource, metadata)
 }
 
@@ -188,7 +177,7 @@ func (s *AuthorizationService) authorizeCurrentState(
 	resource model.Resource,
 	metadata model.RequestMetadata,
 ) *model.AppError {
-	_, allowed, appErr := s.preauthorize(ctx, principal, action, resource, metadata)
+	allowed, appErr := s.preauthorize(ctx, principal, action, resource, metadata)
 	if appErr != nil {
 		return appErr
 	}
@@ -238,29 +227,18 @@ func (s *AuthorizationService) preauthorize(
 	action model.Action,
 	resource model.Resource,
 	metadata model.RequestMetadata,
-) (authorizationDecision, bool, *model.AppError) {
+) (bool, *model.AppError) {
 	allowed, resolved, appErr := s.evaluate(ctx, principal, action, resource)
 	if appErr != nil {
-		return authorizationDecision{}, false, appErr
+		return false, appErr
 	}
 	scopeType, scopeID := authorizationAuditScope(resource, resolved)
 	if appErr = s.audit.RecordAuthorizationDecision(
 		ctx, principal, action, resource, scopeType, scopeID, metadata, allowed,
 	); appErr != nil {
-		return authorizationDecision{}, false, appErr
+		return false, appErr
 	}
-	if !allowed {
-		return authorizationDecision{}, false, nil
-	}
-	now := s.now().UnixMilli()
-	decision := authorizationDecision{
-		userID: principal.UserId, sessionID: principal.SessionId,
-		credentialID: principal.CredentialId, action: action, resource: resource,
-		requestID: metadata.RequestId, authorizedAt: now,
-		expiresAt: now + authorizationDecisionTTL.Milliseconds(),
-	}
-	decision.proof = s.signDecision(decision)
-	return decision, true, nil
+	return allowed, nil
 }
 
 func authorizationDeniedError(where string) *model.AppError {
@@ -273,89 +251,9 @@ func authorizationDeniedError(where string) *model.AppError {
 	)
 }
 
-func (s *AuthorizationService) consumePreauthorization(
-	ctx context.Context,
-	principal model.Principal,
-	action model.Action,
-	resource model.Resource,
-	metadata model.RequestMetadata,
-) bool {
-	decision, ok := consumeAuthorizationDecision(ctx)
-	return ok && s.validDecision(
-		decision,
-		principal,
-		action,
-		resource.Type,
-		resource.Id,
-		metadata,
-	)
-}
 
-func (s *AuthorizationService) consumePreauthorizedResource(
-	ctx context.Context,
-	principal model.Principal,
-	action model.Action,
-	resourceType model.ResourceType,
-	metadata model.RequestMetadata,
-) (model.Resource, bool) {
-	decision, ok := consumeAuthorizationDecision(ctx)
-	if !ok || !s.validDecision(
-		decision,
-		principal,
-		action,
-		resourceType,
-		"",
-		metadata,
-	) {
-		return model.Resource{}, false
-	}
-	return decision.resource, true
-}
 
-func (s *AuthorizationService) validDecision(
-	decision authorizationDecision,
-	principal model.Principal,
-	action model.Action,
-	resourceType model.ResourceType,
-	resourceID string,
-	metadata model.RequestMetadata,
-) bool {
-	now := s.now().UnixMilli()
-	if decision.userID != principal.UserId ||
-		decision.sessionID != principal.SessionId ||
-		decision.credentialID != principal.CredentialId ||
-		decision.action != action ||
-		decision.resource.Type != resourceType ||
-		(resourceID != "" && decision.resource.Id != resourceID) ||
-		decision.requestID != metadata.RequestId ||
-		decision.authorizedAt <= 0 ||
-		decision.expiresAt <= decision.authorizedAt ||
-		now >= decision.expiresAt ||
-		!decision.resource.IsValid() {
-		return false
-	}
-	expected := s.signDecision(decision)
-	return hmac.Equal([]byte(decision.proof), []byte(expected))
-}
 
-func (s *AuthorizationService) signDecision(
-	decision authorizationDecision,
-) string {
-	parts := []string{
-		decision.userID,
-		decision.sessionID,
-		decision.credentialID,
-		string(decision.action),
-		string(decision.resource.Type),
-		decision.resource.Id,
-		decision.requestID,
-		strconv.FormatInt(decision.authorizedAt, 10),
-		strconv.FormatInt(decision.expiresAt, 10),
-	}
-	mac := hmac.New(sha256.New, s.decisionKey)
-	_, _ = mac.Write([]byte(strings.Join(parts, "\x00")))
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-}
 
 func authorizationAuditScope(
 	resource model.Resource,

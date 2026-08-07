@@ -21,6 +21,9 @@ import (
 // sealed one-use receipt to the returned context. The application use case
 // consumes and verifies that receipt; direct non-HTTP callers without one are
 // evaluated normally.
+// PrincipalHasPermissionToSystem is retained for compatibility with the API
+// PermissionChecker surface. Authorization is authoritative in application use
+// cases; this method only performs and audits a decision without receipts.
 func (a *App) PrincipalHasPermissionToSystem(
 	ctx context.Context,
 	principal model.Principal,
@@ -31,20 +34,14 @@ func (a *App) PrincipalHasPermissionToSystem(
 	if err != nil {
 		return ctx, false, authorizationResourceError("institution", err)
 	}
-	decision, allowed, appErr := a.authorization.preauthorize(
+	allowed, appErr := a.authorization.preauthorize(
 		ctx,
 		principal,
 		action,
 		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
 		metadata,
 	)
-	if appErr != nil {
-		return ctx, false, appErr
-	}
-	if !allowed {
-		return ctx, false, nil
-	}
-	return contextWithAuthorizationDecision(ctx, decision), true, nil
+	return ctx, allowed, appErr
 }
 
 func (a *App) principalHasPermissionToResourceForRequest(
@@ -54,13 +51,10 @@ func (a *App) principalHasPermissionToResourceForRequest(
 	resource model.Resource,
 	metadata model.RequestMetadata,
 ) (context.Context, bool, *model.AppError) {
-	decision, allowed, appErr := a.authorization.preauthorize(
+	allowed, appErr := a.authorization.preauthorize(
 		ctx, principal, action, resource, metadata,
 	)
-	if appErr != nil || !allowed {
-		return ctx, false, appErr
-	}
-	return contextWithAuthorizationDecision(ctx, decision), true, nil
+	return ctx, allowed, appErr
 }
 
 func (a *App) PrincipalHasPermissionToAcademicUnitForRequest(
@@ -222,15 +216,6 @@ func (a *App) authorizePrincipalToSystem(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (model.Resource, *model.AppError) {
-	if resource, ok := a.authorization.consumePreauthorizedResource(
-		ctx,
-		principal,
-		action,
-		model.ResourceInstitution,
-		metadata,
-	); ok {
-		return resource, nil
-	}
 	institution, err := a.Store().Institution().GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, authorizationResourceError("institution", err)
@@ -353,11 +338,6 @@ func (a *App) authorizePrincipalToAcademicUnit(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (model.Resource, *model.AppError) {
-	if resource, ok := a.authorization.consumePreauthorizedResource(
-		ctx, principal, action, model.ResourceAcademicUnit, metadata,
-	); ok && resource.Id == academicUnitID {
-		return resource, nil
-	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
@@ -390,11 +370,6 @@ func (a *App) authorizePrincipalToClass(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (model.Resource, *model.AppError) {
-	if resource, ok := a.authorization.consumePreauthorizedResource(
-		ctx, principal, action, model.ResourceClass, metadata,
-	); ok && resource.Id == classID {
-		return resource, nil
-	}
 	resource := model.Resource{Type: model.ResourceClass, Id: classID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
@@ -427,11 +402,6 @@ func (a *App) authorizePrincipalToUser(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (model.Resource, *model.AppError) {
-	if resource, ok := a.authorization.consumePreauthorizedResource(
-		ctx, principal, action, model.ResourceUser, metadata,
-	); ok && resource.Id == userID {
-		return resource, nil
-	}
 	resource := model.Resource{Type: model.ResourceUser, Id: userID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
@@ -564,20 +534,10 @@ func (a *App) authorizeUserVisibility(
 	}
 	switch resource.Type {
 	case model.ResourceUser:
-		if receipt, ok := a.authorization.consumePreauthorizedResource(
-			ctx, principal, model.ActionUserView, model.ResourceUser, metadata,
-		); ok && receipt.Id == userID {
-			return nil
-		}
 		return a.AuthorizePrincipalToUser(
 			ctx, principal, userID, model.ActionUserView, metadata,
 		)
 	case model.ResourceClass:
-		if receipt, ok := a.authorization.consumePreauthorizedResource(
-			ctx, principal, model.ActionClassMembersView, model.ResourceClass, metadata,
-		); ok && receipt.Id == resource.Id {
-			return nil
-		}
 		return a.AuthorizePrincipalToClass(
 			ctx, principal, resource.Id, model.ActionClassMembersView, metadata,
 		)
