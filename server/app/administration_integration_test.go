@@ -215,9 +215,12 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	)
 	malformedResponse := httptest.NewRecorder()
 	handler.ServeHTTP(malformedResponse, malformedRequest)
-	if malformedResponse.Code != http.StatusForbidden {
+	// Role routes authorize in the application use case (ADR-0015), not via
+	// handler permission preflights. Malformed bodies are rejected at the
+	// transport decode boundary before the use case runs.
+	if malformedResponse.Code != http.StatusBadRequest {
 		t.Fatalf(
-			"permission preflight did not precede body decoding: status = %d: %s",
+			"malformed role create status = %d: %s",
 			malformedResponse.Code,
 			malformedResponse.Body.String(),
 		)

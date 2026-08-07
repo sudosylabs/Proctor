@@ -160,20 +160,20 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	user, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, &model.User{
 		Username: "hierarchy-teacher", Email: "hierarchy-teacher@example.edu",
 		DisplayName: "Hierarchy Teacher",
 	}, password)
-	if appErr != nil {
-		t.Fatal(appErr)
+	if err != nil {
+		t.Fatal(err)
 	}
 	login := loginIntegrationUser(
 		t, helper.Handler(), user.Username, password,
 		model.SessionClientCLI, "hierarchy-device",
 	)
-	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
+	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitId: root.Id,
@@ -182,12 +182,15 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	allowed, appErr := helper.App.Can(
+	// Keep permission results on *model.AppError, not the transport-neutral
+	// error interface from CreateLocalUser/AuthenticateAccess, so nil checks
+	// are not poisoned by a typed-nil *model.AppError in an error interface.
+	allowed, permErr := helper.App.Can(
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, Id: class.Id},
 	)
-	if appErr != nil || allowed {
-		t.Fatalf("academic-unit membership unexpectedly granted class permission = %v, %v", allowed, appErr)
+	if permErr != nil || allowed {
+		t.Fatalf("academic-unit membership unexpectedly granted class permission = %v, %v", allowed, permErr)
 	}
 	role, err := persistence.Role().Save(ctx, &model.Role{
 		Name: "academic-unit-teacher", DisplayName: "Academic Unit Teacher",
@@ -203,29 +206,29 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed, appErr = helper.App.Can(
+	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, Id: class.Id},
 	)
-	if appErr != nil || !allowed {
-		t.Fatalf("ancestor class permission = %v, %v", allowed, appErr)
+	if permErr != nil || !allowed {
+		t.Fatalf("ancestor class permission = %v, %v", allowed, permErr)
 	}
-	allowed, appErr = helper.App.Can(
+	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionInstitutionManage,
 		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
 	)
-	if appErr != nil || allowed {
-		t.Fatalf("lower-scope institution permission = %v, %v", allowed, appErr)
+	if permErr != nil || allowed {
+		t.Fatalf("lower-scope institution permission = %v, %v", allowed, permErr)
 	}
 	if _, err := persistence.RoleBinding().End(ctx, binding.Id, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
-	allowed, appErr = helper.App.Can(
+	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, Id: class.Id},
 	)
-	if appErr != nil || allowed {
-		t.Fatalf("ended binding permission = %v, %v", allowed, appErr)
+	if permErr != nil || allowed {
+		t.Fatalf("ended binding permission = %v, %v", allowed, permErr)
 	}
 }
 
@@ -247,27 +250,27 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	viewer, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	viewer, err := helper.App.CreateLocalUser(ctx, &model.User{
 		Username: "directory-viewer", Email: "directory-viewer@example.edu",
 		DisplayName: "Directory Viewer",
 	}, password)
-	if appErr != nil {
-		t.Fatal(appErr)
+	if err != nil {
+		t.Fatal(err)
 	}
-	target, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	target, err := helper.App.CreateLocalUser(ctx, &model.User{
 		Username: "directory-target", Email: "directory-target@example.edu",
 		DisplayName: "Directory Target",
 	}, password)
-	if appErr != nil {
-		t.Fatal(appErr)
+	if err != nil {
+		t.Fatal(err)
 	}
 	login := loginIntegrationUser(
 		t, helper.Handler(), viewer.Username, password,
 		model.SessionClientCLI, "directory-device",
 	)
-	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
+	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
+	if err != nil {
+		t.Fatal(err)
 	}
 	metadata := model.RequestMetadata{
 		RequestId: model.NewId(),
@@ -275,21 +278,23 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		UserAgent: "proctor-authorization-integration-test",
 	}
 
-	allowed, appErr := helper.App.PrincipalHasPermissionToUser(
+	// Permission helpers still return *model.AppError; keep them off the
+	// transport-neutral error variables from CreateLocalUser/AuthenticateAccess.
+	allowed, permErr := helper.App.PrincipalHasPermissionToUser(
 		ctx, *principal, viewer.Id, model.ActionUserView,
 	)
-	if appErr != nil || !allowed {
-		t.Fatalf("self visibility = %v, %v", allowed, appErr)
+	if permErr != nil || !allowed {
+		t.Fatalf("self visibility = %v, %v", allowed, permErr)
 	}
-	allowed, appErr = helper.App.PrincipalHasPermissionToUser(
+	allowed, permErr = helper.App.PrincipalHasPermissionToUser(
 		ctx, *principal, viewer.Id, model.ActionUserManage,
 	)
-	if appErr != nil || allowed {
-		t.Fatalf("self management without permission = %v, %v", allowed, appErr)
+	if permErr != nil || allowed {
+		t.Fatalf("self management without permission = %v, %v", allowed, permErr)
 	}
-	allowed, appErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
-	if appErr != nil || allowed {
-		t.Fatalf("unbound cross-user visibility = %v, %v", allowed, appErr)
+	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	if permErr != nil || allowed {
+		t.Fatalf("unbound cross-user visibility = %v, %v", allowed, permErr)
 	}
 	if _, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
@@ -312,9 +317,9 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	allowed, appErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
-	if appErr != nil || !allowed {
-		t.Fatalf("bound cross-user visibility = %v, %v", allowed, appErr)
+	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	if permErr != nil || !allowed {
+		t.Fatalf("bound cross-user visibility = %v, %v", allowed, permErr)
 	}
 	visible, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
@@ -322,19 +327,19 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	if err != nil || visible.Id != target.Id {
 		t.Fatalf("authorized cross-user read = %#v, %v", visible, err)
 	}
-	allowed, appErr = helper.App.PrincipalHasPermissionToUser(
+	allowed, permErr = helper.App.PrincipalHasPermissionToUser(
 		ctx, *principal, target.Id, model.ActionUserManage,
 	)
-	if appErr != nil || allowed {
-		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, appErr)
+	if permErr != nil || allowed {
+		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, permErr)
 	}
 
 	if _, err := persistence.RoleBinding().End(ctx, binding.Id, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
-	allowed, appErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
-	if appErr != nil || allowed {
-		t.Fatalf("ended binding visibility = %v, %v", allowed, appErr)
+	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	if permErr != nil || allowed {
+		t.Fatalf("ended binding visibility = %v, %v", allowed, permErr)
 	}
 	if _, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
