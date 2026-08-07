@@ -272,13 +272,12 @@ func (a *API) requestEmailVerification(
 	if !ok {
 		return
 	}
-	if appErr := a.application.RequestEmailVerification(
+	if err := a.application.RequestEmailVerification(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		request.RemoteAddr,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.RequestEmailVerificationCommand{Source: request.RemoteAddr},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.WriteHeader(http.StatusAccepted)
@@ -293,13 +292,12 @@ func (a *API) completeEmailVerification(
 		WriteError(writer, request, invalidRequestError("complete_email_verification", err))
 		return
 	}
-	if _, appErr := a.application.CompleteEmailVerification(
+	if _, err := a.application.CompleteEmailVerification(
 		request.Context(),
-		input.Token,
-		RequestMetadata(request.Context()),
-		request.RemoteAddr,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+		application.CompleteEmailVerificationCommand{Token: input.Token, Source: request.RemoteAddr},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.WriteHeader(http.StatusNoContent)
@@ -314,13 +312,12 @@ func (a *API) requestPasswordReset(
 		WriteError(writer, request, invalidRequestError("request_password_reset", err))
 		return
 	}
-	if appErr := a.application.RequestPasswordReset(
+	if err := a.application.RequestPasswordReset(
 		request.Context(),
-		input.Email,
-		RequestMetadata(request.Context()),
-		request.RemoteAddr,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+		application.RequestPasswordResetCommand{Email: input.Email, Source: request.RemoteAddr},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.WriteHeader(http.StatusAccepted)
@@ -335,14 +332,14 @@ func (a *API) completePasswordReset(
 		WriteError(writer, request, invalidRequestError("complete_password_reset", err))
 		return
 	}
-	if _, appErr := a.application.CompletePasswordReset(
+	if _, err := a.application.CompletePasswordReset(
 		request.Context(),
-		input.Token,
-		input.Password,
-		RequestMetadata(request.Context()),
-		request.RemoteAddr,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+		application.CompletePasswordResetCommand{
+			Token: input.Token, Password: input.Password, Source: request.RemoteAddr,
+		},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	a.cookies.clear(writer)

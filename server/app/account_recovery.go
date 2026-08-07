@@ -13,7 +13,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -21,7 +20,6 @@ import (
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -32,36 +30,57 @@ const (
 	auditPasswordResetComplete     = "authentication.password_reset.complete"
 )
 
+// RequestEmailVerificationCommand issues a verification token for the caller.
+type RequestEmailVerificationCommand struct {
+	Source string
+}
+
+// CompleteEmailVerificationCommand consumes a verification credential.
+type CompleteEmailVerificationCommand struct {
+	Token  string
+	Source string
+}
+
+// RequestPasswordResetCommand issues a password-reset token when eligible.
+type RequestPasswordResetCommand struct {
+	Email  string
+	Source string
+}
+
+// CompletePasswordResetCommand consumes a reset token and sets a new password.
+type CompletePasswordResetCommand struct {
+	Token    string
+	Password string
+	Source   string
+}
+
 func (a *App) RequestEmailVerification(
 	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	source string,
-) *model.AppError {
+	invocation Invocation,
+	command RequestEmailVerificationCommand,
+) error {
 	if !a.Mailer().Enabled() {
-		return accountRecoveryUnavailableError(
-			"RequestEmailVerification",
-			platform.ErrMailDisabled,
-		)
+		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
-	if appErr := a.checkAccountRecoveryRateLimit(
-		ctx, "email-verification-request", principal.UserId, source,
-	); appErr != nil {
-		return appErr
+	principal := invocation.Principal()
+	if err := a.checkAccountRecoveryRateLimit(
+		ctx, "email-verification-request", principal.UserId, command.Source,
+	); err != nil {
+		return err
 	}
 	user, err := a.Store().User().Get(ctx, principal.UserId)
 	if err != nil {
-		return accountRecoveryStoreError("RequestEmailVerification.user", err)
+		return accountRecoveryStoreFailure(err)
 	}
 	if !user.IsActive() {
-		return invalidTokenError("RequestEmailVerification.user")
+		return invalidTokenAppError()
 	}
 	if user.EmailVerified {
 		return nil
 	}
-	institution, appErr := a.accountRecoveryInstitution(ctx)
-	if appErr != nil {
-		return appErr
+	institution, err := a.accountRecoveryInstitution(ctx)
+	if err != nil {
+		return err
 	}
 	rawToken := model.NewCredentialToken()
 	now := a.authentication.now()
@@ -74,6 +93,7 @@ func (a *App) RequestEmailVerification(
 			a.Config().Authentication.AccountRecovery.EmailVerificationTTL.Duration,
 		).UnixMilli(),
 	}
+	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditEmailVerificationRequest,
 		model.Resource{Type: model.ResourceUser, Id: user.Id},
@@ -84,7 +104,7 @@ func (a *App) RequestEmailVerification(
 		"session",
 	)
 	if _, err := a.Store().UserToken().Issue(ctx, token, event); err != nil {
-		return accountRecoveryStoreError("RequestEmailVerification.issue", err)
+		return accountRecoveryStoreFailure(err)
 	}
 	link, err := accountCredentialLink(
 		a.Config().Server.PublicURL,
@@ -92,7 +112,7 @@ func (a *App) RequestEmailVerification(
 		rawToken,
 	)
 	if err != nil {
-		return accountRecoveryUnavailableError("RequestEmailVerification.link", err)
+		return accountRecoveryUnavailable(err)
 	}
 	if err := a.sendAccountCredentialMail(
 		ctx,
@@ -105,7 +125,7 @@ func (a *App) RequestEmailVerification(
 			"<p>If you did not request this message, you can ignore it.</p>",
 		now,
 	); err != nil {
-		return accountRecoveryUnavailableError("RequestEmailVerification.send", err)
+		return accountRecoveryUnavailable(err)
 	}
 	return nil
 }
@@ -115,21 +135,17 @@ func (a *App) RequestEmailVerification(
 // Operational failures are logged without the requested email or raw token.
 func (a *App) RequestPasswordReset(
 	ctx context.Context,
-	email string,
-	metadata model.RequestMetadata,
-	source string,
-) *model.AppError {
+	invocation Invocation,
+	command RequestPasswordResetCommand,
+) error {
 	if !a.Mailer().Enabled() {
-		return accountRecoveryUnavailableError(
-			"RequestPasswordReset",
-			platform.ErrMailDisabled,
-		)
+		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
-	normalizedEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(email)))
-	if appErr := a.checkAccountRecoveryRateLimit(
-		ctx, "password-reset-request", normalizedEmail, source,
-	); appErr != nil {
-		return appErr
+	normalizedEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
+	if err := a.checkAccountRecoveryRateLimit(
+		ctx, "password-reset-request", normalizedEmail, command.Source,
+	); err != nil {
+		return err
 	}
 	if !model.IsValidEmail(normalizedEmail) {
 		return nil
@@ -150,9 +166,9 @@ func (a *App) RequestPasswordReset(
 		}
 		return nil
 	}
-	institution, appErr := a.accountRecoveryInstitution(ctx)
-	if appErr != nil {
-		a.logHiddenRecoveryFailure(ctx, "password reset institution lookup failed", appErr)
+	institution, err := a.accountRecoveryInstitution(ctx)
+	if err != nil {
+		a.logHiddenRecoveryFailure(ctx, "password reset institution lookup failed", err)
 		return nil
 	}
 	rawToken := model.NewCredentialToken()
@@ -166,6 +182,7 @@ func (a *App) RequestPasswordReset(
 			a.Config().Authentication.AccountRecovery.PasswordResetTTL.Duration,
 		).UnixMilli(),
 	}
+	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditPasswordResetRequest,
 		model.Resource{Type: model.ResourceUser, Id: user.Id},
@@ -206,25 +223,25 @@ func (a *App) RequestPasswordReset(
 
 func (a *App) CompleteEmailVerification(
 	ctx context.Context,
-	rawToken string,
-	metadata model.RequestMetadata,
-	source string,
-) (*model.User, *model.AppError) {
-	if appErr := a.checkAccountRecoveryRateLimit(
+	invocation Invocation,
+	command CompleteEmailVerificationCommand,
+) (*model.User, error) {
+	if err := a.checkAccountRecoveryRateLimit(
 		ctx,
 		"email-verification-complete",
-		recoveryCredentialRateIdentity(rawToken),
-		source,
-	); appErr != nil {
-		return nil, appErr
+		recoveryCredentialRateIdentity(command.Token),
+		command.Source,
+	); err != nil {
+		return nil, err
 	}
-	if !validRawCredential(rawToken) {
-		return nil, invalidAccountCredentialError("CompleteEmailVerification")
+	if !validRawCredential(command.Token) {
+		return nil, invalidAccountCredential()
 	}
-	institution, appErr := a.accountRecoveryInstitution(ctx)
-	if appErr != nil {
-		return nil, appErr
+	institution, err := a.accountRecoveryInstitution(ctx)
+	if err != nil {
+		return nil, err
 	}
+	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditEmailVerificationComplete,
 		model.Resource{Type: model.ResourceUser},
@@ -236,51 +253,46 @@ func (a *App) CompleteEmailVerification(
 	)
 	result, err := a.Store().UserToken().ConsumeEmailVerification(
 		ctx,
-		model.HashToken(rawToken),
+		model.HashToken(command.Token),
 		a.authentication.now().UnixMilli(),
 		event,
 	)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return nil, invalidAccountCredentialError("CompleteEmailVerification")
+			return nil, invalidAccountCredential()
 		}
-		return nil, accountRecoveryStoreError("CompleteEmailVerification", err)
+		return nil, accountRecoveryStoreFailure(err)
 	}
 	return result.User, nil
 }
 
 func (a *App) CompletePasswordReset(
 	ctx context.Context,
-	rawToken string,
-	password string,
-	metadata model.RequestMetadata,
-	source string,
-) (*model.User, *model.AppError) {
-	if appErr := a.checkAccountRecoveryRateLimit(
+	invocation Invocation,
+	command CompletePasswordResetCommand,
+) (*model.User, error) {
+	if err := a.checkAccountRecoveryRateLimit(
 		ctx,
 		"password-reset-complete",
-		recoveryCredentialRateIdentity(rawToken),
-		source,
-	); appErr != nil {
-		return nil, appErr
+		recoveryCredentialRateIdentity(command.Token),
+		command.Source,
+	); err != nil {
+		return nil, err
 	}
-	if !validRawCredential(rawToken) {
-		return nil, invalidAccountCredentialError("CompletePasswordReset")
+	if !validRawCredential(command.Token) {
+		return nil, invalidAccountCredential()
 	}
-	passwordHash, err := a.authentication.hasher.Hash(password)
+	passwordHash, err := a.authentication.hasher.Hash(command.Password)
 	if err != nil {
-		return nil, model.NewAppError(
-			"CompletePasswordReset",
-			"authentication.password.invalid",
-			nil,
-			"",
-			http.StatusBadRequest,
-		).WithSafeFields(map[string]string{"field": "password"})
+		return nil, NewError("authentication.password.invalid").
+			WithField("field", "password").
+			Wrap(err)
 	}
-	institution, appErr := a.accountRecoveryInstitution(ctx)
-	if appErr != nil {
-		return nil, appErr
+	institution, err := a.accountRecoveryInstitution(ctx)
+	if err != nil {
+		return nil, err
 	}
+	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditPasswordResetComplete,
 		model.Resource{Type: model.ResourceUser},
@@ -292,7 +304,7 @@ func (a *App) CompletePasswordReset(
 	)
 	result, err := a.Store().UserToken().ConsumePasswordReset(
 		ctx,
-		model.HashToken(rawToken),
+		model.HashToken(command.Token),
 		passwordHash,
 		a.authentication.now().UnixMilli(),
 		"password reset",
@@ -300,9 +312,9 @@ func (a *App) CompletePasswordReset(
 	)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return nil, invalidAccountCredentialError("CompletePasswordReset")
+			return nil, invalidAccountCredential()
 		}
-		return nil, accountRecoveryStoreError("CompletePasswordReset", err)
+		return nil, accountRecoveryStoreFailure(err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, result.RevokedAccessHashes)
 	for _, session := range result.RevokedSessions {
@@ -317,12 +329,10 @@ func (a *App) CompletePasswordReset(
 	return result.User, nil
 }
 
-func (a *App) accountRecoveryInstitution(
-	ctx context.Context,
-) (*model.Institution, *model.AppError) {
+func (a *App) accountRecoveryInstitution(ctx context.Context) (*model.Institution, error) {
 	institution, err := a.Store().Institution().GetSingleton(ctx)
 	if err != nil {
-		return nil, accountRecoveryStoreError("accountRecoveryInstitution", err)
+		return nil, accountRecoveryStoreFailure(err)
 	}
 	return institution, nil
 }
@@ -332,7 +342,7 @@ func (a *App) checkAccountRecoveryRateLimit(
 	operation string,
 	identity string,
 	source string,
-) *model.AppError {
+) error {
 	settings := a.Config().Authentication.AccountRecovery.RateLimit
 	identityKey := "authentication/recovery/" + operation + "/identity/" +
 		digestCacheKey(strings.ToLower(strings.TrimSpace(identity)))
@@ -342,29 +352,17 @@ func (a *App) checkAccountRecoveryRateLimit(
 		ctx, identityKey, 1, settings.Window.Duration,
 	)
 	if err != nil {
-		return rateLimitUnavailableError(
-			"checkAccountRecoveryRateLimit.identity",
-			err,
-		)
+		return rateLimitUnavailableAppError(err)
 	}
 	sourceCount, err := a.Cache().Add(
 		ctx, sourceKey, 1, settings.Window.Duration,
 	)
 	if err != nil {
-		return rateLimitUnavailableError(
-			"checkAccountRecoveryRateLimit.source",
-			err,
-		)
+		return rateLimitUnavailableAppError(err)
 	}
 	if identityCount > int64(settings.MaximumAttempts) ||
 		sourceCount > int64(settings.MaximumSourceAttempts) {
-		return model.NewAppError(
-			"checkAccountRecoveryRateLimit",
-			"authentication.rate_limited",
-			nil,
-			"",
-			http.StatusTooManyRequests,
-		)
+		return NewError("authentication.rate_limited")
 	}
 	return nil
 }
@@ -446,32 +444,14 @@ func (a *App) logHiddenRecoveryFailure(
 	)
 }
 
-func invalidAccountCredentialError(where string) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authentication.account_token.invalid",
-		nil,
-		"",
-		http.StatusBadRequest,
-	)
+func invalidAccountCredential() error {
+	return NewError("authentication.account_token.invalid")
 }
 
-func accountRecoveryStoreError(where string, err error) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authentication.account_recovery.unavailable",
-		nil,
-		"",
-		http.StatusInternalServerError,
-	).Wrap(err)
+func accountRecoveryStoreFailure(err error) error {
+	return NewError("authentication.account_recovery.unavailable").Wrap(err)
 }
 
-func accountRecoveryUnavailableError(where string, err error) *model.AppError {
-	return model.NewAppError(
-		where,
-		"authentication.account_recovery.unavailable",
-		nil,
-		"",
-		http.StatusServiceUnavailable,
-	).Wrap(err)
+func accountRecoveryUnavailable(err error) error {
+	return NewError("authentication.account_recovery.unavailable").Wrap(err)
 }

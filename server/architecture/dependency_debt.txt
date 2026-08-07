@@ -6,8 +6,6 @@
 app/academic_administration.go	net/http
 app/account_recovery.go	github.com/sudosylabs/proctor/packages/mail
 app/account_recovery.go	github.com/sudosylabs/proctor/server/mlog
-app/account_recovery.go	github.com/sudosylabs/proctor/server/platform
-app/account_recovery.go	net/http
 app/api/api.go	github.com/sudosylabs/proctor/server/mlog
 app/api/authentication.go	github.com/sudosylabs/proctor/server/mlog
 app/api/handler.go	github.com/sudosylabs/proctor/server/mlog
@@ -27,7 +25,6 @@ app/mfa.go	github.com/sudosylabs/proctor/server/config
 app/mfa.go	github.com/sudosylabs/proctor/server/platform
 app/mfa.go	net/http
 app/password.go	github.com/sudosylabs/proctor/server/config
-app/personal_access_token.go	net/http
 app/realtime.go	github.com/sudosylabs/proctor/server/mlog
 app/realtime.go	github.com/sudosylabs/proctor/server/platform
 app/realtime.go	net/http

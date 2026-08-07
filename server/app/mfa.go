@@ -82,15 +82,44 @@ func newMFAService(applicationPlatform *platform.Service) (*MFAService, error) {
 	return service, nil
 }
 
+// GetMFAStatusQuery returns the caller's MFA enrollment status.
+type GetMFAStatusQuery struct{}
+
+// SetupMFACommand starts pending TOTP enrollment.
+type SetupMFACommand struct {
+	AccountName string
+}
+
+// ActivateMFACommand activates pending MFA with a TOTP code.
+type ActivateMFACommand struct {
+	Code string
+}
+
+// ChallengeMFACommand upgrades the current session to multi-factor assurance.
+type ChallengeMFACommand struct {
+	Code string
+}
+
+// RegenerateMFARecoveryCodesCommand replaces recovery codes.
+type RegenerateMFARecoveryCodesCommand struct{}
+
+// DisableMFACommand disables MFA for the caller.
+type DisableMFACommand struct {
+	Code string
+}
+
+
 func (a *App) GetMFAStatus(
 	ctx context.Context,
-	principal model.Principal,
-) (*model.MFAStatus, *model.AppError) {
-	if appErr := a.requireInteractiveSession(principal, false, "GetMFAStatus"); appErr != nil {
-		return nil, appErr
+	invocation Invocation,
+	_ GetMFAStatusQuery,
+) (*model.MFAStatus, error) {
+	principal := invocation.Principal()
+	if err := a.requireInteractiveSession(principal, false); err != nil {
+		return nil, err
 	}
-	if appErr := a.requireMFAEnabled("GetMFAStatus"); appErr != nil {
-		return nil, appErr
+	if err := a.requireMFAEnabled(); err != nil {
+		return nil, err
 	}
 	now := a.mfa.now().UnixMilli()
 	credential, err := a.Store().MFA().GetByUser(ctx, principal.UserId)
@@ -98,7 +127,7 @@ func (a *App) GetMFAStatus(
 		return &model.MFAStatus{}, nil
 	}
 	if err != nil {
-		return nil, mfaStoreError("GetMFAStatus", err)
+		return nil, mfaStoreFailure(err)
 	}
 	status := &model.MFAStatus{
 		Enabled:          credential.IsActive(),
@@ -109,7 +138,7 @@ func (a *App) GetMFAStatus(
 		status.RecoveryCodesRemaining, err = a.Store().MFA().
 			CountRecoveryCodes(ctx, principal.UserId)
 		if err != nil {
-			return nil, mfaStoreError("GetMFAStatus.recovery_codes", err)
+			return nil, mfaStoreFailure(err)
 		}
 	}
 	return status, nil
@@ -117,30 +146,31 @@ func (a *App) GetMFAStatus(
 
 func (a *App) SetupMFA(
 	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	accountName string,
-) (*model.MFASetup, *model.AppError) {
-	if appErr := a.requireInteractiveSession(principal, true, "SetupMFA"); appErr != nil {
-		return nil, appErr
+	invocation Invocation,
+	command SetupMFACommand,
+) (*model.MFASetup, error) {
+	principal := invocation.Principal()
+	if err := a.requireInteractiveSession(principal, true); err != nil {
+		return nil, err
 	}
-	if appErr := a.requireMFAEnabled("SetupMFA"); appErr != nil {
-		return nil, appErr
+	if err := a.requireMFAEnabled(); err != nil {
+		return nil, err
 	}
 	user, err := a.Store().User().Get(ctx, principal.UserId)
 	if err != nil {
-		return nil, mfaStoreError("SetupMFA.user", err)
+		return nil, mfaStoreFailure(err)
 	}
+	accountName := command.AccountName
 	if strings.TrimSpace(accountName) == "" {
 		accountName = user.Email
 	}
 	secret, err := randomMFASecret()
 	if err != nil {
-		return nil, internalAuthenticationError("SetupMFA.secret", err)
+		return nil, authenticationUnavailable(err)
 	}
 	encrypted, err := a.mfa.encrypt(principal.UserId, secret)
 	if err != nil {
-		return nil, internalAuthenticationError("SetupMFA.encrypt", err)
+		return nil, authenticationUnavailable(err)
 	}
 	now := a.mfa.now().UnixMilli()
 	candidate := &model.MFACredential{
@@ -150,24 +180,24 @@ func (a *App) SetupMFA(
 		EncryptionKeyId:  a.mfa.primary,
 		PendingExpiresAt: now + a.mfa.settings.SetupTTL.Milliseconds(),
 	}
-	resource, appErr := a.mfaAuditResource(ctx)
-	if appErr != nil {
-		return nil, appErr
+	resource, err := a.mfaAuditResourceNeutral(ctx)
+	if err != nil {
+		return nil, err
 	}
 	attempt, appErr := a.audit.BeginCriticalAction(
-		ctx, principal, actionMFASetup, resource, metadata, nil, nil,
+		ctx, principal, actionMFASetup, resource, invocation.RequestMetadata(), nil, nil,
 	)
 	if appErr != nil {
-		return nil, appErr
+		return nil, fromLegacyAppError(appErr)
 	}
 	saved, err := a.Store().MFA().SavePending(ctx, candidate)
 	if err != nil {
-		return nil, a.failMFAMutation(ctx, attempt.Id, "SetupMFA.save", err)
+		return nil, a.failMFAMutationNeutral(ctx, attempt.Id, err)
 	}
 	if _, appErr := a.audit.CompleteCriticalAction(
 		ctx, attempt.Id, model.AuditStatusSuccess, "", saved.Auditable(),
 	); appErr != nil {
-		return nil, appErr
+		return nil, fromLegacyAppError(appErr)
 	}
 	return &model.MFASetup{
 		Secret: secret,
@@ -182,49 +212,51 @@ func (a *App) SetupMFA(
 
 func (a *App) ActivateMFA(
 	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	code string,
-) (*model.MFAActivation, *model.AppError) {
-	if appErr := a.requireInteractiveSession(principal, true, "ActivateMFA"); appErr != nil {
-		return nil, appErr
+	invocation Invocation,
+	command ActivateMFACommand,
+) (*model.MFAActivation, error) {
+	principal := invocation.Principal()
+	code := command.Code
+	metadata := invocation.RequestMetadata()
+	if err := a.requireInteractiveSession(principal, true); err != nil {
+		return nil, err
 	}
-	if appErr := a.requireMFAEnabled("ActivateMFA"); appErr != nil {
-		return nil, appErr
+	if err := a.requireMFAEnabled(); err != nil {
+		return nil, err
 	}
 	credential, err := a.Store().MFA().GetByUser(ctx, principal.UserId)
 	if err != nil {
-		return nil, mfaStoreError("ActivateMFA.credential", err)
+		return nil, mfaStoreFailure(err)
 	}
 	now := a.mfa.now()
 	if !credential.IsPendingAt(now.UnixMilli()) {
-		return nil, mfaInvalidCodeError("ActivateMFA")
+		return nil, fromLegacyAppError(mfaInvalidCodeError("ActivateMFA"))
 	}
 	secret, err := a.mfa.decrypt(principal.UserId, credential)
 	if err != nil {
-		return nil, internalAuthenticationError("ActivateMFA.decrypt", err)
+		return nil, authenticationUnavailable(err)
 	}
 	timeStep, valid := verifyTOTP(secret, code, 0, now)
 	if !valid {
-		return nil, mfaInvalidCodeError("ActivateMFA")
+		return nil, fromLegacyAppError(mfaInvalidCodeError("ActivateMFA"))
 	}
 	rawCodes, recoveryCodes, err := generateMFARecoveryCodes(
 		principal.UserId,
 		a.mfa.settings.RecoveryCodeCount,
 	)
 	if err != nil {
-		return nil, internalAuthenticationError("ActivateMFA.recovery_codes", err)
+		return nil, authenticationUnavailable(err)
 	}
-	resource, appErr := a.mfaAuditResource(ctx)
-	if appErr != nil {
-		return nil, appErr
+	resource, err := a.mfaAuditResourceNeutral(ctx)
+	if err != nil {
+		return nil, err
 	}
 	attempt, appErr := a.audit.BeginCriticalAction(
 		ctx, principal, actionMFAActivate, resource, metadata, nil,
 		credential.Auditable(),
 	)
 	if appErr != nil {
-		return nil, appErr
+		return nil, fromLegacyAppError(appErr)
 	}
 	activated, err := a.Store().MFA().Activate(
 		ctx,
@@ -236,7 +268,7 @@ func (a *App) ActivateMFA(
 		now.UnixMilli(),
 	)
 	if err != nil {
-		return nil, a.failMFAMutation(ctx, attempt.Id, "ActivateMFA.activate", err)
+		return nil, a.failMFAMutationNeutral(ctx, attempt.Id, err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, activated.AccessTokenHashes)
 	a.realtime.PropagateSessionRevocation(
@@ -252,22 +284,24 @@ func (a *App) ActivateMFA(
 			"recovery_code_count": len(rawCodes),
 		},
 	); appErr != nil {
-		return nil, appErr
+		return nil, fromLegacyAppError(appErr)
 	}
 	return &model.MFAActivation{RecoveryCodes: rawCodes}, nil
 }
 
 func (a *App) ChallengeMFA(
 	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	code string,
-) (*model.Session, *model.AppError) {
-	if appErr := a.requireInteractiveSession(principal, false, "ChallengeMFA"); appErr != nil {
-		return nil, appErr
+	invocation Invocation,
+	command ChallengeMFACommand,
+) (*model.Session, error) {
+	principal := invocation.Principal()
+	code := command.Code
+	metadata := invocation.RequestMetadata()
+	if err := a.requireInteractiveSession(principal, false); err != nil {
+		return nil, err
 	}
-	if appErr := a.requireMFAEnabled("ChallengeMFA"); appErr != nil {
-		return nil, appErr
+	if err := a.requireMFAEnabled(); err != nil {
+		return nil, err
 	}
 	resource, appErr := a.mfaAuditResource(ctx)
 	if appErr != nil {
@@ -324,17 +358,16 @@ func (a *App) ChallengeMFA(
 
 func (a *App) RegenerateMFARecoveryCodes(
 	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-) ([]string, *model.AppError) {
-	if appErr := a.requireStrongRecentSession(
-		principal,
-		"RegenerateMFARecoveryCodes",
-	); appErr != nil {
-		return nil, appErr
+	invocation Invocation,
+	_ RegenerateMFARecoveryCodesCommand,
+) ([]string, error) {
+	principal := invocation.Principal()
+	metadata := invocation.RequestMetadata()
+	if err := a.requireStrongRecentSessionNeutral(principal); err != nil {
+		return nil, err
 	}
-	if appErr := a.requireMFAEnabled("RegenerateMFARecoveryCodes"); appErr != nil {
-		return nil, appErr
+	if err := a.requireMFAEnabled(); err != nil {
+		return nil, err
 	}
 	rawCodes, codes, err := generateMFARecoveryCodes(
 		principal.UserId,
@@ -381,14 +414,16 @@ func (a *App) RegenerateMFARecoveryCodes(
 
 func (a *App) DisableMFA(
 	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-) *model.AppError {
-	if appErr := a.requireStrongRecentSession(principal, "DisableMFA"); appErr != nil {
-		return appErr
+	invocation Invocation,
+	_ DisableMFACommand,
+) error {
+	principal := invocation.Principal()
+	metadata := invocation.RequestMetadata()
+	if err := a.requireStrongRecentSessionNeutral(principal); err != nil {
+		return err
 	}
-	if appErr := a.requireMFAEnabled("DisableMFA"); appErr != nil {
-		return appErr
+	if err := a.requireMFAEnabled(); err != nil {
+		return err
 	}
 	resource, appErr := a.mfaAuditResource(ctx)
 	if appErr != nil {
@@ -496,25 +531,24 @@ func (s *MFAService) consumeSecondFactor(
 	return nil
 }
 
-func (a *App) requireMFAEnabled(where string) *model.AppError {
+func (a *App) requireMFAEnabled() error {
 	if a.mfa != nil && a.mfa.settings.Enabled {
 		return nil
 	}
-	return model.NewAppError(
-		where,
-		"authentication.mfa.disabled",
-		nil,
-		"",
-		http.StatusNotImplemented,
-	)
+	return NewError("authentication.mfa.disabled")
+}
+
+// requireMFAEnabledLegacy preserves *model.AppError for unmigrated call paths.
+func (a *App) requireMFAEnabledLegacy(where string) *model.AppError {
+	return toLegacyAppError(where, a.requireMFAEnabled())
 }
 
 func (a *App) requireStrongRecentSession(
 	principal model.Principal,
 	where string,
 ) *model.AppError {
-	if appErr := a.requireInteractiveSession(principal, true, where); appErr != nil {
-		return appErr
+	if err := a.requireInteractiveSession(principal, true); err != nil {
+		return toLegacyAppError(where, err)
 	}
 	if !principal.HasStrongAuthentication() {
 		return model.NewAppError(
@@ -526,6 +560,22 @@ func (a *App) requireStrongRecentSession(
 		)
 	}
 	return nil
+}
+
+func (a *App) requireStrongRecentSessionNeutral(principal model.Principal) error {
+	return fromLegacyAppError(a.requireStrongRecentSession(principal, "MFA"))
+}
+
+func (a *App) mfaAuditResourceNeutral(ctx context.Context) (model.Resource, error) {
+	resource, appErr := a.mfaAuditResource(ctx)
+	if appErr != nil {
+		return model.Resource{}, fromLegacyAppError(appErr)
+	}
+	return resource, nil
+}
+
+func (a *App) failMFAMutationNeutral(ctx context.Context, auditID string, err error) error {
+	return fromLegacyAppError(a.failMFAMutation(ctx, auditID, "MFA", err))
 }
 
 func (a *App) mfaAuditResource(
@@ -760,6 +810,10 @@ func mfaInvalidCodeError(where string) *model.AppError {
 		"",
 		http.StatusUnauthorized,
 	)
+}
+
+func mfaStoreFailure(err error) error {
+	return fromLegacyAppError(mfaStoreError("MFA", err))
 }
 
 func mfaStoreError(where string, err error) *model.AppError {

@@ -12,6 +12,7 @@ package api
 import (
 	"net/http"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -80,12 +81,13 @@ func (a *API) getMFAStatus(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	status, appErr := a.application.GetMFAStatus(
+	status, err := a.application.GetMFAStatus(
 		request.Context(),
-		principal,
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.GetMFAStatusQuery{},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
@@ -97,14 +99,13 @@ func (a *API) setupMFA(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	setup, appErr := a.application.SetupMFA(
+	setup, err := a.application.SetupMFA(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		"",
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.SetupMFACommand{},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
@@ -116,14 +117,13 @@ func (a *API) activateMFA(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	activation, appErr := a.application.ActivateMFA(
+	activation, err := a.application.ActivateMFA(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		code,
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.ActivateMFACommand{Code: code},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
@@ -135,18 +135,17 @@ func (a *API) challengeMFA(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	session, appErr := a.application.ChallengeMFA(
+	session, err := a.application.ChallengeMFA(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		code,
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.ChallengeMFACommand{Code: code},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, session)
+	writeJSON(writer, http.StatusOK, sessionResponseFromModel(session))
 }
 
 func (a *API) regenerateMFARecoveryCodes(
@@ -157,13 +156,13 @@ func (a *API) regenerateMFARecoveryCodes(
 	if !ok {
 		return
 	}
-	codes, appErr := a.application.RegenerateMFARecoveryCodes(
+	codes, err := a.application.RegenerateMFARecoveryCodes(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.RegenerateMFARecoveryCodesCommand{},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
@@ -177,12 +176,12 @@ func (a *API) disableMFA(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	if appErr := a.application.DisableMFA(
+	if err := a.application.DisableMFA(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.DisableMFACommand{},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")

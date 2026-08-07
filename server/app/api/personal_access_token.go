@@ -11,6 +11,7 @@ package api
 import (
 	"net/http"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -19,6 +20,51 @@ type createPersonalAccessTokenRequest struct {
 	Scopes         []string `json:"scopes"`
 	AcademicUnitID string   `json:"academic_unit_id,omitempty"`
 	ExpiresAt      int64    `json:"expires_at"`
+}
+
+type personalAccessTokenResponse struct {
+	ID             string   `json:"id"`
+	CreateAt       int64    `json:"create_at"`
+	UpdateAt       int64    `json:"update_at"`
+	DeleteAt       int64    `json:"delete_at"`
+	UserID         string   `json:"user_id"`
+	Description    string   `json:"description"`
+	Scopes         []string `json:"scopes"`
+	AcademicUnitID string   `json:"academic_unit_id,omitempty"`
+	ExpiresAt      int64    `json:"expires_at"`
+	LastUsedAt     int64    `json:"last_used_at,omitempty"`
+	DisabledAt     int64    `json:"disabled_at,omitempty"`
+	RevokedAt      int64    `json:"revoked_at,omitempty"`
+}
+
+type personalAccessTokenCreationResponse struct {
+	Token      personalAccessTokenResponse `json:"token"`
+	Credential string                      `json:"credential"`
+}
+
+func personalAccessTokenResponseFromModel(token *model.PersonalAccessToken) personalAccessTokenResponse {
+	if token == nil {
+		return personalAccessTokenResponse{}
+	}
+	scopes := token.Scopes
+	if scopes == nil {
+		scopes = []string{}
+	}
+	return personalAccessTokenResponse{
+		ID: token.Id, CreateAt: token.CreateAt, UpdateAt: token.UpdateAt, DeleteAt: token.DeleteAt,
+		UserID: token.UserId, Description: token.Description,
+		Scopes: append([]string(nil), scopes...), AcademicUnitID: token.AcademicUnitId,
+		ExpiresAt: token.ExpiresAt, LastUsedAt: token.LastUsedAt,
+		DisabledAt: token.DisabledAt, RevokedAt: token.RevokedAt,
+	}
+}
+
+func personalAccessTokenResponsesFromModels(tokens []*model.PersonalAccessToken) []personalAccessTokenResponse {
+	result := make([]personalAccessTokenResponse, 0, len(tokens))
+	for _, token := range tokens {
+		result = append(result, personalAccessTokenResponseFromModel(token))
+	}
+	return result
 }
 
 func (a *API) InitPersonalAccessTokens() error {
@@ -91,19 +137,17 @@ func (a *API) setPersonalAccessTokenDisabled(
 	if !ok {
 		return
 	}
-	updated, appErr := a.application.SetPersonalAccessTokenDisabled(
+	updated, err := a.application.SetPersonalAccessTokenDisabled(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		tokenID,
-		disabled,
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.SetPersonalAccessTokenDisabledCommand{TokenID: tokenID, Disabled: disabled},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, updated)
+	writeJSON(writer, http.StatusOK, personalAccessTokenResponseFromModel(updated))
 }
 
 func (a *API) createPersonalAccessToken(
@@ -124,21 +168,22 @@ func (a *API) createPersonalAccessToken(
 		)
 		return
 	}
-	created, appErr := a.application.CreatePersonalAccessToken(
+	created, err := a.application.CreatePersonalAccessToken(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		input.Description,
-		input.Scopes,
-		input.AcademicUnitID,
-		input.ExpiresAt,
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.CreatePersonalAccessTokenCommand{
+			Description: input.Description, Scopes: input.Scopes,
+			AcademicUnitID: input.AcademicUnitID, ExpiresAt: input.ExpiresAt,
+		},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusCreated, created)
+	writeJSON(writer, http.StatusCreated, personalAccessTokenCreationResponse{
+		Token: personalAccessTokenResponseFromModel(created.Token), Credential: created.Credential,
+	})
 }
 
 func (a *API) listPersonalAccessTokens(
@@ -150,16 +195,17 @@ func (a *API) listPersonalAccessTokens(
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	tokens, appErr := a.application.ListPersonalAccessTokens(
+	tokens, err := a.application.ListPersonalAccessTokens(
 		request.Context(),
-		principal,
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.ListPersonalAccessTokensQuery{},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, tokens)
+	writeJSON(writer, http.StatusOK, personalAccessTokenResponsesFromModels(tokens))
 }
 
 func (a *API) revokePersonalAccessToken(
@@ -176,13 +222,12 @@ func (a *API) revokePersonalAccessToken(
 	if !ok {
 		return
 	}
-	if _, appErr := a.application.RevokePersonalAccessToken(
+	if _, err := a.application.RevokePersonalAccessToken(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		tokenID,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.RevokePersonalAccessTokenCommand{TokenID: tokenID},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")

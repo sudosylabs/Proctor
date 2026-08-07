@@ -154,29 +154,24 @@ type Authentication interface {
 	Logout(context.Context, application.Invocation, application.LogoutCommand) error
 	RequestEmailVerification(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) *model.AppError
+		application.Invocation,
+		application.RequestEmailVerificationCommand,
+	) error
 	CompleteEmailVerification(
 		context.Context,
-		string,
-		model.RequestMetadata,
-		string,
-	) (*model.User, *model.AppError)
+		application.Invocation,
+		application.CompleteEmailVerificationCommand,
+	) (*model.User, error)
 	RequestPasswordReset(
 		context.Context,
-		string,
-		model.RequestMetadata,
-		string,
-	) *model.AppError
+		application.Invocation,
+		application.RequestPasswordResetCommand,
+	) error
 	CompletePasswordReset(
 		context.Context,
-		string,
-		string,
-		model.RequestMetadata,
-		string,
-	) (*model.User, *model.AppError)
+		application.Invocation,
+		application.CompletePasswordResetCommand,
+	) (*model.User, error)
 }
 
 type ExternalAuthentication interface {
@@ -289,65 +284,57 @@ type Sessions interface {
 type PersonalAccessTokens interface {
 	CreatePersonalAccessToken(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-		[]string,
-		string,
-		int64,
-	) (*model.PersonalAccessTokenCreation, *model.AppError)
+		application.Invocation,
+		application.CreatePersonalAccessTokenCommand,
+	) (*model.PersonalAccessTokenCreation, error)
 	ListPersonalAccessTokens(
 		context.Context,
-		model.Principal,
-	) ([]*model.PersonalAccessToken, *model.AppError)
+		application.Invocation,
+		application.ListPersonalAccessTokensQuery,
+	) ([]*model.PersonalAccessToken, error)
 	RevokePersonalAccessToken(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) (*model.PersonalAccessToken, *model.AppError)
+		application.Invocation,
+		application.RevokePersonalAccessTokenCommand,
+	) (*model.PersonalAccessToken, error)
 	SetPersonalAccessTokenDisabled(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-		bool,
-	) (*model.PersonalAccessToken, *model.AppError)
+		application.Invocation,
+		application.SetPersonalAccessTokenDisabledCommand,
+	) (*model.PersonalAccessToken, error)
 }
 
 type MFA interface {
 	GetMFAStatus(
 		context.Context,
-		model.Principal,
-	) (*model.MFAStatus, *model.AppError)
+		application.Invocation,
+		application.GetMFAStatusQuery,
+	) (*model.MFAStatus, error)
 	SetupMFA(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) (*model.MFASetup, *model.AppError)
+		application.Invocation,
+		application.SetupMFACommand,
+	) (*model.MFASetup, error)
 	ActivateMFA(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) (*model.MFAActivation, *model.AppError)
+		application.Invocation,
+		application.ActivateMFACommand,
+	) (*model.MFAActivation, error)
 	ChallengeMFA(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-	) (*model.Session, *model.AppError)
+		application.Invocation,
+		application.ChallengeMFACommand,
+	) (*model.Session, error)
 	RegenerateMFARecoveryCodes(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-	) ([]string, *model.AppError)
+		application.Invocation,
+		application.RegenerateMFARecoveryCodesCommand,
+	) ([]string, error)
 	DisableMFA(
 		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-	) *model.AppError
+		application.Invocation,
+		application.DisableMFACommand,
+	) error
 }
 
 type AuditListingApplication interface {
