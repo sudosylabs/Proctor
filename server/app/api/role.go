@@ -4,13 +4,15 @@
 //
 // Adapted from Mattermost server/channels/api4/role.go. Proctor retains
 // per-domain Init registration and thin handlers while delegating scoped
-// authorization, protected built-ins, validation, and audit to app.App.
+// authorization, protected built-ins, validation, and audit to application
+// use cases.
 
 package api
 
 import (
 	"net/http"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -19,6 +21,44 @@ type createRoleRequest struct {
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description,omitempty"`
 	Permissions []string `json:"permissions"`
+}
+
+type updateRoleRequest struct {
+	DisplayName *string   `json:"display_name,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Permissions *[]string `json:"permissions,omitempty"`
+}
+
+type roleResponse struct {
+	ID          string   `json:"id"`
+	CreateAt    int64    `json:"create_at"`
+	UpdateAt    int64    `json:"update_at"`
+	DeleteAt    int64    `json:"delete_at"`
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name"`
+	Description string   `json:"description"`
+	Permissions []string `json:"permissions"`
+	BuiltIn     bool     `json:"built_in"`
+}
+
+func roleResponseFromModel(role *model.Role) roleResponse {
+	permissions := role.Permissions
+	if permissions == nil {
+		permissions = []string{}
+	}
+	return roleResponse{
+		ID: role.Id, CreateAt: role.CreateAt, UpdateAt: role.UpdateAt, DeleteAt: role.DeleteAt,
+		Name: role.Name, DisplayName: role.DisplayName, Description: role.Description,
+		Permissions: append([]string(nil), permissions...), BuiltIn: role.BuiltIn,
+	}
+}
+
+func roleResponsesFromModels(roles []*model.Role) []roleResponse {
+	result := make([]roleResponse, 0, len(roles))
+	for _, role := range roles {
+		result = append(result, roleResponseFromModel(role))
+	}
+	return result
 }
 
 func (a *API) InitRoles() error {
@@ -68,24 +108,16 @@ func (a *API) listRoles(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+	roles, err := a.roles.ListRoles(
 		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.ListRolesQuery{},
 	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	request = request.WithContext(authorizedContext)
-	roles, appErr := a.application.ListRoles(
-		request.Context(), principal, RequestMetadata(request.Context()),
-	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, roles)
+	writeJSON(writer, http.StatusOK, roleResponsesFromModels(roles))
 }
 
 func (a *API) getRole(writer http.ResponseWriter, request *http.Request) {
@@ -93,24 +125,16 @@ func (a *API) getRole(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+	role, err := a.roles.GetRole(
 		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.GetRoleQuery{ID: roleID},
 	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	request = request.WithContext(authorizedContext)
-	role, appErr := a.application.GetRole(
-		request.Context(), principal, RequestMetadata(request.Context()), roleID,
-	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, role)
+	writeJSON(writer, http.StatusOK, roleResponseFromModel(role))
 }
 
 func (a *API) createRole(writer http.ResponseWriter, request *http.Request) {
@@ -119,35 +143,24 @@ func (a *API) createRole(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, authenticationRequiredError())
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
-		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
-	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
-		return
-	}
-	request = request.WithContext(authorizedContext)
 	var input createRoleRequest
 	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError("createRole", err))
+		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
 		return
 	}
-	saved, appErr := a.application.CreateRole(
+	saved, err := a.roles.CreateRole(
 		request.Context(),
-		principal,
-		RequestMetadata(request.Context()),
-		&model.Role{
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.CreateRoleCommand{
 			Name: input.Name, DisplayName: input.DisplayName,
 			Description: input.Description, Permissions: input.Permissions,
 		},
 	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	writeJSON(writer, http.StatusCreated, saved)
+	writeJSON(writer, http.StatusCreated, roleResponseFromModel(saved))
 }
 
 func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
@@ -155,29 +168,24 @@ func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+	var input updateRoleRequest
+	if err := decodeRequestJSON(request, &input); err != nil {
+		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
+		return
+	}
+	updated, err := a.roles.UpdateRole(
 		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.UpdateRoleCommand{
+			ID: roleID, DisplayName: input.DisplayName,
+			Description: input.Description, Permissions: input.Permissions,
+		},
 	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	request = request.WithContext(authorizedContext)
-	var patch model.RolePatch
-	if err := decodeRequestJSON(request, &patch); err != nil {
-		WriteError(writer, request, invalidRequestError("patchRole", err))
-		return
-	}
-	updated, appErr := a.application.PatchRole(
-		request.Context(), principal, RequestMetadata(request.Context()), roleID, &patch,
-	)
-	if appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, updated)
+	writeJSON(writer, http.StatusOK, roleResponseFromModel(updated))
 }
 
 func (a *API) deleteRole(writer http.ResponseWriter, request *http.Request) {
@@ -185,20 +193,12 @@ func (a *API) deleteRole(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	authorizedContext, allowed, appErr := a.application.PrincipalHasPermissionToSystem(
+	if err := a.roles.DeleteRole(
 		request.Context(),
-		principal,
-		model.ActionRoleManage,
-		RequestMetadata(request.Context()),
-	)
-	if !a.requirePermission(writer, request, allowed, appErr) {
-		return
-	}
-	request = request.WithContext(authorizedContext)
-	if appErr := a.application.DeleteRole(
-		request.Context(), principal, RequestMetadata(request.Context()), roleID,
-	); appErr != nil {
-		writeApplicationError(writer, request, a.logger, appErr)
+		application.NewInvocation(principal, RequestMetadata(request.Context())),
+		application.DeleteRoleCommand{ID: roleID},
+	); err != nil {
+		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")

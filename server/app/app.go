@@ -37,6 +37,7 @@ type App struct {
 	userProfiles           *userProfileService
 	accountStates          *accountStateService
 	sessionAdministrations *sessionAdministrationService
+	roles                  *roleService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -134,6 +135,13 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		sessionAdministrationRealtimeEffects{realtime: realtime},
 		time.Now,
 	)
+	roles := newRoleService(
+		applicationPlatform.Store().Role(),
+		roleAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution()},
+		mutationAuditAdapter{audit: audit},
+		roleRealtimeEffects{realtime: realtime},
+		time.Now,
+	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
@@ -150,6 +158,7 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		userProfiles:           userProfiles,
 		accountStates:          accountStates,
 		sessionAdministrations: sessionAdministrations,
+		roles:                  roles,
 		audit:                  audit, realtime: realtime,
 	}, nil
 }

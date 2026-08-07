@@ -370,27 +370,24 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	role, appErr := nodeA.App.CreateRole(
+	role, err := nodeA.App.CreateRole(
 		context.Background(),
-		*principal,
-		model.RequestMetadata{RequestId: "two-node-role-create"},
-		&model.Role{
+		app.NewInvocation(*principal, model.RequestMetadata{RequestId: "two-node-role-create"}),
+		app.CreateRoleCommand{
 			Name: "cluster_observer", DisplayName: "Cluster Observer",
 			Permissions: []string{string(model.ActionUserView)},
 		},
 	)
-	if appErr != nil {
-		t.Fatal(appErr)
+	if err != nil {
+		t.Fatal(err)
 	}
 	updatedDisplayName := "Updated Cluster Observer"
-	if _, appErr := nodeA.App.PatchRole(
+	if _, err := nodeA.App.UpdateRole(
 		context.Background(),
-		*principal,
-		model.RequestMetadata{RequestId: "two-node-role-patch"},
-		role.Id,
-		&model.RolePatch{DisplayName: &updatedDisplayName},
-	); appErr != nil {
-		t.Fatal(appErr)
+		app.NewInvocation(*principal, model.RequestMetadata{RequestId: "two-node-role-patch"}),
+		app.UpdateRoleCommand{ID: role.Id, DisplayName: &updatedDisplayName},
+	); err != nil {
+		t.Fatal(err)
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _, err = connection.ReadMessage()

@@ -593,15 +593,43 @@ type SessionCredentialStore interface {
 	) (*SessionRotation, error)
 }
 
+// RoleCreation is the durable input for creating a custom role under an
+// already-persisted audit attempt.
+type RoleCreation struct {
+	Role         *model.Role
+	AuditEventID string
+	AuditAt      int64
+}
+
+// RoleUpdate is the durable input for updating a custom role under an
+// already-persisted audit attempt.
+type RoleUpdate struct {
+	Role         *model.Role
+	AuditEventID string
+	AuditAt      int64
+}
+
+// RoleDeletion is the durable input for soft-deleting a custom role under an
+// already-persisted audit attempt.
+type RoleDeletion struct {
+	ID           string
+	DeleteAt     int64
+	AuditEventID string
+	AuditAt      int64
+}
+
 // RoleStore persists reusable permission sets independently of their scopes.
 type RoleStore interface {
 	Save(context.Context, *model.Role) (*model.Role, error)
+	SaveWithAudit(context.Context, *RoleCreation) (*model.Role, error)
 	Get(context.Context, string) (*model.Role, error)
 	GetByName(context.Context, string) (*model.Role, error)
 	GetByIds(context.Context, []string) ([]*model.Role, error)
 	List(context.Context) ([]*model.Role, error)
 	Update(context.Context, *model.Role) (*model.Role, error)
+	UpdateWithAudit(context.Context, *RoleUpdate) (*model.Role, error)
 	Delete(context.Context, string, int64) (*model.Role, error)
+	DeleteWithAudit(context.Context, *RoleDeletion) (*model.Role, error)
 }
 
 // RoleBindingStore persists time-bounded role assignments. Scope references

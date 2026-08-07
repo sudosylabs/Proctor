@@ -1,0 +1,235 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
+)
+
+type roleStoreFake struct {
+	events       *[]string
+	role         *model.Role
+	list         []*model.Role
+	createInput  *store.RoleCreation
+	updateInput  *store.RoleUpdate
+	deleteInput  *store.RoleDeletion
+	createResult *model.Role
+	updateResult *model.Role
+	deleteResult *model.Role
+	getErr       error
+	listErr      error
+	createErr    error
+	updateErr    error
+	deleteErr    error
+}
+
+func (s *roleStoreFake) Get(context.Context, string) (*model.Role, error) {
+	*s.events = append(*s.events, "get-role")
+	return s.role, s.getErr
+}
+
+func (s *roleStoreFake) List(context.Context) ([]*model.Role, error) {
+	*s.events = append(*s.events, "list-roles")
+	return s.list, s.listErr
+}
+
+func (s *roleStoreFake) SaveWithAudit(_ context.Context, input *store.RoleCreation) (*model.Role, error) {
+	*s.events = append(*s.events, "store-create")
+	s.createInput = input
+	return s.createResult, s.createErr
+}
+
+func (s *roleStoreFake) UpdateWithAudit(_ context.Context, input *store.RoleUpdate) (*model.Role, error) {
+	*s.events = append(*s.events, "store-update")
+	s.updateInput = input
+	return s.updateResult, s.updateErr
+}
+
+func (s *roleStoreFake) DeleteWithAudit(_ context.Context, input *store.RoleDeletion) (*model.Role, error) {
+	*s.events = append(*s.events, "store-delete")
+	s.deleteInput = input
+	return s.deleteResult, s.deleteErr
+}
+
+type roleAuthorizerFake struct {
+	events   *[]string
+	resource model.Resource
+	err      error
+}
+
+func (a *roleAuthorizerFake) AuthorizeManage(context.Context, Invocation) (model.Resource, error) {
+	*a.events = append(*a.events, "authorize-manage")
+	return a.resource, a.err
+}
+
+type roleEffectsFake struct{ events *[]string }
+
+func (e *roleEffectsFake) AuthorizationChanged(context.Context) {
+	*e.events = append(*e.events, "invalidate-authorization")
+}
+
+func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	resource := model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}
+	created := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
+	persistence := &roleStoreFake{events: &events, createResult: created}
+	service := newRoleService(
+		persistence,
+		&roleAuthorizerFake{events: &events, resource: resource},
+		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&roleEffectsFake{events: &events},
+		func() time.Time { return time.UnixMilli(500) },
+	)
+	got, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{
+		Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Id != created.Id || persistence.createInput.AuditEventID == "" {
+		t.Fatalf("result/input = %#v / %#v", got, persistence.createInput)
+	}
+	want := []string{"authorize-manage", "audit-begin", "store-create"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	service := newRoleService(
+		&roleStoreFake{events: &events},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&institutionAuditorFake{events: &events},
+		&roleEffectsFake{events: &events},
+		time.Now,
+	)
+	_, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{
+		Name: "teacher", DisplayName: "Teacher", Permissions: []string{"not.a.real.permission"},
+	})
+	if !Is(err, "role.permission.unknown") {
+		t.Fatalf("error = %v", err)
+	}
+	want := []string{"authorize-manage"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	role := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
+	updated := role.Clone()
+	updated.DisplayName = "Lead Teacher"
+	displayName := "Lead Teacher"
+	persistence := &roleStoreFake{events: &events, role: role, updateResult: updated}
+	service := newRoleService(
+		persistence,
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&roleEffectsFake{events: &events},
+		func() time.Time { return time.UnixMilli(500) },
+	)
+	got, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.Id, DisplayName: &displayName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayName != "Lead Teacher" {
+		t.Fatalf("result = %#v", got)
+	}
+	want := []string{"authorize-manage", "get-role", "audit-begin", "store-update", "invalidate-authorization"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	role := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
+	displayName := "Lead Teacher"
+	service := newRoleService(
+		&roleStoreFake{events: &events, role: role, updateErr: store.NewErrConflict("role", "roles_active_name_key", errors.New("dup"))},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&roleEffectsFake{events: &events},
+		time.Now,
+	)
+	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.Id, DisplayName: &displayName})
+	if !Is(err, "role.conflict") {
+		t.Fatalf("error = %v", err)
+	}
+	want := []string{"authorize-manage", "get-role", "audit-begin", "store-update", "audit-fail"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	role := &model.Role{Id: model.NewId(), Name: model.SystemAdministratorRoleName, DisplayName: "Admin", BuiltIn: true}
+	displayName := "Nope"
+	service := newRoleService(
+		&roleStoreFake{events: &events, role: role},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&institutionAuditorFake{events: &events},
+		&roleEffectsFake{events: &events},
+		time.Now,
+	)
+	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.Id, DisplayName: &displayName})
+	if !Is(err, "role.built_in.protected") {
+		t.Fatalf("error = %v", err)
+	}
+	want := []string{"authorize-manage", "get-role"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRoleDeleteCommitsBeforeInvalidation(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	role := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher"}
+	service := newRoleService(
+		&roleStoreFake{events: &events, role: role, deleteResult: role},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&roleEffectsFake{events: &events},
+		func() time.Time { return time.UnixMilli(500) },
+	)
+	if err := service.Delete(context.Background(), Invocation{}, DeleteRoleCommand{ID: role.Id}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"authorize-manage", "get-role", "audit-begin", "store-delete", "invalidate-authorization"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestValidatePatchedPermissionsPreservesButDoesNotIntroduceUnknownActions(t *testing.T) {
+	t.Parallel()
+	current := []string{string(model.ActionClassView), "future.permission"}
+	if err := validatePatchedPermissions(current, nil); err != nil {
+		t.Fatalf("display-only patch rejected existing unknown permission: %v", err)
+	}
+	preserved := []string{string(model.ActionClassMembersView), "future.permission"}
+	if err := validatePatchedPermissions(current, &preserved); err != nil {
+		t.Fatalf("preserved unknown permission rejected: %v", err)
+	}
+	introduced := []string{"another.future_permission"}
+	if err := validatePatchedPermissions(current, &introduced); err == nil || !Is(err, "role.permission.unknown") {
+		t.Fatalf("new unknown permission error = %v", err)
+	}
+}

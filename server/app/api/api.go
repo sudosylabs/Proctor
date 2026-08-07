@@ -122,6 +122,7 @@ type Options struct {
 	UserProfiles            UserProfileApplication
 	AccountStates           AccountStateApplication
 	SessionAdministrations  SessionAdministrationApplication
+	Roles                   RoleApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -371,18 +372,12 @@ type Bootstrap interface {
 	) (*model.InstallationBootstrapResult, *model.AppError)
 }
 
-type Roles interface {
-	ListRoles(context.Context, model.Principal, model.RequestMetadata) ([]*model.Role, *model.AppError)
-	GetRole(context.Context, model.Principal, model.RequestMetadata, string) (*model.Role, *model.AppError)
-	CreateRole(context.Context, model.Principal, model.RequestMetadata, *model.Role) (*model.Role, *model.AppError)
-	PatchRole(
-		context.Context,
-		model.Principal,
-		model.RequestMetadata,
-		string,
-		*model.RolePatch,
-	) (*model.Role, *model.AppError)
-	DeleteRole(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
+type RoleApplication interface {
+	ListRoles(context.Context, application.Invocation, application.ListRolesQuery) ([]*model.Role, error)
+	GetRole(context.Context, application.Invocation, application.GetRoleQuery) (*model.Role, error)
+	CreateRole(context.Context, application.Invocation, application.CreateRoleCommand) (*model.Role, error)
+	UpdateRole(context.Context, application.Invocation, application.UpdateRoleCommand) (*model.Role, error)
+	DeleteRole(context.Context, application.Invocation, application.DeleteRoleCommand) error
 }
 
 type RoleBindings interface {
@@ -435,7 +430,6 @@ type Application interface {
 	MFA
 	Audits
 	Bootstrap
-	Roles
 	RoleBindings
 	InstitutionApplication
 	Realtime
@@ -458,6 +452,7 @@ type API struct {
 	userProfiles            UserProfileApplication
 	accountStates           AccountStateApplication
 	sessionAdministrations  SessionAdministrationApplication
+	roles                   RoleApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -516,6 +511,9 @@ func New(options Options) (*API, error) {
 	if options.SessionAdministrations == nil {
 		return nil, errors.New("session administration application is required")
 	}
+	if options.Roles == nil {
+		return nil, errors.New("role application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -544,6 +542,7 @@ func New(options Options) (*API, error) {
 		userProfiles:            options.UserProfiles,
 		accountStates:           options.AccountStates,
 		sessionAdministrations:  options.SessionAdministrations,
+		roles:                   options.Roles,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,

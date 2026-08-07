@@ -78,4 +78,88 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 			t.Fatalf("Update(built-in) error = %v", err)
 		}
 	})
+
+	t.Run("AuditedMutationsAreAtomic", func(t *testing.T) {
+		ctx := context.Background()
+		at := model.GetMillis() + 100
+		if _, err := ss.Role().SaveWithAudit(ctx, &store.RoleCreation{
+			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
+			AuditEventID: model.NewId(), AuditAt: at,
+		}); err == nil {
+			t.Fatal("SaveWithAudit() succeeded without its audit attempt")
+		}
+		list, err := ss.Role().List(ctx)
+		requireNoError(t, err)
+		for _, role := range list {
+			if role.Name == "audited-teacher" {
+				t.Fatalf("role survived audit rollback: %#v", role)
+			}
+		}
+
+		createAttempt := saveRoleAuditAttempt(t, ctx, ss)
+		created, err := ss.Role().SaveWithAudit(ctx, &store.RoleCreation{
+			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
+			AuditEventID: createAttempt.Id, AuditAt: at,
+		})
+		requireNoError(t, err)
+		createAudit, err := ss.Audit().Get(ctx, createAttempt.Id)
+		requireNoError(t, err)
+		if createAudit.Status != model.AuditStatusSuccess {
+			t.Fatalf("create audit = %#v", createAudit)
+		}
+
+		created.DisplayName = "Audited Teacher Updated"
+		if _, err := ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
+			Role: created, AuditEventID: model.NewId(), AuditAt: at + 1,
+		}); err == nil {
+			t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
+		}
+		unchanged, err := ss.Role().Get(ctx, created.Id)
+		requireNoError(t, err)
+		if unchanged.DisplayName != "Audited Teacher" {
+			t.Fatalf("role update survived audit rollback: %#v", unchanged)
+		}
+		updateAttempt := saveRoleAuditAttempt(t, ctx, ss)
+		updated, err := ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
+			Role: created, AuditEventID: updateAttempt.Id, AuditAt: at + 1,
+		})
+		requireNoError(t, err)
+		if updated.DisplayName != "Audited Teacher Updated" {
+			t.Fatalf("UpdateWithAudit() = %#v", updated)
+		}
+
+		if _, err := ss.Role().DeleteWithAudit(ctx, &store.RoleDeletion{
+			ID: created.Id, DeleteAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
+		}); err == nil {
+			t.Fatal("DeleteWithAudit() succeeded without its audit attempt")
+		}
+		stillPresent, err := ss.Role().Get(ctx, created.Id)
+		requireNoError(t, err)
+		if stillPresent.DeleteAt != 0 {
+			t.Fatalf("role delete survived audit rollback: %#v", stillPresent)
+		}
+		deleteAttempt := saveRoleAuditAttempt(t, ctx, ss)
+		deleted, err := ss.Role().DeleteWithAudit(ctx, &store.RoleDeletion{
+			ID: created.Id, DeleteAt: at + 2, AuditEventID: deleteAttempt.Id, AuditAt: at + 2,
+		})
+		requireNoError(t, err)
+		if deleted.DeleteAt != at+2 {
+			t.Fatalf("DeleteWithAudit() = %#v", deleted)
+		}
+		if _, err := ss.Role().Get(ctx, created.Id); !store.IsNotFound(err) {
+			t.Fatalf("Get(deleted) error = %v", err)
+		}
+	})
+}
+
+func saveRoleAuditAttempt(t *testing.T, ctx context.Context, ss store.Store) *model.AuditEvent {
+	t.Helper()
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		Action:    string(model.ActionRoleManage),
+		Resource:  model.Resource{Type: model.ResourceInstitution, Id: model.NewId()},
+		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(),
+		Status: model.AuditStatusAttempt, NodeId: "test-node",
+	})
+	requireNoError(t, err)
+	return attempt
 }

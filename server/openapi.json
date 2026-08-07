@@ -756,6 +756,70 @@
         }
       }
     },
+    "/api/v1/roles": {
+      "get": {
+        "operationId": "listRoles", "summary": "List Roles",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/RoleListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createRole", "summary": "Create a custom Role",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "role.invalid", "role.conflict", "role.permission.unknown", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateRole"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/RoleCreated"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/roles/{role_id}": {
+      "parameters": [{"$ref": "#/components/parameters/RoleID"}],
+      "get": {
+        "operationId": "getRole", "summary": "Get a Role",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/RoleOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "patch": {
+        "operationId": "updateRole", "summary": "Update a custom Role",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role.invalid", "role.conflict", "role.built_in.protected", "role.permission.unknown", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateRole"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/RoleOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "delete": {
+        "operationId": "deleteRole", "summary": "Delete a custom Role",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role.built_in.protected", "role.conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "204": {"$ref": "#/components/responses/RoleDeleted"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/institution": {
       "get": {
         "operationId": "getInstitution",
@@ -852,6 +916,10 @@
         "name": "session_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "RoleID": {
+        "name": "role_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "AffiliationID": {
         "name": "affiliation_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -922,11 +990,18 @@
       "EnrollClassMember": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EnrollClassMemberRequest"}}}
-      }
-      ,
+      },
       "UpdateUserProfile": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateUserProfileRequest"}}}
+      },
+      "CreateRole": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateRoleRequest"}}}
+      },
+      "UpdateRole": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateRoleRequest"}}}
       }
     },
     "responses": {
@@ -973,6 +1048,10 @@
       "UserProfileListOK": {"description": "User profile collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserProfileListResponse"}}}},
       "SessionAdministrationListOK": {"description": "Administrative session list", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionAdministrationListResponse"}}}},
       "SessionAdministrationRevoked": {"description": "Session(s) revoked"},
+      "RoleListOK": {"description": "Role collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleListResponse"}}}},
+      "RoleOK": {"description": "Role", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleResponse"}}}},
+      "RoleCreated": {"description": "Role created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleResponse"}}}},
+      "RoleDeleted": {"description": "Role deleted"},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -1323,6 +1402,32 @@
         }
       },
       "SessionAdministrationListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/SessionAdministrationResponse"}},
+      "RoleResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "name", "display_name", "description", "permissions", "built_in"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "name": {"type": "string"}, "display_name": {"type": "string"}, "description": {"type": "string"},
+          "permissions": {"type": "array", "items": {"type": "string"}}, "built_in": {"type": "boolean"}
+        }
+      },
+      "RoleListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/RoleResponse"}},
+      "CreateRoleRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "display_name", "permissions"],
+        "properties": {
+          "name": {"type": "string"}, "display_name": {"type": "string"}, "description": {"type": "string"},
+          "permissions": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "UpdateRoleRequest": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "display_name": {"type": "string"}, "description": {"type": "string"},
+          "permissions": {"type": "array", "items": {"type": "string"}}
+        }
+      },
       "UpdateUserProfileRequest": {
         "type": "object", "additionalProperties": false,
         "properties": {

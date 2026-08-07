@@ -58,6 +58,38 @@ func (a *sessionAdministrationHTTPApplication) RevokeUserSessions(_ context.Cont
 	return nil
 }
 
+type roleHTTPApplication struct {
+	RoleApplication
+	list          []*model.Role
+	result        *model.Role
+	createCommand application.CreateRoleCommand
+	updateCommand application.UpdateRoleCommand
+	deleteCommand application.DeleteRoleCommand
+}
+
+func (a *roleHTTPApplication) ListRoles(context.Context, application.Invocation, application.ListRolesQuery) ([]*model.Role, error) {
+	return a.list, nil
+}
+
+func (a *roleHTTPApplication) GetRole(context.Context, application.Invocation, application.GetRoleQuery) (*model.Role, error) {
+	return a.result, nil
+}
+
+func (a *roleHTTPApplication) CreateRole(_ context.Context, _ application.Invocation, command application.CreateRoleCommand) (*model.Role, error) {
+	a.createCommand = command
+	return a.result, nil
+}
+
+func (a *roleHTTPApplication) UpdateRole(_ context.Context, _ application.Invocation, command application.UpdateRoleCommand) (*model.Role, error) {
+	a.updateCommand = command
+	return a.result, nil
+}
+
+func (a *roleHTTPApplication) DeleteRole(_ context.Context, _ application.Invocation, command application.DeleteRoleCommand) error {
+	a.deleteCommand = command
+	return nil
+}
+
 type loginRevisionHTTPApplication struct {
 	Authentication
 	user *model.User
@@ -100,7 +132,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	user := &model.User{Id: userID, CreateAt: 100, UpdateAt: 100, Revision: 7, Username: "student", Email: "student@example.edu", DisplayName: "Student", Locale: "en", Timezone: "UTC"}
 	profiles := &userProfileHTTPApplication{result: user}
 	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: profiles, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
+	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: profiles, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +204,7 @@ func TestAccountDisableUsesApplicationCommandAndAllowlistedResponse(t *testing.T
 	userID := model.NewId()
 	accounts := &accountStateHTTPApplication{result: &model.User{Id: userID, Revision: 4, Username: "student", DisabledAt: 500}}
 	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: accounts, SessionAdministrations: &sessionAdministrationHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
+	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: accounts, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
