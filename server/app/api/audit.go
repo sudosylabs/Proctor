@@ -39,7 +39,11 @@ type auditEventResponse struct {
 	NodeID     string              `json:"node_id,omitempty"`
 	ClientType string              `json:"client_type,omitempty"`
 	AuthMethod string              `json:"authentication_method,omitempty"`
+	IPAddress  string              `json:"ip_address,omitempty"`
+	UserAgent  string              `json:"user_agent,omitempty"`
 	ErrorCode  string              `json:"error_code,omitempty"`
+	// Parameters, prior_state, and result remain application/operator-only and
+	// are intentionally omitted from the public audit list projection.
 }
 
 type auditListResponse struct {
@@ -53,7 +57,8 @@ func auditEventResponseFromModel(event *model.AuditEvent) auditEventResponse {
 		ActorID: event.ActorId, SessionID: event.SessionId, Action: event.Action,
 		Resource: event.Resource, ScopeType: event.ScopeType, ScopeID: event.ScopeId,
 		Status: event.Status, RequestID: event.RequestId, NodeID: event.NodeId,
-		ClientType: event.ClientType, AuthMethod: event.AuthMethod, ErrorCode: event.ErrorCode,
+		ClientType: event.ClientType, AuthMethod: event.AuthMethod,
+		IPAddress: event.IPAddress, UserAgent: event.UserAgent, ErrorCode: event.ErrorCode,
 	}
 }
 
