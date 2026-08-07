@@ -51,7 +51,7 @@ Upstream paths:
 
 Corresponding Proctor paths:
 
-- server/model/app_error.go
+- server/model/validation_error.go
 - server/model/utils.go
 - server/model/audit.go
 - server/model/institution.go

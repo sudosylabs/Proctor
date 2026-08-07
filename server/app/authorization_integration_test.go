@@ -182,9 +182,9 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Keep permission results on *model.AppError, not the transport-neutral
-	// error interface from CreateLocalUser/AuthenticateAccess, so nil checks
-	// are not poisoned by a typed-nil *model.AppError in an error interface.
+	// Keep permission results on a distinct error variable from CreateLocalUser
+	// / AuthenticateAccess so typed-nil *app.Error values cannot poison later
+	// nil checks through a shared interface variable.
 	allowed, permErr := helper.App.Can(
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, Id: class.Id},
@@ -278,8 +278,8 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		UserAgent: "proctor-authorization-integration-test",
 	}
 
-	// Permission helpers still return *model.AppError; keep them off the
-	// transport-neutral error variables from CreateLocalUser/AuthenticateAccess.
+	// Permission helpers return error/*app.Error; keep them off variables shared
+	// with CreateLocalUser/AuthenticateAccess to avoid typed-nil interface traps.
 	allowed, permErr := helper.App.PrincipalHasPermissionToUser(
 		ctx, *principal, viewer.Id, model.ActionUserView,
 	)

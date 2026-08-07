@@ -248,7 +248,7 @@ func (s *AuthenticationService) login(
 			command.MFACode,
 			now,
 		); appErr != nil {
-			return nil, fromLegacyAppError(appErr)
+			return nil, appErr
 		}
 		authenticationStrength = model.AuthenticationMultiFactor
 		mfaCompletedAt = now.UnixMilli()

@@ -589,10 +589,14 @@ func (c *webSocketConnection) handleRequest(
 			subscription,
 		); err != nil {
 			code := "authorization.denied"
+			message := "WebSocket subscription denied."
 			if failure, ok := application.As(err); ok {
 				code = failure.Code()
+				if code != "authorization.denied" {
+					message = "WebSocket subscription failed."
+				}
 			}
-			c.enqueueError(request.Sequence, code, "WebSocket subscription denied.")
+			c.enqueueError(request.Sequence, code, message)
 			return
 		}
 		c.mu.Lock()

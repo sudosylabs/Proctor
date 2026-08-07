@@ -8,9 +8,9 @@ import (
 )
 
 // applicationFailure is the transport-facing view of a transport-neutral
-// application error such as *app.Error. The API package intentionally depends
-// only on this narrow interface so it does not import package app while the
-// legacy app → app/api composition edge still exists.
+// application error such as *app.Error (Code + Fields). The interface keeps
+// HTTP mapping duck-typed even when the package also imports app for
+// constructing errors at the handler boundary.
 type applicationFailure interface {
 	error
 	Code() string
@@ -110,6 +110,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"user.invalid":                                         {status: http.StatusBadRequest},
 	"user.conflict":                                        {status: http.StatusConflict},
 	"user.last_system_admin":                               {status: http.StatusConflict},
+	"websocket.internal": {status: http.StatusInternalServerError},
+	"websocket.request.invalid": {status: http.StatusBadRequest},
 	"websocket.origin.invalid": {status: http.StatusForbidden},
 	"authentication.strong_required": {status: http.StatusForbidden},
 	"authentication.csrf.invalid": {status: http.StatusForbidden},

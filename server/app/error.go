@@ -117,6 +117,14 @@ func Is(err error, code string) bool {
 }
 
 // As finds the first *Error in err's chain.
+func As(err error) (*Error, bool) {
+	var applicationError *Error
+	if errors.As(err, &applicationError) {
+		return applicationError, true
+	}
+	return nil, false
+}
+
 // domainInvalid maps a domain ValidationError into a stable application code
 // while preserving safe field context for transport mapping.
 func domainInvalid(code string, err error) error {
@@ -128,14 +136,6 @@ func domainInvalid(code string, err error) error {
 		}
 	}
 	return out.Wrap(err)
-}
-
-func As(err error) (*Error, bool) {
-	var appErr *Error
-	if !errors.As(err, &appErr) {
-		return nil, false
-	}
-	return appErr, true
 }
 
 func cloneFields(input map[string]string) map[string]string {
