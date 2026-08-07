@@ -35,6 +35,7 @@ type App struct {
 	academicUnitMembers    *academicUnitMemberService
 	classMembers           *classMemberService
 	userProfiles           *userProfileService
+	accountStates          *accountStateService
 	audit                  *AuditService
 	realtime               *RealtimeService
 }
@@ -118,6 +119,13 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		userProfileAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution(), classMembers: applicationPlatform.Store().ClassMember(), now: time.Now},
 		mutationAuditAdapter{audit: audit}, time.Now,
 	)
+	accountStates := newAccountStateService(
+		applicationPlatform.Store().User(),
+		userProfileAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution(), classMembers: applicationPlatform.Store().ClassMember(), now: time.Now},
+		mutationAuditAdapter{audit: audit},
+		accountStateRealtimeEffects{realtime: realtime},
+		time.Now,
+	)
 	return &App{
 		platform: applicationPlatform, authentication: authentication,
 		externalAuthentication: externalAuthentication, mfa: mfa,
@@ -132,6 +140,7 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		academicUnitMembers:  academicUnitMembers,
 		classMembers:         classMembers,
 		userProfiles:         userProfiles,
+		accountStates:        accountStates,
 		audit:                audit, realtime: realtime,
 	}, nil
 }

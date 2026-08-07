@@ -24,6 +24,17 @@ type userProfileHTTPApplication struct {
 	updateCommand application.UpdateUserProfileCommand
 }
 
+type accountStateHTTPApplication struct {
+	AccountStateApplication
+	result  *model.User
+	command application.SetUserEnabledCommand
+}
+
+func (a *accountStateHTTPApplication) SetUserEnabled(_ context.Context, _ application.Invocation, command application.SetUserEnabledCommand) (*model.User, error) {
+	a.command = command
+	return a.result, nil
+}
+
 type loginRevisionHTTPApplication struct {
 	Authentication
 	user *model.User
@@ -66,7 +77,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	user := &model.User{Id: userID, CreateAt: 100, UpdateAt: 100, Revision: 7, Username: "student", Email: "student@example.edu", DisplayName: "Student", Locale: "en", Timezone: "UTC"}
 	profiles := &userProfileHTTPApplication{result: user}
 	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: profiles, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
+	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: profiles, AccountStates: &accountStateHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,5 +135,40 @@ func TestLoginResponseDoesNotExposeUserRevision(t *testing.T) {
 	}
 	if _, exposed := user["revision"]; exposed {
 		t.Fatalf("revision exposed by login: %#v", user)
+	}
+}
+
+func TestAccountDisableUsesApplicationCommandAndAllowlistedResponse(t *testing.T) {
+	t.Parallel()
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
+	userID := model.NewId()
+	accounts := &accountStateHTTPApplication{result: &model.User{Id: userID, Revision: 4, Username: "student", DisabledAt: 500}}
+	transport := &academicUnitHTTPApplication{principal: principal}
+	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: accounts, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = httpAPI.Close() })
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/users/"+userID+"/disable", nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	if accounts.command.ID != userID || accounts.command.Enabled {
+		t.Fatalf("command = %#v", accounts.command)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, exposed := body["revision"]; exposed {
+		t.Fatalf("revision exposed: %#v", body)
 	}
 }

@@ -248,6 +248,28 @@ type UserProfileUpdate struct {
 	AuditAt          int64
 }
 
+// UserDisabledStateChange is the complete durable input for changing whether
+// a user may operate. Disabling also revokes every active session in the same
+// transaction. AuditEventID identifies an already-persisted attempt that must
+// be completed successfully before any state change may commit.
+type UserDisabledStateChange struct {
+	ID               string
+	ExpectedRevision int64
+	Disabled         bool
+	ChangedAt        int64
+	RevocationReason string
+	AuditEventID     string
+	AuditAt          int64
+}
+
+// UserDisabledStateResult contains the committed user state and the minimal
+// revocation facts needed for post-commit cache and realtime effects.
+type UserDisabledStateResult struct {
+	User               *model.User
+	RevokedSessions    []*model.Session
+	RevokedTokenHashes []string
+}
+
 // UserStore persists login-capable accounts without their credentials.
 type UserStore interface {
 	Save(context.Context, *model.User) (*model.User, error)
@@ -262,13 +284,7 @@ type UserStore interface {
 	List(context.Context, UserListOptions) ([]*model.User, error)
 	UpdateProfileWithAudit(context.Context, *UserProfileUpdate) (*model.User, error)
 	Update(context.Context, *model.User) (*model.User, error)
-	SetDisabled(context.Context, string, int64, int64) (*model.User, error)
-	DisableAndRevokeSessions(
-		context.Context,
-		string,
-		int64,
-		string,
-	) (*model.User, []*model.Session, []string, error)
+	SetDisabledWithAudit(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
 	UpdateLastLogin(context.Context, string, int64) error
 }
 

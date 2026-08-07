@@ -120,6 +120,7 @@ type Options struct {
 	AcademicUnitMembers     AcademicUnitMemberApplication
 	ClassMembers            ClassMemberApplication
 	UserProfiles            UserProfileApplication
+	AccountStates           AccountStateApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -198,10 +199,13 @@ type ExternalAuthentication interface {
 }
 
 type Users interface {
-	SetUserDisabled(context.Context, model.Principal, model.RequestMetadata, string, bool) (*model.User, *model.AppError)
 	RevokeUserSessions(context.Context, model.Principal, model.RequestMetadata, string) *model.AppError
 	ListUserSessions(context.Context, model.Principal, model.RequestMetadata, string, bool) ([]*model.Session, *model.AppError)
 	RevokeUserSession(context.Context, model.Principal, model.RequestMetadata, string, string) *model.AppError
+}
+
+type AccountStateApplication interface {
+	SetUserEnabled(context.Context, application.Invocation, application.SetUserEnabledCommand) (*model.User, error)
 }
 
 type UserProfileApplication interface {
@@ -452,6 +456,7 @@ type API struct {
 	academicUnitMembers     AcademicUnitMemberApplication
 	classMembers            ClassMemberApplication
 	userProfiles            UserProfileApplication
+	accountStates           AccountStateApplication
 	logger                  *mlog.Logger
 	health                  Health
 	buildInfo               BuildInfo
@@ -504,6 +509,9 @@ func New(options Options) (*API, error) {
 	if options.UserProfiles == nil {
 		return nil, errors.New("user profile application is required")
 	}
+	if options.AccountStates == nil {
+		return nil, errors.New("account state application is required")
+	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -530,6 +538,7 @@ func New(options Options) (*API, error) {
 		academicUnitMembers:     options.AcademicUnitMembers,
 		classMembers:            options.ClassMembers,
 		userProfiles:            options.UserProfiles,
+		accountStates:           options.AccountStates,
 		logger:                  options.Logger,
 		health:                  options.Health,
 		buildInfo:               options.BuildInfo,

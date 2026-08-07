@@ -9,6 +9,7 @@ package storetest
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -22,6 +23,9 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	t.Run("UpdateLastLogin", func(t *testing.T) { testUserStoreUpdateLastLogin(t, ss) })
 	t.Run("Uniqueness", func(t *testing.T) { testUserStoreUniqueness(t, ss) })
 	t.Run("ListAndDisable", func(t *testing.T) { testUserStoreListAndDisable(t, ss) })
+	t.Run("EnablementRevocationAndAuditAreAtomic", func(t *testing.T) {
+		testUserStoreEnablementRevocationAndAuditAreAtomic(t, ss)
+	})
 	t.Run("ProtectLastAdministrator", func(t *testing.T) {
 		testUserStoreProtectLastAdministrator(t, ss)
 	})
@@ -45,7 +49,12 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	at := model.GetMillis()
-	_, err = ss.User().SetDisabled(ctx, first.Id, at, at)
+	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.Id)
+	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: first.Id, ExpectedRevision: first.Revision, Disabled: true,
+		ChangedAt: at, RevocationReason: "administrator disabled account",
+		AuditEventID: attempt.Id, AuditAt: at,
+	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) ||
 		conflict.Constraint != "users_last_system_admin" {
@@ -58,7 +67,11 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 		StartAt: at - 100,
 	})
 	requireNoError(t, err)
-	_, err = ss.User().SetDisabled(ctx, first.Id, at, at)
+	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: first.Id, ExpectedRevision: first.Revision, Disabled: true,
+		ChangedAt: at, RevocationReason: "administrator disabled account",
+		AuditEventID: attempt.Id, AuditAt: at,
+	})
 	requireNoError(t, err)
 	if _, err = ss.RoleBinding().End(ctx, secondBinding.Id, at+1); !errors.As(err, &conflict) {
 		t.Fatalf("end only enabled administrator binding error = %v", err)
@@ -95,10 +108,16 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("List(after) = %#v", page)
 	}
 	at := model.GetMillis() + 100
-	disabled, err := ss.User().SetDisabled(ctx, first.Id, at, at)
+	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.Id)
+	result, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: first.Id, ExpectedRevision: first.Revision, Disabled: true,
+		ChangedAt: at, RevocationReason: "administrator disabled account",
+		AuditEventID: attempt.Id, AuditAt: at,
+	})
 	requireNoError(t, err)
+	disabled := result.User
 	if disabled.DisabledAt != at || disabled.Revision != first.Revision+1 {
-		t.Fatalf("SetDisabled() = %#v", disabled)
+		t.Fatalf("SetDisabledWithAudit() = %#v", result)
 	}
 	active, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
 	requireNoError(t, err)
@@ -117,6 +136,115 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	}
 	if !seen {
 		t.Fatalf("disabled user missing from inclusive list: %#v", all)
+	}
+}
+
+func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	first, _, firstRaw := saveSession(t, ctx, ss, user.Id, 10)
+	second, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	at := model.GetMillis() + 100
+
+	oversizedAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: user.Id, ExpectedRevision: user.Revision, Disabled: true,
+		ChangedAt:        at,
+		RevocationReason: strings.Repeat("x", model.SessionRevocationMaxRunes+1),
+		AuditEventID:     oversizedAttempt.Id,
+		AuditAt:          at,
+	}); err == nil {
+		t.Fatal("SetDisabledWithAudit() accepted an oversized revocation reason")
+	} else {
+		var invalid *store.ErrInvalidInput
+		if !errors.As(err, &invalid) {
+			t.Fatalf("oversized revocation reason error = %v, want invalid input", err)
+		}
+	}
+	oversizedAudit, err := ss.Audit().Get(ctx, oversizedAttempt.Id)
+	requireNoError(t, err)
+	if oversizedAudit.Status != model.AuditStatusAttempt {
+		t.Fatalf("invalid state change completed its audit: %#v", oversizedAudit)
+	}
+
+	// A missing audit attempt must roll back both the user update and every
+	// session/credential revocation performed before completion was attempted.
+	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: user.Id, ExpectedRevision: user.Revision, Disabled: true,
+		ChangedAt: at, RevocationReason: "administrator disabled account",
+		AuditEventID: model.NewId(), AuditAt: at,
+	}); err == nil {
+		t.Fatal("SetDisabledWithAudit() succeeded without its audit attempt")
+	}
+	unchanged, err := ss.User().Get(ctx, user.Id)
+	requireNoError(t, err)
+	if unchanged.DisabledAt != 0 || unchanged.Revision != user.Revision {
+		t.Fatalf("user state survived audit rollback: %#v", unchanged)
+	}
+	unrevoked, err := ss.Session().Get(ctx, first.Id)
+	requireNoError(t, err)
+	credential, _, err := ss.SessionCredential().GetSessionByTokenHash(
+		ctx,
+		model.HashToken(firstRaw.access),
+		model.SessionCredentialAccess,
+	)
+	requireNoError(t, err)
+	if unrevoked.RevokedAt != 0 || credential.RevokedAt != 0 {
+		t.Fatalf("session revocation survived audit rollback: session=%#v credential=%#v", unrevoked, credential)
+	}
+
+	disableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	disabled, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: user.Id, ExpectedRevision: user.Revision, Disabled: true,
+		ChangedAt: at, RevocationReason: "administrator disabled account",
+		AuditEventID: disableAttempt.Id, AuditAt: at,
+	})
+	requireNoError(t, err)
+	if disabled.User.DisabledAt != at || disabled.User.Revision != user.Revision+1 ||
+		len(disabled.RevokedSessions) != 2 || len(disabled.RevokedTokenHashes) != 4 {
+		t.Fatalf("SetDisabledWithAudit() = %#v", disabled)
+	}
+	for _, sessionID := range []string{first.Id, second.Id} {
+		revoked, getErr := ss.Session().Get(ctx, sessionID)
+		requireNoError(t, getErr)
+		if revoked.RevokedAt != at || revoked.RevocationReason != "administrator disabled account" {
+			t.Fatalf("session %s was not revoked with the account: %#v", sessionID, revoked)
+		}
+	}
+	completed, err := ss.Audit().Get(ctx, disableAttempt.Id)
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess || len(completed.Result) == 0 {
+		t.Fatalf("disable audit = %#v", completed)
+	}
+
+	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: user.Id, ExpectedRevision: user.Revision, Disabled: false,
+		ChangedAt: at + 1, AuditEventID: staleAttempt.Id, AuditAt: at + 1,
+	}); !store.IsConflict(err) {
+		t.Fatalf("stale SetDisabledWithAudit() error = %v", err)
+	}
+	staleAudit, err := ss.Audit().Get(ctx, staleAttempt.Id)
+	requireNoError(t, err)
+	if staleAudit.Status != model.AuditStatusAttempt {
+		t.Fatalf("stale state change completed its audit: %#v", staleAudit)
+	}
+
+	enableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	enabled, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: user.Id, ExpectedRevision: disabled.User.Revision, Disabled: false,
+		ChangedAt: at + 2, AuditEventID: enableAttempt.Id, AuditAt: at + 2,
+	})
+	requireNoError(t, err)
+	if enabled.User.DisabledAt != 0 || enabled.User.Revision != disabled.User.Revision+1 ||
+		enabled.RevokedSessions == nil || len(enabled.RevokedSessions) != 0 ||
+		enabled.RevokedTokenHashes == nil || len(enabled.RevokedTokenHashes) != 0 {
+		t.Fatalf("enable result = %#v", enabled)
+	}
+	enableAudit, err := ss.Audit().Get(ctx, enableAttempt.Id)
+	requireNoError(t, err)
+	if enableAudit.Status != model.AuditStatusSuccess {
+		t.Fatalf("enable audit = %#v", enableAudit)
 	}
 }
 

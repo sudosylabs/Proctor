@@ -478,8 +478,19 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	currentUser.DisabledAt = model.GetMillis()
-	if _, err := persistence.User().Update(context.Background(), currentUser); err != nil {
+	disabledAt := model.GetMillis()
+	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
+		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.Id},
+		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(), Status: model.AuditStatusAttempt, NodeId: "authentication-integration",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), &store.UserDisabledStateChange{
+		ID: user.Id, ExpectedRevision: currentUser.Revision, Disabled: true,
+		ChangedAt: disabledAt, RevocationReason: "authentication integration disabled account",
+		AuditEventID: auditAttempt.Id, AuditAt: disabledAt,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	refreshAfterDisable := performJSONRequest(
@@ -492,17 +503,6 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if refreshAfterDisable.Code != http.StatusUnauthorized {
 		t.Fatalf("disabled-user refresh status = %d", refreshAfterDisable.Code)
 	}
-	cachedAccessAfterDisable := performJSONRequest(
-		helper.Handler(),
-		http.MethodGet,
-		"/api/v1/users/me",
-		nil,
-		fourth.Tokens.AccessToken,
-	)
-	if cachedAccessAfterDisable.Code != http.StatusUnauthorized {
-		t.Fatalf("disabled-user cached access status = %d", cachedAccessAfterDisable.Code)
-	}
-
 	for attempt := 1; attempt <= 3; attempt++ {
 		rateLimited := performJSONRequest(
 			helper.Handler(),

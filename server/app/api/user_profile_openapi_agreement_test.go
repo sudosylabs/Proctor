@@ -22,26 +22,34 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	if err := runtimeAPI.registerUserProfileRoutes(); err != nil {
 		t.Fatal(err)
 	}
+	if err := runtimeAPI.initUserAdministration(); err != nil {
+		t.Fatal(err)
+	}
 	if err := runtimeAPI.Register(runtimeAPI.BaseRoutes.CurrentUser, "", http.MethodGet, runtimeAPI.APIPrincipalRequired(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)
 	for _, route := range runtimeAPI.Routes() {
 		path := strings.ReplaceAll(route.Path, "{user_id:"+canonicalIDRoutePattern()+"}", "{user_id}")
+		if path != "/api/v1/users" && path != "/api/v1/users/me" && path != "/api/v1/users/{user_id}" && path != "/api/v1/users/{user_id}/disable" && path != "/api/v1/users/{user_id}/enable" {
+			continue
+		}
 		runtimeOperations[route.Method+" "+path] = route.Auth
 	}
 	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/users":             {successStatus: "200", successRef: "#/components/responses/UserProfileListOK", successSchema: "UserProfileListResponse", errorCodes: principalContractCodes("request.invalid", "user.invalid", "administration.unavailable")},
-		"GET /api/v1/users/me":          {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
-		"GET /api/v1/users/{user_id}":   {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"PATCH /api/v1/users/{user_id}": {requestBodyRef: "#/components/requestBodies/UpdateUserProfile", requestSchema: "UpdateUserProfileRequest", successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "administration.unavailable")},
+		"GET /api/v1/users":                    {successStatus: "200", successRef: "#/components/responses/UserProfileListOK", successSchema: "UserProfileListResponse", errorCodes: principalContractCodes("request.invalid", "user.invalid", "administration.unavailable")},
+		"GET /api/v1/users/me":                 {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
+		"GET /api/v1/users/{user_id}":          {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"PATCH /api/v1/users/{user_id}":        {requestBodyRef: "#/components/requestBodies/UpdateUserProfile", requestSchema: "UpdateUserProfileRequest", successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "administration.unavailable")},
+		"POST /api/v1/users/{user_id}/disable": {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
+		"POST /api/v1/users/{user_id}/enable":  {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
 	}
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
 	statuses["authentication.csrf.invalid"] = http.StatusForbidden
 	documented := make(map[string]AuthRequirement)
 	for path, item := range document.Paths {
-		if path != "/api/v1/users" && path != "/api/v1/users/me" && path != "/api/v1/users/{user_id}" {
+		if path != "/api/v1/users" && path != "/api/v1/users/me" && path != "/api/v1/users/{user_id}" && path != "/api/v1/users/{user_id}/disable" && path != "/api/v1/users/{user_id}/enable" {
 			continue
 		}
 		for method, raw := range item {

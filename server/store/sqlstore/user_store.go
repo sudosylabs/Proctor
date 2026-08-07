@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -350,79 +351,103 @@ func requireUserRevisionAffected(ctx context.Context, executor sqlxExecutor, res
 	return store.NewErrNotFound("user", id).Wrap(sql.ErrNoRows)
 }
 
-func (s SqlUserStore) SetDisabled(
+func (s SqlUserStore) SetDisabledWithAudit(
 	ctx context.Context,
-	id string,
-	disabledAt int64,
-	updateAt int64,
-) (*model.User, error) {
-	if updateAt <= 0 || disabledAt < 0 || (disabledAt != 0 && disabledAt != updateAt) {
-		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
+	input *store.UserDisabledStateChange,
+) (*store.UserDisabledStateResult, error) {
+	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 ||
+		input.ChangedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("user", "disabled_state_change", nil)
+	}
+	revocationReason := model.SanitizeUnicode(input.RevocationReason)
+	if input.Disabled && utf8.RuneCountInString(revocationReason) > model.SessionRevocationMaxRunes {
+		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin set user disabled state: %w", err)
+		return nil, fmt.Errorf("begin audited user disabled state change: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	row, err := setUserDisabled(ctx, tx, id, disabledAt, updateAt)
+
+	// Serialize disabling with login and refresh rotation before changing the
+	// user row. A login that commits first is included in the revocation; one
+	// that follows observes the disabled account.
+	if input.Disabled {
+		if err := lockUserSessions(ctx, tx, input.ID); err != nil {
+			return nil, err
+		}
+	}
+	disabledAt := int64(0)
+	if input.Disabled {
+		disabledAt = input.ChangedAt
+	}
+	row, err := setUserDisabled(
+		ctx,
+		tx,
+		input.ID,
+		input.ExpectedRevision,
+		disabledAt,
+		input.ChangedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit set user disabled state: %w", err)
-	}
-	return row.model(), nil
-}
 
-func (s SqlUserStore) DisableAndRevokeSessions(
-	ctx context.Context,
-	id string,
-	disabledAt int64,
-	reason string,
-) (*model.User, []*model.Session, []string, error) {
-	if disabledAt <= 0 {
-		return nil, nil, nil, store.NewErrInvalidInput(
-			"user", "disabled_at", disabledAt,
+	result := &store.UserDisabledStateResult{
+		User:               row.model(),
+		RevokedSessions:    []*model.Session{},
+		RevokedTokenHashes: []string{},
+	}
+	if input.Disabled {
+		sessionRows, hashes, err := revokeAllUserSessions(
+			ctx,
+			tx,
+			input.ID,
+			input.ChangedAt,
+			revocationReason,
 		)
-	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf(
-			"begin disable user and revoke sessions: %w",
-			err,
+		if err != nil {
+			return nil, err
+		}
+		result.RevokedSessions = revokedSessionModels(
+			sessionRows,
+			input.ChangedAt,
+			revocationReason,
 		)
+		result.RevokedTokenHashes = hashes
 	}
-	defer func() { _ = tx.Rollback() }()
-	row, err := setUserDisabled(ctx, tx, id, disabledAt, disabledAt)
-	if err != nil {
-		return nil, nil, nil, err
+
+	encoded, appErr := model.EncodeAuditData(result.User.Auditable())
+	if appErr != nil {
+		return nil, appErr
 	}
-	if err := lockUserSessions(ctx, tx, id); err != nil {
-		return nil, nil, nil, err
-	}
-	sessionRows, hashes, err := revokeAllUserSessions(
-		ctx, tx, id, disabledAt, reason,
-	)
-	if err != nil {
-		return nil, nil, nil, err
+	if _, err := completeAuditEvent(
+		ctx,
+		tx,
+		input.AuditEventID,
+		model.AuditStatusSuccess,
+		"",
+		encoded,
+		input.AuditAt,
+	); err != nil {
+		return nil, fmt.Errorf("complete user disabled state audit: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, nil, nil, fmt.Errorf(
-			"commit disable user and revoke sessions: %w",
-			err,
-		)
+		return nil, fmt.Errorf("commit audited user disabled state change: %w", err)
 	}
-	return row.model(), revokedSessionModels(sessionRows, disabledAt, reason), hashes, nil
+	return result, nil
 }
 
 func setUserDisabled(
 	ctx context.Context,
 	tx *sqlxTxWrapper,
 	id string,
+	expectedRevision int64,
 	disabledAt int64,
 	updateAt int64,
 ) (*userRow, error) {
-	if updateAt <= 0 || disabledAt < 0 || (disabledAt != 0 && disabledAt != updateAt) {
+	if expectedRevision <= 0 || updateAt <= 0 || disabledAt < 0 ||
+		(disabledAt != 0 && disabledAt != updateAt) {
 		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
 	}
 	if disabledAt != 0 {
@@ -471,21 +496,26 @@ func setUserDisabled(
 			}
 		}
 	}
-	var row userRow
-	if err := tx.Get(ctx, &row, `
+	result, err := tx.Exec(ctx, `
 		UPDATE users
 		   SET update_at = ?, disabled_at = ?, revision = revision + 1
-		 WHERE id = ? AND delete_at = 0
-		RETURNING id, create_at, update_at, delete_at, revision, username, email,
-		          email_verified, display_name, first_name, last_name, locale,
-		          timezone, last_login_at, last_activity_at, disabled_at`,
-		updateAt, disabledAt, id,
-	); err != nil {
+		 WHERE id = ? AND delete_at = 0 AND revision = ?`,
+		updateAt, disabledAt, id, expectedRevision,
+	)
+	if err != nil {
 		return nil, fmt.Errorf(
 			"set user disabled state: %w",
 			translateError("user", id, err),
 		)
 	}
+	if err := requireUserRevisionAffected(ctx, tx, result, id); err != nil {
+		return nil, err
+	}
+	updated, err := getUserByID(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	row := newUserRow(updated)
 	return &row, nil
 }
 

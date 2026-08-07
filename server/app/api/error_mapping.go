@@ -62,6 +62,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"resource.not_found":                        {status: http.StatusNotFound},
 	"user.invalid":                              {status: http.StatusBadRequest},
 	"user.conflict":                             {status: http.StatusConflict},
+	"user.last_system_admin":                    {status: http.StatusConflict},
 }
 
 // ApplicationErrorStatuses returns a copy of the registered application-code

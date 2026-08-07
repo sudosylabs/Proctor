@@ -641,6 +641,36 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/disable": {
+      "parameters": [{"$ref": "#/components/parameters/UserID"}],
+      "post": {
+        "operationId": "disableUser", "summary": "Disable a User account and revoke its active sessions",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/UserProfileOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/enable": {
+      "parameters": [{"$ref": "#/components/parameters/UserID"}],
+      "post": {
+        "operationId": "enableUser", "summary": "Enable a User account without restoring revoked sessions",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/UserProfileOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/users/{user_id}/affiliations": {
       "parameters": [{"$ref": "#/components/parameters/UserID"}],
       "get": {

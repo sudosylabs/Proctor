@@ -274,6 +274,13 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	if revoked.Code != http.StatusUnauthorized {
 		t.Fatalf("disabled session remained valid = %d: %s", revoked.Code, revoked.Body.String())
 	}
+	refreshRevoked := performJSONRequest(
+		handler, http.MethodPost, "/api/v1/auth/refresh", nil,
+		disabledLogin.Tokens.RefreshToken,
+	)
+	if refreshRevoked.Code != http.StatusUnauthorized {
+		t.Fatalf("disabled refresh remained valid = %d: %s", refreshRevoked.Code, refreshRevoked.Body.String())
+	}
 
 	firstStudentSession := loginIntegrationUser(
 		t, handler, student.Username, password,

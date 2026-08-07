@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -45,16 +46,16 @@ func (a *API) setUserDisabled(w http.ResponseWriter, r *http.Request, disabled b
 	if !ok {
 		return
 	}
-	ctx, allowed, appErr := a.application.PrincipalHasPermissionToUserForRequest(
-		r.Context(), principal, userID, model.ActionUserManage, RequestMetadata(r.Context()),
+	user, err := a.accountStates.SetUserEnabled(
+		r.Context(),
+		application.NewInvocation(principal, RequestMetadata(r.Context())),
+		application.SetUserEnabledCommand{ID: userID, Enabled: !disabled},
 	)
-	if !a.requirePermission(w, r, allowed, appErr) {
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
 		return
 	}
-	user, appErr := a.application.SetUserDisabled(
-		ctx, principal, RequestMetadata(ctx), userID, disabled,
-	)
-	writeResult(w, r.WithContext(ctx), a, http.StatusOK, user, appErr)
+	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
 }
 
 func (a *API) revokeUserSessions(w http.ResponseWriter, r *http.Request) {
