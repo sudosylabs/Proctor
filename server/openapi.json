@@ -1138,12 +1138,19 @@
       "RoleOK": {"description": "Role", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleResponse"}}}},
       "RoleCreated": {"description": "Role created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleResponse"}}}},
       "RoleDeleted": {"description": "Role deleted"},
+      "RoleBindingListOK": {"description": "Role Binding collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleBindingListResponse"}}}},
+      "RoleBindingCreated": {"description": "Role Binding created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleBindingResponse"}}}},
+      "RoleBindingEnded": {"description": "Role Binding ended", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleBindingResponse"}}}},
+      "AuditListOK": {"description": "Audit Event collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuditListResponse"}}}},
+      "InstallationStatusOK": {"description": "Installation status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationStatusResponse"}}}},
+      "InstallationBootstrapCreated": {"description": "Installation bootstrapped", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationBootstrapResult"}}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "NotFound": {"description": "Resource not found", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Conflict": {"description": "Conflict", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
-      "InternalError": {"description": "Internal server error", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
+      "InternalError": {"description": "Internal server error", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
+      "TooManyRequests": {"description": "Rate limited", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
     },
     "headers": {
       "NoStore": {"description": "Prevents storage of sensitive responses.", "schema": {"type": "string", "const": "no-store"}}
@@ -1544,7 +1551,7 @@
           "session_id": {"type": "string"}, "action": {"type": "string"},
           "resource": {"type": "object"}, "scope_type": {"type": "string"}, "scope_id": {"type": "string"},
           "status": {"type": "string"}, "request_id": {"type": "string"}, "node_id": {"type": "string"},
-          "client_type": {"type": "string"}, "authentication_method": {"type": "string"}, "error_code": {"type": "string"}
+          "client_type": {"type": "string"}, "authentication_method": {"type": "string"}, "ip_address": {"type": "string"}, "user_agent": {"type": "string"}, "error_code": {"type": "string"}
         }
       },
       "InstallationStatusResponse": {
@@ -1552,23 +1559,48 @@
         "required": ["initialized"],
         "properties": {"initialized": {"type": "boolean"}}
       },
+      "BootstrapInstitutionRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "display_name"],
+        "properties": {
+          "name": {"type": "string"}, "display_name": {"type": "string"}, "description": {"type": "string"}
+        }
+      },
+      "BootstrapAdministratorRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["username", "email"],
+        "properties": {
+          "username": {"type": "string"}, "email": {"type": "string"},
+          "display_name": {"type": "string"}, "first_name": {"type": "string"},
+          "last_name": {"type": "string"}, "locale": {"type": "string"}, "timezone": {"type": "string"}
+        }
+      },
       "BootstrapInstallationRequest": {
         "type": "object", "additionalProperties": false,
         "required": ["institution", "administrator", "password"],
         "properties": {
-          "institution": {"type": "object"},
-          "administrator": {"type": "object"},
+          "institution": {"$ref": "#/components/schemas/BootstrapInstitutionRequest"},
+          "administrator": {"$ref": "#/components/schemas/BootstrapAdministratorRequest"},
           "password": {"type": "string"}
+        }
+      },
+      "InstallationStateResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["initialized_at", "institution_id", "administrator_user_id"],
+        "properties": {
+          "initialized_at": {"type": "integer", "format": "int64"},
+          "institution_id": {"$ref": "#/components/schemas/ID"},
+          "administrator_user_id": {"$ref": "#/components/schemas/ID"}
         }
       },
       "InstallationBootstrapResult": {
         "type": "object", "additionalProperties": false,
         "properties": {
-          "state": {"type": "object"},
-          "institution": {"type": "object"},
-          "administrator": {"type": "object"},
-          "role": {"type": "object"},
-          "role_binding": {"type": "object"}
+          "state": {"$ref": "#/components/schemas/InstallationStateResponse"},
+          "institution": {"$ref": "#/components/schemas/InstitutionResponse"},
+          "administrator": {"$ref": "#/components/schemas/UserProfileResponse"},
+          "role": {"$ref": "#/components/schemas/RoleResponse"},
+          "role_binding": {"$ref": "#/components/schemas/RoleBindingResponse"}
         }
       },
       "AuditListResponse": {

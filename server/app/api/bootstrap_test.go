@@ -66,6 +66,49 @@ func TestBootstrapStatusExposesOnlyInitializedFlag(t *testing.T) {
 	}
 }
 
+func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
+	t.Parallel()
+	institutionID := model.NewId()
+	adminID := model.NewId()
+	roleID := model.NewId()
+	bindingID := model.NewId()
+	result := &model.InstallationBootstrapResult{
+		State: &model.InstallationState{
+			InitializedAt: 100, InstitutionId: institutionID, AdministratorUserId: adminID,
+		},
+		Institution: &model.Institution{
+			Id: institutionID, CreateAt: 100, UpdateAt: 100, Name: "northbridge", DisplayName: "Northbridge",
+		},
+		Administrator: &model.User{
+			Id: adminID, CreateAt: 100, UpdateAt: 100, Username: "admin", Email: "admin@example.com",
+			Locale: "en", Timezone: "UTC",
+		},
+		Role: &model.Role{
+			Id: roleID, CreateAt: 100, UpdateAt: 100, Name: model.SystemAdministratorRoleName,
+			DisplayName: "System Administrator", BuiltIn: true,
+			Permissions: []string{string(model.ActionUserView)},
+		},
+		RoleBinding: &model.RoleBinding{
+			Id: bindingID, CreateAt: 100, UpdateAt: 100, UserId: adminID, RoleId: roleID,
+			ScopeType: model.RoleScopeInstitution, ScopeId: institutionID, StartAt: 100,
+		},
+	}
+	encoded, err := json.Marshal(installationBootstrapResponseFromModel(result))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded model.InstallationBootstrapResult
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.State == nil || decoded.State.InstitutionId != institutionID ||
+		decoded.Administrator == nil || decoded.Administrator.Id != adminID ||
+		decoded.Role == nil || decoded.Role.Name != model.SystemAdministratorRoleName || !decoded.Role.BuiltIn ||
+		decoded.RoleBinding == nil || decoded.RoleBinding.ScopeType != model.RoleScopeInstitution {
+		t.Fatalf("decoded historical envelope = %#v from %s", decoded, encoded)
+	}
+}
+
 func TestBootstrapUsesApplicationCommand(t *testing.T) {
 	t.Parallel()
 	logger, err := mlog.New()

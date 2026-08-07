@@ -36,6 +36,69 @@ type installationStatusResponse struct {
 	Initialized bool `json:"initialized"`
 }
 
+// installationStateResponse is the public bootstrap marker projection.
+type installationStateResponse struct {
+	InitializedAt       int64  `json:"initialized_at"`
+	InstitutionID       string `json:"institution_id"`
+	AdministratorUserID string `json:"administrator_user_id"`
+}
+
+// installationBootstrapResponse is the transport-owned success body for the
+// one-time bootstrap command. Field names match the historical v1 envelope so
+// existing clients and integration tests keep working while domain models no
+// longer serialize directly (ADR-0013).
+type installationBootstrapResponse struct {
+	State         *installationStateResponse `json:"state"`
+	Institution   *institutionResponse       `json:"institution"`
+	Administrator *userProfileResponse       `json:"administrator"`
+	Role          *roleResponse              `json:"role"`
+	RoleBinding   *roleBindingResponse       `json:"role_binding"`
+}
+
+func installationStateResponseFromModel(state *model.InstallationState) *installationStateResponse {
+	if state == nil {
+		return nil
+	}
+	return &installationStateResponse{
+		InitializedAt:       state.InitializedAt,
+		InstitutionID:       state.InstitutionId,
+		AdministratorUserID: state.AdministratorUserId,
+	}
+}
+
+func installationBootstrapResponseFromModel(result *model.InstallationBootstrapResult) installationBootstrapResponse {
+	if result == nil {
+		return installationBootstrapResponse{}
+	}
+	var institution *institutionResponse
+	if result.Institution != nil {
+		mapped := institutionResponseFromModel(result.Institution)
+		institution = &mapped
+	}
+	var administrator *userProfileResponse
+	if result.Administrator != nil {
+		mapped := userProfileResponseFromModel(result.Administrator)
+		administrator = &mapped
+	}
+	var role *roleResponse
+	if result.Role != nil {
+		mapped := roleResponseFromModel(result.Role)
+		role = &mapped
+	}
+	var binding *roleBindingResponse
+	if result.RoleBinding != nil {
+		mapped := roleBindingResponseFromModel(result.RoleBinding)
+		binding = &mapped
+	}
+	return installationBootstrapResponse{
+		State:         installationStateResponseFromModel(result.State),
+		Institution:   institution,
+		Administrator: administrator,
+		Role:          role,
+		RoleBinding:   binding,
+	}
+}
+
 func (a *API) InitBootstrap() error {
 	if err := a.Register(
 		a.BaseRoutes.Bootstrap,
@@ -94,6 +157,5 @@ func (a *API) bootstrapInstallation(writer http.ResponseWriter, request *http.Re
 		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	// Preserve existing v1 bootstrap response shape for integration clients.
-	writeJSON(writer, http.StatusCreated, result)
+	writeJSON(writer, http.StatusCreated, installationBootstrapResponseFromModel(result))
 }
