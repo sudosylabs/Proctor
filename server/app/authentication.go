@@ -52,8 +52,8 @@ type LoginRateLimitPolicy struct {
 // PersonalAccessTokenPolicy controls PAT lifetime bounds, per-user limits, and
 // last-used write debouncing during bearer resolution.
 type PersonalAccessTokenPolicy struct {
-	MinimumLifetime         time.Duration
-	MaximumLifetime         time.Duration
+	MinimumLifetime        time.Duration
+	MaximumLifetime        time.Duration
 	LastUsedUpdateInterval time.Duration
 	MaximumPerUser         int
 }
@@ -384,8 +384,8 @@ func (s *AuthenticationService) createSession(
 	return savedSession, &model.AuthenticationTokens{
 		AccessToken:      accessToken,
 		RefreshToken:     refreshToken,
-		AccessExpiresAt:  accessExpiresAt,
-		RefreshExpiresAt: refreshExpiresAt,
+		AccessExpiresAt:  model.TimeFromMillis(accessExpiresAt),
+		RefreshExpiresAt: model.TimeFromMillis(refreshExpiresAt),
 	}, nil
 }
 
@@ -499,15 +499,15 @@ func (s *AuthenticationService) authenticatePersonalAccessToken(
 		return nil, authenticationUnavailable(err)
 	}
 	principal := &model.Principal{
-		UserId:               resolved.User.ID.String(),
-		CredentialId:         resolved.Token.ID.String(),
+		UserID:               resolved.User.ID,
+		CredentialID:         model.PrincipalCredentialID(resolved.Token.ID),
 		CredentialType:       model.CredentialPersonalAccessToken,
 		AuthenticationMethod: "personal_access_token",
 		ClientType:           model.SessionClientCLI,
 		CredentialScopes:     append([]string(nil), resolved.Token.Scopes...),
-		AcademicUnitId:       resolved.Token.AcademicUnitID.String(),
+		AcademicUnitID:       resolved.Token.AcademicUnitID,
 	}
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		s.warn(ctx, "personal access token resolved to invalid principal",
 			fmt.Errorf("personal_access_token_id=%s", resolved.Token.ID.String()))
 		return nil, invalidTokenAppError()
@@ -558,17 +558,17 @@ func (s *AuthenticationService) authenticateAccess(
 	}
 	s.cacheAuthentication(ctx, tokenHash, resolved, now)
 	principal := &model.Principal{
-		UserId:                 resolved.User.ID.String(),
-		SessionId:              resolved.Session.ID.String(),
-		CredentialId:           resolved.Credential.ID.String(),
+		UserID:                 resolved.User.ID,
+		SessionID:              resolved.Session.ID,
+		CredentialID:           model.PrincipalCredentialID(resolved.Credential.ID),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   resolved.Session.AuthenticationMethod,
 		AuthenticationStrength: resolved.Session.AuthenticationStrength,
 		ClientType:             resolved.Session.ClientType,
-		AuthenticatedAt:        model.MillisFromTime(resolved.Session.AuthenticatedAt),
-		MFACompletedAt:         resolved.Session.MFACompletedAt.Millis(),
+		AuthenticatedAt:        resolved.Session.AuthenticatedAt,
+		MFACompletedAt:         resolved.Session.MFACompletedAt,
 	}
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return nil, authenticationUnavailable(
 			errors.New("resolved principal is invalid"),
 		)
@@ -713,21 +713,21 @@ func (s *AuthenticationService) refresh(
 	return rotation.Session, &model.AuthenticationTokens{
 		AccessToken:      accessToken,
 		RefreshToken:     refreshToken,
-		AccessExpiresAt:  model.MillisFromTime(rotation.AccessCredential.ExpiresAt),
-		RefreshExpiresAt: model.MillisFromTime(rotation.RefreshCredential.ExpiresAt),
+		AccessExpiresAt:  rotation.AccessCredential.ExpiresAt,
+		RefreshExpiresAt: rotation.RefreshCredential.ExpiresAt,
 	}, nil
 }
 
 func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) error {
 	principal := invocation.Principal()
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
 	now := a.authentication.now().UnixMilli()
 	hashes, err := a.Store().Session().Revoke(
 		ctx,
-		principal.SessionId,
-		principal.UserId,
+		principal.SessionID.String(),
+		principal.UserID.String(),
 		now,
 		"user logout",
 	)
@@ -738,11 +738,11 @@ func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand
 		return authenticationUnavailable(err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
-	a.authentication.deleteActivityCache(ctx, principal.SessionId)
+	a.authentication.deleteActivityCache(ctx, principal.SessionID.String())
 	a.realtime.PropagateSessionRevocation(
 		ctx,
-		principal.UserId,
-		[]string{principal.SessionId},
+		principal.UserID.String(),
+		[]string{principal.SessionID.String()},
 		hashes,
 	)
 	return nil

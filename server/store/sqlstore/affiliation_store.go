@@ -9,7 +9,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -25,21 +27,21 @@ type SqlAffiliationStore struct {
 // affiliationRow is the legacy integer-millisecond column layout. Domain
 // Affiliation uses time.Time / OptionalTime; conversion is at this boundary.
 type affiliationRow struct {
-	ID       string                `db:"id"`
-	CreateAt int64                 `db:"create_at"`
-	UpdateAt int64                 `db:"update_at"`
-	DeleteAt int64                 `db:"delete_at"`
-	Revision int64                 `db:"revision"`
-	UserID   string                `db:"user_id"`
-	Kind     model.AffiliationKind `db:"kind"`
-	StartAt  int64                 `db:"start_at"`
-	EndAt    int64                 `db:"end_at"`
+	ID         string                `db:"id"`
+	CreatedAt  time.Time             `db:"created_at"`
+	UpdatedAt  time.Time             `db:"updated_at"`
+	ArchivedAt sql.NullTime          `db:"archived_at"`
+	Revision   int64                 `db:"revision"`
+	UserID     string                `db:"user_id"`
+	Kind       model.AffiliationKind `db:"kind"`
+	StartAt    time.Time             `db:"start_at"`
+	EndAt      sql.NullTime          `db:"end_at"`
 }
 
 func affiliationColumns() []string {
 	return []string{
-		"affiliations.id", "affiliations.create_at", "affiliations.update_at",
-		"affiliations.delete_at", "affiliations.user_id", "affiliations.kind",
+		"affiliations.id", "affiliations.created_at", "affiliations.updated_at",
+		"affiliations.archived_at", "affiliations.user_id", "affiliations.kind",
 		"affiliations.revision",
 		"affiliations.start_at", "affiliations.end_at",
 	}
@@ -78,9 +80,9 @@ func (s SqlAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 	}
 	row := newAffiliationRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `INSERT INTO affiliations (
-		id, create_at, update_at, delete_at, revision, user_id, kind, start_at, end_at
+		id, created_at, updated_at, archived_at, revision, user_id, kind, start_at, end_at
 	) VALUES (
-		:id, :create_at, :update_at, :delete_at, :revision, :user_id, :kind, :start_at, :end_at
+		:id, :created_at, :updated_at, :archived_at, :revision, :user_id, :kind, :start_at, :end_at
 	)`, &row); err != nil {
 		return nil, fmt.Errorf("create affiliation: %w", translateError("affiliation", candidate.ID.String(), err))
 	}
@@ -135,9 +137,9 @@ func (s SqlAffiliationStore) Save(
 	}
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO affiliations (
-			id, create_at, update_at, delete_at, revision, user_id, kind, start_at, end_at
+			id, created_at, updated_at, archived_at, revision, user_id, kind, start_at, end_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :revision, :user_id, :kind, :start_at, :end_at
+			:id, :created_at, :updated_at, :archived_at, :revision, :user_id, :kind, :start_at, :end_at
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"save affiliation: %w",
@@ -153,7 +155,7 @@ func (s SqlAffiliationStore) Save(
 func (s SqlAffiliationStore) Get(ctx context.Context, id string) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"affiliations.id": id, "affiliations.delete_at": int64(0),
+		"affiliations.id": id, "affiliations.archived_at": nil,
 	})); err != nil {
 		return nil, translateError("affiliation", id, err)
 	}
@@ -165,7 +167,7 @@ func (s SqlAffiliationStore) ListByUser(
 	userID string,
 ) ([]*model.Affiliation, error) {
 	return s.selectAffiliations(ctx, s.query.Where(sq.Eq{
-		"affiliations.user_id": userID, "affiliations.delete_at": int64(0),
+		"affiliations.user_id": userID, "affiliations.archived_at": nil,
 	}).OrderBy("affiliations.start_at DESC", "affiliations.id"))
 }
 
@@ -174,10 +176,11 @@ func (s SqlAffiliationStore) ListActiveByUser(
 	userID string,
 	at int64,
 ) ([]*model.Affiliation, error) {
+	activeAt := model.TimeFromMillis(at)
 	return s.selectAffiliations(ctx, s.query.Where(sq.Eq{
-		"affiliations.user_id": userID, "affiliations.delete_at": int64(0),
-	}).Where(sq.LtOrEq{"affiliations.start_at": at}).
-		Where("(affiliations.end_at = 0 OR affiliations.end_at > ?)", at).
+		"affiliations.user_id": userID, "affiliations.archived_at": nil,
+	}).Where(sq.LtOrEq{"affiliations.start_at": activeAt}).
+		Where("(affiliations.end_at IS NULL OR affiliations.end_at > ?)", activeAt).
 		OrderBy("affiliations.kind", "affiliations.id"))
 }
 
@@ -239,7 +242,7 @@ func (s SqlAffiliationStore) EndWithAudit(ctx context.Context, input *store.Affi
 
 func (s SqlAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.Affiliation, error) {
 	var row affiliationRow
-	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.delete_at": int64(0)})); err != nil {
+	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.archived_at": nil})); err != nil {
 		return nil, translateError("affiliation", id, err)
 	}
 	current := row.model()
@@ -253,21 +256,21 @@ func (s SqlAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 	}
 	if current.Kind == model.AffiliationStudent {
 		var activeEnrollment bool
-		if err := tx.Get(ctx, &activeEnrollment, `SELECT EXISTS (SELECT 1 FROM class_members WHERE user_id = ? AND delete_at = 0 AND end_at = 0)`, current.UserID.String()); err != nil {
+		if err := tx.Get(ctx, &activeEnrollment, `SELECT EXISTS (SELECT 1 FROM class_members WHERE user_id = ? AND archived_at IS NULL AND end_at IS NULL)`, current.UserID.String()); err != nil {
 			return nil, fmt.Errorf("check affiliation enrollment dependencies: %w", err)
 		}
 		if activeEnrollment {
 			return nil, store.NewErrConflict("affiliation", "affiliation_student_has_active_enrollment", nil)
 		}
 	}
-	result, err := tx.Exec(ctx, `UPDATE affiliations SET update_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND delete_at = 0 AND revision = ?`, endAt, endAt, id, expectedRevision)
+	at := model.TimeFromMillis(endAt)
+	result, err := tx.Exec(ctx, `UPDATE affiliations SET updated_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("end affiliation: %w", err)
 	}
 	if err := requireAffected(result, "affiliation", id); err != nil {
 		return nil, err
 	}
-	at := model.TimeFromMillis(endAt)
 	current.UpdatedAt = at
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1
@@ -289,12 +292,12 @@ func lockAffiliationKind(ctx context.Context, executor sqlxExecutor, userID stri
 }
 
 func ensureAffiliationRangeAvailable(ctx context.Context, executor sqlxExecutor, candidate *model.Affiliation) error {
-	startAt := model.MillisFromTime(candidate.StartsAt)
-	endAt := candidate.EndsAt.Millis()
+	startAt := candidate.StartsAt
+	endAt := NullTimeFromOptional(candidate.EndsAt)
 	var overlaps bool
 	if err := executor.Get(ctx, &overlaps, `SELECT EXISTS (
-		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND delete_at = 0
-		 AND (end_at = 0 OR end_at > ?) AND (? = 0 OR start_at < ?)
+		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND archived_at IS NULL
+		 AND (end_at IS NULL OR end_at > ?) AND (CAST(? AS timestamptz) IS NULL OR start_at < ?)
 	)`, candidate.UserID.String(), candidate.Kind, startAt, endAt, endAt); err != nil {
 		return fmt.Errorf("check affiliation overlap: %w", err)
 	}
@@ -321,15 +324,15 @@ func (s SqlAffiliationStore) selectAffiliations(
 
 func newAffiliationRow(a *model.Affiliation) affiliationRow {
 	return affiliationRow{
-		ID:       a.ID.String(),
-		CreateAt: model.MillisFromTime(a.CreatedAt),
-		UpdateAt: model.MillisFromTime(a.UpdatedAt),
-		DeleteAt: a.ArchivedAt.Millis(),
-		UserID:   a.UserID.String(),
-		Kind:     a.Kind,
-		Revision: a.Revision,
-		StartAt:  model.MillisFromTime(a.StartsAt),
-		EndAt:    a.EndsAt.Millis(),
+		ID:         a.ID.String(),
+		CreatedAt:  UTCTime(a.CreatedAt),
+		UpdatedAt:  UTCTime(a.UpdatedAt),
+		ArchivedAt: NullTimeFromOptional(a.ArchivedAt),
+		UserID:     a.UserID.String(),
+		Kind:       a.Kind,
+		Revision:   a.Revision,
+		StartAt:    UTCTime(a.StartsAt),
+		EndAt:      NullTimeFromOptional(a.EndsAt),
 	}
 }
 
@@ -343,15 +346,15 @@ func (r affiliationRow) model() *model.Affiliation {
 		userID = model.UserID(r.UserID)
 	}
 	return &model.Affiliation{
-		ID:        id,
-		CreatedAt: model.TimeFromMillis(r.CreateAt),
-		UpdatedAt: model.TimeFromMillis(r.UpdateAt),
-		ArchivedAt: model.OptionalTimeFromMillis(r.DeleteAt),
-		UserID:    userID,
-		Kind:      r.Kind,
-		Revision:  r.Revision,
-		StartsAt:  model.TimeFromMillis(r.StartAt),
-		EndsAt:    model.OptionalTimeFromMillis(r.EndAt),
+		ID:         id,
+		CreatedAt:  r.CreatedAt.UTC(),
+		UpdatedAt:  r.UpdatedAt.UTC(),
+		ArchivedAt: OptionalTimeFromNullTime(r.ArchivedAt),
+		UserID:     userID,
+		Kind:       r.Kind,
+		Revision:   r.Revision,
+		StartsAt:   r.StartAt.UTC(),
+		EndsAt:     OptionalTimeFromNullTime(r.EndAt),
 	}
 }
 

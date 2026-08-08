@@ -42,7 +42,7 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
+		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 		if err != nil {
 			t.Fatal(err)
 		}

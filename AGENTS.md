@@ -95,12 +95,12 @@ walking skeleton is operational and includes:
 - a Mattermost-adapted `model.AppError` flow with stable translation IDs,
   translation hooks, wrapping, protected internal details, explicitly safe
   public fields, and RFC 9457 HTTP Problem Details mapping;
-- a cohesive `model` package with Mattermost-inspired IDs, integer-millisecond
-  timestamps, `PreSave`, `PreUpdate`, `IsValid`, and safe `Auditable`
-  representations on existing aggregates; expand-phase entity-specific ID
-  types (`UserID`, `ClassID`, …), UTC/`OptionalTime` helpers, and SQL/HTTP
-  boundary converters are available for vertical migrations that replace
-  persistence lifecycle methods and millisecond fields;
+- a cohesive `model` package whose durable aggregates use entity-specific IDs
+  (`UserID`, `ClassID`, …), UTC `time.Time`/`OptionalTime`, explicit
+  constructors and transitions, `Validate`, and safe `Auditable`
+  representations; SQL rows use native PostgreSQL temporal values, while
+  transport-owned compatibility mappings preserve the existing public v1 wire
+  contract where required;
 - the confirmed structural academic models: institution, hierarchical academic
   unit, programme, programme level, academic period, and class;
 - identity and authorization model foundations: user, external identity, local
@@ -231,8 +231,9 @@ walking skeleton is operational and includes:
   sessions, explicit provider MFA mapping, safe public provider discovery, and
   durable provisioning/login audits.
 
-The server now includes PostgreSQL connection management, embedded versioned
-migrations, a separate migration command, platform-owned schema validation, a
+The server now includes PostgreSQL connection management, one pre-release
+version-1 schema baseline with native `timestamptz` and nullable lifecycle
+columns, a separate migration command, platform-owned schema validation, a
 Mattermost-shaped root store with per-model contracts, and all structural
 academic SQL stores: institution, academic unit, programme, programme level,
 academic period, and class. It also includes user, password-credential,
@@ -1337,9 +1338,10 @@ dependencies where determinism matters. Domain operations may accept the
 resulting ID or time explicitly, but must not reach for a global clock or
 random generator. Domain and application time uses UTC `time.Time`; PostgreSQL
 uses `timestamptz`; HTTP uses RFC 3339. Optional lifecycle times use nullable
-values such as `archived_at`, never integer zero sentinels. The current
-integer-millisecond model fields and `delete_at = 0` schema predate this
-decision and are migration work. Existing 26-character ID representation
+values such as `archived_at`, never integer zero sentinels. The pre-release
+schema baseline and durable aggregates follow this contract; explicit legacy
+wire mappings do not restore millisecond persistence fields or zero sentinels.
+Existing 26-character ID representation
 remains the canonical identifier format: IDs are opaque, URL-safe, random
 z-base-32 values generated without database coordination. Do not encode
 ordering, institution, or domain meaning in an ID.
@@ -1349,8 +1351,8 @@ Each domain entity uses a distinct string-backed identifier type, such as
 the zero value is invalid. Transport DTOs and SQL rows convert at their
 boundaries. Do not pass untyped strings through domain or application
 contracts merely because the wire and database representations are textual.
-Current model fields using plain strings predate this rule and are migration
-work.
+Polymorphic authorization resources may retain a validated textual scope ID;
+that is a deliberate sum-type boundary, not an entity field fallback.
 
 Validation operates on complete domain state and returns a domain failure
 through the standard `error` interface. It performs no database or network I/O.

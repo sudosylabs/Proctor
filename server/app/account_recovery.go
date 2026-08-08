@@ -62,11 +62,11 @@ func (a *App) RequestEmailVerification(
 	}
 	principal := invocation.Principal()
 	if err := a.checkAccountRecoveryRateLimit(
-		ctx, "email-verification-request", principal.UserId, command.Source,
+		ctx, "email-verification-request", principal.UserID.String(), command.Source,
 	); err != nil {
 		return err
 	}
-	user, err := a.Store().User().Get(ctx, principal.UserId)
+	user, err := a.Store().User().Get(ctx, principal.UserID.String())
 	if err != nil {
 		return accountRecoveryStoreFailure(err)
 	}
@@ -92,7 +92,7 @@ func (a *App) RequestEmailVerification(
 	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditEmailVerificationRequest,
-		model.Resource{Type: model.ResourceUser, Id: user.ID.String()},
+		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		institution.ID.String(),
 		metadata,
 		a.nodeID,
@@ -179,7 +179,7 @@ func (a *App) RequestPasswordReset(
 	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditPasswordResetRequest,
-		model.Resource{Type: model.ResourceUser, Id: user.ID.String()},
+		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		institution.ID.String(),
 		metadata,
 		a.nodeID,
@@ -373,13 +373,13 @@ func recoveryAuditEvent(
 	event := &model.AuditEvent{
 		Action: action, Resource: resource,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
-		Status: model.AuditStatusSuccess, RequestID: metadata.RequestId,
+		Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
 		NodeID: nodeID, AuthMethod: authenticationMethod,
 		IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
 	}
 	if principal != nil {
-		event.ActorID = model.UserID(principal.UserId)
-		event.SessionID = model.SessionID(principal.SessionId)
+		event.ActorID = principal.UserID
+		event.SessionID = principal.SessionID
 		event.ClientType = string(principal.ClientType)
 		event.AuthMethod = principal.AuthenticationMethod
 	}

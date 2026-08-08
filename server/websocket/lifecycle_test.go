@@ -117,9 +117,9 @@ func TestHubAcceptRequiresStart(t *testing.T) {
 		recorder,
 		request,
 		model.Principal{
-			UserId:         model.NewId(),
-			SessionId:      model.NewId(),
-			CredentialId:   model.NewId(),
+			UserID:         model.NewUserID(),
+			SessionID:      model.NewSessionID(),
+			CredentialID:   model.PrincipalCredentialID(model.NewId()),
 			CredentialType: model.CredentialSessionAccess,
 		},
 		model.RequestMetadata{},

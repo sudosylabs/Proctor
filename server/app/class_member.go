@@ -66,7 +66,7 @@ func (s *classMemberService) List(ctx context.Context, invocation Invocation, qu
 	if err != nil {
 		return nil, err
 	}
-	members, err := s.store.ListByClass(ctx, resource.Id, query.ActiveAt)
+	members, err := s.store.ListByClass(ctx, resource.ID, query.ActiveAt)
 	if err != nil {
 		return nil, classMemberError(err)
 	}
@@ -160,7 +160,7 @@ func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invo
 	if !model.IsValidId(classID) {
 		return model.Resource{}, NewError("request.invalid").WithField("field", "class_id")
 	}
-	resource := model.Resource{Type: model.ResourceClass, Id: classID}
+	resource := model.Resource{Type: model.ResourceClass, ID: classID}
 	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}

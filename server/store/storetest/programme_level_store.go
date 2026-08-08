@@ -69,6 +69,13 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q", completed.Status)
 	}
+	staleAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
+	stale := *created
+	stale.DisplayName = "Stale Level"
+	stale.PrepareUpdate(model.NowUTC())
+	if _, err := ss.ProgrammeLevel().UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{Level: &stale, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
+	}
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
@@ -108,7 +115,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 
 func saveProgrammeLevelAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }
@@ -272,7 +279,7 @@ func testProgrammeLevelStoreEnforceProgrammeNameUniqueness(t *testing.T, ss stor
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) ||
-		conflict.Constraint != "programme_levels_active_name_key" {
+		conflict.Constraint != "programme_levels_programme_id_name_key" {
 		t.Fatalf("duplicate programme level error = %v, want scoped-name conflict", err)
 	}
 

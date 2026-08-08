@@ -119,9 +119,6 @@ func TestInstallationStateTypedLifecycle(t *testing.T) {
 	if err := state.Validate(); err != nil {
 		t.Fatalf("Validate() = %v", err)
 	}
-	if !state.IsValid() {
-		t.Fatal("IsValid() = false")
-	}
 	fields := state.Auditable()
 	if fields["institution_id"] != state.InstitutionID.String() {
 		t.Fatalf("Auditable() = %#v", fields)

@@ -254,7 +254,7 @@ func saveSessionAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, 
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionSessionManage),
-		Resource:  model.Resource{Type: model.ResourceUser, Id: userID},
+		Resource:  model.Resource{Type: model.ResourceUser, ID: userID},
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})

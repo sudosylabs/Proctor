@@ -12,6 +12,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -26,22 +27,22 @@ type SqlClassMemberStore struct {
 
 // classMemberRow is the legacy integer-millisecond column layout.
 type classMemberRow struct {
-	ID               string `db:"id"`
-	CreateAt         int64  `db:"create_at"`
-	UpdateAt         int64  `db:"update_at"`
-	DeleteAt         int64  `db:"delete_at"`
-	Revision         int64  `db:"revision"`
-	ClassID          string `db:"class_id"`
-	AcademicPeriodID string `db:"academic_period_id"`
-	UserID           string `db:"user_id"`
-	StartAt          int64  `db:"start_at"`
-	EndAt            int64  `db:"end_at"`
+	ID               string       `db:"id"`
+	CreatedAt        time.Time    `db:"created_at"`
+	UpdatedAt        time.Time    `db:"updated_at"`
+	ArchivedAt       sql.NullTime `db:"archived_at"`
+	Revision         int64        `db:"revision"`
+	ClassID          string       `db:"class_id"`
+	AcademicPeriodID string       `db:"academic_period_id"`
+	UserID           string       `db:"user_id"`
+	StartAt          time.Time    `db:"start_at"`
+	EndAt            sql.NullTime `db:"end_at"`
 }
 
 func classMemberColumns() []string {
 	return []string{
-		"class_members.id", "class_members.create_at", "class_members.update_at",
-		"class_members.delete_at", "class_members.revision", "class_members.class_id",
+		"class_members.id", "class_members.created_at", "class_members.updated_at",
+		"class_members.archived_at", "class_members.revision", "class_members.class_id",
 		"class_members.academic_period_id", "class_members.user_id",
 		"class_members.start_at", "class_members.end_at",
 	}
@@ -104,7 +105,7 @@ func (s SqlClassMemberStore) enroll(
 	}
 	var periodRaw string
 	if err := tx.Get(ctx, &periodRaw, `
-		SELECT academic_period_id FROM classes WHERE id = ? AND delete_at = 0`,
+		SELECT academic_period_id FROM classes WHERE id = ? AND archived_at IS NULL`,
 		candidate.ClassID.String(),
 	); err != nil {
 		return nil, translateError("class", candidate.ClassID.String(), err)
@@ -120,12 +121,12 @@ func (s SqlClassMemberStore) enroll(
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("class_member", "value", nil).Wrap(err)
 	}
-	startAt := model.MillisFromTime(candidate.StartsAt)
-	endAt := candidate.EndsAt.Millis()
+	startAt := candidate.StartsAt
+	endAt := NullTimeFromOptional(candidate.EndsAt)
 	var student bool
 	if err := tx.Get(ctx, &student, `SELECT EXISTS (
-		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND delete_at = 0
-		 AND start_at <= ? AND end_at = 0
+		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND archived_at IS NULL
+		 AND start_at <= ? AND end_at IS NULL
 	)`, candidate.UserID.String(), model.AffiliationStudent, startAt); err != nil {
 		return nil, fmt.Errorf("validate student affiliation: %w", err)
 	}
@@ -135,11 +136,11 @@ func (s SqlClassMemberStore) enroll(
 
 	var previousRow classMemberRow
 	err = tx.Get(ctx, &previousRow, `
-		SELECT id, create_at, update_at, delete_at, revision, class_id,
+		SELECT id, created_at, updated_at, archived_at, revision, class_id,
 		       academic_period_id, user_id, start_at, end_at
 		  FROM class_members
 		 WHERE user_id = ? AND academic_period_id = ?
-		   AND delete_at = 0 AND end_at = 0
+		   AND archived_at IS NULL AND end_at IS NULL
 		 ORDER BY start_at DESC, id
 		 LIMIT 1
 		 FOR UPDATE`,
@@ -165,13 +166,13 @@ func (s SqlClassMemberStore) enroll(
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE class_members
-			SET update_at = ?, end_at = ?, revision = revision + 1
-			 WHERE id = ? AND delete_at = 0 AND end_at = 0`,
-			startAt, startAt, previous.ID.String(),
+			SET updated_at = ?, end_at = ?, revision = revision + 1
+			 WHERE id = ? AND archived_at IS NULL AND end_at IS NULL`,
+			candidate.UpdatedAt, startAt, previous.ID.String(),
 		); err != nil {
 			return nil, fmt.Errorf("end previous class enrollment: %w", err)
 		}
-		previous.UpdatedAt = candidate.StartsAt
+		previous.UpdatedAt = candidate.UpdatedAt
 		previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
 		previous.Revision++
 	case err != nil && !isNoRows(err):
@@ -186,10 +187,10 @@ func (s SqlClassMemberStore) enroll(
 		SELECT EXISTS (
 			SELECT 1
 			  FROM class_members
-			 WHERE user_id = ? AND academic_period_id = ? AND delete_at = 0
+			 WHERE user_id = ? AND academic_period_id = ? AND archived_at IS NULL
 			   AND (? = '' OR id <> ?)
-			   AND (end_at = 0 OR end_at > ?)
-			   AND (? = 0 OR start_at < ?)
+			   AND (end_at IS NULL OR end_at > ?)
+			   AND (CAST(? AS timestamptz) IS NULL OR start_at < ?)
 		)`,
 		candidate.UserID.String(),
 		candidate.AcademicPeriodID.String(),
@@ -210,10 +211,10 @@ func (s SqlClassMemberStore) enroll(
 	row := newClassMemberRow(candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO class_members (
-			id, create_at, update_at, delete_at, revision, class_id,
+			id, created_at, updated_at, archived_at, revision, class_id,
 			academic_period_id, user_id, start_at, end_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :revision, :class_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :class_id,
 			:academic_period_id, :user_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
@@ -248,7 +249,7 @@ func (s SqlClassMemberStore) Get(
 ) (*model.ClassMember, error) {
 	var row classMemberRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"class_members.id": id, "class_members.delete_at": int64(0),
+		"class_members.id": id, "class_members.archived_at": nil,
 	})); err != nil {
 		return nil, translateError("class_member", id, err)
 	}
@@ -260,7 +261,7 @@ func (s SqlClassMemberStore) ListByUser(
 	userID string,
 ) ([]*model.ClassMember, error) {
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
-		"class_members.user_id": userID, "class_members.delete_at": int64(0),
+		"class_members.user_id": userID, "class_members.archived_at": nil,
 	}).OrderBy("class_members.start_at DESC", "class_members.id"))
 }
 
@@ -270,11 +271,12 @@ func (s SqlClassMemberStore) ListByClass(
 	at int64,
 ) ([]*model.ClassMember, error) {
 	query := s.query.Where(sq.Eq{
-		"class_members.class_id": classID, "class_members.delete_at": int64(0),
+		"class_members.class_id": classID, "class_members.archived_at": nil,
 	})
 	if at > 0 {
-		query = query.Where(sq.LtOrEq{"class_members.start_at": at}).
-			Where("(class_members.end_at = 0 OR class_members.end_at > ?)", at)
+		activeAt := model.TimeFromMillis(at)
+		query = query.Where(sq.LtOrEq{"class_members.start_at": activeAt}).
+			Where("(class_members.end_at IS NULL OR class_members.end_at > ?)", activeAt)
 	}
 	return s.selectMembers(ctx, query.OrderBy("class_members.user_id", "class_members.id"))
 }
@@ -284,10 +286,11 @@ func (s SqlClassMemberStore) ListActiveByUser(
 	userID string,
 	at int64,
 ) ([]*model.ClassMember, error) {
+	activeAt := model.TimeFromMillis(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
-		"class_members.user_id": userID, "class_members.delete_at": int64(0),
-	}).Where(sq.LtOrEq{"class_members.start_at": at}).
-		Where("(class_members.end_at = 0 OR class_members.end_at > ?)", at).
+		"class_members.user_id": userID, "class_members.archived_at": nil,
+	}).Where(sq.LtOrEq{"class_members.start_at": activeAt}).
+		Where("(class_members.end_at IS NULL OR class_members.end_at > ?)", activeAt).
 		OrderBy("class_members.academic_period_id", "class_members.id"))
 }
 
@@ -307,7 +310,7 @@ func (s SqlClassMemberStore) End(
 	defer func() { _ = tx.Rollback() }()
 	var row classMemberRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"class_members.id": id, "class_members.delete_at": int64(0),
+		"class_members.id": id, "class_members.archived_at": nil,
 	})); err != nil {
 		return nil, translateError("class_member", id, err)
 	}
@@ -339,7 +342,7 @@ func (s SqlClassMemberStore) EndWithAudit(
 	defer func() { _ = tx.Rollback() }()
 	var row classMemberRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"class_members.id": input.ID, "class_members.delete_at": int64(0),
+		"class_members.id": input.ID, "class_members.archived_at": nil,
 	})); err != nil {
 		return nil, translateError("class_member", input.ID, err)
 	}
@@ -372,7 +375,7 @@ func (s SqlClassMemberStore) endClassMember(
 ) (*model.ClassMember, error) {
 	var row classMemberRow
 	if err := executor.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"class_members.id": id, "class_members.delete_at": int64(0),
+		"class_members.id": id, "class_members.archived_at": nil,
 	})); err != nil {
 		return nil, translateError("class_member", id, err)
 	}
@@ -385,11 +388,12 @@ func (s SqlClassMemberStore) endClassMember(
 	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
 		return nil, store.NewErrConflict("class_member", "class_member_end_time", nil)
 	}
+	at := model.TimeFromMillis(endAt)
 	result, err := executor.Exec(ctx, `
 		UPDATE class_members
-		   SET update_at = ?, end_at = ?, revision = revision + 1
-		 WHERE id = ? AND delete_at = 0 AND revision = ?`,
-		endAt, endAt, id, expectedRevision,
+		   SET updated_at = ?, end_at = ?, revision = revision + 1
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`,
+		at, at, id, expectedRevision,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("end class member: %w", err)
@@ -397,7 +401,6 @@ func (s SqlClassMemberStore) endClassMember(
 	if err := requireAffected(result, "class_member", id); err != nil {
 		return nil, err
 	}
-	at := model.TimeFromMillis(endAt)
 	current.UpdatedAt = at
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1
@@ -433,15 +436,15 @@ func (s SqlClassMemberStore) selectMembers(
 func newClassMemberRow(m *model.ClassMember) classMemberRow {
 	return classMemberRow{
 		ID:               m.ID.String(),
-		CreateAt:         model.MillisFromTime(m.CreatedAt),
-		UpdateAt:         model.MillisFromTime(m.UpdatedAt),
-		DeleteAt:         m.ArchivedAt.Millis(),
+		CreatedAt:        UTCTime(m.CreatedAt),
+		UpdatedAt:        UTCTime(m.UpdatedAt),
+		ArchivedAt:       NullTimeFromOptional(m.ArchivedAt),
 		ClassID:          m.ClassID.String(),
 		Revision:         m.Revision,
 		AcademicPeriodID: m.AcademicPeriodID.String(),
 		UserID:           m.UserID.String(),
-		StartAt:          model.MillisFromTime(m.StartsAt),
-		EndAt:            m.EndsAt.Millis(),
+		StartAt:          UTCTime(m.StartsAt),
+		EndAt:            NullTimeFromOptional(m.EndsAt),
 	}
 }
 
@@ -464,15 +467,15 @@ func (r classMemberRow) model() *model.ClassMember {
 	}
 	return &model.ClassMember{
 		ID:               id,
-		CreatedAt:        model.TimeFromMillis(r.CreateAt),
-		UpdatedAt:        model.TimeFromMillis(r.UpdateAt),
-		ArchivedAt:       model.OptionalTimeFromMillis(r.DeleteAt),
+		CreatedAt:        r.CreatedAt.UTC(),
+		UpdatedAt:        r.UpdatedAt.UTC(),
+		ArchivedAt:       OptionalTimeFromNullTime(r.ArchivedAt),
 		ClassID:          classID,
 		Revision:         r.Revision,
 		AcademicPeriodID: periodID,
 		UserID:           userID,
-		StartsAt:         model.TimeFromMillis(r.StartAt),
-		EndsAt:           model.OptionalTimeFromMillis(r.EndAt),
+		StartsAt:         r.StartAt.UTC(),
+		EndsAt:           OptionalTimeFromNullTime(r.EndAt),
 	}
 }
 

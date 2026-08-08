@@ -5,7 +5,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -13,7 +15,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-const externalLoginStateRetentionMillis = int64(24 * 60 * 60 * 1000)
+const externalLoginStateRetention = 24 * time.Hour
 
 type SqlExternalLoginStateStore struct {
 	*SqlStore
@@ -21,25 +23,25 @@ type SqlExternalLoginStateStore struct {
 }
 
 type externalLoginStateRow struct {
-	ID          string `db:"id"`
-	CreateAt    int64  `db:"create_at"`
-	UpdateAt    int64  `db:"update_at"`
-	Provider    string `db:"provider"`
-	StateHash   string `db:"state_hash"`
-	BindingHash string `db:"binding_hash"`
-	ReturnTo    string `db:"return_to"`
-	ClientType  string `db:"client_type"`
-	DeviceID    string `db:"device_id"`
-	DeviceName  string `db:"device_name"`
-	ExpiresAt   int64  `db:"expires_at"`
-	ConsumedAt  int64  `db:"consumed_at"`
+	ID          string       `db:"id"`
+	CreatedAt   time.Time    `db:"created_at"`
+	UpdatedAt   time.Time    `db:"updated_at"`
+	Provider    string       `db:"provider"`
+	StateHash   string       `db:"state_hash"`
+	BindingHash string       `db:"binding_hash"`
+	ReturnTo    string       `db:"return_to"`
+	ClientType  string       `db:"client_type"`
+	DeviceID    string       `db:"device_id"`
+	DeviceName  string       `db:"device_name"`
+	ExpiresAt   time.Time    `db:"expires_at"`
+	ConsumedAt  sql.NullTime `db:"consumed_at"`
 }
 
 func externalLoginStateSliceColumns() []string {
 	return []string{
 		"external_login_states.id",
-		"external_login_states.create_at",
-		"external_login_states.update_at",
+		"external_login_states.created_at",
+		"external_login_states.updated_at",
 		"external_login_states.provider",
 		"external_login_states.state_hash",
 		"external_login_states.binding_hash",
@@ -83,18 +85,18 @@ func (s SqlExternalLoginStateStore) Save(
 	if _, err := tx.Exec(
 		ctx,
 		"DELETE FROM external_login_states WHERE expires_at < ?",
-		model.MillisFromTime(candidate.CreatedAt)-externalLoginStateRetentionMillis,
+		candidate.CreatedAt.Add(-externalLoginStateRetention),
 	); err != nil {
 		return nil, fmt.Errorf("prune external login states: %w", err)
 	}
 	row := newExternalLoginStateRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO external_login_states (
-			id, create_at, update_at, provider, state_hash, binding_hash,
+			id, created_at, updated_at, provider, state_hash, binding_hash,
 			return_to, client_type, device_id, device_name, expires_at,
 			consumed_at
 		) VALUES (
-			:id, :create_at, :update_at, :provider, :state_hash, :binding_hash,
+			:id, :created_at, :updated_at, :provider, :state_hash, :binding_hash,
 			:return_to, :client_type, :device_id, :device_name, :expires_at,
 			:consumed_at
 		)`, &row); err != nil {
@@ -130,26 +132,27 @@ func (s SqlExternalLoginStateStore) Consume(
 	bindingHash string,
 	consumedAt int64,
 ) (*model.ExternalLoginState, error) {
+	at := model.TimeFromMillis(consumedAt)
 	var row externalLoginStateRow
 	err := s.GetMaster().Get(ctx, &row, `
 		UPDATE external_login_states
-		   SET update_at = GREATEST(update_at, ?), consumed_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), consumed_at = ?
 		 WHERE provider = ?
 		   AND state_hash = ?
 		   AND binding_hash = ?
-		   AND consumed_at = 0
-		   AND create_at <= ?
+		   AND consumed_at IS NULL
+		   AND created_at <= ?
 		   AND expires_at > ?
-		RETURNING id, create_at, update_at, provider, state_hash, binding_hash,
+		RETURNING id, created_at, updated_at, provider, state_hash, binding_hash,
 		          return_to, client_type, device_id, device_name, expires_at,
 		          consumed_at`,
-		consumedAt,
-		consumedAt,
+		at,
+		at,
 		provider,
 		stateHash,
 		bindingHash,
-		consumedAt,
-		consumedAt,
+		at,
+		at,
 	)
 	if err != nil {
 		return nil, translateError("external_login_state", "", err)
@@ -162,8 +165,8 @@ func newExternalLoginStateRow(
 ) externalLoginStateRow {
 	return externalLoginStateRow{
 		ID:          state.ID.String(),
-		CreateAt:    model.MillisFromTime(state.CreatedAt),
-		UpdateAt:    model.MillisFromTime(state.UpdatedAt),
+		CreatedAt:   UTCTime(state.CreatedAt),
+		UpdatedAt:   UTCTime(state.UpdatedAt),
 		Provider:    state.Provider,
 		StateHash:   state.StateHash,
 		BindingHash: state.BindingHash,
@@ -171,16 +174,16 @@ func newExternalLoginStateRow(
 		ClientType:  string(state.ClientType),
 		DeviceID:    state.DeviceID,
 		DeviceName:  state.DeviceName,
-		ExpiresAt:   model.MillisFromTime(state.ExpiresAt),
-		ConsumedAt:  state.ConsumedAt.Millis(),
+		ExpiresAt:   UTCTime(state.ExpiresAt),
+		ConsumedAt:  NullTimeFromOptional(state.ConsumedAt),
 	}
 }
 
 func (row externalLoginStateRow) model() *model.ExternalLoginState {
 	return &model.ExternalLoginState{
 		ID:          model.ExternalLoginStateID(row.ID),
-		CreatedAt:   model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:   model.TimeFromMillis(row.UpdateAt),
+		CreatedAt:   row.CreatedAt.UTC(),
+		UpdatedAt:   row.UpdatedAt.UTC(),
 		Provider:    row.Provider,
 		StateHash:   row.StateHash,
 		BindingHash: row.BindingHash,
@@ -188,8 +191,8 @@ func (row externalLoginStateRow) model() *model.ExternalLoginState {
 		ClientType:  model.SessionClientType(row.ClientType),
 		DeviceID:    row.DeviceID,
 		DeviceName:  row.DeviceName,
-		ExpiresAt:   model.TimeFromMillis(row.ExpiresAt),
-		ConsumedAt:  model.OptionalTimeFromMillis(row.ConsumedAt),
+		ExpiresAt:   row.ExpiresAt.UTC(),
+		ConsumedAt:  OptionalTimeFromNullTime(row.ConsumedAt),
 	}
 }
 

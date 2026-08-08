@@ -25,8 +25,8 @@ type Params struct {
 	ProviderId            string
 	RoleId                string
 	RoleBindingId         string
-	UserId                string
-	AcademicUnitId        string
+	UserID                string
+	AcademicUnitID        string
 	ProgrammeId           string
 	ProgrammeLevelId      string
 	AcademicPeriodId      string
@@ -35,7 +35,7 @@ type Params struct {
 	AcademicUnitMemberId  string
 	ClassMemberId         string
 	PersonalAccessTokenId string
-	SessionId             string
+	SessionID             string
 	ReturnTo              string
 	ClientType            string
 	DeviceId              string
@@ -51,8 +51,8 @@ func ParamsFromRequest(request *http.Request) Params {
 		ProviderId:            strings.ToLower(strings.TrimSpace(variables["provider_id"])),
 		RoleId:                strings.TrimSpace(variables["role_id"]),
 		RoleBindingId:         strings.TrimSpace(variables["role_binding_id"]),
-		UserId:                strings.TrimSpace(variables["user_id"]),
-		AcademicUnitId:        strings.TrimSpace(variables["academic_unit_id"]),
+		UserID:                strings.TrimSpace(variables["user_id"]),
+		AcademicUnitID:        strings.TrimSpace(variables["academic_unit_id"]),
 		ProgrammeId:           strings.TrimSpace(variables["programme_id"]),
 		ProgrammeLevelId:      strings.TrimSpace(variables["programme_level_id"]),
 		AcademicPeriodId:      strings.TrimSpace(variables["academic_period_id"]),
@@ -61,7 +61,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		AcademicUnitMemberId:  strings.TrimSpace(variables["academic_unit_member_id"]),
 		ClassMemberId:         strings.TrimSpace(variables["class_member_id"]),
 		PersonalAccessTokenId: strings.TrimSpace(variables["personal_access_token_id"]),
-		SessionId:             strings.TrimSpace(variables["session_id"]),
+		SessionID:             strings.TrimSpace(variables["session_id"]),
 		ReturnTo:              strings.TrimSpace(query.Get("return_to")),
 		ClientType:            strings.TrimSpace(query.Get("client_type")),
 		DeviceId:              strings.TrimSpace(query.Get("device_id")),
@@ -79,11 +79,11 @@ func (p Params) RequireProviderId() (string, error) {
 }
 
 func (p Params) RequireUserId() (string, error) {
-	return requirePathId("user_id", p.UserId)
+	return requirePathId("user_id", p.UserID)
 }
 
 func (p Params) RequireAcademicUnitId() (string, error) {
-	return requirePathId("academic_unit_id", p.AcademicUnitId)
+	return requirePathId("academic_unit_id", p.AcademicUnitID)
 }
 
 func (p Params) RequireProgrammeId() (string, error) {
@@ -119,7 +119,7 @@ func (p Params) RequirePersonalAccessTokenId() (string, error) {
 }
 
 func (p Params) RequireSessionId() (string, error) {
-	return requirePathId("session_id", p.SessionId)
+	return requirePathId("session_id", p.SessionID)
 }
 
 func RequestParams(ctx context.Context) (Params, bool) {

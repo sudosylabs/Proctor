@@ -23,15 +23,15 @@ const (
 // institution. A person may simultaneously be both a student and a teacher, or
 // retain historical affiliations after either relationship ends.
 type Affiliation struct {
-	ID        AffiliationID
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         AffiliationID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	ArchivedAt OptionalTime
-	Revision  int64
-	UserID    UserID
-	Kind      AffiliationKind
-	StartsAt  time.Time
-	EndsAt    OptionalTime // absent means open-ended
+	Revision   int64
+	UserID     UserID
+	Kind       AffiliationKind
+	StartsAt   time.Time
+	EndsAt     OptionalTime // absent means open-ended
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -146,24 +146,6 @@ func validateEffectiveInterval(where, modelName, details string, startsAt time.T
 		return invalidModelError(where, modelName, "start_at", "must be set", details)
 	}
 	if endsAt.Valid && !endsAt.Time.After(startsAt) {
-		return invalidModelError(where, modelName, "end_at", "must be after start_at", details)
-	}
-	return nil
-}
-
-// Keep preSaveMembership for unmigrated membership-adjacent types until they migrate.
-func preSaveMembership(id *string, createAt, updateAt, startAt *int64) {
-	preSave(id, createAt, updateAt)
-	if *startAt == 0 {
-		*startAt = *createAt
-	}
-}
-
-func validateEffectiveTimes(where, modelName, details string, startAt, endAt int64) error {
-	if startAt <= 0 {
-		return invalidModelError(where, modelName, "start_at", "must be set", details)
-	}
-	if endAt != 0 && endAt <= startAt {
 		return invalidModelError(where, modelName, "end_at", "must be after start_at", details)
 	}
 	return nil

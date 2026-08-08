@@ -129,7 +129,7 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	events := []string{}
 	levelID, programmeID := model.NewId(), model.NewId()
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
-	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_active_name_key", nil)}, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(model.NewId())}}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
+	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(model.NewId())}}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
 	_, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: model.NewId(), Name: "class-a", DisplayName: "Class A"})
 	if !Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
 		t.Fatalf("Create() error = %v, audit = %q", err, auditor.failCode)

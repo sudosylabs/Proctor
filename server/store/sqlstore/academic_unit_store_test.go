@@ -27,7 +27,7 @@ func TestAcademicUnitRowConversion(t *testing.T) {
 		CreatedAt:     model.TimeFromMillis(1),
 		UpdatedAt:     model.TimeFromMillis(2),
 		ArchivedAt:    model.OptionalTimeFromMillis(3),
-		Revision:      1,
+		Revision:      7,
 		InstitutionID: institutionID,
 		ParentID:      parentID,
 		Name:          "computing",
@@ -38,7 +38,11 @@ func TestAcademicUnitRowConversion(t *testing.T) {
 	if !row.ParentID.Valid {
 		t.Fatal("non-empty parent ID became NULL")
 	}
-	if got := row.model(); *got != *unit {
+	got, err := row.model()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got != *unit {
 		t.Fatalf("row.model() = %#v, want %#v", got, unit)
 	}
 
@@ -47,7 +51,11 @@ func TestAcademicUnitRowConversion(t *testing.T) {
 	if row.ParentID.Valid {
 		t.Fatal("empty parent ID did not become NULL")
 	}
-	if got := row.model(); got.ParentID != "" {
+	got, err = row.model()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ParentID != "" {
 		t.Fatalf("NULL parent mapped to %q", got.ParentID)
 	}
 }

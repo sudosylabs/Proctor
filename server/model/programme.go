@@ -12,15 +12,15 @@ import (
 // of Computer Science. It describes the curriculum independently of academic
 // years and concrete student rosters.
 type Programme struct {
-	ID            ProgrammeID
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	ArchivedAt    OptionalTime
-	Revision      int64
+	ID             ProgrammeID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ArchivedAt     OptionalTime
+	Revision       int64
 	AcademicUnitID AcademicUnitID
-	Name          string
-	DisplayName   string
-	Description   string
+	Name           string
+	DisplayName    string
+	Description    string
 }
 
 // NewProgramme constructs a programme with application-supplied identity and clock.

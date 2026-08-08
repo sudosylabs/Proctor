@@ -14,6 +14,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -30,8 +31,8 @@ type SqlAuditStore struct {
 // uses time.Time and typed optional IDs; conversion is at this boundary.
 type auditRow struct {
 	ID           string              `db:"id"`
-	CreateAt     int64               `db:"create_at"`
-	UpdateAt     int64               `db:"update_at"`
+	CreatedAt    time.Time           `db:"created_at"`
+	UpdatedAt    time.Time           `db:"updated_at"`
 	ActorID      sql.NullString      `db:"actor_id"`
 	SessionID    sql.NullString      `db:"session_id"`
 	Action       string              `db:"action"`
@@ -54,7 +55,7 @@ type auditRow struct {
 
 func auditSliceColumns() []string {
 	return []string{
-		"audit_events.id", "audit_events.create_at", "audit_events.update_at",
+		"audit_events.id", "audit_events.created_at", "audit_events.updated_at",
 		"audit_events.actor_id", "audit_events.session_id", "audit_events.action",
 		"audit_events.resource_type", "audit_events.resource_id",
 		"audit_events.scope_type", "audit_events.scope_id", "audit_events.status",
@@ -97,12 +98,12 @@ func insertAuditEvent(
 	row := newAuditRow(candidate)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO audit_events (
-			id, create_at, update_at, actor_id, session_id, action,
+			id, created_at, updated_at, actor_id, session_id, action,
 			resource_type, resource_id, scope_type, scope_id, status,
 			request_id, node_id, client_type, authentication_method,
 			ip_address, user_agent, error_code, parameters, prior_state, result
 		) VALUES (
-			:id, :create_at, :update_at, :actor_id, :session_id, :action,
+			:id, :created_at, :updated_at, :actor_id, :session_id, :action,
 			:resource_type, :resource_id, :scope_type, :scope_id, :status,
 			:request_id, :node_id, :client_type, :authentication_method,
 			:ip_address, :user_agent, :error_code, :parameters, :prior_state, :result
@@ -154,13 +155,13 @@ func completeAuditEvent(
 	var row auditRow
 	err := executor.Get(ctx, &row, `
 		UPDATE audit_events
-		   SET update_at = $1, status = $2, error_code = $3, result = $4
+		   SET updated_at = GREATEST(updated_at, $1), status = $2, error_code = $3, result = $4
 		 WHERE id = $5 AND status = 'attempt'
-		RETURNING id, create_at, update_at, actor_id, session_id, action,
+		RETURNING id, created_at, updated_at, actor_id, session_id, action,
 		          resource_type, resource_id, scope_type, scope_id, status,
 		          request_id, node_id, client_type, authentication_method,
 		          ip_address, user_agent, error_code, parameters, prior_state, result`,
-		updateAt, status, errorCode, nullableJSON(result), id)
+		model.TimeFromMillis(updateAt), status, errorCode, nullableJSON(result), id)
 	if err != nil {
 		return nil, translateError("audit_event", id, err)
 	}
@@ -175,7 +176,7 @@ func (s SqlAuditStore) List(
 		return nil, store.NewErrInvalidInput("audit_event", "limit", options.Limit)
 	}
 	query := s.auditsQuery.
-		OrderBy("audit_events.create_at DESC", "audit_events.id DESC").
+		OrderBy("audit_events.created_at DESC", "audit_events.id DESC").
 		Limit(uint64(options.Limit))
 	if options.ActorId != "" {
 		query = query.Where(sq.Eq{"audit_events.actor_id": options.ActorId})
@@ -186,17 +187,18 @@ func (s SqlAuditStore) List(
 	if options.Resource != nil {
 		query = query.Where(sq.Eq{
 			"audit_events.resource_type": options.Resource.Type,
-			"audit_events.resource_id":   options.Resource.Id,
+			"audit_events.resource_id":   options.Resource.ID,
 		})
 	}
 	if options.BeforeTime > 0 {
+		beforeTime := model.TimeFromMillis(options.BeforeTime)
 		if options.BeforeId == "" {
-			query = query.Where(sq.Lt{"audit_events.create_at": options.BeforeTime})
+			query = query.Where(sq.Lt{"audit_events.created_at": beforeTime})
 		} else {
 			query = query.Where(sq.Or{
-				sq.Lt{"audit_events.create_at": options.BeforeTime},
+				sq.Lt{"audit_events.created_at": beforeTime},
 				sq.And{
-					sq.Eq{"audit_events.create_at": options.BeforeTime},
+					sq.Eq{"audit_events.created_at": beforeTime},
 					sq.Lt{"audit_events.id": options.BeforeId},
 				},
 			})
@@ -214,11 +216,13 @@ func (s SqlAuditStore) List(
 }
 
 func newAuditRow(event *model.AuditEvent) auditRow {
+	createdAt := model.TimeUTC(event.CreatedAt).Truncate(time.Millisecond)
+	updatedAt := model.TimeUTC(event.UpdatedAt).Truncate(time.Millisecond)
 	return auditRow{
-		ID: event.ID.String(), CreateAt: model.MillisFromTime(event.CreatedAt),
-		UpdateAt: model.MillisFromTime(event.UpdatedAt),
-		ActorID: nullableAuditString(event.ActorID.String()), SessionID: nullableAuditString(event.SessionID.String()),
-		Action: event.Action, ResourceType: event.Resource.Type, ResourceID: event.Resource.Id,
+		ID: event.ID.String(), CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		ActorID:   nullableAuditString(event.ActorID.String()), SessionID: nullableAuditString(event.SessionID.String()),
+		Action: event.Action, ResourceType: event.Resource.Type, ResourceID: event.Resource.ID,
 		ScopeType: event.ScopeType, ScopeID: event.ScopeID, Status: event.Status,
 		RequestID: event.RequestID, NodeID: event.NodeID, ClientType: event.ClientType,
 		AuthMethod: event.AuthMethod, IPAddress: event.IPAddress, UserAgent: event.UserAgent,
@@ -229,11 +233,11 @@ func newAuditRow(event *model.AuditEvent) auditRow {
 
 func (row auditRow) model() *model.AuditEvent {
 	return &model.AuditEvent{
-		ID: model.AuditEventID(row.ID), CreatedAt: model.TimeFromMillis(row.CreateAt),
-		UpdatedAt: model.TimeFromMillis(row.UpdateAt),
-		ActorID: model.UserID(row.ActorID.String), SessionID: model.SessionID(row.SessionID.String),
-		Action: row.Action,
-		Resource:  model.Resource{Type: row.ResourceType, Id: row.ResourceID},
+		ID: model.AuditEventID(row.ID), CreatedAt: row.CreatedAt.UTC(),
+		UpdatedAt: row.UpdatedAt.UTC(),
+		ActorID:   model.UserID(row.ActorID.String), SessionID: model.SessionID(row.SessionID.String),
+		Action:    row.Action,
+		Resource:  model.Resource{Type: row.ResourceType, ID: row.ResourceID},
 		ScopeType: row.ScopeType, ScopeID: row.ScopeID, Status: row.Status,
 		RequestID: row.RequestID, NodeID: row.NodeID, ClientType: row.ClientType,
 		AuthMethod: row.AuthMethod, IPAddress: row.IPAddress, UserAgent: row.UserAgent,

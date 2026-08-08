@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	sq "github.com/Masterminds/squirrel"
@@ -28,31 +29,31 @@ type SqlUserStore struct {
 }
 
 type userRow struct {
-	ID               string `db:"id"`
-	CreateAt         int64  `db:"create_at"`
-	UpdateAt         int64  `db:"update_at"`
-	DeleteAt         int64  `db:"delete_at"`
-	Revision         int64  `db:"revision"`
-	Username         string `db:"username"`
-	Email            string `db:"email"`
-	EmailVerified    bool   `db:"email_verified"`
-	DisplayName      string `db:"display_name"`
-	FirstName        string `db:"first_name"`
-	LastName         string `db:"last_name"`
-	Locale           string `db:"locale"`
-	Timezone         string `db:"timezone"`
-	LastLoginAt      int64  `db:"last_login_at"`
-	LastActivityAt   int64  `db:"last_activity_at"`
-	DisabledAt       int64  `db:"disabled_at"`
-	ExpectedRevision int64  `db:"expected_revision"`
+	ID               string       `db:"id"`
+	CreatedAt        time.Time    `db:"created_at"`
+	UpdatedAt        time.Time    `db:"updated_at"`
+	ArchivedAt       sql.NullTime `db:"archived_at"`
+	Revision         int64        `db:"revision"`
+	Username         string       `db:"username"`
+	Email            string       `db:"email"`
+	EmailVerified    bool         `db:"email_verified"`
+	DisplayName      string       `db:"display_name"`
+	FirstName        string       `db:"first_name"`
+	LastName         string       `db:"last_name"`
+	Locale           string       `db:"locale"`
+	Timezone         string       `db:"timezone"`
+	LastLoginAt      sql.NullTime `db:"last_login_at"`
+	LastActivityAt   sql.NullTime `db:"last_activity_at"`
+	DisabledAt       sql.NullTime `db:"disabled_at"`
+	ExpectedRevision int64        `db:"expected_revision"`
 }
 
 func userSliceColumns() []string {
 	return []string{
 		"users.id",
-		"users.create_at",
-		"users.update_at",
-		"users.delete_at",
+		"users.created_at",
+		"users.updated_at",
+		"users.archived_at",
 		"users.revision",
 		"users.username",
 		"users.email",
@@ -139,11 +140,11 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 	row := newUserRow(user)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO users (
-			id, create_at, update_at, delete_at, revision, username, email,
+			id, created_at, updated_at, archived_at, revision, username, email,
 			email_verified, display_name, first_name, last_name, locale,
 			timezone, last_login_at, last_activity_at, disabled_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :revision, :username, :email,
+			:id, :created_at, :updated_at, :archived_at, :revision, :username, :email,
 			:email_verified, :display_name, :first_name, :last_name, :locale,
 			:timezone, :last_login_at, :last_activity_at, :disabled_at
 		)`, &row); err != nil {
@@ -154,24 +155,24 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 
 func (s SqlUserStore) Get(ctx context.Context, id string) (*model.User, error) {
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
-		"users.id":        id,
-		"users.delete_at": int64(0),
+		"users.id":          id,
+		"users.archived_at": nil,
 	}), id)
 }
 
 func (s SqlUserStore) GetByUsername(ctx context.Context, username string) (*model.User, error) {
 	username = strings.ToLower(strings.TrimSpace(username))
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
-		"users.username":  username,
-		"users.delete_at": int64(0),
+		"users.username":    username,
+		"users.archived_at": nil,
 	}), username)
 }
 
 func (s SqlUserStore) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
-		"users.email":     email,
-		"users.delete_at": int64(0),
+		"users.email":       email,
+		"users.archived_at": nil,
 	}), email)
 }
 
@@ -183,9 +184,9 @@ func (s SqlUserStore) List(
 		(options.AfterUsername == "") != (options.AfterId == "") {
 		return nil, store.NewErrInvalidInput("user", "list_options", nil)
 	}
-	query := s.usersQuery.Where(sq.Eq{"users.delete_at": int64(0)})
+	query := s.usersQuery.Where(sq.Eq{"users.archived_at": nil})
 	if !options.IncludeDisabled {
-		query = query.Where(sq.Eq{"users.disabled_at": int64(0)})
+		query = query.Where(sq.Eq{"users.disabled_at": nil})
 	}
 	term := strings.TrimSpace(options.Query)
 	if term != "" {
@@ -299,11 +300,11 @@ func (s SqlUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.U
 func getUserByID(ctx context.Context, executor sqlxExecutor, id string) (*model.User, error) {
 	var row userRow
 	if err := executor.Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, revision, username, email,
+		SELECT id, created_at, updated_at, archived_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
 		  FROM users
-		 WHERE id = ? AND delete_at = 0`, id); err != nil {
+		 WHERE id = ? AND archived_at IS NULL`, id); err != nil {
 		return nil, translateError("user", id, err)
 	}
 	return row.model(), nil
@@ -314,7 +315,7 @@ func updateUserProfile(ctx context.Context, executor sqlxExecutor, candidate *mo
 	row.ExpectedRevision = expectedRevision
 	result, err := executor.NamedExec(ctx, `
 		UPDATE users
-		   SET update_at = GREATEST(update_at, :update_at),
+		   SET updated_at = GREATEST(updated_at, :updated_at),
 		       revision = :revision,
 		       username = :username,
 		       email = :email,
@@ -324,7 +325,7 @@ func updateUserProfile(ctx context.Context, executor sqlxExecutor, candidate *mo
 		       last_name = :last_name,
 		       locale = :locale,
 		       timezone = :timezone
-		 WHERE id = :id AND delete_at = 0 AND revision = :expected_revision`, &row)
+		 WHERE id = :id AND archived_at IS NULL AND revision = :expected_revision`, &row)
 	if err != nil {
 		return fmt.Errorf("update user profile: %w", translateError("user", candidate.ID.String(), err))
 	}
@@ -343,7 +344,7 @@ func requireUserRevisionAffected(ctx context.Context, executor sqlxExecutor, res
 		return nil
 	}
 	var exists bool
-	if err := executor.Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM users WHERE id = ? AND delete_at = 0)`, id); err != nil {
+	if err := executor.Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM users WHERE id = ? AND archived_at IS NULL)`, id); err != nil {
 		return fmt.Errorf("check user revision conflict: %w", err)
 	}
 	if exists {
@@ -451,7 +452,9 @@ func setUserDisabled(
 		(disabledAt != 0 && disabledAt != updateAt) {
 		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
 	}
+	updateTime := model.TimeFromMillis(updateAt)
 	if disabledAt != 0 {
+		disabledTime := model.TimeFromMillis(disabledAt)
 		if _, err := tx.Exec(
 			ctx,
 			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
@@ -466,11 +469,11 @@ func setUserDisabled(
 				  FROM role_bindings rb
 				  JOIN roles r ON r.id = rb.role_id
 				 WHERE rb.user_id = $1
-				   AND r.name = $2 AND r.built_in = true AND r.delete_at = 0
-				   AND rb.scope_type = 'institution' AND rb.delete_at = 0
+				   AND r.name = $2 AND r.built_in = true AND r.archived_at IS NULL
+				   AND rb.scope_type = 'institution' AND rb.archived_at IS NULL
 				   AND rb.start_at <= $3
-				   AND (rb.end_at = 0 OR rb.end_at > $3)
-			)`, id, model.SystemAdministratorRoleName, disabledAt); err != nil {
+				   AND (rb.end_at IS NULL OR rb.end_at > $3)
+			)`, id, model.SystemAdministratorRoleName, disabledTime); err != nil {
 			return nil, fmt.Errorf("check administrator binding: %w", err)
 		}
 		if isAdministrator {
@@ -482,12 +485,12 @@ func setUserDisabled(
 					  JOIN roles r ON r.id = rb.role_id
 					  JOIN users u ON u.id = rb.user_id
 					 WHERE rb.user_id <> $1
-					   AND r.name = $2 AND r.built_in = true AND r.delete_at = 0
-					   AND rb.scope_type = 'institution' AND rb.delete_at = 0
+					   AND r.name = $2 AND r.built_in = true AND r.archived_at IS NULL
+					   AND rb.scope_type = 'institution' AND rb.archived_at IS NULL
 					   AND rb.start_at <= $3
-					   AND (rb.end_at = 0 OR rb.end_at > $3)
-					   AND u.delete_at = 0 AND u.disabled_at = 0
-				)`, id, model.SystemAdministratorRoleName, disabledAt); err != nil {
+					   AND (rb.end_at IS NULL OR rb.end_at > $3)
+					   AND u.archived_at IS NULL AND u.disabled_at IS NULL
+				)`, id, model.SystemAdministratorRoleName, disabledTime); err != nil {
 				return nil, fmt.Errorf("check remaining administrator: %w", err)
 			}
 			if !remaining {
@@ -497,11 +500,15 @@ func setUserDisabled(
 			}
 		}
 	}
+	disabledTime := sql.NullTime{}
+	if disabledAt != 0 {
+		disabledTime = sql.NullTime{Time: updateTime, Valid: true}
+	}
 	result, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET update_at = ?, disabled_at = ?, revision = revision + 1
-		 WHERE id = ? AND delete_at = 0 AND revision = ?`,
-		updateAt, disabledAt, id, expectedRevision,
+		   SET updated_at = ?, disabled_at = ?, revision = revision + 1
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`,
+		updateTime, disabledTime, id, expectedRevision,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -521,15 +528,16 @@ func setUserDisabled(
 }
 
 func (s SqlUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) error {
+	loginAt := model.TimeFromMillis(at)
 	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE users
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       last_login_at = GREATEST(last_login_at, ?),
 		       last_activity_at = GREATEST(last_activity_at, ?)
-		 WHERE id = ? AND delete_at = 0`,
-		at,
-		at,
-		at,
+		 WHERE id = ? AND archived_at IS NULL`,
+		loginAt,
+		loginAt,
+		loginAt,
 		id,
 	)
 	if err != nil {
@@ -541,9 +549,9 @@ func (s SqlUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) 
 func newUserRow(user *model.User) userRow {
 	return userRow{
 		ID:             user.ID.String(),
-		CreateAt:       model.MillisFromTime(user.CreatedAt),
-		UpdateAt:       model.MillisFromTime(user.UpdatedAt),
-		DeleteAt:       user.ArchivedAt.Millis(),
+		CreatedAt:      UTCTime(user.CreatedAt),
+		UpdatedAt:      UTCTime(user.UpdatedAt),
+		ArchivedAt:     NullTimeFromOptional(user.ArchivedAt),
 		Revision:       user.Revision,
 		Username:       user.Username,
 		Email:          user.Email,
@@ -553,18 +561,18 @@ func newUserRow(user *model.User) userRow {
 		LastName:       user.LastName,
 		Locale:         user.Locale,
 		Timezone:       user.Timezone,
-		LastLoginAt:    user.LastLoginAt.Millis(),
-		LastActivityAt: user.LastActivityAt.Millis(),
-		DisabledAt:     user.DisabledAt.Millis(),
+		LastLoginAt:    NullTimeFromOptional(user.LastLoginAt),
+		LastActivityAt: NullTimeFromOptional(user.LastActivityAt),
+		DisabledAt:     NullTimeFromOptional(user.DisabledAt),
 	}
 }
 
 func (row userRow) model() *model.User {
 	return &model.User{
 		ID:             model.UserID(row.ID),
-		CreatedAt:      model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:      model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:     model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:      row.CreatedAt.UTC(),
+		UpdatedAt:      row.UpdatedAt.UTC(),
+		ArchivedAt:     OptionalTimeFromNullTime(row.ArchivedAt),
 		Revision:       row.Revision,
 		Username:       row.Username,
 		Email:          row.Email,
@@ -574,9 +582,9 @@ func (row userRow) model() *model.User {
 		LastName:       row.LastName,
 		Locale:         row.Locale,
 		Timezone:       row.Timezone,
-		LastLoginAt:    model.OptionalTimeFromMillis(row.LastLoginAt),
-		LastActivityAt: model.OptionalTimeFromMillis(row.LastActivityAt),
-		DisabledAt:     model.OptionalTimeFromMillis(row.DisabledAt),
+		LastLoginAt:    OptionalTimeFromNullTime(row.LastLoginAt),
+		LastActivityAt: OptionalTimeFromNullTime(row.LastActivityAt),
+		DisabledAt:     OptionalTimeFromNullTime(row.DisabledAt),
 	}
 }
 

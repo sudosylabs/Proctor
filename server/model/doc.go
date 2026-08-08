@@ -33,13 +33,11 @@
 // authoritative state, such as hierarchy cycle detection or uniqueness, belong
 // to the application and persistence layers.
 //
-// Expand-phase primitives for the domain migration:
+// Domain primitives:
 //
 //   - entity-specific IDs (UserID, ClassID, …) share the opaque 26-character
 //     z-base-32 representation but are not freely assignable across entities;
-//   - TimeUTC, MillisFromTime/TimeFromMillis, and OptionalTime bridge legacy
-//     integer-millisecond fields and native UTC time.Time.
-//
-// Aggregates still using plain string Id fields, millisecond timestamps, and
-// PreSave/PreUpdate/IsValid are migrated vertically in later tickets.
+//   - durable aggregate times are UTC time.Time values, with OptionalTime for
+//     nullable instants. Transport and legacy command boundaries perform any
+//     required integer-millisecond conversion explicitly.
 package model

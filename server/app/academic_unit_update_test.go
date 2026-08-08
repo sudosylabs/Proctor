@@ -93,7 +93,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 			authorize: func(
 				_ context.Context, _ Invocation, action model.Action, resource model.Resource,
 			) error {
-				events = append(events, "authorize-"+resource.Id)
+				events = append(events, "authorize-"+resource.ID)
 				if action != model.ActionAcademicUnitManage {
 					t.Fatalf("action = %q", action)
 				}

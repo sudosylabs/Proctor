@@ -51,7 +51,7 @@ func (s *auditListingService) List(ctx context.Context, invocation Invocation, q
 	if query.Limit < 1 || query.Limit > 200 ||
 		(query.ActorID != "" && !model.IsValidId(query.ActorID)) ||
 		(query.BeforeID != "" && !model.IsValidId(query.BeforeID)) ||
-		(query.Resource != nil && !query.Resource.IsValid()) {
+		(query.Resource != nil && query.Resource.Validate() != nil) {
 		return nil, NewError("audit.query.invalid")
 	}
 	events, err := s.audits.List(ctx, store.AuditListOptions{
@@ -81,12 +81,12 @@ func (a auditListingAuthorization) AuthorizeView(ctx context.Context, invocation
 		ctx,
 		invocation.Principal(),
 		model.ActionAuditView,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		invocation.RequestMetadata(),
 	)
 }
 
 func auditListingError(err error) error {
-	
+
 	return NewError("audit.unavailable").WithField("resource", "audit").Wrap(err)
 }

@@ -47,7 +47,7 @@ func (a *academicUnitHTTPApplication) GetAcademicUnit(
 	invocation application.Invocation,
 	query application.GetAcademicUnitQuery,
 ) (*model.AcademicUnit, error) {
-	if invocation.Principal().UserId != a.principal.UserId || query.ID != a.unit.ID.String() {
+	if invocation.Principal().UserID != a.principal.UserID || query.ID != a.unit.ID.String() {
 		return nil, application.NewError("request.invalid")
 	}
 	if a.getErr != nil {
@@ -77,7 +77,7 @@ func (a *academicUnitHTTPApplication) CreateAcademicUnit(
 	invocation application.Invocation,
 	command application.CreateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
-	if invocation.Principal().UserId != a.principal.UserId {
+	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, application.NewError("request.invalid")
 	}
 	a.createCommand = command
@@ -89,7 +89,7 @@ func (a *academicUnitHTTPApplication) UpdateAcademicUnit(
 	invocation application.Invocation,
 	command application.UpdateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
-	if invocation.Principal().UserId != a.principal.UserId {
+	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, application.NewError("request.invalid")
 	}
 	a.updateCommand = command
@@ -101,7 +101,7 @@ func (a *academicUnitHTTPApplication) ArchiveAcademicUnit(
 	invocation application.Invocation,
 	command application.ArchiveAcademicUnitCommand,
 ) error {
-	if invocation.Principal().UserId != a.principal.UserId {
+	if invocation.Principal().UserID != a.principal.UserID {
 		return application.NewError("request.invalid")
 	}
 	a.archiveCommand = command
@@ -121,10 +121,10 @@ func TestAcademicUnitResponsePreservesExistingWireShape(t *testing.T) {
 	parentID := model.NewId()
 	unit := &model.AcademicUnit{
 		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(10),
-		UpdatedAt: model.TimeFromMillis(20),
+		UpdatedAt:     model.TimeFromMillis(20),
 		InstitutionID: model.InstitutionID(institutionID),
 		ParentID:      model.AcademicUnitID(parentID),
-		Name: "computing", DisplayName: "Computing", Description: "School",
+		Name:          "computing", DisplayName: "Computing", Description: "School",
 	}
 	want, err := json.Marshal(academicUnitResponse{
 		ID: unitID, CreateAt: 10, UpdateAt: 20, DeleteAt: 0,
@@ -169,11 +169,11 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	application := &academicUnitHTTPApplication{
 		principal: model.Principal{
-			UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 			CredentialType:         model.CredentialSessionAccess,
 			AuthenticationMethod:   "password",
 			AuthenticationStrength: model.AuthenticationSingleFactor,
-			ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli(),
+			ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 		},
 		unit: unit,
 	}
@@ -196,7 +196,7 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	t.Cleanup(func() { _ = httpAPI.Close() })
 
 	request := httptest.NewRequest(
-		http.MethodGet, "/api/v1/academic-units/"+ unit.ID.String(), nil,
+		http.MethodGet, "/api/v1/academic-units/"+unit.ID.String(), nil,
 	)
 	request.Header.Set("Authorization", "Bearer test-credential")
 	response := httptest.NewRecorder()
@@ -232,12 +232,12 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 	unit := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewId())}
 	fakeApplication := &academicUnitHTTPApplication{
 		principal: model.Principal{
-			UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 			CredentialType:         model.CredentialSessionAccess,
 			AuthenticationMethod:   "password",
 			AuthenticationStrength: model.AuthenticationSingleFactor,
 			ClientType:             model.SessionClientCLI,
-			AuthenticatedAt:        time.Now().UnixMilli(),
+			AuthenticatedAt:        time.Now(),
 		},
 		unit: unit,
 		getErr: application.NewError("resource.not_found").
@@ -261,7 +261,7 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = httpAPI.Close() })
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/academic-units/"+ unit.ID.String(), nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/academic-units/"+unit.ID.String(), nil)
 	request.Header.Set("Authorization", "Bearer test-credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
@@ -313,11 +313,11 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			}
 			fakeApplication := &academicUnitHTTPApplication{
 				principal: model.Principal{
-					UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+					UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 					CredentialType:       model.CredentialSessionAccess,
 					AuthenticationMethod: "password", ClientType: model.SessionClientCLI,
 					AuthenticationStrength: model.AuthenticationSingleFactor,
-					AuthenticatedAt:        time.Now().UnixMilli(),
+					AuthenticatedAt:        time.Now(),
 				},
 				unit: created, created: created,
 			}
@@ -388,11 +388,11 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	}
 	fakeApplication := &academicUnitHTTPApplication{
 		principal: model.Principal{
-			UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 			CredentialType:       model.CredentialSessionAccess,
 			AuthenticationMethod: "password", ClientType: model.SessionClientCLI,
 			AuthenticationStrength: model.AuthenticationSingleFactor,
-			AuthenticatedAt:        time.Now().UnixMilli(),
+			AuthenticatedAt:        time.Now(),
 		},
 		unit: unit,
 	}
@@ -422,7 +422,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	parentID := model.NewId()
 	name := "engineering"
 	patchRequest := httptest.NewRequest(
-		http.MethodPatch, "/api/v1/academic-units/"+ unit.ID.String(),
+		http.MethodPatch, "/api/v1/academic-units/"+unit.ID.String(),
 		strings.NewReader(`{"parent_id":"`+parentID+`","name":"`+name+`"}`),
 	)
 	patchRequest.Header.Set("Authorization", "Bearer test-credential")
@@ -441,7 +441,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	}
 
 	archiveRequest := httptest.NewRequest(
-		http.MethodDelete, "/api/v1/academic-units/"+ unit.ID.String(), nil,
+		http.MethodDelete, "/api/v1/academic-units/"+unit.ID.String(), nil,
 	)
 	archiveRequest.Header.Set("Authorization", "Bearer test-credential")
 	archiveResponse := httptest.NewRecorder()

@@ -32,6 +32,23 @@ import (
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
+type wireMFASetup struct {
+	Secret          string `json:"secret"`
+	ProvisioningURI string `json:"provisioning_uri"`
+	ExpiresAt       int64  `json:"expires_at"`
+}
+
+type wireMFAActivation struct {
+	RecoveryCodes []string `json:"recovery_codes"`
+}
+
+type wireMFAStatus struct {
+	Enabled                bool  `json:"enabled"`
+	Pending                bool  `json:"pending"`
+	PendingExpiresAt       int64 `json:"pending_expires_at,omitempty"`
+	RecoveryCodesRemaining int   `json:"recovery_codes_remaining"`
+}
+
 func TestMFAIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
@@ -91,7 +108,7 @@ func TestMFAIntegration(t *testing.T) {
 			setupResponse.Body.String(),
 		)
 	}
-	var setup model.MFASetup
+	var setup wireMFASetup
 	if err := json.Unmarshal(setupResponse.Body.Bytes(), &setup); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +140,7 @@ func TestMFAIntegration(t *testing.T) {
 			activateResponse.Body.String(),
 		)
 	}
-	var activation model.MFAActivation
+	var activation wireMFAActivation
 	if err := json.Unmarshal(activateResponse.Body.Bytes(), &activation); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +162,7 @@ func TestMFAIntegration(t *testing.T) {
 			statusResponse.Body.String(),
 		)
 	}
-	var status model.MFAStatus
+	var status wireMFAStatus
 	if err := json.Unmarshal(statusResponse.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
@@ -167,12 +184,13 @@ func TestMFAIntegration(t *testing.T) {
 			rechallenge.Body.String(),
 		)
 	}
-	var rechallenged model.Session
-	if err := json.Unmarshal(rechallenge.Body.Bytes(), &rechallenged); err != nil {
+	var rechallengedWire wireSessionResponse
+	if err := json.Unmarshal(rechallenge.Body.Bytes(), &rechallengedWire); err != nil {
 		t.Fatal(err)
 	}
+	rechallenged := rechallengedWire.model()
 	if rechallenged.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		rechallenged.MFACompletedAt == 0 {
+		!rechallenged.MFACompletedAt.Valid {
 		t.Fatalf("MFA rechallenge session = %#v", rechallenged)
 	}
 	withoutSecondFactor := performJSONRequest(
@@ -213,7 +231,7 @@ func TestMFAIntegration(t *testing.T) {
 	}
 	recovered := decodeAuthenticationResponse(t, recoveryLogin)
 	if recovered.Session.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		recovered.Session.MFACompletedAt == 0 {
+		!recovered.Session.MFACompletedAt.Valid {
 		t.Fatalf("MFA login session = %#v", recovered.Session)
 	}
 	replay := performJSONRequest(

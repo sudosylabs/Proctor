@@ -113,7 +113,7 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 	events := []string{}
 	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
 	current := &model.ProgrammeLevel{
-		ID: model.ProgrammeLevelID(model.NewId()),
+		ID:        model.ProgrammeLevelID(model.NewId()),
 		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
 	}
@@ -160,7 +160,7 @@ func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newProgrammeLevelService(
-		&programmeLevelStoreFake{events: &events, createErr: store.NewErrConflict("programme_level", "programme_levels_active_name_key", nil)},
+		&programmeLevelStoreFake{events: &events, createErr: store.NewErrConflict("programme_level", "programme_levels_programme_id_name_key", nil)},
 		&programmeOwnerFake{events: &events, programme: programme}, &programmeAuthorizerFake{events: &events},
 		auditor, time.Now, model.NewId,
 	)

@@ -26,7 +26,7 @@ var validPermission = regexp.MustCompile(`^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+
 // by itself; RoleBinding assigns it to a User at an institution, AcademicUnit,
 // or Class scope.
 //
-// Domain time is UTC time.Time. Soft archive uses ArchivedAt (legacy delete_at).
+// Domain time is UTC time.Time. Soft archive uses ArchivedAt.
 // Roles are not revisioned: updates and soft-delete are serialized through
 // explicit store operations and built-in protection, not optimistic concurrency.
 type Role struct {
@@ -179,7 +179,6 @@ func (r *Role) Auditable() map[string]any {
 		"created_at":   MillisFromTime(r.CreatedAt),
 		"updated_at":   MillisFromTime(r.UpdatedAt),
 		"archived_at":  r.ArchivedAt.Millis(),
-		"delete_at":    r.ArchivedAt.Millis(), // legacy audit key during expand
 		"name":         r.Name,
 		"display_name": r.DisplayName,
 		"permissions":  cloneStrings(r.Permissions),

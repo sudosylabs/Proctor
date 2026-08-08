@@ -28,8 +28,7 @@ const (
 )
 
 // MFACredential is one encrypted TOTP enrollment for a user. EncryptedSecret
-// and EncryptionKeyID are deliberately excluded from JSON and must never be
-// logged or audited. Soft archive uses ArchivedAt (legacy delete_at).
+// and EncryptionKeyID must never be serialized, logged, or audited.
 //
 // Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
 type MFACredential struct {
@@ -41,7 +40,7 @@ type MFACredential struct {
 	State            MFAState
 	EncryptedSecret  string `json:"-"`
 	EncryptionKeyID  string `json:"-"`
-	PendingExpiresAt time.Time // zero when not pending
+	PendingExpiresAt OptionalTime
 	ActivatedAt      OptionalTime
 	LastUsedTimeStep int64 `json:"-"`
 }
@@ -58,7 +57,9 @@ func (m *MFACredential) PrepareCreate(id MFACredentialID, at time.Time) {
 	m.ArchivedAt = OptionalTime{}
 	m.EncryptedSecret = SanitizeUnicode(m.EncryptedSecret)
 	m.EncryptionKeyID = SanitizeUnicode(m.EncryptionKeyID)
-	m.PendingExpiresAt = TimeUTC(m.PendingExpiresAt)
+	if m.PendingExpiresAt.Valid {
+		m.PendingExpiresAt = m.PendingExpiresAt.UTC()
+	}
 	if m.ActivatedAt.Valid {
 		m.ActivatedAt = m.ActivatedAt.UTC()
 	}
@@ -73,7 +74,9 @@ func (m *MFACredential) PrepareUpdate(at time.Time) {
 	m.UpdatedAt = TimeUTC(at)
 	m.EncryptedSecret = SanitizeUnicode(m.EncryptedSecret)
 	m.EncryptionKeyID = SanitizeUnicode(m.EncryptionKeyID)
-	m.PendingExpiresAt = TimeUTC(m.PendingExpiresAt)
+	if m.PendingExpiresAt.Valid {
+		m.PendingExpiresAt = m.PendingExpiresAt.UTC()
+	}
 	if m.ActivatedAt.Valid {
 		m.ActivatedAt = m.ActivatedAt.UTC()
 	}
@@ -110,12 +113,12 @@ func (m *MFACredential) Validate() error {
 	}
 	switch m.State {
 	case MFAStatePending:
-		if m.PendingExpiresAt.IsZero() || !m.PendingExpiresAt.After(m.CreatedAt) ||
+		if !m.PendingExpiresAt.Valid || !m.PendingExpiresAt.Time.After(m.CreatedAt) ||
 			m.ActivatedAt.Valid || m.LastUsedTimeStep != 0 {
 			return invalidModelError(where, "mfa_credential", "state", "has inconsistent pending fields", details)
 		}
 	case MFAStateActive:
-		if !m.PendingExpiresAt.IsZero() ||
+		if m.PendingExpiresAt.Valid ||
 			!m.ActivatedAt.Valid || m.ActivatedAt.Time.Before(m.CreatedAt) ||
 			m.LastUsedTimeStep <= 0 {
 			return invalidModelError(where, "mfa_credential", "state", "has inconsistent active fields", details)
@@ -133,7 +136,7 @@ func (m *MFACredential) IsPendingAt(now time.Time) bool {
 		return false
 	}
 	now = TimeUTC(now)
-	return now.Before(m.PendingExpiresAt)
+	return m.PendingExpiresAt.Valid && now.Before(m.PendingExpiresAt.Time)
 }
 
 // IsActive reports whether the credential is an unarchived active enrollment.
@@ -152,12 +155,10 @@ func (m *MFACredential) Auditable() map[string]any {
 		"created_at":         MillisFromTime(m.CreatedAt),
 		"updated_at":         MillisFromTime(m.UpdatedAt),
 		"archived_at":        m.ArchivedAt.Millis(),
-		"delete_at":          m.ArchivedAt.Millis(),
 		"user_id":            m.UserID.String(),
 		"state":              m.State,
-		"pending_expires_at": MillisFromTime(m.PendingExpiresAt),
+		"pending_expires_at": m.PendingExpiresAt.Millis(),
 		"activated_at":       m.ActivatedAt.Millis(),
-		"enabled_at":         m.ActivatedAt.Millis(),
 	}
 }
 
@@ -241,34 +242,9 @@ func (c *MFARecoveryCode) Auditable() map[string]any {
 		"created_at":  MillisFromTime(c.CreatedAt),
 		"updated_at":  MillisFromTime(c.UpdatedAt),
 		"archived_at": c.ArchivedAt.Millis(),
-		"delete_at":   c.ArchivedAt.Millis(),
 		"user_id":     c.UserID.String(),
 		"consumed_at": c.ConsumedAt.Millis(),
-		"used_at":     c.ConsumedAt.Millis(),
 	}
-}
-
-// MFASetup is the one-time setup material returned to the client. Secret must
-// never be logged or audited. ExpiresAt remains Unix milliseconds for the
-// frozen public HTTP wire contract.
-type MFASetup struct {
-	Secret          string `json:"secret"`
-	ProvisioningURI string `json:"provisioning_uri"`
-	ExpiresAt       int64  `json:"expires_at"`
-}
-
-// MFAActivation is the one-time recovery-code delivery after activation.
-type MFAActivation struct {
-	RecoveryCodes []string `json:"recovery_codes"`
-}
-
-// MFAStatus is the caller's enrollment status. PendingExpiresAt remains Unix
-// milliseconds for the frozen public HTTP wire contract.
-type MFAStatus struct {
-	Enabled                bool  `json:"enabled"`
-	Pending                bool  `json:"pending"`
-	PendingExpiresAt       int64 `json:"pending_expires_at,omitempty"`
-	RecoveryCodesRemaining int   `json:"recovery_codes_remaining"`
 }
 
 var _ Auditable = (*MFACredential)(nil)

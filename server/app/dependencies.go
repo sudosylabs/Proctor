@@ -22,13 +22,13 @@ type Dependencies struct {
 	NodeID    string
 	PublicURL string
 
-	Password            PasswordPolicy
-	Sessions            SessionPolicy
-	LoginRateLimit      LoginRateLimitPolicy
-	PersonalAccessToken PersonalAccessTokenPolicy
-	AccountRecovery     AccountRecoveryPolicy
-	MFA                 MFAPolicy
-	ExternalAuth        ExternalAuthenticationPolicy
+	Password                PasswordPolicy
+	Sessions                SessionPolicy
+	LoginRateLimit          LoginRateLimitPolicy
+	PersonalAccessToken     PersonalAccessTokenPolicy
+	AccountRecovery         AccountRecoveryPolicy
+	MFA                     MFAPolicy
+	ExternalAuth            ExternalAuthenticationPolicy
 	RecentAuthenticationTTL time.Duration
 
 	AuthenticationDiagnostics authenticationDiagnostics

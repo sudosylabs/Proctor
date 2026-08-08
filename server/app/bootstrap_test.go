@@ -87,7 +87,7 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 		"node-a",
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.Bootstrap(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{RequestId: "req"}), BootstrapInstallationCommand{
+	got, err := service.Bootstrap(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{RequestID: "req"}), BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com",
 		Password: "password-value", Source: "127.0.0.1",

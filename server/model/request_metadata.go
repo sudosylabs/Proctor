@@ -7,7 +7,7 @@ package model
 // IPAddress is the direct peer address; forwarded headers are intentionally not
 // trusted until deployment configuration defines trusted proxies.
 type RequestMetadata struct {
-	RequestId string
+	RequestID string
 	IPAddress string
 	UserAgent string
 }

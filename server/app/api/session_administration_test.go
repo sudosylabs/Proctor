@@ -22,10 +22,10 @@ func TestAdminSessionListUsesApplicationQueryAndOmitsCredentials(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{
-		UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
-		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli(),
+		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 	}
 	userID := model.NewId()
 	sessionID := model.NewId()
@@ -85,10 +85,10 @@ func TestAdminSessionRevokeUsesApplicationCommand(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{
-		UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
-		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli(),
+		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 	}
 	userID := model.NewId()
 	sessionID := model.NewId()

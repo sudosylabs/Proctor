@@ -45,7 +45,7 @@ func (a academicUnitAuthorization) Installation(
 	if err != nil {
 		return model.Resource{}, academicUnitReadError("institution", err)
 	}
-	return model.Resource{Type: model.ResourceInstitution, Id: institution.ResourceID()}, nil
+	return model.Resource{Type: model.ResourceInstitution, ID: institution.ResourceID()}, nil
 }
 
 type academicUnitAuthorization struct {
@@ -122,7 +122,7 @@ func (s *academicUnitQueryService) Get(
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: id}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: id}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionAcademicUnitView, resource,
 	); err != nil {
@@ -155,7 +155,7 @@ func (s *academicUnitQueryService) List(
 		return nil, NewError("request.invalid").WithField("field", "parent_id")
 	}
 	if parentID != "" {
-		resource := model.Resource{Type: model.ResourceAcademicUnit, Id: parentID}
+		resource := model.Resource{Type: model.ResourceAcademicUnit, ID: parentID}
 		if err := s.authorization.Authorize(
 			ctx, invocation, model.ActionAcademicUnitView, resource,
 		); err != nil {
@@ -179,7 +179,7 @@ func (s *academicUnitQueryService) List(
 			return nil, err
 		}
 	}
-	units, err := s.academicUnits.ListChildren(ctx, institution.Id, parentID)
+	units, err := s.academicUnits.ListChildren(ctx, institution.ID, parentID)
 	if err != nil {
 		return nil, academicUnitReadError("academic_unit", err)
 	}
@@ -208,7 +208,7 @@ func (s *academicUnitQueryService) Search(
 	}
 	units, err := s.academicUnits.Search(
 		ctx,
-		institution.Id,
+		institution.ID,
 		strings.TrimSpace(query.Query),
 		normalizeAdministrationLimit(query.Limit),
 	)

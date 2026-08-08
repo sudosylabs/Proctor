@@ -80,7 +80,7 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events, createResult: created},
 		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: created.RoleID, Name: "teacher"}},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleBindingEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
@@ -108,7 +108,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events},
 		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: model.RoleID(roleID), Name: model.SystemAdministratorRoleName}},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
@@ -136,7 +136,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 			endErr: store.NewErrConflict("role_binding", "role_bindings_last_system_admin", errors.New("last")),
 		},
 		&roleBindingRoleStoreFake{events: &events},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
@@ -158,7 +158,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events, list: []*model.RoleBinding{{ID: model.NewRoleBindingID(), UserID: model.UserID(userID)}}},
 		&roleBindingRoleStoreFake{events: &events},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,

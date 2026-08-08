@@ -42,7 +42,7 @@ func (a *institutionHTTPApplication) GetInstitution(
 	invocation application.Invocation,
 	_ application.GetInstitutionQuery,
 ) (*model.Institution, error) {
-	if invocation.Principal().UserId != a.principal.UserId {
+	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, application.NewError("request.invalid")
 	}
 	return a.result, nil
@@ -53,7 +53,7 @@ func (a *institutionHTTPApplication) UpdateInstitution(
 	invocation application.Invocation,
 	command application.UpdateInstitutionCommand,
 ) (*model.Institution, error) {
-	if invocation.Principal().UserId != a.principal.UserId {
+	if invocation.Principal().UserID != a.principal.UserID {
 		return nil, application.NewError("request.invalid")
 	}
 	a.command = command
@@ -75,10 +75,10 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	}
 	fakeApplication := &institutionHTTPApplication{
 		principal: model.Principal{
-			UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 			CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 			AuthenticationStrength: model.AuthenticationSingleFactor,
-			ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli(),
+			ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 		},
 		result: institution,
 	}

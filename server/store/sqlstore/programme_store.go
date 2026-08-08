@@ -11,7 +11,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -27,22 +29,24 @@ type SqlProgrammeStore struct {
 const programmeLifecycleLock = "proctor:programme-lifecycle"
 
 type programmeRow struct {
-	ID             string `db:"id"`
-	CreateAt       int64  `db:"create_at"`
-	UpdateAt       int64  `db:"update_at"`
-	DeleteAt       int64  `db:"delete_at"`
-	AcademicUnitID string `db:"academic_unit_id"`
-	Name           string `db:"name"`
-	DisplayName    string `db:"display_name"`
-	Description    string `db:"description"`
+	ID             string       `db:"id"`
+	CreatedAt      time.Time    `db:"created_at"`
+	UpdatedAt      time.Time    `db:"updated_at"`
+	ArchivedAt     sql.NullTime `db:"archived_at"`
+	Revision       int64        `db:"revision"`
+	AcademicUnitID string       `db:"academic_unit_id"`
+	Name           string       `db:"name"`
+	DisplayName    string       `db:"display_name"`
+	Description    string       `db:"description"`
 }
 
 func programmeSliceColumns() []string {
 	return []string{
 		"programmes.id",
-		"programmes.create_at",
-		"programmes.update_at",
-		"programmes.delete_at",
+		"programmes.created_at",
+		"programmes.updated_at",
+		"programmes.archived_at",
+		"programmes.revision",
 		"programmes.academic_unit_id",
 		"programmes.name",
 		"programmes.display_name",
@@ -91,10 +95,10 @@ func (s SqlProgrammeStore) Create(
 	row := newProgrammeRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO programmes (
-			id, create_at, update_at, delete_at, academic_unit_id,
+			id, created_at, updated_at, archived_at, revision, academic_unit_id,
 			name, display_name, description
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :academic_unit_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
 			:name, :display_name, :description
 		)`, &row); err != nil {
 		return nil, fmt.Errorf("create programme: %w", translateError("programme", candidate.ID.String(), err))
@@ -142,10 +146,10 @@ func (s SqlProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 	row := newProgrammeRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO programmes (
-			id, create_at, update_at, delete_at, academic_unit_id,
+			id, created_at, updated_at, archived_at, revision, academic_unit_id,
 			name, display_name, description
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :academic_unit_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
 			:name, :display_name, :description
 		)`, &row); err != nil {
 		return nil, fmt.Errorf("save programme: %w", translateError("programme", candidate.ID.String(), err))
@@ -159,13 +163,13 @@ func (s SqlProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 func (s SqlProgrammeStore) Get(ctx context.Context, id string) (*model.Programme, error) {
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
-		"programmes.id":        id,
-		"programmes.delete_at": int64(0),
+		"programmes.id":          id,
+		"programmes.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("programme", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SqlProgrammeStore) GetByName(
@@ -177,12 +181,12 @@ func (s SqlProgrammeStore) GetByName(
 	query := s.programmesQuery.Where(sq.Eq{
 		"programmes.academic_unit_id": academicUnitID,
 		"programmes.name":             name,
-		"programmes.delete_at":        int64(0),
+		"programmes.archived_at":      nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("programme", academicUnitID+"/"+name, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SqlProgrammeStore) ListByAcademicUnit(
@@ -192,7 +196,7 @@ func (s SqlProgrammeStore) ListByAcademicUnit(
 	query := s.programmesQuery.
 		Where(sq.Eq{
 			"programmes.academic_unit_id": academicUnitID,
-			"programmes.delete_at":        int64(0),
+			"programmes.archived_at":      nil,
 		}).
 		OrderBy("programmes.name", "programmes.id")
 
@@ -202,7 +206,11 @@ func (s SqlProgrammeStore) ListByAcademicUnit(
 	}
 	programmes := make([]*model.Programme, 0, len(rows))
 	for _, row := range rows {
-		programmes = append(programmes, row.model())
+		programme, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		programmes = append(programmes, programme)
 	}
 	return programmes, nil
 }
@@ -218,7 +226,7 @@ func (s SqlProgrammeStore) SearchByAcademicUnit(
 	}
 	query := s.programmesQuery.Where(sq.Eq{
 		"programmes.academic_unit_id": academicUnitID,
-		"programmes.delete_at":        int64(0),
+		"programmes.archived_at":      nil,
 	}).Where("(programmes.name ILIKE ? OR programmes.display_name ILIKE ?)",
 		"%"+term+"%", "%"+term+"%").
 		OrderBy("programmes.name", "programmes.id").Limit(uint64(limit))
@@ -228,7 +236,11 @@ func (s SqlProgrammeStore) SearchByAcademicUnit(
 	}
 	result := make([]*model.Programme, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, row.model())
+		programme, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, programme)
 	}
 	return result, nil
 }
@@ -257,16 +269,23 @@ func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programm
 	row := newProgrammeRow(&candidate)
 	result, err := tx.NamedExec(ctx, `
 		UPDATE programmes
-		   SET update_at = :update_at,
+		   SET updated_at = :updated_at,
+		       revision = :revision,
 		       academic_unit_id = :academic_unit_id,
 		       name = :name,
 		       display_name = :display_name,
 		       description = :description
-		 WHERE id = :id AND delete_at = 0`, &row)
+		 WHERE id = :id AND archived_at IS NULL
+		   AND revision = :expected_revision`, map[string]any{
+		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+		"revision": candidate.Revision, "academic_unit_id": row.AcademicUnitID,
+		"name": row.Name, "display_name": row.DisplayName,
+		"description": row.Description, "expected_revision": candidate.Revision - 1,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
 	}
-	if err := requireAffected(result, "programme", candidate.ID.String()); err != nil {
+	if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -299,13 +318,22 @@ func (s SqlProgrammeStore) UpdateWithAudit(
 	row := newProgrammeRow(&candidate)
 	result, err := tx.NamedExec(ctx, `
 		UPDATE programmes
-		   SET update_at = :update_at, name = :name,
+		   SET updated_at = :updated_at, revision = :revision, name = :name,
 		       display_name = :display_name, description = :description
-		 WHERE id = :id AND academic_unit_id = :academic_unit_id AND delete_at = 0`, &row)
+		 WHERE id = :id AND academic_unit_id = :academic_unit_id AND archived_at IS NULL
+		   AND revision = :expected_revision`, map[string]any{
+		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+		"revision": candidate.Revision, "academic_unit_id": row.AcademicUnitID,
+		"name": row.Name, "display_name": row.DisplayName,
+		"description": row.Description, "expected_revision": candidate.Revision - 1,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
 	}
-	if err := requireAffected(result, "programme", candidate.ID.String()); err != nil {
+	if err := requireOwnedRevisionAffected(
+		ctx, tx, result, "programme", "programmes", "academic_unit_id",
+		candidate.ID.String(), candidate.AcademicUnitID.String(),
+	); err != nil {
 		return nil, err
 	}
 	if _, err := completeAuditEvent(
@@ -325,7 +353,7 @@ func (s SqlProgrammeStore) Delete(
 	deleteAt int64,
 ) (*model.Programme, error) {
 	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("programme", "delete_at", deleteAt)
+		return nil, store.NewErrInvalidInput("programme", "archived_at", deleteAt)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -336,16 +364,19 @@ func (s SqlProgrammeStore) Delete(
 		return nil, err
 	}
 	var row programmeRow
-	query := s.programmesQuery.Where(sq.Eq{"programmes.id": id, "programmes.delete_at": int64(0)})
+	query := s.programmesQuery.Where(sq.Eq{"programmes.id": id, "programmes.archived_at": nil})
 	if err := tx.GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("programme", id, err)
 	}
-	current := row.model()
+	current, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	var dependent bool
 	if err := tx.Get(ctx, &dependent, `
 		SELECT EXISTS (
 			SELECT 1 FROM programme_levels
-			 WHERE programme_id = ? AND delete_at = 0
+			 WHERE programme_id = ? AND archived_at IS NULL
 		)`, id); err != nil {
 		return nil, fmt.Errorf("check programme archive dependencies: %w", err)
 	}
@@ -353,12 +384,12 @@ func (s SqlProgrammeStore) Delete(
 		return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE programmes SET update_at = ?, delete_at = ?
-		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id)
+		UPDATE programmes SET updated_at = ?, archived_at = ?, revision = revision + 1
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id, current.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive programme: %w", err)
 	}
-	if err := requireAffected(result, "programme", id); err != nil {
+	if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", id); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -367,6 +398,7 @@ func (s SqlProgrammeStore) Delete(
 	at := model.TimeFromMillis(deleteAt)
 	current.UpdatedAt = at
 	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
+	current.Revision++
 	return current, nil
 }
 
@@ -388,7 +420,7 @@ func (s SqlProgrammeStore) ArchiveWithAudit(
 	}
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
-		"programmes.id": input.ID, "programmes.delete_at": int64(0),
+		"programmes.id": input.ID, "programmes.archived_at": nil,
 	})
 	if err := tx.GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("programme", input.ID, err)
@@ -396,25 +428,29 @@ func (s SqlProgrammeStore) ArchiveWithAudit(
 	var dependent bool
 	if err := tx.Get(ctx, &dependent, `
 		SELECT EXISTS (SELECT 1 FROM programme_levels
-		 WHERE programme_id = ? AND delete_at = 0)`, input.ID); err != nil {
+		 WHERE programme_id = ? AND archived_at IS NULL)`, input.ID); err != nil {
 		return nil, fmt.Errorf("check programme archive dependencies: %w", err)
 	}
 	if dependent {
 		return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE programmes SET update_at = ?, delete_at = ?
-		 WHERE id = ? AND delete_at = 0`, input.ArchiveAt, input.ArchiveAt, input.ID)
+		UPDATE programmes SET updated_at = ?, archived_at = ?, revision = revision + 1
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive programme: %w", err)
 	}
-	if err := requireAffected(result, "programme", input.ID); err != nil {
+	if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", input.ID); err != nil {
 		return nil, err
 	}
-	programme := row.model()
+	programme, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	at := model.TimeFromMillis(input.ArchiveAt)
 	programme.UpdatedAt = at
 	programme.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
+	programme.Revision++
 	encoded, appErr := model.EncodeAuditData(programme.Auditable())
 	if appErr != nil {
 		return nil, appErr
@@ -440,7 +476,7 @@ func lockProgrammeLifecycle(ctx context.Context, tx sqlxExecutor) error {
 func validateActiveAcademicUnit(ctx context.Context, executor sqlxExecutor, id string) error {
 	var exists bool
 	if err := executor.Get(ctx, &exists, `
-		SELECT EXISTS (SELECT 1 FROM academic_units WHERE id = ? AND delete_at = 0)`, id); err != nil {
+		SELECT EXISTS (SELECT 1 FROM academic_units WHERE id = ? AND archived_at IS NULL)`, id); err != nil {
 		return fmt.Errorf("validate programme academic unit: %w", err)
 	}
 	if !exists {
@@ -452,7 +488,7 @@ func validateActiveAcademicUnit(ctx context.Context, executor sqlxExecutor, id s
 func validateActiveProgramme(ctx context.Context, executor sqlxExecutor, id string) error {
 	var exists bool
 	if err := executor.Get(ctx, &exists, `
-		SELECT EXISTS (SELECT 1 FROM programmes WHERE id = ? AND delete_at = 0)`, id); err != nil {
+		SELECT EXISTS (SELECT 1 FROM programmes WHERE id = ? AND archived_at IS NULL)`, id); err != nil {
 		return fmt.Errorf("validate programme level programme: %w", err)
 	}
 	if !exists {
@@ -464,9 +500,10 @@ func validateActiveProgramme(ctx context.Context, executor sqlxExecutor, id stri
 func newProgrammeRow(programme *model.Programme) programmeRow {
 	return programmeRow{
 		ID:             programme.ID.String(),
-		CreateAt:       model.MillisFromTime(programme.CreatedAt),
-		UpdateAt:       model.MillisFromTime(programme.UpdatedAt),
-		DeleteAt:       programme.ArchivedAt.Millis(),
+		CreatedAt:      UTCTime(programme.CreatedAt),
+		UpdatedAt:      UTCTime(programme.UpdatedAt),
+		ArchivedAt:     NullTimeFromOptional(programme.ArchivedAt),
+		Revision:       programme.Revision,
 		AcademicUnitID: programme.AcademicUnitID.String(),
 		Name:           programme.Name,
 		DisplayName:    programme.DisplayName,
@@ -474,26 +511,30 @@ func newProgrammeRow(programme *model.Programme) programmeRow {
 	}
 }
 
-func (row programmeRow) model() *model.Programme {
+func (row programmeRow) model() (*model.Programme, error) {
 	id, err := model.ParseProgrammeID(row.ID)
 	if err != nil {
-		id = model.ProgrammeID(row.ID)
+		return nil, fmt.Errorf("rehydrate programme %q: %w", row.ID, err)
 	}
 	academicUnitID, err := model.ParseAcademicUnitID(row.AcademicUnitID)
 	if err != nil {
-		academicUnitID = model.AcademicUnitID(row.AcademicUnitID)
+		return nil, fmt.Errorf("rehydrate programme %q: %w", row.ID, err)
 	}
-	return &model.Programme{
+	programme := &model.Programme{
 		ID:             id,
-		CreatedAt:      model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:      model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:     model.OptionalTimeFromMillis(row.DeleteAt),
-		Revision:       1,
+		CreatedAt:      row.CreatedAt.UTC(),
+		UpdatedAt:      row.UpdatedAt.UTC(),
+		ArchivedAt:     OptionalTimeFromNullTime(row.ArchivedAt),
+		Revision:       row.Revision,
 		AcademicUnitID: academicUnitID,
 		Name:           row.Name,
 		DisplayName:    row.DisplayName,
 		Description:    row.Description,
 	}
+	if err := programme.Validate(); err != nil {
+		return nil, fmt.Errorf("rehydrate programme %q: %w", row.ID, err)
+	}
+	return programme, nil
 }
 
 var _ store.ProgrammeStore = (*SqlProgrammeStore)(nil)

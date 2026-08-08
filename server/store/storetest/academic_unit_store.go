@@ -48,7 +48,7 @@ func saveAcademicUnitAuditAttempt(
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionAcademicUnitManage),
-		Resource:  model.Resource{Type: model.ResourceAcademicUnit, Id: unitID},
+		Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: unitID},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID,
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
@@ -75,6 +75,15 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q, want success", completed.Status)
+	}
+	staleAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
+	stale := *unit
+	stale.DisplayName = "Stale Update"
+	stale.PrepareUpdate(model.NowUTC())
+	if _, err := ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+		Unit: &stale, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
+	}); !store.IsConflict(err) {
+		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
 	}
 
 	rolledBack := *updated
@@ -126,7 +135,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionInstitutionManage),
-		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
@@ -379,7 +388,7 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 
 	_, err = ss.AcademicUnit().Save(ctx, &model.AcademicUnit{
 		InstitutionID: second.ID,
-		ParentID: parent.ID,
+		ParentID:      parent.ID,
 		Name:          "computing",
 		DisplayName:   "Computing",
 	})
@@ -398,7 +407,7 @@ func testAcademicUnitStoreEnforceInstitutionNameUniqueness(t *testing.T, ss stor
 
 	_, err := ss.AcademicUnit().Save(ctx, &model.AcademicUnit{
 		InstitutionID: institution.ID,
-		ParentID: root.ID,
+		ParentID:      root.ID,
 		Name:          "computing",
 		DisplayName:   "Duplicate Computing",
 	})

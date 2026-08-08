@@ -46,7 +46,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		})
 		var conflict *store.ErrConflict
 		if !errors.As(err, &conflict) ||
-			conflict.Constraint != "external_identities_active_subject_key" {
+			conflict.Constraint != "external_identities_provider_subject_key" {
 			t.Fatalf("duplicate identity error = %v", err)
 		}
 	})
@@ -84,14 +84,14 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 		if len(audits) != 1 ||
 			audits[0].ActorID != resolved.User.ID ||
-			audits[0].Resource.Id != resolved.User.ID.String() {
+			audits[0].Resource.ID != resolved.User.ID.String() {
 			t.Fatalf("provision audits = %#v", audits)
 		}
 		again, err := ss.ExternalIdentity().ResolveOrProvision(
 			ctx,
 			&model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "new-subject",
-				LastSeenAt: model.OptionalTimeFromMillis(now+100),
+				LastSeenAt: model.OptionalTimeFromMillis(now + 100),
 			},
 			nil,
 			false,
@@ -132,7 +132,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		)
 		var conflict *store.ErrConflict
 		if !errors.As(err, &conflict) ||
-			conflict.Constraint != "users_active_email_key" {
+			conflict.Constraint != "users_email_key" {
 			t.Fatalf("email collision error = %v", err)
 		}
 		if _, err := ss.ExternalIdentity().GetByProviderSubject(

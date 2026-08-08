@@ -21,8 +21,8 @@ func TestBrowserCookiesAreBoundedSecureAndCSRFSigned(t *testing.T) {
 	cookies.now = func() time.Time { return now }
 	tokens := &model.AuthenticationTokens{
 		AccessToken: "access-secret", RefreshToken: "refresh-secret",
-		AccessExpiresAt:  now.Add(15 * time.Minute).UnixMilli(),
-		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
+		AccessExpiresAt:  now.Add(15 * time.Minute),
+		RefreshExpiresAt: now.Add(24 * time.Hour),
 	}
 	response := httptest.NewRecorder()
 	cookies.attach(response, tokens)

@@ -80,9 +80,9 @@ func (s *academicPeriodService) List(ctx context.Context, invocation Invocation,
 	}
 	var periods []*model.AcademicPeriod
 	if term := strings.TrimSpace(query.Query); term == "" {
-		periods, err = s.store.ListByInstitution(ctx, resource.Id)
+		periods, err = s.store.ListByInstitution(ctx, resource.ID)
 	} else {
-		periods, err = s.store.SearchByInstitution(ctx, resource.Id, term, normalizeAdministrationLimit(query.Limit))
+		periods, err = s.store.SearchByInstitution(ctx, resource.ID, term, normalizeAdministrationLimit(query.Limit))
 	}
 	if err != nil {
 		return nil, academicPeriodError(err)
@@ -106,7 +106,7 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "academic_period_id").Wrap(err)
 	}
-	institutionID, err := model.ParseInstitutionID(resource.Id)
+	institutionID, err := model.ParseInstitutionID(resource.ID)
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "institution_id").Wrap(err)
 	}

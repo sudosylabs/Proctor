@@ -105,7 +105,7 @@ func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
 	events := []string{}
 	userID := model.NewId()
 	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
-	invocation := NewInvocation(model.Principal{UserId: userID}, model.RequestMetadata{})
+	invocation := NewInvocation(model.Principal{UserID: model.UserID(userID)}, model.RequestMetadata{})
 	_, err := service.SetEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: userID, Enabled: false})
 	if !Is(err, "request.invalid") {
 		t.Fatalf("error = %v", err)

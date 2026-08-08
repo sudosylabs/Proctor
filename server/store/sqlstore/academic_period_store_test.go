@@ -23,7 +23,7 @@ func TestAcademicPeriodRowConversion(t *testing.T) {
 		CreatedAt:     model.TimeFromMillis(1),
 		UpdatedAt:     model.TimeFromMillis(2),
 		ArchivedAt:    model.OptionalTimeFromMillis(3),
-		Revision:      1,
+		Revision:      7,
 		InstitutionID: institutionID,
 		Name:          "2026-2027",
 		DisplayName:   "Academic Year 2026-2027",
@@ -32,10 +32,17 @@ func TestAcademicPeriodRowConversion(t *testing.T) {
 		EndsAt:        model.TimeFromMillis(5),
 	}
 	row := newAcademicPeriodRow(period)
-	if got := row.model(); *got != *period {
+	got, err := row.model()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got != *period {
 		t.Fatalf("row.model() = %#v, want %#v", got, period)
 	}
-	if row.CreateAt != 1 || row.UpdateAt != 2 || row.DeleteAt != 3 || row.StartAt != 4 || row.EndAt != 5 {
-		t.Fatalf("row millis = %#v", row)
+	if !row.CreatedAt.Equal(period.CreatedAt) ||
+		!row.UpdatedAt.Equal(period.UpdatedAt) ||
+		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(period.ArchivedAt.Time) ||
+		!row.StartAt.Equal(period.StartsAt) || !row.EndAt.Equal(period.EndsAt) {
+		t.Fatalf("row times = %#v", row)
 	}
 }

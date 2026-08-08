@@ -50,10 +50,10 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{
-		UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(),
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
-		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli(),
+		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
 	}
 	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId()), Name: "computer-science", DisplayName: "Computer Science"}
 	programmes := &programmeHTTPApplication{result: programme}

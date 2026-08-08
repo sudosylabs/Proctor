@@ -65,7 +65,7 @@ func (s *institutionService) Get(
 	}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionInstitutionManage,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.ResourceID()},
+		model.Resource{Type: model.ResourceInstitution, ID: institution.ResourceID()},
 	); err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (s *institutionService) Update(
 	if err != nil {
 		return nil, institutionError(err)
 	}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: current.ResourceID()}
+	resource := model.Resource{Type: model.ResourceInstitution, ID: current.ResourceID()}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionInstitutionManage, resource,
 	); err != nil {

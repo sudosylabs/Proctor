@@ -37,10 +37,26 @@ type Event struct {
 	Id       string          `json:"id"`
 	Event    string          `json:"event"`
 	Sequence int64           `json:"sequence"`
-	UserId   string          `json:"user_id,omitempty"`
+	UserID   string          `json:"user_id,omitempty"`
 	Action   model.Action    `json:"action,omitempty"`
-	Resource model.Resource  `json:"resource,omitempty"`
+	Resource Resource        `json:"resource,omitempty"`
 	Data     json.RawMessage `json:"data,omitempty"`
+}
+
+// Resource is the WebSocket wire projection of a domain authorization
+// resource. Keeping this DTO here prevents domain field names from silently
+// changing the versioned protocol.
+type Resource struct {
+	Type model.ResourceType `json:"type"`
+	ID   string             `json:"id"`
+}
+
+func resourceFromModel(resource model.Resource) Resource {
+	return Resource{Type: resource.Type, ID: resource.ID}
+}
+
+func (r Resource) model() model.Resource {
+	return model.Resource{Type: r.Type, ID: r.ID}
 }
 
 // Clone returns a deep copy safe for concurrent delivery.
@@ -68,16 +84,16 @@ func (e *Event) ValidateForPublish() error {
 	if e.Sequence != 0 {
 		return errors.New("websocket event sequence must be assigned by the connection")
 	}
-	if e.UserId != "" && !model.IsValidId(e.UserId) {
+	if e.UserID != "" && !model.IsValidId(e.UserID) {
 		return errors.New("websocket event user ID is invalid")
 	}
-	if e.Action == "" && e.Resource == (model.Resource{}) {
-		if e.UserId == "" {
+	if e.Action == "" && e.Resource == (Resource{}) {
+		if e.UserID == "" {
 			return errors.New("websocket event requires a user target or authorized resource")
 		}
 	} else {
 		definition, ok := model.DefinitionForAction(e.Action)
-		if !ok || !e.Resource.IsValid() || definition.ResourceType != e.Resource.Type {
+		if !ok || e.Resource.model().Validate() != nil || definition.ResourceType != e.Resource.Type {
 			return errors.New("websocket event authorization target is invalid")
 		}
 	}
@@ -92,19 +108,19 @@ func (e *Event) ValidateForPublish() error {
 
 // Subscription is the wire form of an action/resource subscription.
 type Subscription struct {
-	Action   model.Action   `json:"action"`
-	Resource model.Resource `json:"resource"`
+	Action   model.Action `json:"action"`
+	Resource Resource     `json:"resource"`
 }
 
 // IsValid reports whether the subscription targets a recognized action/resource.
 func (s Subscription) IsValid() bool {
 	definition, ok := model.DefinitionForAction(s.Action)
-	return ok && s.Resource.IsValid() && definition.ResourceType == s.Resource.Type
+	return ok && s.Resource.model().Validate() == nil && definition.ResourceType == s.Resource.Type
 }
 
 // Key uniquely identifies a subscription for connection-local storage.
 func (s Subscription) Key() string {
-	return string(s.Action) + "\x00" + string(s.Resource.Type) + "\x00" + s.Resource.Id
+	return string(s.Action) + "\x00" + string(s.Resource.Type) + "\x00" + s.Resource.ID
 }
 
 // Request is a client-to-server WebSocket command envelope.

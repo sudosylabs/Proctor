@@ -3,9 +3,21 @@
 
 package model
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type CredentialType string
+
+// PrincipalCredentialID identifies the concrete credential that established
+// a principal. It is intentionally distinct from persistence IDs because the
+// credential may be either a session credential or a personal access token.
+type PrincipalCredentialID string
+
+func (id PrincipalCredentialID) IsValid() bool { return IsValidId(string(id)) }
+
+func (id PrincipalCredentialID) String() string { return string(id) }
 
 const (
 	CredentialSessionAccess       CredentialType = "session_access"
@@ -16,61 +28,66 @@ const (
 // It deliberately excludes roles, permissions, affiliations, and academic
 // memberships because authorization must resolve current durable state.
 type Principal struct {
-	UserId                 string                 `json:"user_id"`
-	SessionId              string                 `json:"session_id"`
-	CredentialId           string                 `json:"credential_id"`
-	CredentialType         CredentialType         `json:"credential_type"`
-	AuthenticationMethod   string                 `json:"authentication_method"`
-	AuthenticationStrength AuthenticationStrength `json:"authentication_strength"`
-	ClientType             SessionClientType      `json:"client_type"`
-	AuthenticatedAt        int64                  `json:"authenticated_at"`
-	MFACompletedAt         int64                  `json:"mfa_completed_at,omitempty"`
-	CredentialScopes       []string               `json:"credential_scopes,omitempty"`
-	AcademicUnitId         string                 `json:"academic_unit_id,omitempty"`
+	UserID                 UserID
+	SessionID              SessionID
+	CredentialID           PrincipalCredentialID
+	CredentialType         CredentialType
+	AuthenticationMethod   string
+	AuthenticationStrength AuthenticationStrength
+	ClientType             SessionClientType
+	AuthenticatedAt        time.Time
+	MFACompletedAt         OptionalTime
+	CredentialScopes       []string
+	AcademicUnitID         AcademicUnitID
 }
 
 // AuthenticationTokens contains raw credentials returned exactly once after
 // login or refresh. These values must never be persisted, audited, or logged.
 type AuthenticationTokens struct {
-	AccessToken      string `json:"access_token"`
-	RefreshToken     string `json:"refresh_token"`
-	AccessExpiresAt  int64  `json:"access_expires_at"`
-	RefreshExpiresAt int64  `json:"refresh_expires_at"`
+	AccessToken      string
+	RefreshToken     string
+	AccessExpiresAt  time.Time
+	RefreshExpiresAt time.Time
 }
 
-func (p Principal) IsValid() bool {
-	if !IsValidId(p.UserId) || !IsValidId(p.CredentialId) ||
+// Validate checks that the immutable authentication context is internally
+// consistent for its credential type.
+func (p Principal) Validate() error {
+	if !p.UserID.IsValid() || !p.CredentialID.IsValid() ||
 		p.AuthenticationMethod == "" || !p.ClientType.IsValid() {
-		return false
+		return errors.New("model: principal identity is invalid")
 	}
 	switch p.CredentialType {
 	case CredentialSessionAccess:
-		return IsValidId(p.SessionId) &&
-			p.AuthenticationStrength.IsValid() &&
-			p.AuthenticatedAt > 0 &&
-			len(p.CredentialScopes) == 0 &&
-			p.AcademicUnitId == ""
+		if !p.SessionID.IsValid() ||
+			!p.AuthenticationStrength.IsValid() ||
+			p.AuthenticatedAt.IsZero() ||
+			len(p.CredentialScopes) != 0 ||
+			!p.AcademicUnitID.IsZero() {
+			return errors.New("model: session principal is invalid")
+		}
+		return nil
 	case CredentialPersonalAccessToken:
-		if p.SessionId != "" || p.AuthenticationStrength != "" ||
-			p.AuthenticatedAt != 0 || p.MFACompletedAt != 0 ||
+		if !p.SessionID.IsZero() || p.AuthenticationStrength != "" ||
+			!p.AuthenticatedAt.IsZero() || p.MFACompletedAt.Valid ||
 			p.ClientType != SessionClientCLI ||
 			len(p.CredentialScopes) == 0 ||
-			(p.AcademicUnitId != "" && !IsValidId(p.AcademicUnitId)) {
-			return false
+			(!p.AcademicUnitID.IsZero() && !p.AcademicUnitID.IsValid()) {
+			return errors.New("model: personal access token principal is invalid")
 		}
 		seen := make(map[string]struct{}, len(p.CredentialScopes))
 		for _, scope := range p.CredentialScopes {
 			if !IsKnownAction(scope) {
-				return false
+				return errors.New("model: personal access token scope is invalid")
 			}
 			if _, exists := seen[scope]; exists {
-				return false
+				return errors.New("model: personal access token scope is duplicated")
 			}
 			seen[scope] = struct{}{}
 		}
-		return true
+		return nil
 	default:
-		return false
+		return errors.New("model: principal credential type is invalid")
 	}
 }
 
@@ -78,9 +95,9 @@ func (p Principal) HasStrongAuthentication() bool {
 	return p.AuthenticationStrength == AuthenticationMultiFactor
 }
 
-func (p Principal) LastAuthenticationAt() int64 {
-	if p.MFACompletedAt > p.AuthenticatedAt {
-		return p.MFACompletedAt
+func (p Principal) LastAuthenticationAt() time.Time {
+	if p.MFACompletedAt.Valid && p.MFACompletedAt.Time.After(p.AuthenticatedAt) {
+		return p.MFACompletedAt.Time
 	}
 	return p.AuthenticatedAt
 }
@@ -90,8 +107,8 @@ func (p Principal) IsRecentlyAuthenticated(now time.Time, maximumAge time.Durati
 		return false
 	}
 	authenticatedAt := p.LastAuthenticationAt()
-	current := now.UnixMilli()
-	return authenticatedAt > 0 &&
-		authenticatedAt <= current &&
-		current-authenticatedAt <= maximumAge.Milliseconds()
+	now = TimeUTC(now)
+	return !authenticatedAt.IsZero() &&
+		!authenticatedAt.After(now) &&
+		now.Sub(authenticatedAt) <= maximumAge
 }

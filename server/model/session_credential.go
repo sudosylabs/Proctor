@@ -17,7 +17,7 @@ const (
 // the application to detect replay and revoke the entire family.
 //
 // Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
-// Soft archive uses ArchivedAt (legacy delete_at). TokenHash is excluded from
+// Soft archive uses ArchivedAt. TokenHash is excluded from
 // JSON and must never be logged or audited.
 type SessionCredential struct {
 	ID           SessionCredentialID
@@ -197,7 +197,6 @@ func (sc *SessionCredential) Auditable() map[string]any {
 		"created_at":     MillisFromTime(sc.CreatedAt),
 		"updated_at":     MillisFromTime(sc.UpdatedAt),
 		"archived_at":    sc.ArchivedAt.Millis(),
-		"delete_at":      sc.ArchivedAt.Millis(),
 		"session_id":     sc.SessionID.String(),
 		"kind":           sc.Kind,
 		"family_id":      sc.FamilyID,

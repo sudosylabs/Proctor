@@ -47,7 +47,7 @@ var restrictedUsernames = map[string]struct{}{
 // method without overloading the profile.
 //
 // Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
-// Soft archive uses ArchivedAt (legacy delete_at). Revision supports optimistic
+// Soft archive uses ArchivedAt. Revision supports optimistic
 // concurrency on profile updates.
 type User struct {
 	ID             UserID
@@ -237,16 +237,15 @@ func (u *User) Auditable() map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"id":            u.ID.String(),
-		"created_at":    MillisFromTime(u.CreatedAt),
-		"updated_at":    MillisFromTime(u.UpdatedAt),
-		"archived_at":   u.ArchivedAt.Millis(),
-		"delete_at":     u.ArchivedAt.Millis(), // legacy audit key during expand
-		"revision":      u.Revision,
-		"username":      u.Username,
+		"id":             u.ID.String(),
+		"created_at":     MillisFromTime(u.CreatedAt),
+		"updated_at":     MillisFromTime(u.UpdatedAt),
+		"archived_at":    u.ArchivedAt.Millis(),
+		"revision":       u.Revision,
+		"username":       u.Username,
 		"email_verified": u.EmailVerified,
-		"disabled_at":   u.DisabledAt.Millis(),
-		"last_login_at": u.LastLoginAt.Millis(),
+		"disabled_at":    u.DisabledAt.Millis(),
+		"last_login_at":  u.LastLoginAt.Millis(),
 	}
 }
 

@@ -9,7 +9,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -24,21 +26,21 @@ type SqlAcademicUnitMemberStore struct {
 
 // academicUnitMemberRow is the legacy integer-millisecond column layout.
 type academicUnitMemberRow struct {
-	ID             string `db:"id"`
-	CreateAt       int64  `db:"create_at"`
-	UpdateAt       int64  `db:"update_at"`
-	DeleteAt       int64  `db:"delete_at"`
-	Revision       int64  `db:"revision"`
-	AcademicUnitID string `db:"academic_unit_id"`
-	UserID         string `db:"user_id"`
-	StartAt        int64  `db:"start_at"`
-	EndAt          int64  `db:"end_at"`
+	ID             string       `db:"id"`
+	CreatedAt      time.Time    `db:"created_at"`
+	UpdatedAt      time.Time    `db:"updated_at"`
+	ArchivedAt     sql.NullTime `db:"archived_at"`
+	Revision       int64        `db:"revision"`
+	AcademicUnitID string       `db:"academic_unit_id"`
+	UserID         string       `db:"user_id"`
+	StartAt        time.Time    `db:"start_at"`
+	EndAt          sql.NullTime `db:"end_at"`
 }
 
 func academicUnitMemberColumns() []string {
 	return []string{
-		"academic_unit_members.id", "academic_unit_members.create_at",
-		"academic_unit_members.update_at", "academic_unit_members.delete_at",
+		"academic_unit_members.id", "academic_unit_members.created_at",
+		"academic_unit_members.updated_at", "academic_unit_members.archived_at",
 		"academic_unit_members.revision",
 		"academic_unit_members.academic_unit_id", "academic_unit_members.user_id",
 		"academic_unit_members.start_at", "academic_unit_members.end_at",
@@ -78,9 +80,9 @@ func (s SqlAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	}
 	row := newAcademicUnitMemberRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `INSERT INTO academic_unit_members (
-		id, create_at, update_at, delete_at, revision, academic_unit_id, user_id, start_at, end_at
+		id, created_at, updated_at, archived_at, revision, academic_unit_id, user_id, start_at, end_at
 	) VALUES (
-		:id, :create_at, :update_at, :delete_at, :revision, :academic_unit_id, :user_id, :start_at, :end_at
+		:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id, :user_id, :start_at, :end_at
 	)`, &row); err != nil {
 		return nil, fmt.Errorf("create academic unit member: %w", translateError("academic_unit_member", candidate.ID.String(), err))
 	}
@@ -137,10 +139,10 @@ func (s SqlAcademicUnitMemberStore) Save(
 	}
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO academic_unit_members (
-			id, create_at, update_at, delete_at, revision, academic_unit_id,
+			id, created_at, updated_at, archived_at, revision, academic_unit_id,
 			user_id, start_at, end_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :revision, :academic_unit_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
 			:user_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
@@ -160,8 +162,8 @@ func (s SqlAcademicUnitMemberStore) Get(
 ) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"academic_unit_members.id":        id,
-		"academic_unit_members.delete_at": int64(0),
+		"academic_unit_members.id":          id,
+		"academic_unit_members.archived_at": nil,
 	})); err != nil {
 		return nil, translateError("academic_unit_member", id, err)
 	}
@@ -173,8 +175,8 @@ func (s SqlAcademicUnitMemberStore) ListByUser(
 	userID string,
 ) ([]*model.AcademicUnitMember, error) {
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
-		"academic_unit_members.user_id":   userID,
-		"academic_unit_members.delete_at": int64(0),
+		"academic_unit_members.user_id":     userID,
+		"academic_unit_members.archived_at": nil,
 	}).OrderBy("academic_unit_members.start_at DESC", "academic_unit_members.id"))
 }
 
@@ -185,11 +187,12 @@ func (s SqlAcademicUnitMemberStore) ListByAcademicUnit(
 ) ([]*model.AcademicUnitMember, error) {
 	query := s.query.Where(sq.Eq{
 		"academic_unit_members.academic_unit_id": unitID,
-		"academic_unit_members.delete_at":        int64(0),
+		"academic_unit_members.archived_at":      nil,
 	})
 	if at > 0 {
-		query = query.Where(sq.LtOrEq{"academic_unit_members.start_at": at}).
-			Where("(academic_unit_members.end_at = 0 OR academic_unit_members.end_at > ?)", at)
+		activeAt := model.TimeFromMillis(at)
+		query = query.Where(sq.LtOrEq{"academic_unit_members.start_at": activeAt}).
+			Where("(academic_unit_members.end_at IS NULL OR academic_unit_members.end_at > ?)", activeAt)
 	}
 	return s.selectMembers(ctx, query.OrderBy("academic_unit_members.user_id", "academic_unit_members.id"))
 }
@@ -199,11 +202,12 @@ func (s SqlAcademicUnitMemberStore) ListActiveByUser(
 	userID string,
 	at int64,
 ) ([]*model.AcademicUnitMember, error) {
+	activeAt := model.TimeFromMillis(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
-		"academic_unit_members.user_id":   userID,
-		"academic_unit_members.delete_at": int64(0),
-	}).Where(sq.LtOrEq{"academic_unit_members.start_at": at}).
-		Where("(academic_unit_members.end_at = 0 OR academic_unit_members.end_at > ?)", at).
+		"academic_unit_members.user_id":     userID,
+		"academic_unit_members.archived_at": nil,
+	}).Where(sq.LtOrEq{"academic_unit_members.start_at": activeAt}).
+		Where("(academic_unit_members.end_at IS NULL OR academic_unit_members.end_at > ?)", activeAt).
 		OrderBy("academic_unit_members.academic_unit_id", "academic_unit_members.id"))
 }
 
@@ -265,7 +269,7 @@ func (s SqlAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *sto
 
 func (s SqlAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
-	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.delete_at": int64(0)})); err != nil {
+	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.archived_at": nil})); err != nil {
 		return nil, translateError("academic_unit_member", id, err)
 	}
 	current := row.model()
@@ -277,14 +281,14 @@ func (s SqlAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
 		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_end_time", nil)
 	}
-	result, err := tx.Exec(ctx, `UPDATE academic_unit_members SET update_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND delete_at = 0 AND revision = ?`, endAt, endAt, id, expectedRevision)
+	at := model.TimeFromMillis(endAt)
+	result, err := tx.Exec(ctx, `UPDATE academic_unit_members SET updated_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("end academic unit member: %w", err)
 	}
 	if err := requireAffected(result, "academic_unit_member", id); err != nil {
 		return nil, err
 	}
-	at := model.TimeFromMillis(endAt)
 	current.UpdatedAt = at
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1
@@ -306,12 +310,12 @@ func lockAcademicUnitMember(ctx context.Context, executor sqlxExecutor, unitID, 
 }
 
 func ensureAcademicUnitMemberRangeAvailable(ctx context.Context, executor sqlxExecutor, candidate *model.AcademicUnitMember) error {
-	startAt := model.MillisFromTime(candidate.StartsAt)
-	endAt := candidate.EndsAt.Millis()
+	startAt := candidate.StartsAt
+	endAt := NullTimeFromOptional(candidate.EndsAt)
 	var overlaps bool
 	if err := executor.Get(ctx, &overlaps, `SELECT EXISTS (
-		SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND user_id = ? AND delete_at = 0
-		 AND (end_at = 0 OR end_at > ?) AND (? = 0 OR start_at < ?)
+		SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND user_id = ? AND archived_at IS NULL
+		 AND (end_at IS NULL OR end_at > ?) AND (CAST(? AS timestamptz) IS NULL OR start_at < ?)
 	)`, candidate.AcademicUnitID.String(), candidate.UserID.String(), startAt, endAt, endAt); err != nil {
 		return fmt.Errorf("check academic unit member overlap: %w", err)
 	}
@@ -339,14 +343,14 @@ func (s SqlAcademicUnitMemberStore) selectMembers(
 func newAcademicUnitMemberRow(m *model.AcademicUnitMember) academicUnitMemberRow {
 	return academicUnitMemberRow{
 		ID:             m.ID.String(),
-		CreateAt:       model.MillisFromTime(m.CreatedAt),
-		UpdateAt:       model.MillisFromTime(m.UpdatedAt),
-		DeleteAt:       m.ArchivedAt.Millis(),
+		CreatedAt:      UTCTime(m.CreatedAt),
+		UpdatedAt:      UTCTime(m.UpdatedAt),
+		ArchivedAt:     NullTimeFromOptional(m.ArchivedAt),
 		AcademicUnitID: m.AcademicUnitID.String(),
 		Revision:       m.Revision,
 		UserID:         m.UserID.String(),
-		StartAt:        model.MillisFromTime(m.StartsAt),
-		EndAt:          m.EndsAt.Millis(),
+		StartAt:        UTCTime(m.StartsAt),
+		EndAt:          NullTimeFromOptional(m.EndsAt),
 	}
 }
 
@@ -365,14 +369,14 @@ func (r academicUnitMemberRow) model() *model.AcademicUnitMember {
 	}
 	return &model.AcademicUnitMember{
 		ID:             id,
-		CreatedAt:      model.TimeFromMillis(r.CreateAt),
-		UpdatedAt:      model.TimeFromMillis(r.UpdateAt),
-		ArchivedAt:     model.OptionalTimeFromMillis(r.DeleteAt),
+		CreatedAt:      r.CreatedAt.UTC(),
+		UpdatedAt:      r.UpdatedAt.UTC(),
+		ArchivedAt:     OptionalTimeFromNullTime(r.ArchivedAt),
 		AcademicUnitID: unitID,
 		Revision:       r.Revision,
 		UserID:         userID,
-		StartsAt:       model.TimeFromMillis(r.StartAt),
-		EndsAt:         model.OptionalTimeFromMillis(r.EndAt),
+		StartsAt:       r.StartAt.UTC(),
+		EndsAt:         OptionalTimeFromNullTime(r.EndAt),
 	}
 }
 

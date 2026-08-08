@@ -7,14 +7,41 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
-
-	"github.com/sudosylabs/proctor/server/model"
 )
 
+var baselineTables = []string{
+	"academic_periods",
+	"academic_unit_members",
+	"academic_units",
+	"affiliations",
+	"audit_events",
+	"class_members",
+	"classes",
+	"cluster_discovery_nodes",
+	"external_identities",
+	"external_login_states",
+	"installation_states",
+	"institutions",
+	"mfa_credentials",
+	"mfa_recovery_codes",
+	"password_credentials",
+	"personal_access_tokens",
+	"programme_levels",
+	"programmes",
+	"role_bindings",
+	"roles",
+	"session_credentials",
+	"sessions",
+	"user_tokens",
+	"users",
+}
+
 func TestMigrationsRoundTrip(t *testing.T) {
-	settings := testSettings(t)
-	migrator, err := NewMigrator(context.Background(), settings)
+	ctx := context.Background()
+	migrator, err := NewMigrator(ctx, testSettings(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,134 +50,164 @@ func TestMigrationsRoundTrip(t *testing.T) {
 			t.Errorf("close migrator: %v", err)
 		}
 	})
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("Up() error = %v", err)
-	}
-	pending, err := migrator.Pending()
-	if err != nil || len(pending) != 0 {
-		t.Fatalf("Pending() = %d, %v", len(pending), err)
-	}
-	version, err := migrator.SchemaVersion(context.Background())
-	if err != nil || version != 11 {
-		t.Fatalf("SchemaVersion() = %d, %v", version, err)
-	}
 
-	ctx := context.Background()
+	// Other integration tests share this disposable database and may have
+	// already installed the baseline. Roll it back first so this test always
+	// proves that version zero can be built solely from the squashed baseline.
+	version, err := migrator.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("read initial schema version: %v", err)
+	}
+	switch version {
+	case 0:
+	case 1:
+		truncateBaselineTables(t, ctx, migrator)
+		rolledBack, err := migrator.Down(1)
+		if err != nil || rolledBack != 1 {
+			t.Fatalf("prepare version-zero database: Down(1) = %d, %v", rolledBack, err)
+		}
+	default:
+		t.Fatalf("database schema version = %d; recreate this pre-release development database before testing baseline version 1", version)
+	}
+	assertBaselineAbsent(t, ctx, migrator)
+
+	if err := migrator.Up(); err != nil {
+		t.Fatalf("first Up() error = %v", err)
+	}
+	assertBaselineSchema(t, ctx, migrator)
+
+	truncateBaselineTables(t, ctx, migrator)
 	rolledBack, err := migrator.Down(1)
 	if err != nil || rolledBack != 1 {
 		t.Fatalf("Down(1) = %d, %v", rolledBack, err)
 	}
-	var discoveryTableRemoved bool
-	if err := migrator.store.GetMaster().Get(ctx, &discoveryTableRemoved, `
-		SELECT to_regclass('public.cluster_discovery_nodes') IS NULL
-	`); err != nil || !discoveryTableRemoved {
-		t.Fatalf("cluster-discovery rollback = %v, %v", discoveryTableRemoved, err)
-	}
+	assertBaselineAbsent(t, ctx, migrator)
+
 	if err := migrator.Up(); err != nil {
-		t.Fatalf("restore cluster-discovery migration: %v", err)
+		t.Fatalf("second Up() error = %v", err)
 	}
-	rolledBack, err = migrator.Down(2)
-	if err != nil || rolledBack != 2 {
-		t.Fatalf("Down(2) external-login-state = %d, %v", rolledBack, err)
+	assertBaselineSchema(t, ctx, migrator)
+}
+
+func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator) {
+	t.Helper()
+
+	pending, err := migrator.Pending()
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("Pending() = %d, %v", len(pending), err)
 	}
-	var externalStateTableRemoved bool
-	if err := migrator.store.GetMaster().Get(ctx, &externalStateTableRemoved, `
-		SELECT to_regclass('public.external_login_states') IS NULL
-	`); err != nil || !externalStateTableRemoved {
-		t.Fatalf("external-login-state rollback = %v, %v", externalStateTableRemoved, err)
+	version, err := migrator.SchemaVersion(ctx)
+	if err != nil || version != 1 {
+		t.Fatalf("SchemaVersion() = %d, %v; want 1", version, err)
 	}
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("restore external-login-state migration: %v", err)
+
+	var tables []string
+	if err := migrator.store.GetMaster().Select(ctx, &tables, `
+		SELECT table_name
+		  FROM information_schema.tables
+		 WHERE table_schema = 'public'
+		   AND table_type = 'BASE TABLE'
+		   AND table_name NOT IN ('db_lock', 'db_migrations')
+		 ORDER BY table_name
+	`); err != nil {
+		t.Fatalf("list baseline tables: %v", err)
 	}
-	rolledBack, err = migrator.Down(3)
-	if err != nil || rolledBack != 3 {
-		t.Fatalf("Down(3) session actions = %d, %v", rolledBack, err)
+	if !slices.Equal(tables, baselineTables) {
+		t.Fatalf("baseline tables = %v; want %v", tables, baselineTables)
 	}
-	var sessionActionsRemoved bool
-	if err := migrator.store.GetMaster().Get(ctx, &sessionActionsRemoved, `
-		SELECT NOT EXISTS (
-			SELECT 1 FROM roles
-			 WHERE name = 'system_admin' AND built_in AND delete_at = 0
-			   AND permissions && ARRAY['session.view', 'session.manage']
-		)`); err != nil || !sessionActionsRemoved {
-		t.Fatalf("session-action rollback = %v, %v", sessionActionsRemoved, err)
+
+	type temporalColumn struct {
+		TableName  string `db:"table_name"`
+		ColumnName string `db:"column_name"`
+		DataType   string `db:"data_type"`
 	}
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("restore session-action migration: %v", err)
+	var temporalColumns []temporalColumn
+	if err := migrator.store.GetMaster().Select(ctx, &temporalColumns, `
+		SELECT table_name, column_name, data_type
+		  FROM information_schema.columns
+		 WHERE table_schema = 'public'
+		   AND table_name = ANY (
+		       ARRAY(SELECT table_name
+		               FROM information_schema.tables
+		              WHERE table_schema = 'public'
+		                AND table_name NOT IN ('db_lock', 'db_migrations'))
+		   )
+		   AND column_name LIKE '%\_at' ESCAPE '\'
+		 ORDER BY table_name, ordinal_position
+	`); err != nil {
+		t.Fatalf("inspect temporal columns: %v", err)
 	}
-	rolledBack, err = migrator.Down(7)
-	if err != nil || rolledBack != 7 {
-		t.Fatalf("Down(7) = %d, %v", rolledBack, err)
+	if len(temporalColumns) == 0 {
+		t.Fatal("baseline contains no temporal columns")
 	}
-	if _, err := migrator.store.GetMaster().Exec(ctx, `
-		TRUNCATE TABLE
-			installation_state, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions,
-			role_bindings, roles, class_members, academic_unit_members,
-			affiliations, password_credentials, external_identities, users,
-			classes, academic_periods, programme_levels, programmes,
-			academic_units, institutions CASCADE`); err != nil {
-		t.Fatalf("truncate before reconciliation migration: %v", err)
+	for _, column := range temporalColumns {
+		if column.DataType != "timestamp with time zone" {
+			t.Errorf("%s.%s type = %q; want timestamp with time zone", column.TableName, column.ColumnName, column.DataType)
+		}
 	}
-	if _, err := migrator.store.GetMaster().Exec(
-		ctx,
-		`INSERT INTO roles (
-			id, create_at, update_at, delete_at, name, display_name,
-			description, permissions, built_in
-		) VALUES (?, ?, ?, 0, 'system_admin', 'System Administrator', '', ARRAY['institution.manage'], true)`,
-		model.NewId(),
-		model.GetMillis(),
-		model.GetMillis(),
-	); err != nil {
-		t.Fatalf("insert pre-migration system administrator: %v", err)
+
+	for _, column := range []struct {
+		table string
+		name  string
+	}{
+		{table: "institutions", name: "archived_at"},
+		{table: "users", name: "disabled_at"},
+		{table: "affiliations", name: "end_at"},
+		{table: "academic_unit_members", name: "end_at"},
+		{table: "class_members", name: "end_at"},
+		{table: "role_bindings", name: "end_at"},
+		{table: "sessions", name: "revoked_at"},
+		{table: "session_credentials", name: "used_at"},
+		{table: "personal_access_tokens", name: "last_used_at"},
+		{table: "user_tokens", name: "consumed_at"},
+		{table: "mfa_credentials", name: "pending_expires_at"},
+		{table: "mfa_recovery_codes", name: "consumed_at"},
+		{table: "external_login_states", name: "consumed_at"},
+	} {
+		var nullable string
+		if err := migrator.store.GetMaster().Get(ctx, &nullable, `
+			SELECT is_nullable
+			  FROM information_schema.columns
+			 WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+		`, column.table, column.name); err != nil {
+			t.Errorf("inspect %s.%s nullability: %v", column.table, column.name, err)
+			continue
+		}
+		if nullable != "YES" {
+			t.Errorf("%s.%s is_nullable = %q; want YES", column.table, column.name, nullable)
+		}
 	}
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("reconciliation Up() error = %v", err)
+}
+
+func assertBaselineAbsent(t *testing.T, ctx context.Context, migrator *Migrator) {
+	t.Helper()
+
+	version, err := migrator.SchemaVersion(ctx)
+	if err != nil || version != 0 {
+		t.Fatalf("SchemaVersion() after rollback = %d, %v; want 0", version, err)
 	}
-	var reconciled bool
-	if err := migrator.store.GetMaster().Get(
-		ctx,
-		&reconciled,
-		`SELECT permissions @> ARRAY[
-			'user.view', 'user.manage', 'session.view', 'session.manage'
-		]
-		 FROM roles WHERE name = 'system_admin'`,
-	); err != nil || !reconciled {
-		t.Fatalf("system administrator reconciliation = %v, %v", reconciled, err)
+	for _, table := range baselineTables {
+		var absent bool
+		query := fmt.Sprintf("SELECT to_regclass('public.%s') IS NULL", table)
+		if err := migrator.store.GetMaster().Get(ctx, &absent, query); err != nil || !absent {
+			t.Errorf("table %s absent after rollback = %v, %v", table, absent, err)
+		}
 	}
-	rolledBack, err = migrator.Down(7)
-	if err != nil || rolledBack != 7 {
-		t.Fatalf("reconciliation Down(7) = %d, %v", rolledBack, err)
-	}
-	var removed bool
-	if err := migrator.store.GetMaster().Get(
-		ctx,
-		&removed,
-		`SELECT NOT (permissions && ARRAY[
-			'user.view', 'user.manage', 'session.view', 'session.manage'
-		])
-		 FROM roles WHERE name = 'system_admin'`,
-	); err != nil || !removed {
-		t.Fatalf("system administrator reconciliation rollback = %v, %v", removed, err)
-	}
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("restore reconciliation migration: %v", err)
-	}
+}
+
+func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrator) {
+	t.Helper()
 
 	if _, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
-			cluster_discovery_nodes, external_login_states, installation_state, audit_events, mfa_recovery_codes, mfa_credentials,
-			user_tokens, personal_access_tokens, session_credentials, sessions,
-			role_bindings, roles, class_members, academic_unit_members,
-			affiliations, password_credentials, external_identities, users,
-			classes, academic_periods, programme_levels, programmes,
-			academic_units, institutions CASCADE`); err != nil {
-		t.Fatalf("truncate before down migrations: %v", err)
-	}
-	rolledBack, err = migrator.Down(11)
-	if err != nil || rolledBack != 11 {
-		t.Fatalf("Down(11) = %d, %v", rolledBack, err)
-	}
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("second Up() error = %v", err)
+			cluster_discovery_nodes, external_login_states, installation_states,
+			audit_events, mfa_recovery_codes, mfa_credentials, user_tokens,
+			personal_access_tokens, session_credentials, sessions, role_bindings,
+			roles, class_members, academic_unit_members, affiliations,
+			password_credentials, external_identities, users, classes,
+			academic_periods, programme_levels, programmes, academic_units,
+			institutions CASCADE
+	`); err != nil {
+		t.Fatalf("truncate baseline tables: %v", err)
 	}
 }

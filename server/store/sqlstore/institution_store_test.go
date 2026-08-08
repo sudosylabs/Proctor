@@ -19,16 +19,22 @@ func TestInstitutionRowConversion(t *testing.T) {
 		CreatedAt:   model.TimeFromMillis(1),
 		UpdatedAt:   model.TimeFromMillis(2),
 		ArchivedAt:  model.OptionalTimeFromMillis(3),
-		Revision:    1,
+		Revision:    7,
 		Name:        "northbridge",
 		DisplayName: "Northbridge",
 		Description: "University",
 	}
 	row := newInstitutionRow(institution)
-	if got := row.model(); *got != *institution {
+	got, err := row.model()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got != *institution {
 		t.Fatalf("row.model() = %#v, want %#v", got, institution)
 	}
-	if row.CreateAt != 1 || row.UpdateAt != 2 || row.DeleteAt != 3 {
-		t.Fatalf("row millis = %#v", row)
+	if !row.CreatedAt.Equal(institution.CreatedAt) ||
+		!row.UpdatedAt.Equal(institution.UpdatedAt) ||
+		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(institution.ArchivedAt.Time) {
+		t.Fatalf("row times = %#v", row)
 	}
 }

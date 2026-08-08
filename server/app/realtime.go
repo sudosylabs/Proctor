@@ -59,18 +59,57 @@ type RealtimeService struct {
 }
 
 type realtimePublication struct {
-	Event *RealtimeEvent `json:"event"`
+	Event *realtimeEventMessage `json:"event"`
+}
+
+// realtimeEventMessage is the explicit cluster-wire projection of a
+// transport-neutral RealtimeEvent. It preserves the established snake_case
+// payload independently of domain-model field names.
+type realtimeEventMessage struct {
+	ID       string                  `json:"id"`
+	Name     string                  `json:"event"`
+	UserID   string                  `json:"user_id,omitempty"`
+	Action   model.Action            `json:"action,omitempty"`
+	Resource realtimeResourceMessage `json:"resource,omitempty"`
+	Data     json.RawMessage         `json:"data,omitempty"`
+}
+
+type realtimeResourceMessage struct {
+	Type model.ResourceType `json:"type"`
+	ID   string             `json:"id"`
+}
+
+func realtimeEventMessageFromModel(event RealtimeEvent) realtimeEventMessage {
+	return realtimeEventMessage{
+		ID:       event.ID,
+		Name:     event.Name,
+		UserID:   event.UserID,
+		Action:   event.Action,
+		Resource: realtimeResourceMessage{Type: event.Resource.Type, ID: event.Resource.ID},
+		Data:     append(json.RawMessage(nil), event.Data...),
+	}
+}
+
+func (message realtimeEventMessage) toModel() RealtimeEvent {
+	return RealtimeEvent{
+		ID:       message.ID,
+		Name:     message.Name,
+		UserID:   message.UserID,
+		Action:   message.Action,
+		Resource: model.Resource{Type: message.Resource.Type, ID: message.Resource.ID},
+		Data:     append(json.RawMessage(nil), message.Data...),
+	}
 }
 
 type sessionRevocationMessage struct {
-	UserId            string   `json:"user_id"`
+	UserID            string   `json:"user_id"`
 	SessionIds        []string `json:"session_ids"`
 	AccessTokenHashes []string `json:"access_token_hashes"`
 	CloseConnections  bool     `json:"close_connections"`
 }
 
 type authorizationInvalidationMessage struct {
-	UserId string `json:"user_id,omitempty"`
+	UserID string `json:"user_id,omitempty"`
 }
 
 func newRealtimeService(
@@ -137,7 +176,8 @@ func (s *RealtimeService) Publish(ctx context.Context, event RealtimeEvent) erro
 	// Same loop-prevention shape as Mattermost: publish locally once, then
 	// send to peers. Peer handlers call only publishLocal.
 	s.publishLocal(ctx, candidate)
-	payload, err := json.Marshal(realtimePublication{Event: &candidate})
+	message := realtimeEventMessageFromModel(candidate)
+	payload, err := json.Marshal(realtimePublication{Event: &message})
 	if err != nil {
 		return internalRealtimeError(err)
 	}
@@ -174,7 +214,7 @@ func (s *RealtimeService) PropagateSessionRevocation(
 	accessTokenHashes []string,
 ) {
 	message := sessionRevocationMessage{
-		UserId:            userID,
+		UserID:            userID,
 		SessionIds:        append([]string(nil), sessionIDs...),
 		AccessTokenHashes: append([]string(nil), accessTokenHashes...),
 		CloseConnections:  true,
@@ -193,7 +233,7 @@ func (s *RealtimeService) PropagateAuthenticationCacheInvalidation(
 	accessTokenHashes []string,
 ) {
 	message := sessionRevocationMessage{
-		UserId:            userID,
+		UserID:            userID,
 		AccessTokenHashes: append([]string(nil), accessTokenHashes...),
 	}
 	if err := validateSessionRevocation(message); err != nil {
@@ -217,7 +257,7 @@ func (s *RealtimeService) InvalidateAuthorization(ctx context.Context, userID st
 	s.broadcastSecurityInvalidation(
 		ctx,
 		realtimeClusterEventAuthorizationInvalidated,
-		authorizationInvalidationMessage{UserId: userID},
+		authorizationInvalidationMessage{UserID: userID},
 	)
 }
 
@@ -264,10 +304,11 @@ func (s *RealtimeService) handlePeerPublication(ctx context.Context, data []byte
 		return errors.New("cluster realtime publication has no event")
 	}
 	// Peer payloads apply only locally and must not rebroadcast.
-	if err := publication.Event.ValidateForPublish(); err != nil {
+	event := publication.Event.toModel()
+	if err := event.ValidateForPublish(); err != nil {
 		return err
 	}
-	s.publishLocal(ctx, *publication.Event)
+	s.publishLocal(ctx, event)
 	return nil
 }
 
@@ -301,7 +342,7 @@ func (s *RealtimeService) applySessionRevocation(
 		return
 	}
 	if len(revocation.SessionIds) == 0 {
-		sink.CloseUser(revocation.UserId, ConnectionCloseSessionRevoked)
+		sink.CloseUser(revocation.UserID, ConnectionCloseSessionRevoked)
 		return
 	}
 	for _, sessionID := range revocation.SessionIds {
@@ -314,10 +355,10 @@ func (s *RealtimeService) handlePeerAuthorizationInvalidation(_ context.Context,
 	if err := decodeRealtimePayload(data, &invalidation); err != nil {
 		return err
 	}
-	if invalidation.UserId != "" && !model.IsValidId(invalidation.UserId) {
+	if invalidation.UserID != "" && !model.IsValidId(invalidation.UserID) {
 		return errors.New("cluster authorization invalidation user ID is invalid")
 	}
-	s.applyAuthorizationInvalidation(invalidation.UserId)
+	s.applyAuthorizationInvalidation(invalidation.UserID)
 	return nil
 }
 
@@ -343,7 +384,7 @@ func decodeRealtimePayload(data []byte, target any) error {
 }
 
 func validateSessionRevocation(message sessionRevocationMessage) error {
-	if !model.IsValidId(message.UserId) {
+	if !model.IsValidId(message.UserID) {
 		return errors.New("session revocation user ID is invalid")
 	}
 	if len(message.SessionIds) > 1024 || len(message.AccessTokenHashes) > 2048 {
@@ -404,7 +445,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 	resource model.Resource,
 ) error {
 	definition, ok := model.DefinitionForAction(action)
-	if !ok || !resource.IsValid() || definition.ResourceType != resource.Type {
+	if !ok || resource.Validate() != nil || definition.ResourceType != resource.Type {
 		return invalidRealtimeRequest("subscription")
 	}
 	return a.AuthorizePrincipalTo(
@@ -420,21 +461,21 @@ func (a *App) ValidateWebSocketPrincipal(
 	ctx context.Context,
 	principal model.Principal,
 ) error {
-	if !principal.IsValid() || principal.CredentialType != model.CredentialSessionAccess {
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return invalidTokenAppError()
 	}
-	session, err := a.Store().Session().Get(ctx, principal.SessionId)
+	session, err := a.Store().Session().Get(ctx, principal.SessionID.String())
 	if err != nil {
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
 		}
 		return authenticationUnavailable(err)
 	}
-	if session.UserID.String() != principal.UserId ||
+	if session.UserID != principal.UserID ||
 		session.IsExpiredAt(time.Now().UTC()) {
 		return invalidTokenAppError()
 	}
-	user, err := a.Store().User().Get(ctx, principal.UserId)
+	user, err := a.Store().User().Get(ctx, principal.UserID.String())
 	if err != nil || !user.IsActive() {
 		return invalidTokenAppError()
 	}

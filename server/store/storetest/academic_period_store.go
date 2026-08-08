@@ -83,6 +83,13 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q", completed.Status)
 	}
+	staleAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
+	stale := *created
+	stale.DisplayName = "Stale Period"
+	stale.PrepareUpdate(model.NowUTC())
+	if _, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &stale, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
+	}
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
@@ -132,7 +139,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 
 func saveAcademicPeriodAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, institutionID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institutionID}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institutionID}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }
@@ -302,7 +309,7 @@ func testAcademicPeriodStoreEnforceInstitutionNameUniqueness(t *testing.T, ss st
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) ||
-		conflict.Constraint != "academic_periods_active_name_key" {
+		conflict.Constraint != "academic_periods_institution_id_name_key" {
 		t.Fatalf("duplicate academic period error = %v, want scoped-name conflict", err)
 	}
 }

@@ -48,8 +48,9 @@ available.
 
 The flat `model` package now establishes the durable model contract:
 
-- Mattermost-inspired 26-character IDs and millisecond timestamps;
-- `PreSave`, `PreUpdate`, and `IsValid` lifecycle methods;
+- entity-specific, Mattermost-inspired 26-character IDs;
+- native UTC `time.Time` values, explicit optional times, constructors,
+  named transitions, and shape validation;
 - safe `Auditable` representations;
 - translation-ID-based `AppError` values mapped to HTTP Problem Details;
 - institution, hierarchical academic unit, programme, programme level,
@@ -169,6 +170,32 @@ go run ./server/cmd/proctor serve --config ./server/config.example.json
 The server requires a migrated PostgreSQL database before startup. Cache, mail,
 and VFS backends are selected from `config.example.json`; the development
 defaults use memory cache, disabled mail, and local VFS.
+
+### Pre-release database reset
+
+The schema is currently a single pre-release baseline at version 1. Earlier
+development migrations used incompatible millisecond timestamp and lifecycle
+representations. There is intentionally no upgrade path from those development
+schemas: existing development databases must be discarded and recreated. Back
+up any data you need before resetting a database.
+
+The checked-in Docker PostgreSQL service stores its database on a temporary
+filesystem. Recreate it, apply the baseline, and run the PostgreSQL integration
+suite with:
+
+```sh
+make -C server postgres-down
+make -C server postgres-up
+PROCTOR_DATABASE_DATA_SOURCE='postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable' \
+  go run ./server/cmd/proctor migrate up
+make -C server integration-postgres
+```
+
+For another development PostgreSQL instance, drop and recreate the dedicated
+Proctor database (or its isolated schema) with that instance's administration
+tools, then run `proctor migrate up` against the empty database. Do not point a
+new server build at a database reporting schema versions 2 through 11; those
+versions predate the reset baseline and are unsupported.
 
 The default listener is `127.0.0.1:8065`. Available endpoints are:
 

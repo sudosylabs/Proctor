@@ -15,15 +15,15 @@ func TestSessionRowConversion(t *testing.T) {
 	session := &model.Session{
 		ID: model.NewSessionID(), CreatedAt: now, UpdatedAt: now.Add(time.Millisecond),
 		ArchivedAt: model.OptionalTimeFrom(now.Add(2 * time.Millisecond)),
-		UserID: model.NewUserID(), ClientType: model.SessionClientDesktop,
+		UserID:     model.NewUserID(), ClientType: model.SessionClientDesktop,
 		DeviceID: "device", DeviceName: "Device", AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
-		AuthenticatedAt: now.Add(3 * time.Millisecond),
-		LastActivityAt:  now.Add(4 * time.Millisecond),
-		IdleExpiresAt:   now.Add(5 * time.Millisecond),
-		ExpiresAt:       now.Add(6 * time.Millisecond),
-		RevokedAt: model.OptionalTimeFrom(now.Add(7 * time.Millisecond)),
-		RevocationReason: "reason",
+		AuthenticatedAt:        now.Add(3 * time.Millisecond),
+		LastActivityAt:         now.Add(4 * time.Millisecond),
+		IdleExpiresAt:          now.Add(5 * time.Millisecond),
+		ExpiresAt:              now.Add(6 * time.Millisecond),
+		RevokedAt:              model.OptionalTimeFrom(now.Add(7 * time.Millisecond)),
+		RevocationReason:       "reason",
 	}
 	row := newSessionRow(session)
 	got := row.model()
@@ -47,7 +47,7 @@ func TestSessionCredentialRowConversion(t *testing.T) {
 	credential := &model.SessionCredential{
 		ID: model.NewSessionCredentialID(), CreatedAt: now, UpdatedAt: now.Add(time.Millisecond),
 		ArchivedAt: model.OptionalTimeFrom(now.Add(2 * time.Millisecond)),
-		SessionID: model.NewSessionID(), Kind: model.SessionCredentialRefresh,
+		SessionID:  model.NewSessionID(), Kind: model.SessionCredentialRefresh,
 		TokenHash: model.HashToken("token"), FamilyID: model.NewId(),
 		ParentID: parent, ReplacedByID: replaced,
 		ExpiresAt: now.Add(3 * time.Millisecond),

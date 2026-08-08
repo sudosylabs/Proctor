@@ -25,25 +25,30 @@ type auditCursor struct {
 }
 
 type auditEventResponse struct {
-	ID         string              `json:"id"`
-	CreateAt   int64               `json:"create_at"`
-	UpdateAt   int64               `json:"update_at"`
-	ActorID    string              `json:"actor_id,omitempty"`
-	SessionID  string              `json:"session_id,omitempty"`
-	Action     string              `json:"action"`
-	Resource   model.Resource      `json:"resource"`
-	ScopeType  model.RoleScopeType `json:"scope_type,omitempty"`
-	ScopeID    string              `json:"scope_id,omitempty"`
-	Status     model.AuditStatus   `json:"status"`
-	RequestID  string              `json:"request_id,omitempty"`
-	NodeID     string              `json:"node_id,omitempty"`
-	ClientType string              `json:"client_type,omitempty"`
-	AuthMethod string              `json:"authentication_method,omitempty"`
-	IPAddress  string              `json:"ip_address,omitempty"`
-	UserAgent  string              `json:"user_agent,omitempty"`
-	ErrorCode  string              `json:"error_code,omitempty"`
+	ID         string                `json:"id"`
+	CreateAt   int64                 `json:"create_at"`
+	UpdateAt   int64                 `json:"update_at"`
+	ActorID    string                `json:"actor_id,omitempty"`
+	SessionID  string                `json:"session_id,omitempty"`
+	Action     string                `json:"action"`
+	Resource   auditResourceResponse `json:"resource"`
+	ScopeType  model.RoleScopeType   `json:"scope_type,omitempty"`
+	ScopeID    string                `json:"scope_id,omitempty"`
+	Status     model.AuditStatus     `json:"status"`
+	RequestID  string                `json:"request_id,omitempty"`
+	NodeID     string                `json:"node_id,omitempty"`
+	ClientType string                `json:"client_type,omitempty"`
+	AuthMethod string                `json:"authentication_method,omitempty"`
+	IPAddress  string                `json:"ip_address,omitempty"`
+	UserAgent  string                `json:"user_agent,omitempty"`
+	ErrorCode  string                `json:"error_code,omitempty"`
 	// Parameters, prior_state, and result remain application/operator-only and
 	// are intentionally omitted from the public audit list projection.
+}
+
+type auditResourceResponse struct {
+	Type model.ResourceType `json:"type"`
+	ID   string             `json:"id"`
 }
 
 type auditListResponse struct {
@@ -55,8 +60,9 @@ func auditEventResponseFromModel(event *model.AuditEvent) auditEventResponse {
 	return auditEventResponse{
 		ID: event.ID.String(), CreateAt: model.MillisFromTime(event.CreatedAt),
 		UpdateAt: model.MillisFromTime(event.UpdatedAt),
-		ActorID: event.ActorID.String(), SessionID: event.SessionID.String(), Action: event.Action,
-		Resource: event.Resource, ScopeType: event.ScopeType, ScopeID: event.ScopeID,
+		ActorID:  event.ActorID.String(), SessionID: event.SessionID.String(), Action: event.Action,
+		Resource:  auditResourceResponse{Type: event.Resource.Type, ID: event.Resource.ID},
+		ScopeType: event.ScopeType, ScopeID: event.ScopeID,
 		Status: event.Status, RequestID: event.RequestID, NodeID: event.NodeID,
 		ClientType: event.ClientType, AuthMethod: event.AuthMethod,
 		IPAddress: event.IPAddress, UserAgent: event.UserAgent, ErrorCode: event.ErrorCode,
@@ -131,8 +137,8 @@ func auditQueryFromRequest(request *http.Request) (application.ListAuditEventsQu
 		return query, errInvalidAuditResource
 	}
 	if resourceType != "" {
-		resource := model.Resource{Type: model.ResourceType(resourceType), Id: resourceID}
-		if !resource.IsValid() {
+		resource := model.Resource{Type: model.ResourceType(resourceType), ID: resourceID}
+		if resource.Validate() != nil {
 			return query, errInvalidAuditResource
 		}
 		query.Resource = &resource

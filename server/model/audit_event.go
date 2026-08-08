@@ -130,7 +130,7 @@ func (ae *AuditEvent) Validate() error {
 	if len(ae.Action) == 0 || len(ae.Action) > RolePermissionMaxLength || !validPermission.MatchString(ae.Action) {
 		return invalidModelError(where, "audit_event", "action", "must be a valid action", details)
 	}
-	if !ae.Resource.IsValid() {
+	if err := ae.Resource.Validate(); err != nil {
 		return invalidModelError(where, "audit_event", "resource", "must identify a valid resource", details)
 	}
 	if !ae.ScopeType.IsValid() || !IsValidId(ae.ScopeID) {
@@ -148,7 +148,7 @@ func (ae *AuditEvent) Validate() error {
 		}
 	}
 	for field, value := range map[string]json.RawMessage{
-		"parameters":   ae.Parameters,
+		"parameters":  ae.Parameters,
 		"prior_state": ae.PriorState,
 		"result":      ae.Result,
 	} {

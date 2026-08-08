@@ -27,16 +27,16 @@ const (
 // ScopeType (polymorphic scope reference). Effective dates use StartsAt and
 // EndsAt OptionalTime like Affiliation.
 type RoleBinding struct {
-	ID        RoleBindingID
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         RoleBindingID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	ArchivedAt OptionalTime
-	UserID    UserID
-	RoleID    RoleID
-	ScopeType RoleScopeType
-	ScopeID   string
-	StartsAt  time.Time
-	EndsAt    OptionalTime // absent means open-ended
+	UserID     UserID
+	RoleID     RoleID
+	ScopeType  RoleScopeType
+	ScopeID    string
+	StartsAt   time.Time
+	EndsAt     OptionalTime // absent means open-ended
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -152,7 +152,6 @@ func (rb *RoleBinding) Auditable() map[string]any {
 		"created_at":  MillisFromTime(rb.CreatedAt),
 		"updated_at":  MillisFromTime(rb.UpdatedAt),
 		"archived_at": rb.ArchivedAt.Millis(),
-		"delete_at":   rb.ArchivedAt.Millis(), // legacy audit key during expand
 		"user_id":     rb.UserID.String(),
 		"role_id":     rb.RoleID.String(),
 		"scope_type":  rb.ScopeType,

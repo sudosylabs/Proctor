@@ -11,10 +11,10 @@ import (
 
 func TestPasswordCredentialRowConversion(t *testing.T) {
 	credential := &model.PasswordCredential{
-		ID: model.PasswordCredentialID(model.NewId()),
+		ID:        model.PasswordCredentialID(model.NewId()),
 		CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(2),
 		ArchivedAt: model.OptionalTimeFromMillis(3),
-		UserID: model.UserID(model.NewId()), PasswordHash: "$argon2id$test",
+		UserID:     model.UserID(model.NewId()), PasswordHash: "$argon2id$test",
 		PasswordChangedAt: model.TimeFromMillis(4),
 	}
 	row := newPasswordCredentialRow(credential)

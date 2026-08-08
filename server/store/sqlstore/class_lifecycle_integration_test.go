@@ -128,7 +128,7 @@ func saveLifecycleClass(t *testing.T, ctx context.Context, persistence store.Sto
 }
 func saveLifecycleClassAudit(t *testing.T, ctx context.Context, persistence store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -355,7 +355,7 @@ func saveUserProfileAuditAttempt(t *testing.T, ctx context.Context, ss store.Sto
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionUserManage),
-		Resource:  model.Resource{Type: model.ResourceUser, Id: userID},
+		Resource:  model.Resource{Type: model.ResourceUser, ID: userID},
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
@@ -383,13 +383,13 @@ func testUserStoreUniqueness(t *testing.T, ss store.Store) {
 	duplicateUsername.Username = user.Username
 	_, err := ss.User().Save(ctx, duplicateUsername)
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "users_active_username_key" {
+	if !errors.As(err, &conflict) || conflict.Constraint != "users_username_key" {
 		t.Fatalf("duplicate username error = %v", err)
 	}
 	duplicateEmail := newUser()
 	duplicateEmail.Email = user.Email
 	_, err = ss.User().Save(ctx, duplicateEmail)
-	if !errors.As(err, &conflict) || conflict.Constraint != "users_active_email_key" {
+	if !errors.As(err, &conflict) || conflict.Constraint != "users_email_key" {
 		t.Fatalf("duplicate email error = %v", err)
 	}
 }

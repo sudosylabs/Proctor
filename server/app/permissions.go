@@ -38,7 +38,7 @@ func (a *App) PrincipalHasPermissionToSystem(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		metadata,
 	)
 	return ctx, allowed, appErr
@@ -68,7 +68,7 @@ func (a *App) PrincipalHasPermissionToAcademicUnitForRequest(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID},
+		model.Resource{Type: model.ResourceAcademicUnit, ID: academicUnitID},
 		metadata,
 	)
 }
@@ -84,7 +84,7 @@ func (a *App) PrincipalHasPermissionToClassForRequest(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceClass, Id: classID},
+		model.Resource{Type: model.ResourceClass, ID: classID},
 		metadata,
 	)
 }
@@ -183,7 +183,7 @@ func (a *App) PrincipalHasPermissionToUserForRequest(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (context.Context, bool, error) {
-	if action == model.ActionUserView && principal.UserId == userID {
+	if action == model.ActionUserView && principal.UserID.String() == userID {
 		return ctx, true, nil
 	}
 	if action == model.ActionUserView {
@@ -205,7 +205,7 @@ func (a *App) PrincipalHasPermissionToUserForRequest(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 		metadata,
 	)
 }
@@ -220,7 +220,7 @@ func (a *App) authorizePrincipalToSystem(
 	if err != nil {
 		return model.Resource{}, authorizationResourceError("institution", err)
 	}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}
+	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	if appErr := a.AuthorizePrincipalToInstitution(
 		ctx,
 		principal,
@@ -255,7 +255,7 @@ func (a *App) PrincipalHasPermissionToInstitution(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceInstitution, Id: institutionID},
+		model.Resource{Type: model.ResourceInstitution, ID: institutionID},
 	)
 }
 
@@ -269,7 +269,7 @@ func (a *App) PrincipalHasPermissionToAcademicUnit(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID},
+		model.Resource{Type: model.ResourceAcademicUnit, ID: academicUnitID},
 	)
 }
 
@@ -283,7 +283,7 @@ func (a *App) PrincipalHasPermissionToClass(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceClass, Id: classID},
+		model.Resource{Type: model.ResourceClass, ID: classID},
 	)
 }
 
@@ -310,7 +310,7 @@ func (a *App) AuthorizePrincipalToInstitution(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceInstitution, Id: institutionID},
+		model.Resource{Type: model.ResourceInstitution, ID: institutionID},
 		metadata,
 	)
 }
@@ -326,7 +326,7 @@ func (a *App) AuthorizePrincipalToAcademicUnit(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID},
+		model.Resource{Type: model.ResourceAcademicUnit, ID: academicUnitID},
 		metadata,
 	)
 }
@@ -338,7 +338,7 @@ func (a *App) authorizePrincipalToAcademicUnit(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (model.Resource, error) {
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: academicUnitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: academicUnitID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
 	); appErr != nil {
@@ -358,7 +358,7 @@ func (a *App) AuthorizePrincipalToClass(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceClass, Id: classID},
+		model.Resource{Type: model.ResourceClass, ID: classID},
 		metadata,
 	)
 }
@@ -370,7 +370,7 @@ func (a *App) authorizePrincipalToClass(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (model.Resource, error) {
-	resource := model.Resource{Type: model.ResourceClass, Id: classID}
+	resource := model.Resource{Type: model.ResourceClass, ID: classID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
 	); appErr != nil {
@@ -390,7 +390,7 @@ func (a *App) AuthorizePrincipalToUser(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 		metadata,
 	)
 }
@@ -402,7 +402,7 @@ func (a *App) authorizePrincipalToUser(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (model.Resource, error) {
-	resource := model.Resource{Type: model.ResourceUser, Id: userID}
+	resource := model.Resource{Type: model.ResourceUser, ID: userID}
 	if appErr := a.AuthorizePrincipalTo(
 		ctx, principal, action, resource, metadata,
 	); appErr != nil {
@@ -421,13 +421,13 @@ func (a *App) PrincipalHasPermissionToUser(
 	userID string,
 	action model.Action,
 ) (bool, error) {
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return false, invalidTokenAppError()
 	}
 	if !model.IsValidId(userID) {
 		return false, nil
 	}
-	if action == model.ActionUserView && principal.UserId == userID {
+	if action == model.ActionUserView && principal.UserID.String() == userID {
 		return true, nil
 	}
 	if action == model.ActionUserView {
@@ -438,7 +438,7 @@ func (a *App) PrincipalHasPermissionToUser(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 	)
 }
 
@@ -464,7 +464,7 @@ func (a *App) userVisibilityPermission(
 	principal model.Principal,
 	otherUserID string,
 ) (model.Resource, error) {
-	userResource := model.Resource{Type: model.ResourceUser, Id: otherUserID}
+	userResource := model.Resource{Type: model.ResourceUser, ID: otherUserID}
 	allowed, appErr := a.PrincipalHasPermissionTo(
 		ctx, principal, model.ActionUserView, userResource,
 	)
@@ -483,7 +483,7 @@ func (a *App) userVisibilityPermission(
 		)
 	}
 	for _, membership := range memberships {
-		classResource := model.Resource{Type: model.ResourceClass, Id: membership.ClassID.String()}
+		classResource := model.Resource{Type: model.ResourceClass, ID: membership.ClassID.String()}
 		allowed, appErr = a.PrincipalHasPermissionTo(
 			ctx, principal, model.ActionClassMembersView, classResource,
 		)
@@ -505,10 +505,10 @@ func (a *App) GetUserForPrincipal(
 	metadata model.RequestMetadata,
 	userID string,
 ) (*model.User, error) {
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return nil, invalidTokenAppError()
 	}
-	if principal.UserId != userID {
+	if principal.UserID.String() != userID {
 		if appErr := a.authorizeUserVisibility(
 			ctx, principal, userID, metadata,
 		); appErr != nil {
@@ -539,7 +539,7 @@ func (a *App) authorizeUserVisibility(
 		)
 	case model.ResourceClass:
 		return a.AuthorizePrincipalToClass(
-			ctx, principal, resource.Id, model.ActionClassMembersView, metadata,
+			ctx, principal, resource.ID, model.ActionClassMembersView, metadata,
 		)
 	default:
 		// Record the final denial against the resource the caller attempted to

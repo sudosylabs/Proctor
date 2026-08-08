@@ -20,7 +20,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)
 		input := &model.PasswordCredential{
-			UserID: user.ID,
+			UserID:       user.ID,
 			PasswordHash: "$argon2id$v=19$m=65536,t=3,p=2$first$hash",
 		}
 		saved, err := ss.PasswordCredential().Save(ctx, input)
@@ -45,7 +45,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 	t.Run("ReferencesAndUniqueness", func(t *testing.T) {
 		ctx := context.Background()
 		_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
-			UserID: model.UserID(model.NewId()),
+			UserID:       model.UserID(model.NewId()),
 			PasswordHash: "$argon2id$missing",
 		})
 		var reference *store.ErrReference
@@ -58,12 +58,12 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		_, err = ss.PasswordCredential().Save(ctx, first)
 		requireNoError(t, err)
 		_, err = ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
-			UserID: user.ID,
+			UserID:       user.ID,
 			PasswordHash: "$argon2id$second",
 		})
 		var conflict *store.ErrConflict
 		if !errors.As(err, &conflict) ||
-			conflict.Constraint != "password_credentials_active_user_key" {
+			conflict.Constraint != "password_credentials_user_id_key" {
 			t.Fatalf("duplicate user credential error = %v", err)
 		}
 	})

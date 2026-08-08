@@ -104,12 +104,31 @@ type DisableMFACommand struct {
 	Code string
 }
 
+// MFASetup is one-time setup material. It must never be logged or audited.
+type MFASetup struct {
+	Secret          string
+	ProvisioningURI string
+	ExpiresAt       time.Time
+}
+
+// MFAActivation is the one-time recovery-code delivery after activation.
+type MFAActivation struct {
+	RecoveryCodes []string
+}
+
+// MFAStatus is the caller's enrollment status.
+type MFAStatus struct {
+	Enabled                bool
+	Pending                bool
+	PendingExpiresAt       model.OptionalTime
+	RecoveryCodesRemaining int
+}
 
 func (a *App) GetMFAStatus(
 	ctx context.Context,
 	invocation Invocation,
 	_ GetMFAStatusQuery,
-) (*model.MFAStatus, error) {
+) (*MFAStatus, error) {
 	principal := invocation.Principal()
 	if err := a.requireInteractiveSession(principal, false); err != nil {
 		return nil, err
@@ -118,21 +137,21 @@ func (a *App) GetMFAStatus(
 		return nil, err
 	}
 	now := a.mfa.now()
-	credential, err := a.Store().MFA().GetByUser(ctx, principal.UserId)
+	credential, err := a.Store().MFA().GetByUser(ctx, principal.UserID.String())
 	if store.IsNotFound(err) {
-		return &model.MFAStatus{}, nil
+		return &MFAStatus{}, nil
 	}
 	if err != nil {
 		return nil, mfaStoreFailure(err)
 	}
-	status := &model.MFAStatus{
+	status := &MFAStatus{
 		Enabled:          credential.IsActive(),
 		Pending:          credential.IsPendingAt(now),
-		PendingExpiresAt: model.MillisFromTime(credential.PendingExpiresAt),
+		PendingExpiresAt: credential.PendingExpiresAt,
 	}
 	if status.Enabled {
 		status.RecoveryCodesRemaining, err = a.Store().MFA().
-			CountRecoveryCodes(ctx, principal.UserId)
+			CountRecoveryCodes(ctx, principal.UserID.String())
 		if err != nil {
 			return nil, mfaStoreFailure(err)
 		}
@@ -144,7 +163,7 @@ func (a *App) SetupMFA(
 	ctx context.Context,
 	invocation Invocation,
 	command SetupMFACommand,
-) (*model.MFASetup, error) {
+) (*MFASetup, error) {
 	principal := invocation.Principal()
 	if err := a.requireInteractiveSession(principal, true); err != nil {
 		return nil, err
@@ -152,7 +171,7 @@ func (a *App) SetupMFA(
 	if err := a.requireMFAEnabled(); err != nil {
 		return nil, err
 	}
-	user, err := a.Store().User().Get(ctx, principal.UserId)
+	user, err := a.Store().User().Get(ctx, principal.UserID.String())
 	if err != nil {
 		return nil, mfaStoreFailure(err)
 	}
@@ -164,21 +183,17 @@ func (a *App) SetupMFA(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	encrypted, err := a.mfa.encrypt(principal.UserId, secret)
+	encrypted, err := a.mfa.encrypt(principal.UserID.String(), secret)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
 	now := a.mfa.now()
-	userID, err := model.ParseUserID(principal.UserId)
-	if err != nil {
-		return nil, authenticationUnavailable(err)
-	}
 	candidate := &model.MFACredential{
-		UserID:           userID,
+		UserID:           principal.UserID,
 		State:            model.MFAStatePending,
 		EncryptedSecret:  encrypted,
 		EncryptionKeyID:  a.mfa.primary,
-		PendingExpiresAt: now.Add(a.mfa.settings.SetupTTL),
+		PendingExpiresAt: model.OptionalTimeFrom(now.Add(a.mfa.settings.SetupTTL)),
 		CreatedAt:        now,
 	}
 	resource, err := a.mfaAuditResourceNeutral(ctx)
@@ -200,14 +215,14 @@ func (a *App) SetupMFA(
 	); appErr != nil {
 		return nil, appErr
 	}
-	return &model.MFASetup{
+	return &MFASetup{
 		Secret: secret,
 		ProvisioningURI: mfaProvisioningURI(
 			a.mfa.settings.Issuer,
 			accountName,
 			secret,
 		),
-		ExpiresAt: model.MillisFromTime(saved.PendingExpiresAt),
+		ExpiresAt: saved.PendingExpiresAt.Time,
 	}, nil
 }
 
@@ -215,7 +230,7 @@ func (a *App) ActivateMFA(
 	ctx context.Context,
 	invocation Invocation,
 	command ActivateMFACommand,
-) (*model.MFAActivation, error) {
+) (*MFAActivation, error) {
 	principal := invocation.Principal()
 	code := command.Code
 	metadata := invocation.RequestMetadata()
@@ -225,7 +240,7 @@ func (a *App) ActivateMFA(
 	if err := a.requireMFAEnabled(); err != nil {
 		return nil, err
 	}
-	credential, err := a.Store().MFA().GetByUser(ctx, principal.UserId)
+	credential, err := a.Store().MFA().GetByUser(ctx, principal.UserID.String())
 	if err != nil {
 		return nil, mfaStoreFailure(err)
 	}
@@ -233,7 +248,7 @@ func (a *App) ActivateMFA(
 	if !credential.IsPendingAt(now) {
 		return nil, mfaInvalidCodeError("ActivateMFA")
 	}
-	secret, err := a.mfa.decrypt(principal.UserId, credential)
+	secret, err := a.mfa.decrypt(principal.UserID.String(), credential)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
@@ -242,7 +257,7 @@ func (a *App) ActivateMFA(
 		return nil, mfaInvalidCodeError("ActivateMFA")
 	}
 	rawCodes, recoveryCodes, err := generateMFARecoveryCodes(
-		principal.UserId,
+		principal.UserID.String(),
 		a.mfa.settings.RecoveryCodeCount,
 	)
 	if err != nil {
@@ -262,10 +277,10 @@ func (a *App) ActivateMFA(
 	activated, err := a.Store().MFA().Activate(
 		ctx,
 		credential.ID.String(),
-		principal.UserId,
+		principal.UserID.String(),
 		timeStep,
 		recoveryCodes,
-		principal.SessionId,
+		principal.SessionID.String(),
 		now.UnixMilli(),
 	)
 	if err != nil {
@@ -274,8 +289,8 @@ func (a *App) ActivateMFA(
 	a.authentication.deleteAuthenticationCache(ctx, activated.AccessTokenHashes)
 	a.realtime.PropagateSessionRevocation(
 		ctx,
-		principal.UserId,
-		[]string{principal.SessionId},
+		principal.UserID.String(),
+		[]string{principal.SessionID.String()},
 		activated.AccessTokenHashes,
 	)
 	if _, appErr := a.audit.CompleteCriticalAction(
@@ -287,7 +302,7 @@ func (a *App) ActivateMFA(
 	); appErr != nil {
 		return nil, appErr
 	}
-	return &model.MFAActivation{RecoveryCodes: rawCodes}, nil
+	return &MFAActivation{RecoveryCodes: rawCodes}, nil
 }
 
 func (a *App) ChallengeMFA(
@@ -317,7 +332,7 @@ func (a *App) ChallengeMFA(
 	now := a.mfa.now()
 	if appErr := a.consumeMFASecondFactor(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		code,
 		now,
 	); appErr != nil {
@@ -337,7 +352,7 @@ func (a *App) ChallengeMFA(
 		return nil, appErr
 	}
 	hashes, err := a.Store().MFA().UpgradeSession(
-		ctx, principal.SessionId, principal.UserId, now.UnixMilli(),
+		ctx, principal.SessionID.String(), principal.UserID.String(), now.UnixMilli(),
 	)
 	if err != nil {
 		return nil, a.failMFAMutation(ctx, attempt.ID.String(), "ChallengeMFA.upgrade", err)
@@ -345,11 +360,11 @@ func (a *App) ChallengeMFA(
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
 	a.realtime.PropagateSessionRevocation(
 		ctx,
-		principal.UserId,
-		[]string{principal.SessionId},
+		principal.UserID.String(),
+		[]string{principal.SessionID.String()},
 		hashes,
 	)
-	session, err := a.Store().Session().Get(ctx, principal.SessionId)
+	session, err := a.Store().Session().Get(ctx, principal.SessionID.String())
 	if err != nil {
 		return nil, a.failMFAMutation(ctx, attempt.ID.String(), "ChallengeMFA.session", err)
 	}
@@ -375,7 +390,7 @@ func (a *App) RegenerateMFARecoveryCodes(
 		return nil, err
 	}
 	rawCodes, codes, err := generateMFARecoveryCodes(
-		principal.UserId,
+		principal.UserID.String(),
 		a.mfa.settings.RecoveryCodeCount,
 	)
 	if err != nil {
@@ -394,7 +409,7 @@ func (a *App) RegenerateMFARecoveryCodes(
 	}
 	if err := a.Store().MFA().ReplaceRecoveryCodes(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		codes,
 		a.mfa.now().UnixMilli(),
 	); err != nil {
@@ -439,7 +454,7 @@ func (a *App) DisableMFA(
 	}
 	result, err := a.Store().MFA().Disable(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		a.mfa.now().UnixMilli(),
 	)
 	if err != nil {
@@ -448,7 +463,7 @@ func (a *App) DisableMFA(
 	a.authentication.deleteAuthenticationCache(ctx, result.AccessTokenHashes)
 	a.realtime.PropagateSessionRevocation(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		nil,
 		result.AccessTokenHashes,
 	)
@@ -537,8 +552,6 @@ func (a *App) requireMFAEnabled() error {
 	return NewError("authentication.mfa.disabled")
 }
 
-
-
 func (a *App) requireStrongRecentSession(
 	principal model.Principal,
 	where string,
@@ -576,7 +589,7 @@ func (a *App) mfaAuditResource(
 	if err != nil {
 		return model.Resource{}, mfaStoreError("MFA.audit_resource", err)
 	}
-	return model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, nil
+	return model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, nil
 }
 
 func (a *App) failMFAMutation(

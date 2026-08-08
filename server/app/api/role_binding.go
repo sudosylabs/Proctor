@@ -11,7 +11,7 @@ import (
 )
 
 type createRoleBindingRequest struct {
-	UserId    string              `json:"user_id"`
+	UserID    string              `json:"user_id"`
 	RoleId    string              `json:"role_id"`
 	ScopeType model.RoleScopeType `json:"scope_type"`
 	ScopeId   string              `json:"scope_id"`
@@ -112,7 +112,7 @@ func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Reques
 		request.Context(),
 		application.NewInvocation(principal, RequestMetadata(request.Context())),
 		application.CreateRoleBindingCommand{
-			UserID: input.UserId, RoleID: input.RoleId, ScopeType: input.ScopeType,
+			UserID: input.UserID, RoleID: input.RoleId, ScopeType: input.ScopeType,
 			ScopeID: input.ScopeId, StartAt: input.StartAt, EndAt: input.EndAt,
 		},
 	)

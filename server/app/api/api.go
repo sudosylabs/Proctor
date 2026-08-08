@@ -321,17 +321,17 @@ type MFA interface {
 		context.Context,
 		application.Invocation,
 		application.GetMFAStatusQuery,
-	) (*model.MFAStatus, error)
+	) (*application.MFAStatus, error)
 	SetupMFA(
 		context.Context,
 		application.Invocation,
 		application.SetupMFACommand,
-	) (*model.MFASetup, error)
+	) (*application.MFASetup, error)
 	ActivateMFA(
 		context.Context,
 		application.Invocation,
 		application.ActivateMFACommand,
-	) (*model.MFAActivation, error)
+	) (*application.MFAActivation, error)
 	ChallengeMFA(
 		context.Context,
 		application.Invocation,
@@ -426,8 +426,8 @@ type API struct {
 	routes                  []Route
 	routeMatchers           []routeMatcher
 	routeKeys               map[string]struct{}
-	prefixes  map[*mux.Router]string
-	webSocket WebSocketTransport
+	prefixes                map[*mux.Router]string
+	webSocket               WebSocketTransport
 }
 
 func New(options Options) (*API, error) {

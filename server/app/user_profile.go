@@ -124,7 +124,7 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("user.invalid", err)
 	}
-	resource := model.Resource{Type: model.ResourceUser, Id: id}
+	resource := model.Resource{Type: model.ResourceUser, ID: id}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserManage, resource, "update_profile", candidate.Auditable(), current.Auditable())
 	if err != nil {
 		return nil, err
@@ -169,18 +169,18 @@ func (a userProfileAuthorization) AuthorizeSearch(ctx context.Context, invocatio
 	if err != nil {
 		return userProfileError(err)
 	}
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionInstitutionManage, model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, invocation.RequestMetadata())
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionInstitutionManage, model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, invocation.RequestMetadata())
 }
 
 func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation Invocation, userID string) error {
 	principal := invocation.Principal()
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
-	if principal.UserId == userID {
+	if principal.UserID.String() == userID {
 		return nil
 	}
-	userResource := model.Resource{Type: model.ResourceUser, Id: userID}
+	userResource := model.Resource{Type: model.ResourceUser, ID: userID}
 	allowed, appErr := a.authorization.Can(ctx, principal, model.ActionUserView, userResource)
 	if appErr != nil {
 		return appErr
@@ -193,7 +193,7 @@ func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation 
 		return userProfileError(err)
 	}
 	for _, membership := range memberships {
-		resource := model.Resource{Type: model.ResourceClass, Id: membership.ClassID.String()}
+		resource := model.Resource{Type: model.ResourceClass, ID: membership.ClassID.String()}
 		allowed, appErr = a.authorization.Can(ctx, principal, model.ActionClassMembersView, resource)
 		if appErr != nil {
 			return appErr
@@ -206,5 +206,5 @@ func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation 
 }
 
 func (a userProfileAuthorization) AuthorizeManage(ctx context.Context, invocation Invocation, userID string) error {
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionUserManage, model.Resource{Type: model.ResourceUser, Id: userID}, invocation.RequestMetadata())
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: userID}, invocation.RequestMetadata())
 }

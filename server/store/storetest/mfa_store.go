@@ -202,7 +202,7 @@ func savePendingMFA(
 		State:            model.MFAStatePending,
 		EncryptedSecret:  "encrypted-secret",
 		EncryptionKeyID:  "0123456789abcdef",
-		PendingExpiresAt: now.Add(10 * time.Minute),
+		PendingExpiresAt: model.OptionalTimeFrom(now.Add(10 * time.Minute)),
 		CreatedAt:        now,
 	})
 	requireNoError(t, err)

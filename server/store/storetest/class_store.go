@@ -130,7 +130,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 
 func saveClassAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }
@@ -389,7 +389,7 @@ func testClassStoreEnforceScopedNameUniqueness(t *testing.T, ss store.Store) {
 		DisplayName:      "Duplicate",
 	})
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "classes_active_name_key" {
+	if !errors.As(err, &conflict) || conflict.Constraint != "classes_programme_level_id_academic_period_id_name_key" {
 		t.Fatalf("duplicate class error = %v, want scoped-name conflict", err)
 	}
 

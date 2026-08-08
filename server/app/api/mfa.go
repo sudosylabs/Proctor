@@ -24,6 +24,23 @@ type mfaRecoveryCodesResponse struct {
 	RecoveryCodes []string `json:"recovery_codes"`
 }
 
+type mfaSetupResponse struct {
+	Secret          string `json:"secret"`
+	ProvisioningURI string `json:"provisioning_uri"`
+	ExpiresAt       int64  `json:"expires_at"`
+}
+
+type mfaActivationResponse struct {
+	RecoveryCodes []string `json:"recovery_codes"`
+}
+
+type mfaStatusResponse struct {
+	Enabled                bool  `json:"enabled"`
+	Pending                bool  `json:"pending"`
+	PendingExpiresAt       int64 `json:"pending_expires_at,omitempty"`
+	RecoveryCodesRemaining int   `json:"recovery_codes_remaining"`
+}
+
 func (a *API) InitMFA() error {
 	routes := []struct {
 		path    string
@@ -91,7 +108,12 @@ func (a *API) getMFAStatus(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, status)
+	writeJSON(writer, http.StatusOK, mfaStatusResponse{
+		Enabled:                status.Enabled,
+		Pending:                status.Pending,
+		PendingExpiresAt:       status.PendingExpiresAt.Millis(),
+		RecoveryCodesRemaining: status.RecoveryCodesRemaining,
+	})
 }
 
 func (a *API) setupMFA(writer http.ResponseWriter, request *http.Request) {
@@ -109,7 +131,11 @@ func (a *API) setupMFA(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusCreated, setup)
+	writeJSON(writer, http.StatusCreated, mfaSetupResponse{
+		Secret:          setup.Secret,
+		ProvisioningURI: setup.ProvisioningURI,
+		ExpiresAt:       model.MillisFromTime(setup.ExpiresAt),
+	})
 }
 
 func (a *API) activateMFA(writer http.ResponseWriter, request *http.Request) {
@@ -127,7 +153,9 @@ func (a *API) activateMFA(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, activation)
+	writeJSON(writer, http.StatusOK, mfaActivationResponse{
+		RecoveryCodes: activation.RecoveryCodes,
+	})
 }
 
 func (a *API) challengeMFA(writer http.ResponseWriter, request *http.Request) {

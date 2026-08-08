@@ -60,7 +60,7 @@ func (s *academicUnitMemberService) List(ctx context.Context, invocation Invocat
 	if err != nil {
 		return nil, err
 	}
-	members, err := s.store.ListByAcademicUnit(ctx, resource.Id, query.ActiveAt)
+	members, err := s.store.ListByAcademicUnit(ctx, resource.ID, query.ActiveAt)
 	if err != nil {
 		return nil, academicUnitMemberError(err)
 	}
@@ -79,7 +79,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	if err != nil {
 		return nil, err
 	}
-	unitID, err := model.ParseAcademicUnitID(resource.Id)
+	unitID, err := model.ParseAcademicUnitID(resource.ID)
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
@@ -147,7 +147,7 @@ func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocatio
 	if !model.IsValidId(unitID) {
 		return model.Resource{}, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return model.Resource{}, err
 	}

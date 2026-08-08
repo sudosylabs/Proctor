@@ -78,7 +78,18 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		t.Fatalf("authorized audit listing status = %d: %s", allowed.Code, allowed.Body.String())
 	}
 	var response struct {
-		Events []*model.AuditEvent `json:"events"`
+		Events []struct {
+			ActorID   string `json:"actor_id"`
+			SessionID string `json:"session_id"`
+			Action    string `json:"action"`
+			Resource  struct {
+				Type model.ResourceType `json:"type"`
+				ID   string             `json:"id"`
+			} `json:"resource"`
+			Status    model.AuditStatus `json:"status"`
+			RequestID string            `json:"request_id"`
+			NodeID    string            `json:"node_id"`
+		} `json:"events"`
 	}
 	if err := json.Unmarshal(allowed.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
@@ -89,8 +100,8 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	statuses := map[model.AuditStatus]bool{}
 	for _, event := range response.Events {
 		if event.Action == string(model.ActionAuditView) &&
-			event.ActorID == user.ID &&
-			event.Resource.Id == institution.ID.String() {
+			event.ActorID == user.ID.String() &&
+			event.Resource.ID == institution.ID.String() {
 			statuses[event.Status] = true
 		}
 		if event.SessionID == "" || event.NodeID == "" || event.RequestID == "" {
@@ -187,7 +198,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	// nil checks through a shared interface variable.
 	allowed, permErr := helper.App.Can(
 		ctx, *principal, model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: class.ID.String()},
+		model.Resource{Type: model.ResourceClass, ID: class.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("academic-unit membership unexpectedly granted class permission = %v, %v", allowed, permErr)
@@ -208,14 +219,14 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: class.ID.String()},
+		model.Resource{Type: model.ResourceClass, ID: class.ID.String()},
 	)
 	if permErr != nil || !allowed {
 		t.Fatalf("ancestor class permission = %v, %v", allowed, permErr)
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionInstitutionManage,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("lower-scope institution permission = %v, %v", allowed, permErr)
@@ -225,7 +236,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: class.ID.String()},
+		model.Resource{Type: model.ResourceClass, ID: class.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("ended binding permission = %v, %v", allowed, permErr)
@@ -273,7 +284,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := model.RequestMetadata{
-		RequestId: model.NewId(),
+		RequestID: model.NewId(),
 		IPAddress: "127.0.0.1",
 		UserAgent: "proctor-authorization-integration-test",
 	}
@@ -281,23 +292,23 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	// Permission helpers return error/*app.Error; keep them off variables shared
 	// with CreateLocalUser/AuthenticateAccess to avoid typed-nil interface traps.
 	allowed, permErr := helper.App.PrincipalHasPermissionToUser(
-		ctx, *principal, viewer.Id, model.ActionUserView,
+		ctx, *principal, viewer.ID.String(), model.ActionUserView,
 	)
 	if permErr != nil || !allowed {
 		t.Fatalf("self visibility = %v, %v", allowed, permErr)
 	}
 	allowed, permErr = helper.App.PrincipalHasPermissionToUser(
-		ctx, *principal, viewer.Id, model.ActionUserManage,
+		ctx, *principal, viewer.ID.String(), model.ActionUserManage,
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("self management without permission = %v, %v", allowed, permErr)
 	}
-	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.ID.String())
 	if permErr != nil || allowed {
 		t.Fatalf("unbound cross-user visibility = %v, %v", allowed, permErr)
 	}
 	if _, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
 	); !application.Is(err, "authorization.denied") {
 		t.Fatalf("unbound cross-user read error = %v", err)
 	}
@@ -310,25 +321,25 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserID: viewer.Id, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
+		UserID: viewer.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.ID.String())
 	if permErr != nil || !allowed {
 		t.Fatalf("bound cross-user visibility = %v, %v", allowed, permErr)
 	}
 	visible, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
 	)
-	if err != nil || visible.Id != target.Id {
+	if err != nil || visible.ID != target.ID {
 		t.Fatalf("authorized cross-user read = %#v, %v", visible, err)
 	}
 	allowed, permErr = helper.App.PrincipalHasPermissionToUser(
-		ctx, *principal, target.Id, model.ActionUserManage,
+		ctx, *principal, target.ID.String(), model.ActionUserManage,
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, permErr)
@@ -337,22 +348,22 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
-	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
+	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.ID.String())
 	if permErr != nil || allowed {
 		t.Fatalf("ended binding visibility = %v, %v", allowed, permErr)
 	}
 	if _, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.Id},
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
 	); !application.Is(err, "authorization.denied") {
 		t.Fatalf("ended binding cross-user read error = %v", err)
 	}
 
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: viewer.Id,
+		ActorId: viewer.ID.String(),
 		Action:  string(model.ActionUserView),
 		Resource: &model.Resource{
 			Type: model.ResourceUser,
-			Id:   target.Id,
+			ID:   target.ID.String(),
 		},
 		Limit: 20,
 	})
@@ -363,7 +374,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	for _, event := range events {
 		statuses[event.Status]++
 		if event.Resource.Type != model.ResourceUser ||
-			event.Resource.Id != target.Id ||
+			event.Resource.ID != target.ID.String() ||
 			event.ScopeType != model.RoleScopeInstitution ||
 			event.ScopeID != institution.ID.String() {
 			t.Fatalf("user authorization audit scope = %#v", event)

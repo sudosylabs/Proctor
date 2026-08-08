@@ -19,9 +19,9 @@ type SqlInstallationStore struct {
 }
 
 type installationStateRow struct {
-	InitializedAt       int64  `db:"initialized_at"`
-	InstitutionID       string `db:"institution_id"`
-	AdministratorUserID string `db:"administrator_user_id"`
+	InitializedAt       time.Time `db:"initialized_at"`
+	InstitutionID       string    `db:"institution_id"`
+	AdministratorUserID string    `db:"administrator_user_id"`
 }
 
 func newSqlInstallationStore(sqlStore *SqlStore) store.InstallationStore {
@@ -32,7 +32,7 @@ func (s SqlInstallationStore) Get(ctx context.Context) (*model.InstallationState
 	var row installationStateRow
 	if err := s.GetMaster().Get(ctx, &row, `
 		SELECT initialized_at, institution_id, administrator_user_id
-		  FROM installation_state
+		  FROM installation_states
 		 WHERE singleton = 1`); err != nil {
 		return nil, translateError("installation", "singleton", err)
 	}
@@ -92,10 +92,10 @@ func (s SqlInstallationStore) Bootstrap(
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO installation_state (
+		INSERT INTO installation_states (
 			singleton, initialized_at, institution_id, administrator_user_id
 		) VALUES (1, $1, $2, $3)`,
-		model.MillisFromTime(prepared.State.InitializedAt),
+		prepared.State.InitializedAt,
 		prepared.State.InstitutionID.String(),
 		prepared.State.AdministratorUserID.String(),
 	); err != nil {
@@ -192,7 +192,7 @@ func prepareInstallationBootstrap(
 	event.ActorID = administrator.ID
 	event.Resource = model.Resource{
 		Type: model.ResourceInstitution,
-		Id:   institution.ID.String(),
+		ID:   institution.ID.String(),
 	}
 	event.ScopeType = model.RoleScopeInstitution
 	event.ScopeID = institution.ID.String()
@@ -229,7 +229,7 @@ func prepareInstallationBootstrap(
 func installationIsPristine(ctx context.Context, executor sqlxExecutor) (bool, error) {
 	var present bool
 	if err := executor.Get(ctx, &present, `
-		SELECT EXISTS (SELECT 1 FROM installation_state)
+		SELECT EXISTS (SELECT 1 FROM installation_states)
 		    OR EXISTS (SELECT 1 FROM institutions)
 		    OR EXISTS (SELECT 1 FROM users)
 		    OR EXISTS (SELECT 1 FROM roles)
@@ -247,10 +247,10 @@ func insertInstallationInstitution(
 	row := newInstitutionRow(institution)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO institutions (
-			id, create_at, update_at, delete_at, name, display_name,
+			id, created_at, updated_at, archived_at, name, display_name,
 			description
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :name, :display_name,
+			:id, :created_at, :updated_at, :archived_at, :name, :display_name,
 			:description
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -269,10 +269,10 @@ func insertInstallationRole(
 	row := newRoleRow(role)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO roles (
-			id, create_at, update_at, delete_at, name, display_name,
+			id, created_at, updated_at, archived_at, name, display_name,
 			description, permissions, built_in
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :name, :display_name,
+			:id, :created_at, :updated_at, :archived_at, :name, :display_name,
 			:description, :permissions, :built_in
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -294,10 +294,10 @@ func insertInstallationRoleBinding(
 	row := newRoleBindingRow(binding)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO role_bindings (
-			id, create_at, update_at, delete_at, user_id, role_id,
+			id, created_at, updated_at, archived_at, user_id, role_id,
 			scope_type, scope_id, start_at, end_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :user_id, :role_id,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :role_id,
 			:scope_type, :scope_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -316,12 +316,12 @@ func insertInstallationAudit(
 	row := newAuditRow(event)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO audit_events (
-			id, create_at, update_at, actor_id, session_id, action,
+			id, created_at, updated_at, actor_id, session_id, action,
 			resource_type, resource_id, scope_type, scope_id, status,
 			request_id, node_id, client_type, authentication_method,
 			ip_address, user_agent, error_code, parameters, prior_state, result
 		) VALUES (
-			:id, :create_at, :update_at, :actor_id, :session_id, :action,
+			:id, :created_at, :updated_at, :actor_id, :session_id, :action,
 			:resource_type, :resource_id, :scope_type, :scope_id, :status,
 			:request_id, :node_id, :client_type, :authentication_method,
 			:ip_address, :user_agent, :error_code, :parameters, :prior_state, :result
@@ -336,7 +336,7 @@ func insertInstallationAudit(
 
 func (row installationStateRow) model() *model.InstallationState {
 	return &model.InstallationState{
-		InitializedAt:       model.TimeFromMillis(row.InitializedAt),
+		InitializedAt:       row.InitializedAt.UTC(),
 		InstitutionID:       model.InstitutionID(row.InstitutionID),
 		AdministratorUserID: model.UserID(row.AdministratorUserID),
 	}

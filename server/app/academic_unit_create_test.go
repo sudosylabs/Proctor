@@ -184,7 +184,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 				context.Context, Invocation, model.Action,
 			) (model.Resource, error) {
 				events = append(events, "authorize")
-				return model.Resource{Type: model.ResourceInstitution, Id: institutionID}, nil
+				return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
 			},
 		},
 		auditor,
@@ -271,7 +271,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 				return nil
 			},
 			installation: func(context.Context) (model.Resource, error) {
-				return model.Resource{Type: model.ResourceInstitution, Id: institutionID}, nil
+				return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
 			},
 		},
 		auditor,
@@ -306,7 +306,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 			authorizeInstallation: func(
 				context.Context, Invocation, model.Action,
 			) (model.Resource, error) {
-				return model.Resource{Type: model.ResourceInstitution, Id: saved.InstitutionID.String()}, nil
+				return model.Resource{Type: model.ResourceInstitution, ID: saved.InstitutionID.String()}, nil
 			},
 		},
 		&academicUnitCommandAuditor{events: &events, beginID: model.NewId()},

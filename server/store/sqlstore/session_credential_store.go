@@ -27,26 +27,26 @@ type SqlSessionCredentialStore struct {
 
 type sessionCredentialRow struct {
 	ID           string         `db:"id"`
-	CreateAt     int64          `db:"create_at"`
-	UpdateAt     int64          `db:"update_at"`
-	DeleteAt     int64          `db:"delete_at"`
+	CreatedAt    time.Time      `db:"created_at"`
+	UpdatedAt    time.Time      `db:"updated_at"`
+	ArchivedAt   sql.NullTime   `db:"archived_at"`
 	SessionID    string         `db:"session_id"`
 	Kind         string         `db:"kind"`
 	TokenHash    string         `db:"token_hash"`
 	FamilyID     sql.NullString `db:"family_id"`
 	ParentID     sql.NullString `db:"parent_id"`
 	ReplacedByID sql.NullString `db:"replaced_by_id"`
-	ExpiresAt    int64          `db:"expires_at"`
-	UsedAt       int64          `db:"used_at"`
-	RevokedAt    int64          `db:"revoked_at"`
+	ExpiresAt    time.Time      `db:"expires_at"`
+	UsedAt       sql.NullTime   `db:"used_at"`
+	RevokedAt    sql.NullTime   `db:"revoked_at"`
 }
 
 func sessionCredentialSliceColumns() []string {
 	return []string{
 		"session_credentials.id",
-		"session_credentials.create_at",
-		"session_credentials.update_at",
-		"session_credentials.delete_at",
+		"session_credentials.created_at",
+		"session_credentials.updated_at",
+		"session_credentials.archived_at",
 		"session_credentials.session_id",
 		"session_credentials.kind",
 		"session_credentials.token_hash",
@@ -75,11 +75,11 @@ func insertSessionCredential(
 	row := newSessionCredentialRow(credential)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO session_credentials (
-			id, create_at, update_at, delete_at, session_id, kind,
+			id, created_at, updated_at, archived_at, session_id, kind,
 			token_hash, family_id, parent_id, replaced_by_id, expires_at,
 			used_at, revoked_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :session_id, :kind,
+			:id, :created_at, :updated_at, :archived_at, :session_id, :kind,
 			:token_hash, :family_id, :parent_id, :replaced_by_id, :expires_at,
 			:used_at, :revoked_at
 		)`, &row); err != nil {
@@ -98,9 +98,9 @@ func (s SqlSessionCredentialStore) GetSessionByTokenHash(
 ) (*model.SessionCredential, *model.Session, error) {
 	var credentialRow sessionCredentialRow
 	query := s.credentialsQuery.Where(sq.Eq{
-		"session_credentials.token_hash": tokenHash,
-		"session_credentials.kind":       string(kind),
-		"session_credentials.delete_at":  int64(0),
+		"session_credentials.token_hash":  tokenHash,
+		"session_credentials.kind":        string(kind),
+		"session_credentials.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &credentialRow, query); err != nil {
 		return nil, nil, translateError("session_credential", tokenHash, err)
@@ -110,8 +110,8 @@ func (s SqlSessionCredentialStore) GetSessionByTokenHash(
 		Select(sessionSliceColumns()...).
 		From("sessions").
 		Where(sq.Eq{
-			"sessions.id":        credentialRow.SessionID,
-			"sessions.delete_at": int64(0),
+			"sessions.id":          credentialRow.SessionID,
+			"sessions.archived_at": nil,
 		})
 	if err := s.GetMaster().GetBuilder(ctx, &lockedSessionRow, sessionQuery); err != nil {
 		return nil, nil, translateError("session", credentialRow.SessionID, err)
@@ -147,8 +147,8 @@ func (s SqlSessionCredentialStore) RotateRefresh(
 		  JOIN sessions session ON session.id = credential.session_id
 		 WHERE credential.token_hash = ?
 		   AND credential.kind = ?
-		   AND credential.delete_at = 0
-		   AND session.delete_at = 0`,
+		   AND credential.archived_at IS NULL
+		   AND session.archived_at IS NULL`,
 		tokenHash,
 		string(model.SessionCredentialRefresh),
 	); err != nil {
@@ -160,11 +160,11 @@ func (s SqlSessionCredentialStore) RotateRefresh(
 
 	var currentRow sessionCredentialRow
 	if err := tx.Get(ctx, &currentRow, `
-		SELECT id, create_at, update_at, delete_at, session_id, kind,
+		SELECT id, created_at, updated_at, archived_at, session_id, kind,
 		       token_hash, family_id, parent_id, replaced_by_id, expires_at,
 		       used_at, revoked_at
 		  FROM session_credentials
-		 WHERE token_hash = ? AND kind = ? AND delete_at = 0
+		 WHERE token_hash = ? AND kind = ? AND archived_at IS NULL
 		 FOR UPDATE`,
 		tokenHash,
 		string(model.SessionCredentialRefresh),
@@ -175,13 +175,13 @@ func (s SqlSessionCredentialStore) RotateRefresh(
 
 	var lockedSessionRow sessionRow
 	if err := tx.Get(ctx, &lockedSessionRow, `
-		SELECT id, create_at, update_at, delete_at, user_id, client_type,
+		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
 		       device_id, device_name, authentication_method,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
-		 WHERE id = ? AND delete_at = 0
+		 WHERE id = ? AND archived_at IS NULL
 		 FOR UPDATE`,
 		current.SessionID.String(),
 	); err != nil {
@@ -236,13 +236,13 @@ func (s SqlSessionCredentialStore) RotateRefresh(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE session_credentials
-		   SET update_at = GREATEST(update_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
 		 WHERE session_id = ?
 		   AND kind = ?
-		   AND delete_at = 0
-		   AND revoked_at = 0`,
-		now,
-		now,
+		   AND archived_at IS NULL
+		   AND revoked_at IS NULL`,
+		nowTime,
+		nowTime,
 		session.ID.String(),
 		string(model.SessionCredentialAccess),
 	); err != nil {
@@ -256,12 +256,12 @@ func (s SqlSessionCredentialStore) RotateRefresh(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE session_credentials
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       used_at = ?,
 		       replaced_by_id = ?
-		 WHERE id = ? AND used_at = 0 AND replaced_by_id IS NULL`,
-		now,
-		now,
+		 WHERE id = ? AND used_at IS NULL AND replaced_by_id IS NULL`,
+		nowTime,
+		nowTime,
 		newRefresh.ID.String(),
 		current.ID.String(),
 	); err != nil {
@@ -278,11 +278,11 @@ func (s SqlSessionCredentialStore) RotateRefresh(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE sessions
-		   SET update_at = ?, last_activity_at = ?, idle_expires_at = ?
-		 WHERE id = ? AND revoked_at = 0`,
-		model.MillisFromTime(session.UpdatedAt),
-		model.MillisFromTime(session.LastActivityAt),
-		model.MillisFromTime(session.IdleExpiresAt),
+		   SET updated_at = ?, last_activity_at = ?, idle_expires_at = ?
+		 WHERE id = ? AND revoked_at IS NULL`,
+		session.UpdatedAt,
+		session.LastActivityAt,
+		session.IdleExpiresAt,
 		session.ID.String(),
 	); err != nil {
 		return nil, fmt.Errorf("update rotated session: %w", err)
@@ -304,29 +304,28 @@ func revokeReplayedSession(
 	session *model.Session,
 	now time.Time,
 ) ([]string, error) {
-	nowMillis := model.MillisFromTime(now)
 	hashes, err := selectActiveAccessHashes(ctx, executor, session.ID.String())
 	if err != nil {
 		return nil, err
 	}
 	if _, err := executor.Exec(ctx, `
 		UPDATE session_credentials
-		   SET update_at = GREATEST(update_at, ?), revoked_at = ?
-		 WHERE session_id = ? AND delete_at = 0 AND revoked_at = 0`,
-		nowMillis,
-		nowMillis,
+		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
+		 WHERE session_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
+		now,
+		now,
 		session.ID.String(),
 	); err != nil {
 		return nil, fmt.Errorf("revoke replayed credential family: %w", err)
 	}
 	if _, err := executor.Exec(ctx, `
 		UPDATE sessions
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       revoked_at = ?,
 		       revocation_reason = ?
-		 WHERE id = ? AND delete_at = 0 AND revoked_at = 0`,
-		nowMillis,
-		nowMillis,
+		 WHERE id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
+		now,
+		now,
 		"refresh credential replay detected",
 		session.ID.String(),
 	); err != nil {
@@ -351,8 +350,8 @@ func selectActiveAccessHashes(
 		  FROM session_credentials
 		 WHERE session_id = ?
 		   AND kind = ?
-		   AND delete_at = 0
-		   AND revoked_at = 0
+		   AND archived_at IS NULL
+		   AND revoked_at IS NULL
 		 FOR UPDATE`,
 		sessionID,
 		string(model.SessionCredentialAccess),
@@ -365,36 +364,36 @@ func selectActiveAccessHashes(
 func newSessionCredentialRow(credential *model.SessionCredential) sessionCredentialRow {
 	return sessionCredentialRow{
 		ID:           credential.ID.String(),
-		CreateAt:     model.MillisFromTime(credential.CreatedAt),
-		UpdateAt:     model.MillisFromTime(credential.UpdatedAt),
-		DeleteAt:     credential.ArchivedAt.Millis(),
+		CreatedAt:    UTCTime(credential.CreatedAt),
+		UpdatedAt:    UTCTime(credential.UpdatedAt),
+		ArchivedAt:   NullTimeFromOptional(credential.ArchivedAt),
 		SessionID:    credential.SessionID.String(),
 		Kind:         string(credential.Kind),
 		TokenHash:    credential.TokenHash,
 		FamilyID:     nullableString(credential.FamilyID),
 		ParentID:     nullableString(credential.ParentID.String()),
 		ReplacedByID: nullableString(credential.ReplacedByID.String()),
-		ExpiresAt:    model.MillisFromTime(credential.ExpiresAt),
-		UsedAt:       credential.UsedAt.Millis(),
-		RevokedAt:    credential.RevokedAt.Millis(),
+		ExpiresAt:    UTCTime(credential.ExpiresAt),
+		UsedAt:       NullTimeFromOptional(credential.UsedAt),
+		RevokedAt:    NullTimeFromOptional(credential.RevokedAt),
 	}
 }
 
 func (row sessionCredentialRow) model() *model.SessionCredential {
 	return &model.SessionCredential{
 		ID:           model.SessionCredentialID(row.ID),
-		CreatedAt:    model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:    model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:   model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:    row.CreatedAt.UTC(),
+		UpdatedAt:    row.UpdatedAt.UTC(),
+		ArchivedAt:   OptionalTimeFromNullTime(row.ArchivedAt),
 		SessionID:    model.SessionID(row.SessionID),
 		Kind:         model.SessionCredentialKind(row.Kind),
 		TokenHash:    row.TokenHash,
 		FamilyID:     row.FamilyID.String,
 		ParentID:     model.SessionCredentialID(row.ParentID.String),
 		ReplacedByID: model.SessionCredentialID(row.ReplacedByID.String),
-		ExpiresAt:    model.TimeFromMillis(row.ExpiresAt),
-		UsedAt:       model.OptionalTimeFromMillis(row.UsedAt),
-		RevokedAt:    model.OptionalTimeFromMillis(row.RevokedAt),
+		ExpiresAt:    row.ExpiresAt.UTC(),
+		UsedAt:       OptionalTimeFromNullTime(row.UsedAt),
+		RevokedAt:    OptionalTimeFromNullTime(row.RevokedAt),
 	}
 }
 

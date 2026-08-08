@@ -8,15 +8,6 @@ import (
 	"time"
 )
 
-// persistentModel is the legacy PreSave/IsValid contract still used by
-// identity membership models until those aggregates are migrated.
-type persistentModel interface {
-	PreSave()
-	PreUpdate()
-	IsValid() error
-	Auditable() map[string]any
-}
-
 func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 	t.Parallel()
 

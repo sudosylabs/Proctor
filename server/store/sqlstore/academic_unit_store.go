@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -23,9 +24,10 @@ type SqlAcademicUnitStore struct {
 
 type academicUnitRow struct {
 	ID            string         `db:"id"`
-	CreateAt      int64          `db:"create_at"`
-	UpdateAt      int64          `db:"update_at"`
-	DeleteAt      int64          `db:"delete_at"`
+	CreatedAt     time.Time      `db:"created_at"`
+	UpdatedAt     time.Time      `db:"updated_at"`
+	ArchivedAt    sql.NullTime   `db:"archived_at"`
+	Revision      int64          `db:"revision"`
 	InstitutionID string         `db:"institution_id"`
 	ParentID      sql.NullString `db:"parent_id"`
 	Name          string         `db:"name"`
@@ -36,9 +38,10 @@ type academicUnitRow struct {
 func academicUnitSliceColumns() []string {
 	return []string{
 		"academic_units.id",
-		"academic_units.create_at",
-		"academic_units.update_at",
-		"academic_units.delete_at",
+		"academic_units.created_at",
+		"academic_units.updated_at",
+		"academic_units.archived_at",
+		"academic_units.revision",
 		"academic_units.institution_id",
 		"academic_units.parent_id",
 		"academic_units.name",
@@ -98,10 +101,10 @@ func (s SqlAcademicUnitStore) Create(
 	row := newAcademicUnitRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO academic_units (
-			id, create_at, update_at, delete_at, institution_id, parent_id,
+			id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
 			name, display_name, description
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :institution_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
 			:parent_id, :name, :display_name, :description
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
@@ -163,10 +166,10 @@ func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 	row := newAcademicUnitRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO academic_units (
-			id, create_at, update_at, delete_at, institution_id, parent_id,
+			id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
 			name, display_name, description
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :institution_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
 			:parent_id, :name, :display_name, :description
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
@@ -183,13 +186,13 @@ func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 func (s SqlAcademicUnitStore) Get(ctx context.Context, id string) (*model.AcademicUnit, error) {
 	var row academicUnitRow
 	query := s.academicUnitsQuery.Where(sq.Eq{
-		"academic_units.id":        id,
-		"academic_units.delete_at": int64(0),
+		"academic_units.id":          id,
+		"academic_units.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("academic_unit", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 // ListAncestors returns the target unit first, followed by each parent up to
@@ -202,19 +205,19 @@ func (s SqlAcademicUnitStore) ListAncestors(
 	rows := []academicUnitRow{}
 	if err := s.GetMaster().Select(ctx, &rows, `
 		WITH RECURSIVE ancestors AS (
-			SELECT id, create_at, update_at, delete_at, institution_id, parent_id,
+			SELECT id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
 			       name, display_name, description, 0 AS depth
 			  FROM academic_units
-			 WHERE id = $1 AND delete_at = 0
+			 WHERE id = $1 AND archived_at IS NULL
 			UNION ALL
-			SELECT parent.id, parent.create_at, parent.update_at, parent.delete_at,
+			SELECT parent.id, parent.created_at, parent.updated_at, parent.archived_at, parent.revision,
 			       parent.institution_id, parent.parent_id, parent.name,
 			       parent.display_name, parent.description, ancestors.depth + 1
 			  FROM academic_units parent
 			  JOIN ancestors ON parent.id = ancestors.parent_id
-			 WHERE parent.delete_at = 0
+			 WHERE parent.archived_at IS NULL
 		)
-		SELECT id, create_at, update_at, delete_at, institution_id, parent_id,
+		SELECT id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
 		       name, display_name, description
 		  FROM ancestors
 		 ORDER BY depth`, id); err != nil {
@@ -225,7 +228,11 @@ func (s SqlAcademicUnitStore) ListAncestors(
 	}
 	units := make([]*model.AcademicUnit, 0, len(rows))
 	for _, row := range rows {
-		units = append(units, row.model())
+		unit, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		units = append(units, unit)
 	}
 	return units, nil
 }
@@ -234,7 +241,7 @@ func (s SqlAcademicUnitStore) ListChildren(ctx context.Context, institutionID, p
 	query := s.academicUnitsQuery.
 		Where(sq.Eq{
 			"academic_units.institution_id": institutionID,
-			"academic_units.delete_at":      int64(0),
+			"academic_units.archived_at":    nil,
 		}).
 		Where(sq.Expr("academic_units.parent_id IS NOT DISTINCT FROM NULLIF(?, '')", parentID)).
 		OrderBy("academic_units.name", "academic_units.id")
@@ -245,7 +252,11 @@ func (s SqlAcademicUnitStore) ListChildren(ctx context.Context, institutionID, p
 	}
 	units := make([]*model.AcademicUnit, 0, len(rows))
 	for _, row := range rows {
-		units = append(units, row.model())
+		unit, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		units = append(units, unit)
 	}
 	return units, nil
 }
@@ -262,7 +273,7 @@ func (s SqlAcademicUnitStore) Search(
 	query := s.academicUnitsQuery.
 		Where(sq.Eq{
 			"academic_units.institution_id": institutionID,
-			"academic_units.delete_at":      int64(0),
+			"academic_units.archived_at":    nil,
 		}).
 		Where("(academic_units.name ILIKE ? OR academic_units.display_name ILIKE ?)",
 			"%"+term+"%", "%"+term+"%").
@@ -274,7 +285,11 @@ func (s SqlAcademicUnitStore) Search(
 	}
 	units := make([]*model.AcademicUnit, 0, len(rows))
 	for _, row := range rows {
-		units = append(units, row.model())
+		unit, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		units = append(units, unit)
 	}
 	return units, nil
 }
@@ -338,19 +353,30 @@ func (s SqlAcademicUnitStore) updateAcademicUnit(
 	row := newAcademicUnitRow(candidate)
 	result, err := tx.NamedExec(ctx, `
 		UPDATE academic_units
-		   SET update_at = :update_at,
+		   SET updated_at = :updated_at,
+		       revision = :revision,
 		       parent_id = :parent_id,
 		       name = :name,
 		       display_name = :display_name,
 		       description = :description
-		 WHERE id = :id AND institution_id = :institution_id AND delete_at = 0`, &row)
+		 WHERE id = :id AND institution_id = :institution_id AND archived_at IS NULL
+		   AND revision = :expected_revision`, map[string]any{
+		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+		"revision": candidate.Revision, "institution_id": row.InstitutionID,
+		"parent_id": row.ParentID, "name": row.Name,
+		"display_name": row.DisplayName, "description": row.Description,
+		"expected_revision": candidate.Revision - 1,
+	})
 	if err != nil {
 		return nil, fmt.Errorf(
 			"update academic unit: %w",
 			translateError("academic_unit", candidate.ID.String(), err),
 		)
 	}
-	if err := requireAffected(result, "academic_unit", candidate.ID.String()); err != nil {
+	if err := requireOwnedRevisionAffected(
+		ctx, tx, result, "academic_unit", "academic_units", "institution_id",
+		candidate.ID.String(), candidate.InstitutionID.String(),
+	); err != nil {
 		return nil, err
 	}
 	if audit != nil {
@@ -390,7 +416,7 @@ func (s SqlAcademicUnitStore) Delete(
 	deleteAt int64,
 ) (*model.AcademicUnit, error) {
 	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("academic_unit", "delete_at", deleteAt)
+		return nil, store.NewErrInvalidInput("academic_unit", "archived_at", deleteAt)
 	}
 	return s.archiveAcademicUnit(ctx, id, deleteAt, nil)
 }
@@ -416,27 +442,32 @@ func (s SqlAcademicUnitStore) archiveAcademicUnit(
 	var dependent bool
 	if err := tx.Get(ctx, &dependent, `
 		SELECT EXISTS (
-			SELECT 1 FROM academic_units WHERE parent_id = ? AND delete_at = 0
+			SELECT 1 FROM academic_units WHERE parent_id = ? AND archived_at IS NULL
 			UNION ALL
-			SELECT 1 FROM programmes WHERE academic_unit_id = ? AND delete_at = 0
+			SELECT 1 FROM programmes WHERE academic_unit_id = ? AND archived_at IS NULL
 			UNION ALL
-			SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND delete_at = 0 AND end_at = 0
+			SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND archived_at IS NULL AND end_at IS NULL
 			UNION ALL
-			SELECT 1 FROM role_bindings WHERE scope_type = 'academic_unit' AND scope_id = ? AND delete_at = 0 AND end_at = 0
+			SELECT 1 FROM role_bindings WHERE scope_type = 'academic_unit' AND scope_id = ? AND archived_at IS NULL AND end_at IS NULL
 		)`, id, id, id, id); err != nil {
 		return nil, fmt.Errorf("check academic unit archive dependencies: %w", err)
 	}
 	if dependent {
 		return nil, store.NewErrConflict("academic_unit", "academic_unit_has_active_dependents", nil)
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE academic_units SET update_at = ?, delete_at = ?
-		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id); err != nil {
+	result, err := tx.Exec(ctx, `
+		UPDATE academic_units SET updated_at = ?, archived_at = ?, revision = revision + 1
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id, current.Revision)
+	if err != nil {
 		return nil, fmt.Errorf("archive academic unit: %w", err)
+	}
+	if err := requireRevisionAffected(ctx, tx, result, "academic_unit", "academic_units", id); err != nil {
+		return nil, err
 	}
 	at := model.TimeFromMillis(deleteAt)
 	current.UpdatedAt = at
 	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
+	current.Revision++
 	if audit != nil {
 		encoded, appErr := model.EncodeAuditData(current.Auditable())
 		if appErr != nil {
@@ -461,12 +492,12 @@ func academicUnitFromExecutor(
 ) (*model.AcademicUnit, error) {
 	var row academicUnitRow
 	if err := executor.Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, institution_id, parent_id,
+		SELECT id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
 		       name, display_name, description
-		  FROM academic_units WHERE id = ? AND delete_at = 0 FOR UPDATE`, id); err != nil {
+		  FROM academic_units WHERE id = ? AND archived_at IS NULL FOR UPDATE`, id); err != nil {
 		return nil, translateError("academic_unit", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func lockAcademicUnitHierarchy(ctx context.Context, tx sqlxExecutor) error {
@@ -490,7 +521,7 @@ func validateAcademicUnitParent(
 	err := executor.Get(
 		ctx,
 		&parentInstitutionID,
-		"SELECT institution_id FROM academic_units WHERE id = ? AND delete_at = 0",
+		"SELECT institution_id FROM academic_units WHERE id = ? AND archived_at IS NULL",
 		parentID,
 	)
 	if err != nil {
@@ -506,12 +537,12 @@ func validateAcademicUnitParent(
 	var createsCycle bool
 	err = executor.Get(ctx, &createsCycle, `
 		WITH RECURSIVE descendants AS (
-			SELECT id FROM academic_units WHERE parent_id = ? AND delete_at = 0
+			SELECT id FROM academic_units WHERE parent_id = ? AND archived_at IS NULL
 			UNION ALL
 			SELECT child.id
 			  FROM academic_units child
 			  JOIN descendants parent ON child.parent_id = parent.id
-			 WHERE child.delete_at = 0
+			 WHERE child.archived_at IS NULL
 		)
 		SELECT EXISTS (SELECT 1 FROM descendants WHERE id = ?)`,
 		unitID,
@@ -529,9 +560,10 @@ func validateAcademicUnitParent(
 func newAcademicUnitRow(unit *model.AcademicUnit) academicUnitRow {
 	return academicUnitRow{
 		ID:            unit.ID.String(),
-		CreateAt:      model.MillisFromTime(unit.CreatedAt),
-		UpdateAt:      model.MillisFromTime(unit.UpdatedAt),
-		DeleteAt:      unit.ArchivedAt.Millis(),
+		CreatedAt:     UTCTime(unit.CreatedAt),
+		UpdatedAt:     UTCTime(unit.UpdatedAt),
+		ArchivedAt:    NullTimeFromOptional(unit.ArchivedAt),
+		Revision:      unit.Revision,
 		InstitutionID: unit.InstitutionID.String(),
 		ParentID:      nullableString(unit.ParentID.String()),
 		Name:          unit.Name,
@@ -540,36 +572,39 @@ func newAcademicUnitRow(unit *model.AcademicUnit) academicUnitRow {
 	}
 }
 
-func (row academicUnitRow) model() *model.AcademicUnit {
+func (row academicUnitRow) model() (*model.AcademicUnit, error) {
 	id, err := model.ParseAcademicUnitID(row.ID)
 	if err != nil {
-		id = model.AcademicUnitID(row.ID)
+		return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, err)
 	}
 	institutionID, err := model.ParseInstitutionID(row.InstitutionID)
 	if err != nil {
-		institutionID = model.InstitutionID(row.InstitutionID)
+		return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, err)
 	}
 	var parentID model.AcademicUnitID
 	if row.ParentID.Valid && row.ParentID.String != "" {
 		parsed, parseErr := model.ParseAcademicUnitID(row.ParentID.String)
 		if parseErr != nil {
-			parentID = model.AcademicUnitID(row.ParentID.String)
-		} else {
-			parentID = parsed
+			return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, parseErr)
 		}
+		parentID = parsed
 	}
-	return &model.AcademicUnit{
+	unit := &model.AcademicUnit{
 		ID:            id,
-		CreatedAt:     model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:     model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:    model.OptionalTimeFromMillis(row.DeleteAt),
-		Revision:      1,
+		CreatedAt:     row.CreatedAt.UTC(),
+		UpdatedAt:     row.UpdatedAt.UTC(),
+		ArchivedAt:    OptionalTimeFromNullTime(row.ArchivedAt),
+		Revision:      row.Revision,
 		InstitutionID: institutionID,
 		ParentID:      parentID,
 		Name:          row.Name,
 		DisplayName:   row.DisplayName,
 		Description:   row.Description,
 	}
+	if err := unit.Validate(); err != nil {
+		return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, err)
+	}
+	return unit, nil
 }
 
 func nullableString(value string) sql.NullString {

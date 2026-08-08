@@ -62,7 +62,7 @@ func TestAcademicPeriodCreateRejectsInvalidHalfOpenIntervalBeforeAudit(t *testin
 	events := []string{}
 	service := newAcademicPeriodService(
 		&academicPeriodStoreFake{events: &events},
-		&academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, time.Now, model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicPeriodCommand{Name: "invalid", DisplayName: "Invalid", StartAt: 200, EndAt: 200})
@@ -103,7 +103,7 @@ func TestAcademicPeriodUpdatePreservesInstitutionOwnership(t *testing.T) {
 func TestAcademicPeriodCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events}, &academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}, err: NewError("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
+	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events}, &academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, err: NewError("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
 	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicPeriodCommand{Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
 	if !Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
@@ -149,7 +149,7 @@ func TestAcademicPeriodCreateConflictCompletesFailedAttempt(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
-	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events, createErr: store.NewErrConflict("academic_period", "academic_periods_active_name_key", nil)}, &academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}}, auditor, time.Now, model.NewId)
+	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events, createErr: store.NewErrConflict("academic_period", "academic_periods_institution_id_name_key", nil)}, &academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}}, auditor, time.Now, model.NewId)
 	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicPeriodCommand{Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
 	if !Is(err, "academic_period.conflict") || auditor.failCode != "academic_period.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
@@ -164,7 +164,7 @@ func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) 
 	persistence := &academicPeriodStoreFake{events: &events, created: created}
 	service := newAcademicPeriodService(
 		persistence,
-		&academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: institutionID}},
+		&academicPeriodAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: institutionID}},
 		&institutionAuditorFake{events: &events, beginID: auditID},
 		func() time.Time { return time.UnixMilli(500) }, func() string { return periodID },
 	)

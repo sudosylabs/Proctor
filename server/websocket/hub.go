@@ -27,22 +27,22 @@ import (
 )
 
 const (
-	sendQueueSize        = 256
-	replayQueueSize      = 128
-	writeWait            = 30 * time.Second
-	pongWait             = 100 * time.Second
-	pingInterval         = 60 * time.Second
-	sessionCheck         = 30 * time.Second
-	replayRetention      = 2 * time.Minute
+	sendQueueSize   = 256
+	replayQueueSize = 128
+	writeWait       = 30 * time.Second
+	pongWait        = 100 * time.Second
+	pingInterval    = 60 * time.Second
+	sessionCheck    = 30 * time.Second
+	replayRetention = 2 * time.Minute
 	// Close codes are part of the public WebSocket protocol contract.
-	CloseServer                 = 4000
-	CloseSessionRevoked         = 4001
-	CloseBackpressure           = 4002
-	CloseAuthorizationChanged   = 4003
-	CloseLimit                  = 4004
-	maximumPerSession           = 8
-	maximumPerUser              = 64
-	maximumSubscriptions        = 256
+	CloseServer               = 4000
+	CloseSessionRevoked       = 4001
+	CloseBackpressure         = 4002
+	CloseAuthorizationChanged = 4003
+	CloseLimit                = 4004
+	maximumPerSession         = 8
+	maximumPerUser            = 64
+	maximumSubscriptions      = 256
 )
 
 type outboundMessage struct {
@@ -269,7 +269,7 @@ func (h *Hub) register(
 		return nil, false
 	}
 
-	shard := h.shardForUser(principal.UserId)
+	shard := h.shardForUser(principal.UserID.String())
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 	h.mu.RLock()
@@ -281,10 +281,10 @@ func (h *Hub) register(
 	h.pruneReplayLocked(shard, time.Now())
 	var userConnections, sessionConnections int
 	for _, connection := range shard.conns {
-		if connection.principal.UserId == principal.UserId {
+		if connection.principal.UserID.String() == principal.UserID.String() {
 			userConnections++
 		}
-		if connection.principal.SessionId == principal.SessionId {
+		if connection.principal.SessionID.String() == principal.SessionID.String() {
 			sessionConnections++
 		}
 	}
@@ -301,8 +301,8 @@ func (h *Hub) register(
 		resumed       bool
 	)
 	if state := shard.replay[requestedID]; state != nil &&
-		state.userID == principal.UserId &&
-		state.sessionID == principal.SessionId &&
+		state.userID == principal.UserID.String() &&
+		state.sessionID == principal.SessionID.String() &&
 		requestedSequence <= state.nextSequence {
 		oldest := state.nextSequence
 		if len(state.history) != 0 {
@@ -336,7 +336,7 @@ func (h *Hub) register(
 }
 
 func (h *Hub) unregister(connection *connection) {
-	shard := h.shardForUser(connection.principal.UserId)
+	shard := h.shardForUser(connection.principal.UserID.String())
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 	current, exists := shard.conns[connection.id]
@@ -350,8 +350,8 @@ func (h *Hub) unregister(connection *connection) {
 	h.mu.RUnlock()
 	if connection.replayable && started {
 		shard.replay[connection.id] = &replayState{
-			userID:        connection.principal.UserId,
-			sessionID:     connection.principal.SessionId,
+			userID:        connection.principal.UserID.String(),
+			sessionID:     connection.principal.SessionID.String(),
 			nextSequence:  connection.nextSequence,
 			history:       cloneEvents(connection.history),
 			subscriptions: cloneSubscriptions(connection.subscriptions),
@@ -371,8 +371,8 @@ func (h *Hub) publishWire(event *Event) {
 		return
 	}
 	var shards []*shard
-	if event.UserId != "" {
-		shards = []*shard{h.shardForUser(event.UserId)}
+	if event.UserID != "" {
+		shards = []*shard{h.shardForUser(event.UserID)}
 	} else {
 		shards = h.shards
 	}
@@ -385,7 +385,7 @@ func (h *Hub) publishWire(event *Event) {
 		shard.mu.RUnlock()
 	}
 	for _, connection := range connections {
-		if event.UserId != "" && connection.principal.UserId != event.UserId {
+		if event.UserID != "" && connection.principal.UserID.String() != event.UserID {
 			continue
 		}
 		if event.Action != "" && !connection.hasSubscription(
@@ -401,7 +401,7 @@ func (h *Hub) publishWire(event *Event) {
 func (h *Hub) CloseSession(sessionID string, reason app.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
 	h.closeMatching(code, text, func(connection *connection) bool {
-		return connection.principal.SessionId == sessionID
+		return connection.principal.SessionID.String() == sessionID
 	})
 }
 
@@ -409,7 +409,7 @@ func (h *Hub) CloseSession(sessionID string, reason app.ConnectionCloseReason) {
 func (h *Hub) CloseUser(userID string, reason app.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
 	h.closeMatching(code, text, func(connection *connection) bool {
-		return connection.principal.UserId == userID
+		return connection.principal.UserID.String() == userID
 	})
 }
 
@@ -423,9 +423,9 @@ func eventFromRealtime(event app.RealtimeEvent) *Event {
 	return &Event{
 		Id:       event.ID,
 		Event:    event.Name,
-		UserId:   event.UserID,
+		UserID:   event.UserID,
 		Action:   event.Action,
-		Resource: event.Resource,
+		Resource: resourceFromModel(event.Resource),
 		Data:     append(json.RawMessage(nil), event.Data...),
 	}
 }
@@ -643,13 +643,13 @@ func (c *connection) handleRequest(
 			return
 		}
 		metadata := c.metadata
-		metadata.RequestId = fmt.Sprintf("%s:%d", c.id, request.Sequence)
+		metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
 		if err := c.hub.application.AuthorizeWebSocketSubscription(
 			ctx,
 			c.principal,
 			metadata,
 			subscription.Action,
-			subscription.Resource,
+			subscription.Resource.model(),
 		); err != nil {
 			code := "authorization.denied"
 			message := "WebSocket subscription denied."
@@ -698,12 +698,12 @@ func (c *connection) enqueueHello(resumed, resyncRequired bool) {
 	})
 	c.enqueueEvent(&Event{
 		Id: model.NewId(), Event: string(EventHello),
-		UserId: c.principal.UserId, Data: data,
+		UserID: c.principal.UserID.String(), Data: data,
 	})
 	if resyncRequired {
 		c.enqueueEvent(&Event{
 			Id: model.NewId(), Event: string(EventResync),
-			UserId: c.principal.UserId,
+			UserID: c.principal.UserID.String(),
 		})
 	}
 }

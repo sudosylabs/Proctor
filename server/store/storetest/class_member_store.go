@@ -30,7 +30,7 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
 		ClassID:          firstClass.ID,
 		AcademicPeriodID: model.NewAcademicPeriodID(),
-		UserID: user.ID,
+		UserID:           user.ID,
 		StartsAt:         model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
@@ -309,7 +309,7 @@ func saveClassMemberAuditAttempt(
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionClassMembersManage),
-		Resource:  model.Resource{Type: model.ResourceClass, Id: classID},
+		Resource:  model.Resource{Type: model.ResourceClass, ID: classID},
 		ScopeType: model.RoleScopeClass, ScopeID: classID,
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})

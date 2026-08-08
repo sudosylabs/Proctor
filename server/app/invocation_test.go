@@ -15,14 +15,14 @@ func TestInvocationCarriesPrincipalAndSafeMetadataImmutably(t *testing.T) {
 	t.Parallel()
 
 	principal := model.Principal{
-		UserId: model.NewId(),
-		SessionId:        model.NewId(),
-		CredentialId:     model.NewId(),
+		UserID:           model.NewUserID(),
+		SessionID:        model.NewSessionID(),
+		CredentialID:     model.PrincipalCredentialID(model.NewId()),
 		CredentialType:   model.CredentialSessionAccess,
 		CredentialScopes: []string{"scope-a"},
 	}
 	metadata := model.RequestMetadata{
-		RequestId: "req-1",
+		RequestID: "req-1",
 		IPAddress: "127.0.0.1",
 		UserAgent: "proctor-test",
 	}
@@ -38,9 +38,9 @@ func TestInvocationCarriesPrincipalAndSafeMetadataImmutably(t *testing.T) {
 
 	// Mutating the source metadata after construction must not affect the
 	// invocation; the value is a snapshot.
-	metadata.RequestId = "mutated"
+	metadata.RequestID = "mutated"
 	principal.CredentialScopes[0] = "mutated"
-	if invocation.RequestMetadata().RequestId != "req-1" {
+	if invocation.RequestMetadata().RequestID != "req-1" {
 		t.Fatal("Invocation retained a live reference to caller metadata")
 	}
 	gotPrincipal := invocation.Principal()

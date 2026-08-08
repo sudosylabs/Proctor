@@ -11,6 +11,7 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 	"unicode/utf8"
@@ -27,31 +28,31 @@ type SqlSessionStore struct {
 }
 
 type sessionRow struct {
-	ID                     string `db:"id"`
-	CreateAt               int64  `db:"create_at"`
-	UpdateAt               int64  `db:"update_at"`
-	DeleteAt               int64  `db:"delete_at"`
-	UserID                 string `db:"user_id"`
-	ClientType             string `db:"client_type"`
-	DeviceID               string `db:"device_id"`
-	DeviceName             string `db:"device_name"`
-	AuthenticationMethod   string `db:"authentication_method"`
-	AuthenticationStrength string `db:"authentication_strength"`
-	AuthenticatedAt        int64  `db:"authenticated_at"`
-	MFACompletedAt         int64  `db:"mfa_completed_at"`
-	LastActivityAt         int64  `db:"last_activity_at"`
-	IdleExpiresAt          int64  `db:"idle_expires_at"`
-	ExpiresAt              int64  `db:"expires_at"`
-	RevokedAt              int64  `db:"revoked_at"`
-	RevocationReason       string `db:"revocation_reason"`
+	ID                     string       `db:"id"`
+	CreatedAt              time.Time    `db:"created_at"`
+	UpdatedAt              time.Time    `db:"updated_at"`
+	ArchivedAt             sql.NullTime `db:"archived_at"`
+	UserID                 string       `db:"user_id"`
+	ClientType             string       `db:"client_type"`
+	DeviceID               string       `db:"device_id"`
+	DeviceName             string       `db:"device_name"`
+	AuthenticationMethod   string       `db:"authentication_method"`
+	AuthenticationStrength string       `db:"authentication_strength"`
+	AuthenticatedAt        time.Time    `db:"authenticated_at"`
+	MFACompletedAt         sql.NullTime `db:"mfa_completed_at"`
+	LastActivityAt         time.Time    `db:"last_activity_at"`
+	IdleExpiresAt          time.Time    `db:"idle_expires_at"`
+	ExpiresAt              time.Time    `db:"expires_at"`
+	RevokedAt              sql.NullTime `db:"revoked_at"`
+	RevocationReason       string       `db:"revocation_reason"`
 }
 
 func sessionSliceColumns() []string {
 	return []string{
 		"sessions.id",
-		"sessions.create_at",
-		"sessions.update_at",
-		"sessions.delete_at",
+		"sessions.created_at",
+		"sessions.updated_at",
+		"sessions.archived_at",
 		"sessions.user_id",
 		"sessions.client_type",
 		"sessions.device_id",
@@ -110,19 +111,18 @@ func (s SqlSessionStore) Save(
 	if err := lockUserSessions(ctx, tx, candidate.UserID.String()); err != nil {
 		return nil, nil, err
 	}
-	createMillis := model.MillisFromTime(candidate.CreatedAt)
 	var active int
 	if err := tx.Get(ctx, &active, `
 		SELECT COUNT(*)
 		  FROM sessions
 		 WHERE user_id = ?
-		   AND delete_at = 0
-		   AND revoked_at = 0
+		   AND archived_at IS NULL
+		   AND revoked_at IS NULL
 		   AND idle_expires_at > ?
 		   AND expires_at > ?`,
 		candidate.UserID.String(),
-		createMillis,
-		createMillis,
+		candidate.CreatedAt,
+		candidate.CreatedAt,
 	); err != nil {
 		return nil, nil, fmt.Errorf("count active sessions: %w", err)
 	}
@@ -140,13 +140,13 @@ func (s SqlSessionStore) Save(
 	}
 	userResult, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       last_login_at = GREATEST(last_login_at, ?),
 		       last_activity_at = GREATEST(last_activity_at, ?)
-		 WHERE id = ? AND delete_at = 0 AND disabled_at = 0`,
-		createMillis,
-		createMillis,
-		createMillis,
+		 WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL`,
+		candidate.CreatedAt,
+		candidate.CreatedAt,
+		candidate.CreatedAt,
 		candidate.UserID.String(),
 	)
 	if err != nil {
@@ -207,13 +207,13 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 	row := newSessionRow(session)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO sessions (
-			id, create_at, update_at, delete_at, user_id, client_type,
+			id, created_at, updated_at, archived_at, user_id, client_type,
 			device_id, device_name, authentication_method,
 			authentication_strength, authenticated_at, mfa_completed_at,
 			last_activity_at, idle_expires_at, expires_at, revoked_at,
 			revocation_reason
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :user_id, :client_type,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :client_type,
 			:device_id, :device_name, :authentication_method,
 			:authentication_strength, :authenticated_at, :mfa_completed_at,
 			:last_activity_at, :idle_expires_at, :expires_at, :revoked_at,
@@ -227,8 +227,8 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 func (s SqlSessionStore) Get(ctx context.Context, id string) (*model.Session, error) {
 	var row sessionRow
 	query := s.sessionsQuery.Where(sq.Eq{
-		"sessions.id":        id,
-		"sessions.delete_at": int64(0),
+		"sessions.id":          id,
+		"sessions.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("session", id, err)
@@ -239,10 +239,10 @@ func (s SqlSessionStore) Get(ctx context.Context, id string) (*model.Session, er
 func (s SqlSessionStore) ListByUser(ctx context.Context, userID string) ([]*model.Session, error) {
 	query := s.sessionsQuery.
 		Where(sq.Eq{
-			"sessions.user_id":   userID,
-			"sessions.delete_at": int64(0),
+			"sessions.user_id":     userID,
+			"sessions.archived_at": nil,
 		}).
-		OrderBy("sessions.create_at DESC", "sessions.id")
+		OrderBy("sessions.created_at DESC", "sessions.id")
 	rows := []sessionRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
 		return nil, fmt.Errorf("list sessions by user: %w", err)
@@ -259,17 +259,18 @@ func (s SqlSessionStore) ListActiveByUser(
 	userID string,
 	now int64,
 ) ([]*model.Session, error) {
+	at := model.TimeFromMillis(now)
 	query := s.sessionsQuery.
 		Where(sq.Eq{
-			"sessions.user_id":    userID,
-			"sessions.delete_at":  int64(0),
-			"sessions.revoked_at": int64(0),
+			"sessions.user_id":     userID,
+			"sessions.archived_at": nil,
+			"sessions.revoked_at":  nil,
 		}).
-		Where(sq.Gt{"sessions.idle_expires_at": now}).
-		Where(sq.Gt{"sessions.expires_at": now}).
+		Where(sq.Gt{"sessions.idle_expires_at": at}).
+		Where(sq.Gt{"sessions.expires_at": at}).
 		OrderBy(
 			"sessions.last_activity_at DESC",
-			"sessions.create_at DESC",
+			"sessions.created_at DESC",
 			"sessions.id",
 		)
 	rows := []sessionRow{}
@@ -289,22 +290,24 @@ func (s SqlSessionStore) UpdateActivity(
 	lastActivityAt int64,
 	idleExpiresAt int64,
 ) error {
+	activityAt := model.TimeFromMillis(lastActivityAt)
+	idleAt := model.TimeFromMillis(idleExpiresAt)
 	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE sessions
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       last_activity_at = ?,
 		       idle_expires_at = LEAST(?, expires_at)
 		 WHERE id = ?
-		   AND delete_at = 0
-		   AND revoked_at = 0
+		   AND archived_at IS NULL
+		   AND revoked_at IS NULL
 		   AND idle_expires_at > ?
 		   AND expires_at > ?`,
-		lastActivityAt,
-		lastActivityAt,
-		idleExpiresAt,
+		activityAt,
+		activityAt,
+		idleAt,
 		id,
-		lastActivityAt,
-		lastActivityAt,
+		activityAt,
+		activityAt,
 	)
 	if err != nil {
 		return fmt.Errorf("update session activity: %w", err)
@@ -361,13 +364,13 @@ func (s SqlSessionStore) RevokeWithAudit(
 	}
 	var row sessionRow
 	if err := tx.Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, user_id, client_type,
+		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
 		       device_id, device_name, authentication_method,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
-		 WHERE id = ? AND user_id = ? AND delete_at = 0 AND revoked_at = 0
+		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL
 		 FOR UPDATE`,
 		input.SessionID,
 		input.UserID,
@@ -483,11 +486,12 @@ func revokeOneUserSession(
 	revokedAt int64,
 	reason string,
 ) ([]string, error) {
+	at := model.TimeFromMillis(revokedAt)
 	var matchedSessionID string
 	if err := tx.Get(ctx, &matchedSessionID, `
 		SELECT id
 		  FROM sessions
-		 WHERE id = ? AND user_id = ? AND delete_at = 0 AND revoked_at = 0`,
+		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		id,
 		userID,
 	); err != nil {
@@ -499,12 +503,12 @@ func revokeOneUserSession(
 	}
 	result, err := tx.Exec(ctx, `
 		UPDATE sessions
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       revoked_at = ?,
 		       revocation_reason = ?
-		 WHERE id = ? AND user_id = ? AND delete_at = 0 AND revoked_at = 0`,
-		revokedAt,
-		revokedAt,
+		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
+		at,
+		at,
 		model.SanitizeUnicode(reason),
 		id,
 		userID,
@@ -517,10 +521,10 @@ func revokeOneUserSession(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE session_credentials
-		   SET update_at = GREATEST(update_at, ?), revoked_at = ?
-		 WHERE session_id = ? AND delete_at = 0 AND revoked_at = 0`,
-		revokedAt,
-		revokedAt,
+		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
+		 WHERE session_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
+		at,
+		at,
 		id,
 	); err != nil {
 		return nil, fmt.Errorf("revoke session credentials: %w", err)
@@ -535,16 +539,17 @@ func revokeAllUserSessions(
 	revokedAt int64,
 	reason string,
 ) ([]sessionRow, []string, error) {
+	at := model.TimeFromMillis(revokedAt)
 	hashes := []string{}
 	if err := executor.Select(ctx, &hashes, `
 		SELECT credential.token_hash
 		  FROM session_credentials credential
 		  JOIN sessions session ON session.id = credential.session_id
 		 WHERE session.user_id = ?
-		   AND session.delete_at = 0
-		   AND session.revoked_at = 0
-		   AND credential.delete_at = 0
-		   AND credential.revoked_at = 0
+		   AND session.archived_at IS NULL
+		   AND session.revoked_at IS NULL
+		   AND credential.archived_at IS NULL
+		   AND credential.revoked_at IS NULL
 		 FOR UPDATE OF credential`,
 		userID,
 	); err != nil {
@@ -552,13 +557,13 @@ func revokeAllUserSessions(
 	}
 	rows := []sessionRow{}
 	if err := executor.Select(ctx, &rows, `
-		SELECT id, create_at, update_at, delete_at, user_id, client_type,
+		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
 		       device_id, device_name, authentication_method,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
-		 WHERE user_id = ? AND delete_at = 0 AND revoked_at = 0
+		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL
 		 FOR UPDATE`,
 		userID,
 	); err != nil {
@@ -566,28 +571,28 @@ func revokeAllUserSessions(
 	}
 	if _, err := executor.Exec(ctx, `
 		UPDATE session_credentials credential
-		   SET update_at = GREATEST(credential.update_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(credential.updated_at, ?), revoked_at = ?
 		  FROM sessions session
 		 WHERE session.id = credential.session_id
 		   AND session.user_id = ?
-		   AND session.delete_at = 0
-		   AND session.revoked_at = 0
-		   AND credential.delete_at = 0
-		   AND credential.revoked_at = 0`,
-		revokedAt,
-		revokedAt,
+		   AND session.archived_at IS NULL
+		   AND session.revoked_at IS NULL
+		   AND credential.archived_at IS NULL
+		   AND credential.revoked_at IS NULL`,
+		at,
+		at,
 		userID,
 	); err != nil {
 		return nil, nil, fmt.Errorf("revoke user session credentials: %w", err)
 	}
 	if _, err := executor.Exec(ctx, `
 		UPDATE sessions
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       revoked_at = ?,
 		       revocation_reason = ?
-		 WHERE user_id = ? AND delete_at = 0 AND revoked_at = 0`,
-		revokedAt,
-		revokedAt,
+		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
+		at,
+		at,
 		model.SanitizeUnicode(reason),
 		userID,
 	); err != nil {
@@ -640,7 +645,7 @@ func selectActiveTokenHashes(
 	if err := executor.Select(ctx, &hashes, `
 		SELECT token_hash
 		  FROM session_credentials
-		 WHERE session_id = ? AND delete_at = 0 AND revoked_at = 0
+		 WHERE session_id = ? AND archived_at IS NULL AND revoked_at IS NULL
 		 FOR UPDATE`,
 		sessionID,
 	); err != nil {
@@ -652,21 +657,21 @@ func selectActiveTokenHashes(
 func newSessionRow(session *model.Session) sessionRow {
 	return sessionRow{
 		ID:                     session.ID.String(),
-		CreateAt:               model.MillisFromTime(session.CreatedAt),
-		UpdateAt:               model.MillisFromTime(session.UpdatedAt),
-		DeleteAt:               session.ArchivedAt.Millis(),
+		CreatedAt:              UTCTime(session.CreatedAt),
+		UpdatedAt:              UTCTime(session.UpdatedAt),
+		ArchivedAt:             NullTimeFromOptional(session.ArchivedAt),
 		UserID:                 session.UserID.String(),
 		ClientType:             string(session.ClientType),
 		DeviceID:               session.DeviceID,
 		DeviceName:             session.DeviceName,
 		AuthenticationMethod:   session.AuthenticationMethod,
 		AuthenticationStrength: string(session.AuthenticationStrength),
-		AuthenticatedAt:        model.MillisFromTime(session.AuthenticatedAt),
-		MFACompletedAt:         session.MFACompletedAt.Millis(),
-		LastActivityAt:         model.MillisFromTime(session.LastActivityAt),
-		IdleExpiresAt:          model.MillisFromTime(session.IdleExpiresAt),
-		ExpiresAt:              model.MillisFromTime(session.ExpiresAt),
-		RevokedAt:              session.RevokedAt.Millis(),
+		AuthenticatedAt:        UTCTime(session.AuthenticatedAt),
+		MFACompletedAt:         NullTimeFromOptional(session.MFACompletedAt),
+		LastActivityAt:         UTCTime(session.LastActivityAt),
+		IdleExpiresAt:          UTCTime(session.IdleExpiresAt),
+		ExpiresAt:              UTCTime(session.ExpiresAt),
+		RevokedAt:              NullTimeFromOptional(session.RevokedAt),
 		RevocationReason:       session.RevocationReason,
 	}
 }
@@ -674,21 +679,21 @@ func newSessionRow(session *model.Session) sessionRow {
 func (row sessionRow) model() *model.Session {
 	return &model.Session{
 		ID:                     model.SessionID(row.ID),
-		CreatedAt:              model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:              model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:             model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:              row.CreatedAt.UTC(),
+		UpdatedAt:              row.UpdatedAt.UTC(),
+		ArchivedAt:             OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:                 model.UserID(row.UserID),
 		ClientType:             model.SessionClientType(row.ClientType),
 		DeviceID:               row.DeviceID,
 		DeviceName:             row.DeviceName,
 		AuthenticationMethod:   row.AuthenticationMethod,
 		AuthenticationStrength: model.AuthenticationStrength(row.AuthenticationStrength),
-		AuthenticatedAt:        model.TimeFromMillis(row.AuthenticatedAt),
-		MFACompletedAt:         model.OptionalTimeFromMillis(row.MFACompletedAt),
-		LastActivityAt:         model.TimeFromMillis(row.LastActivityAt),
-		IdleExpiresAt:          model.TimeFromMillis(row.IdleExpiresAt),
-		ExpiresAt:              model.TimeFromMillis(row.ExpiresAt),
-		RevokedAt:              model.OptionalTimeFromMillis(row.RevokedAt),
+		AuthenticatedAt:        row.AuthenticatedAt.UTC(),
+		MFACompletedAt:         OptionalTimeFromNullTime(row.MFACompletedAt),
+		LastActivityAt:         row.LastActivityAt.UTC(),
+		IdleExpiresAt:          row.IdleExpiresAt.UTC(),
+		ExpiresAt:              row.ExpiresAt.UTC(),
+		RevokedAt:              OptionalTimeFromNullTime(row.RevokedAt),
 		RevocationReason:       row.RevocationReason,
 	}
 }

@@ -33,7 +33,7 @@ func attachRequestMetadata(next http.Handler) http.Handler {
 			ipAddress = host
 		}
 		metadata := model.RequestMetadata{
-			RequestId: RequestID(request.Context()),
+			RequestID: RequestID(request.Context()),
 			IPAddress: ipAddress,
 			UserAgent: request.UserAgent(),
 		}

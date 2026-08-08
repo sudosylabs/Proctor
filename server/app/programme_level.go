@@ -157,7 +157,7 @@ func (s *programmeLevelService) Update(ctx context.Context, invocation Invocatio
 	if err != nil {
 		return nil, err
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: programme.AcademicUnitID.String()}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 	if err != nil {
 		return err
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: programme.AcademicUnitID.String()}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return err
 	}
@@ -236,7 +236,7 @@ func (s *programmeLevelService) authorizedProgramme(ctx context.Context, invocat
 	if err != nil {
 		return model.Resource{}, programmeError(err)
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: programme.AcademicUnitID.String()}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}

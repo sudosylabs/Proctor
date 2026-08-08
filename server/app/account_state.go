@@ -55,7 +55,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
-	if invocation.Principal().UserId == userID && !command.Enabled {
+	if invocation.Principal().UserID.String() == userID && !command.Enabled {
 		return nil, NewError("request.invalid").WithField("field", "user_id")
 	}
 	current, err := s.users.Get(ctx, userID)
@@ -67,7 +67,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		ctx,
 		invocation,
 		model.ActionUserManage,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 		"set_disabled",
 		map[string]any{"user_id": userID, "disabled": disabled},
 		current.Auditable(),

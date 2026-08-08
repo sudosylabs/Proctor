@@ -10,8 +10,8 @@
 package api
 
 import (
-	application "github.com/sudosylabs/proctor/server/app"
 	"context"
+	application "github.com/sudosylabs/proctor/server/app"
 	"net/http"
 	"time"
 

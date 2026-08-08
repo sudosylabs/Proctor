@@ -12,6 +12,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -27,22 +28,22 @@ type SqlRoleBindingStore struct {
 // roleBindingRow is the legacy integer-millisecond column layout. Domain
 // RoleBinding uses time.Time / OptionalTime; conversion is at this boundary.
 type roleBindingRow struct {
-	ID        string              `db:"id"`
-	CreateAt  int64               `db:"create_at"`
-	UpdateAt  int64               `db:"update_at"`
-	DeleteAt  int64               `db:"delete_at"`
-	UserID    string              `db:"user_id"`
-	RoleID    string              `db:"role_id"`
-	ScopeType model.RoleScopeType `db:"scope_type"`
-	ScopeID   string              `db:"scope_id"`
-	StartAt   int64               `db:"start_at"`
-	EndAt     int64               `db:"end_at"`
+	ID         string              `db:"id"`
+	CreatedAt  time.Time           `db:"created_at"`
+	UpdatedAt  time.Time           `db:"updated_at"`
+	ArchivedAt sql.NullTime        `db:"archived_at"`
+	UserID     string              `db:"user_id"`
+	RoleID     string              `db:"role_id"`
+	ScopeType  model.RoleScopeType `db:"scope_type"`
+	ScopeID    string              `db:"scope_id"`
+	StartAt    time.Time           `db:"start_at"`
+	EndAt      sql.NullTime        `db:"end_at"`
 }
 
 func roleBindingSliceColumns() []string {
 	return []string{
-		"role_bindings.id", "role_bindings.create_at", "role_bindings.update_at",
-		"role_bindings.delete_at", "role_bindings.user_id", "role_bindings.role_id",
+		"role_bindings.id", "role_bindings.created_at", "role_bindings.updated_at",
+		"role_bindings.archived_at", "role_bindings.user_id", "role_bindings.role_id",
 		"role_bindings.scope_type", "role_bindings.scope_id",
 		"role_bindings.start_at", "role_bindings.end_at",
 	}
@@ -143,17 +144,17 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 	if err := validateSystemAdministratorScope(ctx, tx, candidate); err != nil {
 		return err
 	}
-	startAt := model.MillisFromTime(candidate.StartsAt)
-	endAt := candidate.EndsAt.Millis()
+	startAt := candidate.StartsAt
+	endAt := NullTimeFromOptional(candidate.EndsAt)
 	var overlap bool
 	if err := tx.Get(ctx, &overlap, `
 		SELECT EXISTS (
 			SELECT 1 FROM role_bindings
 			 WHERE user_id = $1 AND role_id = $2
 			   AND scope_type = $3 AND scope_id = $4
-			   AND delete_at = 0
-			   AND start_at < CASE WHEN $6 = 0 THEN 9223372036854775807 ELSE $6 END
-			   AND (end_at = 0 OR end_at > $5)
+			   AND archived_at IS NULL
+			   AND ($6::timestamptz IS NULL OR start_at < $6)
+			   AND (end_at IS NULL OR end_at > $5)
 		)`, candidate.UserID.String(), candidate.RoleID.String(), candidate.ScopeType,
 		candidate.ScopeID, startAt, endAt); err != nil {
 		return fmt.Errorf("check role binding overlap: %w", err)
@@ -166,10 +167,10 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 	row := newRoleBindingRow(candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO role_bindings (
-			id, create_at, update_at, delete_at, user_id, role_id,
+			id, created_at, updated_at, archived_at, user_id, role_id,
 			scope_type, scope_id, start_at, end_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :user_id, :role_id,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :role_id,
 			:scope_type, :scope_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -207,7 +208,7 @@ func validateRoleBindingReferences(
 	}
 	for _, check := range checks {
 		var exists bool
-		query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1 AND delete_at = 0)`, check.table)
+		query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1 AND archived_at IS NULL)`, check.table)
 		if err := executor.Get(ctx, &exists, query, check.id); err != nil {
 			return fmt.Errorf("validate role binding reference: %w", err)
 		}
@@ -227,7 +228,7 @@ func validateSystemAdministratorScope(
 	if err := executor.Get(
 		ctx,
 		&roleName,
-		`SELECT name FROM roles WHERE id = $1 AND delete_at = 0`,
+		`SELECT name FROM roles WHERE id = $1 AND archived_at IS NULL`,
 		binding.RoleID.String(),
 	); err != nil {
 		return translateError("role", binding.RoleID.String(), err)
@@ -246,7 +247,7 @@ func validateSystemAdministratorScope(
 func (s SqlRoleBindingStore) Get(ctx context.Context, id string) (*model.RoleBinding, error) {
 	var row roleBindingRow
 	query := s.bindingsQuery.Where(sq.Eq{
-		"role_bindings.id": id, "role_bindings.delete_at": int64(0),
+		"role_bindings.id": id, "role_bindings.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("role_binding", id, err)
@@ -259,7 +260,7 @@ func (s SqlRoleBindingStore) ListByUser(
 	userID string,
 ) ([]*model.RoleBinding, error) {
 	return s.selectBindings(ctx, s.bindingsQuery.
-		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.delete_at": int64(0)}).
+		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.archived_at": nil}).
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by user")
 }
 
@@ -271,7 +272,7 @@ func (s SqlRoleBindingStore) ListByScope(
 	return s.selectBindings(ctx, s.bindingsQuery.
 		Where(sq.Eq{
 			"role_bindings.scope_type": scopeType, "role_bindings.scope_id": scopeID,
-			"role_bindings.delete_at": int64(0),
+			"role_bindings.archived_at": nil,
 		}).
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by scope")
 }
@@ -281,10 +282,11 @@ func (s SqlRoleBindingStore) ListActiveByUser(
 	userID string,
 	now int64,
 ) ([]*model.RoleBinding, error) {
+	at := model.TimeFromMillis(now)
 	return s.selectBindings(ctx, s.bindingsQuery.
-		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.delete_at": int64(0)}).
-		Where(sq.LtOrEq{"role_bindings.start_at": now}).
-		Where(sq.Or{sq.Eq{"role_bindings.end_at": int64(0)}, sq.Gt{"role_bindings.end_at": now}}).
+		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.archived_at": nil}).
+		Where(sq.LtOrEq{"role_bindings.start_at": at}).
+		Where(sq.Or{sq.Eq{"role_bindings.end_at": nil}, sq.Gt{"role_bindings.end_at": at}}).
 		OrderBy("role_bindings.scope_type", "role_bindings.scope_id", "role_bindings.id"),
 		"list active role bindings by user")
 }
@@ -361,20 +363,21 @@ func (s SqlRoleBindingStore) EndWithAudit(
 }
 
 func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int64) (*model.RoleBinding, error) {
+	at := model.TimeFromMillis(endAt)
 	var current struct {
 		roleBindingRow
 		RoleName string `db:"role_name"`
 	}
 	if err := tx.Get(ctx, &current, `
-		SELECT rb.id, rb.create_at, rb.update_at, rb.delete_at, rb.user_id,
+		SELECT rb.id, rb.created_at, rb.updated_at, rb.archived_at, rb.user_id,
 		       rb.role_id, rb.scope_type, rb.scope_id, rb.start_at, rb.end_at,
 		       r.name AS role_name
 		  FROM role_bindings rb
-		  JOIN roles r ON r.id = rb.role_id AND r.delete_at = 0
-		 WHERE rb.id = $1 AND rb.delete_at = 0
+		  JOIN roles r ON r.id = rb.role_id AND r.archived_at IS NULL
+		 WHERE rb.id = $1 AND rb.archived_at IS NULL
 		   AND rb.start_at < $2
-		   AND (rb.end_at = 0 OR rb.end_at > $2)
-		 FOR UPDATE OF rb`, id, endAt); err != nil {
+		   AND (rb.end_at IS NULL OR rb.end_at > $2)
+		 FOR UPDATE OF rb`, id, at); err != nil {
 		return nil, translateError("role_binding", id, err)
 	}
 	if current.RoleName == model.SystemAdministratorRoleName {
@@ -392,17 +395,17 @@ func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int
 				  FROM role_bindings rb
 				  JOIN roles r ON r.id = rb.role_id
 				  JOIN users u ON u.id = rb.user_id
-				 WHERE r.name = $1 AND r.built_in = true AND r.delete_at = 0
-				   AND u.delete_at = 0 AND u.disabled_at = 0
+				 WHERE r.name = $1 AND r.built_in = true AND r.archived_at IS NULL
+				   AND u.archived_at IS NULL AND u.disabled_at IS NULL
 				   AND rb.id <> $2 AND rb.scope_type = 'institution'
-				   AND rb.scope_id = $3 AND rb.delete_at = 0
+				   AND rb.scope_id = $3 AND rb.archived_at IS NULL
 				   AND rb.start_at <= $4
-				   AND (rb.end_at = 0 OR rb.end_at > $4)
+				   AND (rb.end_at IS NULL OR rb.end_at > $4)
 			)`,
 			model.SystemAdministratorRoleName,
 			id,
 			current.ScopeID,
-			endAt,
+			at,
 		); err != nil {
 			return nil, fmt.Errorf("check remaining administrator binding: %w", err)
 		}
@@ -418,10 +421,10 @@ func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int
 	var row roleBindingRow
 	if err := tx.Get(ctx, &row, `
 		UPDATE role_bindings
-		   SET update_at = $1, end_at = $1
+		   SET updated_at = GREATEST(updated_at, $1), end_at = $1
 		 WHERE id = $2
-		RETURNING id, create_at, update_at, delete_at, user_id, role_id,
-		          scope_type, scope_id, start_at, end_at`, endAt, id); err != nil {
+		RETURNING id, created_at, updated_at, archived_at, user_id, role_id,
+		          scope_type, scope_id, start_at, end_at`, at, id); err != nil {
 		return nil, translateError("role_binding", id, err)
 	}
 	return row.model(), nil
@@ -429,21 +432,21 @@ func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int
 
 func newRoleBindingRow(binding *model.RoleBinding) roleBindingRow {
 	return roleBindingRow{
-		ID: binding.ID.String(), CreateAt: model.MillisFromTime(binding.CreatedAt),
-		UpdateAt: model.MillisFromTime(binding.UpdatedAt), DeleteAt: binding.ArchivedAt.Millis(),
+		ID: binding.ID.String(), CreatedAt: UTCTime(binding.CreatedAt),
+		UpdatedAt: UTCTime(binding.UpdatedAt), ArchivedAt: NullTimeFromOptional(binding.ArchivedAt),
 		UserID: binding.UserID.String(), RoleID: binding.RoleID.String(),
 		ScopeType: binding.ScopeType, ScopeID: binding.ScopeID,
-		StartAt: model.MillisFromTime(binding.StartsAt), EndAt: binding.EndsAt.Millis(),
+		StartAt: UTCTime(binding.StartsAt), EndAt: NullTimeFromOptional(binding.EndsAt),
 	}
 }
 
 func (row roleBindingRow) model() *model.RoleBinding {
 	return &model.RoleBinding{
-		ID: model.RoleBindingID(row.ID), CreatedAt: model.TimeFromMillis(row.CreateAt),
-		UpdatedAt: model.TimeFromMillis(row.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		ID: model.RoleBindingID(row.ID), CreatedAt: row.CreatedAt.UTC(),
+		UpdatedAt: row.UpdatedAt.UTC(), ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID: model.UserID(row.UserID), RoleID: model.RoleID(row.RoleID),
 		ScopeType: row.ScopeType, ScopeID: row.ScopeID,
-		StartsAt: model.TimeFromMillis(row.StartAt), EndsAt: model.OptionalTimeFromMillis(row.EndAt),
+		StartsAt: row.StartAt.UTC(), EndsAt: OptionalTimeFromNullTime(row.EndAt),
 	}
 }
 

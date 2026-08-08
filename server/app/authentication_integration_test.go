@@ -155,7 +155,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	descendant := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
-		"/api/v1/academic-units/"+ childUnit.ID.String(),
+		"/api/v1/academic-units/"+childUnit.ID.String(),
 		nil,
 		created.Credential,
 	)
@@ -169,7 +169,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	outsideConstraint := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
-		"/api/v1/academic-units/"+ siblingUnit.ID.String(),
+		"/api/v1/academic-units/"+siblingUnit.ID.String(),
 		nil,
 		created.Credential,
 	)
@@ -234,7 +234,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	disable := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
-		"/api/v1/users/me/tokens/"+created.Token.ID+"/disable",
+		"/api/v1/users/me/tokens/"+created.Token.ID.String()+"/disable",
 		nil,
 		session.Tokens.AccessToken,
 	)
@@ -258,7 +258,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	enable := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
-		"/api/v1/users/me/tokens/"+created.Token.ID+"/enable",
+		"/api/v1/users/me/tokens/"+created.Token.ID.String()+"/enable",
 		nil,
 		session.Tokens.AccessToken,
 	)
@@ -282,7 +282,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	revoke := performJSONRequest(
 		helper.Handler(),
 		http.MethodDelete,
-		"/api/v1/users/me/tokens/"+created.Token.ID,
+		"/api/v1/users/me/tokens/"+created.Token.ID.String(),
 		nil,
 		session.Tokens.AccessToken,
 	)
@@ -355,7 +355,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("login status = %d: %s", login.Code, login.Body.String())
 	}
 	first := decodeAuthenticationResponse(t, login)
-	if first.User == nil || first.User.Id != user.ID || first.Tokens.AccessToken == "" ||
+	if first.User == nil || first.User.ID != user.ID || first.Tokens.AccessToken == "" ||
 		first.Tokens.RefreshToken == "" {
 		t.Fatalf("login response = %#v", first)
 	}
@@ -474,13 +474,13 @@ func TestAuthenticationIntegration(t *testing.T) {
 		)
 	}
 	fourth := decodeAuthenticationResponse(t, loginBeforeDisable)
-	currentUser, err := persistence.User().Get(context.Background(), user.ID)
+	currentUser, err := persistence.User().Get(context.Background(), user.ID.String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	disabledAt := model.GetMillis()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
-		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.ID.String()},
+		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(), Status: model.AuditStatusAttempt, NodeID: "authentication-integration",
 	})
 	if err != nil {
@@ -740,14 +740,12 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatalf("list sessions status = %d: %s", list.Code, list.Body.String())
 	}
 	var sessions []*model.Session
-	if err := json.Unmarshal(list.Body.Bytes(), &sessions); err != nil {
-		t.Fatal(err)
-	}
+	sessions = decodeSessionList(t, list)
 	if len(sessions) != 2 {
 		t.Fatalf("sessions = %#v", sessions)
 	}
 	for _, session := range sessions {
-		if session.UserID != user.ID || session.RevokedAt != 0 {
+		if session.UserID != user.ID || session.RevokedAt.Valid {
 			t.Fatalf("unsafe session listing = %#v", session)
 		}
 	}
@@ -887,9 +885,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		nil,
 		thirdLogin.Tokens.AccessToken,
 	)
-	if err := json.Unmarshal(activeAfterRevokeAll.Body.Bytes(), &sessions); err != nil {
-		t.Fatal(err)
-	}
+	sessions = decodeSessionList(t, activeAfterRevokeAll)
 	if activeAfterRevokeAll.Code != http.StatusOK ||
 		len(sessions) != 1 ||
 		sessions[0].ID != thirdLogin.Session.ID {
@@ -943,9 +939,101 @@ func loginIntegrationUser(
 }
 
 type authenticationResponse struct {
-	User    *model.User                 `json:"user"`
-	Session *model.Session              `json:"session"`
+	User    *model.User
+	Session *model.Session
 	Tokens  *model.AuthenticationTokens `json:"tokens"`
+}
+
+type wireUserProfileResponse struct {
+	ID             string `json:"id"`
+	CreateAt       int64  `json:"create_at"`
+	UpdateAt       int64  `json:"update_at"`
+	DeleteAt       int64  `json:"delete_at"`
+	Username       string `json:"username"`
+	Email          string `json:"email"`
+	EmailVerified  bool   `json:"email_verified"`
+	DisplayName    string `json:"display_name"`
+	FirstName      string `json:"first_name"`
+	LastName       string `json:"last_name"`
+	Locale         string `json:"locale"`
+	Timezone       string `json:"timezone"`
+	LastLoginAt    int64  `json:"last_login_at"`
+	LastActivityAt int64  `json:"last_activity_at"`
+	DisabledAt     int64  `json:"disabled_at"`
+}
+
+func (w *wireUserProfileResponse) model() *model.User {
+	if w == nil {
+		return nil
+	}
+	return &model.User{
+		ID: model.UserID(w.ID), CreatedAt: model.TimeFromMillis(w.CreateAt),
+		UpdatedAt: model.TimeFromMillis(w.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(w.DeleteAt),
+		Username: w.Username, Email: w.Email, EmailVerified: w.EmailVerified,
+		DisplayName: w.DisplayName, FirstName: w.FirstName, LastName: w.LastName,
+		Locale: w.Locale, Timezone: w.Timezone,
+		LastLoginAt:    model.OptionalTimeFromMillis(w.LastLoginAt),
+		LastActivityAt: model.OptionalTimeFromMillis(w.LastActivityAt),
+		DisabledAt:     model.OptionalTimeFromMillis(w.DisabledAt),
+	}
+}
+
+type wireSessionResponse struct {
+	ID                     string `json:"id"`
+	CreateAt               int64  `json:"create_at"`
+	UpdateAt               int64  `json:"update_at"`
+	DeleteAt               int64  `json:"delete_at"`
+	UserID                 string `json:"user_id"`
+	ClientType             string `json:"client_type"`
+	DeviceID               string `json:"device_id"`
+	DeviceName             string `json:"device_name"`
+	AuthenticationMethod   string `json:"authentication_method"`
+	AuthenticationStrength string `json:"authentication_strength"`
+	AuthenticatedAt        int64  `json:"authenticated_at"`
+	MFACompletedAt         int64  `json:"mfa_completed_at"`
+	LastActivityAt         int64  `json:"last_activity_at"`
+	IdleExpiresAt          int64  `json:"idle_expires_at"`
+	ExpiresAt              int64  `json:"expires_at"`
+	RevokedAt              int64  `json:"revoked_at"`
+	RevocationReason       string `json:"revocation_reason"`
+}
+
+type wireAuthenticationTokensResponse struct {
+	AccessToken      string `json:"access_token"`
+	RefreshToken     string `json:"refresh_token"`
+	AccessExpiresAt  int64  `json:"access_expires_at"`
+	RefreshExpiresAt int64  `json:"refresh_expires_at"`
+}
+
+func (w *wireAuthenticationTokensResponse) model() *model.AuthenticationTokens {
+	if w == nil {
+		return nil
+	}
+	return &model.AuthenticationTokens{
+		AccessToken:      w.AccessToken,
+		RefreshToken:     w.RefreshToken,
+		AccessExpiresAt:  model.TimeFromMillis(w.AccessExpiresAt),
+		RefreshExpiresAt: model.TimeFromMillis(w.RefreshExpiresAt),
+	}
+}
+
+func (w *wireSessionResponse) model() *model.Session {
+	if w == nil {
+		return nil
+	}
+	return &model.Session{
+		ID: model.SessionID(w.ID), CreatedAt: model.TimeFromMillis(w.CreateAt),
+		UpdatedAt: model.TimeFromMillis(w.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(w.DeleteAt),
+		UserID: model.UserID(w.UserID), ClientType: model.SessionClientType(w.ClientType),
+		DeviceID: w.DeviceID, DeviceName: w.DeviceName,
+		AuthenticationMethod:   w.AuthenticationMethod,
+		AuthenticationStrength: model.AuthenticationStrength(w.AuthenticationStrength),
+		AuthenticatedAt:        model.TimeFromMillis(w.AuthenticatedAt),
+		MFACompletedAt:         model.OptionalTimeFromMillis(w.MFACompletedAt),
+		LastActivityAt:         model.TimeFromMillis(w.LastActivityAt),
+		IdleExpiresAt:          model.TimeFromMillis(w.IdleExpiresAt), ExpiresAt: model.TimeFromMillis(w.ExpiresAt),
+		RevokedAt: model.OptionalTimeFromMillis(w.RevokedAt), RevocationReason: w.RevocationReason,
+	}
 }
 
 func decodeAuthenticationResponse(
@@ -953,14 +1041,32 @@ func decodeAuthenticationResponse(
 	response *httptest.ResponseRecorder,
 ) authenticationResponse {
 	t.Helper()
-	var decoded authenticationResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+	var wire struct {
+		User    *wireUserProfileResponse          `json:"user"`
+		Session *wireSessionResponse              `json:"session"`
+		Tokens  *wireAuthenticationTokensResponse `json:"tokens"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
 		t.Fatal(err)
 	}
+	decoded := authenticationResponse{User: wire.User.model(), Session: wire.Session.model(), Tokens: wire.Tokens.model()}
 	if decoded.Session == nil || decoded.Tokens == nil {
 		t.Fatalf("authentication response = %#v", decoded)
 	}
 	return decoded
+}
+
+func decodeSessionList(t *testing.T, response *httptest.ResponseRecorder) []*model.Session {
+	t.Helper()
+	var wire []*wireSessionResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	sessions := make([]*model.Session, 0, len(wire))
+	for _, item := range wire {
+		sessions = append(sessions, item.model())
+	}
+	return sessions
 }
 
 func performJSONRequest(
@@ -1101,7 +1207,7 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SqlStore
 	}
 	if _, err := persistence.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			external_login_states, installation_state, audit_events, mfa_recovery_codes, mfa_credentials,
+			external_login_states, installation_states, audit_events, mfa_recovery_codes, mfa_credentials,
 			user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,

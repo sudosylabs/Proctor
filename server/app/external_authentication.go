@@ -18,8 +18,8 @@ import (
 // Sentinel errors returned by the composition-owned external provider adapter.
 // Application code never imports concrete protocol packages.
 var (
-	ErrExternalAuthenticationRejected   = errors.New("external authentication rejected")
-	ErrExternalAuthenticationInvalid    = errors.New("external authentication response is invalid")
+	ErrExternalAuthenticationRejected    = errors.New("external authentication rejected")
+	ErrExternalAuthenticationInvalid     = errors.New("external authentication response is invalid")
 	ErrExternalAuthenticationUnavailable = errors.New("external authentication provider is unavailable")
 )
 
@@ -66,10 +66,10 @@ type externalProviderSource interface {
 
 // ExternalAuthenticationPolicy is the deployment projection for external login.
 type ExternalAuthenticationPolicy struct {
-	PublicURL     string
-	LoginStateTTL time.Duration
+	PublicURL      string
+	LoginStateTTL  time.Duration
 	LoginRateLimit LoginRateLimitPolicy
-	NodeID        string
+	NodeID         string
 }
 
 type ExternalAuthenticationService struct {
@@ -182,8 +182,7 @@ func (s *ExternalAuthenticationService) begin(
 		providerID,
 	)
 	if err != nil {
-		return nil, authenticationUnavailable(err,
-		)
+		return nil, authenticationUnavailable(err)
 	}
 	challenge, err := provider.Begin(
 		ctx,
@@ -200,13 +199,11 @@ func (s *ExternalAuthenticationService) begin(
 		)
 	}
 	if challenge == nil || challenge.RedirectURL == "" {
-		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"),
-		)
+		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"))
 	}
 	stateStore := s.store.ExternalLoginState()
 	if stateStore == nil {
-		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"),
-		)
+		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"))
 	}
 	if _, err := stateStore.Save(ctx, &model.ExternalLoginState{
 		Provider: providerID, StateHash: model.HashToken(stateToken),
@@ -214,8 +211,7 @@ func (s *ExternalAuthenticationService) begin(
 		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
 		ExpiresAt: model.TimeFromMillis(expiresAt),
 	}); err != nil {
-		return nil, authenticationUnavailable(err,
-		)
+		return nil, authenticationUnavailable(err)
 	}
 	return &model.ExternalAuthenticationStart{
 		RedirectURL: challenge.RedirectURL,
@@ -262,8 +258,7 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	stateStore := s.store.ExternalLoginState()
 	if stateStore == nil {
-		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"),
-		)
+		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"))
 	}
 	stateHash := model.HashToken(stateToken)
 	state, err := stateStore.GetByStateHash(ctx, stateHash)
@@ -272,8 +267,7 @@ func (s *ExternalAuthenticationService) complete(
 	if err != nil || state == nil || state.Provider != providerID ||
 		state.ConsumedAt.Valid || !state.ExpiresAt.After(nowTime) {
 		if err != nil && !store.IsNotFound(err) {
-			return nil, authenticationUnavailable(err,
-			)
+			return nil, authenticationUnavailable(err)
 		}
 		return nil, invalidExternalAuthenticationError(
 			"CompleteExternalAuthentication.state",
@@ -284,8 +278,7 @@ func (s *ExternalAuthenticationService) complete(
 		providerID,
 	)
 	if err != nil {
-		return nil, authenticationUnavailable(err,
-		)
+		return nil, authenticationUnavailable(err)
 	}
 	state, err = stateStore.Consume(
 		ctx,
@@ -300,14 +293,12 @@ func (s *ExternalAuthenticationService) complete(
 				"CompleteExternalAuthentication.consume_state",
 			)
 		}
-		return nil, authenticationUnavailable(err,
-		)
+		return nil, authenticationUnavailable(err)
 	}
 
 	institution, err := s.store.Institution().GetSingleton(ctx)
 	if err != nil {
-		return nil, authenticationUnavailable(err,
-		)
+		return nil, authenticationUnavailable(err)
 	}
 	assertion, providerErr := provider.Complete(
 		ctx,
@@ -346,8 +337,7 @@ func (s *ExternalAuthenticationService) complete(
 		); auditErr != nil {
 			return nil, auditErr
 		}
-		return nil, authenticationUnavailable(errors.New("provider returned a mismatched assertion"),
-		)
+		return nil, authenticationUnavailable(errors.New("provider returned a mismatched assertion"))
 	}
 	userCandidate := externalUserCandidate(assertion)
 	provisionParameters, appErr := model.EncodeAuditData(map[string]string{
@@ -358,8 +348,7 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	identityStore := s.store.ExternalIdentity()
 	if identityStore == nil {
-		return nil, authenticationUnavailable(errors.New("external identity store is unavailable"),
-		)
+		return nil, authenticationUnavailable(errors.New("external identity store is unavailable"))
 	}
 	resolution, err := identityStore.ResolveOrProvision(
 		ctx,
@@ -373,7 +362,7 @@ func (s *ExternalAuthenticationService) complete(
 			Action:    "authentication.external_provision",
 			ScopeType: model.RoleScopeInstitution,
 			ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
-			RequestID:  metadata.RequestId,
+			RequestID:  metadata.RequestID,
 			NodeID:     s.policy.NodeID,
 			ClientType: string(state.ClientType), AuthMethod: method,
 			IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
@@ -404,8 +393,7 @@ func (s *ExternalAuthenticationService) complete(
 		case store.IsNotFound(err):
 			return nil, NewError("authentication.external.account_not_linked")
 		default:
-			return nil, authenticationUnavailable(err,
-			)
+			return nil, authenticationUnavailable(err)
 		}
 	}
 	if !resolution.User.IsActive() {
@@ -457,7 +445,12 @@ func (s *ExternalAuthenticationService) complete(
 			ctx,
 			auditEvent.ID.String(),
 			model.AuditStatusFail,
-			func() string { if f,ok:=As(legacy); ok { return f.Code() }; return "authentication.internal" }(),
+			func() string {
+				if f, ok := As(legacy); ok {
+					return f.Code()
+				}
+				return "authentication.internal"
+			}(),
 			nil,
 		); completionErr != nil {
 			return nil, completionErr

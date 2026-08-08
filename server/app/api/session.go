@@ -94,7 +94,7 @@ func (a *API) revokeSession(writer http.ResponseWriter, request *http.Request) {
 		writeApplicationError(writer, request, a.logger, err)
 		return
 	}
-	if input.SessionID == principal.SessionId &&
+	if input.SessionID == principal.SessionID.String() &&
 		credentialSourceFromContext(request.Context()) == credentialSourceCookie {
 		a.cookies.clear(writer)
 	}

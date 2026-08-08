@@ -63,18 +63,15 @@ func TestScanUserID(t *testing.T) {
 	}
 }
 
-func TestMillisTimeBoundaryHelpers(t *testing.T) {
+func TestTimeBoundaryHelpers(t *testing.T) {
 	t.Parallel()
 
-	absent := OptionalTimeFromMillisColumn(0)
+	absent := model.OptionalTime{}
 	if absent.Valid {
-		t.Fatal("0 millis is absent")
+		t.Fatal("zero optional time is absent")
 	}
-	if MillisFromOptionalTime(absent) != 0 {
-		t.Fatal("absent millis must be 0")
-	}
-	present := OptionalTimeFromMillisColumn(1_700_000_000_000)
-	if !present.Valid || MillisFromOptionalTime(present) != 1_700_000_000_000 {
+	present := model.OptionalTimeFromMillis(1_700_000_000_000)
+	if !present.Valid || present.Millis() != 1_700_000_000_000 {
 		t.Fatalf("%#v", present)
 	}
 	nullTime := NullTimeFromOptional(present)

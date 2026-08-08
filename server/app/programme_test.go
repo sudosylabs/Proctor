@@ -88,7 +88,7 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 	events := []string{}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newProgrammeService(
-		&programmeStoreFake{events: &events, createErr: store.NewErrConflict("programme", "programmes_active_name_key", nil)},
+		&programmeStoreFake{events: &events, createErr: store.NewErrConflict("programme", "programmes_academic_unit_id_name_key", nil)},
 		&programmeAuthorizerFake{events: &events}, auditor,
 		time.Now, model.NewId,
 	)
@@ -124,7 +124,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)
 	}
-	if authorizer.action != model.ActionAcademicUnitManage || authorizer.resource != (model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}) {
+	if authorizer.action != model.ActionAcademicUnitManage || authorizer.resource != (model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}) {
 		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.resource)
 	}
 	if persistence.createInput == nil ||
@@ -142,10 +142,10 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	current := &model.Programme{
-		ID: model.ProgrammeID(model.NewId()),
+		ID:        model.ProgrammeID(model.NewId()),
 		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
 		AcademicUnitID: model.AcademicUnitID(model.NewId()),
-		Name: "computer-science", DisplayName: "Computer Science",
+		Name:           "computer-science", DisplayName: "Computer Science",
 	}
 	persistence := &programmeStoreFake{events: &events, current: current}
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)

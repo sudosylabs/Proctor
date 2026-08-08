@@ -23,17 +23,23 @@ func TestProgrammeLevelRowConversion(t *testing.T) {
 		CreatedAt:   model.TimeFromMillis(1),
 		UpdatedAt:   model.TimeFromMillis(2),
 		ArchivedAt:  model.OptionalTimeFromMillis(3),
-		Revision:    1,
+		Revision:    7,
 		ProgrammeID: programmeID,
 		Name:        "year-1",
 		DisplayName: "Year 1",
 		Description: "First curriculum stage",
 	}
 	row := newProgrammeLevelRow(level)
-	if got := row.model(); *got != *level {
+	got, err := row.model()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got != *level {
 		t.Fatalf("row.model() = %#v, want %#v", got, level)
 	}
-	if row.CreateAt != 1 || row.UpdateAt != 2 || row.DeleteAt != 3 {
-		t.Fatalf("row millis = %#v", row)
+	if !row.CreatedAt.Equal(level.CreatedAt) ||
+		!row.UpdatedAt.Equal(level.UpdatedAt) ||
+		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(level.ArchivedAt.Time) {
+		t.Fatalf("row times = %#v", row)
 	}
 }

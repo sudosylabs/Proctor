@@ -47,7 +47,7 @@ func TestAcademicPeriodHTTPMapsDTOAndIgnoresServerOwnedCreateFields(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
-	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	period := &model.AcademicPeriod{ID: model.AcademicPeriodID(model.NewId()), InstitutionID: model.InstitutionID(model.NewId()), Name: "2026-2027", DisplayName: "2026-2027", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(200)}
 	periods := &academicPeriodHTTPApplication{result: period}
 	transport := &academicUnitHTTPApplication{principal: principal}

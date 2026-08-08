@@ -30,11 +30,11 @@ func TestConformanceCloseCodesRemainStable(t *testing.T) {
 	t.Parallel()
 
 	codes := map[string]int{
-		"server":                 websocket.CloseServer,
-		"session_revoked":        websocket.CloseSessionRevoked,
-		"backpressure":           websocket.CloseBackpressure,
-		"authorization_changed":  websocket.CloseAuthorizationChanged,
-		"connection_limit":       websocket.CloseLimit,
+		"server":                websocket.CloseServer,
+		"session_revoked":       websocket.CloseSessionRevoked,
+		"backpressure":          websocket.CloseBackpressure,
+		"authorization_changed": websocket.CloseAuthorizationChanged,
+		"connection_limit":      websocket.CloseLimit,
 	}
 	want := map[string]int{
 		"server":                4000,

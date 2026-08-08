@@ -59,9 +59,29 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		t.Fatalf("bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	}
 	var created model.InstallationBootstrapResult
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &created); err != nil {
+	var createdWire struct {
+		Institution *struct {
+			ID string `json:"id"`
+		} `json:"institution"`
+		Administrator *wireUserProfileResponse `json:"administrator"`
+		Role          *struct {
+			ID          string   `json:"id"`
+			Name        string   `json:"name"`
+			Permissions []string `json:"permissions"`
+			BuiltIn     bool     `json:"built_in"`
+		} `json:"role"`
+		RoleBinding *struct {
+			ID        string              `json:"id"`
+			ScopeType model.RoleScopeType `json:"scope_type"`
+		} `json:"role_binding"`
+	}
+	if err := json.Unmarshal(bootstrap.Body.Bytes(), &createdWire); err != nil {
 		t.Fatal(err)
 	}
+	created.Institution = &model.Institution{ID: model.InstitutionID(createdWire.Institution.ID)}
+	created.Administrator = createdWire.Administrator.model()
+	created.Role = &model.Role{ID: model.RoleID(createdWire.Role.ID), Name: createdWire.Role.Name, Permissions: createdWire.Role.Permissions, BuiltIn: createdWire.Role.BuiltIn}
+	created.RoleBinding = &model.RoleBinding{ID: model.RoleBindingID(createdWire.RoleBinding.ID), ScopeType: createdWire.RoleBinding.ScopeType}
 	if created.Role == nil ||
 		created.Role.Name != model.SystemAdministratorRoleName ||
 		!created.Role.BuiltIn ||
@@ -87,7 +107,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	}
 	status = performJSONRequest(handler, http.MethodGet, "/api/v1/bootstrap", nil, "")
 	if status.Body.String() != "{\"initialized\":true}\n" ||
-		containsAny(status.Body.String(), created.Administrator.Id, created.Institution.ID.String()) {
+		containsAny(status.Body.String(), created.Administrator.ID.String(), created.Institution.ID.String()) {
 		t.Fatalf("initialized bootstrap status leaked identifiers: %s", status.Body.String())
 	}
 
@@ -170,7 +190,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	patchRole := performJSONRequest(
 		handler,
 		http.MethodPatch,
-		"/api/v1/roles/"+customRole.Id,
+		"/api/v1/roles/"+customRole.ID.String(),
 		map[string]any{"display_name": renamed},
 		administratorLogin.Tokens.AccessToken,
 	)
@@ -180,7 +200,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	protected := performJSONRequest(
 		handler,
 		http.MethodPatch,
-		"/api/v1/roles/"+created.Role.Id,
+		"/api/v1/roles/"+created.Role.ID.String(),
 		map[string]any{"display_name": "Unsafe"},
 		administratorLogin.Tokens.AccessToken,
 	)
@@ -230,7 +250,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		http.MethodPost,
 		"/api/v1/role-bindings",
 		map[string]any{
-			"user_id": secondAdministrator.Id, "role_id": customRole.Id,
+			"user_id": secondAdministrator.ID.String(), "role_id": customRole.ID.String(),
 			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.ID.String(),
 			"start_at": model.GetMillis(),
 		},
@@ -246,7 +266,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	listBindings := performJSONRequest(
 		handler,
 		http.MethodGet,
-		"/api/v1/role-bindings?user_id="+secondAdministrator.Id,
+		"/api/v1/role-bindings?user_id="+secondAdministrator.ID.String(),
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
@@ -256,7 +276,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	endBinding := performJSONRequest(
 		handler,
 		http.MethodDelete,
-		"/api/v1/role-bindings/"+customBinding.Id,
+		"/api/v1/role-bindings/"+customBinding.ID.String(),
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
@@ -266,7 +286,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	deleteRole := performJSONRequest(
 		handler,
 		http.MethodDelete,
-		"/api/v1/roles/"+customRole.Id,
+		"/api/v1/roles/"+customRole.ID.String(),
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
@@ -279,7 +299,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		http.MethodPost,
 		"/api/v1/role-bindings",
 		map[string]any{
-			"user_id": secondAdministrator.Id, "role_id": created.Role.Id,
+			"user_id": secondAdministrator.ID.String(), "role_id": created.Role.ID.String(),
 			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.ID.String(),
 			"start_at": model.GetMillis(),
 		},
@@ -299,7 +319,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	removeFirst := performJSONRequest(
 		handler,
 		http.MethodDelete,
-		"/api/v1/role-bindings/"+created.RoleBinding.Id,
+		"/api/v1/role-bindings/"+created.RoleBinding.ID.String(),
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)

@@ -217,7 +217,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	}
 	user, err := persistence.User().Get(
 		context.Background(),
-		identity.UserID,
+		identity.UserID.String(),
 	)
 	if err != nil || user.Username != "oidc.student" ||
 		user.Email != "oidc.student@example.edu" ||
@@ -226,7 +226,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	}
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
-		user.ID,
+		user.ID.String(),
 		model.GetMillis(),
 	)
 	if err != nil || len(sessions) != 1 ||

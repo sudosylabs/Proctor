@@ -42,7 +42,15 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	}
 	var installation model.InstallationBootstrapResult
-	decodeIntegrationResponse(t, bootstrap, &installation)
+	var installationWire struct {
+		Institution *struct {
+			ID string `json:"id"`
+		} `json:"institution"`
+		Administrator *wireUserProfileResponse `json:"administrator"`
+	}
+	decodeIntegrationResponse(t, bootstrap, &installationWire)
+	installation.Institution = &model.Institution{ID: model.InstitutionID(installationWire.Institution.ID)}
+	installation.Administrator = installationWire.Administrator.model()
 	adminLogin := loginIntegrationUser(
 		t, handler, installation.Administrator.Username, password,
 		model.SessionClientCLI, "academic-owner-cli",
@@ -55,7 +63,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		adminToken,
 	)
 	child := createIntegrationResource[model.AcademicUnit](
-		t, handler, http.MethodPost, "/api/v1/academic-units/"+ root.ID.String()+"/children",
+		t, handler, http.MethodPost, "/api/v1/academic-units/"+root.ID.String()+"/children",
 		map[string]any{"name": "computing", "display_name": "Computing"},
 		adminToken,
 	)
@@ -63,7 +71,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("academic hierarchy = %#v", child)
 	}
 	programme := createIntegrationResource[model.Programme](
-		t, handler, http.MethodPost, "/api/v1/academic-units/"+ child.ID.String()+"/programmes",
+		t, handler, http.MethodPost, "/api/v1/academic-units/"+child.ID.String()+"/programmes",
 		map[string]any{"name": "computer-science", "display_name": "Computer Science"},
 		adminToken,
 	)
@@ -104,12 +112,12 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	disabled := createIntegrationUser(t, helper, "disabled-user", password)
 
 	createIntegrationResource[map[string]any](
-		t, handler, http.MethodPost, "/api/v1/users/"+student.Id+"/affiliations",
+		t, handler, http.MethodPost, "/api/v1/users/"+student.ID.String()+"/affiliations",
 		map[string]any{"kind": model.AffiliationStudent, "start_at": now - 10_000},
 		adminToken,
 	)
 	createIntegrationResource[map[string]any](
-		t, handler, http.MethodPost, "/api/v1/users/"+teacher.Id+"/affiliations",
+		t, handler, http.MethodPost, "/api/v1/users/"+teacher.ID.String()+"/affiliations",
 		map[string]any{"kind": model.AffiliationTeacher, "start_at": now - 10_000},
 		adminToken,
 	)
@@ -125,26 +133,34 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	unitMember := createIntegrationResource[membershipWire](
 		t, handler, http.MethodPost, "/api/v1/academic-units/"+child.ID.String()+"/members",
-		map[string]any{"user_id": teacher.Id, "start_at": now - 10_000},
+		map[string]any{"user_id": teacher.ID.String(), "start_at": now - 10_000},
 		adminToken,
 	)
-	firstEnrollment := createIntegrationResource[enrollmentWire](
-		t, handler, http.MethodPost, "/api/v1/classes/"+firstClass.ID.String()+"/members",
-		map[string]any{"user_id": student.Id, "start_at": now - 5_000},
-		adminToken,
+	firstEnrollmentResponse := performJSONRequest(
+		handler, http.MethodPost, "/api/v1/classes/"+firstClass.ID.String()+"/members",
+		map[string]any{"user_id": student.ID.String(), "start_at": now - 5_000}, adminToken,
 	)
-	if firstEnrollment.Previous != nil {
-		t.Fatalf("first enrollment = %#v", firstEnrollment)
+	if firstEnrollmentResponse.Code != http.StatusCreated {
+		t.Fatalf("first enrollment = %d: %s; logs: %s", firstEnrollmentResponse.Code, firstEnrollmentResponse.Body.String(), helper.Logs.String())
 	}
-	transfer := createIntegrationResource[enrollmentWire](
-		t, handler, http.MethodPost, "/api/v1/classes/"+secondClass.ID.String()+"/members",
-		map[string]any{"user_id": student.Id, "start_at": now - 1_000},
-		adminToken,
+	var firstEnrollment enrollmentWire
+	decodeIntegrationResponse(t, firstEnrollmentResponse, &firstEnrollment)
+	if firstEnrollment.Previous != nil {
+		t.Fatalf("first enrollment = %#v", &firstEnrollment)
+	}
+	transferResponse := performJSONRequest(
+		handler, http.MethodPost, "/api/v1/classes/"+secondClass.ID.String()+"/members",
+		map[string]any{"user_id": student.ID.String(), "start_at": now - 1_000}, adminToken,
 	)
+	if transferResponse.Code != http.StatusCreated {
+		t.Fatalf("transfer enrollment = %d: %s; logs: %s", transferResponse.Code, transferResponse.Body.String(), helper.Logs.String())
+	}
+	var transfer enrollmentWire
+	decodeIntegrationResponse(t, transferResponse, &transfer)
 	if transfer.Previous == nil ||
 		transfer.Previous.ID != firstEnrollment.Membership.ID ||
 		transfer.Previous.EndAt != now-1_000 {
-		t.Fatalf("transfer = %#v", transfer)
+		t.Fatalf("transfer = %#v", &transfer)
 	}
 
 	teacherRole, err := persistence.Role().Save(context.Background(), &model.Role{
@@ -158,7 +174,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.RoleBinding().Save(context.Background(), &model.RoleBinding{
-		UserID: teacher.Id, RoleID: teacherRole.ID,
+		UserID: teacher.ID, RoleID: teacherRole.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: root.ID.String(),
 		StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
@@ -169,18 +185,18 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		model.SessionClientCLI, "teacher-cli",
 	)
 	visible := performJSONRequest(
-		handler, http.MethodGet, "/api/v1/users/"+student.Id, nil,
+		handler, http.MethodGet, "/api/v1/users/"+student.ID.String(), nil,
 		teacherLogin.Tokens.AccessToken,
 	)
 	if visible.Code != http.StatusOK {
 		t.Fatalf("teacher student visibility = %d: %s", visible.Code, visible.Body.String())
 	}
 	visibilityEvents, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
-		ActorId: teacher.Id,
+		ActorId: teacher.ID.String(),
 		Action:  string(model.ActionUserView),
 		Resource: &model.Resource{
 			Type: model.ResourceUser,
-			Id:   student.Id,
+			ID:   student.ID.String(),
 		},
 		Limit: 10,
 	})
@@ -194,7 +210,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("teacher student visibility audit = %#v", visibilityEvents)
 	}
 	hidden := performJSONRequest(
-		handler, http.MethodGet, "/api/v1/users/"+unrelated.Id, nil,
+		handler, http.MethodGet, "/api/v1/users/"+unrelated.ID.String(), nil,
 		teacherLogin.Tokens.AccessToken,
 	)
 	if hidden.Code != http.StatusForbidden {
@@ -203,7 +219,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	patchUser := performJSONRequest(
 		handler,
 		http.MethodPatch,
-		"/api/v1/users/"+student.Id,
+		"/api/v1/users/"+student.ID.String(),
 		map[string]any{"display_name": "Student One Updated"},
 		adminToken,
 	)
@@ -219,7 +235,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	var foundUsers []*model.User
 	decodeIntegrationResponse(t, userSearch, &foundUsers)
-	if len(foundUsers) != 1 || foundUsers[0].Id != student.Id {
+	if len(foundUsers) != 1 || foundUsers[0].ID != student.ID {
 		t.Fatalf("searched users = %#v", foundUsers)
 	}
 	endUnitMembership := performJSONRequest(
@@ -238,7 +254,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	malformed := httptest.NewRequest(
 		http.MethodPost,
-		"/api/v1/academic-units/"+ child.ID.String()+"/children",
+		"/api/v1/academic-units/"+child.ID.String()+"/children",
 		strings.NewReader("{"),
 	)
 	malformed.Header.Set("Authorization", "Bearer "+teacherLogin.Tokens.AccessToken)
@@ -262,7 +278,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	var members []membershipWire
 	decodeIntegrationResponse(t, activeMembers, &members)
-	if len(members) != 1 || members[0].UserID != student.Id {
+	if len(members) != 1 || members[0].UserID != student.ID.String() {
 		t.Fatalf("active class members = %#v", members)
 	}
 
@@ -271,7 +287,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		model.SessionClientCLI, "disabled-cli",
 	)
 	disableResponse := performJSONRequest(
-		handler, http.MethodPost, "/api/v1/users/"+disabled.Id+"/disable", nil,
+		handler, http.MethodPost, "/api/v1/users/"+disabled.ID.String()+"/disable", nil,
 		adminToken,
 	)
 	if disableResponse.Code != http.StatusOK {
@@ -303,7 +319,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	teacherSessionList := performJSONRequest(
 		handler,
 		http.MethodGet,
-		"/api/v1/users/"+student.Id+"/sessions",
+		"/api/v1/users/"+student.ID.String()+"/sessions",
 		nil,
 		teacherLogin.Tokens.AccessToken,
 	)
@@ -317,7 +333,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	sessionList := performJSONRequest(
 		handler,
 		http.MethodGet,
-		"/api/v1/users/"+student.Id+"/sessions",
+		"/api/v1/users/"+student.ID.String()+"/sessions",
 		nil,
 		adminToken,
 	)
@@ -336,7 +352,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	revokeOne := performJSONRequest(
 		handler,
 		http.MethodDelete,
-		"/api/v1/users/"+student.Id+"/sessions/"+firstStudentSession.Session.Id,
+		"/api/v1/users/"+student.ID.String()+"/sessions/"+firstStudentSession.Session.ID.String(),
 		nil,
 		adminToken,
 	)
@@ -370,7 +386,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	revokeAll := performJSONRequest(
 		handler,
 		http.MethodPost,
-		"/api/v1/users/"+student.Id+"/sessions/revoke-all",
+		"/api/v1/users/"+student.ID.String()+"/sessions/revoke-all",
 		nil,
 		adminToken,
 	)
@@ -450,12 +466,123 @@ func createIntegrationResource[T any](
 		t.Fatalf("%s %s = %d: %s", method, path, response.Code, response.Body.String())
 	}
 	var result T
-	decodeIntegrationResponse(t, response, &result)
+	var wire wireAcademicResourceResponse
+	switch target := any(&result).(type) {
+	case *model.AcademicUnit:
+		decodeIntegrationResponse(t, response, &wire)
+		*target = model.AcademicUnit{
+			ID: model.AcademicUnitID(wire.ID), InstitutionID: model.InstitutionID(wire.InstitutionID),
+			ParentID: model.AcademicUnitID(wire.ParentID), Name: wire.Name,
+			DisplayName: wire.DisplayName, Description: wire.Description,
+			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
+			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+		}
+	case *model.Programme:
+		decodeIntegrationResponse(t, response, &wire)
+		*target = model.Programme{
+			ID: model.ProgrammeID(wire.ID), AcademicUnitID: model.AcademicUnitID(wire.AcademicUnitID),
+			Name: wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
+			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
+			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+		}
+	case *model.ProgrammeLevel:
+		decodeIntegrationResponse(t, response, &wire)
+		*target = model.ProgrammeLevel{
+			ID: model.ProgrammeLevelID(wire.ID), ProgrammeID: model.ProgrammeID(wire.ProgrammeID),
+			Name: wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
+			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
+			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+		}
+	case *model.AcademicPeriod:
+		decodeIntegrationResponse(t, response, &wire)
+		*target = model.AcademicPeriod{
+			ID: model.AcademicPeriodID(wire.ID), InstitutionID: model.InstitutionID(wire.InstitutionID),
+			Name: wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
+			StartsAt: model.TimeFromMillis(wire.StartAt), EndsAt: model.TimeFromMillis(wire.EndAt),
+			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
+			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+		}
+	case *model.Class:
+		decodeIntegrationResponse(t, response, &wire)
+		*target = model.Class{
+			ID: model.ClassID(wire.ID), ProgrammeLevelID: model.ProgrammeLevelID(wire.ProgrammeLevelID),
+			AcademicPeriodID: model.AcademicPeriodID(wire.AcademicPeriodID),
+			Name:             wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
+			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
+			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+		}
+	default:
+		decodeIntegrationResponse(t, response, &result)
+	}
 	return &result
+}
+
+type wireAcademicResourceResponse struct {
+	ID               string `json:"id"`
+	CreateAt         int64  `json:"create_at"`
+	UpdateAt         int64  `json:"update_at"`
+	DeleteAt         int64  `json:"delete_at"`
+	InstitutionID    string `json:"institution_id"`
+	ParentID         string `json:"parent_id"`
+	AcademicUnitID   string `json:"academic_unit_id"`
+	ProgrammeID      string `json:"programme_id"`
+	ProgrammeLevelID string `json:"programme_level_id"`
+	AcademicPeriodID string `json:"academic_period_id"`
+	Name             string `json:"name"`
+	DisplayName      string `json:"display_name"`
+	Description      string `json:"description"`
+	StartAt          int64  `json:"start_at"`
+	EndAt            int64  `json:"end_at"`
 }
 
 func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder, target any) {
 	t.Helper()
+	switch typed := target.(type) {
+	case *[]*model.User:
+		var wire []*wireUserProfileResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+			t.Fatal(err)
+		}
+		*typed = make([]*model.User, 0, len(wire))
+		for _, item := range wire {
+			*typed = append(*typed, item.model())
+		}
+		return
+	case *[]*model.Session:
+		var wire []*wireSessionResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+			t.Fatal(err)
+		}
+		*typed = make([]*model.Session, 0, len(wire))
+		for _, item := range wire {
+			*typed = append(*typed, item.model())
+		}
+		return
+	case *[]*model.AcademicUnitMember:
+		var wire []struct {
+			ID             string `json:"id"`
+			CreateAt       int64  `json:"create_at"`
+			UpdateAt       int64  `json:"update_at"`
+			DeleteAt       int64  `json:"delete_at"`
+			AcademicUnitID string `json:"academic_unit_id"`
+			UserID         string `json:"user_id"`
+			StartAt        int64  `json:"start_at"`
+			EndAt          int64  `json:"end_at"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+			t.Fatal(err)
+		}
+		*typed = make([]*model.AcademicUnitMember, 0, len(wire))
+		for _, item := range wire {
+			*typed = append(*typed, &model.AcademicUnitMember{
+				ID: model.AcademicUnitMemberID(item.ID), AcademicUnitID: model.AcademicUnitID(item.AcademicUnitID),
+				UserID: model.UserID(item.UserID), CreatedAt: model.TimeFromMillis(item.CreateAt),
+				UpdatedAt: model.TimeFromMillis(item.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(item.DeleteAt),
+				StartsAt: model.TimeFromMillis(item.StartAt), EndsAt: model.OptionalTimeFromMillis(item.EndAt),
+			})
+		}
+		return
+	}
 	if err := json.Unmarshal(response.Body.Bytes(), target); err != nil {
 		t.Fatal(err)
 	}

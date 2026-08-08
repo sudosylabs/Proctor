@@ -19,7 +19,7 @@ func IsValidPasswordHash(value string) bool {
 // without exposing password material through User serialization.
 //
 // PasswordHash is deliberately excluded from JSON. Soft archive uses
-// ArchivedAt (legacy delete_at).
+// ArchivedAt.
 type PasswordCredential struct {
 	ID                PasswordCredentialID
 	CreatedAt         time.Time
@@ -103,7 +103,6 @@ func (pc *PasswordCredential) Auditable() map[string]any {
 		"created_at":          MillisFromTime(pc.CreatedAt),
 		"updated_at":          MillisFromTime(pc.UpdatedAt),
 		"archived_at":         pc.ArchivedAt.Millis(),
-		"delete_at":           pc.ArchivedAt.Millis(),
 		"user_id":             pc.UserID.String(),
 		"password_changed_at": MillisFromTime(pc.PasswordChangedAt),
 	}

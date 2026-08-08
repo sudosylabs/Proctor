@@ -17,9 +17,9 @@ func TestEventValidateForPublish(t *testing.T) {
 	valid := &Event{
 		Event:  "academic_unit_created",
 		Action: model.ActionAcademicUnitView,
-		Resource: model.Resource{
+		Resource: Resource{
 			Type: model.ResourceAcademicUnit,
-			Id:   unitID,
+			ID:   unitID,
 		},
 	}
 	if err := valid.ValidateForPublish(); err != nil {
@@ -28,7 +28,7 @@ func TestEventValidateForPublish(t *testing.T) {
 
 	userTargeted := &Event{
 		Event:  "user.notification",
-		UserId: model.NewId(),
+		UserID: model.NewId(),
 	}
 	if err := userTargeted.ValidateForPublish(); err != nil {
 		t.Fatalf("user-targeted event: %v", err)
@@ -38,7 +38,7 @@ func TestEventValidateForPublish(t *testing.T) {
 		t.Fatal("expected missing target error")
 	}
 	if err := (&Event{
-		Event: "x", UserId: model.NewId(), Data: json.RawMessage(`{`),
+		Event: "x", UserID: model.NewId(), Data: json.RawMessage(`{`),
 	}).ValidateForPublish(); err == nil {
 		t.Fatal("expected invalid data error")
 	}
@@ -49,9 +49,9 @@ func TestSubscriptionIsValid(t *testing.T) {
 
 	subscription := Subscription{
 		Action: model.ActionInstitutionManage,
-		Resource: model.Resource{
+		Resource: Resource{
 			Type: model.ResourceInstitution,
-			Id:   model.NewId(),
+			ID:   model.NewId(),
 		},
 	}
 	if !subscription.IsValid() {
@@ -62,5 +62,31 @@ func TestSubscriptionIsValid(t *testing.T) {
 	}
 	if (Subscription{}).IsValid() {
 		t.Fatal("empty subscription should be invalid")
+	}
+}
+
+func TestEventResourceWireShapeRemainsSnakeCase(t *testing.T) {
+	t.Parallel()
+
+	event := &Event{
+		Event:  "academic_unit_created",
+		Action: model.ActionAcademicUnitView,
+		Resource: Resource{
+			Type: model.ResourceAcademicUnit,
+			ID:   model.NewId(),
+		},
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Resource map[string]json.RawMessage `json:"resource"`
+	}
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Resource) != 2 || wire.Resource["type"] == nil || wire.Resource["id"] == nil {
+		t.Fatalf("resource wire shape = %s", encoded)
 	}
 }

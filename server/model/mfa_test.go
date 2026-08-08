@@ -17,7 +17,7 @@ func TestMFACredentialValidationAndRedaction(t *testing.T) {
 		State:            MFAStatePending,
 		EncryptedSecret:  "ciphertext",
 		EncryptionKeyID:  "0123456789abcdef",
-		PendingExpiresAt: now.Add(time.Minute),
+		PendingExpiresAt: OptionalTimeFrom(now.Add(time.Minute)),
 	}
 	pending.PrepareCreate(NewMFACredentialID(), now)
 	if err := pending.Validate(); err != nil {
@@ -38,13 +38,13 @@ func TestMFACredentialValidationAndRedaction(t *testing.T) {
 	if _, exists := auditable["encryption_key_id"]; exists {
 		t.Fatal("MFA auditable projection exposed encryption key id")
 	}
-	if !pending.IsPendingAt(now) || pending.IsPendingAt(pending.PendingExpiresAt) {
+	if !pending.IsPendingAt(now) || pending.IsPendingAt(pending.PendingExpiresAt.Time) {
 		t.Fatalf("IsPendingAt() inconsistent for %#v", pending)
 	}
 
 	active := *pending
 	active.State = MFAStateActive
-	active.PendingExpiresAt = time.Time{}
+	active.PendingExpiresAt = OptionalTime{}
 	active.ActivatedAt = OptionalTimeFrom(active.CreatedAt)
 	active.LastUsedTimeStep = 1
 	if err := active.Validate(); err != nil {

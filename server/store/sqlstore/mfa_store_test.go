@@ -4,6 +4,7 @@
 package sqlstore
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -17,13 +18,13 @@ func TestMFACredentialRowConversion(t *testing.T) {
 	expires := created.Add(10 * time.Minute)
 	row := mfaCredentialRow{
 		ID:               id.String(),
-		CreateAt:         model.MillisFromTime(created),
-		UpdateAt:         model.MillisFromTime(created),
+		CreatedAt:        UTCTime(created),
+		UpdatedAt:        UTCTime(created),
 		UserID:           userID.String(),
 		State:            model.MFAStatePending,
 		EncryptedSecret:  "ciphertext",
 		EncryptionKeyID:  "0123456789abcdef",
-		PendingExpiresAt: model.MillisFromTime(expires),
+		PendingExpiresAt: sql.NullTime{Time: expires, Valid: true},
 	}
 	credential, err := row.model()
 	if err != nil {
@@ -32,15 +33,15 @@ func TestMFACredentialRowConversion(t *testing.T) {
 	if credential.ID != id ||
 		credential.UserID != userID ||
 		credential.EncryptionKeyID != row.EncryptionKeyID ||
-		!credential.PendingExpiresAt.Equal(expires) ||
+		!credential.PendingExpiresAt.Valid || !credential.PendingExpiresAt.Time.Equal(expires) ||
 		credential.ActivatedAt.Valid {
 		t.Fatalf("row.model() = %#v", credential)
 	}
 
 	activeRow := row
 	activeRow.State = model.MFAStateActive
-	activeRow.PendingExpiresAt = 0
-	activeRow.EnabledAt = model.MillisFromTime(created)
+	activeRow.PendingExpiresAt = sql.NullTime{}
+	activeRow.ActivatedAt = sql.NullTime{Time: created, Valid: true}
 	activeRow.LastUsedTimeStep = 42
 	active, err := activeRow.model()
 	if err != nil {

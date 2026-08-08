@@ -137,7 +137,7 @@ func (s *sessionAdministrationService) RevokeOne(
 		ctx,
 		invocation,
 		model.ActionSessionManage,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 		"revoke_session",
 		map[string]any{"user_id": userID, "session_id": sessionID},
 		session.Auditable(),
@@ -190,7 +190,7 @@ func (s *sessionAdministrationService) RevokeAll(
 		ctx,
 		invocation,
 		model.ActionSessionManage,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 		"revoke_sessions",
 		map[string]any{"user_id": userID},
 		nil,
@@ -231,7 +231,7 @@ func (a sessionAdministrationAuthorization) AuthorizeView(
 		ctx,
 		invocation.Principal(),
 		model.ActionSessionView,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 		invocation.RequestMetadata(),
 	)
 }
@@ -245,7 +245,7 @@ func (a sessionAdministrationAuthorization) AuthorizeManage(
 		ctx,
 		invocation.Principal(),
 		model.ActionSessionManage,
-		model.Resource{Type: model.ResourceUser, Id: userID},
+		model.Resource{Type: model.ResourceUser, ID: userID},
 		invocation.RequestMetadata(),
 	)
 }

@@ -7,9 +7,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -18,13 +20,13 @@ type SqlClusterDiscoveryStore struct {
 }
 
 type clusterDiscoveryNodeRow struct {
-	NodeID           string `db:"node_id"`
-	AdvertiseAddress string `db:"advertise_address"`
-	ServerVersion    string `db:"server_version"`
-	ProtocolMin      int    `db:"protocol_min"`
-	ProtocolMax      int    `db:"protocol_max"`
-	ExpiresAt        int64  `db:"expires_at"`
-	UpdatedAt        int64  `db:"updated_at"`
+	NodeID           string    `db:"node_id"`
+	AdvertiseAddress string    `db:"advertise_address"`
+	ServerVersion    string    `db:"server_version"`
+	ProtocolMin      int       `db:"protocol_min"`
+	ProtocolMax      int       `db:"protocol_max"`
+	ExpiresAt        time.Time `db:"expires_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 func newSqlClusterDiscoveryStore(sqlStore *SqlStore) store.ClusterDiscoveryStore {
@@ -56,8 +58,8 @@ func (s SqlClusterDiscoveryStore) Upsert(
 			prepared.ServerVersion,
 			prepared.ProtocolMin,
 			prepared.ProtocolMax,
-			prepared.ExpiresAt,
-			prepared.UpdatedAt,
+			model.TimeFromMillis(prepared.ExpiresAt),
+			model.TimeFromMillis(prepared.UpdatedAt),
 		).
 		Suffix(`
 ON CONFLICT (node_id) DO UPDATE SET
@@ -96,7 +98,7 @@ func (s SqlClusterDiscoveryStore) ListLive(
 			"updated_at",
 		).
 		From("cluster_discovery_nodes").
-		Where(sq.Gt{"expires_at": nowMillis}).
+		Where(sq.Gt{"expires_at": model.TimeFromMillis(nowMillis)}).
 		OrderBy("node_id ASC").
 		ToSql()
 	if err != nil {
@@ -144,7 +146,7 @@ func (s SqlClusterDiscoveryStore) DeleteExpired(
 	}
 	query, args, err := s.getQueryBuilder().
 		Delete("cluster_discovery_nodes").
-		Where(sq.LtOrEq{"expires_at": nowMillis}).
+		Where(sq.LtOrEq{"expires_at": model.TimeFromMillis(nowMillis)}).
 		ToSql()
 	if err != nil {
 		return 0, fmt.Errorf("build cluster discovery delete expired: %w", err)
@@ -183,7 +185,7 @@ func (r clusterDiscoveryNodeRow) model() *store.ClusterDiscoveryNode {
 		ServerVersion:    r.ServerVersion,
 		ProtocolMin:      r.ProtocolMin,
 		ProtocolMax:      r.ProtocolMax,
-		ExpiresAt:        r.ExpiresAt,
-		UpdatedAt:        r.UpdatedAt,
+		ExpiresAt:        model.MillisFromTime(r.ExpiresAt),
+		UpdatedAt:        model.MillisFromTime(r.UpdatedAt),
 	}
 }

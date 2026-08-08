@@ -23,7 +23,7 @@ const (
 // descendants.
 //
 // Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
-// Soft archive uses ArchivedAt (legacy delete_at). TokenHash is excluded from
+// Soft archive uses ArchivedAt. TokenHash is excluded from
 // JSON and must never be logged or audited.
 type PersonalAccessToken struct {
 	ID             PersonalAccessTokenID
@@ -233,7 +233,6 @@ func (t *PersonalAccessToken) Auditable() map[string]any {
 		"created_at":       MillisFromTime(t.CreatedAt),
 		"updated_at":       MillisFromTime(t.UpdatedAt),
 		"archived_at":      t.ArchivedAt.Millis(),
-		"delete_at":        t.ArchivedAt.Millis(),
 		"user_id":          t.UserID.String(),
 		"description":      t.Description,
 		"scopes":           cloneStrings(t.Scopes),

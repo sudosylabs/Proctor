@@ -58,7 +58,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if winner == nil || conflicts != attempts-1 {
 		t.Fatalf("winner/conflicts = %#v/%d", winner, conflicts)
 	}
-	if !winner.State.IsValid() ||
+	if winner.State.Validate() != nil ||
 		winner.Institution.ID != winner.State.InstitutionID ||
 		winner.Administrator.ID != winner.State.AdministratorUserID ||
 		winner.Role.Name != model.SystemAdministratorRoleName ||
@@ -136,7 +136,7 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 		AuditEvent: &model.AuditEvent{
 			ID: model.AuditEventID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
 			UpdatedAt: model.TimeFromMillis(1),
-			Action: "installation.bootstrap", NodeID: "store-test",
+			Action:    "installation.bootstrap", NodeID: "store-test",
 			Parameters: parameters,
 		},
 	}

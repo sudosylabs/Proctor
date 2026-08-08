@@ -35,10 +35,17 @@ func TestClassRowConversion(t *testing.T) {
 		Description:      "Student roster",
 	}
 	row := newClassRow(class)
-	if got := row.model(); *got != *class {
+	got, err := row.model()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got != *class {
 		t.Fatalf("row.model() = %#v, want %#v", got, class)
 	}
-	if row.CreateAt != 1 || row.UpdateAt != 2 || row.DeleteAt != 3 || row.Revision != 4 {
-		t.Fatalf("row millis = %#v", row)
+	if !row.CreatedAt.Equal(class.CreatedAt) ||
+		!row.UpdatedAt.Equal(class.UpdatedAt) ||
+		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(class.ArchivedAt.Time) ||
+		row.Revision != 4 {
+		t.Fatalf("row times = %#v", row)
 	}
 }

@@ -53,12 +53,12 @@ func (s *AuditService) BeginAuthentication(
 		Action:  "authentication.external_login",
 		Resource: model.Resource{
 			Type: model.ResourceUser,
-			Id:   userID,
+			ID:   userID,
 		},
 		ScopeType:  model.RoleScopeInstitution,
 		ScopeID:    institutionID,
 		Status:     model.AuditStatusAttempt,
-		RequestID:  metadata.RequestId,
+		RequestID:  metadata.RequestID,
 		NodeID:     s.nodeID,
 		ClientType: string(clientType),
 		AuthMethod: method,
@@ -97,12 +97,12 @@ func (s *AuditService) RecordExternalAuthenticationFailure(
 		Action: "authentication.external_login",
 		Resource: model.Resource{
 			Type: model.ResourceInstitution,
-			Id:   institutionID,
+			ID:   institutionID,
 		},
 		ScopeType:  model.RoleScopeInstitution,
 		ScopeID:    institutionID,
 		Status:     model.AuditStatusFail,
-		RequestID:  metadata.RequestId,
+		RequestID:  metadata.RequestID,
 		NodeID:     s.nodeID,
 		AuthMethod: method,
 		IPAddress:  metadata.IPAddress,
@@ -128,7 +128,7 @@ func (s *AuditService) BeginCriticalAction(
 	parameters any,
 	priorState any,
 ) (*model.AuditEvent, error) {
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return nil, invalidTokenAppError()
 	}
 	if s.store == nil || s.store.Audit() == nil {
@@ -143,7 +143,7 @@ func (s *AuditService) BeginCriticalAction(
 		return nil, domainInvalid("audit.event.invalid", err)
 	}
 	scopeType := model.RoleScopeType(resource.Type)
-	scopeID := resource.Id
+	scopeID := resource.ID
 	if resource.Type == model.ResourceUser {
 		institution, err := s.store.Institution().GetSingleton(ctx)
 		if err != nil {
@@ -153,10 +153,10 @@ func (s *AuditService) BeginCriticalAction(
 		scopeID = institution.ID.String()
 	}
 	event := &model.AuditEvent{
-		ActorID: model.UserID(principal.UserId), SessionID: model.SessionID(principal.SessionId),
+		ActorID: principal.UserID, SessionID: principal.SessionID,
 		Action: string(action), Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID,
-		Status: model.AuditStatusAttempt, RequestID: metadata.RequestId,
+		Status: model.AuditStatusAttempt, RequestID: metadata.RequestID,
 		NodeID: s.nodeID, ClientType: string(principal.ClientType),
 		AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress,
 		UserAgent: metadata.UserAgent, Parameters: encodedParameters,
@@ -212,10 +212,10 @@ func (s *AuditService) RecordAuthorizationDecision(
 		errorCode = ""
 	}
 	event := &model.AuditEvent{
-		ActorID: model.UserID(principal.UserId), SessionID: model.SessionID(principal.SessionId),
+		ActorID: principal.UserID, SessionID: principal.SessionID,
 		Action: string(action), Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID, Status: status,
-		RequestID: metadata.RequestId, NodeID: s.nodeID,
+		RequestID: metadata.RequestID, NodeID: s.nodeID,
 		ClientType: string(principal.ClientType),
 		AuthMethod: principal.AuthenticationMethod,
 		IPAddress:  metadata.IPAddress, UserAgent: metadata.UserAgent,
@@ -237,7 +237,7 @@ func (s *AuditService) List(
 	if query.Limit < 1 || query.Limit > 200 ||
 		(query.ActorID != "" && !model.IsValidId(query.ActorID)) ||
 		(query.BeforeID != "" && !model.IsValidId(query.BeforeID)) ||
-		(query.Resource != nil && !query.Resource.IsValid()) {
+		(query.Resource != nil && query.Resource.Validate() != nil) {
 		return nil, NewError("audit.query.invalid")
 	}
 	events, err := s.store.Audit().List(ctx, store.AuditListOptions{

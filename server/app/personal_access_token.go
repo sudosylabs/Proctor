@@ -77,10 +77,10 @@ func (a *App) CreatePersonalAccessToken(
 
 	rawCredential := model.NewCredentialToken()
 	candidate := &model.PersonalAccessToken{
-		UserID:      model.UserID(principal.UserId),
-		Description: command.Description,
-		TokenHash:   model.HashToken(rawCredential),
-		Scopes:      normalizedScopes,
+		UserID:         principal.UserID,
+		Description:    command.Description,
+		TokenHash:      model.HashToken(rawCredential),
+		Scopes:         normalizedScopes,
 		AcademicUnitID: model.AcademicUnitID(command.AcademicUnitID),
 		ExpiresAt:      model.TimeFromMillis(command.ExpiresAt),
 	}
@@ -130,7 +130,7 @@ func (a *App) ListPersonalAccessTokens(
 	if err := a.requireInteractiveSession(principal, false); err != nil {
 		return nil, err
 	}
-	tokens, err := a.Store().PersonalAccessToken().ListByUser(ctx, principal.UserId)
+	tokens, err := a.Store().PersonalAccessToken().ListByUser(ctx, principal.UserID.String())
 	if err != nil {
 		return nil, personalAccessTokenFailure("personal_access_token", err)
 	}
@@ -150,7 +150,7 @@ func (a *App) RevokePersonalAccessToken(
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
 	current, err := a.Store().PersonalAccessToken().Get(ctx, command.TokenID)
-	if err != nil || current.UserID.String() != principal.UserId {
+	if err != nil || current.UserID != principal.UserID {
 		if err == nil {
 			err = store.NewErrNotFound("personal_access_token", command.TokenID)
 		}
@@ -171,7 +171,7 @@ func (a *App) RevokePersonalAccessToken(
 	revoked, err := a.Store().PersonalAccessToken().Revoke(
 		ctx,
 		command.TokenID,
-		principal.UserId,
+		principal.UserID.String(),
 		time.Now().UnixMilli(),
 	)
 	if err != nil {
@@ -206,7 +206,7 @@ func (a *App) SetPersonalAccessTokenDisabled(
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
 	current, err := a.Store().PersonalAccessToken().Get(ctx, command.TokenID)
-	if err != nil || current.UserID.String() != principal.UserId {
+	if err != nil || current.UserID != principal.UserID {
 		if err == nil {
 			err = store.NewErrNotFound("personal_access_token", command.TokenID)
 		}
@@ -230,7 +230,7 @@ func (a *App) SetPersonalAccessTokenDisabled(
 	updated, err := a.Store().PersonalAccessToken().SetDisabled(
 		ctx,
 		command.TokenID,
-		principal.UserId,
+		principal.UserID.String(),
 		command.Disabled,
 		time.Now().UnixMilli(),
 		a.personalAccessTokens.MaximumPerUser,
@@ -251,7 +251,7 @@ func (a *App) SetPersonalAccessTokenDisabled(
 }
 
 func (a *App) requireInteractiveSession(principal model.Principal, recent bool) error {
-	if !principal.IsValid() ||
+	if principal.Validate() != nil ||
 		principal.CredentialType != model.CredentialSessionAccess {
 		return NewError("authentication.session_required")
 	}
@@ -286,7 +286,7 @@ func (a *App) personalAccessTokenAuditResource(ctx context.Context) (model.Resou
 	}
 	return model.Resource{
 		Type: model.ResourceInstitution,
-		Id:   institution.ID.String(),
+		ID:   institution.ID.String(),
 	}, nil
 }
 

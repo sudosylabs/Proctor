@@ -20,12 +20,12 @@ import (
 // Cluster fan-out is always best-effort (ADR-0026); there is no durable
 // delivery class.
 type RealtimeEvent struct {
-	ID       string          `json:"id"`
-	Name     string          `json:"event"`
-	UserID   string          `json:"user_id,omitempty"`
-	Action   model.Action    `json:"action,omitempty"`
-	Resource model.Resource  `json:"resource,omitempty"`
-	Data     json.RawMessage `json:"data,omitempty"`
+	ID       string
+	Name     string
+	UserID   string
+	Action   model.Action
+	Resource model.Resource
+	Data     json.RawMessage
 }
 
 const (
@@ -60,7 +60,7 @@ func (e RealtimeEvent) ValidateForPublish() error {
 		}
 	} else {
 		definition, ok := model.DefinitionForAction(e.Action)
-		if !ok || !e.Resource.IsValid() || definition.ResourceType != e.Resource.Type {
+		if !ok || e.Resource.Validate() != nil || definition.ResourceType != e.Resource.Type {
 			return errors.New("realtime event authorization target is invalid")
 		}
 	}

@@ -37,12 +37,6 @@ func (is *InstallationState) Validate() error {
 	return nil
 }
 
-// IsValid reports whether the marker carries complete durable identity.
-// Prefer Validate when a typed error is needed.
-func (is *InstallationState) IsValid() bool {
-	return is.Validate() == nil
-}
-
 // Auditable returns a deliberately safe audit projection.
 func (is *InstallationState) Auditable() map[string]any {
 	if is == nil {

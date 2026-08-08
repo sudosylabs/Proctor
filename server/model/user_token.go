@@ -25,7 +25,7 @@ const (
 // may exist before a User; they must not overload this type with generic data.
 //
 // TokenHash and Target are deliberately excluded from JSON. Soft archive uses
-// ArchivedAt (legacy delete_at).
+// ArchivedAt.
 type UserToken struct {
 	ID         UserTokenID
 	CreatedAt  time.Time
@@ -136,7 +136,6 @@ func (t *UserToken) Auditable() map[string]any {
 		"created_at":  MillisFromTime(t.CreatedAt),
 		"updated_at":  MillisFromTime(t.UpdatedAt),
 		"archived_at": t.ArchivedAt.Millis(),
-		"delete_at":   t.ArchivedAt.Millis(),
 		"user_id":     t.UserID.String(),
 		"purpose":     t.Purpose,
 		"expires_at":  MillisFromTime(t.ExpiresAt),

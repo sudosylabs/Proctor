@@ -175,7 +175,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 		t.Fatalf("Get() = %#v, want %#v", got, unit)
 	}
 	if gotAction != model.ActionAcademicUnitView ||
-		gotResource != (model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID.String()}) {
+		gotResource != (model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}) {
 		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
 	}
 }
@@ -195,7 +195,7 @@ func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testin
 			_ context.Context, _ Invocation, action model.Action,
 		) (model.Resource, error) {
 			gotAction = action
-			gotResource = model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}
+			gotResource = model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 			return gotResource, nil
 		},
 	})
@@ -207,7 +207,7 @@ func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testin
 		t.Fatalf("List() = %#v, want non-nil empty result", got)
 	}
 	if gotAction != model.ActionInstitutionManage ||
-		gotResource != (model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}) {
+		gotResource != (model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}) {
 		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
 	}
 }
@@ -224,7 +224,7 @@ func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 		authorizeInstallation: func(
 			context.Context, Invocation, model.Action,
 		) (model.Resource, error) {
-			return model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, nil
+			return model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, nil
 		},
 	})
 	got, err := service.Search(

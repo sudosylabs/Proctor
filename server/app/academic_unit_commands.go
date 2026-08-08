@@ -83,7 +83,7 @@ func (e academicUnitRealtimeEffects) publish(
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
-			Id:   unitID,
+			ID:   unitID,
 		},
 	})
 }
@@ -155,7 +155,7 @@ func (s *academicUnitCommandService) Create(
 			return nil, NewError("request.invalid").WithField("field", "parent_id")
 		}
 		action = model.ActionAcademicUnitManage
-		authorized = model.Resource{Type: model.ResourceAcademicUnit, Id: parentID}
+		authorized = model.Resource{Type: model.ResourceAcademicUnit, ID: parentID}
 		if err := s.authorization.Authorize(ctx, invocation, action, authorized); err != nil {
 			return nil, err
 		}
@@ -170,7 +170,7 @@ func (s *academicUnitCommandService) Create(
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
-	institutionID, err := model.ParseInstitutionID(institution.Id)
+	institutionID, err := model.ParseInstitutionID(institution.ID)
 	if err != nil {
 		return nil, NewError("administration.unavailable").WithField("resource", "institution").Wrap(err)
 	}
@@ -183,7 +183,7 @@ func (s *academicUnitCommandService) Create(
 	}
 	candidate := &model.AcademicUnit{
 		InstitutionID: model.InstitutionID(institutionID),
-		ParentID: model.AcademicUnitID(parentUnitID),
+		ParentID:      model.AcademicUnitID(parentUnitID),
 		Name:          command.Name,
 		DisplayName:   command.DisplayName,
 		Description:   command.Description,
@@ -233,7 +233,7 @@ func (s *academicUnitCommandService) Update(
 	if !model.IsValidId(command.ID) {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: command.ID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionAcademicUnitManage, resource,
 	); err != nil {
@@ -273,7 +273,7 @@ func (s *academicUnitCommandService) Update(
 		candidate.ParentID != current.ParentID {
 		if err := s.authorization.Authorize(
 			ctx, invocation, model.ActionAcademicUnitManage,
-			model.Resource{Type: model.ResourceAcademicUnit, Id: candidate.ParentID.String()},
+			model.Resource{Type: model.ResourceAcademicUnit, ID: candidate.ParentID.String()},
 		); err != nil {
 			return nil, err
 		}
@@ -318,7 +318,7 @@ func (s *academicUnitCommandService) Archive(
 	if !model.IsValidId(command.ID) {
 		return NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: command.ID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionAcademicUnitManage, resource,
 	); err != nil {

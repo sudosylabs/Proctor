@@ -146,9 +146,9 @@ func TestWebSocketIntegration(t *testing.T) {
 
 	subscription := websocket.Subscription{
 		Action: model.ActionInstitutionManage,
-		Resource: model.Resource{
+		Resource: websocket.Resource{
 			Type: model.ResourceInstitution,
-			Id:   installation.Institution.ID.String(),
+			ID:   installation.Institution.ID.String(),
 		},
 	}
 	writeWebSocketRequest(t, connection, 2, "subscribe", subscription)
@@ -161,10 +161,13 @@ func TestWebSocketIntegration(t *testing.T) {
 	if appErr := helper.App.PublishRealtimeEvent(
 		context.Background(),
 		app.RealtimeEvent{
-			Name:     "institution.updated",
-			Action:   subscription.Action,
-			Resource: subscription.Resource,
-			Data:     eventData,
+			Name:   "institution.updated",
+			Action: subscription.Action,
+			Resource: model.Resource{
+				Type: subscription.Resource.Type,
+				ID:   subscription.Resource.ID,
+			},
+			Data: eventData,
 		},
 	); appErr != nil {
 		t.Fatal(appErr)
@@ -227,7 +230,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	if err := helper.App.RevokeSession(
 		context.Background(),
 		app.NewInvocation(*principal, model.RequestMetadata{}),
-		app.RevokeSessionCommand{SessionID: login.Session.Id},
+		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -365,9 +368,9 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 
 	subscription := websocket.Subscription{
 		Action: model.ActionInstitutionManage,
-		Resource: model.Resource{
+		Resource: websocket.Resource{
 			Type: model.ResourceInstitution,
-			Id:   installation.Institution.ID.String(),
+			ID:   installation.Institution.ID.String(),
 		},
 	}
 	writeWebSocketRequest(t, connection, 1, "subscribe", subscription)
@@ -378,10 +381,13 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	if appErr := nodeA.App.PublishRealtimeEvent(
 		context.Background(),
 		app.RealtimeEvent{
-			Name:     "institution.cluster_updated",
-			Action:   subscription.Action,
-			Resource: subscription.Resource,
-			Data:     json.RawMessage(`{"source":"node-a"}`),
+			Name:   "institution.cluster_updated",
+			Action: subscription.Action,
+			Resource: model.Resource{
+				Type: subscription.Resource.Type,
+				ID:   subscription.Resource.ID,
+			},
+			Data: json.RawMessage(`{"source":"node-a"}`),
 		},
 	); appErr != nil {
 		t.Fatal(appErr)
@@ -401,7 +407,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	}
 	role, err := nodeA.App.CreateRole(
 		context.Background(),
-		app.NewInvocation(*principal, model.RequestMetadata{RequestId: "two-node-role-create"}),
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "two-node-role-create"}),
 		app.CreateRoleCommand{
 			Name: "cluster_observer", DisplayName: "Cluster Observer",
 			Permissions: []string{string(model.ActionUserView)},
@@ -413,7 +419,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	updatedDisplayName := "Updated Cluster Observer"
 	if _, err := nodeA.App.UpdateRole(
 		context.Background(),
-		app.NewInvocation(*principal, model.RequestMetadata{RequestId: "two-node-role-patch"}),
+		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "two-node-role-patch"}),
 		app.UpdateRoleCommand{ID: role.ID.String(), DisplayName: &updatedDisplayName},
 	); err != nil {
 		t.Fatal(err)
@@ -438,7 +444,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	if err := nodeA.App.RevokeSession(
 		context.Background(),
 		app.NewInvocation(*principal, model.RequestMetadata{}),
-		app.RevokeSessionCommand{SessionID: login.Session.Id},
+		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
 	); err != nil {
 		t.Fatal(err)
 	}

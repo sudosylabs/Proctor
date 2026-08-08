@@ -20,7 +20,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store) {
 		Provider: "campus-cas", StateHash: model.HashToken(stateToken),
 		BindingHash: model.HashToken(bindingToken), ReturnTo: "/exams?active=true",
 		ClientType: model.SessionClientDesktop, DeviceID: "desktop-1",
-		DeviceName: "Desktop", ExpiresAt: model.TimeFromMillis(now+60_000),
+		DeviceName: "Desktop", ExpiresAt: model.TimeFromMillis(now + 60_000),
 	}
 	saved, err := ss.ExternalLoginState().Save(ctx, input)
 	requireNoError(t, err)
@@ -67,7 +67,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store) {
 		StateHash:   model.HashToken(model.NewCredentialToken()),
 		BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo:    "/", ClientType: model.SessionClientWeb,
-		ExpiresAt: model.TimeFromMillis(now+120_000),
+		ExpiresAt: model.TimeFromMillis(now + 120_000),
 	}
 	expired, err = ss.ExternalLoginState().Save(ctx, expired)
 	requireNoError(t, err)

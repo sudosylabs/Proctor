@@ -10,7 +10,6 @@
 package api
 
 import (
-	application "github.com/sudosylabs/proctor/server/app"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -20,6 +19,7 @@ import (
 	"net/url"
 	"time"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -93,7 +93,7 @@ func (c browserCookies) attach(
 		BrowserAccessCookieName,
 		tokens.AccessToken,
 		"/",
-		tokens.AccessExpiresAt,
+		model.MillisFromTime(tokens.AccessExpiresAt),
 		true,
 	)
 	c.set(
@@ -101,7 +101,7 @@ func (c browserCookies) attach(
 		BrowserRefreshCookieName,
 		tokens.RefreshToken,
 		c.refreshPath,
-		tokens.RefreshExpiresAt,
+		model.MillisFromTime(tokens.RefreshExpiresAt),
 		true,
 	)
 	c.set(
@@ -109,7 +109,7 @@ func (c browserCookies) attach(
 		BrowserCSRFBindingCookieName,
 		binding,
 		"/",
-		tokens.RefreshExpiresAt,
+		model.MillisFromTime(tokens.RefreshExpiresAt),
 		true,
 	)
 	c.set(
@@ -117,7 +117,7 @@ func (c browserCookies) attach(
 		BrowserCSRFCookieName,
 		csrf,
 		"/",
-		tokens.RefreshExpiresAt,
+		model.MillisFromTime(tokens.RefreshExpiresAt),
 		false,
 	)
 }

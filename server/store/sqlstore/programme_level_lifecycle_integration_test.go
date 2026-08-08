@@ -42,7 +42,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID.String()}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
+		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 		if err != nil {
 			t.Fatal(err)
 		}

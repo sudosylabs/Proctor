@@ -166,7 +166,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	if len(audits) != 1 ||
-		audits[0].Resource.Id != user.ID.String() ||
+		audits[0].Resource.ID != user.ID.String() ||
 		audits[0].Status != model.AuditStatusSuccess {
 		t.Fatalf("password reset audit = %#v", audits)
 	}
@@ -304,7 +304,7 @@ func userTokenAudit(
 		Action: action,
 		Resource: model.Resource{
 			Type: model.ResourceUser,
-			Id:   userID,
+			ID:   userID,
 		},
 		ScopeType:  model.RoleScopeInstitution,
 		ScopeID:    institutionID,

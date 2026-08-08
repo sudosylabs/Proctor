@@ -79,7 +79,7 @@ func (e *roleEffectsFake) AuthorizationChanged(context.Context) {
 func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}
+	resource := model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}
 	created := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 	persistence := &roleStoreFake{events: &events, createResult: created}
 	service := newRoleService(
@@ -109,7 +109,7 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 	events := []string{}
 	service := newRoleService(
 		&roleStoreFake{events: &events},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events},
 		&roleEffectsFake{events: &events},
 		time.Now,
@@ -136,7 +136,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 	persistence := &roleStoreFake{events: &events, role: role, updateResult: updated}
 	service := newRoleService(
 		persistence,
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
@@ -160,8 +160,8 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 	displayName := "Lead Teacher"
 	service := newRoleService(
-		&roleStoreFake{events: &events, role: role, updateErr: store.NewErrConflict("role", "roles_active_name_key", errors.New("dup"))},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleStoreFake{events: &events, role: role, updateErr: store.NewErrConflict("role", "roles_name_key", errors.New("dup"))},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleEffectsFake{events: &events},
 		time.Now,
@@ -183,7 +183,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 	displayName := "Nope"
 	service := newRoleService(
 		&roleStoreFake{events: &events, role: role},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events},
 		&roleEffectsFake{events: &events},
 		time.Now,
@@ -204,7 +204,7 @@ func TestRoleDeleteCommitsBeforeInvalidation(t *testing.T) {
 	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher"}
 	service := newRoleService(
 		&roleStoreFake{events: &events, role: role, deleteResult: role},
-		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },

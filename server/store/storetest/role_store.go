@@ -67,7 +67,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 			Name: first.Name, DisplayName: "Duplicate",
 		})
 		var conflict *store.ErrConflict
-		if !errors.As(err, &conflict) || conflict.Constraint != "roles_active_name_key" {
+		if !errors.As(err, &conflict) || conflict.Constraint != "roles_name_key" {
 			t.Fatalf("duplicate role error = %v", err)
 		}
 		if _, err := ss.Role().Delete(ctx, first.ID.String(), model.GetMillis()); !store.IsConflict(err) {
@@ -156,7 +156,7 @@ func saveRoleAuditAttempt(t *testing.T, ctx context.Context, ss store.Store) *mo
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionRoleManage),
-		Resource:  model.Resource{Type: model.ResourceInstitution, Id: model.NewId()},
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: model.NewId()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})

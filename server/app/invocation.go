@@ -22,7 +22,7 @@ func NewInvocation(principal model.Principal, metadata model.RequestMetadata) In
 	principal.CredentialScopes = append([]string(nil), principal.CredentialScopes...)
 	return Invocation{
 		principal: principal,
-		requestID: metadata.RequestId,
+		requestID: metadata.RequestID,
 		ipAddress: metadata.IPAddress,
 		userAgent: metadata.UserAgent,
 	}
@@ -38,7 +38,7 @@ func (i Invocation) Principal() model.Principal {
 // RequestMetadata returns the safe audit metadata carried by the invocation.
 func (i Invocation) RequestMetadata() model.RequestMetadata {
 	return model.RequestMetadata{
-		RequestId: i.requestID,
+		RequestID: i.requestID,
 		IPAddress: i.ipAddress,
 		UserAgent: i.userAgent,
 	}

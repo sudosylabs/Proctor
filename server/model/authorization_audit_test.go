@@ -18,7 +18,7 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	if _, ok := DefinitionForAction(Action("future.permission")); ok {
 		t.Fatal("unknown action was registered")
 	}
-	if (Resource{Type: ResourceClass, Id: NewId()}).IsValid() == false {
+	if err := (Resource{Type: ResourceClass, ID: NewId()}).Validate(); err != nil {
 		t.Fatal("valid class resource was rejected")
 	}
 	userDefinition, ok := DefinitionForAction(ActionUserView)
@@ -27,10 +27,10 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 		userDefinition.InheritAcademicUnitScopes {
 		t.Fatalf("user-view definition = %#v, %v", userDefinition, ok)
 	}
-	if !(Resource{Type: ResourceUser, Id: NewId()}).IsValid() {
+	if err := (Resource{Type: ResourceUser, ID: NewId()}).Validate(); err != nil {
 		t.Fatal("valid user resource was rejected")
 	}
-	if (Resource{Type: ResourceType("exam"), Id: NewId()}).IsValid() {
+	if err := (Resource{Type: ResourceType("exam"), ID: NewId()}).Validate(); err == nil {
 		t.Fatal("unimplemented resource type was accepted")
 	}
 }
@@ -38,7 +38,7 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 	event := &AuditEvent{
 		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionUserView),
-		Resource:  Resource{Type: ResourceUser, Id: NewId()},
+		Resource:  Resource{Type: ResourceUser, ID: NewId()},
 		ScopeType: RoleScopeInstitution, ScopeID: NewId(),
 		Status: AuditStatusSuccess, NodeID: "node-1",
 	}
@@ -51,7 +51,7 @@ func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 func TestAuditEventValidationCloningAndBounds(t *testing.T) {
 	event := &AuditEvent{
 		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionAuditView),
-		Resource:  Resource{Type: ResourceInstitution, Id: NewId()},
+		Resource:  Resource{Type: ResourceInstitution, ID: NewId()},
 		ScopeType: RoleScopeInstitution, ScopeID: NewId(),
 		Status: AuditStatusSuccess, NodeID: "node-1",
 		IPAddress: "fe80::1%en0", UserAgent: strings.Repeat("a", 600),

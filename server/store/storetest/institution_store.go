@@ -31,7 +31,7 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionInstitutionManage),
-		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
@@ -50,6 +50,19 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit status = %q", completed.Status)
+	}
+	staleAttempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
+	})
+	requireNoError(t, err)
+	stale := *institution
+	stale.DisplayName = "Stale Northbridge"
+	stale.PrepareUpdate(model.NowUTC())
+	if _, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
+		Institution: &stale, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
+	}); !store.IsConflict(err) {
+		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
 	}
 
 	rolledBack := *updated

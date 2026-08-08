@@ -32,7 +32,7 @@ func TestExternalLoginStateLifecycle(t *testing.T) {
 		BindingHash: HashToken(NewCredentialToken()),
 		ReturnTo:    "/exams",
 		ClientType:  SessionClientDesktop,
-		ExpiresAt: TimeFromMillis(GetMillis()+60_000),
+		ExpiresAt:   TimeFromMillis(GetMillis() + 60_000),
 	}
 	state.PrepareCreate(NewExternalLoginStateID(), NowUTC())
 	if state.Provider != "campus-cas" {

@@ -5,17 +5,19 @@ package sqlstore
 
 import (
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestPersonalAccessTokenRowConversion(t *testing.T) {
 	unitID := model.NewId()
+	createdAt := model.TimeFromMillis(1)
 	row := personalAccessTokenRow{
-		ID: model.NewId(), CreateAt: 1, UpdateAt: 2, UserID: model.NewId(),
+		ID: model.NewId(), CreatedAt: createdAt, UpdatedAt: createdAt.Add(time.Millisecond), UserID: model.NewId(),
 		Description: "token", TokenHash: model.HashToken(model.NewCredentialToken()),
 		Scopes: []string{string(model.ActionClassView)}, AcademicUnitID: &unitID,
-		ExpiresAt: 3,
+		ExpiresAt: createdAt.Add(2 * time.Millisecond),
 	}
 	token := row.model()
 	if token.AcademicUnitID.String() != unitID || len(token.Scopes) != 1 {

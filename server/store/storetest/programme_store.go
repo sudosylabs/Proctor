@@ -68,6 +68,13 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q", completed.Status)
 	}
+	staleAttempt := saveProgrammeAuditAttempt(t, ctx, ss, unit.ID.String())
+	stale := *created
+	stale.DisplayName = "Stale Programme"
+	stale.PrepareUpdate(model.NowUTC())
+	if _, err := ss.Programme().UpdateWithAudit(ctx, &store.ProgrammeUpdate{Programme: &stale, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
+	}
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
@@ -113,7 +120,7 @@ func saveProgrammeAuditAttempt(t *testing.T, ctx context.Context, ss store.Store
 	t.Helper()
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionAcademicUnitManage),
-		Resource:  model.Resource{Type: model.ResourceAcademicUnit, Id: unitID},
+		Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: unitID},
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID,
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
@@ -286,7 +293,7 @@ func testProgrammeStoreEnforceAcademicUnitNameUniqueness(t *testing.T, ss store.
 		DisplayName:    "Duplicate",
 	})
 	var conflict *store.ErrConflict
-	if !errors.As(err, &conflict) || conflict.Constraint != "programmes_active_name_key" {
+	if !errors.As(err, &conflict) || conflict.Constraint != "programmes_academic_unit_id_name_key" {
 		t.Fatalf("duplicate programme error = %v, want scoped-name conflict", err)
 	}
 

@@ -11,7 +11,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/lib/pq"
 
@@ -25,18 +27,18 @@ type SqlPersonalAccessTokenStore struct {
 
 type personalAccessTokenRow struct {
 	ID             string         `db:"id"`
-	CreateAt       int64          `db:"create_at"`
-	UpdateAt       int64          `db:"update_at"`
-	DeleteAt       int64          `db:"delete_at"`
+	CreatedAt      time.Time      `db:"created_at"`
+	UpdatedAt      time.Time      `db:"updated_at"`
+	ArchivedAt     sql.NullTime   `db:"archived_at"`
 	UserID         string         `db:"user_id"`
 	Description    string         `db:"description"`
 	TokenHash      string         `db:"token_hash"`
 	Scopes         pq.StringArray `db:"scopes"`
 	AcademicUnitID *string        `db:"academic_unit_id"`
-	ExpiresAt      int64          `db:"expires_at"`
-	LastUsedAt     int64          `db:"last_used_at"`
-	DisabledAt     int64          `db:"disabled_at"`
-	RevokedAt      int64          `db:"revoked_at"`
+	ExpiresAt      time.Time      `db:"expires_at"`
+	LastUsedAt     sql.NullTime   `db:"last_used_at"`
+	DisabledAt     sql.NullTime   `db:"disabled_at"`
+	RevokedAt      sql.NullTime   `db:"revoked_at"`
 }
 
 func newSqlPersonalAccessTokenStore(sqlStore *SqlStore) store.PersonalAccessTokenStore {
@@ -81,18 +83,17 @@ func (s SqlPersonalAccessTokenStore) Save(
 	); err != nil {
 		return nil, fmt.Errorf("lock personal access tokens: %w", err)
 	}
-	createMillis := model.MillisFromTime(candidate.CreatedAt)
 	var active int
 	if err := tx.Get(ctx, &active, `
 		SELECT COUNT(*)
 		  FROM personal_access_tokens
 		 WHERE user_id = ?
-		   AND delete_at = 0
-		   AND revoked_at = 0
-		   AND disabled_at = 0
+		   AND archived_at IS NULL
+		   AND revoked_at IS NULL
+		   AND disabled_at IS NULL
 		   AND expires_at > ?`,
 		candidate.UserID.String(),
-		createMillis,
+		candidate.CreatedAt,
 	); err != nil {
 		return nil, fmt.Errorf("count active personal access tokens: %w", err)
 	}
@@ -121,11 +122,11 @@ func (s SqlPersonalAccessTokenStore) Get(
 	}
 	var row personalAccessTokenRow
 	if err := s.GetMaster().Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, user_id, description,
+		SELECT id, created_at, updated_at, archived_at, user_id, description,
 		       token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 		       disabled_at, revoked_at
 		  FROM personal_access_tokens
-		 WHERE id = ? AND delete_at = 0`,
+		 WHERE id = ? AND archived_at IS NULL`,
 		id,
 	); err != nil {
 		return nil, translateError("personal_access_token", id, err)
@@ -142,12 +143,12 @@ func (s SqlPersonalAccessTokenStore) ListByUser(
 	}
 	var rows []personalAccessTokenRow
 	if err := s.GetMaster().Select(ctx, &rows, `
-		SELECT id, create_at, update_at, delete_at, user_id, description,
+		SELECT id, created_at, updated_at, archived_at, user_id, description,
 		       token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 		       disabled_at, revoked_at
 		  FROM personal_access_tokens
-		 WHERE user_id = ? AND delete_at = 0
-		 ORDER BY create_at DESC, id DESC`,
+		 WHERE user_id = ? AND archived_at IS NULL
+		 ORDER BY created_at DESC, id DESC`,
 		userID,
 	); err != nil {
 		return nil, fmt.Errorf("list personal access tokens: %w", err)
@@ -173,50 +174,51 @@ func (s SqlPersonalAccessTokenStore) Resolve(
 		return nil, fmt.Errorf("begin personal access token resolve: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	at := model.TimeFromMillis(now)
 
 	var tokenRow personalAccessTokenRow
 	if err := tx.Get(ctx, &tokenRow, `
-		SELECT pat.id, pat.create_at, pat.update_at, pat.delete_at, pat.user_id,
+		SELECT pat.id, pat.created_at, pat.updated_at, pat.archived_at, pat.user_id,
 		       pat.description, pat.token_hash, pat.scopes, pat.academic_unit_id,
 		       pat.expires_at, pat.last_used_at, pat.disabled_at, pat.revoked_at
 		  FROM personal_access_tokens pat
 		  JOIN users u ON u.id = pat.user_id
 		  LEFT JOIN academic_units au ON au.id = pat.academic_unit_id
 		 WHERE pat.token_hash = ?
-		   AND pat.delete_at = 0
-		   AND pat.revoked_at = 0
-		   AND pat.disabled_at = 0
+		   AND pat.archived_at IS NULL
+		   AND pat.revoked_at IS NULL
+		   AND pat.disabled_at IS NULL
 		   AND pat.expires_at > ?
-		   AND u.delete_at = 0
-		   AND u.disabled_at = 0
-		   AND (pat.academic_unit_id IS NULL OR au.delete_at = 0)
+		   AND u.archived_at IS NULL
+		   AND u.disabled_at IS NULL
+		   AND (pat.academic_unit_id IS NULL OR au.archived_at IS NULL)
 		 FOR UPDATE OF pat`,
 		tokenHash,
-		now,
+		at,
 	); err != nil {
 		return nil, translateError("personal_access_token", "", err)
 	}
-	if tokenRow.LastUsedAt == 0 || now-tokenRow.LastUsedAt >= updateIntervalMilliseconds {
+	if !tokenRow.LastUsedAt.Valid || at.Sub(tokenRow.LastUsedAt.Time) >= time.Duration(updateIntervalMilliseconds)*time.Millisecond {
 		if _, err := tx.Exec(ctx, `
 			UPDATE personal_access_tokens
-			   SET update_at = GREATEST(update_at, ?), last_used_at = ?
+			   SET updated_at = GREATEST(updated_at, ?), last_used_at = ?
 			 WHERE id = ?`,
-			now, now, tokenRow.ID,
+			at, at, tokenRow.ID,
 		); err != nil {
 			return nil, fmt.Errorf("update personal access token usage: %w", err)
 		}
-		if tokenRow.UpdateAt < now {
-			tokenRow.UpdateAt = now
+		if tokenRow.UpdatedAt.Before(at) {
+			tokenRow.UpdatedAt = at
 		}
-		tokenRow.LastUsedAt = now
+		tokenRow.LastUsedAt = sql.NullTime{Time: at, Valid: true}
 	}
 	var userRow userRow
 	if err := tx.Get(ctx, &userRow, `
-		SELECT id, create_at, update_at, delete_at, revision, username, email,
+		SELECT id, created_at, updated_at, archived_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
 		  FROM users
-		 WHERE id = ? AND delete_at = 0 AND disabled_at = 0
+		 WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL
 		 FOR SHARE`,
 		tokenRow.UserID,
 	); err != nil {
@@ -252,6 +254,7 @@ func (s SqlPersonalAccessTokenStore) SetDisabled(
 		return nil, fmt.Errorf("begin personal access token state change: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	at := model.TimeFromMillis(now)
 	if _, err := tx.Exec(
 		ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
@@ -261,18 +264,18 @@ func (s SqlPersonalAccessTokenStore) SetDisabled(
 	}
 	var current personalAccessTokenRow
 	if err := tx.Get(ctx, &current, `
-		SELECT id, create_at, update_at, delete_at, user_id, description,
+		SELECT id, created_at, updated_at, archived_at, user_id, description,
 		       token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 		       disabled_at, revoked_at
 		  FROM personal_access_tokens
 		 WHERE id = ? AND user_id = ?
-		   AND delete_at = 0 AND revoked_at = 0 AND expires_at > ?
+		   AND archived_at IS NULL AND revoked_at IS NULL AND expires_at > ?
 		 FOR UPDATE`,
-		id, userID, now,
+		id, userID, at,
 	); err != nil {
 		return nil, translateError("personal_access_token", id, err)
 	}
-	if disabled == (current.DisabledAt != 0) {
+	if disabled == current.DisabledAt.Valid {
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("commit personal access token state: %w", err)
 		}
@@ -285,11 +288,11 @@ func (s SqlPersonalAccessTokenStore) SetDisabled(
 			  FROM personal_access_tokens
 			 WHERE user_id = ?
 			   AND id <> ?
-			   AND delete_at = 0
-			   AND revoked_at = 0
-			   AND disabled_at = 0
+			   AND archived_at IS NULL
+			   AND revoked_at IS NULL
+			   AND disabled_at IS NULL
 			   AND expires_at > ?`,
-			userID, id, now,
+			userID, id, at,
 		); err != nil {
 			return nil, fmt.Errorf("count active personal access tokens: %w", err)
 		}
@@ -301,18 +304,18 @@ func (s SqlPersonalAccessTokenStore) SetDisabled(
 			)
 		}
 	}
-	disabledAt := int64(0)
+	disabledAt := sql.NullTime{}
 	if disabled {
-		disabledAt = now
+		disabledAt = sql.NullTime{Time: at, Valid: true}
 	}
 	if err := tx.Get(ctx, &current, `
 		UPDATE personal_access_tokens
-		   SET update_at = GREATEST(update_at, ?), disabled_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), disabled_at = ?
 		 WHERE id = ? AND user_id = ?
-		 RETURNING id, create_at, update_at, delete_at, user_id, description,
+		 RETURNING id, created_at, updated_at, archived_at, user_id, description,
 		           token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 		           disabled_at, revoked_at`,
-		now, disabledAt, id, userID,
+		at, disabledAt, id, userID,
 	); err != nil {
 		return nil, translateError("personal_access_token", id, err)
 	}
@@ -332,17 +335,18 @@ func (s SqlPersonalAccessTokenStore) Revoke(
 		return nil, store.NewErrInvalidInput("personal_access_token", "revoke", nil)
 	}
 	var row personalAccessTokenRow
+	at := model.TimeFromMillis(now)
 	if err := s.GetMaster().Get(ctx, &row, `
 		UPDATE personal_access_tokens
-		   SET update_at = GREATEST(update_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
 		 WHERE id = ?
 		   AND user_id = ?
-		   AND delete_at = 0
-		   AND revoked_at = 0
-		 RETURNING id, create_at, update_at, delete_at, user_id, description,
+		   AND archived_at IS NULL
+		   AND revoked_at IS NULL
+		 RETURNING id, created_at, updated_at, archived_at, user_id, description,
 		           token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 		           disabled_at, revoked_at`,
-		now, now, id, userID,
+		at, at, id, userID,
 	); err != nil {
 		return nil, translateError("personal_access_token", id, err)
 	}
@@ -360,23 +364,23 @@ func insertPersonalAccessToken(
 	}
 	if _, err := executor.Exec(ctx, `
 		INSERT INTO personal_access_tokens (
-			id, create_at, update_at, delete_at, user_id, description,
+			id, created_at, updated_at, archived_at, user_id, description,
 			token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 			disabled_at, revoked_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		token.ID.String(),
-		model.MillisFromTime(token.CreatedAt),
-		model.MillisFromTime(token.UpdatedAt),
-		token.ArchivedAt.Millis(),
+		token.CreatedAt,
+		token.UpdatedAt,
+		NullTimeFromOptional(token.ArchivedAt),
 		token.UserID.String(),
 		token.Description,
 		token.TokenHash,
 		pq.Array(token.Scopes),
 		academicUnitID,
-		model.MillisFromTime(token.ExpiresAt),
-		token.LastUsedAt.Millis(),
-		token.DisabledAt.Millis(),
-		token.RevokedAt.Millis(),
+		token.ExpiresAt,
+		NullTimeFromOptional(token.LastUsedAt),
+		NullTimeFromOptional(token.DisabledAt),
+		NullTimeFromOptional(token.RevokedAt),
 	); err != nil {
 		return translateError("personal_access_token", token.ID.String(), err)
 	}
@@ -390,18 +394,18 @@ func (row personalAccessTokenRow) model() *model.PersonalAccessToken {
 	}
 	return &model.PersonalAccessToken{
 		ID:             model.PersonalAccessTokenID(row.ID),
-		CreatedAt:      model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:      model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:     model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:      row.CreatedAt.UTC(),
+		UpdatedAt:      row.UpdatedAt.UTC(),
+		ArchivedAt:     OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:         model.UserID(row.UserID),
 		Description:    row.Description,
 		TokenHash:      row.TokenHash,
 		Scopes:         append([]string(nil), row.Scopes...),
 		AcademicUnitID: academicUnitID,
-		ExpiresAt:      model.TimeFromMillis(row.ExpiresAt),
-		LastUsedAt:     model.OptionalTimeFromMillis(row.LastUsedAt),
-		DisabledAt:     model.OptionalTimeFromMillis(row.DisabledAt),
-		RevokedAt:      model.OptionalTimeFromMillis(row.RevokedAt),
+		ExpiresAt:      row.ExpiresAt.UTC(),
+		LastUsedAt:     OptionalTimeFromNullTime(row.LastUsedAt),
+		DisabledAt:     OptionalTimeFromNullTime(row.DisabledAt),
+		RevokedAt:      OptionalTimeFromNullTime(row.RevokedAt),
 	}
 }
 

@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -80,8 +79,8 @@ func (s *bootstrapService) GetStatus(ctx context.Context) (*model.InstallationSt
 		}
 		return nil, NewError("installation.unavailable").Wrap(err)
 	}
-	if !state.IsValid() {
-		return nil, NewError("installation.unavailable").Wrap(errors.New("persisted installation state is invalid"))
+	if err := state.Validate(); err != nil {
+		return nil, NewError("installation.unavailable").Wrap(err)
 	}
 	return &model.InstallationStatus{Initialized: true}, nil
 }
@@ -132,7 +131,7 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 		RoleBinding: &model.RoleBinding{},
 		AuditEvent: &model.AuditEvent{
 			Action:     "installation.bootstrap",
-			RequestID:  metadata.RequestId,
+			RequestID:  metadata.RequestID,
 			NodeID:     s.nodeID,
 			ClientType: "bootstrap",
 			AuthMethod: "bootstrap",

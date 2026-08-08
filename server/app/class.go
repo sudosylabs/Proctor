@@ -89,7 +89,7 @@ func (s *classService) Get(ctx context.Context, invocation Invocation, query Get
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "class_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, model.Resource{Type: model.ResourceClass, Id: id}); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, model.Resource{Type: model.ResourceClass, ID: id}); err != nil {
 		return nil, err
 	}
 	class, err := s.store.Get(ctx, id)
@@ -129,7 +129,7 @@ func (s *classService) Search(ctx context.Context, invocation Invocation, query 
 	if !model.IsValidId(unitID) {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitView, resource); err != nil {
 		return nil, err
 	}
@@ -201,7 +201,7 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	if err != nil {
 		return nil, classError(err)
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return nil, err
 	}
@@ -279,7 +279,7 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 	if err != nil {
 		return classError(err)
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return err
 	}
@@ -322,7 +322,7 @@ func (s *classService) programmeLevelResource(ctx context.Context, id string) (m
 	if err != nil {
 		return model.Resource{}, programmeError(err)
 	}
-	return model.Resource{Type: model.ResourceAcademicUnit, Id: programme.AcademicUnitID.String()}, nil
+	return model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}, nil
 }
 
 func (s *classService) failMutation(ctx context.Context, auditID string, err error) error {

@@ -18,7 +18,7 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
 	saved, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: user.ID,
+		UserID:   user.ID,
 		Kind:     model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(start),
 	})
@@ -135,7 +135,7 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 
 func saveAffiliationAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, institutionID, userID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: userID}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, ID: userID}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }

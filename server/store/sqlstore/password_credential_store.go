@@ -10,7 +10,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -24,21 +26,21 @@ type SqlPasswordCredentialStore struct {
 }
 
 type passwordCredentialRow struct {
-	ID                string `db:"id"`
-	CreateAt          int64  `db:"create_at"`
-	UpdateAt          int64  `db:"update_at"`
-	DeleteAt          int64  `db:"delete_at"`
-	UserID            string `db:"user_id"`
-	PasswordHash      string `db:"password_hash"`
-	PasswordChangedAt int64  `db:"password_changed_at"`
+	ID                string       `db:"id"`
+	CreatedAt         time.Time    `db:"created_at"`
+	UpdatedAt         time.Time    `db:"updated_at"`
+	ArchivedAt        sql.NullTime `db:"archived_at"`
+	UserID            string       `db:"user_id"`
+	PasswordHash      string       `db:"password_hash"`
+	PasswordChangedAt time.Time    `db:"password_changed_at"`
 }
 
 func passwordCredentialSliceColumns() []string {
 	return []string{
 		"password_credentials.id",
-		"password_credentials.create_at",
-		"password_credentials.update_at",
-		"password_credentials.delete_at",
+		"password_credentials.created_at",
+		"password_credentials.updated_at",
+		"password_credentials.archived_at",
 		"password_credentials.user_id",
 		"password_credentials.password_hash",
 		"password_credentials.password_changed_at",
@@ -83,10 +85,10 @@ func insertPasswordCredential(
 	row := newPasswordCredentialRow(credential)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO password_credentials (
-			id, create_at, update_at, delete_at, user_id,
+			id, created_at, updated_at, archived_at, user_id,
 			password_hash, password_changed_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :user_id,
+			:id, :created_at, :updated_at, :archived_at, :user_id,
 			:password_hash, :password_changed_at
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -103,8 +105,8 @@ func (s SqlPasswordCredentialStore) GetByUser(
 ) (*model.PasswordCredential, error) {
 	var row passwordCredentialRow
 	query := s.credentialsQuery.Where(sq.Eq{
-		"password_credentials.user_id":   userID,
-		"password_credentials.delete_at": int64(0),
+		"password_credentials.user_id":     userID,
+		"password_credentials.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("password_credential", userID, err)
@@ -128,10 +130,10 @@ func (s SqlPasswordCredentialStore) Update(
 	row := newPasswordCredentialRow(&candidate)
 	result, err := s.GetMaster().NamedExec(ctx, `
 		UPDATE password_credentials
-		   SET update_at = :update_at,
+		   SET updated_at = :updated_at,
 		       password_hash = :password_hash,
 		       password_changed_at = :password_changed_at
-		 WHERE id = :id AND user_id = :user_id AND delete_at = 0`, &row)
+		 WHERE id = :id AND user_id = :user_id AND archived_at IS NULL`, &row)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"update password credential: %w",
@@ -147,24 +149,24 @@ func (s SqlPasswordCredentialStore) Update(
 func newPasswordCredentialRow(credential *model.PasswordCredential) passwordCredentialRow {
 	return passwordCredentialRow{
 		ID:                credential.ID.String(),
-		CreateAt:          model.MillisFromTime(credential.CreatedAt),
-		UpdateAt:          model.MillisFromTime(credential.UpdatedAt),
-		DeleteAt:          credential.ArchivedAt.Millis(),
+		CreatedAt:         UTCTime(credential.CreatedAt),
+		UpdatedAt:         UTCTime(credential.UpdatedAt),
+		ArchivedAt:        NullTimeFromOptional(credential.ArchivedAt),
 		UserID:            credential.UserID.String(),
 		PasswordHash:      credential.PasswordHash,
-		PasswordChangedAt: model.MillisFromTime(credential.PasswordChangedAt),
+		PasswordChangedAt: UTCTime(credential.PasswordChangedAt),
 	}
 }
 
 func (row passwordCredentialRow) model() *model.PasswordCredential {
 	return &model.PasswordCredential{
 		ID:                model.PasswordCredentialID(row.ID),
-		CreatedAt:         model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:         model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:        model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:         row.CreatedAt.UTC(),
+		UpdatedAt:         row.UpdatedAt.UTC(),
+		ArchivedAt:        OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:            model.UserID(row.UserID),
 		PasswordHash:      row.PasswordHash,
-		PasswordChangedAt: model.TimeFromMillis(row.PasswordChangedAt),
+		PasswordChangedAt: row.PasswordChangedAt.UTC(),
 	}
 }
 

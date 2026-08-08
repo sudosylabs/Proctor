@@ -23,7 +23,7 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
-			Id:   unitID,
+			ID:   unitID,
 		},
 	}
 	if err := valid.ValidateForPublish(); err != nil {
@@ -78,7 +78,7 @@ func TestRealtimePublishIsLocalFirstAndLoopFree(t *testing.T) {
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
-			Id:   unitID,
+			ID:   unitID,
 		},
 	}
 	if err := service.Publish(context.Background(), event); err != nil {
@@ -96,6 +96,18 @@ func TestRealtimePublishIsLocalFirstAndLoopFree(t *testing.T) {
 	}
 	if cluster.broadcasts[0].event != realtimeClusterEventPublication {
 		t.Fatalf("broadcast = %#v", cluster.broadcasts[0])
+	}
+	var wire struct {
+		Event struct {
+			Resource map[string]json.RawMessage `json:"resource"`
+		} `json:"event"`
+	}
+	if err := json.Unmarshal(cluster.broadcasts[0].data, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Event.Resource) != 2 || wire.Event.Resource["type"] == nil ||
+		wire.Event.Resource["id"] == nil {
+		t.Fatalf("cluster resource wire shape = %s", cluster.broadcasts[0].data)
 	}
 
 	// Peer handler must apply only locally and must not rebroadcast.

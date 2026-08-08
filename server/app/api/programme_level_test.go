@@ -50,7 +50,7 @@ func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
-	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	programmeID := model.NewId()
 	levels := &programmeLevelHTTPApplication{err: application.NewError("resource.not_found").WithField("resource", "programme")}
 	transport := &academicUnitHTTPApplication{principal: principal}
@@ -87,7 +87,7 @@ func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
-	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	level := &model.ProgrammeLevel{ID: model.ProgrammeLevelID(model.NewId()), ProgrammeID: model.ProgrammeID(model.NewId()), Name: "year-1", DisplayName: "Year 1"}
 	levels := &programmeLevelHTTPApplication{result: level}
 	transport := &academicUnitHTTPApplication{principal: principal}

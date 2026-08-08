@@ -98,7 +98,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 		t.Fatalf("Get() = %#v, %v", got, err)
 	}
 	if authorizer.action != model.ActionInstitutionManage ||
-		authorizer.resource != (model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}) {
+		authorizer.resource != (model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}) {
 		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.resource)
 	}
 	if !reflect.DeepEqual(events, []string{"get", "authorize"}) {

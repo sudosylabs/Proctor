@@ -43,12 +43,12 @@ func (a *App) ListSessions(
 	_ ListSessionsQuery,
 ) ([]*model.Session, error) {
 	principal := invocation.Principal()
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return nil, invalidTokenAppError()
 	}
 	sessions, err := a.Store().Session().ListActiveByUser(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		a.authentication.now().UnixMilli(),
 	)
 	if err != nil {
@@ -63,7 +63,7 @@ func (a *App) RevokeSession(
 	command RevokeSessionCommand,
 ) error {
 	principal := invocation.Principal()
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
 	sessionID := strings.TrimSpace(command.SessionID)
@@ -77,14 +77,14 @@ func (a *App) RevokeSession(
 		}
 		return authenticationUnavailable(err)
 	}
-	if session.UserID.String() != principal.UserId {
+	if session.UserID != principal.UserID {
 		return NewError("session.not_found")
 	}
 
 	hashes, err := a.Store().Session().Revoke(
 		ctx,
 		session.ID.String(),
-		principal.UserId,
+		principal.UserID.String(),
 		a.authentication.now().UnixMilli(),
 		"user session revocation",
 	)
@@ -98,7 +98,7 @@ func (a *App) RevokeSession(
 	a.authentication.deleteActivityCache(ctx, session.ID.String())
 	a.realtime.PropagateSessionRevocation(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		[]string{session.ID.String()},
 		hashes,
 	)
@@ -111,12 +111,12 @@ func (a *App) RevokeAllSessions(
 	_ RevokeAllSessionsCommand,
 ) error {
 	principal := invocation.Principal()
-	if !principal.IsValid() {
+	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
 	sessions, hashes, err := a.Store().Session().RevokeAllForUser(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		a.authentication.now().UnixMilli(),
 		"user revoked all sessions",
 	)
@@ -129,10 +129,9 @@ func (a *App) RevokeAllSessions(
 	}
 	a.realtime.PropagateSessionRevocation(
 		ctx,
-		principal.UserId,
+		principal.UserID.String(),
 		sessionIds(sessions),
 		hashes,
 	)
 	return nil
 }
-

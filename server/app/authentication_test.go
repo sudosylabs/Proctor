@@ -16,8 +16,8 @@ import (
 )
 
 type authenticationCacheFake struct {
-	mu      sync.Mutex
-	values  map[string][]byte
+	mu       sync.Mutex
+	values   map[string][]byte
 	counters map[string]int64
 }
 
@@ -70,15 +70,15 @@ func (c *authenticationCacheFake) Add(_ context.Context, key string, delta int64
 }
 
 type authenticationStoreFake struct {
-	users                map[string]*model.User
-	usersByUsername      map[string]*model.User
-	usersByEmail         map[string]*model.User
-	passwords            map[string]*model.PasswordCredential
-	sessions             map[string]*model.Session
-	accessByHash         map[string]*model.SessionCredential
-	sessionByCredential  map[string]*model.Session
-	saveErr              error
-	maximumPerUser       int
+	users               map[string]*model.User
+	usersByUsername     map[string]*model.User
+	usersByEmail        map[string]*model.User
+	passwords           map[string]*model.PasswordCredential
+	sessions            map[string]*model.Session
+	accessByHash        map[string]*model.SessionCredential
+	sessionByCredential map[string]*model.Session
+	saveErr             error
+	maximumPerUser      int
 }
 
 func newAuthenticationStoreFake() *authenticationStoreFake {
@@ -94,7 +94,7 @@ func newAuthenticationStoreFake() *authenticationStoreFake {
 	}
 }
 
-func (s *authenticationStoreFake) User() store.UserStore                         { return authenticationUserStore{s} }
+func (s *authenticationStoreFake) User() store.UserStore { return authenticationUserStore{s} }
 func (s *authenticationStoreFake) PasswordCredential() store.PasswordCredentialStore {
 	return authenticationPasswordStore{s}
 }
@@ -106,28 +106,28 @@ func (s *authenticationStoreFake) MFA() store.MFAStore { return nil }
 func (s *authenticationStoreFake) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return nil
 }
-func (s *authenticationStoreFake) Institution() store.InstitutionStore                   { return nil }
-func (s *authenticationStoreFake) AcademicUnit() store.AcademicUnitStore                 { return nil }
-func (s *authenticationStoreFake) Programme() store.ProgrammeStore                       { return nil }
-func (s *authenticationStoreFake) ProgrammeLevel() store.ProgrammeLevelStore             { return nil }
-func (s *authenticationStoreFake) AcademicPeriod() store.AcademicPeriodStore             { return nil }
-func (s *authenticationStoreFake) Class() store.ClassStore                               { return nil }
-func (s *authenticationStoreFake) ExternalIdentity() store.ExternalIdentityStore         { return nil }
-func (s *authenticationStoreFake) ExternalLoginState() store.ExternalLoginStateStore     { return nil }
-func (s *authenticationStoreFake) UserToken() store.UserTokenStore                       { return nil }
-func (s *authenticationStoreFake) Affiliation() store.AffiliationStore                   { return nil }
-func (s *authenticationStoreFake) AcademicUnitMember() store.AcademicUnitMemberStore     { return nil }
-func (s *authenticationStoreFake) ClassMember() store.ClassMemberStore                   { return nil }
-func (s *authenticationStoreFake) Role() store.RoleStore                                 { return nil }
-func (s *authenticationStoreFake) RoleBinding() store.RoleBindingStore                   { return nil }
-func (s *authenticationStoreFake) Audit() store.AuditStore                               { return nil }
-func (s *authenticationStoreFake) Installation() store.InstallationStore                 { return nil }
-func (s *authenticationStoreFake) ClusterDiscovery() store.ClusterDiscoveryStore         { return nil }
-func (s *authenticationStoreFake) Ping(context.Context) error                            { return nil }
-func (s *authenticationStoreFake) GetDBSchemaVersion(context.Context) (int, error)       { return 0, nil }
-func (s *authenticationStoreFake) GetLocalSchemaVersion() (int, error)                   { return 0, nil }
-func (s *authenticationStoreFake) ValidateSchema(context.Context) error                  { return nil }
-func (s *authenticationStoreFake) Close() error                                          { return nil }
+func (s *authenticationStoreFake) Institution() store.InstitutionStore               { return nil }
+func (s *authenticationStoreFake) AcademicUnit() store.AcademicUnitStore             { return nil }
+func (s *authenticationStoreFake) Programme() store.ProgrammeStore                   { return nil }
+func (s *authenticationStoreFake) ProgrammeLevel() store.ProgrammeLevelStore         { return nil }
+func (s *authenticationStoreFake) AcademicPeriod() store.AcademicPeriodStore         { return nil }
+func (s *authenticationStoreFake) Class() store.ClassStore                           { return nil }
+func (s *authenticationStoreFake) ExternalIdentity() store.ExternalIdentityStore     { return nil }
+func (s *authenticationStoreFake) ExternalLoginState() store.ExternalLoginStateStore { return nil }
+func (s *authenticationStoreFake) UserToken() store.UserTokenStore                   { return nil }
+func (s *authenticationStoreFake) Affiliation() store.AffiliationStore               { return nil }
+func (s *authenticationStoreFake) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
+func (s *authenticationStoreFake) ClassMember() store.ClassMemberStore               { return nil }
+func (s *authenticationStoreFake) Role() store.RoleStore                             { return nil }
+func (s *authenticationStoreFake) RoleBinding() store.RoleBindingStore               { return nil }
+func (s *authenticationStoreFake) Audit() store.AuditStore                           { return nil }
+func (s *authenticationStoreFake) Installation() store.InstallationStore             { return nil }
+func (s *authenticationStoreFake) ClusterDiscovery() store.ClusterDiscoveryStore     { return nil }
+func (s *authenticationStoreFake) Ping(context.Context) error                        { return nil }
+func (s *authenticationStoreFake) GetDBSchemaVersion(context.Context) (int, error)   { return 0, nil }
+func (s *authenticationStoreFake) GetLocalSchemaVersion() (int, error)               { return 0, nil }
+func (s *authenticationStoreFake) ValidateSchema(context.Context) error              { return nil }
+func (s *authenticationStoreFake) Close() error                                      { return nil }
 
 type authenticationUserStore struct{ root *authenticationStoreFake }
 
@@ -463,7 +463,7 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if principal.UserId != user.ID.String() || principal.SessionId != result.Session.ID.String() {
+	if principal.UserID != user.ID || principal.SessionID != result.Session.ID {
 		t.Fatalf("principal = %#v", principal)
 	}
 	if principal.CredentialType != model.CredentialSessionAccess {

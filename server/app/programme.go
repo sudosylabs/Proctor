@@ -119,7 +119,7 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 	if !model.IsValidId(unitID) {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme.invalid", err)
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: current.AcademicUnitID.String()}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: current.AcademicUnitID.String()}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
 	if err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 	if err != nil {
 		return err
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: current.AcademicUnitID.String()}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: current.AcademicUnitID.String()}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "archive", nil, current.Auditable())
 	if err != nil {
 		return err
@@ -225,7 +225,7 @@ func (s *programmeService) getForMutation(ctx context.Context, invocation Invoca
 }
 
 func (s *programmeService) authorize(ctx context.Context, invocation Invocation, action model.Action, unitID string) error {
-	return s.authorization.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceAcademicUnit, Id: unitID})
+	return s.authorization.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID})
 }
 
 func (s *programmeService) failMutation(ctx context.Context, auditID string, err error) error {

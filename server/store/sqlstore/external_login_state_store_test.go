@@ -11,7 +11,7 @@ import (
 
 func TestExternalLoginStateRowConversion(t *testing.T) {
 	state := &model.ExternalLoginState{
-		ID: model.ExternalLoginStateID(model.NewId()),
+		ID:        model.ExternalLoginStateID(model.NewId()),
 		CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(2),
 		Provider:    "campus-cas",
 		StateHash:   model.HashToken(model.NewCredentialToken()),

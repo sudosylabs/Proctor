@@ -128,8 +128,8 @@ func authenticationTokensResponseFromModel(tokens *model.AuthenticationTokens) *
 	return &authenticationTokensResponse{
 		AccessToken:      tokens.AccessToken,
 		RefreshToken:     tokens.RefreshToken,
-		AccessExpiresAt:  tokens.AccessExpiresAt,
-		RefreshExpiresAt: tokens.RefreshExpiresAt,
+		AccessExpiresAt:  model.MillisFromTime(tokens.AccessExpiresAt),
+		RefreshExpiresAt: model.MillisFromTime(tokens.RefreshExpiresAt),
 	}
 }
 
@@ -413,7 +413,7 @@ func currentUserHandler(profiles UserProfileApplication, logger *mlog.Logger) ht
 			WriteError(writer, request, authenticationRequiredError())
 			return
 		}
-		user, err := profiles.GetUserProfile(request.Context(), application.NewInvocation(principal, RequestMetadata(request.Context())), application.GetUserProfileQuery{ID: principal.UserId})
+		user, err := profiles.GetUserProfile(request.Context(), application.NewInvocation(principal, RequestMetadata(request.Context())), application.GetUserProfileQuery{ID: principal.UserID.String()})
 		if err != nil {
 			writeApplicationError(writer, request, logger, err)
 			return
@@ -488,7 +488,7 @@ func singleCookieValue(
 
 func Principal(ctx context.Context) (model.Principal, bool) {
 	principal, ok := ctx.Value(principalContextKey{}).(model.Principal)
-	return principal, ok && principal.IsValid()
+	return principal, ok && principal.Validate() == nil
 }
 
 func credentialFromContext(ctx context.Context) (requestCredential, bool) {

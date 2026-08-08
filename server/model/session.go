@@ -41,7 +41,7 @@ const (
 // and refresh credentials for this session.
 //
 // Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
-// Soft archive uses ArchivedAt (legacy delete_at).
+// Soft archive uses the explicit optional ArchivedAt instant.
 type Session struct {
 	ID                     SessionID
 	CreatedAt              time.Time
@@ -241,7 +241,6 @@ func (s *Session) Auditable() map[string]any {
 		"created_at":              MillisFromTime(s.CreatedAt),
 		"updated_at":              MillisFromTime(s.UpdatedAt),
 		"archived_at":             s.ArchivedAt.Millis(),
-		"delete_at":               s.ArchivedAt.Millis(),
 		"user_id":                 s.UserID.String(),
 		"client_type":             s.ClientType,
 		"device_id":               s.DeviceID,

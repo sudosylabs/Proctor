@@ -11,7 +11,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -26,23 +28,23 @@ type SqlUserTokenStore struct {
 
 type userTokenRow struct {
 	ID         string                 `db:"id"`
-	CreateAt   int64                  `db:"create_at"`
-	UpdateAt   int64                  `db:"update_at"`
-	DeleteAt   int64                  `db:"delete_at"`
+	CreatedAt  time.Time              `db:"created_at"`
+	UpdatedAt  time.Time              `db:"updated_at"`
+	ArchivedAt sql.NullTime           `db:"archived_at"`
 	UserID     string                 `db:"user_id"`
 	Purpose    model.UserTokenPurpose `db:"purpose"`
 	TokenHash  string                 `db:"token_hash"`
 	Target     string                 `db:"target"`
-	ExpiresAt  int64                  `db:"expires_at"`
-	ConsumedAt int64                  `db:"consumed_at"`
+	ExpiresAt  time.Time              `db:"expires_at"`
+	ConsumedAt sql.NullTime           `db:"consumed_at"`
 }
 
 func userTokenSliceColumns() []string {
 	return []string{
 		"user_tokens.id",
-		"user_tokens.create_at",
-		"user_tokens.update_at",
-		"user_tokens.delete_at",
+		"user_tokens.created_at",
+		"user_tokens.updated_at",
+		"user_tokens.archived_at",
 		"user_tokens.user_id",
 		"user_tokens.purpose",
 		"user_tokens.token_hash",
@@ -82,7 +84,7 @@ func (s SqlUserTokenStore) Issue(
 		return nil, err
 	}
 	if auditEvent.Resource.Type != model.ResourceUser ||
-		auditEvent.Resource.Id != candidate.UserID.String() ||
+		auditEvent.Resource.ID != candidate.UserID.String() ||
 		auditEvent.Status != model.AuditStatusSuccess {
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
 	}
@@ -92,7 +94,6 @@ func (s SqlUserTokenStore) Issue(
 		return nil, fmt.Errorf("begin user token issue: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	createMillis := model.MillisFromTime(candidate.CreatedAt)
 	if err := lockUserTokenPurpose(
 		ctx, tx, candidate.UserID.String(), candidate.Purpose,
 	); err != nil {
@@ -100,11 +101,11 @@ func (s SqlUserTokenStore) Issue(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE user_tokens
-		   SET update_at = ?, delete_at = ?
+		   SET updated_at = ?, archived_at = ?
 		 WHERE user_id = ? AND purpose = ?
-		   AND delete_at = 0 AND consumed_at = 0`,
-		createMillis,
-		createMillis,
+		   AND archived_at IS NULL AND consumed_at IS NULL`,
+		candidate.CreatedAt,
+		candidate.CreatedAt,
 		candidate.UserID.String(),
 		candidate.Purpose,
 	); err != nil {
@@ -155,6 +156,7 @@ func (s SqlUserTokenStore) ConsumeEmailVerification(
 		return nil, fmt.Errorf("begin email verification: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	at := model.TimeFromMillis(now)
 	token, err := lockActiveUserToken(
 		ctx, tx, tokenHash, model.UserTokenEmailVerification, now,
 	)
@@ -167,9 +169,9 @@ func (s SqlUserTokenStore) ConsumeEmailVerification(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET update_at = ?, email_verified = true, revision = revision + 1
-		 WHERE id = ? AND delete_at = 0 AND disabled_at = 0`,
-		now, user.ID,
+		   SET updated_at = ?, email_verified = true, revision = revision + 1
+		 WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL`,
+		at, user.ID,
 	); err != nil {
 		return nil, fmt.Errorf("verify user email: %w", err)
 	}
@@ -188,8 +190,8 @@ func (s SqlUserTokenStore) ConsumeEmailVerification(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit email verification: %w", err)
 	}
-	token.ConsumedAt = now
-	token.UpdateAt = now
+	token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
+	token.UpdatedAt = at
 	verified := user.model()
 	verified.UpdatedAt = model.TimeFromMillis(now)
 	verified.EmailVerified = true
@@ -219,6 +221,7 @@ func (s SqlUserTokenStore) ConsumePasswordReset(
 		return nil, fmt.Errorf("begin password reset: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	at := model.TimeFromMillis(now)
 	token, err := lockActiveUserToken(
 		ctx, tx, tokenHash, model.UserTokenPasswordReset, now,
 	)
@@ -231,23 +234,23 @@ func (s SqlUserTokenStore) ConsumePasswordReset(
 	}
 	var credential passwordCredentialRow
 	if err := tx.Get(ctx, &credential, `
-		SELECT id, create_at, update_at, delete_at, user_id,
+		SELECT id, created_at, updated_at, archived_at, user_id,
 		       password_hash, password_changed_at
 		  FROM password_credentials
-		 WHERE user_id = ? AND delete_at = 0
+		 WHERE user_id = ? AND archived_at IS NULL
 		 FOR UPDATE`,
 		token.UserID,
 	); err != nil {
 		return nil, translateError("password_credential", token.UserID, err)
 	}
 	credential.PasswordHash = passwordHash
-	credential.PasswordChangedAt = now
-	credential.UpdateAt = now
+	credential.PasswordChangedAt = at
+	credential.UpdatedAt = at
 	if _, err := tx.Exec(ctx, `
 		UPDATE password_credentials
-		   SET update_at = ?, password_hash = ?, password_changed_at = ?
-		 WHERE id = ? AND user_id = ? AND delete_at = 0`,
-		now, passwordHash, now, credential.ID, token.UserID,
+		   SET updated_at = ?, password_hash = ?, password_changed_at = ?
+		 WHERE id = ? AND user_id = ? AND archived_at IS NULL`,
+		at, passwordHash, at, credential.ID, token.UserID,
 	); err != nil {
 		return nil, fmt.Errorf("update reset password: %w", err)
 	}
@@ -275,8 +278,8 @@ func (s SqlUserTokenStore) ConsumePasswordReset(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit password reset: %w", err)
 	}
-	token.ConsumedAt = now
-	token.UpdateAt = now
+	token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
+	token.UpdatedAt = at
 	return &store.PasswordResetResult{
 		Token:               token.model(),
 		User:                user.model(),
@@ -294,10 +297,10 @@ func insertUserToken(
 	row := newUserTokenRow(token)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO user_tokens (
-			id, create_at, update_at, delete_at, user_id, purpose,
+			id, created_at, updated_at, archived_at, user_id, purpose,
 			token_hash, target, expires_at, consumed_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :user_id, :purpose,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :purpose,
 			:token_hash, :target, :expires_at, :consumed_at
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -333,13 +336,13 @@ func lockActiveUserToken(
 ) (*userTokenRow, error) {
 	var row userTokenRow
 	if err := executor.Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, user_id, purpose,
+		SELECT id, created_at, updated_at, archived_at, user_id, purpose,
 		       token_hash, target, expires_at, consumed_at
 		  FROM user_tokens
 		 WHERE token_hash = ? AND purpose = ?
-		   AND delete_at = 0 AND consumed_at = 0 AND expires_at > ?
+		   AND archived_at IS NULL AND consumed_at IS NULL AND expires_at > ?
 		 FOR UPDATE`,
-		tokenHash, purpose, now,
+		tokenHash, purpose, model.TimeFromMillis(now),
 	); err != nil {
 		return nil, translateError("user_token", "", err)
 	}
@@ -353,11 +356,11 @@ func lockTokenUser(
 ) (*userRow, error) {
 	var user userRow
 	if err := executor.Get(ctx, &user, `
-		SELECT id, create_at, update_at, delete_at, revision, username, email,
+		SELECT id, created_at, updated_at, archived_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
 		  FROM users
-		 WHERE id = ? AND email = ? AND delete_at = 0 AND disabled_at = 0
+		 WHERE id = ? AND email = ? AND archived_at IS NULL AND disabled_at IS NULL
 		 FOR UPDATE`,
 		token.UserID, token.Target,
 	); err != nil {
@@ -373,12 +376,13 @@ func consumeUserTokens(
 	purpose model.UserTokenPurpose,
 	now int64,
 ) error {
+	at := model.TimeFromMillis(now)
 	result, err := executor.Exec(ctx, `
 		UPDATE user_tokens
-		   SET update_at = ?, consumed_at = ?
+		   SET updated_at = ?, consumed_at = ?
 		 WHERE user_id = ? AND purpose = ?
-		   AND delete_at = 0 AND consumed_at = 0`,
-		now, now, userID, purpose,
+		   AND archived_at IS NULL AND consumed_at IS NULL`,
+		at, at, userID, purpose,
 	)
 	if err != nil {
 		return fmt.Errorf("consume user tokens: %w", err)
@@ -403,40 +407,40 @@ func tokenAuditEvent(
 	if candidate.Resource.Type != model.ResourceUser {
 		return nil, store.NewErrInvalidInput("user_token", "audit_resource", nil)
 	}
-	if candidate.Resource.Id != "" && candidate.Resource.Id != userID {
+	if candidate.Resource.ID != "" && candidate.Resource.ID != userID {
 		return nil, store.NewErrInvalidInput("user_token", "audit_resource_id", nil)
 	}
-	candidate.Resource.Id = userID
+	candidate.Resource.ID = userID
 	return candidate, nil
 }
 
 func newUserTokenRow(token *model.UserToken) userTokenRow {
 	return userTokenRow{
 		ID:         token.ID.String(),
-		CreateAt:   model.MillisFromTime(token.CreatedAt),
-		UpdateAt:   model.MillisFromTime(token.UpdatedAt),
-		DeleteAt:   token.ArchivedAt.Millis(),
+		CreatedAt:  UTCTime(token.CreatedAt),
+		UpdatedAt:  UTCTime(token.UpdatedAt),
+		ArchivedAt: NullTimeFromOptional(token.ArchivedAt),
 		UserID:     token.UserID.String(),
 		Purpose:    token.Purpose,
 		TokenHash:  token.TokenHash,
 		Target:     token.Target,
-		ExpiresAt:  model.MillisFromTime(token.ExpiresAt),
-		ConsumedAt: token.ConsumedAt.Millis(),
+		ExpiresAt:  UTCTime(token.ExpiresAt),
+		ConsumedAt: NullTimeFromOptional(token.ConsumedAt),
 	}
 }
 
 func (row userTokenRow) model() *model.UserToken {
 	return &model.UserToken{
 		ID:         model.UserTokenID(row.ID),
-		CreatedAt:  model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:  model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:  row.CreatedAt.UTC(),
+		UpdatedAt:  row.UpdatedAt.UTC(),
+		ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:     model.UserID(row.UserID),
 		Purpose:    row.Purpose,
 		TokenHash:  row.TokenHash,
 		Target:     row.Target,
-		ExpiresAt:  model.TimeFromMillis(row.ExpiresAt),
-		ConsumedAt: model.OptionalTimeFromMillis(row.ConsumedAt),
+		ExpiresAt:  row.ExpiresAt.UTC(),
+		ConsumedAt: OptionalTimeFromNullTime(row.ConsumedAt),
 	}
 }
 

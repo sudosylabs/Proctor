@@ -21,7 +21,7 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	event, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: user.ID, Action: string(model.ActionRoleManage),
-		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "test-node",
 		Parameters: []byte(`{"role_id":"safe"}`),
@@ -48,7 +48,7 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	time.Sleep(2 * time.Millisecond)
 	second, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: user.ID, Action: string(model.ActionAuditView),
-		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})

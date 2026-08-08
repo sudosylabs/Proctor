@@ -10,7 +10,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/lib/pq"
@@ -28,9 +30,9 @@ type SqlRoleStore struct {
 // time.Time / OptionalTime; conversion is at this boundary.
 type roleRow struct {
 	ID          string         `db:"id"`
-	CreateAt    int64          `db:"create_at"`
-	UpdateAt    int64          `db:"update_at"`
-	DeleteAt    int64          `db:"delete_at"`
+	CreatedAt   time.Time      `db:"created_at"`
+	UpdatedAt   time.Time      `db:"updated_at"`
+	ArchivedAt  sql.NullTime   `db:"archived_at"`
 	Name        string         `db:"name"`
 	DisplayName string         `db:"display_name"`
 	Description string         `db:"description"`
@@ -40,7 +42,7 @@ type roleRow struct {
 
 func roleSliceColumns() []string {
 	return []string{
-		"roles.id", "roles.create_at", "roles.update_at", "roles.delete_at",
+		"roles.id", "roles.created_at", "roles.updated_at", "roles.archived_at",
 		"roles.name", "roles.display_name", "roles.description",
 		"roles.permissions", "roles.built_in",
 	}
@@ -112,10 +114,10 @@ func insertRole(ctx context.Context, executor sqlxExecutor, role *model.Role) (r
 	row := newRoleRow(role)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO roles (
-			id, create_at, update_at, delete_at, name, display_name,
+			id, created_at, updated_at, archived_at, name, display_name,
 			description, permissions, built_in
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :name, :display_name,
+			:id, :created_at, :updated_at, :archived_at, :name, :display_name,
 			:description, :permissions, :built_in
 		)`, &row); err != nil {
 		return roleRow{}, fmt.Errorf("save role: %w", translateError("role", role.ID.String(), err))
@@ -124,13 +126,13 @@ func insertRole(ctx context.Context, executor sqlxExecutor, role *model.Role) (r
 }
 
 func (s SqlRoleStore) Get(ctx context.Context, id string) (*model.Role, error) {
-	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id, "roles.delete_at": int64(0)}), id)
+	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id, "roles.archived_at": nil}), id)
 }
 
 func (s SqlRoleStore) GetByName(ctx context.Context, name string) (*model.Role, error) {
 	return s.get(
 		ctx,
-		s.rolesQuery.Where(sq.Eq{"roles.name": name, "roles.delete_at": int64(0)}),
+		s.rolesQuery.Where(sq.Eq{"roles.name": name, "roles.archived_at": nil}),
 		"name="+name,
 	)
 }
@@ -150,7 +152,7 @@ func (s SqlRoleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role
 	return s.selectRoles(
 		ctx,
 		s.rolesQuery.
-			Where(sq.Eq{"roles.id": ids, "roles.delete_at": int64(0)}).
+			Where(sq.Eq{"roles.id": ids, "roles.archived_at": nil}).
 			OrderBy("roles.name", "roles.id"),
 		"get roles by ids",
 	)
@@ -159,7 +161,7 @@ func (s SqlRoleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role
 func (s SqlRoleStore) List(ctx context.Context) ([]*model.Role, error) {
 	return s.selectRoles(
 		ctx,
-		s.rolesQuery.Where(sq.Eq{"roles.delete_at": int64(0)}).OrderBy("roles.name", "roles.id"),
+		s.rolesQuery.Where(sq.Eq{"roles.archived_at": nil}).OrderBy("roles.name", "roles.id"),
 		"list roles",
 	)
 }
@@ -242,9 +244,9 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role) er
 	row := newRoleRow(role)
 	result, err := executor.NamedExec(ctx, `
 		UPDATE roles
-		   SET update_at = :update_at, name = :name, display_name = :display_name,
+		   SET updated_at = :updated_at, name = :name, display_name = :display_name,
 		       description = :description, permissions = :permissions
-		 WHERE id = :id AND delete_at = 0 AND built_in = :built_in`, &row)
+		 WHERE id = :id AND archived_at IS NULL AND built_in = :built_in`, &row)
 	if err != nil {
 		return fmt.Errorf("update role: %w", translateError("role", role.ID.String(), err))
 	}
@@ -253,7 +255,7 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role) er
 
 func (s SqlRoleStore) Delete(ctx context.Context, id string, deleteAt int64) (*model.Role, error) {
 	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("role", "delete_at", deleteAt)
+		return nil, store.NewErrInvalidInput("role", "archived_at", deleteAt)
 	}
 	role, err := s.Get(ctx, id)
 	if err != nil {
@@ -283,10 +285,10 @@ func (s SqlRoleStore) DeleteWithAudit(ctx context.Context, input *store.RoleDele
 	defer func() { _ = tx.Rollback() }()
 	var row roleRow
 	if err := tx.Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, name, display_name,
+		SELECT id, created_at, updated_at, archived_at, name, display_name,
 		       description, permissions, built_in
 		  FROM roles
-		 WHERE id = ? AND delete_at = 0
+		 WHERE id = ? AND archived_at IS NULL
 		 FOR UPDATE`, input.ID); err != nil {
 		return nil, translateError("role", input.ID, err)
 	}
@@ -317,8 +319,8 @@ func (s SqlRoleStore) DeleteWithAudit(ctx context.Context, input *store.RoleDele
 
 func softDeleteRole(ctx context.Context, executor sqlxExecutor, id string, deleteAt int64) error {
 	result, err := executor.Exec(ctx, `
-		UPDATE roles SET update_at = ?, delete_at = ?
-		 WHERE id = ? AND delete_at = 0 AND built_in = false`, deleteAt, deleteAt, id)
+		UPDATE roles SET updated_at = ?, archived_at = ?
+		 WHERE id = ? AND archived_at IS NULL AND built_in = false`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id)
 	if err != nil {
 		return fmt.Errorf("delete role: %w", err)
 	}
@@ -331,8 +333,8 @@ func newRoleRow(role *model.Role) roleRow {
 		permissions = pq.StringArray{}
 	}
 	return roleRow{
-		ID: role.ID.String(), CreateAt: model.MillisFromTime(role.CreatedAt),
-		UpdateAt: model.MillisFromTime(role.UpdatedAt), DeleteAt: role.ArchivedAt.Millis(),
+		ID: role.ID.String(), CreatedAt: UTCTime(role.CreatedAt),
+		UpdatedAt: UTCTime(role.UpdatedAt), ArchivedAt: NullTimeFromOptional(role.ArchivedAt),
 		Name: role.Name, DisplayName: role.DisplayName,
 		Description: role.Description, Permissions: permissions,
 		BuiltIn: role.BuiltIn,
@@ -341,8 +343,8 @@ func newRoleRow(role *model.Role) roleRow {
 
 func (row roleRow) model() *model.Role {
 	return &model.Role{
-		ID: model.RoleID(row.ID), CreatedAt: model.TimeFromMillis(row.CreateAt),
-		UpdatedAt: model.TimeFromMillis(row.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		ID: model.RoleID(row.ID), CreatedAt: row.CreatedAt.UTC(),
+		UpdatedAt: row.UpdatedAt.UTC(), ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
 		Name: row.Name, DisplayName: row.DisplayName,
 		Description: row.Description, Permissions: append([]string(nil), row.Permissions...),
 		BuiltIn: row.BuiltIn,

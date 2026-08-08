@@ -23,7 +23,7 @@ var validIdentityProvider = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 // configured system without coupling the model to one protocol.
 //
 // Subject is deliberately excluded from JSON and must never be logged or
-// audited. Soft archive uses ArchivedAt (legacy delete_at).
+// audited. Soft archive uses the explicit optional ArchivedAt instant.
 type ExternalIdentity struct {
 	ID         ExternalIdentityID
 	CreatedAt  time.Time
@@ -117,7 +117,6 @@ func (ei *ExternalIdentity) Auditable() map[string]any {
 		"created_at":   MillisFromTime(ei.CreatedAt),
 		"updated_at":   MillisFromTime(ei.UpdatedAt),
 		"archived_at":  ei.ArchivedAt.Millis(),
-		"delete_at":    ei.ArchivedAt.Millis(),
 		"user_id":      ei.UserID.String(),
 		"provider":     ei.Provider,
 		"last_seen_at": ei.LastSeenAt.Millis(),

@@ -66,7 +66,7 @@ func (s *affiliationService) List(ctx context.Context, invocation Invocation, qu
 	if err != nil {
 		return nil, err
 	}
-	affiliations, err := s.store.ListByUser(ctx, resource.Id)
+	affiliations, err := s.store.ListByUser(ctx, resource.ID)
 	if err != nil {
 		return nil, affiliationError(err)
 	}
@@ -85,7 +85,7 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 	if err != nil {
 		return nil, err
 	}
-	userID, err := model.ParseUserID(resource.Id)
+	userID, err := model.ParseUserID(resource.ID)
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
@@ -162,7 +162,7 @@ func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invoc
 	if !model.IsValidId(userID) {
 		return model.Resource{}, NewError("request.invalid").WithField("field", "user_id")
 	}
-	resource := model.Resource{Type: model.ResourceUser, Id: userID}
+	resource := model.Resource{Type: model.ResourceUser, ID: userID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionUserManage, resource); err != nil {
 		return model.Resource{}, err
 	}

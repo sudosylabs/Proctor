@@ -31,8 +31,8 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			t.Fatal("SaveWithAudit succeeded without audit attempt")
 		}
 		attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
-			Action: string(model.ActionRoleManage),
-			Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+			Action:    string(model.ActionRoleManage),
+			Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 			Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})
@@ -46,8 +46,8 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		})
 		requireNoError(t, err)
 		endAttempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
-			Action: string(model.ActionRoleManage),
-			Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+			Action:    string(model.ActionRoleManage),
+			Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 			Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})

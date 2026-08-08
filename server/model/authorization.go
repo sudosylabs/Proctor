@@ -43,8 +43,8 @@ const (
 
 // Resource identifies the concrete object against which an action is checked.
 type Resource struct {
-	Type ResourceType `json:"type"`
-	Id   string       `json:"id"`
+	Type ResourceType
+	ID   string
 }
 
 // ActionDefinition controls which resource an action accepts and which parent
@@ -131,14 +131,16 @@ func IsKnownAction(action string) bool {
 	return ok
 }
 
-func (r Resource) IsValid() bool {
-	if !IsValidId(r.Id) {
-		return false
+// Validate checks that the resource identifies a supported authorization target.
+func (r Resource) Validate() error {
+	const where = "Resource.Validate"
+	if !IsValidId(r.ID) {
+		return invalidModelError(where, "resource", "id", "must be a valid identifier", "")
 	}
 	switch r.Type {
 	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser:
-		return true
+		return nil
 	default:
-		return false
+		return invalidModelError(where, "resource", "type", "has an unknown value", "id="+r.ID)
 	}
 }

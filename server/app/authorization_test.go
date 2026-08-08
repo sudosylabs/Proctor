@@ -36,7 +36,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 				ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
 			},
 			definition: classDefinition,
-			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
+			resource:   model.Resource{Type: model.ResourceClass, ID: classID},
 			want:       true,
 		},
 		{
@@ -45,7 +45,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 				ScopeType: model.RoleScopeAcademicUnit, ScopeID: parentID,
 			},
 			definition: classDefinition,
-			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
+			resource:   model.Resource{Type: model.ResourceClass, ID: classID},
 			want:       true,
 		},
 		{
@@ -54,7 +54,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 				ScopeType: model.RoleScopeAcademicUnit, ScopeID: model.NewId(),
 			},
 			definition: classDefinition,
-			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
+			resource:   model.Resource{Type: model.ResourceClass, ID: classID},
 		},
 		{
 			name: "class binding applies only to exact class",
@@ -62,7 +62,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 				ScopeType: model.RoleScopeClass, ScopeID: classID,
 			},
 			definition: classDefinition,
-			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
+			resource:   model.Resource{Type: model.ResourceClass, ID: classID},
 			want:       true,
 		},
 		{
@@ -72,7 +72,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 			},
 			definition: institutionDefinition,
 			resource: model.Resource{
-				Type: model.ResourceInstitution, Id: institutionID,
+				Type: model.ResourceInstitution, ID: institutionID,
 			},
 		},
 	}
@@ -101,12 +101,12 @@ func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
 	principal := model.Principal{
 		CredentialType:   model.CredentialPersonalAccessToken,
 		CredentialScopes: []string{string(model.ActionClassView)},
-		AcademicUnitId:   parentID,
+		AcademicUnitID:   model.AcademicUnitID(parentID),
 	}
 	if !personalAccessTokenAllows(
 		principal,
 		model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: classID},
+		model.Resource{Type: model.ResourceClass, ID: classID},
 		resolved,
 	) {
 		t.Fatal("matching scope and descendant resource were rejected")
@@ -114,7 +114,7 @@ func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
 	if personalAccessTokenAllows(
 		principal,
 		model.ActionClassMembersView,
-		model.Resource{Type: model.ResourceClass, Id: classID},
+		model.Resource{Type: model.ResourceClass, ID: classID},
 		resolved,
 	) {
 		t.Fatal("an action absent from token scopes was allowed")
@@ -122,16 +122,16 @@ func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
 	if personalAccessTokenAllows(
 		principal,
 		model.ActionClassView,
-		model.Resource{Type: model.ResourceInstitution, Id: resolved.institutionID},
+		model.Resource{Type: model.ResourceInstitution, ID: resolved.institutionID},
 		resolved,
 	) {
 		t.Fatal("academic-unit-constrained token was allowed at institution scope")
 	}
-	principal.AcademicUnitId = model.NewId()
+	principal.AcademicUnitID = model.NewAcademicUnitID()
 	if personalAccessTokenAllows(
 		principal,
 		model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: classID},
+		model.Resource{Type: model.ResourceClass, ID: classID},
 		resolved,
 	) {
 		t.Fatal("token constrained to an unrelated academic unit was allowed")

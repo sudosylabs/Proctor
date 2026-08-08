@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -23,22 +24,22 @@ type SqlExternalIdentityStore struct {
 }
 
 type externalIdentityRow struct {
-	ID         string `db:"id"`
-	CreateAt   int64  `db:"create_at"`
-	UpdateAt   int64  `db:"update_at"`
-	DeleteAt   int64  `db:"delete_at"`
-	UserID     string `db:"user_id"`
-	Provider   string `db:"provider"`
-	Subject    string `db:"subject"`
-	LastSeenAt int64  `db:"last_seen_at"`
+	ID         string       `db:"id"`
+	CreatedAt  time.Time    `db:"created_at"`
+	UpdatedAt  time.Time    `db:"updated_at"`
+	ArchivedAt sql.NullTime `db:"archived_at"`
+	UserID     string       `db:"user_id"`
+	Provider   string       `db:"provider"`
+	Subject    string       `db:"subject"`
+	LastSeenAt sql.NullTime `db:"last_seen_at"`
 }
 
 func externalIdentitySliceColumns() []string {
 	return []string{
 		"external_identities.id",
-		"external_identities.create_at",
-		"external_identities.update_at",
-		"external_identities.delete_at",
+		"external_identities.created_at",
+		"external_identities.updated_at",
+		"external_identities.archived_at",
 		"external_identities.user_id",
 		"external_identities.provider",
 		"external_identities.subject",
@@ -80,8 +81,8 @@ func (s SqlExternalIdentityStore) Get(
 	id string,
 ) (*model.ExternalIdentity, error) {
 	query := s.identitiesQuery.Where(sq.Eq{
-		"external_identities.id":        id,
-		"external_identities.delete_at": int64(0),
+		"external_identities.id":          id,
+		"external_identities.archived_at": nil,
 	})
 	return s.get(ctx, query, id)
 }
@@ -93,9 +94,9 @@ func (s SqlExternalIdentityStore) GetByProviderSubject(
 ) (*model.ExternalIdentity, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	query := s.identitiesQuery.Where(sq.Eq{
-		"external_identities.provider":  provider,
-		"external_identities.subject":   subject,
-		"external_identities.delete_at": int64(0),
+		"external_identities.provider":    provider,
+		"external_identities.subject":     subject,
+		"external_identities.archived_at": nil,
 	})
 	return s.get(ctx, query, provider)
 }
@@ -106,8 +107,8 @@ func (s SqlExternalIdentityStore) ListByUser(
 ) ([]*model.ExternalIdentity, error) {
 	query := s.identitiesQuery.
 		Where(sq.Eq{
-			"external_identities.user_id":   userID,
-			"external_identities.delete_at": int64(0),
+			"external_identities.user_id":     userID,
+			"external_identities.archived_at": nil,
 		}).
 		OrderBy("external_identities.provider", "external_identities.id")
 	rows := []externalIdentityRow{}
@@ -202,7 +203,7 @@ func (s SqlExternalIdentityStore) ResolveOrProvision(
 	auditCandidate.ActorID = userCandidate.ID
 	auditCandidate.Resource = model.Resource{
 		Type: model.ResourceUser,
-		Id:   userCandidate.ID.String(),
+		ID:   userCandidate.ID.String(),
 	}
 	if _, err := insertAuditEvent(ctx, tx, auditCandidate); err != nil {
 		return nil, err
@@ -224,11 +225,12 @@ func resolveExternalIdentity(
 	subject string,
 	lastSeenAt int64,
 ) (*model.ExternalIdentity, *model.User, error) {
+	at := model.TimeFromMillis(lastSeenAt)
 	var identityRow externalIdentityRow
 	err := tx.Get(ctx, &identityRow, `
-		SELECT id, create_at, update_at, delete_at, user_id, provider, subject, last_seen_at
+		SELECT id, created_at, updated_at, archived_at, user_id, provider, subject, last_seen_at
 		  FROM external_identities
-		 WHERE provider = ? AND subject = ? AND delete_at = 0
+		 WHERE provider = ? AND subject = ? AND archived_at IS NULL
 		 FOR UPDATE`,
 		provider,
 		subject,
@@ -241,25 +243,29 @@ func resolveExternalIdentity(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE external_identities
-		   SET update_at = GREATEST(update_at, ?),
+		   SET updated_at = GREATEST(updated_at, ?),
 		       last_seen_at = GREATEST(last_seen_at, ?)
-		 WHERE id = ? AND delete_at = 0`,
-		lastSeenAt,
-		lastSeenAt,
+		 WHERE id = ? AND archived_at IS NULL`,
+		at,
+		at,
 		identityRow.ID,
 	); err != nil {
 		return nil, nil, fmt.Errorf("update external identity last seen: %w", err)
 	}
-	identityRow.UpdateAt = max(identityRow.UpdateAt, lastSeenAt)
-	identityRow.LastSeenAt = max(identityRow.LastSeenAt, lastSeenAt)
+	if identityRow.UpdatedAt.Before(at) {
+		identityRow.UpdatedAt = at
+	}
+	if !identityRow.LastSeenAt.Valid || identityRow.LastSeenAt.Time.Before(at) {
+		identityRow.LastSeenAt = sql.NullTime{Time: at, Valid: true}
+	}
 
 	var row userRow
 	if err := tx.Get(ctx, &row, `
-		SELECT id, create_at, update_at, delete_at, revision, username, email,
+		SELECT id, created_at, updated_at, archived_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
 		  FROM users
-		 WHERE id = ? AND delete_at = 0`,
+		 WHERE id = ? AND archived_at IS NULL`,
 		identityRow.UserID,
 	); err != nil {
 		return nil, nil, translateError("user", identityRow.UserID, err)
@@ -275,10 +281,10 @@ func insertExternalIdentity(
 	row := newExternalIdentityRow(identity)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO external_identities (
-			id, create_at, update_at, delete_at, user_id, provider, subject,
+			id, created_at, updated_at, archived_at, user_id, provider, subject,
 			last_seen_at
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :user_id, :provider,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :provider,
 			:subject, :last_seen_at
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -304,26 +310,26 @@ func (s SqlExternalIdentityStore) get(
 func newExternalIdentityRow(identity *model.ExternalIdentity) externalIdentityRow {
 	return externalIdentityRow{
 		ID:         identity.ID.String(),
-		CreateAt:   model.MillisFromTime(identity.CreatedAt),
-		UpdateAt:   model.MillisFromTime(identity.UpdatedAt),
-		DeleteAt:   identity.ArchivedAt.Millis(),
+		CreatedAt:  UTCTime(identity.CreatedAt),
+		UpdatedAt:  UTCTime(identity.UpdatedAt),
+		ArchivedAt: NullTimeFromOptional(identity.ArchivedAt),
 		UserID:     identity.UserID.String(),
 		Provider:   identity.Provider,
 		Subject:    identity.Subject,
-		LastSeenAt: identity.LastSeenAt.Millis(),
+		LastSeenAt: NullTimeFromOptional(identity.LastSeenAt),
 	}
 }
 
 func (row externalIdentityRow) model() *model.ExternalIdentity {
 	return &model.ExternalIdentity{
 		ID:         model.ExternalIdentityID(row.ID),
-		CreatedAt:  model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:  model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:  row.CreatedAt.UTC(),
+		UpdatedAt:  row.UpdatedAt.UTC(),
+		ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:     model.UserID(row.UserID),
 		Provider:   row.Provider,
 		Subject:    row.Subject,
-		LastSeenAt: model.OptionalTimeFromMillis(row.LastSeenAt),
+		LastSeenAt: OptionalTimeFromNullTime(row.LastSeenAt),
 	}
 }
 

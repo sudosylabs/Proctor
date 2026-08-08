@@ -128,18 +128,18 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 
 	role := &model.Role{
-		ID: model.RoleID(roleID),
+		ID:          model.RoleID(roleID),
 		Name:        "recovery_admin",
 		DisplayName: "Recovery Admin",
 		Permissions: []string{string(model.ActionInstitutionManage)},
 	}
 	binding := &model.RoleBinding{
-		ID: model.RoleBindingID(bindingID),
-		UserID: model.UserID(userID),
-		RoleID: model.RoleID(roleID),
+		ID:        model.RoleBindingID(bindingID),
+		UserID:    model.UserID(userID),
+		RoleID:    model.RoleID(roleID),
 		ScopeType: model.RoleScopeInstitution,
 		ScopeID:   institutionID,
-		StartsAt: model.TimeFromMillis(now.Add(-time.Hour).UnixMilli()),
+		StartsAt:  model.TimeFromMillis(now.Add(-time.Hour).UnixMilli()),
 	}
 	institution := &model.Institution{ID: model.InstitutionID(institutionID), Name: "Recovery University"}
 
@@ -152,16 +152,16 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	authz.now = func() time.Time { return now }
 
 	principal := model.Principal{
-		UserId:                 userID,
-		SessionId:              model.NewId(),
-		CredentialId:           model.NewId(),
+		UserID:                 model.UserID(userID),
+		SessionID:              model.NewSessionID(),
+		CredentialID:           model.PrincipalCredentialID(model.NewId()),
 		CredentialType:         model.CredentialSessionAccess,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType:             model.SessionClientCLI,
-		AuthenticatedAt:        now.UnixMilli(),
+		AuthenticatedAt:        now,
 	}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: institutionID}
+	resource := model.Resource{Type: model.ResourceInstitution, ID: institutionID}
 	ctx := context.Background()
 
 	allowed, err := authz.Can(ctx, principal, model.ActionInstitutionManage, resource)
@@ -260,7 +260,7 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
 			Type: model.ResourceAcademicUnit,
-			Id:   unitID,
+			ID:   unitID,
 		},
 	}
 	if err := service.Publish(context.Background(), event); err != nil {

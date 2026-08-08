@@ -13,6 +13,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -28,24 +29,24 @@ type SqlClassStore struct {
 const classLifecycleLock = "proctor:class-lifecycle"
 
 type classRow struct {
-	ID               string `db:"id"`
-	CreateAt         int64  `db:"create_at"`
-	UpdateAt         int64  `db:"update_at"`
-	DeleteAt         int64  `db:"delete_at"`
-	Revision         int64  `db:"revision"`
-	ProgrammeLevelID string `db:"programme_level_id"`
-	AcademicPeriodID string `db:"academic_period_id"`
-	Name             string `db:"name"`
-	DisplayName      string `db:"display_name"`
-	Description      string `db:"description"`
+	ID               string       `db:"id"`
+	CreatedAt        time.Time    `db:"created_at"`
+	UpdatedAt        time.Time    `db:"updated_at"`
+	ArchivedAt       sql.NullTime `db:"archived_at"`
+	Revision         int64        `db:"revision"`
+	ProgrammeLevelID string       `db:"programme_level_id"`
+	AcademicPeriodID string       `db:"academic_period_id"`
+	Name             string       `db:"name"`
+	DisplayName      string       `db:"display_name"`
+	Description      string       `db:"description"`
 }
 
 func classSliceColumns() []string {
 	return []string{
 		"classes.id",
-		"classes.create_at",
-		"classes.update_at",
-		"classes.delete_at",
+		"classes.created_at",
+		"classes.updated_at",
+		"classes.archived_at",
 		"classes.revision",
 		"classes.programme_level_id",
 		"classes.academic_period_id",
@@ -100,10 +101,10 @@ func (s SqlClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 	}
 	row := newClassRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `INSERT INTO classes (
-		id, create_at, update_at, delete_at, revision, programme_level_id,
+		id, created_at, updated_at, archived_at, revision, programme_level_id,
 		academic_period_id, name, display_name, description
 	) VALUES (
-		:id, :create_at, :update_at, :delete_at, :revision, :programme_level_id,
+		:id, :created_at, :updated_at, :archived_at, :revision, :programme_level_id,
 		:academic_period_id, :name, :display_name, :description
 	)`, &row); err != nil {
 		return nil, fmt.Errorf("create class: %w", translateError("class", candidate.ID.String(), err))
@@ -157,10 +158,10 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	row := newClassRow(&candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO classes (
-			id, create_at, update_at, delete_at, revision, programme_level_id,
+			id, created_at, updated_at, archived_at, revision, programme_level_id,
 			academic_period_id, name, display_name, description
 		) VALUES (
-			:id, :create_at, :update_at, :delete_at, :revision, :programme_level_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :programme_level_id,
 			:academic_period_id, :name, :display_name, :description
 		)`, &row); err != nil {
 		return nil, fmt.Errorf("save class: %w", translateError("class", candidate.ID.String(), err))
@@ -174,13 +175,13 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 func (s SqlClassStore) Get(ctx context.Context, id string) (*model.Class, error) {
 	var row classRow
 	query := s.classesQuery.Where(sq.Eq{
-		"classes.id":        id,
-		"classes.delete_at": int64(0),
+		"classes.id":          id,
+		"classes.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("class", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SqlClassStore) GetByName(
@@ -194,13 +195,13 @@ func (s SqlClassStore) GetByName(
 		"classes.programme_level_id": programmeLevelID,
 		"classes.academic_period_id": academicPeriodID,
 		"classes.name":               name,
-		"classes.delete_at":          int64(0),
+		"classes.archived_at":        nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		key := programmeLevelID + "/" + academicPeriodID + "/" + name
 		return nil, translateError("class", key, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SqlClassStore) ListByProgrammeLevel(
@@ -211,7 +212,7 @@ func (s SqlClassStore) ListByProgrammeLevel(
 		Join("academic_periods ON academic_periods.id = classes.academic_period_id").
 		Where(sq.Eq{
 			"classes.programme_level_id": programmeLevelID,
-			"classes.delete_at":          int64(0),
+			"classes.archived_at":        nil,
 		}).
 		OrderBy("academic_periods.start_at", "classes.name", "classes.id")
 	return s.selectClasses(ctx, query, "list classes by programme level")
@@ -224,7 +225,7 @@ func (s SqlClassStore) ListByAcademicPeriod(
 	query := s.classesQuery.
 		Where(sq.Eq{
 			"classes.academic_period_id": academicPeriodID,
-			"classes.delete_at":          int64(0),
+			"classes.archived_at":        nil,
 		}).
 		OrderBy("classes.programme_level_id", "classes.name", "classes.id")
 	return s.selectClasses(ctx, query, "list classes by academic period")
@@ -243,10 +244,10 @@ func (s SqlClassStore) SearchByAcademicUnit(
 		Join("programme_levels ON programme_levels.id = classes.programme_level_id").
 		Join("programmes ON programmes.id = programme_levels.programme_id").
 		Where(sq.Eq{
-			"programmes.academic_unit_id": academicUnitID,
-			"programmes.delete_at":        int64(0),
-			"programme_levels.delete_at":  int64(0),
-			"classes.delete_at":           int64(0),
+			"programmes.academic_unit_id":  academicUnitID,
+			"programmes.archived_at":       nil,
+			"programme_levels.archived_at": nil,
+			"classes.archived_at":          nil,
 		}).
 		Where("(classes.name ILIKE ? OR classes.display_name ILIKE ?)",
 			"%"+term+"%", "%"+term+"%").
@@ -263,9 +264,9 @@ func (s SqlClassStore) GetAcademicUnitId(ctx context.Context, id string) (string
 		  JOIN programme_levels ON programme_levels.id = classes.programme_level_id
 		  JOIN programmes ON programmes.id = programme_levels.programme_id
 		 WHERE classes.id = $1
-		   AND classes.delete_at = 0
-		   AND programme_levels.delete_at = 0
-		   AND programmes.delete_at = 0`, id); err != nil {
+		   AND classes.archived_at IS NULL
+		   AND programme_levels.archived_at IS NULL
+		   AND programmes.archived_at IS NULL`, id); err != nil {
 		return "", translateError("class", id, err)
 	}
 	return academicUnitID, nil
@@ -282,7 +283,11 @@ func (s SqlClassStore) selectClasses(
 	}
 	classes := make([]*model.Class, 0, len(rows))
 	for _, row := range rows {
-		classes = append(classes, row.model())
+		class, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		classes = append(classes, class)
 	}
 	return classes, nil
 }
@@ -326,15 +331,15 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	}
 	result, err := tx.NamedExec(ctx, `
 		UPDATE classes
-		   SET update_at = :update_at,
+		   SET updated_at = :updated_at,
 		       revision = :revision,
 		       programme_level_id = :programme_level_id,
 		       academic_period_id = :academic_period_id,
 		       name = :name,
 		       display_name = :display_name,
 		       description = :description
-		 WHERE id = :id AND delete_at = 0 AND revision = :expected_revision`, map[string]any{
-		"id": candidate.ID.String(), "update_at": model.MillisFromTime(candidate.UpdatedAt), "revision": candidate.Revision,
+		 WHERE id = :id AND archived_at IS NULL AND revision = :expected_revision`, map[string]any{
+		"id": candidate.ID.String(), "updated_at": candidate.UpdatedAt, "revision": candidate.Revision,
 		"programme_level_id": candidate.ProgrammeLevelID.String(), "academic_period_id": candidate.AcademicPeriodID.String(),
 		"name": candidate.Name, "display_name": candidate.DisplayName, "description": candidate.Description,
 		"expected_revision": expectedRevision,
@@ -395,11 +400,11 @@ func (s SqlClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 		return nil, err
 	}
 	result, err := tx.NamedExec(ctx, `UPDATE classes SET
-		update_at = :update_at, programme_level_id = :programme_level_id,
+		updated_at = :updated_at, programme_level_id = :programme_level_id,
 		academic_period_id = :academic_period_id, revision = :revision, name = :name,
 		display_name = :display_name, description = :description
-	 WHERE id = :id AND delete_at = 0 AND revision = :expected_revision`, map[string]any{
-		"id": candidate.ID.String(), "update_at": model.MillisFromTime(candidate.UpdatedAt), "programme_level_id": candidate.ProgrammeLevelID.String(),
+	 WHERE id = :id AND archived_at IS NULL AND revision = :expected_revision`, map[string]any{
+		"id": candidate.ID.String(), "updated_at": candidate.UpdatedAt, "programme_level_id": candidate.ProgrammeLevelID.String(),
 		"academic_period_id": candidate.AcademicPeriodID.String(), "revision": candidate.Revision,
 		"name": candidate.Name, "display_name": candidate.DisplayName, "description": candidate.Description,
 		"expected_revision": input.ExpectedRevision,
@@ -425,7 +430,7 @@ func (s SqlClassStore) Delete(
 	deleteAt int64,
 ) (*model.Class, error) {
 	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("class", "delete_at", deleteAt)
+		return nil, store.NewErrInvalidInput("class", "archived_at", deleteAt)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -436,20 +441,23 @@ func (s SqlClassStore) Delete(
 		return nil, err
 	}
 	var row classRow
-	query := s.classesQuery.Where(sq.Eq{"classes.id": id, "classes.delete_at": int64(0)})
+	query := s.classesQuery.Where(sq.Eq{"classes.id": id, "classes.archived_at": nil})
 	if err := tx.GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("class", id, err)
 	}
-	current := row.model()
+	current, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	var dependent bool
 	if err := tx.Get(ctx, &dependent, `
 		SELECT EXISTS (
 			SELECT 1 FROM class_members
-			 WHERE class_id = ? AND delete_at = 0 AND end_at = 0
+			 WHERE class_id = ? AND archived_at IS NULL AND end_at IS NULL
 			UNION ALL
 			SELECT 1 FROM role_bindings
 			 WHERE scope_type = 'class' AND scope_id = ?
-			   AND delete_at = 0 AND end_at = 0
+			   AND archived_at IS NULL AND end_at IS NULL
 		)`, id, id); err != nil {
 		return nil, fmt.Errorf("check class archive dependencies: %w", err)
 	}
@@ -457,8 +465,8 @@ func (s SqlClassStore) Delete(
 		return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE classes SET update_at = ?, delete_at = ?, revision = revision + 1
-		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id)
+		UPDATE classes SET updated_at = ?, archived_at = ?, revision = revision + 1
+		 WHERE id = ? AND archived_at IS NULL`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id)
 	if err != nil {
 		return nil, fmt.Errorf("archive class: %w", err)
 	}
@@ -495,28 +503,31 @@ func (s SqlClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassA
 		return nil, err
 	}
 	var row classRow
-	query := s.classesQuery.Where(sq.Eq{"classes.id": input.ID, "classes.delete_at": int64(0)})
+	query := s.classesQuery.Where(sq.Eq{"classes.id": input.ID, "classes.archived_at": nil})
 	if err := tx.GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("class", input.ID, err)
 	}
 	var dependent bool
 	if err := tx.Get(ctx, &dependent, `SELECT EXISTS (
-		SELECT 1 FROM class_members WHERE class_id = ? AND delete_at = 0 AND end_at = 0
-		UNION ALL SELECT 1 FROM role_bindings WHERE scope_type = 'class' AND scope_id = ? AND delete_at = 0 AND end_at = 0
+		SELECT 1 FROM class_members WHERE class_id = ? AND archived_at IS NULL AND end_at IS NULL
+		UNION ALL SELECT 1 FROM role_bindings WHERE scope_type = 'class' AND scope_id = ? AND archived_at IS NULL AND end_at IS NULL
 	)`, input.ID, input.ID); err != nil {
 		return nil, fmt.Errorf("check class archive dependencies: %w", err)
 	}
 	if dependent {
 		return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
 	}
-	result, err := tx.Exec(ctx, `UPDATE classes SET update_at = ?, delete_at = ?, revision = revision + 1 WHERE id = ? AND delete_at = 0 AND revision = ?`, input.ArchiveAt, input.ArchiveAt, input.ID, input.ExpectedRevision)
+	result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = ?, archived_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, input.ExpectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("archive class: %w", err)
 	}
 	if err := requireClassRevisionAffected(ctx, tx, result, input.ID); err != nil {
 		return nil, err
 	}
-	class := row.model()
+	class, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	at := model.TimeFromMillis(input.ArchiveAt)
 	class.UpdatedAt = at
 	class.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
@@ -553,10 +564,10 @@ func requireExpectedClassSnapshot(ctx context.Context, executor sqlxExecutor, id
 		  JOIN programmes ON programmes.id = programme_levels.programme_id
 		  JOIN academic_units ON academic_units.id = programmes.academic_unit_id
 		 WHERE classes.id = ?
-		   AND classes.delete_at = 0
-		   AND programme_levels.delete_at = 0
-		   AND programmes.delete_at = 0
-		   AND academic_units.delete_at = 0`, id); err != nil {
+		   AND classes.archived_at IS NULL
+		   AND programme_levels.archived_at IS NULL
+		   AND programmes.archived_at IS NULL
+		   AND academic_units.archived_at IS NULL`, id); err != nil {
 		return translateError("class", id, err)
 	}
 	if snapshot.AcademicUnitID != expectedAcademicUnitID || snapshot.Revision != expectedRevision {
@@ -574,7 +585,7 @@ func requireClassRevisionAffected(ctx context.Context, executor sqlxExecutor, re
 		return nil
 	}
 	var exists bool
-	if err := executor.Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM classes WHERE id = ? AND delete_at = 0)`, id); err != nil {
+	if err := executor.Get(ctx, &exists, `SELECT EXISTS (SELECT 1 FROM classes WHERE id = ? AND archived_at IS NULL)`, id); err != nil {
 		return fmt.Errorf("check class revision conflict: %w", err)
 	}
 	if exists {
@@ -594,9 +605,9 @@ func (s SqlClassStore) validateInstitution(
 		  JOIN programmes ON programmes.id = programme_levels.programme_id
 		  JOIN academic_units ON academic_units.id = programmes.academic_unit_id
 		 WHERE programme_levels.id = ?
-		   AND programme_levels.delete_at = 0
-		   AND programmes.delete_at = 0
-		   AND academic_units.delete_at = 0`,
+		   AND programme_levels.archived_at IS NULL
+		   AND programmes.archived_at IS NULL
+		   AND academic_units.archived_at IS NULL`,
 		class.ProgrammeLevelID.String(),
 	); err != nil {
 		var exists bool
@@ -622,7 +633,7 @@ func (s SqlClassStore) validateInstitution(
 	if err := s.GetMaster().Get(ctx, &periodInstitutionID, `
 		SELECT institution_id
 		  FROM academic_periods
-		 WHERE id = ? AND delete_at = 0`,
+		 WHERE id = ? AND archived_at IS NULL`,
 		class.AcademicPeriodID.String(),
 	); err != nil {
 		var exists bool
@@ -653,9 +664,9 @@ func (s SqlClassStore) validateInstitution(
 func newClassRow(class *model.Class) classRow {
 	return classRow{
 		ID:               class.ID.String(),
-		CreateAt:         model.MillisFromTime(class.CreatedAt),
-		UpdateAt:         model.MillisFromTime(class.UpdatedAt),
-		DeleteAt:         class.ArchivedAt.Millis(),
+		CreatedAt:        UTCTime(class.CreatedAt),
+		UpdatedAt:        UTCTime(class.UpdatedAt),
+		ArchivedAt:       NullTimeFromOptional(class.ArchivedAt),
 		Revision:         class.Revision,
 		ProgrammeLevelID: class.ProgrammeLevelID.String(),
 		AcademicPeriodID: class.AcademicPeriodID.String(),
@@ -665,24 +676,24 @@ func newClassRow(class *model.Class) classRow {
 	}
 }
 
-func (row classRow) model() *model.Class {
+func (row classRow) model() (*model.Class, error) {
 	id, err := model.ParseClassID(row.ID)
 	if err != nil {
-		id = model.ClassID(row.ID)
+		return nil, fmt.Errorf("rehydrate class %q: %w", row.ID, err)
 	}
 	levelID, err := model.ParseProgrammeLevelID(row.ProgrammeLevelID)
 	if err != nil {
-		levelID = model.ProgrammeLevelID(row.ProgrammeLevelID)
+		return nil, fmt.Errorf("rehydrate class %q: %w", row.ID, err)
 	}
 	periodID, err := model.ParseAcademicPeriodID(row.AcademicPeriodID)
 	if err != nil {
-		periodID = model.AcademicPeriodID(row.AcademicPeriodID)
+		return nil, fmt.Errorf("rehydrate class %q: %w", row.ID, err)
 	}
-	return &model.Class{
+	class := &model.Class{
 		ID:               id,
-		CreatedAt:        model.TimeFromMillis(row.CreateAt),
-		UpdatedAt:        model.TimeFromMillis(row.UpdateAt),
-		ArchivedAt:       model.OptionalTimeFromMillis(row.DeleteAt),
+		CreatedAt:        row.CreatedAt.UTC(),
+		UpdatedAt:        row.UpdatedAt.UTC(),
+		ArchivedAt:       OptionalTimeFromNullTime(row.ArchivedAt),
 		Revision:         row.Revision,
 		ProgrammeLevelID: levelID,
 		AcademicPeriodID: periodID,
@@ -690,6 +701,10 @@ func (row classRow) model() *model.Class {
 		DisplayName:      row.DisplayName,
 		Description:      row.Description,
 	}
+	if err := class.Validate(); err != nil {
+		return nil, fmt.Errorf("rehydrate class %q: %w", row.ID, err)
+	}
+	return class, nil
 }
 
 var _ store.ClassStore = (*SqlClassStore)(nil)

@@ -10,8 +10,8 @@ import (
 )
 
 // Time helpers normalize domain and application instants to UTC (ADR-0020).
-// Legacy integer-millisecond fields remain on aggregates until each vertical
-// migration adopts time.Time; these helpers are the expand-phase bridge.
+// Millisecond conversions exist only for compatibility at explicit transport
+// boundaries; durable domain and SQL contracts use native temporal types.
 
 // TimeUTC returns value in UTC. A zero time remains zero.
 func TimeUTC(value time.Time) time.Time {
@@ -27,8 +27,8 @@ func NowUTC() time.Time {
 	return time.Now().UTC()
 }
 
-// MillisFromTime converts a time to Unix milliseconds. Zero times yield 0 so
-// legacy sentinel fields remain distinguishable during expand-contract.
+// MillisFromTime converts a time to Unix milliseconds for legacy wire fields.
+// A zero time maps to 0 at that boundary.
 func MillisFromTime(value time.Time) int64 {
 	if value.IsZero() {
 		return 0
@@ -36,9 +36,8 @@ func MillisFromTime(value time.Time) int64 {
 	return value.UTC().UnixMilli()
 }
 
-// TimeFromMillis converts Unix milliseconds to a UTC time.Time. A non-positive
-// value yields the zero time so legacy delete_at/create_at zero sentinels map
-// to an explicit absent instant at the boundary.
+// TimeFromMillis converts a legacy wire millisecond value to UTC. A
+// non-positive boundary value maps to the zero time.
 func TimeFromMillis(millis int64) time.Time {
 	if millis <= 0 {
 		return time.Time{}
@@ -61,7 +60,7 @@ func OptionalTimeFrom(value time.Time) OptionalTime {
 	return OptionalTime{Time: value.UTC(), Valid: true}
 }
 
-// OptionalTimeFromMillis maps legacy millisecond columns. Non-positive millis
+// OptionalTimeFromMillis maps a legacy wire value. Non-positive milliseconds
 // become the absent optional value.
 func OptionalTimeFromMillis(millis int64) OptionalTime {
 	if millis <= 0 {
@@ -70,8 +69,8 @@ func OptionalTimeFromMillis(millis int64) OptionalTime {
 	return OptionalTime{Time: time.UnixMilli(millis).UTC(), Valid: true}
 }
 
-// Millis returns the Unix-millisecond form used by legacy columns and contracts.
-// Absent values return 0.
+// Millis returns the Unix-millisecond form used by legacy wire contracts.
+// Absent values return 0 at that boundary.
 func (o OptionalTime) Millis() int64 {
 	if !o.Valid {
 		return 0
