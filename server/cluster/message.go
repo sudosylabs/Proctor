@@ -23,14 +23,15 @@ const (
 // Event is a typed inter-node event name.
 type Event string
 
-// Well-known application event names used by realtime fan-out. Additional
-// events may be registered by transports and handlers without extending this
-// list.
+// Well-known server event names used for realtime fan-out and cache
+// invalidation. Additional events may be registered by transports and handlers
+// without extending this list.
 const (
-	EventNone                     Event = "none"
-	EventWebSocketPublish         Event = "websocket.publish"
-	EventSessionRevoked           Event = "authentication.session_revoked"
-	EventAuthorizationInvalidated Event = "authorization.invalidated"
+	EventNone                      Event = "none"
+	EventWebSocketPublish          Event = "websocket.publish"
+	EventSessionRevoked            Event = "authentication.session_revoked"
+	EventAuthorizationInvalidated  Event = "authorization.invalidated"
+	EventAcademicPeriodInvalidated Event = "store.academic_period.invalidated"
 )
 
 // Message is the application-facing inter-node payload. Transports own wire

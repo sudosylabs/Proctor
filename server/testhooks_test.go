@@ -19,8 +19,10 @@ import (
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
@@ -29,16 +31,17 @@ import (
 // graph construction.
 type hookStore struct {
 	store.Store
-	closed       atomic.Bool
-	pingAttempts atomic.Int64
-	ping         func(int64) error
+	closed         atomic.Bool
+	pingAttempts   atomic.Int64
+	ping           func(int64) error
+	academicPeriod store.AcademicPeriodStore
 }
 
 func (s *hookStore) Institution() store.InstitutionStore               { return nil }
 func (s *hookStore) AcademicUnit() store.AcademicUnitStore             { return nil }
 func (s *hookStore) Programme() store.ProgrammeStore                   { return nil }
 func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore         { return nil }
-func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore         { return nil }
+func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore         { return s.academicPeriod }
 func (s *hookStore) Class() store.ClassStore                           { return nil }
 func (s *hookStore) Affiliation() store.AffiliationStore               { return nil }
 func (s *hookStore) User() store.UserStore                             { return nil }
@@ -63,6 +66,17 @@ func (s *hookStore) ValidateSchema(context.Context) error            { return ni
 func (s *hookStore) Close() error                                    { s.closed.Store(true); return nil }
 
 type hookCache struct{ closed atomic.Bool }
+
+type hookAcademicPeriodStore struct {
+	store.AcademicPeriodStore
+	period   *model.AcademicPeriod
+	attempts atomic.Int64
+}
+
+func (s *hookAcademicPeriodStore) Get(context.Context, string) (*model.AcademicPeriod, error) {
+	s.attempts.Add(1)
+	return s.period, nil
+}
 
 func (c *hookCache) Get(context.Context, string) ([]byte, error) {
 	return nil, errors.New("no values stored")
@@ -153,7 +167,10 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 		t.Fatal("server is ready before Start")
 	}
 	if runtime.Application.Store() == persistence {
-		t.Fatal("application persistence bypassed the root store timing layer")
+		t.Fatal("application persistence bypassed the root store layers")
+	}
+	if _, ok := runtime.Application.Store().(*localcachelayer.Layer); !ok {
+		t.Fatalf("outer store layer = %T, want *localcachelayer.Layer", runtime.Application.Store())
 	}
 	if runtime.Platform.ConfigStore() != configuration {
 		t.Fatal("platform does not own the provided configuration store")
@@ -181,6 +198,61 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	}
 	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
 		t.Fatal("Close() did not close the overridden capabilities")
+	}
+}
+
+func TestRootComposesLocalCacheOutsideTimerAndRetry(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, _, _ := newHookOverrides(t)
+	now := time.Now().UTC()
+	periods := &hookAcademicPeriodStore{period: &model.AcademicPeriod{
+		ID:            model.NewAcademicPeriodID(),
+		InstitutionID: model.NewInstitutionID(),
+		Name:          "2026-2027",
+		DisplayName:   "2026-2027",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		StartsAt:      now,
+		EndsAt:        now.Add(time.Hour),
+		Revision:      1,
+	}}
+	persistence.academicPeriod = periods
+	cache, err := localcachelayer.NewMemoryCache(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrides.StoreLocalCache = cache
+	var timedReads atomic.Int64
+	overrides.StoreMetrics = timerlayer.RecorderFunc(func(
+		operation timerlayer.Operation,
+		_ timerlayer.Outcome,
+		_ time.Duration,
+	) {
+		if operation.String() == "academic_period.get" {
+			timedReads.Add(1)
+		}
+	})
+
+	runtime, err := server.NewForTesting(context.Background(), overrides)
+	if err != nil {
+		t.Fatalf("NewForTesting() error = %v", err)
+	}
+	t.Cleanup(func() { _ = runtime.Server.Close() })
+
+	for range 2 {
+		if _, err := runtime.Application.Store().AcademicPeriod().Get(
+			context.Background(),
+			periods.period.ID.String(),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := periods.attempts.Load(); got != 1 {
+		t.Fatalf("authoritative reads = %d, want 1", got)
+	}
+	if got := timedReads.Load(); got != 1 {
+		t.Fatalf("timed reads = %d, want 1 because cache is outermost", got)
 	}
 }
 

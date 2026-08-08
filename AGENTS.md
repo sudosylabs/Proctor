@@ -242,7 +242,14 @@ user-token, personal-access-token, MFA credential, MFA recovery-code,
 affiliation, academic-unit-member, class-member, role, role-binding, and audit
 SQL stores with reusable conformance tests, plus the atomic
 installation-bootstrap store. Root composition wraps that complete store in a
-semantics-preserving timer layer around a safe-by-default retry layer. Retry is
+bounded local-cache layer around a semantics-preserving timer layer and a
+safe-by-default retry layer. The initial cache allowlist contains only
+`AcademicPeriodStore.Get`: values use defensive serialization copies, a
+30-second TTL, bounded process-local capacity, successful-mutation invalidation,
+generation-guarded concurrent fills, best-effort peer invalidation, and
+authoritative fallback after misses, cache failures, corrupt entries, lost
+invalidation messages, or expiry. Authorization, role, account, session,
+credential, MFA, and token reads bypass this cache. Retry is
 handwritten and opt-in for idempotent reads, uses bounded cancellation-aware
 backoff, and recognizes only adapter-classified PostgreSQL serialization and
 deadlock failures; mutations, domain errors, and other failures remain

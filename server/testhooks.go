@@ -14,6 +14,7 @@ import (
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
@@ -27,15 +28,18 @@ import (
 // This surface exists for testlib and focused tests. Production composition
 // uses New with WithConfigPath only.
 type TestingOverrides struct {
-	Configuration *config.Store
-	Logger        *mlog.Logger
-	Persistence   store.Store
-	StoreRetry    *retrylayer.Policy
-	StoreMetrics  timerlayer.Recorder
-	Cache         platform.Cache
-	Cluster       platform.Cluster
-	Mailer        platform.Mailer
-	Filesystem    vfspkg.FileSystem
+	Configuration     *config.Store
+	Logger            *mlog.Logger
+	Persistence       store.Store
+	StoreRetry        *retrylayer.Policy
+	StoreMetrics      timerlayer.Recorder
+	StoreLocalCache   localcachelayer.Cache
+	StoreCachePolicy  *localcachelayer.Policy
+	StoreCacheMetrics localcachelayer.Recorder
+	Cache             platform.Cache
+	Cluster           platform.Cluster
+	Mailer            platform.Mailer
+	Filesystem        vfspkg.FileSystem
 	// BuildInfo replaces the served build information when any field is set.
 	BuildInfo api.BuildInfo
 }

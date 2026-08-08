@@ -25,6 +25,7 @@ import (
 	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
 	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
@@ -288,6 +289,36 @@ func openRuntimeInfrastructure(
 		}
 		result.cluster = cluster
 	}
+	storeLocalCache := overrides.StoreLocalCache
+	if storeLocalCache == nil {
+		storeLocalCache, err = localcachelayer.NewMemoryCache(1_024)
+		if err != nil {
+			return result, fmt.Errorf("construct local store cache: %w", err)
+		}
+	}
+	storeCachePolicy := localcachelayer.DefaultPolicy()
+	if overrides.StoreCachePolicy != nil {
+		storeCachePolicy = *overrides.StoreCachePolicy
+	}
+	storeCacheMetrics := overrides.StoreCacheMetrics
+	if storeCacheMetrics == nil {
+		storeCacheMetrics = localcachelayer.NopRecorder{}
+	}
+	cacheInvalidation, err := newLocalCacheClusterAdapter(result.cluster)
+	if err != nil {
+		return result, fmt.Errorf("construct local-cache invalidation adapter: %w", err)
+	}
+	cachedPersistence, err := localcachelayer.New(
+		result.persistence,
+		storeLocalCache,
+		storeCachePolicy,
+		storeCacheMetrics,
+		cacheInvalidation,
+	)
+	if err != nil {
+		return result, fmt.Errorf("construct local-cache store layer: %w", err)
+	}
+	result.persistence = cachedPersistence
 	externalAuthentication, err := newExternalAuthenticationRegistry()
 	if err != nil {
 		return result, fmt.Errorf("construct external authentication registry: %w", err)

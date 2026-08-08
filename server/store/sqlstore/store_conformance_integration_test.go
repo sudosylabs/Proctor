@@ -9,10 +9,30 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
+
+func TestLocalCacheLayerConformance(t *testing.T) {
+	sqlStore := openTestStore(t)
+	cache, err := localcachelayer.NewMemoryCache(128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cachedStore, err := localcachelayer.New(
+		sqlStore,
+		cache,
+		localcachelayer.DefaultPolicy(),
+		localcachelayer.NopRecorder{},
+		localcachelayer.NopInvalidationFanout{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runLayerConformance(t, sqlStore, cachedStore)
+}
 
 func TestRetryLayerConformance(t *testing.T) {
 	sqlStore := openTestStore(t)

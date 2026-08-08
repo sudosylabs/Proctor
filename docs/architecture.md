@@ -223,7 +223,7 @@ sqlstore
 
 - `timerlayer` changes no semantics and measures cache-miss latency including retry.
 - `retrylayer` retries only a handwritten allowlist of safe idempotent operations.
-- `localcachelayer` caches only an allowlist of disposable reads with documented keys, TTLs, invalidation, and recovery.
+- `localcachelayer` initially caches only `AcademicPeriodStore.Get`, keyed by academic-period ID, with a 30-second TTL, bounded process-local capacity, defensive serialization copies, generation-guarded fills, local plus best-effort peer invalidation after successful mutations, and authoritative fallback after misses, failures, corrupt entries, lost invalidations, or expiry.
 - Authorization, roles, account enablement, sessions, credentials, MFA, and token revocation are initially excluded from caching.
 
 Each layer implements the root store and wraps its sub-stores. Deterministic generated code forwards mechanical methods and is checked into Git; behavioral overrides remain handwritten. Reflection proxies are prohibited.
@@ -399,8 +399,7 @@ The target intentionally differs from existing code:
 8. some handlers serialize models directly;
 9. WebSocket transport still lives in `app/api`;
 10. clustering uses local and Memberlist backends only (Redis cluster retired);
-11. root-composed store timer and safe retry layers are present; the
-    local-cache layer is not yet present;
+11. root-composed local-cache, timer, and safe retry layers are present;
 12. external-service tests are not consistently tagged `integration`;
 13. import-boundary and OpenAPI agreement tests are not yet present.
 
