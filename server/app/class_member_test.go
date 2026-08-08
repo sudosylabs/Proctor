@@ -37,7 +37,8 @@ func (s *classMemberStoreFake) EndWithAudit(_ context.Context, input *store.Clas
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	ended := *s.current
-	ended.EndAt, ended.Revision = input.EndAt, input.ExpectedRevision+1
+	ended.EndsAt = model.OptionalTimeFromMillis(input.EndAt)
+	ended.Revision = input.ExpectedRevision + 1
 	return &ended, nil
 }
 
@@ -62,7 +63,7 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if enrollment.Membership.AcademicPeriodId != periodID || persistence.enrollInput.Member.UserId != userID {
+	if enrollment.Membership.AcademicPeriodID.String() != periodID || persistence.enrollInput.Member.UserID.String() != userID {
 		t.Fatalf("enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
 	}
 	want := []string{"authorize", "get-class", "audit-begin", "store-enroll"}
@@ -74,10 +75,14 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 func TestClassMemberEndCarriesRevision(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.ClassMember{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 4, ClassId: model.NewId(), AcademicPeriodId: model.NewId(), UserId: model.NewId(), StartAt: 100}
+	current := &model.ClassMember{
+		ID: model.NewClassMemberID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Revision: 4, ClassID: model.ClassID(model.NewId()), AcademicPeriodID: model.AcademicPeriodID(model.NewId()),
+		UserID: model.UserID(model.NewId()), StartsAt: model.TimeFromMillis(100),
+	}
 	persistence := &classMemberStoreFake{events: &events, current: current}
 	service := newClassMemberService(persistence, &classMemberClassStoreFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	ended, err := service.End(context.Background(), Invocation{}, EndClassMemberCommand{ID: current.Id})
+	ended, err := service.End(context.Background(), Invocation{}, EndClassMemberCommand{ID: current.ID.String()})
 	if err != nil {
 		t.Fatal(err)
 	}

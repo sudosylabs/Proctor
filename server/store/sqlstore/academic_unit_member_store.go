@@ -22,6 +22,7 @@ type SqlAcademicUnitMemberStore struct {
 	query sq.SelectBuilder
 }
 
+// academicUnitMemberRow is the legacy integer-millisecond column layout.
 type academicUnitMemberRow struct {
 	ID             string `db:"id"`
 	CreateAt       int64  `db:"create_at"`
@@ -50,9 +51,12 @@ func (s SqlAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	if input == nil || input.Member == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "creation", nil)
 	}
+	if !input.Member.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "id", input.Member.ID.String())
+	}
 	candidate := *input.Member
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("academic_unit_member", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -66,7 +70,7 @@ func (s SqlAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitId, candidate.UserId); err != nil {
+	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitID.String(), candidate.UserID.String()); err != nil {
 		return nil, err
 	}
 	if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
@@ -78,7 +82,7 @@ func (s SqlAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	) VALUES (
 		:id, :create_at, :update_at, :delete_at, :revision, :academic_unit_id, :user_id, :start_at, :end_at
 	)`, &row); err != nil {
-		return nil, fmt.Errorf("create academic unit member: %w", translateError("academic_unit_member", candidate.Id, err))
+		return nil, fmt.Errorf("create academic unit member: %w", translateError("academic_unit_member", candidate.ID.String(), err))
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 		return nil, fmt.Errorf("complete academic unit member creation audit: %w", err)
@@ -101,13 +105,20 @@ func (s SqlAcademicUnitMemberStore) Save(
 	ctx context.Context,
 	member *model.AcademicUnitMember,
 ) (*model.AcademicUnitMember, error) {
-	if member == nil || member.Id != "" {
+	if member == nil {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "value", nil)
 	}
+	if !member.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "id", member.ID.String())
+	}
+	id, err := model.ParseAcademicUnitMemberID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
 	candidate := *member
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(id, model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "value", nil).Wrap(err)
 	}
 	row := newAcademicUnitMemberRow(&candidate)
 	tx, err := s.GetMaster().Begin(ctx)
@@ -118,7 +129,7 @@ func (s SqlAcademicUnitMemberStore) Save(
 	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitId, candidate.UserId); err != nil {
+	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitID.String(), candidate.UserID.String()); err != nil {
 		return nil, err
 	}
 	if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
@@ -134,7 +145,7 @@ func (s SqlAcademicUnitMemberStore) Save(
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"save academic unit member: %w",
-			translateError("academic_unit_member", candidate.Id, err),
+			translateError("academic_unit_member", candidate.ID.String(), err),
 		)
 	}
 	if err := tx.Commit(); err != nil {
@@ -261,7 +272,9 @@ func (s SqlAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_changed", nil)
 	}
-	if endAt <= current.StartAt || (current.EndAt != 0 && endAt >= current.EndAt) {
+	startMillis := model.MillisFromTime(current.StartsAt)
+	endMillis := current.EndsAt.Millis()
+	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
 		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_end_time", nil)
 	}
 	result, err := tx.Exec(ctx, `UPDATE academic_unit_members SET update_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND delete_at = 0 AND revision = ?`, endAt, endAt, id, expectedRevision)
@@ -271,7 +284,10 @@ func (s SqlAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 	if err := requireAffected(result, "academic_unit_member", id); err != nil {
 		return nil, err
 	}
-	current.UpdateAt, current.EndAt, current.Revision = endAt, endAt, expectedRevision+1
+	at := model.TimeFromMillis(endAt)
+	current.UpdatedAt = at
+	current.EndsAt = model.OptionalTimeFromMillis(endAt)
+	current.Revision = expectedRevision + 1
 	return current, nil
 }
 
@@ -290,11 +306,13 @@ func lockAcademicUnitMember(ctx context.Context, executor sqlxExecutor, unitID, 
 }
 
 func ensureAcademicUnitMemberRangeAvailable(ctx context.Context, executor sqlxExecutor, candidate *model.AcademicUnitMember) error {
+	startAt := model.MillisFromTime(candidate.StartsAt)
+	endAt := candidate.EndsAt.Millis()
 	var overlaps bool
 	if err := executor.Get(ctx, &overlaps, `SELECT EXISTS (
 		SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND user_id = ? AND delete_at = 0
 		 AND (end_at = 0 OR end_at > ?) AND (? = 0 OR start_at < ?)
-	)`, candidate.AcademicUnitId, candidate.UserId, candidate.StartAt, candidate.EndAt, candidate.EndAt); err != nil {
+	)`, candidate.AcademicUnitID.String(), candidate.UserID.String(), startAt, endAt, endAt); err != nil {
 		return fmt.Errorf("check academic unit member overlap: %w", err)
 	}
 	if overlaps {
@@ -320,19 +338,41 @@ func (s SqlAcademicUnitMemberStore) selectMembers(
 
 func newAcademicUnitMemberRow(m *model.AcademicUnitMember) academicUnitMemberRow {
 	return academicUnitMemberRow{
-		ID: m.Id, CreateAt: m.CreateAt, UpdateAt: m.UpdateAt,
-		DeleteAt: m.DeleteAt, AcademicUnitID: m.AcademicUnitId,
-		Revision: m.Revision,
-		UserID:   m.UserId, StartAt: m.StartAt, EndAt: m.EndAt,
+		ID:             m.ID.String(),
+		CreateAt:       model.MillisFromTime(m.CreatedAt),
+		UpdateAt:       model.MillisFromTime(m.UpdatedAt),
+		DeleteAt:       m.ArchivedAt.Millis(),
+		AcademicUnitID: m.AcademicUnitID.String(),
+		Revision:       m.Revision,
+		UserID:         m.UserID.String(),
+		StartAt:        model.MillisFromTime(m.StartsAt),
+		EndAt:          m.EndsAt.Millis(),
 	}
 }
 
 func (r academicUnitMemberRow) model() *model.AcademicUnitMember {
+	id, err := model.ParseAcademicUnitMemberID(r.ID)
+	if err != nil {
+		id = model.AcademicUnitMemberID(r.ID)
+	}
+	unitID, err := model.ParseAcademicUnitID(r.AcademicUnitID)
+	if err != nil {
+		unitID = model.AcademicUnitID(r.AcademicUnitID)
+	}
+	userID, err := model.ParseUserID(r.UserID)
+	if err != nil {
+		userID = model.UserID(r.UserID)
+	}
 	return &model.AcademicUnitMember{
-		Id: r.ID, CreateAt: r.CreateAt, UpdateAt: r.UpdateAt,
-		DeleteAt: r.DeleteAt, AcademicUnitId: r.AcademicUnitID,
-		Revision: r.Revision,
-		UserId:   r.UserID, StartAt: r.StartAt, EndAt: r.EndAt,
+		ID:             id,
+		CreatedAt:      model.TimeFromMillis(r.CreateAt),
+		UpdatedAt:      model.TimeFromMillis(r.UpdateAt),
+		ArchivedAt:     model.OptionalTimeFromMillis(r.DeleteAt),
+		AcademicUnitID: unitID,
+		Revision:       r.Revision,
+		UserID:         userID,
+		StartsAt:       model.TimeFromMillis(r.StartAt),
+		EndsAt:         model.OptionalTimeFromMillis(r.EndAt),
 	}
 }
 

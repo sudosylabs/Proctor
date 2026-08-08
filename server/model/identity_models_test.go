@@ -16,12 +16,12 @@ func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
 	now := GetMillis()
 	userID := NewId()
 	unitID := NewId()
-	classID := NewId()
-	periodID := NewId()
 	roleID := NewId()
 	sessionID := NewId()
 	tokenHash := HashToken(NewCredentialToken())
 
+	// Affiliation, AcademicUnitMember, and ClassMember use the typed
+	// PrepareCreate/Validate lifecycle; see membership-specific tests below.
 	tests := []struct {
 		name  string
 		model persistentModel
@@ -47,28 +47,6 @@ func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
 			model: &PasswordCredential{
 				UserId:       userID,
 				PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA",
-			},
-		},
-		{
-			name: "affiliation",
-			model: &Affiliation{
-				UserId: userID,
-				Kind:   AffiliationTeacher,
-			},
-		},
-		{
-			name: "academic unit member",
-			model: &AcademicUnitMember{
-				AcademicUnitId: unitID,
-				UserId:         userID,
-			},
-		},
-		{
-			name: "class member",
-			model: &ClassMember{
-				ClassId:          classID,
-				AcademicPeriodId: periodID,
-				UserId:           userID,
 			},
 		},
 		{
@@ -172,15 +150,16 @@ func TestUserNormalizationAndContextualRelationships(t *testing.T) {
 		t.Fatalf("defaults: locale=%q timezone=%q", u.Locale, u.Timezone)
 	}
 
-	student := &Affiliation{UserId: u.Id, Kind: AffiliationStudent}
-	teacher := &Affiliation{UserId: u.Id, Kind: AffiliationTeacher}
-	student.PreSave()
-	teacher.PreSave()
-	if appErr := student.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	at := NowUTC()
+	student := &Affiliation{UserID: UserID(u.Id), Kind: AffiliationStudent}
+	teacher := &Affiliation{UserID: UserID(u.Id), Kind: AffiliationTeacher}
+	student.PrepareCreate(NewAffiliationID(), at)
+	teacher.PrepareCreate(NewAffiliationID(), at)
+	if err := student.Validate(); err != nil {
+		t.Fatal(err)
 	}
-	if appErr := teacher.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	if err := teacher.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -328,26 +307,68 @@ func TestCredentialTokenGenerationAndHashing(t *testing.T) {
 func TestClassMemberRetainsClosedEnrollmentHistory(t *testing.T) {
 	t.Parallel()
 
+	at := time.UnixMilli(1_700_000_000_000).UTC()
 	m := &ClassMember{
-		ClassId:          NewId(),
-		AcademicPeriodId: NewId(),
-		UserId:           NewId(),
+		ClassID:          ClassID(NewId()),
+		AcademicPeriodID: AcademicPeriodID(NewId()),
+		UserID:           UserID(NewId()),
 	}
-	m.PreSave()
-	if !m.IsActiveAt(m.StartAt) {
+	m.PrepareCreate(NewClassMemberID(), at)
+	if !m.IsActiveAt(m.StartsAt) {
 		t.Fatal("new class membership is not active")
 	}
 
-	m.EndAt = m.StartAt + 1
-	m.PreUpdate()
-	if appErr := m.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	endAt := m.StartsAt.Add(time.Millisecond)
+	if err := m.End(endAt); err != nil {
+		t.Fatal(err)
 	}
-	if m.IsActiveAt(m.EndAt) {
+	if m.IsActiveAt(endAt) {
 		t.Fatal("closed class membership remained active")
 	}
-	if m.DeleteAt != 0 {
+	if m.IsArchived() {
 		t.Fatal("closing enrollment deleted its historical record")
+	}
+}
+
+func TestMembershipModelsTypedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	at := time.UnixMilli(1_700_000_000_000).UTC()
+	userID := UserID(NewId())
+
+	affiliation := &Affiliation{UserID: userID, Kind: AffiliationTeacher}
+	affiliation.PrepareCreate(NewAffiliationID(), at)
+	if err := affiliation.Validate(); err != nil {
+		t.Fatalf("Affiliation.Validate() = %v", err)
+	}
+	if !affiliation.IsActiveAt(at) {
+		t.Fatal("affiliation should be active at create time")
+	}
+	audit := affiliation.Auditable()
+	if audit["id"] != affiliation.ID.String() || audit["start_at"] != MillisFromTime(at) || audit["end_at"] != int64(0) {
+		t.Fatalf("affiliation audit = %#v", audit)
+	}
+
+	member := &AcademicUnitMember{
+		AcademicUnitID: AcademicUnitID(NewId()),
+		UserID:         userID,
+	}
+	member.PrepareCreate(NewAcademicUnitMemberID(), at)
+	if err := member.Validate(); err != nil {
+		t.Fatalf("AcademicUnitMember.Validate() = %v", err)
+	}
+	if !member.IsActiveAt(at) {
+		t.Fatal("academic unit member should be active at create time")
+	}
+
+	classMember := &ClassMember{
+		ClassID:          ClassID(NewId()),
+		AcademicPeriodID: AcademicPeriodID(NewId()),
+		UserID:           userID,
+	}
+	classMember.PrepareCreate(NewClassMemberID(), at)
+	if err := classMember.Validate(); err != nil {
+		t.Fatalf("ClassMember.Validate() = %v", err)
 	}
 }
 
@@ -420,11 +441,11 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			name: "class membership without period",
 			err: func() error {
 				member := &ClassMember{
-					ClassId: NewId(),
-					UserId:  NewId(),
+					ClassID: ClassID(NewId()),
+					UserID:  UserID(NewId()),
 				}
-				member.PreSave()
-				return member.IsValid()
+				member.PrepareCreate(NewClassMemberID(), NowUTC())
+				return member.Validate()
 			}(),
 			code: "model.class_member.is_valid.academic_period_id.app_error",
 		},

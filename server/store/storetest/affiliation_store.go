@@ -18,23 +18,27 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
 	saved, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start,
+		UserID:   model.UserID(user.Id),
+		Kind:     model.AffiliationStudent,
+		StartsAt: model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
-	if !model.IsValidId(saved.Id) {
+	if !saved.ID.IsValid() {
 		t.Fatalf("Save() = %#v", saved)
 	}
-	got, err := ss.Affiliation().Get(ctx, saved.Id)
+	got, err := ss.Affiliation().Get(ctx, saved.ID.String())
 	requireNoError(t, err)
 	if *got != *saved {
 		t.Fatalf("Get() = %#v, want %#v", got, saved)
 	}
 	active, err := ss.Affiliation().ListActiveByUser(ctx, user.Id, start+1)
 	requireNoError(t, err)
-	if len(active) != 1 || active[0].Id != saved.Id {
+	if len(active) != 1 || active[0].ID != saved.ID {
 		t.Fatalf("ListActiveByUser() = %#v", active)
 	}
-	teacher, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserId: user.Id, Kind: model.AffiliationTeacher, StartAt: start})
+	teacher, err := ss.Affiliation().Save(ctx, &model.Affiliation{
+		UserID: model.UserID(user.Id), Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(start),
+	})
 	requireNoError(t, err)
 	active, err = ss.Affiliation().ListActiveByUser(ctx, user.Id, start+1)
 	requireNoError(t, err)
@@ -42,23 +46,23 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 		t.Fatalf("concurrent non-exclusive affiliations = %#v", active)
 	}
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start + 2,
+		UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start + 2),
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) {
 		t.Fatalf("duplicate active affiliation error = %v", err)
 	}
-	ended, err := ss.Affiliation().End(ctx, saved.Id, saved.Revision, start+10)
+	ended, err := ss.Affiliation().End(ctx, saved.ID.String(), saved.Revision, start+10)
 	requireNoError(t, err)
-	if ended.EndAt != start+10 {
+	if ended.EndsAt.Millis() != start+10 {
 		t.Fatalf("End() = %#v", ended)
 	}
-	if _, err := ss.Affiliation().End(ctx, saved.Id, saved.Revision, start+11); !store.IsConflict(err) {
+	if _, err := ss.Affiliation().End(ctx, saved.ID.String(), saved.Revision, start+11); !store.IsConflict(err) {
 		t.Fatalf("stale End() error = %v", err)
 	}
 	active, err = ss.Affiliation().ListActiveByUser(ctx, user.Id, start+11)
 	requireNoError(t, err)
-	if len(active) != 1 || active[0].Id != teacher.Id {
+	if len(active) != 1 || active[0].ID != teacher.ID {
 		t.Fatalf("active after end = %#v", active)
 	}
 	history, err := ss.Affiliation().ListByUser(ctx, user.Id)
@@ -67,15 +71,15 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 		t.Fatalf("ListByUser() = %#v", history)
 	}
 	next, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start + 10,
+		UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start + 10),
 	})
 	requireNoError(t, err)
-	if next.Id == saved.Id {
+	if next.ID == saved.ID {
 		t.Fatalf("new effective range reused the old row: %#v", next)
 	}
 	createAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.Id)
-	candidate := &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStaff, StartAt: start}
-	candidate.PrepareCreate(model.NewId(), model.GetMillis())
+	candidate := &model.Affiliation{UserID: model.UserID(user.Id), Kind: model.AffiliationStaff, StartsAt: model.TimeFromMillis(start)}
+	candidate.PrepareCreate(model.NewAffiliationID(), model.NowUTC())
 	created, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	completedCreate, err := ss.Audit().Get(ctx, createAttempt.Id)
@@ -83,18 +87,18 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	if completedCreate.Status != model.AuditStatusSuccess {
 		t.Fatalf("create audit = %#v", completedCreate)
 	}
-	rolledBack := &model.Affiliation{UserId: user.Id, Kind: model.AffiliationExternal, StartAt: start}
-	rolledBack.PrepareCreate(model.NewId(), model.GetMillis())
+	rolledBack := &model.Affiliation{UserID: model.UserID(user.Id), Kind: model.AffiliationExternal, StartsAt: model.TimeFromMillis(start)}
+	rolledBack.PrepareCreate(model.NewAffiliationID(), model.NowUTC())
 	if _, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without an audit attempt")
 	}
-	if _, err := ss.Affiliation().Get(ctx, rolledBack.Id); !store.IsNotFound(err) {
+	if _, err := ss.Affiliation().Get(ctx, rolledBack.ID.String()); !store.IsNotFound(err) {
 		t.Fatalf("create survived audit rollback: %v", err)
 	}
 	endAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.Id)
-	endedWithAudit, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.Id, ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis()})
+	endedWithAudit, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	if endedWithAudit.Revision != created.Revision+1 || endedWithAudit.EndAt != start+20 {
+	if endedWithAudit.Revision != created.Revision+1 || endedWithAudit.EndsAt.Millis() != start+20 {
 		t.Fatalf("EndWithAudit() = %#v", endedWithAudit)
 	}
 	completedEnd, err := ss.Audit().Get(ctx, endAttempt.Id)
@@ -103,7 +107,7 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 		t.Fatalf("end audit = %#v", completedEnd)
 	}
 	staleAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.Id)
-	if _, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.Id, ExpectedRevision: created.Revision, EndAt: start + 21, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 21, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("stale EndWithAudit() error = %v", err)
 	}
 	unit, err := ss.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "affiliation-unit", DisplayName: "Affiliation Unit"})
@@ -116,11 +120,15 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "affiliation-class")
 	enrolledUser := saveUser(t, ctx, ss)
-	student, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserId: enrolledUser.Id, Kind: model.AffiliationStudent, StartAt: 1})
+	student, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: model.UserID(enrolledUser.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: class.ID.String(), UserId: enrolledUser.Id, StartAt: start})
+	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
+		ClassID:  class.ID,
+		UserID:   model.UserID(enrolledUser.Id),
+		StartsAt: model.TimeFromMillis(start),
+	})
 	requireNoError(t, err)
-	if _, err := ss.Affiliation().End(ctx, student.Id, student.Revision, start+1); !store.IsConflict(err) {
+	if _, err := ss.Affiliation().End(ctx, student.ID.String(), student.Revision, start+1); !store.IsConflict(err) {
 		t.Fatalf("End() with active enrollment error = %v", err)
 	}
 }

@@ -24,6 +24,7 @@ type SqlClassMemberStore struct {
 	query sq.SelectBuilder
 }
 
+// classMemberRow is the legacy integer-millisecond column layout.
 type classMemberRow struct {
 	ID               string `db:"id"`
 	CreateAt         int64  `db:"create_at"`
@@ -56,12 +57,16 @@ func (s SqlClassMemberStore) Enroll(
 	ctx context.Context,
 	member *model.ClassMember,
 ) (*store.ClassEnrollmentResult, error) {
-	if member == nil || member.Id != "" || !model.IsValidId(member.ClassId) ||
-		!model.IsValidId(member.UserId) {
+	if member == nil || !member.ID.IsZero() || !member.ClassID.IsValid() || !member.UserID.IsValid() {
 		return nil, store.NewErrInvalidInput("class_member", "value", nil)
 	}
+	id, err := model.ParseClassMemberID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
 	candidate := *member
-	candidate.PreSave()
+	// AcademicPeriodID is filled from the class inside enroll before Validate.
+	candidate.PrepareCreate(id, model.NowUTC())
 	return s.enroll(ctx, &candidate, "", 0)
 }
 
@@ -73,8 +78,8 @@ func (s SqlClassMemberStore) EnrollWithAudit(
 		return nil, store.NewErrInvalidInput("class_member", "enrollment", nil)
 	}
 	candidate := *input.Member
-	if !model.IsValidId(candidate.Id) || candidate.CreateAt <= 0 || candidate.UpdateAt <= 0 || candidate.Revision <= 0 ||
-		!model.IsValidId(candidate.ClassId) || !model.IsValidId(candidate.UserId) {
+	if !candidate.ID.IsValid() || candidate.CreatedAt.IsZero() || candidate.UpdatedAt.IsZero() ||
+		candidate.Revision <= 0 || !candidate.ClassID.IsValid() || !candidate.UserID.IsValid() {
 		return nil, store.NewErrInvalidInput("class_member", "value", nil)
 	}
 	return s.enroll(ctx, &candidate, input.AuditEventID, input.AuditAt)
@@ -97,23 +102,31 @@ func (s SqlClassMemberStore) enroll(
 	if err := lockClassLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := tx.Get(ctx, &candidate.AcademicPeriodId, `
+	var periodRaw string
+	if err := tx.Get(ctx, &periodRaw, `
 		SELECT academic_period_id FROM classes WHERE id = ? AND delete_at = 0`,
-		candidate.ClassId,
+		candidate.ClassID.String(),
 	); err != nil {
-		return nil, translateError("class", candidate.ClassId, err)
+		return nil, translateError("class", candidate.ClassID.String(), err)
 	}
-	if err := lockClassEnrollment(ctx, tx, candidate.UserId, candidate.AcademicPeriodId); err != nil {
+	periodID, err := model.ParseAcademicPeriodID(periodRaw)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("class_member", "academic_period_id", periodRaw).Wrap(err)
+	}
+	candidate.AcademicPeriodID = periodID
+	if err := lockClassEnrollment(ctx, tx, candidate.UserID.String(), candidate.AcademicPeriodID.String()); err != nil {
 		return nil, err
 	}
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("class_member", "value", nil).Wrap(err)
 	}
+	startAt := model.MillisFromTime(candidate.StartsAt)
+	endAt := candidate.EndsAt.Millis()
 	var student bool
 	if err := tx.Get(ctx, &student, `SELECT EXISTS (
 		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND delete_at = 0
 		 AND start_at <= ? AND end_at = 0
-	)`, candidate.UserId, model.AffiliationStudent, candidate.StartAt); err != nil {
+	)`, candidate.UserID.String(), model.AffiliationStudent, startAt); err != nil {
 		return nil, fmt.Errorf("validate student affiliation: %w", err)
 	}
 	if !student {
@@ -130,20 +143,20 @@ func (s SqlClassMemberStore) enroll(
 		 ORDER BY start_at DESC, id
 		 LIMIT 1
 		 FOR UPDATE`,
-		candidate.UserId, candidate.AcademicPeriodId,
+		candidate.UserID.String(), candidate.AcademicPeriodID.String(),
 	)
 	var previous *model.ClassMember
 	switch {
 	case err == nil:
 		previous = previousRow.model()
-		if previous.ClassId == candidate.ClassId {
+		if previous.ClassID == candidate.ClassID {
 			return nil, store.NewErrConflict(
 				"class_member",
 				"class_members_one_active_class_per_period_key",
 				nil,
 			)
 		}
-		if candidate.StartAt <= previous.StartAt {
+		if !candidate.StartsAt.After(previous.StartsAt) {
 			return nil, store.NewErrConflict(
 				"class_member",
 				"class_members_transfer_time",
@@ -154,12 +167,12 @@ func (s SqlClassMemberStore) enroll(
 			UPDATE class_members
 			SET update_at = ?, end_at = ?, revision = revision + 1
 			 WHERE id = ? AND delete_at = 0 AND end_at = 0`,
-			candidate.StartAt, candidate.StartAt, previous.Id,
+			startAt, startAt, previous.ID.String(),
 		); err != nil {
 			return nil, fmt.Errorf("end previous class enrollment: %w", err)
 		}
-		previous.UpdateAt = candidate.StartAt
-		previous.EndAt = candidate.StartAt
+		previous.UpdatedAt = candidate.StartsAt
+		previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
 		previous.Revision++
 	case err != nil && !isNoRows(err):
 		return nil, fmt.Errorf("find current class enrollment: %w", err)
@@ -167,7 +180,7 @@ func (s SqlClassMemberStore) enroll(
 	var overlaps bool
 	excludedID := ""
 	if previous != nil {
-		excludedID = previous.Id
+		excludedID = previous.ID.String()
 	}
 	if err := tx.Get(ctx, &overlaps, `
 		SELECT EXISTS (
@@ -178,13 +191,13 @@ func (s SqlClassMemberStore) enroll(
 			   AND (end_at = 0 OR end_at > ?)
 			   AND (? = 0 OR start_at < ?)
 		)`,
-		candidate.UserId,
-		candidate.AcademicPeriodId,
+		candidate.UserID.String(),
+		candidate.AcademicPeriodID.String(),
 		excludedID,
 		excludedID,
-		candidate.StartAt,
-		candidate.EndAt,
-		candidate.EndAt,
+		startAt,
+		endAt,
+		endAt,
 	); err != nil {
 		return nil, fmt.Errorf("check class enrollment overlap: %w", err)
 	}
@@ -205,7 +218,7 @@ func (s SqlClassMemberStore) enroll(
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"save class enrollment: %w",
-			translateError("class_member", candidate.Id, err),
+			translateError("class_member", candidate.ID.String(), err),
 		)
 	}
 	result := &store.ClassEnrollmentResult{Membership: candidate, Previous: previous}
@@ -367,7 +380,9 @@ func (s SqlClassMemberStore) endClassMember(
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("class_member", "class_member_changed", nil)
 	}
-	if endAt <= current.StartAt || (current.EndAt != 0 && endAt >= current.EndAt) {
+	startMillis := model.MillisFromTime(current.StartsAt)
+	endMillis := current.EndsAt.Millis()
+	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
 		return nil, store.NewErrConflict("class_member", "class_member_end_time", nil)
 	}
 	result, err := executor.Exec(ctx, `
@@ -382,7 +397,10 @@ func (s SqlClassMemberStore) endClassMember(
 	if err := requireAffected(result, "class_member", id); err != nil {
 		return nil, err
 	}
-	current.UpdateAt, current.EndAt, current.Revision = endAt, endAt, expectedRevision+1
+	at := model.TimeFromMillis(endAt)
+	current.UpdatedAt = at
+	current.EndsAt = model.OptionalTimeFromMillis(endAt)
+	current.Revision = expectedRevision + 1
 	return current, nil
 }
 
@@ -414,21 +432,47 @@ func (s SqlClassMemberStore) selectMembers(
 
 func newClassMemberRow(m *model.ClassMember) classMemberRow {
 	return classMemberRow{
-		ID: m.Id, CreateAt: m.CreateAt, UpdateAt: m.UpdateAt,
-		DeleteAt: m.DeleteAt, ClassID: m.ClassId,
+		ID:               m.ID.String(),
+		CreateAt:         model.MillisFromTime(m.CreatedAt),
+		UpdateAt:         model.MillisFromTime(m.UpdatedAt),
+		DeleteAt:         m.ArchivedAt.Millis(),
+		ClassID:          m.ClassID.String(),
 		Revision:         m.Revision,
-		AcademicPeriodID: m.AcademicPeriodId, UserID: m.UserId,
-		StartAt: m.StartAt, EndAt: m.EndAt,
+		AcademicPeriodID: m.AcademicPeriodID.String(),
+		UserID:           m.UserID.String(),
+		StartAt:          model.MillisFromTime(m.StartsAt),
+		EndAt:            m.EndsAt.Millis(),
 	}
 }
 
 func (r classMemberRow) model() *model.ClassMember {
+	id, err := model.ParseClassMemberID(r.ID)
+	if err != nil {
+		id = model.ClassMemberID(r.ID)
+	}
+	classID, err := model.ParseClassID(r.ClassID)
+	if err != nil {
+		classID = model.ClassID(r.ClassID)
+	}
+	periodID, err := model.ParseAcademicPeriodID(r.AcademicPeriodID)
+	if err != nil {
+		periodID = model.AcademicPeriodID(r.AcademicPeriodID)
+	}
+	userID, err := model.ParseUserID(r.UserID)
+	if err != nil {
+		userID = model.UserID(r.UserID)
+	}
 	return &model.ClassMember{
-		Id: r.ID, CreateAt: r.CreateAt, UpdateAt: r.UpdateAt,
-		DeleteAt: r.DeleteAt, ClassId: r.ClassID,
+		ID:               id,
+		CreatedAt:        model.TimeFromMillis(r.CreateAt),
+		UpdatedAt:        model.TimeFromMillis(r.UpdateAt),
+		ArchivedAt:       model.OptionalTimeFromMillis(r.DeleteAt),
+		ClassID:          classID,
 		Revision:         r.Revision,
-		AcademicPeriodId: r.AcademicPeriodID, UserId: r.UserID,
-		StartAt: r.StartAt, EndAt: r.EndAt,
+		AcademicPeriodID: periodID,
+		UserID:           userID,
+		StartsAt:         model.TimeFromMillis(r.StartAt),
+		EndsAt:           model.OptionalTimeFromMillis(r.EndAt),
 	}
 }
 

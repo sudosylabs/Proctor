@@ -7,89 +7,145 @@
 
 package model
 
+import (
+	"fmt"
+	"time"
+)
+
 // ClassMember is a student's enrollment in one Class and AcademicPeriod.
-// AcademicPeriodId deliberately duplicates Class.AcademicPeriodId so the store
+// AcademicPeriodID deliberately duplicates Class.AcademicPeriodID so the store
 // can enforce at most one active class membership per user and period with a
 // database constraint. The application/store must verify that both period IDs
 // match. Teachers and staff reach classes through role inheritance or an
 // explicit class RoleBinding; they are not ClassMember records.
 type ClassMember struct {
-	Id               string `json:"id"`
-	CreateAt         int64  `json:"create_at"`
-	UpdateAt         int64  `json:"update_at"`
-	DeleteAt         int64  `json:"delete_at"`
-	Revision         int64  `json:"revision"`
-	ClassId          string `json:"class_id"`
-	AcademicPeriodId string `json:"academic_period_id"`
-	UserId           string `json:"user_id"`
-	StartAt          int64  `json:"start_at"`
-	EndAt            int64  `json:"end_at,omitempty"`
+	ID               ClassMemberID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	ArchivedAt       OptionalTime
+	Revision         int64
+	ClassID          ClassID
+	AcademicPeriodID AcademicPeriodID
+	UserID           UserID
+	StartsAt         time.Time
+	EndsAt           OptionalTime
 }
 
-func (cm *ClassMember) PrepareCreate(id string, at int64) {
-	cm.Id, cm.CreateAt, cm.UpdateAt, cm.DeleteAt, cm.Revision = id, at, at, 0, 1
-	if cm.StartAt == 0 {
-		cm.StartAt = at
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (cm *ClassMember) PrepareCreate(id ClassMemberID, at time.Time) {
+	if cm == nil {
+		return
 	}
-}
-
-func (cm *ClassMember) PreSave() {
-	preSaveMembership(&cm.Id, &cm.CreateAt, &cm.UpdateAt, &cm.StartAt)
-	if cm.Revision == 0 {
+	cm.ID = id
+	at = TimeUTC(at)
+	cm.CreatedAt = at
+	cm.UpdatedAt = at
+	cm.ArchivedAt = OptionalTime{}
+	if cm.Revision <= 0 {
 		cm.Revision = 1
 	}
+	if cm.StartsAt.IsZero() {
+		cm.StartsAt = at
+	} else {
+		cm.StartsAt = TimeUTC(cm.StartsAt)
+	}
 }
 
-func (cm *ClassMember) PreUpdate() {
-	preUpdate(&cm.UpdateAt)
+// PrepareUpdate applies the application-selected transition time.
+func (cm *ClassMember) PrepareUpdate(at time.Time) {
+	if cm == nil {
+		return
+	}
+	cm.UpdatedAt = TimeUTC(at)
+	if cm.Revision <= 0 {
+		cm.Revision = 1
+	}
+	cm.Revision++
 }
 
-func (cm *ClassMember) IsValid() error {
-	const where = "ClassMember.IsValid"
-	if appErr := validatePersistentFields(
-		where,
-		"class_member",
-		cm.Id,
-		cm.CreateAt,
-		cm.UpdateAt,
-	); appErr != nil {
-		return appErr
+// Validate checks rehydrated enrollment state.
+func (cm *ClassMember) Validate() error {
+	const where = "ClassMember.Validate"
+	if cm == nil {
+		return invalidModelError(where, "class_member", "value", "is required", "")
+	}
+	if !cm.ID.IsValid() {
+		return invalidModelError(where, "class_member", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + cm.ID.String()
+	if cm.CreatedAt.IsZero() || cm.UpdatedAt.IsZero() {
+		return invalidModelError(where, "class_member", "created_at", "must be set", details)
+	}
+	if cm.UpdatedAt.Before(cm.CreatedAt) {
+		return invalidModelError(where, "class_member", "updated_at", "must not precede created_at", details)
 	}
 	if cm.Revision <= 0 {
-		return invalidModelError(where, "class_member", "revision", "must be positive", "id="+cm.Id)
+		return invalidModelError(where, "class_member", "revision", "must be positive", details)
 	}
-	details := "id=" + cm.Id
-	if !IsValidId(cm.ClassId) {
+	if !cm.ClassID.IsValid() {
 		return invalidModelError(where, "class_member", "class_id", "must be a valid identifier", details)
 	}
-	if !IsValidId(cm.AcademicPeriodId) {
-		return invalidModelError(
-			where,
-			"class_member",
-			"academic_period_id",
-			"must be a valid identifier",
-			details,
-		)
+	if !cm.AcademicPeriodID.IsValid() {
+		return invalidModelError(where, "class_member", "academic_period_id", "must be a valid identifier", details)
 	}
-	if !IsValidId(cm.UserId) {
+	if !cm.UserID.IsValid() {
 		return invalidModelError(where, "class_member", "user_id", "must be a valid identifier", details)
 	}
-	return validateEffectiveTimes(where, "class_member", details, cm.StartAt, cm.EndAt)
+	return validateEffectiveInterval(where, "class_member", details, cm.StartsAt, cm.EndsAt)
 }
 
-func (cm *ClassMember) IsActiveAt(now int64) bool {
-	return cm != nil && cm.DeleteAt == 0 && cm.StartAt <= now && (cm.EndAt == 0 || now < cm.EndAt)
+// IsActiveAt reports whether the enrollment covers the given instant.
+func (cm *ClassMember) IsActiveAt(now time.Time) bool {
+	if cm == nil || cm.IsArchived() {
+		return false
+	}
+	now = TimeUTC(now)
+	if cm.StartsAt.After(now) {
+		return false
+	}
+	if cm.EndsAt.Valid && !now.Before(cm.EndsAt.Time) {
+		return false
+	}
+	return true
 }
 
+// IsArchived reports soft archive state.
+func (cm *ClassMember) IsArchived() bool {
+	return cm != nil && cm.ArchivedAt.Valid
+}
+
+// End closes an open-ended enrollment at the exclusive end time.
+func (cm *ClassMember) End(at time.Time) error {
+	if cm == nil {
+		return fmt.Errorf("model: class member is nil")
+	}
+	at = TimeUTC(at)
+	if cm.EndsAt.Valid {
+		return fmt.Errorf("model: class member already ended")
+	}
+	cm.EndsAt = OptionalTimeFrom(at)
+	cm.UpdatedAt = at
+	cm.Revision++
+	return cm.Validate()
+}
+
+// Auditable returns a deliberately safe audit projection.
 func (cm *ClassMember) Auditable() map[string]any {
-	fields := auditFields(cm.Id, cm.CreateAt, cm.UpdateAt, cm.DeleteAt)
-	fields["revision"] = cm.Revision
-	fields["class_id"] = cm.ClassId
-	fields["academic_period_id"] = cm.AcademicPeriodId
-	fields["user_id"] = cm.UserId
-	fields["start_at"] = cm.StartAt
-	fields["end_at"] = cm.EndAt
-	return fields
+	if cm == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":                 cm.ID.String(),
+		"created_at":         MillisFromTime(cm.CreatedAt),
+		"updated_at":         MillisFromTime(cm.UpdatedAt),
+		"archived_at":        cm.ArchivedAt.Millis(),
+		"revision":           cm.Revision,
+		"class_id":           cm.ClassID.String(),
+		"academic_period_id": cm.AcademicPeriodID.String(),
+		"user_id":            cm.UserID.String(),
+		"start_at":           MillisFromTime(cm.StartsAt),
+		"end_at":             cm.EndsAt.Millis(),
+	}
 }
 
 var _ Auditable = (*ClassMember)(nil)

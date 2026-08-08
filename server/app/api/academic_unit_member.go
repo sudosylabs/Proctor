@@ -103,7 +103,16 @@ func academicUnitMemberResponseFromModel(member *model.AcademicUnitMember) acade
 	if member == nil {
 		return academicUnitMemberResponse{}
 	}
-	return academicUnitMemberResponse{ID: member.Id, CreateAt: member.CreateAt, UpdateAt: member.UpdateAt, DeleteAt: member.DeleteAt, AcademicUnitID: member.AcademicUnitId, UserID: member.UserId, StartAt: member.StartAt, EndAt: member.EndAt}
+	return academicUnitMemberResponse{
+		ID:             member.ID.String(),
+		CreateAt:       model.MillisFromTime(member.CreatedAt),
+		UpdateAt:       model.MillisFromTime(member.UpdatedAt),
+		DeleteAt:       member.ArchivedAt.Millis(),
+		AcademicUnitID: member.AcademicUnitID.String(),
+		UserID:         member.UserID.String(),
+		StartAt:        model.MillisFromTime(member.StartsAt),
+		EndAt:          member.EndsAt.Millis(),
+	}
 }
 
 func academicUnitMemberResponses(members []*model.AcademicUnitMember) []academicUnitMemberResponse {

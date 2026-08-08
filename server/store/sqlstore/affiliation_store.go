@@ -22,6 +22,8 @@ type SqlAffiliationStore struct {
 	query sq.SelectBuilder
 }
 
+// affiliationRow is the legacy integer-millisecond column layout. Domain
+// Affiliation uses time.Time / OptionalTime; conversion is at this boundary.
 type affiliationRow struct {
 	ID       string                `db:"id"`
 	CreateAt int64                 `db:"create_at"`
@@ -49,9 +51,12 @@ func (s SqlAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 	if input == nil || input.Affiliation == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "creation", nil)
 	}
+	if !input.Affiliation.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("affiliation", "id", input.Affiliation.ID.String())
+	}
 	candidate := *input.Affiliation
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("affiliation", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("affiliation", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -65,7 +70,7 @@ func (s SqlAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := lockAffiliationKind(ctx, tx, candidate.UserId, candidate.Kind); err != nil {
+	if err := lockAffiliationKind(ctx, tx, candidate.UserID.String(), candidate.Kind); err != nil {
 		return nil, err
 	}
 	if err := ensureAffiliationRangeAvailable(ctx, tx, &candidate); err != nil {
@@ -77,7 +82,7 @@ func (s SqlAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 	) VALUES (
 		:id, :create_at, :update_at, :delete_at, :revision, :user_id, :kind, :start_at, :end_at
 	)`, &row); err != nil {
-		return nil, fmt.Errorf("create affiliation: %w", translateError("affiliation", candidate.Id, err))
+		return nil, fmt.Errorf("create affiliation: %w", translateError("affiliation", candidate.ID.String(), err))
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 		return nil, fmt.Errorf("complete affiliation creation audit: %w", err)
@@ -98,13 +103,20 @@ func (s SqlAffiliationStore) Save(
 	ctx context.Context,
 	affiliation *model.Affiliation,
 ) (*model.Affiliation, error) {
-	if affiliation == nil || affiliation.Id != "" {
+	if affiliation == nil {
 		return nil, store.NewErrInvalidInput("affiliation", "value", nil)
 	}
+	if !affiliation.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("affiliation", "id", affiliation.ID.String())
+	}
+	id, err := model.ParseAffiliationID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
 	candidate := *affiliation
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(id, model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("affiliation", "value", nil).Wrap(err)
 	}
 	row := newAffiliationRow(&candidate)
 	tx, err := s.GetMaster().Begin(ctx)
@@ -115,7 +127,7 @@ func (s SqlAffiliationStore) Save(
 	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := lockAffiliationKind(ctx, tx, candidate.UserId, candidate.Kind); err != nil {
+	if err := lockAffiliationKind(ctx, tx, candidate.UserID.String(), candidate.Kind); err != nil {
 		return nil, err
 	}
 	if err := ensureAffiliationRangeAvailable(ctx, tx, &candidate); err != nil {
@@ -129,7 +141,7 @@ func (s SqlAffiliationStore) Save(
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"save affiliation: %w",
-			translateError("affiliation", candidate.Id, err),
+			translateError("affiliation", candidate.ID.String(), err),
 		)
 	}
 	if err := tx.Commit(); err != nil {
@@ -234,12 +246,14 @@ func (s SqlAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("affiliation", "affiliation_changed", nil)
 	}
-	if endAt <= current.StartAt || (current.EndAt != 0 && endAt >= current.EndAt) {
+	startMillis := model.MillisFromTime(current.StartsAt)
+	endMillis := current.EndsAt.Millis()
+	if endAt <= startMillis || (endMillis != 0 && endAt >= endMillis) {
 		return nil, store.NewErrConflict("affiliation", "affiliation_end_time", nil)
 	}
 	if current.Kind == model.AffiliationStudent {
 		var activeEnrollment bool
-		if err := tx.Get(ctx, &activeEnrollment, `SELECT EXISTS (SELECT 1 FROM class_members WHERE user_id = ? AND delete_at = 0 AND end_at = 0)`, current.UserId); err != nil {
+		if err := tx.Get(ctx, &activeEnrollment, `SELECT EXISTS (SELECT 1 FROM class_members WHERE user_id = ? AND delete_at = 0 AND end_at = 0)`, current.UserID.String()); err != nil {
 			return nil, fmt.Errorf("check affiliation enrollment dependencies: %w", err)
 		}
 		if activeEnrollment {
@@ -253,7 +267,10 @@ func (s SqlAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 	if err := requireAffected(result, "affiliation", id); err != nil {
 		return nil, err
 	}
-	current.UpdateAt, current.EndAt, current.Revision = endAt, endAt, expectedRevision+1
+	at := model.TimeFromMillis(endAt)
+	current.UpdatedAt = at
+	current.EndsAt = model.OptionalTimeFromMillis(endAt)
+	current.Revision = expectedRevision + 1
 	return current, nil
 }
 
@@ -272,11 +289,13 @@ func lockAffiliationKind(ctx context.Context, executor sqlxExecutor, userID stri
 }
 
 func ensureAffiliationRangeAvailable(ctx context.Context, executor sqlxExecutor, candidate *model.Affiliation) error {
+	startAt := model.MillisFromTime(candidate.StartsAt)
+	endAt := candidate.EndsAt.Millis()
 	var overlaps bool
 	if err := executor.Get(ctx, &overlaps, `SELECT EXISTS (
 		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND delete_at = 0
 		 AND (end_at = 0 OR end_at > ?) AND (? = 0 OR start_at < ?)
-	)`, candidate.UserId, candidate.Kind, candidate.StartAt, candidate.EndAt, candidate.EndAt); err != nil {
+	)`, candidate.UserID.String(), candidate.Kind, startAt, endAt, endAt); err != nil {
 		return fmt.Errorf("check affiliation overlap: %w", err)
 	}
 	if overlaps {
@@ -302,19 +321,37 @@ func (s SqlAffiliationStore) selectAffiliations(
 
 func newAffiliationRow(a *model.Affiliation) affiliationRow {
 	return affiliationRow{
-		ID: a.Id, CreateAt: a.CreateAt, UpdateAt: a.UpdateAt,
-		DeleteAt: a.DeleteAt, UserID: a.UserId, Kind: a.Kind,
+		ID:       a.ID.String(),
+		CreateAt: model.MillisFromTime(a.CreatedAt),
+		UpdateAt: model.MillisFromTime(a.UpdatedAt),
+		DeleteAt: a.ArchivedAt.Millis(),
+		UserID:   a.UserID.String(),
+		Kind:     a.Kind,
 		Revision: a.Revision,
-		StartAt:  a.StartAt, EndAt: a.EndAt,
+		StartAt:  model.MillisFromTime(a.StartsAt),
+		EndAt:    a.EndsAt.Millis(),
 	}
 }
 
 func (r affiliationRow) model() *model.Affiliation {
+	id, err := model.ParseAffiliationID(r.ID)
+	if err != nil {
+		id = model.AffiliationID(r.ID)
+	}
+	userID, err := model.ParseUserID(r.UserID)
+	if err != nil {
+		userID = model.UserID(r.UserID)
+	}
 	return &model.Affiliation{
-		Id: r.ID, CreateAt: r.CreateAt, UpdateAt: r.UpdateAt,
-		DeleteAt: r.DeleteAt, UserId: r.UserID, Kind: r.Kind,
-		Revision: r.Revision,
-		StartAt:  r.StartAt, EndAt: r.EndAt,
+		ID:        id,
+		CreatedAt: model.TimeFromMillis(r.CreateAt),
+		UpdatedAt: model.TimeFromMillis(r.UpdateAt),
+		ArchivedAt: model.OptionalTimeFromMillis(r.DeleteAt),
+		UserID:    userID,
+		Kind:      r.Kind,
+		Revision:  r.Revision,
+		StartsAt:  model.TimeFromMillis(r.StartAt),
+		EndsAt:    model.OptionalTimeFromMillis(r.EndAt),
 	}
 }
 

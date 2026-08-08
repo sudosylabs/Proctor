@@ -103,22 +103,32 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	unrelated := createIntegrationUser(t, helper, "student-unrelated", password)
 	disabled := createIntegrationUser(t, helper, "disabled-user", password)
 
-	createIntegrationResource[model.Affiliation](
+	createIntegrationResource[map[string]any](
 		t, handler, http.MethodPost, "/api/v1/users/"+student.Id+"/affiliations",
 		map[string]any{"kind": model.AffiliationStudent, "start_at": now - 10_000},
 		adminToken,
 	)
-	createIntegrationResource[model.Affiliation](
+	createIntegrationResource[map[string]any](
 		t, handler, http.MethodPost, "/api/v1/users/"+teacher.Id+"/affiliations",
 		map[string]any{"kind": model.AffiliationTeacher, "start_at": now - 10_000},
 		adminToken,
 	)
-	unitMember := createIntegrationResource[model.AcademicUnitMember](
-		t, handler, http.MethodPost, "/api/v1/academic-units/"+ child.ID.String()+"/members",
+	// Membership wire DTOs keep millis fields; decode into local shapes rather than domain models.
+	type membershipWire struct {
+		ID     string `json:"id"`
+		UserID string `json:"user_id"`
+		EndAt  int64  `json:"end_at"`
+	}
+	type enrollmentWire struct {
+		Membership membershipWire  `json:"membership"`
+		Previous   *membershipWire `json:"previous,omitempty"`
+	}
+	unitMember := createIntegrationResource[membershipWire](
+		t, handler, http.MethodPost, "/api/v1/academic-units/"+child.ID.String()+"/members",
 		map[string]any{"user_id": teacher.Id, "start_at": now - 10_000},
 		adminToken,
 	)
-	firstEnrollment := createIntegrationResource[model.ClassEnrollment](
+	firstEnrollment := createIntegrationResource[enrollmentWire](
 		t, handler, http.MethodPost, "/api/v1/classes/"+firstClass.ID.String()+"/members",
 		map[string]any{"user_id": student.Id, "start_at": now - 5_000},
 		adminToken,
@@ -126,13 +136,13 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	if firstEnrollment.Previous != nil {
 		t.Fatalf("first enrollment = %#v", firstEnrollment)
 	}
-	transfer := createIntegrationResource[model.ClassEnrollment](
+	transfer := createIntegrationResource[enrollmentWire](
 		t, handler, http.MethodPost, "/api/v1/classes/"+secondClass.ID.String()+"/members",
 		map[string]any{"user_id": student.Id, "start_at": now - 1_000},
 		adminToken,
 	)
 	if transfer.Previous == nil ||
-		transfer.Previous.Id != firstEnrollment.Membership.Id ||
+		transfer.Previous.ID != firstEnrollment.Membership.ID ||
 		transfer.Previous.EndAt != now-1_000 {
 		t.Fatalf("transfer = %#v", transfer)
 	}
@@ -215,7 +225,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	endUnitMembership := performJSONRequest(
 		handler,
 		http.MethodDelete,
-		"/api/v1/academic-unit-members/"+unitMember.Id,
+		"/api/v1/academic-unit-members/"+unitMember.ID,
 		nil,
 		adminToken,
 	)
@@ -250,9 +260,9 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	if activeMembers.Code != http.StatusOK {
 		t.Fatalf("active class members = %d: %s", activeMembers.Code, activeMembers.Body.String())
 	}
-	var members []*model.ClassMember
+	var members []membershipWire
 	decodeIntegrationResponse(t, activeMembers, &members)
-	if len(members) != 1 || members[0].UserId != student.Id {
+	if len(members) != 1 || members[0].UserID != student.Id {
 		t.Fatalf("active class members = %#v", members)
 	}
 

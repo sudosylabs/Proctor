@@ -110,7 +110,17 @@ func classMemberResponseFromModel(member *model.ClassMember) classMemberResponse
 	if member == nil {
 		return classMemberResponse{}
 	}
-	return classMemberResponse{ID: member.Id, CreateAt: member.CreateAt, UpdateAt: member.UpdateAt, DeleteAt: member.DeleteAt, ClassID: member.ClassId, AcademicPeriodID: member.AcademicPeriodId, UserID: member.UserId, StartAt: member.StartAt, EndAt: member.EndAt}
+	return classMemberResponse{
+		ID:               member.ID.String(),
+		CreateAt:         model.MillisFromTime(member.CreatedAt),
+		UpdateAt:         model.MillisFromTime(member.UpdatedAt),
+		DeleteAt:         member.ArchivedAt.Millis(),
+		ClassID:          member.ClassID.String(),
+		AcademicPeriodID: member.AcademicPeriodID.String(),
+		UserID:           member.UserID.String(),
+		StartAt:          model.MillisFromTime(member.StartsAt),
+		EndAt:            member.EndsAt.Millis(),
+	}
 }
 
 func classMemberResponses(members []*model.ClassMember) []classMemberResponse {

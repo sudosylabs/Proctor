@@ -50,7 +50,11 @@ func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
 	classID, userID := model.NewId(), model.NewId()
-	member := &model.ClassMember{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 1, ClassId: classID, AcademicPeriodId: model.NewId(), UserId: userID, StartAt: 100}
+	member := &model.ClassMember{
+		ID: model.NewClassMemberID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Revision: 1, ClassID: model.ClassID(classID), AcademicPeriodID: model.NewAcademicPeriodID(),
+		UserID: model.UserID(userID), StartsAt: model.TimeFromMillis(100),
+	}
 	classMembers := &classMemberHTTPApplication{result: &model.ClassEnrollment{Membership: member}}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: classMembers, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})

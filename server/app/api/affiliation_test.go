@@ -45,7 +45,10 @@ func TestAffiliationHTTPUsesDTOAndRouteOwnedUser(t *testing.T) {
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
 	userID := model.NewId()
-	created := &model.Affiliation{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 1, UserId: userID, Kind: model.AffiliationTeacher, StartAt: 100}
+	created := &model.Affiliation{
+		ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Revision: 1, UserID: model.UserID(userID), Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(100),
+	}
 	affiliations := &affiliationHTTPApplication{result: created}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: affiliations, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})

@@ -37,7 +37,8 @@ func (s *academicUnitMemberStoreFake) EndWithAudit(_ context.Context, input *sto
 	*s.events = append(*s.events, "store-end")
 	s.endInput = input
 	ended := *s.current
-	ended.EndAt, ended.Revision = input.EndAt, input.ExpectedRevision+1
+	ended.EndsAt = model.OptionalTimeFromMillis(input.EndAt)
+	ended.Revision = input.ExpectedRevision + 1
 	return &ended, nil
 }
 
@@ -51,7 +52,7 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.AcademicUnitId != unitID || created.UserId != userID || created.EndAt != 0 || persistence.createInput.Member.EndAt != 0 {
+	if created.AcademicUnitID.String() != unitID || created.UserID.String() != userID || created.EndsAt.Valid || persistence.createInput.Member.EndsAt.Valid {
 		t.Fatalf("created = %#v", created)
 	}
 	want := []string{"authorize", "audit-begin", "store-create"}
@@ -63,10 +64,14 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.AcademicUnitMember{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 3, AcademicUnitId: model.NewId(), UserId: model.NewId(), StartAt: 100}
+	current := &model.AcademicUnitMember{
+		ID: model.NewAcademicUnitMemberID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Revision: 3, AcademicUnitID: model.AcademicUnitID(model.NewId()), UserID: model.UserID(model.NewId()),
+		StartsAt: model.TimeFromMillis(100),
+	}
 	persistence := &academicUnitMemberStoreFake{events: &events, current: current}
 	service := newAcademicUnitMemberService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	ended, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.Id})
+	ended, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID.String()})
 	if err != nil {
 		t.Fatal(err)
 	}

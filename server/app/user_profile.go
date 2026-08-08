@@ -193,7 +193,7 @@ func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation 
 		return userProfileError(err)
 	}
 	for _, membership := range memberships {
-		resource := model.Resource{Type: model.ResourceClass, Id: membership.ClassId}
+		resource := model.Resource{Type: model.ResourceClass, Id: membership.ClassID.String()}
 		allowed, appErr = a.authorization.Can(ctx, principal, model.ActionClassMembersView, resource)
 		if appErr != nil {
 			return appErr

@@ -79,17 +79,34 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	if err != nil {
 		return nil, err
 	}
-	candidate := &model.AcademicUnitMember{AcademicUnitId: resource.Id, UserId: strings.TrimSpace(command.UserID), StartAt: command.StartAt}
-	at := s.now().UnixMilli()
-	candidate.PrepareCreate(s.newID(), at)
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("academic_unit_member.invalid", appErr)
+	unitID, err := model.ParseAcademicUnitID(resource.Id)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
+	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "user_id").Wrap(err)
+	}
+	memberID, err := model.ParseAcademicUnitMemberID(s.newID())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "academic_unit_member_id").Wrap(err)
+	}
+	candidate := &model.AcademicUnitMember{
+		AcademicUnitID: unitID,
+		UserID:         userID,
+		StartsAt:       model.TimeFromMillis(command.StartAt),
+	}
+	at := s.now()
+	candidate.PrepareCreate(memberID, at)
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("academic_unit_member.invalid", err)
+	}
+	auditAt := model.MillisFromTime(at)
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create_member", candidate.Auditable(), nil)
 	if err != nil {
 		return nil, err
 	}
-	saved, err := s.store.Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: auditID, AuditAt: at})
+	saved, err := s.store.Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: auditID, AuditAt: auditAt})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}
@@ -109,7 +126,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if err != nil {
 		return nil, academicUnitMemberError(err)
 	}
-	resource, err := s.authorizeUnit(ctx, invocation, current.AcademicUnitId)
+	resource, err := s.authorizeUnit(ctx, invocation, current.AcademicUnitID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -117,8 +134,9 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if err != nil {
 		return nil, err
 	}
-	at := s.now().UnixMilli()
-	ended, err := s.store.EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: id, ExpectedRevision: current.Revision, EndAt: at, AuditEventID: auditID, AuditAt: at})
+	at := s.now()
+	auditAt := model.MillisFromTime(at)
+	ended, err := s.store.EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: id, ExpectedRevision: current.Revision, EndAt: auditAt, AuditEventID: auditID, AuditAt: auditAt})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}

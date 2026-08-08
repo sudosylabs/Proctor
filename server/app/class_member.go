@@ -90,17 +90,36 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if err != nil {
 		return nil, classMemberError(err)
 	}
-	at := s.now().UnixMilli()
-	candidate := &model.ClassMember{ClassId: classID, AcademicPeriodId: class.AcademicPeriodID.String(), UserId: strings.TrimSpace(command.UserID), StartAt: command.StartAt, EndAt: command.EndAt}
-	candidate.PrepareCreate(s.newID(), at)
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("class_member.invalid", appErr)
+	parsedClassID, err := model.ParseClassID(classID)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "class_id").Wrap(err)
 	}
+	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "user_id").Wrap(err)
+	}
+	memberID, err := model.ParseClassMemberID(s.newID())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "class_member_id").Wrap(err)
+	}
+	at := s.now()
+	candidate := &model.ClassMember{
+		ClassID:          parsedClassID,
+		AcademicPeriodID: class.AcademicPeriodID,
+		UserID:           userID,
+		StartsAt:         model.TimeFromMillis(command.StartAt),
+		EndsAt:           model.OptionalTimeFromMillis(command.EndAt),
+	}
+	candidate.PrepareCreate(memberID, at)
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("class_member.invalid", err)
+	}
+	auditAt := model.MillisFromTime(at)
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionClassMembersManage, resource, "enroll", candidate.Auditable(), nil)
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: candidate, AuditEventID: auditID, AuditAt: at})
+	result, err := s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: candidate, AuditEventID: auditID, AuditAt: auditAt})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}
@@ -120,7 +139,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, classMemberError(err)
 	}
-	resource, err := s.authorizeClass(ctx, invocation, current.ClassId, model.ActionClassMembersManage)
+	resource, err := s.authorizeClass(ctx, invocation, current.ClassID.String(), model.ActionClassMembersManage)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +147,9 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, err
 	}
-	at := s.now().UnixMilli()
-	ended, err := s.store.EndWithAudit(ctx, &store.ClassMemberEnd{ID: id, ExpectedRevision: current.Revision, EndAt: at, AuditEventID: auditID, AuditAt: at})
+	at := s.now()
+	auditAt := model.MillisFromTime(at)
+	ended, err := s.store.EndWithAudit(ctx, &store.ClassMemberEnd{ID: id, ExpectedRevision: current.Revision, EndAt: auditAt, AuditEventID: auditID, AuditAt: auditAt})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}

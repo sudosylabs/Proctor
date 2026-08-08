@@ -85,17 +85,31 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 	if err != nil {
 		return nil, err
 	}
-	candidate := &model.Affiliation{UserId: resource.Id, Kind: command.Kind, StartAt: command.StartAt, EndAt: command.EndAt}
-	at := s.now().UnixMilli()
-	candidate.PrepareCreate(s.newID(), at)
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("affiliation.invalid", appErr)
+	userID, err := model.ParseUserID(resource.Id)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
+	affiliationID, err := model.ParseAffiliationID(s.newID())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "affiliation_id").Wrap(err)
+	}
+	candidate := &model.Affiliation{
+		UserID:   userID,
+		Kind:     command.Kind,
+		StartsAt: model.TimeFromMillis(command.StartAt),
+		EndsAt:   model.OptionalTimeFromMillis(command.EndAt),
+	}
+	at := s.now()
+	candidate.PrepareCreate(affiliationID, at)
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("affiliation.invalid", err)
+	}
+	auditAt := model.MillisFromTime(at)
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
 		return nil, err
 	}
-	saved, err := s.store.Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: auditID, AuditAt: at})
+	saved, err := s.store.Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: auditID, AuditAt: auditAt})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}
@@ -115,17 +129,18 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, affiliationError(err)
 	}
-	resource, err := s.authorizeUser(ctx, invocation, current.UserId)
+	resource, err := s.authorizeUser(ctx, invocation, current.UserID.String())
 	if err != nil {
 		return nil, err
 	}
 	if current.Kind == model.AffiliationStudent {
-		enrollments, err := s.enrollments.ListByUser(ctx, current.UserId)
+		enrollments, err := s.enrollments.ListByUser(ctx, current.UserID.String())
 		if err != nil {
 			return nil, affiliationError(err)
 		}
 		for _, enrollment := range enrollments {
-			if enrollment.EndAt == 0 {
+			// Open-ended enrollment (EndsAt absent) blocks ending a student affiliation.
+			if enrollment != nil && !enrollment.EndsAt.Valid {
 				return nil, NewError("affiliation.student_has_active_enrollment")
 			}
 		}
@@ -134,8 +149,9 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, err
 	}
-	at := s.now().UnixMilli()
-	ended, err := s.store.EndWithAudit(ctx, &store.AffiliationEnd{ID: id, ExpectedRevision: current.Revision, EndAt: at, AuditEventID: auditID, AuditAt: at})
+	at := s.now()
+	auditAt := model.MillisFromTime(at)
+	ended, err := s.store.EndWithAudit(ctx, &store.AffiliationEnd{ID: id, ExpectedRevision: current.Revision, EndAt: auditAt, AuditEventID: auditID, AuditAt: auditAt})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}

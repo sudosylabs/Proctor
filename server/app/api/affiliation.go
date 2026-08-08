@@ -99,7 +99,16 @@ func affiliationResponseFromModel(value *model.Affiliation) affiliationResponse 
 	if value == nil {
 		return affiliationResponse{}
 	}
-	return affiliationResponse{ID: value.Id, CreateAt: value.CreateAt, UpdateAt: value.UpdateAt, DeleteAt: value.DeleteAt, UserID: value.UserId, Kind: value.Kind, StartAt: value.StartAt, EndAt: value.EndAt}
+	return affiliationResponse{
+		ID:       value.ID.String(),
+		CreateAt: model.MillisFromTime(value.CreatedAt),
+		UpdateAt: model.MillisFromTime(value.UpdatedAt),
+		DeleteAt: value.ArchivedAt.Millis(),
+		UserID:   value.UserID.String(),
+		Kind:     value.Kind,
+		StartAt:  model.MillisFromTime(value.StartsAt),
+		EndAt:    value.EndsAt.Millis(),
+	}
 }
 
 func affiliationResponses(values []*model.Affiliation) []affiliationResponse {

@@ -176,9 +176,9 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitId: root.ID.String(),
-		UserId:         user.Id,
-		StartAt:        model.GetMillis() - 1_000,
+		AcademicUnitID: root.ID,
+		UserID:         model.UserID(user.Id),
+		StartsAt:       model.TimeFromMillis(model.GetMillis() - 1_000),
 	}); err != nil {
 		t.Fatal(err)
 	}

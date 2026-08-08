@@ -3,6 +3,11 @@
 
 package model
 
+import (
+	"fmt"
+	"time"
+)
+
 // AffiliationKind describes a person's institution-wide relationship. It does
 // not grant permissions and is deliberately non-exclusive.
 type AffiliationKind string
@@ -18,57 +23,75 @@ const (
 // institution. A person may simultaneously be both a student and a teacher, or
 // retain historical affiliations after either relationship ends.
 type Affiliation struct {
-	Id       string          `json:"id"`
-	CreateAt int64           `json:"create_at"`
-	UpdateAt int64           `json:"update_at"`
-	DeleteAt int64           `json:"delete_at"`
-	Revision int64           `json:"revision"`
-	UserId   string          `json:"user_id"`
-	Kind     AffiliationKind `json:"kind"`
-	StartAt  int64           `json:"start_at"`
-	EndAt    int64           `json:"end_at,omitempty"`
+	ID        AffiliationID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ArchivedAt OptionalTime
+	Revision  int64
+	UserID    UserID
+	Kind      AffiliationKind
+	StartsAt  time.Time
+	EndsAt    OptionalTime // absent means open-ended
 }
 
-func (a *Affiliation) PrepareCreate(id string, at int64) {
-	a.Id, a.CreateAt, a.UpdateAt, a.DeleteAt, a.Revision = id, at, at, 0, 1
-	if a.StartAt == 0 {
-		a.StartAt = at
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (a *Affiliation) PrepareCreate(id AffiliationID, at time.Time) {
+	if a == nil {
+		return
 	}
-}
-
-func (a *Affiliation) PreSave() {
-	preSaveMembership(&a.Id, &a.CreateAt, &a.UpdateAt, &a.StartAt)
-	if a.Revision == 0 {
+	a.ID = id
+	at = TimeUTC(at)
+	a.CreatedAt = at
+	a.UpdatedAt = at
+	a.ArchivedAt = OptionalTime{}
+	if a.Revision <= 0 {
 		a.Revision = 1
 	}
+	if a.StartsAt.IsZero() {
+		a.StartsAt = at
+	} else {
+		a.StartsAt = TimeUTC(a.StartsAt)
+	}
 }
 
-func (a *Affiliation) PreUpdate() {
-	preUpdate(&a.UpdateAt)
+// PrepareUpdate applies the application-selected transition time.
+func (a *Affiliation) PrepareUpdate(at time.Time) {
+	if a == nil {
+		return
+	}
+	a.UpdatedAt = TimeUTC(at)
+	if a.Revision <= 0 {
+		a.Revision = 1
+	}
+	a.Revision++
 }
 
-func (a *Affiliation) IsValid() error {
-	const where = "Affiliation.IsValid"
-	if appErr := validatePersistentFields(
-		where,
-		"affiliation",
-		a.Id,
-		a.CreateAt,
-		a.UpdateAt,
-	); appErr != nil {
-		return appErr
+// Validate checks rehydrated affiliation state.
+func (a *Affiliation) Validate() error {
+	const where = "Affiliation.Validate"
+	if a == nil {
+		return invalidModelError(where, "affiliation", "value", "is required", "")
+	}
+	if !a.ID.IsValid() {
+		return invalidModelError(where, "affiliation", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + a.ID.String()
+	if a.CreatedAt.IsZero() || a.UpdatedAt.IsZero() {
+		return invalidModelError(where, "affiliation", "created_at", "must be set", details)
+	}
+	if a.UpdatedAt.Before(a.CreatedAt) {
+		return invalidModelError(where, "affiliation", "updated_at", "must not precede created_at", details)
 	}
 	if a.Revision <= 0 {
-		return invalidModelError(where, "affiliation", "revision", "must be positive", "id="+a.Id)
+		return invalidModelError(where, "affiliation", "revision", "must be positive", details)
 	}
-	details := "id=" + a.Id
-	if !IsValidId(a.UserId) {
+	if !a.UserID.IsValid() {
 		return invalidModelError(where, "affiliation", "user_id", "must be a valid identifier", details)
 	}
 	if !a.Kind.IsValid() {
 		return invalidModelError(where, "affiliation", "kind", "has an unknown value", details)
 	}
-	return validateEffectiveTimes(where, "affiliation", details, a.StartAt, a.EndAt)
+	return validateEffectiveInterval(where, "affiliation", details, a.StartsAt, a.EndsAt)
 }
 
 func (k AffiliationKind) IsValid() bool {
@@ -80,20 +103,55 @@ func (k AffiliationKind) IsValid() bool {
 	}
 }
 
-func (a *Affiliation) IsActiveAt(now int64) bool {
-	return a != nil && a.DeleteAt == 0 && a.StartAt <= now && (a.EndAt == 0 || now < a.EndAt)
+// IsActiveAt reports whether the affiliation covers the given instant.
+func (a *Affiliation) IsActiveAt(now time.Time) bool {
+	if a == nil || a.IsArchived() {
+		return false
+	}
+	now = TimeUTC(now)
+	if a.StartsAt.After(now) {
+		return false
+	}
+	if a.EndsAt.Valid && !now.Before(a.EndsAt.Time) {
+		return false
+	}
+	return true
 }
 
+// IsArchived reports soft archive state.
+func (a *Affiliation) IsArchived() bool {
+	return a != nil && a.ArchivedAt.Valid
+}
+
+// Auditable returns a deliberately safe audit projection.
 func (a *Affiliation) Auditable() map[string]any {
-	fields := auditFields(a.Id, a.CreateAt, a.UpdateAt, a.DeleteAt)
-	fields["revision"] = a.Revision
-	fields["user_id"] = a.UserId
-	fields["kind"] = a.Kind
-	fields["start_at"] = a.StartAt
-	fields["end_at"] = a.EndAt
-	return fields
+	if a == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":          a.ID.String(),
+		"created_at":  MillisFromTime(a.CreatedAt),
+		"updated_at":  MillisFromTime(a.UpdatedAt),
+		"archived_at": a.ArchivedAt.Millis(),
+		"revision":    a.Revision,
+		"user_id":     a.UserID.String(),
+		"kind":        a.Kind,
+		"start_at":    MillisFromTime(a.StartsAt),
+		"end_at":      a.EndsAt.Millis(),
+	}
 }
 
+func validateEffectiveInterval(where, modelName, details string, startsAt time.Time, endsAt OptionalTime) error {
+	if startsAt.IsZero() {
+		return invalidModelError(where, modelName, "start_at", "must be set", details)
+	}
+	if endsAt.Valid && !endsAt.Time.After(startsAt) {
+		return invalidModelError(where, modelName, "end_at", "must be after start_at", details)
+	}
+	return nil
+}
+
+// Keep preSaveMembership for unmigrated membership-adjacent types until they migrate.
 func preSaveMembership(id *string, createAt, updateAt, startAt *int64) {
 	preSave(id, createAt, updateAt)
 	if *startAt == 0 {
@@ -112,3 +170,18 @@ func validateEffectiveTimes(where, modelName, details string, startAt, endAt int
 }
 
 var _ Auditable = (*Affiliation)(nil)
+
+// End closes an open-ended affiliation at the given exclusive end time.
+func (a *Affiliation) End(at time.Time) error {
+	if a == nil {
+		return fmt.Errorf("model: affiliation is nil")
+	}
+	at = TimeUTC(at)
+	if a.EndsAt.Valid {
+		return fmt.Errorf("model: affiliation already ended")
+	}
+	a.EndsAt = OptionalTimeFrom(at)
+	a.UpdatedAt = at
+	a.Revision++
+	return a.Validate()
+}

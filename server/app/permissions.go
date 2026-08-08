@@ -153,7 +153,7 @@ func (a *App) PrincipalHasPermissionToAffiliationForRequest(
 		)
 	}
 	return a.PrincipalHasPermissionToUserForRequest(
-		ctx, principal, affiliation.UserId, model.ActionUserManage, metadata,
+		ctx, principal, affiliation.UserID.String(), model.ActionUserManage, metadata,
 	)
 }
 
@@ -172,7 +172,7 @@ func (a *App) PrincipalHasPermissionToAcademicUnitMemberForRequest(
 		)
 	}
 	return a.PrincipalHasPermissionToAcademicUnitForRequest(
-		ctx, principal, member.AcademicUnitId, model.ActionAcademicUnitManage, metadata,
+		ctx, principal, member.AcademicUnitID.String(), model.ActionAcademicUnitManage, metadata,
 	)
 }
 
@@ -483,7 +483,7 @@ func (a *App) userVisibilityPermission(
 		)
 	}
 	for _, membership := range memberships {
-		classResource := model.Resource{Type: model.ResourceClass, Id: membership.ClassId}
+		classResource := model.Resource{Type: model.ResourceClass, Id: membership.ClassID.String()}
 		allowed, appErr = a.PrincipalHasPermissionTo(
 			ctx, principal, model.ActionClassMembersView, classResource,
 		)

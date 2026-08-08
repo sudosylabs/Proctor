@@ -42,17 +42,21 @@ func (s *affiliationStoreFake) EndWithAudit(_ context.Context, input *store.Affi
 		return nil, s.endErr
 	}
 	ended := *s.current
-	ended.EndAt, ended.Revision = input.EndAt, input.ExpectedRevision+1
+	ended.EndsAt = model.OptionalTimeFromMillis(input.EndAt)
+	ended.Revision = input.ExpectedRevision + 1
 	return &ended, nil
 }
 
 func TestAffiliationEndFutureRangePreservesRejection(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.Affiliation{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 2, UserId: model.NewId(), Kind: model.AffiliationTeacher, StartAt: 1_000}
+	current := &model.Affiliation{
+		ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Revision: 2, UserID: model.UserID(model.NewId()), Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(1_000),
+	}
 	persistence := &affiliationStoreFake{events: &events, current: current, endErr: store.NewErrConflict("affiliation", "affiliation_end_time", nil)}
 	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	_, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.Id})
+	_, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID.String()})
 	failure, ok := As(err)
 	if !ok || failure.Code() != "resource.not_found" || failure.Fields()["resource"] != "affiliation" {
 		t.Fatalf("End() error = %#v", err)
@@ -83,7 +87,7 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if created.Kind != kind || persistence.createInput.Affiliation.UserId != userID {
+		if created.Kind != kind || persistence.createInput.Affiliation.UserID.String() != userID {
 			t.Fatalf("created = %#v", created)
 		}
 	}
@@ -96,9 +100,19 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.Affiliation{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 3, UserId: model.NewId(), Kind: model.AffiliationStudent, StartAt: 100}
-	service := newAffiliationService(&affiliationStoreFake{events: &events, current: current}, &affiliationEnrollmentFake{events: &events, values: []*model.ClassMember{{EndAt: 0}}}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
-	_, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.Id})
+	current := &model.Affiliation{
+		ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Revision: 3, UserID: model.UserID(model.NewId()), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(100),
+	}
+	service := newAffiliationService(
+		&affiliationStoreFake{events: &events, current: current},
+		&affiliationEnrollmentFake{events: &events, values: []*model.ClassMember{{}}}, // open-ended EndsAt
+		&programmeAuthorizerFake{events: &events},
+		&institutionAuditorFake{events: &events},
+		time.Now,
+		model.NewId,
+	)
+	_, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID.String()})
 	if !Is(err, "affiliation.student_has_active_enrollment") {
 		t.Fatalf("End() error = %v", err)
 	}
@@ -111,10 +125,13 @@ func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 func TestAffiliationEndCarriesExpectedRevision(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.Affiliation{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 4, UserId: model.NewId(), Kind: model.AffiliationTeacher, StartAt: 100}
+	current := &model.Affiliation{
+		ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Revision: 4, UserID: model.UserID(model.NewId()), Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(100),
+	}
 	persistence := &affiliationStoreFake{events: &events, current: current}
 	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	ended, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.Id})
+	ended, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID.String()})
 	if err != nil {
 		t.Fatal(err)
 	}
