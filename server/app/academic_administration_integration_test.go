@@ -68,7 +68,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		adminToken,
 	)
 	level := createIntegrationResource[model.ProgrammeLevel](
-		t, handler, http.MethodPost, "/api/v1/programmes/"+programme.Id+"/levels",
+		t, handler, http.MethodPost, "/api/v1/programmes/"+programme.ID.String()+"/levels",
 		map[string]any{"name": "year-1", "display_name": "Year 1"},
 		adminToken,
 	)
@@ -82,7 +82,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		adminToken,
 	)
 	firstClass := createIntegrationResource[model.Class](
-		t, handler, http.MethodPost, "/api/v1/programme-levels/"+level.Id+"/classes",
+		t, handler, http.MethodPost, "/api/v1/programme-levels/"+level.ID.String()+"/classes",
 		map[string]any{
 			"academic_period_id": period.Id,
 			"name":               "class-a", "display_name": "Class A",
@@ -90,7 +90,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		adminToken,
 	)
 	secondClass := createIntegrationResource[model.Class](
-		t, handler, http.MethodPost, "/api/v1/programme-levels/"+level.Id+"/classes",
+		t, handler, http.MethodPost, "/api/v1/programme-levels/"+level.ID.String()+"/classes",
 		map[string]any{
 			"academic_period_id": period.Id,
 			"name":               "class-b", "display_name": "Class B",

@@ -55,7 +55,7 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli(),
 	}
-	programme := &model.Programme{Id: model.NewId(), AcademicUnitId: model.NewId(), Name: "computer-science", DisplayName: "Computer Science"}
+	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId()), Name: "computer-science", DisplayName: "Computer Science"}
 	programmes := &programmeHTTPApplication{result: programme}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{
@@ -74,7 +74,7 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = httpAPI.Close() })
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/academic-units/"+programme.AcademicUnitId+"/programmes", strings.NewReader(`{"id":"ignored","academic_unit_id":"ignored","name":"computer-science","display_name":"Computer Science"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/academic-units/"+programme.AcademicUnitID.String()+"/programmes", strings.NewReader(`{"id":"ignored","academic_unit_id":"ignored","name":"computer-science","display_name":"Computer Science"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -82,14 +82,14 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if programmes.createCommand.AcademicUnitID != programme.AcademicUnitId || programmes.createCommand.Name != programme.Name {
+	if programmes.createCommand.AcademicUnitID != programme.AcademicUnitID.String() || programmes.createCommand.Name != programme.Name {
 		t.Fatalf("create command = %#v", programmes.createCommand)
 	}
 	var body programmeResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.ID != programme.Id || body.AcademicUnitID != programme.AcademicUnitId {
+	if body.ID != programme.ID.String() || body.AcademicUnitID != programme.AcademicUnitID.String() {
 		t.Fatalf("response = %#v", body)
 	}
 }

@@ -162,8 +162,13 @@ func programmeResponseFromModel(programme *model.Programme) programmeResponse {
 		return programmeResponse{}
 	}
 	return programmeResponse{
-		ID: programme.Id, CreateAt: programme.CreateAt, UpdateAt: programme.UpdateAt,
-		DeleteAt: programme.DeleteAt, AcademicUnitID: programme.AcademicUnitId,
-		Name: programme.Name, DisplayName: programme.DisplayName, Description: programme.Description,
+		ID:             programme.ID.String(),
+		CreateAt:       model.MillisFromTime(programme.CreatedAt),
+		UpdateAt:       model.MillisFromTime(programme.UpdatedAt),
+		DeleteAt:       programme.ArchivedAt.Millis(),
+		AcademicUnitID: programme.AcademicUnitID.String(),
+		Name:           programme.Name,
+		DisplayName:    programme.DisplayName,
+		Description:    programme.Description,
 	}
 }

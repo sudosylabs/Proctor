@@ -28,11 +28,11 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
+	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: "year-1", DisplayName: "Year 1"})
+	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelId: level.Id, AcademicPeriodId: period.Id, Name: "class-a", DisplayName: "Class A"})
+			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelId: level.ID.String(), AcademicPeriodId: period.Id, Name: "class-a", DisplayName: "Class A"})
 		}()
 		close(start)
 		wait.Wait()

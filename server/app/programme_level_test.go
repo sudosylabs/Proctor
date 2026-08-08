@@ -84,10 +84,10 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 	t.Parallel()
 	events := []string{}
 	unitID, programmeID, levelID, auditID := model.NewId(), model.NewId(), model.NewId(), model.NewId()
-	created := &model.ProgrammeLevel{Id: levelID, ProgrammeId: programmeID}
+	created := &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}
 	persistence := &programmeLevelStoreFake{events: &events, created: created}
 	service := newProgrammeLevelService(
-		persistence, &programmeOwnerFake{events: &events, programme: &model.Programme{Id: programmeID, AcademicUnitId: unitID}},
+		persistence, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(unitID)}},
 		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID},
 		func() time.Time { return time.UnixMilli(500) }, func() string { return levelID },
 	)
@@ -97,7 +97,10 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)
 	}
-	if persistence.createInput == nil || persistence.createInput.Level.ProgrammeId != programmeID || persistence.createInput.Level.Id != levelID || persistence.createInput.AuditEventID != auditID {
+	if persistence.createInput == nil ||
+		persistence.createInput.Level.ProgrammeID.String() != programmeID ||
+		persistence.createInput.Level.ID.String() != levelID ||
+		persistence.createInput.AuditEventID != auditID {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
 	if !reflect.DeepEqual(events, []string{"get-programme", "authorize", "audit-begin", "store-create"}) {
@@ -108,8 +111,12 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	programme := &model.Programme{Id: model.NewId(), AcademicUnitId: model.NewId()}
-	current := &model.ProgrammeLevel{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, ProgrammeId: programme.Id, Name: "year-1", DisplayName: "Year 1"}
+	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
+	current := &model.ProgrammeLevel{
+		ID: model.ProgrammeLevelID(model.NewId()),
+		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
+	}
 	persistence := &programmeLevelStoreFake{events: &events, current: current}
 	service := newProgrammeLevelService(
 		persistence, &programmeOwnerFake{events: &events, programme: programme},
@@ -117,11 +124,11 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
 	name := "foundation"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeLevelCommand{ID: current.Id, Name: &name})
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeLevelCommand{ID: current.ID.String(), Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.ProgrammeId != current.ProgrammeId || persistence.updateInput.Level.ProgrammeId != current.ProgrammeId {
+	if updated.ProgrammeID != current.ProgrammeID || persistence.updateInput.Level.ProgrammeID != current.ProgrammeID {
 		t.Fatalf("ownership changed: %#v", updated)
 	}
 	if !reflect.DeepEqual(events, []string{"get-level", "get-programme", "authorize", "audit-begin", "store-update"}) {
@@ -132,13 +139,13 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	programme := &model.Programme{Id: model.NewId(), AcademicUnitId: model.NewId()}
+	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
 	service := newProgrammeLevelService(
 		&programmeLevelStoreFake{events: &events}, &programmeOwnerFake{events: &events, programme: programme},
 		&programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, time.Now, model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.Id, Name: "year-1", DisplayName: "Year 1"})
+	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID.String(), Name: "year-1", DisplayName: "Year 1"})
 	if !Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -150,14 +157,14 @@ func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	programme := &model.Programme{Id: model.NewId(), AcademicUnitId: model.NewId()}
+	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newProgrammeLevelService(
 		&programmeLevelStoreFake{events: &events, createErr: store.NewErrConflict("programme_level", "programme_levels_active_name_key", nil)},
 		&programmeOwnerFake{events: &events, programme: programme}, &programmeAuthorizerFake{events: &events},
 		auditor, time.Now, model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.Id, Name: "year-1", DisplayName: "Year 1"})
+	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID.String(), Name: "year-1", DisplayName: "Year 1"})
 	if !Is(err, "programme_level.conflict") || auditor.failCode != "programme_level.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
 	}

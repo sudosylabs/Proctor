@@ -62,9 +62,12 @@ func (s SqlProgrammeLevelStore) Create(ctx context.Context, input *store.Program
 	if input == nil || input.Level == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "creation", nil)
 	}
+	if !input.Level.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("programme_level", "id", input.Level.ID.String())
+	}
 	candidate := *input.Level
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -78,7 +81,7 @@ func (s SqlProgrammeLevelStore) Create(ctx context.Context, input *store.Program
 	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeId); err != nil {
+	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeID.String()); err != nil {
 		return nil, err
 	}
 	row := newProgrammeLevelRow(&candidate)
@@ -90,7 +93,7 @@ func (s SqlProgrammeLevelStore) Create(ctx context.Context, input *store.Program
 			:id, :create_at, :update_at, :delete_at, :programme_id,
 			:name, :display_name, :description
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("create programme level: %w", translateError("programme_level", candidate.Id, err))
+		return nil, fmt.Errorf("create programme level: %w", translateError("programme_level", candidate.ID.String(), err))
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 		return nil, fmt.Errorf("complete programme level creation audit: %w", err)
@@ -108,14 +111,18 @@ func (s SqlProgrammeLevelStore) Save(
 	if level == nil {
 		return nil, store.NewErrInvalidInput("programme_level", "value", nil)
 	}
-	if level.Id != "" {
-		return nil, store.NewErrInvalidInput("programme_level", "id", level.Id)
+	if !level.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("programme_level", "id", level.ID.String())
 	}
 
+	id, err := model.ParseProgrammeLevelID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
 	candidate := *level
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(id, model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(err)
 	}
 
 	tx, err := s.GetMaster().Begin(ctx)
@@ -126,7 +133,7 @@ func (s SqlProgrammeLevelStore) Save(
 	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeId); err != nil {
+	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeID.String()); err != nil {
 		return nil, err
 	}
 	row := newProgrammeLevelRow(&candidate)
@@ -140,7 +147,7 @@ func (s SqlProgrammeLevelStore) Save(
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"save programme level: %w",
-			translateError("programme_level", candidate.Id, err),
+			translateError("programme_level", candidate.ID.String(), err),
 		)
 	}
 	if err := tx.Commit(); err != nil {
@@ -235,9 +242,9 @@ func (s SqlProgrammeLevelStore) Update(
 	}
 
 	candidate := *level
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(err)
 	}
 
 	tx, err := s.GetMaster().Begin(ctx)
@@ -248,7 +255,7 @@ func (s SqlProgrammeLevelStore) Update(
 	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeId); err != nil {
+	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeID.String()); err != nil {
 		return nil, err
 	}
 	row := newProgrammeLevelRow(&candidate)
@@ -263,10 +270,10 @@ func (s SqlProgrammeLevelStore) Update(
 	if err != nil {
 		return nil, fmt.Errorf(
 			"update programme level: %w",
-			translateError("programme_level", candidate.Id, err),
+			translateError("programme_level", candidate.ID.String(), err),
 		)
 	}
-	if err := requireAffected(result, "programme_level", candidate.Id); err != nil {
+	if err := requireAffected(result, "programme_level", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -280,8 +287,8 @@ func (s SqlProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *stor
 		return nil, store.NewErrInvalidInput("programme_level", "update", nil)
 	}
 	candidate := *input.Level
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme_level", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -295,7 +302,7 @@ func (s SqlProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *stor
 	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeId); err != nil {
+	if err := validateActiveProgramme(ctx, tx, candidate.ProgrammeID.String()); err != nil {
 		return nil, err
 	}
 	row := newProgrammeLevelRow(&candidate)
@@ -305,9 +312,9 @@ func (s SqlProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *stor
 		       display_name = :display_name, description = :description
 		 WHERE id = :id AND programme_id = :programme_id AND delete_at = 0`, &row)
 	if err != nil {
-		return nil, fmt.Errorf("update programme level: %w", translateError("programme_level", candidate.Id, err))
+		return nil, fmt.Errorf("update programme level: %w", translateError("programme_level", candidate.ID.String(), err))
 	}
-	if err := requireAffected(result, "programme_level", candidate.Id); err != nil {
+	if err := requireAffected(result, "programme_level", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
@@ -368,7 +375,9 @@ func (s SqlProgrammeLevelStore) Delete(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit programme level delete: %w", err)
 	}
-	current.UpdateAt, current.DeleteAt = deleteAt, deleteAt
+	at := model.TimeFromMillis(deleteAt)
+	current.UpdatedAt = at
+	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
 	return current, nil
 }
 
@@ -404,7 +413,9 @@ func (s SqlProgrammeLevelStore) ArchiveWithAudit(ctx context.Context, input *sto
 		return nil, err
 	}
 	level := row.model()
-	level.UpdateAt, level.DeleteAt = input.ArchiveAt, input.ArchiveAt
+	at := model.TimeFromMillis(input.ArchiveAt)
+	level.UpdatedAt = at
+	level.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
 	encoded, appErr := model.EncodeAuditData(level.Auditable())
 	if appErr != nil {
 		return nil, appErr
@@ -438,11 +449,11 @@ func validateActiveProgrammeLevel(ctx context.Context, executor sqlxExecutor, id
 
 func newProgrammeLevelRow(level *model.ProgrammeLevel) programmeLevelRow {
 	return programmeLevelRow{
-		ID:          level.Id,
-		CreateAt:    level.CreateAt,
-		UpdateAt:    level.UpdateAt,
-		DeleteAt:    level.DeleteAt,
-		ProgrammeID: level.ProgrammeId,
+		ID:          level.ID.String(),
+		CreateAt:    model.MillisFromTime(level.CreatedAt),
+		UpdateAt:    model.MillisFromTime(level.UpdatedAt),
+		DeleteAt:    level.ArchivedAt.Millis(),
+		ProgrammeID: level.ProgrammeID.String(),
 		Name:        level.Name,
 		DisplayName: level.DisplayName,
 		Description: level.Description,
@@ -450,12 +461,21 @@ func newProgrammeLevelRow(level *model.ProgrammeLevel) programmeLevelRow {
 }
 
 func (row programmeLevelRow) model() *model.ProgrammeLevel {
+	id, err := model.ParseProgrammeLevelID(row.ID)
+	if err != nil {
+		id = model.ProgrammeLevelID(row.ID)
+	}
+	programmeID, err := model.ParseProgrammeID(row.ProgrammeID)
+	if err != nil {
+		programmeID = model.ProgrammeID(row.ProgrammeID)
+	}
 	return &model.ProgrammeLevel{
-		Id:          row.ID,
-		CreateAt:    row.CreateAt,
-		UpdateAt:    row.UpdateAt,
-		DeleteAt:    row.DeleteAt,
-		ProgrammeId: row.ProgrammeID,
+		ID:          id,
+		CreatedAt:   model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:   model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:  model.OptionalTimeFromMillis(row.DeleteAt),
+		Revision:    1,
+		ProgrammeID: programmeID,
 		Name:        row.Name,
 		DisplayName: row.DisplayName,
 		Description: row.Description,

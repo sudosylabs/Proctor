@@ -23,7 +23,7 @@ func (a *App) programmeAcademicUnit(ctx context.Context, programmeID string) (*m
 	if err != nil {
 		return nil, "", administrationError("programmeAcademicUnit", "programme", err)
 	}
-	return programme, programme.AcademicUnitId, nil
+	return programme, programme.AcademicUnitID.String(), nil
 }
 
 func (a *App) programmeLevelAcademicUnit(
@@ -34,7 +34,7 @@ func (a *App) programmeLevelAcademicUnit(
 	if err != nil {
 		return nil, "", administrationError("programmeLevelAcademicUnit", "programme_level", err)
 	}
-	_, unitID, appErr := a.programmeAcademicUnit(ctx, level.ProgrammeId)
+	_, unitID, appErr := a.programmeAcademicUnit(ctx, level.ProgrammeID.String())
 	return level, unitID, appErr
 }
 

@@ -18,8 +18,6 @@ type persistentModel interface {
 func TestAcademicModelsImplementLifecycleContract(t *testing.T) {
 	t.Parallel()
 
-	unitID := NewId()
-	programmeID := NewId()
 	levelID := NewId()
 	periodID := NewId()
 	institutionID := NewId()
@@ -28,22 +26,6 @@ func TestAcademicModelsImplementLifecycleContract(t *testing.T) {
 		name  string
 		model persistentModel
 	}{
-		{
-			name: "programme",
-			model: &Programme{
-				AcademicUnitId: unitID,
-				Name:           "computer-science",
-				DisplayName:    "Bachelor of Computer Science",
-			},
-		},
-		{
-			name: "programme level",
-			model: &ProgrammeLevel{
-				ProgrammeId: programmeID,
-				Name:        "year-1",
-				DisplayName: "Year 1",
-			},
-		},
 		{
 			name: "academic period",
 			model: &AcademicPeriod{
@@ -94,6 +76,66 @@ func TestAcademicModelsImplementLifecycleContract(t *testing.T) {
 				t.Fatalf("model is invalid after PreUpdate: %v", appErr)
 			}
 		})
+	}
+}
+
+func TestProgrammeAndProgrammeLevelTypedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	at := time.UnixMilli(1_700_000_000_000).UTC()
+	unitID, err := ParseAcademicUnitID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	programmeID, err := ParseProgrammeID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	programme, err := NewProgramme(
+		programmeID, unitID, "computer-science", "Bachelor of Computer Science", "", at,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := programme.Validate(); err != nil {
+		t.Fatalf("Programme.Validate() = %v", err)
+	}
+	audit := programme.Auditable()
+	if audit["id"] != programme.ID.String() ||
+		audit["academic_unit_id"] != unitID.String() ||
+		audit["created_at"] != MillisFromTime(at) {
+		t.Fatalf("programme audit = %#v", audit)
+	}
+	if _, exposed := audit["description"]; exposed {
+		t.Fatalf("programme audit exposes description: %#v", audit)
+	}
+	programme.PrepareUpdate(at.Add(time.Second))
+	if err := programme.Validate(); err != nil {
+		t.Fatalf("Programme after PrepareUpdate: %v", err)
+	}
+
+	levelID, err := ParseProgrammeLevelID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	level, err := NewProgrammeLevel(
+		levelID, programmeID, "year-1", "Year 1", "", at,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := level.Validate(); err != nil {
+		t.Fatalf("ProgrammeLevel.Validate() = %v", err)
+	}
+	levelAudit := level.Auditable()
+	if levelAudit["id"] != level.ID.String() ||
+		levelAudit["programme_id"] != programmeID.String() ||
+		levelAudit["created_at"] != MillisFromTime(at) {
+		t.Fatalf("programme level audit = %#v", levelAudit)
+	}
+	level.PrepareUpdate(at.Add(time.Second))
+	if err := level.Validate(); err != nil {
+		t.Fatalf("ProgrammeLevel after PrepareUpdate: %v", err)
 	}
 }
 
@@ -215,13 +257,13 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 		{
 			name: "invalid programme name",
 			err: (&Programme{
-				Id:             NewId(),
-				CreateAt:       1,
-				UpdateAt:       1,
-				AcademicUnitId: NewId(),
+				ID:             NewProgrammeID(),
+				CreatedAt:      at,
+				UpdatedAt:      at,
+				AcademicUnitID: NewAcademicUnitID(),
 				Name:           "Bachelor of Computing",
 				DisplayName:    "Bachelor of Computing",
-			}).IsValid(),
+			}).Validate(),
 			code: "model.programme.is_valid.name.app_error",
 		},
 	}

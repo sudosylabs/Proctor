@@ -68,7 +68,7 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	oldUnitID, newUnitID, programmeID, newLevelID := model.NewId(), model.NewId(), model.NewId(), model.NewId()
 	current := &model.Class{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 7, ProgrammeLevelId: model.NewId(), AcademicPeriodId: model.NewId(), Name: "class-a", DisplayName: "Class A"}
 	persistence := &classStoreFake{events: &events, current: current, unitID: oldUnitID}
-	service := newClassService(persistence, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{Id: newLevelID, ProgrammeId: programmeID}}, &programmeOwnerFake{events: &events, programme: &model.Programme{Id: programmeID, AcademicUnitId: newUnitID}}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	service := newClassService(persistence, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(newLevelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(newUnitID)}}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	updated, err := service.Update(context.Background(), Invocation{}, UpdateClassCommand{ID: current.Id, ProgrammeLevelID: &newLevelID})
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	events := []string{}
 	levelID, programmeID := model.NewId(), model.NewId()
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
-	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_active_name_key", nil)}, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{Id: levelID, ProgrammeId: programmeID}}, &programmeOwnerFake{events: &events, programme: &model.Programme{Id: programmeID, AcademicUnitId: model.NewId()}}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
+	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_active_name_key", nil)}, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(model.NewId())}}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
 	_, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: model.NewId(), Name: "class-a", DisplayName: "Class A"})
 	if !Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
 		t.Fatalf("Create() error = %v, audit = %q", err, auditor.failCode)
@@ -143,7 +143,7 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	unitID, programmeID, levelID, periodID, classID, auditID := model.NewId(), model.NewId(), model.NewId(), model.NewId(), model.NewId(), model.NewId()
 	created := &model.Class{Id: classID, ProgrammeLevelId: levelID, AcademicPeriodId: periodID}
 	persistence := &classStoreFake{events: &events, created: created}
-	service := newClassService(persistence, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{Id: levelID, ProgrammeId: programmeID}}, &programmeOwnerFake{events: &events, programme: &model.Programme{Id: programmeID, AcademicUnitId: unitID}}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })
+	service := newClassService(persistence, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(unitID)}}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })
 	got, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: periodID, Name: "class-a", DisplayName: "Class A"})
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)

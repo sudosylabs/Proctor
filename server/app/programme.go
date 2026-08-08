@@ -76,7 +76,7 @@ func (s *programmeService) Get(ctx context.Context, invocation Invocation, query
 	if err != nil {
 		return nil, programmeError(err)
 	}
-	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitView, programme.AcademicUnitId); err != nil {
+	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitView, programme.AcademicUnitID.String()); err != nil {
 		return nil, err
 	}
 	return programme, nil
@@ -123,13 +123,23 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return nil, err
 	}
-	candidate := &model.Programme{
-		AcademicUnitId: unitID, Name: command.Name,
-		DisplayName: command.DisplayName, Description: command.Description,
+	programmeID, err := model.ParseProgrammeID(s.newID())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "programme_id").Wrap(err)
 	}
-	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("programme.invalid", appErr)
+	academicUnitID, err := model.ParseAcademicUnitID(unitID)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
+	}
+	candidate := &model.Programme{
+		AcademicUnitID: academicUnitID,
+		Name:           command.Name,
+		DisplayName:    command.DisplayName,
+		Description:    command.Description,
+	}
+	candidate.PrepareCreate(programmeID, s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("programme.invalid", err)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
@@ -161,11 +171,11 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 	if command.Description != nil {
 		candidate.Description = *command.Description
 	}
-	candidate.PrepareUpdate(s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("programme.invalid", appErr)
+	candidate.PrepareUpdate(s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("programme.invalid", err)
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: current.AcademicUnitId}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: current.AcademicUnitID.String()}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
 	if err != nil {
 		return nil, err
@@ -186,13 +196,13 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 	if err != nil {
 		return err
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: current.AcademicUnitId}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, Id: current.AcademicUnitID.String()}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "archive", nil, current.Auditable())
 	if err != nil {
 		return err
 	}
 	at := s.now().UnixMilli()
-	_, err = s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: current.Id, ArchiveAt: at, AuditEventID: auditID, AuditAt: at})
+	_, err = s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: current.ID.String(), ArchiveAt: at, AuditEventID: auditID, AuditAt: at})
 	if err != nil {
 		return s.failMutation(ctx, auditID, err)
 	}
@@ -208,7 +218,7 @@ func (s *programmeService) getForMutation(ctx context.Context, invocation Invoca
 	if err != nil {
 		return nil, programmeError(err)
 	}
-	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitManage, programme.AcademicUnitId); err != nil {
+	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitManage, programme.AcademicUnitID.String()); err != nil {
 		return nil, err
 	}
 	return programme, nil

@@ -291,11 +291,11 @@ func (s *classService) programmeLevelResource(ctx context.Context, id string) (m
 	if err != nil {
 		return model.Resource{}, programmeLevelError(err)
 	}
-	programme, err := s.programmes.Get(ctx, level.ProgrammeId)
+	programme, err := s.programmes.Get(ctx, level.ProgrammeID.String())
 	if err != nil {
 		return model.Resource{}, programmeError(err)
 	}
-	return model.Resource{Type: model.ResourceAcademicUnit, Id: programme.AcademicUnitId}, nil
+	return model.Resource{Type: model.ResourceAcademicUnit, Id: programme.AcademicUnitID.String()}, nil
 }
 
 func (s *classService) failMutation(ctx context.Context, auditID string, err error) error {

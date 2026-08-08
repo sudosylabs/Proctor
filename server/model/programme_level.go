@@ -3,81 +3,157 @@
 
 package model
 
+import (
+	"fmt"
+	"time"
+)
+
 // ProgrammeLevel is a curriculum stage within a Programme, such as Foundation,
 // Year 1, or Year 2. It is reusable across academic periods and is distinct
 // from the concrete Class roster into which students enroll.
 type ProgrammeLevel struct {
-	Id          string `json:"id"`
-	CreateAt    int64  `json:"create_at"`
-	UpdateAt    int64  `json:"update_at"`
-	DeleteAt    int64  `json:"delete_at"`
-	ProgrammeId string `json:"programme_id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Description string `json:"description"`
+	ID          ProgrammeLevelID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	ArchivedAt  OptionalTime
+	Revision    int64
+	ProgrammeID ProgrammeID
+	Name        string
+	DisplayName string
+	Description string
 }
 
-func (pl *ProgrammeLevel) PreSave() {
-	preSave(&pl.Id, &pl.CreateAt, &pl.UpdateAt)
-	sanitizeNamed(&pl.Name, &pl.DisplayName, &pl.Description)
+// NewProgrammeLevel constructs a level with application-supplied identity and clock.
+func NewProgrammeLevel(
+	id ProgrammeLevelID,
+	programmeID ProgrammeID,
+	name, displayName, description string,
+	at time.Time,
+) (*ProgrammeLevel, error) {
+	at = TimeUTC(at)
+	level := &ProgrammeLevel{
+		ID:          id,
+		CreatedAt:   at,
+		UpdatedAt:   at,
+		Revision:    1,
+		ProgrammeID: programmeID,
+		Name:        name,
+		DisplayName: displayName,
+		Description: description,
+	}
+	sanitizeNamed(&level.Name, &level.DisplayName, &level.Description)
+	if err := level.Validate(); err != nil {
+		return nil, err
+	}
+	return level, nil
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
-func (pl *ProgrammeLevel) PrepareCreate(id string, at int64) {
-	pl.Id = id
-	pl.CreateAt = at
-	pl.UpdateAt = at
-	pl.DeleteAt = 0
+func (pl *ProgrammeLevel) PrepareCreate(id ProgrammeLevelID, at time.Time) {
+	if pl == nil {
+		return
+	}
+	pl.ID = id
+	at = TimeUTC(at)
+	pl.CreatedAt = at
+	pl.UpdatedAt = at
+	pl.ArchivedAt = OptionalTime{}
+	if pl.Revision <= 0 {
+		pl.Revision = 1
+	}
 	sanitizeNamed(&pl.Name, &pl.DisplayName, &pl.Description)
 }
 
 // PrepareUpdate applies the application-selected transition time.
-func (pl *ProgrammeLevel) PrepareUpdate(at int64) {
-	pl.UpdateAt = at
+func (pl *ProgrammeLevel) PrepareUpdate(at time.Time) {
+	if pl == nil {
+		return
+	}
+	pl.UpdatedAt = TimeUTC(at)
+	if pl.Revision <= 0 {
+		pl.Revision = 1
+	}
+	pl.Revision++
 	sanitizeNamed(&pl.Name, &pl.DisplayName, &pl.Description)
 }
 
-func (pl *ProgrammeLevel) PreUpdate() {
-	preUpdate(&pl.UpdateAt)
-	sanitizeNamed(&pl.Name, &pl.DisplayName, &pl.Description)
+// Archive marks the programme level archived.
+func (pl *ProgrammeLevel) Archive(at time.Time) error {
+	if pl == nil {
+		return fmt.Errorf("model: programme level is nil")
+	}
+	at = TimeUTC(at)
+	if at.IsZero() {
+		return fmt.Errorf("model: programme level archive time is required")
+	}
+	if pl.IsArchived() {
+		return fmt.Errorf("model: programme level is already archived")
+	}
+	pl.ArchivedAt = OptionalTimeFrom(at)
+	pl.UpdatedAt = at
+	pl.Revision++
+	return pl.Validate()
 }
 
-func (pl *ProgrammeLevel) IsValid() error {
-	const where = "ProgrammeLevel.IsValid"
-	if appErr := validatePersistentFields(
-		where,
-		"programme_level",
-		pl.Id,
-		pl.CreateAt,
-		pl.UpdateAt,
-	); appErr != nil {
-		return appErr
-	}
-	if !IsValidId(pl.ProgrammeId) {
-		return invalidModelError(
-			where,
-			"programme_level",
-			"programme_id",
-			"must be a valid identifier",
-			"id="+pl.Id,
-		)
-	}
-	return validateNamed(
-		where,
-		"programme_level",
-		pl.Id,
-		pl.Name,
-		pl.DisplayName,
-		pl.Description,
-	)
+// IsArchived reports whether the level is archived.
+func (pl *ProgrammeLevel) IsArchived() bool {
+	return pl != nil && pl.ArchivedAt.Valid
 }
 
+// Validate checks rehydrated programme-level state.
+func (pl *ProgrammeLevel) Validate() error {
+	const where = "ProgrammeLevel.Validate"
+	if pl == nil {
+		return invalidModelError(where, "programme_level", "value", "is required", "")
+	}
+	if !pl.ID.IsValid() {
+		return invalidModelError(where, "programme_level", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + pl.ID.String()
+	if pl.CreatedAt.IsZero() {
+		return invalidModelError(where, "programme_level", "created_at", "must be set", details)
+	}
+	if pl.UpdatedAt.IsZero() {
+		return invalidModelError(where, "programme_level", "updated_at", "must be set", details)
+	}
+	if pl.UpdatedAt.Before(pl.CreatedAt) {
+		return invalidModelError(where, "programme_level", "updated_at", "must not precede created_at", details)
+	}
+	if !pl.ProgrammeID.IsValid() {
+		return invalidModelError(where, "programme_level", "programme_id", "must be a valid identifier", details)
+	}
+	if pl.Revision < 0 {
+		return invalidModelError(where, "programme_level", "revision", "must not be negative", details)
+	}
+	if pl.ArchivedAt.Valid && pl.ArchivedAt.Time.Before(pl.CreatedAt) {
+		return invalidModelError(where, "programme_level", "archived_at", "must not precede created_at", details)
+	}
+	return validateNamed(where, "programme_level", pl.ID.String(), pl.Name, pl.DisplayName, pl.Description)
+}
+
+// Auditable returns a deliberately safe audit projection.
 func (pl *ProgrammeLevel) Auditable() map[string]any {
-	fields := auditFields(pl.Id, pl.CreateAt, pl.UpdateAt, pl.DeleteAt)
-	fields["programme_id"] = pl.ProgrammeId
-	fields["name"] = pl.Name
-	fields["display_name"] = pl.DisplayName
-	return fields
+	if pl == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":           pl.ID.String(),
+		"created_at":   MillisFromTime(pl.CreatedAt),
+		"updated_at":   MillisFromTime(pl.UpdatedAt),
+		"archived_at":  pl.ArchivedAt.Millis(),
+		"revision":     pl.Revision,
+		"programme_id": pl.ProgrammeID.String(),
+		"name":         pl.Name,
+		"display_name": pl.DisplayName,
+	}
+}
+
+// ResourceID returns the string form used by authorization Resource contracts.
+func (pl *ProgrammeLevel) ResourceID() string {
+	if pl == nil {
+		return ""
+	}
+	return pl.ID.String()
 }
 
 var _ Auditable = (*ProgrammeLevel)(nil)

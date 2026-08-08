@@ -30,7 +30,7 @@ func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID, Name: fmt.Sprintf("programme-%d", iteration), DisplayName: "Programme"})
+		programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: fmt.Sprintf("programme-%d", iteration), DisplayName: "Programme"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,12 +50,12 @@ func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: programme.Id, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: programme.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()
 			<-start
-			_, levelErr = persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: "year-1", DisplayName: "Year 1"})
+			_, levelErr = persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 		}()
 		close(start)
 		wait.Wait()

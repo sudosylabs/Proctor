@@ -113,7 +113,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	t.Parallel()
 	events := []string{}
 	unitID, auditID, programmeID := model.NewId(), model.NewId(), model.NewId()
-	created := &model.Programme{Id: programmeID, AcademicUnitId: unitID}
+	created := &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(unitID)}
 	persistence := &programmeStoreFake{events: &events, created: created}
 	authorizer := &programmeAuthorizerFake{events: &events}
 	auditor := &institutionAuditorFake{events: &events, beginID: auditID}
@@ -127,7 +127,10 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	if authorizer.action != model.ActionAcademicUnitManage || authorizer.resource != (model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}) {
 		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.resource)
 	}
-	if persistence.createInput == nil || persistence.createInput.Programme.AcademicUnitId != unitID || persistence.createInput.Programme.Id != programmeID || persistence.createInput.AuditEventID != auditID {
+	if persistence.createInput == nil ||
+		persistence.createInput.Programme.AcademicUnitID.String() != unitID ||
+		persistence.createInput.Programme.ID.String() != programmeID ||
+		persistence.createInput.AuditEventID != auditID {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create"}) {
@@ -138,15 +141,20 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.Programme{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, AcademicUnitId: model.NewId(), Name: "computer-science", DisplayName: "Computer Science"}
+	current := &model.Programme{
+		ID: model.ProgrammeID(model.NewId()),
+		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		AcademicUnitID: model.AcademicUnitID(model.NewId()),
+		Name: "computer-science", DisplayName: "Computer Science",
+	}
 	persistence := &programmeStoreFake{events: &events, current: current}
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	name := "computing"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.Id, Name: &name})
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.ID.String(), Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.AcademicUnitId != current.AcademicUnitId || persistence.updateInput.Programme.AcademicUnitId != current.AcademicUnitId {
+	if updated.AcademicUnitID != current.AcademicUnitID || persistence.updateInput.Programme.AcademicUnitID != current.AcademicUnitID {
 		t.Fatalf("ownership changed: %#v", updated)
 	}
 	if !reflect.DeepEqual(events, []string{"get", "authorize", "audit-begin", "store-update"}) {
@@ -157,14 +165,14 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.Programme{Id: model.NewId(), AcademicUnitId: model.NewId()}
+	current := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
 	persistence := &programmeStoreFake{events: &events, current: current}
 	auditID := model.NewId()
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	if err := service.Archive(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.Id}); err != nil {
+	if err := service.Archive(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID.String()}); err != nil {
 		t.Fatal(err)
 	}
-	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.Id || persistence.archiveInput.AuditEventID != auditID {
+	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID.String() || persistence.archiveInput.AuditEventID != auditID {
 		t.Fatalf("archive input = %#v", persistence.archiveInput)
 	}
 }

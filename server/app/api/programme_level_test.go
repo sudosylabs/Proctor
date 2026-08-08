@@ -88,7 +88,7 @@ func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
-	level := &model.ProgrammeLevel{Id: model.NewId(), ProgrammeId: model.NewId(), Name: "year-1", DisplayName: "Year 1"}
+	level := &model.ProgrammeLevel{ID: model.ProgrammeLevelID(model.NewId()), ProgrammeID: model.ProgrammeID(model.NewId()), Name: "year-1", DisplayName: "Year 1"}
 	levels := &programmeLevelHTTPApplication{result: level}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{
@@ -101,7 +101,7 @@ func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = httpAPI.Close() })
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/programmes/"+level.ProgrammeId+"/levels", strings.NewReader(`{"id":"ignored","programme_id":"ignored","name":"year-1","display_name":"Year 1"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/programmes/"+level.ProgrammeID.String()+"/levels", strings.NewReader(`{"id":"ignored","programme_id":"ignored","name":"year-1","display_name":"Year 1"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -109,14 +109,14 @@ func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if levels.createCommand.ProgrammeID != level.ProgrammeId || levels.createCommand.Name != level.Name {
+	if levels.createCommand.ProgrammeID != level.ProgrammeID.String() || levels.createCommand.Name != level.Name {
 		t.Fatalf("create command = %#v", levels.createCommand)
 	}
 	var body programmeLevelResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.ID != level.Id || body.ProgrammeID != level.ProgrammeId {
+	if body.ID != level.ID.String() || body.ProgrammeID != level.ProgrammeID.String() {
 		t.Fatalf("response = %#v", body)
 	}
 }

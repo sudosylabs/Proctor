@@ -145,5 +145,14 @@ func programmeLevelResponseFromModel(level *model.ProgrammeLevel) programmeLevel
 	if level == nil {
 		return programmeLevelResponse{}
 	}
-	return programmeLevelResponse{ID: level.Id, CreateAt: level.CreateAt, UpdateAt: level.UpdateAt, DeleteAt: level.DeleteAt, ProgrammeID: level.ProgrammeId, Name: level.Name, DisplayName: level.DisplayName, Description: level.Description}
+	return programmeLevelResponse{
+		ID:          level.ID.String(),
+		CreateAt:    model.MillisFromTime(level.CreatedAt),
+		UpdateAt:    model.MillisFromTime(level.UpdatedAt),
+		DeleteAt:    level.ArchivedAt.Millis(),
+		ProgrammeID: level.ProgrammeID.String(),
+		Name:        level.Name,
+		DisplayName: level.DisplayName,
+		Description: level.Description,
+	}
 }

@@ -16,10 +16,10 @@ import (
 func TestClassMemberStore(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	fixture := saveClassFixture(t, ctx, ss)
-	firstClass := saveClass(t, ctx, ss, fixture.level.Id, fixture.period.Id, "class-member-a")
-	secondClass := saveClass(t, ctx, ss, fixture.level.Id, fixture.period.Id, "class-member-b")
+	firstClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.Id, "class-member-a")
+	secondClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.Id, "class-member-b")
 	nextPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-next-period", fixture.period.EndAt+1)
-	nextClass := saveClass(t, ctx, ss, fixture.level.Id, nextPeriod.Id, "class-member-next")
+	nextClass := saveClass(t, ctx, ss, fixture.level.ID.String(), nextPeriod.Id, "class-member-next")
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start - 1})

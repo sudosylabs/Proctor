@@ -28,7 +28,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
+	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: fmt.Sprintf("level-%d", iteration), DisplayName: "Level"})
+		level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: fmt.Sprintf("level-%d", iteration), DisplayName: "Level"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,12 +53,12 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: level.Id, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: level.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()
 			<-start
-			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelId: level.Id, AcademicPeriodId: period.Id, Name: "class-a", DisplayName: "Class A"})
+			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelId: level.ID.String(), AcademicPeriodId: period.Id, Name: "class-a", DisplayName: "Class A"})
 		}()
 		close(start)
 		wait.Wait()

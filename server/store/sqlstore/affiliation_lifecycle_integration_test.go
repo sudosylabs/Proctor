@@ -26,11 +26,11 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID, Name: "programme", DisplayName: "Programme"})
+	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitID: unit.ID, Name: "programme", DisplayName: "Programme"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: "level", DisplayName: "Level"})
+	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "level", DisplayName: "Level"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	class := saveLifecycleClass(t, ctx, persistence, level.Id, period.Id, "affiliation-race-class")
+	class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.Id, "affiliation-race-class")
 	for iteration := 0; iteration < 20; iteration++ {
 		userID := model.NewId()
 		user, err := persistence.User().Save(ctx, &model.User{Username: "affiliation-" + userID, Email: userID + "@example.edu", DisplayName: "User"})

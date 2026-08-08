@@ -133,14 +133,14 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	programme, err := persistence.Programme().Save(ctx, &model.Programme{
-		AcademicUnitId: child.ID, Name: "computer-science",
+		AcademicUnitID: child.ID, Name: "computer-science",
 		DisplayName: "Computer Science",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
-		ProgrammeId: programme.Id, Name: "year-1", DisplayName: "Year 1",
+		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	class, err := persistence.Class().Save(ctx, &model.Class{
-		ProgrammeLevelId: level.Id, AcademicPeriodId: period.Id,
+		ProgrammeLevelId: level.ID.String(), AcademicPeriodId: period.Id,
 		Name: "class-a", DisplayName: "Class A",
 	})
 	if err != nil {
@@ -176,7 +176,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitId: root.ID,
+		AcademicUnitID: root.ID,
 		UserId:         user.Id,
 		StartAt:        model.GetMillis() - 1_000,
 	}); err != nil {

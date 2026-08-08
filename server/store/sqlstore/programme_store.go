@@ -66,9 +66,12 @@ func (s SqlProgrammeStore) Create(
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "creation", nil)
 	}
+	if !input.Programme.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("programme", "id", input.Programme.ID.String())
+	}
 	candidate := *input.Programme
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -82,7 +85,7 @@ func (s SqlProgrammeStore) Create(
 	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitId); err != nil {
+	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
 		return nil, err
 	}
 	row := newProgrammeRow(&candidate)
@@ -94,7 +97,7 @@ func (s SqlProgrammeStore) Create(
 			:id, :create_at, :update_at, :delete_at, :academic_unit_id,
 			:name, :display_name, :description
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("create programme: %w", translateError("programme", candidate.Id, err))
+		return nil, fmt.Errorf("create programme: %w", translateError("programme", candidate.ID.String(), err))
 	}
 	if _, err := completeAuditEvent(
 		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
@@ -111,14 +114,18 @@ func (s SqlProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 	if programme == nil {
 		return nil, store.NewErrInvalidInput("programme", "value", nil)
 	}
-	if programme.Id != "" {
-		return nil, store.NewErrInvalidInput("programme", "id", programme.Id)
+	if !programme.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("programme", "id", programme.ID.String())
 	}
 
+	id, err := model.ParseProgrammeID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
 	candidate := *programme
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(id, model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
 	}
 
 	tx, err := s.GetMaster().Begin(ctx)
@@ -129,7 +136,7 @@ func (s SqlProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitId); err != nil {
+	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
 		return nil, err
 	}
 	row := newProgrammeRow(&candidate)
@@ -141,7 +148,7 @@ func (s SqlProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 			:id, :create_at, :update_at, :delete_at, :academic_unit_id,
 			:name, :display_name, :description
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("save programme: %w", translateError("programme", candidate.Id, err))
+		return nil, fmt.Errorf("save programme: %w", translateError("programme", candidate.ID.String(), err))
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit programme save: %w", err)
@@ -231,9 +238,9 @@ func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programm
 		return nil, store.NewErrInvalidInput("programme", "value", nil)
 	}
 	candidate := *programme
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
 	}
 
 	tx, err := s.GetMaster().Begin(ctx)
@@ -244,7 +251,7 @@ func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programm
 	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitId); err != nil {
+	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
 		return nil, err
 	}
 	row := newProgrammeRow(&candidate)
@@ -257,9 +264,9 @@ func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programm
 		       description = :description
 		 WHERE id = :id AND delete_at = 0`, &row)
 	if err != nil {
-		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.Id, err))
+		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
 	}
-	if err := requireAffected(result, "programme", candidate.Id); err != nil {
+	if err := requireAffected(result, "programme", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -277,8 +284,8 @@ func (s SqlProgrammeStore) UpdateWithAudit(
 		return nil, store.NewErrInvalidInput("programme", "update", nil)
 	}
 	candidate := *input.Programme
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -296,9 +303,9 @@ func (s SqlProgrammeStore) UpdateWithAudit(
 		       display_name = :display_name, description = :description
 		 WHERE id = :id AND academic_unit_id = :academic_unit_id AND delete_at = 0`, &row)
 	if err != nil {
-		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.Id, err))
+		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
 	}
-	if err := requireAffected(result, "programme", candidate.Id); err != nil {
+	if err := requireAffected(result, "programme", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if _, err := completeAuditEvent(
@@ -357,7 +364,9 @@ func (s SqlProgrammeStore) Delete(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit programme delete: %w", err)
 	}
-	current.UpdateAt, current.DeleteAt = deleteAt, deleteAt
+	at := model.TimeFromMillis(deleteAt)
+	current.UpdatedAt = at
+	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
 	return current, nil
 }
 
@@ -403,7 +412,9 @@ func (s SqlProgrammeStore) ArchiveWithAudit(
 		return nil, err
 	}
 	programme := row.model()
-	programme.UpdateAt, programme.DeleteAt = input.ArchiveAt, input.ArchiveAt
+	at := model.TimeFromMillis(input.ArchiveAt)
+	programme.UpdatedAt = at
+	programme.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
 	encoded, appErr := model.EncodeAuditData(programme.Auditable())
 	if appErr != nil {
 		return nil, appErr
@@ -452,11 +463,11 @@ func validateActiveProgramme(ctx context.Context, executor sqlxExecutor, id stri
 
 func newProgrammeRow(programme *model.Programme) programmeRow {
 	return programmeRow{
-		ID:             programme.Id,
-		CreateAt:       programme.CreateAt,
-		UpdateAt:       programme.UpdateAt,
-		DeleteAt:       programme.DeleteAt,
-		AcademicUnitID: programme.AcademicUnitId,
+		ID:             programme.ID.String(),
+		CreateAt:       model.MillisFromTime(programme.CreatedAt),
+		UpdateAt:       model.MillisFromTime(programme.UpdatedAt),
+		DeleteAt:       programme.ArchivedAt.Millis(),
+		AcademicUnitID: programme.AcademicUnitID.String(),
 		Name:           programme.Name,
 		DisplayName:    programme.DisplayName,
 		Description:    programme.Description,
@@ -464,12 +475,21 @@ func newProgrammeRow(programme *model.Programme) programmeRow {
 }
 
 func (row programmeRow) model() *model.Programme {
+	id, err := model.ParseProgrammeID(row.ID)
+	if err != nil {
+		id = model.ProgrammeID(row.ID)
+	}
+	academicUnitID, err := model.ParseAcademicUnitID(row.AcademicUnitID)
+	if err != nil {
+		academicUnitID = model.AcademicUnitID(row.AcademicUnitID)
+	}
 	return &model.Programme{
-		Id:             row.ID,
-		CreateAt:       row.CreateAt,
-		UpdateAt:       row.UpdateAt,
-		DeleteAt:       row.DeleteAt,
-		AcademicUnitId: row.AcademicUnitID,
+		ID:             id,
+		CreatedAt:      model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:      model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:     model.OptionalTimeFromMillis(row.DeleteAt),
+		Revision:       1,
+		AcademicUnitID: academicUnitID,
 		Name:           row.Name,
 		DisplayName:    row.DisplayName,
 		Description:    row.Description,

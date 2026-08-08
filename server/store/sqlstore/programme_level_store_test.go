@@ -10,12 +10,21 @@ import (
 )
 
 func TestProgrammeLevelRowConversion(t *testing.T) {
+	id, err := model.ParseProgrammeLevelID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	programmeID, err := model.ParseProgrammeID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
 	level := &model.ProgrammeLevel{
-		Id:          model.NewId(),
-		CreateAt:    1,
-		UpdateAt:    2,
-		DeleteAt:    3,
-		ProgrammeId: model.NewId(),
+		ID:          id,
+		CreatedAt:   model.TimeFromMillis(1),
+		UpdatedAt:   model.TimeFromMillis(2),
+		ArchivedAt:  model.OptionalTimeFromMillis(3),
+		Revision:    1,
+		ProgrammeID: programmeID,
 		Name:        "year-1",
 		DisplayName: "Year 1",
 		Description: "First curriculum stage",
@@ -23,5 +32,8 @@ func TestProgrammeLevelRowConversion(t *testing.T) {
 	row := newProgrammeLevelRow(level)
 	if got := row.model(); *got != *level {
 		t.Fatalf("row.model() = %#v, want %#v", got, level)
+	}
+	if row.CreateAt != 1 || row.UpdateAt != 2 || row.DeleteAt != 3 {
+		t.Fatalf("row millis = %#v", row)
 	}
 }
