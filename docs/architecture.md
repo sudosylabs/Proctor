@@ -1,6 +1,6 @@
 # Proctor Server Architecture
 
-This is the canonical developer guide to Proctor Server's target architecture. It defines ownership, dependency direction, naming, error flow, testing, and structural conventions. The current implementation predates some decisions; see [Migration gaps](#migration-gaps).
+This is the canonical developer guide to Proctor Server's target architecture. It defines ownership, dependency direction, naming, error flow, testing, and structural conventions. The required architecture migration is complete; residual open product work is listed under [Open follow-ups](#open-follow-ups).
 
 Domain language is defined in [`CONTEXT.md`](../CONTEXT.md). Durable trade-offs are recorded in [`docs/adr`](./adr/). `AGENTS.md` summarizes current state, security rules, workflow, and implementation status.
 
@@ -385,31 +385,21 @@ driver conflict → store.ErrConflict
 http.Error(w, err.Error(), http.StatusInternalServerError)
 ~~~
 
-## Migration gaps
+## Open follow-ups
 
-The target intentionally differs from existing code:
+The required architecture migration is complete and accepted in
+[`architecture-migration-acceptance-20260808.md`](./architecture-migration-acceptance-20260808.md).
+The following items remain open product or optional engineering work and do not
+block the architecture:
 
-1. runtime composition and `Server` still live in `app`;
-2. `App` retains `*platform.Service` and infrastructure getters;
-3. `platform.New` still selects concrete backends;
-4. `app/api` has a broad application aggregate and exposes some store option types;
-5. handlers still use permission preflights and decision receipts;
-6. `model` still contains `AppError`, request/client metadata, cluster, and WebSocket contracts;
-7. models still use `PreSave`, `PreUpdate`, `IsValid`, plain string IDs, and integer timestamps;
-8. WebSocket transport still lives in `app/api`;
-9. clustering uses local and Memberlist backends only (Redis cluster retired);
-10. root-composed local-cache, timer, and safe retry layers are present;
-11. external-service tests are not consistently tagged `integration`.
+1. cross-node WebSocket replay handoff versus authoritative HTTP resynchronization;
+2. external account-linking administration, SAML/LDAP, and service accounts;
+3. exam-domain vertical slices after business-model confirmation;
+4. further store cache allowlist expansion only from measured need;
+5. optional tightening of residual broad transport aggregates where vertical
+   slices still pass the full `app.App` facade.
 
-Migration remains vertical and buildable:
-
-1. establish root composition and import tests;
-2. migrate one application capability at a time away from service location;
-3. migrate each capability's invocation, commands, errors, DTOs, lifecycle, and tests together;
-4. add store layers and extract WebSocket/cluster transports behind stable contracts;
-5. establish native temporal types and typed IDs in the pre-release schema baseline.
-
-This document does not authorize an implementation rewrite; each migration is a separately scoped task.
+Do not reopen completed migration work as if it were still outstanding.
 
 ## Decision records
 

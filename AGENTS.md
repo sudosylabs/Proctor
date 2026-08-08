@@ -1185,14 +1185,12 @@ Production imports follow the inward dependency graph:
 - `cmd/proctor` remains a thin invocation boundary for `server.New`.
 
 Tests and `testlib` may cross production boundaries to assemble and inspect the
-real graph. A small automated import-boundary test must enforce the production
-allowlist. The current code predates this graph: `app` imports `platform` and
-`app/api`, and `app/api` exposes persistence option types. These are documented
-migration gaps. `platform.New` also still selects concrete SQL, cache, mail,
-VFS, cluster, and external-authentication adapters internally; moving those
-choices to the module-root composition package is part of the same migration.
-The WebSocket hub and protocol also still live in `app/api`; extracting them to
-the sibling `websocket` package is another documented migration.
+real graph. A small automated import-boundary test enforces the production
+allowlist with an empty dependency debt ledger. The required architecture
+migration is complete: module-root composition selects concrete infrastructure,
+`platform.New` receives already-constructed capabilities, HTTP uses a
+consumer-owned logger port, and WebSocket lives in the sibling `websocket`
+package. See `docs/architecture-migration-acceptance-20260808.md`.
 
 The server module is deliberately cohesive and may have internal coupling.
 Coupling must follow ownership and construction flow rather than form import
