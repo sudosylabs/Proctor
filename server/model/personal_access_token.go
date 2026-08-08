@@ -7,7 +7,10 @@
 
 package model
 
-import "unicode/utf8"
+import (
+	"time"
+	"unicode/utf8"
+)
 
 const (
 	PersonalAccessTokenDescriptionMaxRunes = 255
@@ -16,22 +19,26 @@ const (
 
 // PersonalAccessToken is a long-lived, explicitly scoped credential for human
 // CLI and automation use. It is not a Session and never stores the raw token.
-// AcademicUnitId optionally narrows every scope to one unit and its authorized
+// AcademicUnitID optionally narrows every scope to one unit and its authorized
 // descendants.
+//
+// Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
+// Soft archive uses ArchivedAt (legacy delete_at). TokenHash is excluded from
+// JSON and must never be logged or audited.
 type PersonalAccessToken struct {
-	Id             string   `json:"id"`
-	CreateAt       int64    `json:"create_at"`
-	UpdateAt       int64    `json:"update_at"`
-	DeleteAt       int64    `json:"delete_at"`
-	UserId         string   `json:"user_id"`
-	Description    string   `json:"description"`
-	TokenHash      string   `json:"-"`
-	Scopes         []string `json:"scopes"`
-	AcademicUnitId string   `json:"academic_unit_id,omitempty"`
-	ExpiresAt      int64    `json:"expires_at"`
-	LastUsedAt     int64    `json:"last_used_at,omitempty"`
-	DisabledAt     int64    `json:"disabled_at,omitempty"`
-	RevokedAt      int64    `json:"revoked_at,omitempty"`
+	ID             PersonalAccessTokenID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ArchivedAt     OptionalTime
+	UserID         UserID
+	Description    string
+	TokenHash      string `json:"-"`
+	Scopes         []string
+	AcademicUnitID AcademicUnitID // zero when unconstrained
+	ExpiresAt      time.Time
+	LastUsedAt     OptionalTime
+	DisabledAt     OptionalTime
+	RevokedAt      OptionalTime
 }
 
 // PersonalAccessTokenCreation contains the raw credential returned exactly
@@ -41,31 +48,58 @@ type PersonalAccessTokenCreation struct {
 	Credential string               `json:"credential"`
 }
 
-func (t *PersonalAccessToken) PreSave() {
-	preSave(&t.Id, &t.CreateAt, &t.UpdateAt)
-	t.Description = SanitizeUnicode(t.Description)
-	t.Scopes = cloneStrings(t.Scopes)
-}
-
-func (t *PersonalAccessToken) PreUpdate() {
-	preUpdate(&t.UpdateAt)
-	t.Description = SanitizeUnicode(t.Description)
-	t.Scopes = cloneStrings(t.Scopes)
-}
-
-func (t *PersonalAccessToken) IsValid() error {
-	const where = "PersonalAccessToken.IsValid"
-	if appErr := validatePersistentFields(
-		where,
-		"personal_access_token",
-		t.Id,
-		t.CreateAt,
-		t.UpdateAt,
-	); appErr != nil {
-		return appErr
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (t *PersonalAccessToken) PrepareCreate(id PersonalAccessTokenID, at time.Time) {
+	if t == nil {
+		return
 	}
-	details := "id=" + t.Id
-	if !IsValidId(t.UserId) {
+	t.ID = id
+	at = TimeUTC(at)
+	t.CreatedAt = at
+	t.UpdatedAt = at
+	t.ArchivedAt = OptionalTime{}
+	t.Description = SanitizeUnicode(t.Description)
+	t.Scopes = cloneStrings(t.Scopes)
+	t.ExpiresAt = TimeUTC(t.ExpiresAt)
+	if t.LastUsedAt.Valid {
+		t.LastUsedAt = t.LastUsedAt.UTC()
+	}
+	if t.DisabledAt.Valid {
+		t.DisabledAt = t.DisabledAt.UTC()
+	}
+	if t.RevokedAt.Valid {
+		t.RevokedAt = t.RevokedAt.UTC()
+	}
+}
+
+// PrepareUpdate applies the application-selected transition time and normalizes
+// description and scopes.
+func (t *PersonalAccessToken) PrepareUpdate(at time.Time) {
+	if t == nil {
+		return
+	}
+	t.UpdatedAt = TimeUTC(at)
+	t.Description = SanitizeUnicode(t.Description)
+	t.Scopes = cloneStrings(t.Scopes)
+}
+
+// Validate checks rehydrated personal-access-token state.
+func (t *PersonalAccessToken) Validate() error {
+	const where = "PersonalAccessToken.Validate"
+	if t == nil {
+		return invalidModelError(where, "personal_access_token", "value", "is required", "")
+	}
+	if !t.ID.IsValid() {
+		return invalidModelError(where, "personal_access_token", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + t.ID.String()
+	if t.CreatedAt.IsZero() || t.UpdatedAt.IsZero() {
+		return invalidModelError(where, "personal_access_token", "created_at", "must be set", details)
+	}
+	if t.UpdatedAt.Before(t.CreatedAt) {
+		return invalidModelError(where, "personal_access_token", "updated_at", "must not precede created_at", details)
+	}
+	if !t.UserID.IsValid() {
 		return invalidModelError(
 			where,
 			"personal_access_token",
@@ -124,7 +158,7 @@ func (t *PersonalAccessToken) IsValid() error {
 		}
 		seen[scope] = struct{}{}
 	}
-	if t.AcademicUnitId != "" && !IsValidId(t.AcademicUnitId) {
+	if !t.AcademicUnitID.IsZero() && !t.AcademicUnitID.IsValid() {
 		return invalidModelError(
 			where,
 			"personal_access_token",
@@ -133,7 +167,7 @@ func (t *PersonalAccessToken) IsValid() error {
 			details,
 		)
 	}
-	if t.ExpiresAt <= t.CreateAt {
+	if !t.ExpiresAt.After(t.CreatedAt) {
 		return invalidModelError(
 			where,
 			"personal_access_token",
@@ -142,7 +176,8 @@ func (t *PersonalAccessToken) IsValid() error {
 			details,
 		)
 	}
-	if t.LastUsedAt != 0 && (t.LastUsedAt < t.CreateAt || t.LastUsedAt >= t.ExpiresAt) {
+	if t.LastUsedAt.Valid &&
+		(t.LastUsedAt.Time.Before(t.CreatedAt) || !t.LastUsedAt.Time.Before(t.ExpiresAt)) {
 		return invalidModelError(
 			where,
 			"personal_access_token",
@@ -151,7 +186,10 @@ func (t *PersonalAccessToken) IsValid() error {
 			details,
 		)
 	}
-	if t.RevokedAt != 0 && t.RevokedAt < t.CreateAt {
+	if t.ArchivedAt.Valid && t.ArchivedAt.Time.Before(t.CreatedAt) {
+		return invalidModelError(where, "personal_access_token", "archived_at", "must not precede created_at", details)
+	}
+	if t.RevokedAt.Valid && t.RevokedAt.Time.Before(t.CreatedAt) {
 		return invalidModelError(
 			where,
 			"personal_access_token",
@@ -160,7 +198,7 @@ func (t *PersonalAccessToken) IsValid() error {
 			details,
 		)
 	}
-	if t.DisabledAt != 0 && t.DisabledAt < t.CreateAt {
+	if t.DisabledAt.Valid && t.DisabledAt.Time.Before(t.CreatedAt) {
 		return invalidModelError(
 			where,
 			"personal_access_token",
@@ -172,25 +210,39 @@ func (t *PersonalAccessToken) IsValid() error {
 	return nil
 }
 
-func (t *PersonalAccessToken) IsActiveAt(now int64) bool {
-	return t != nil &&
-		t.DeleteAt == 0 &&
-		t.DisabledAt == 0 &&
-		t.RevokedAt == 0 &&
-		now < t.ExpiresAt
+// IsActiveAt reports whether the token is usable at now.
+func (t *PersonalAccessToken) IsActiveAt(now time.Time) bool {
+	if t == nil {
+		return false
+	}
+	now = TimeUTC(now)
+	return !t.ArchivedAt.Valid &&
+		!t.DisabledAt.Valid &&
+		!t.RevokedAt.Valid &&
+		now.Before(t.ExpiresAt)
 }
 
+// Auditable returns a deliberately safe audit projection. The token hash is
+// never included.
 func (t *PersonalAccessToken) Auditable() map[string]any {
-	fields := auditFields(t.Id, t.CreateAt, t.UpdateAt, t.DeleteAt)
-	fields["user_id"] = t.UserId
-	fields["description"] = t.Description
-	fields["scopes"] = cloneStrings(t.Scopes)
-	fields["academic_unit_id"] = t.AcademicUnitId
-	fields["expires_at"] = t.ExpiresAt
-	fields["last_used_at"] = t.LastUsedAt
-	fields["disabled_at"] = t.DisabledAt
-	fields["revoked_at"] = t.RevokedAt
-	return fields
+	if t == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":               t.ID.String(),
+		"created_at":       MillisFromTime(t.CreatedAt),
+		"updated_at":       MillisFromTime(t.UpdatedAt),
+		"archived_at":      t.ArchivedAt.Millis(),
+		"delete_at":        t.ArchivedAt.Millis(),
+		"user_id":          t.UserID.String(),
+		"description":      t.Description,
+		"scopes":           cloneStrings(t.Scopes),
+		"academic_unit_id": t.AcademicUnitID.String(),
+		"expires_at":       MillisFromTime(t.ExpiresAt),
+		"last_used_at":     t.LastUsedAt.Millis(),
+		"disabled_at":      t.DisabledAt.Millis(),
+		"revoked_at":       t.RevokedAt.Millis(),
+	}
 }
 
 var _ Auditable = (*PersonalAccessToken)(nil)

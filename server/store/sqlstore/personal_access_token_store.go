@@ -51,13 +51,13 @@ func (s SqlPersonalAccessTokenStore) Save(
 	if token == nil || maximumActive < 1 {
 		return nil, store.NewErrInvalidInput("personal_access_token", "value", nil)
 	}
-	if token.Id != "" {
-		return nil, store.NewErrInvalidInput("personal_access_token", "id", token.Id)
+	if !token.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("personal_access_token", "id", token.ID.String())
 	}
 	candidate := *token
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewPersonalAccessTokenID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	for _, scope := range candidate.Scopes {
 		if !model.IsKnownAction(scope) {
@@ -77,10 +77,11 @@ func (s SqlPersonalAccessTokenStore) Save(
 	if _, err := tx.Exec(
 		ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-		"personal_access_tokens:user:"+candidate.UserId,
+		"personal_access_tokens:user:"+candidate.UserID.String(),
 	); err != nil {
 		return nil, fmt.Errorf("lock personal access tokens: %w", err)
 	}
+	createMillis := model.MillisFromTime(candidate.CreatedAt)
 	var active int
 	if err := tx.Get(ctx, &active, `
 		SELECT COUNT(*)
@@ -90,8 +91,8 @@ func (s SqlPersonalAccessTokenStore) Save(
 		   AND revoked_at = 0
 		   AND disabled_at = 0
 		   AND expires_at > ?`,
-		candidate.UserId,
-		candidate.CreateAt,
+		candidate.UserID.String(),
+		createMillis,
 	); err != nil {
 		return nil, fmt.Errorf("count active personal access tokens: %w", err)
 	}
@@ -204,7 +205,9 @@ func (s SqlPersonalAccessTokenStore) Resolve(
 		); err != nil {
 			return nil, fmt.Errorf("update personal access token usage: %w", err)
 		}
-		tokenRow.UpdateAt = max(tokenRow.UpdateAt, now)
+		if tokenRow.UpdateAt < now {
+			tokenRow.UpdateAt = now
+		}
 		tokenRow.LastUsedAt = now
 	}
 	var userRow userRow
@@ -352,8 +355,8 @@ func insertPersonalAccessToken(
 	token *model.PersonalAccessToken,
 ) error {
 	var academicUnitID any
-	if token.AcademicUnitId != "" {
-		academicUnitID = token.AcademicUnitId
+	if !token.AcademicUnitID.IsZero() {
+		academicUnitID = token.AcademicUnitID.String()
 	}
 	if _, err := executor.Exec(ctx, `
 		INSERT INTO personal_access_tokens (
@@ -361,26 +364,44 @@ func insertPersonalAccessToken(
 			token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 			disabled_at, revoked_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		token.Id, token.CreateAt, token.UpdateAt, token.DeleteAt, token.UserId,
-		token.Description, token.TokenHash, pq.Array(token.Scopes), academicUnitID,
-		token.ExpiresAt, token.LastUsedAt, token.DisabledAt, token.RevokedAt,
+		token.ID.String(),
+		model.MillisFromTime(token.CreatedAt),
+		model.MillisFromTime(token.UpdatedAt),
+		token.ArchivedAt.Millis(),
+		token.UserID.String(),
+		token.Description,
+		token.TokenHash,
+		pq.Array(token.Scopes),
+		academicUnitID,
+		model.MillisFromTime(token.ExpiresAt),
+		token.LastUsedAt.Millis(),
+		token.DisabledAt.Millis(),
+		token.RevokedAt.Millis(),
 	); err != nil {
-		return translateError("personal_access_token", token.Id, err)
+		return translateError("personal_access_token", token.ID.String(), err)
 	}
 	return nil
 }
 
 func (row personalAccessTokenRow) model() *model.PersonalAccessToken {
-	academicUnitID := ""
+	academicUnitID := model.AcademicUnitID("")
 	if row.AcademicUnitID != nil {
-		academicUnitID = *row.AcademicUnitID
+		academicUnitID = model.AcademicUnitID(*row.AcademicUnitID)
 	}
 	return &model.PersonalAccessToken{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt, DeleteAt: row.DeleteAt,
-		UserId: row.UserID, Description: row.Description, TokenHash: row.TokenHash,
-		Scopes: append([]string(nil), row.Scopes...), AcademicUnitId: academicUnitID,
-		ExpiresAt: row.ExpiresAt, LastUsedAt: row.LastUsedAt,
-		DisabledAt: row.DisabledAt, RevokedAt: row.RevokedAt,
+		ID:             model.PersonalAccessTokenID(row.ID),
+		CreatedAt:      model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:      model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:     model.OptionalTimeFromMillis(row.DeleteAt),
+		UserID:         model.UserID(row.UserID),
+		Description:    row.Description,
+		TokenHash:      row.TokenHash,
+		Scopes:         append([]string(nil), row.Scopes...),
+		AcademicUnitID: academicUnitID,
+		ExpiresAt:      model.TimeFromMillis(row.ExpiresAt),
+		LastUsedAt:     model.OptionalTimeFromMillis(row.LastUsedAt),
+		DisabledAt:     model.OptionalTimeFromMillis(row.DisabledAt),
+		RevokedAt:      model.OptionalTimeFromMillis(row.RevokedAt),
 	}
 }
 

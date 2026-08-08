@@ -181,7 +181,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	if unchanged.DisabledAt.Valid || unchanged.Revision != user.Revision {
 		t.Fatalf("user state survived audit rollback: %#v", unchanged)
 	}
-	unrevoked, err := ss.Session().Get(ctx, first.Id)
+	unrevoked, err := ss.Session().Get(ctx, first.ID.String())
 	requireNoError(t, err)
 	credential, _, err := ss.SessionCredential().GetSessionByTokenHash(
 		ctx,
@@ -189,7 +189,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		model.SessionCredentialAccess,
 	)
 	requireNoError(t, err)
-	if unrevoked.RevokedAt != 0 || credential.RevokedAt != 0 {
+	if unrevoked.RevokedAt.Valid || credential.RevokedAt.Valid {
 		t.Fatalf("session revocation survived audit rollback: session=%#v credential=%#v", unrevoked, credential)
 	}
 
@@ -204,10 +204,10 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		len(disabled.RevokedSessions) != 2 || len(disabled.RevokedTokenHashes) != 4 {
 		t.Fatalf("SetDisabledWithAudit() = %#v", disabled)
 	}
-	for _, sessionID := range []string{first.Id, second.Id} {
+	for _, sessionID := range []string{first.ID.String(), second.ID.String()} {
 		revoked, getErr := ss.Session().Get(ctx, sessionID)
 		requireNoError(t, getErr)
-		if revoked.RevokedAt != at || revoked.RevocationReason != "administrator disabled account" {
+		if revoked.RevokedAt.Millis() != at || revoked.RevocationReason != "administrator disabled account" {
 			t.Fatalf("session %s was not revoked with the account: %#v", sessionID, revoked)
 		}
 	}

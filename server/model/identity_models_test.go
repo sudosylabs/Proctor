@@ -10,81 +10,6 @@ import (
 	"time"
 )
 
-func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
-	t.Parallel()
-
-	now := GetMillis()
-	userID := NewId()
-	unitID := NewId()
-	roleID := NewId()
-	sessionID := NewId()
-	tokenHash := HashToken(NewCredentialToken())
-
-	// Role, RoleBinding, Affiliation, AcademicUnitMember, ClassMember, User,
-	// and AuditEvent use the typed PrepareCreate/Validate lifecycle; see
-	// their dedicated tests. Remaining session/token models still use PreSave.
-	_ = userID
-	_ = unitID
-	_ = roleID
-	tests := []struct {
-		name  string
-		model persistentModel
-	}{
-		{
-			name: "session",
-			model: &Session{
-				UserId: userID,
-				ClientType:             SessionClientDesktop,
-				AuthenticationMethod:   "oidc",
-				AuthenticationStrength: AuthenticationSingleFactor,
-				IdleExpiresAt:          now + int64(time.Hour/time.Millisecond),
-				ExpiresAt:              now + int64((2*time.Hour)/time.Millisecond),
-			},
-		},
-		{
-			name: "session credential",
-			model: &SessionCredential{
-				SessionId: sessionID,
-				Kind:      SessionCredentialAccess,
-				TokenHash: tokenHash,
-				ExpiresAt: now + int64(time.Hour/time.Millisecond),
-			},
-		},
-		{
-			name: "personal access token",
-			model: &PersonalAccessToken{
-				UserId: userID,
-				Description: "Automation on my workstation",
-				TokenHash:   tokenHash,
-				Scopes:      []string{"class.view"},
-				ExpiresAt:   now + int64((24*time.Hour)/time.Millisecond),
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			test.model.PreSave()
-			if appErr := test.model.IsValid(); appErr != nil {
-				t.Fatalf("model is invalid after PreSave: %v", appErr)
-			}
-			audit := test.model.Auditable()
-			if !IsValidId(audit["id"].(string)) {
-				t.Fatalf("audit fields = %#v", audit)
-			}
-			for _, forbidden := range []string{"password", "password_hash", "token", "token_hash", "subject"} {
-				if _, exposed := audit[forbidden]; exposed {
-					t.Fatalf("audit fields expose %q: %#v", forbidden, audit)
-				}
-			}
-			test.model.PreUpdate()
-			if appErr := test.model.IsValid(); appErr != nil {
-				t.Fatalf("model is invalid after PreUpdate: %v", appErr)
-			}
-		})
-	}
-}
-
 func TestUserNormalizationAndContextualRelationships(t *testing.T) {
 	t.Parallel()
 
@@ -206,29 +131,29 @@ func TestInstallationStateTypedLifecycle(t *testing.T) {
 func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 	t.Parallel()
 
-	beforeCreate := GetMillis()
+	beforeCreate := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	s := &Session{
-		UserId: NewId(),
+		UserID:                 NewUserID(),
 		ClientType:             SessionClientCLI,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: AuthenticationMultiFactor,
 		AuthenticatedAt:        beforeCreate,
-		MFACompletedAt:         beforeCreate,
-		IdleExpiresAt:          beforeCreate + 60_000,
-		ExpiresAt:              beforeCreate + 120_000,
+		MFACompletedAt:         OptionalTimeFrom(beforeCreate),
+		IdleExpiresAt:          beforeCreate.Add(time.Minute),
+		ExpiresAt:              beforeCreate.Add(2 * time.Minute),
 	}
-	s.PreSave()
-	if appErr := s.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	s.PrepareCreate(NewSessionID(), beforeCreate)
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
 	}
-	if s.LastActivityAt != s.CreateAt {
+	if !s.LastActivityAt.Equal(s.CreatedAt) {
 		t.Fatalf(
-			"PreSave() last_activity_at = %d, create_at = %d",
+			"PrepareCreate() last_activity_at = %v, created_at = %v",
 			s.LastActivityAt,
-			s.CreateAt,
+			s.CreatedAt,
 		)
 	}
-	if s.IsExpiredAt(s.IdleExpiresAt - 1) {
+	if s.IsExpiredAt(s.IdleExpiresAt.Add(-time.Millisecond)) {
 		t.Fatal("session expired before its idle deadline")
 	}
 	if !s.IsExpiredAt(s.IdleExpiresAt) {
@@ -236,30 +161,48 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 	}
 
 	refresh := &SessionCredential{
-		SessionId: s.Id,
+		SessionID: s.ID,
 		Kind:      SessionCredentialRefresh,
 		TokenHash: HashToken(NewCredentialToken()),
 		ExpiresAt: s.ExpiresAt,
 	}
-	refresh.PreSave()
-	if !IsValidId(refresh.FamilyId) {
-		t.Fatalf("refresh family id = %q", refresh.FamilyId)
+	refresh.PrepareCreate(NewSessionCredentialID(), beforeCreate)
+	if !IsValidId(refresh.FamilyID) {
+		t.Fatalf("refresh family id = %q", refresh.FamilyID)
 	}
-	if appErr := refresh.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	if err := refresh.Validate(); err != nil {
+		t.Fatal(err)
 	}
 
 	access := &SessionCredential{
-		SessionId: s.Id,
+		SessionID: s.ID,
 		Kind:      SessionCredentialAccess,
 		TokenHash: HashToken(NewCredentialToken()),
-		FamilyId:  NewId(),
+		FamilyID:  NewId(),
 		ExpiresAt: s.ExpiresAt,
 	}
-	access.PreSave()
-	if appErr := access.IsValid(); appErr == nil ||
-		appErr.(*ValidationError).Code != "model.session_credential.is_valid.kind.app_error" {
-		t.Fatalf("access credential error = %v", appErr)
+	access.PrepareCreate(NewSessionCredentialID(), beforeCreate)
+	if err := access.Validate(); err == nil ||
+		err.(*ValidationError).Code != "model.session_credential.is_valid.kind.app_error" {
+		t.Fatalf("access credential error = %v", err)
+	}
+
+	token := &PersonalAccessToken{
+		UserID:      NewUserID(),
+		Description: "Automation on my workstation",
+		TokenHash:   HashToken(NewCredentialToken()),
+		Scopes:      []string{"class.view"},
+		ExpiresAt:   beforeCreate.Add(24 * time.Hour),
+	}
+	token.PrepareCreate(NewPersonalAccessTokenID(), beforeCreate)
+	if err := token.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !token.IsActiveAt(beforeCreate.Add(time.Hour)) {
+		t.Fatal("token should be active before expiry")
+	}
+	if token.IsActiveAt(token.ExpiresAt) {
+		t.Fatal("token should be inactive at expiry")
 	}
 }
 
@@ -459,29 +402,30 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			name: "personal token without expiry",
 			err: func() error {
 				token := &PersonalAccessToken{
-					UserId: NewId(),
+					UserID:      NewUserID(),
 					Description: "CLI",
 					TokenHash:   HashToken(NewCredentialToken()),
 					Scopes:      []string{"class.view"},
 				}
-				token.PreSave()
-				return token.IsValid()
+				token.PrepareCreate(NewPersonalAccessTokenID(), NowUTC())
+				return token.Validate()
 			}(),
 			code: "model.personal_access_token.is_valid.expires_at.app_error",
 		},
 		{
 			name: "session idle deadline after absolute deadline",
 			err: func() error {
+				at := TimeFromMillis(now)
 				s := &Session{
-					UserId: NewId(),
+					UserID:                 NewUserID(),
 					ClientType:             SessionClientDesktop,
 					AuthenticationMethod:   "oidc",
 					AuthenticationStrength: AuthenticationSingleFactor,
-					IdleExpiresAt:          now + 120_000,
-					ExpiresAt:              now + 60_000,
+					IdleExpiresAt:          at.Add(120 * time.Second),
+					ExpiresAt:              at.Add(60 * time.Second),
 				}
-				s.PreSave()
-				return s.IsValid()
+				s.PrepareCreate(NewSessionID(), at)
+				return s.Validate()
 			}(),
 			code: "model.session.is_valid.idle_expires_at.app_error",
 		},

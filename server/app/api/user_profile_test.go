@@ -146,7 +146,7 @@ func (a *loginRevisionHTTPApplication) Login(
 ) (*application.LoginResult, error) {
 	return &application.LoginResult{
 		User:    a.user,
-		Session: &model.Session{Id: model.NewId()},
+		Session: &model.Session{ID: model.NewSessionID()},
 		Tokens:  &model.AuthenticationTokens{AccessToken: "access"},
 	}, nil
 }

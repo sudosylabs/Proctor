@@ -127,7 +127,7 @@ func (s *sessionAdministrationService) RevokeOne(
 		return err
 	}
 	session, err := s.sessions.Get(ctx, sessionID)
-	if err != nil || session.UserId != userID {
+	if err != nil || session.UserID.String() != userID {
 		if err == nil {
 			err = store.NewErrNotFound("session", sessionID)
 		}

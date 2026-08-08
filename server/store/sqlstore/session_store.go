@@ -12,6 +12,7 @@ package sqlstore
 import (
 	"context"
 	"fmt"
+	"time"
 	"unicode/utf8"
 
 	sq "github.com/Masterminds/squirrel"
@@ -82,19 +83,20 @@ func (s SqlSessionStore) Save(
 	if session == nil {
 		return nil, nil, store.NewErrInvalidInput("session", "value", nil)
 	}
-	if session.Id != "" {
-		return nil, nil, store.NewErrInvalidInput("session", "id", session.Id)
+	if !session.ID.IsZero() {
+		return nil, nil, store.NewErrInvalidInput("session", "id", session.ID.String())
 	}
 	if maximumActive < 1 {
 		return nil, nil, store.NewErrInvalidInput("session", "maximum_active", maximumActive)
 	}
 
 	candidate := *session
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, nil, appErr
+	at := model.NowUTC()
+	candidate.PrepareCreate(model.NewSessionID(), at)
+	if err := candidate.Validate(); err != nil {
+		return nil, nil, err
 	}
-	prepared, err := prepareInitialSessionCredentials(&candidate, credentials)
+	prepared, err := prepareInitialSessionCredentials(&candidate, credentials, at)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -105,9 +107,10 @@ func (s SqlSessionStore) Save(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := lockUserSessions(ctx, tx, candidate.UserId); err != nil {
+	if err := lockUserSessions(ctx, tx, candidate.UserID.String()); err != nil {
 		return nil, nil, err
 	}
+	createMillis := model.MillisFromTime(candidate.CreatedAt)
 	var active int
 	if err := tx.Get(ctx, &active, `
 		SELECT COUNT(*)
@@ -117,9 +120,9 @@ func (s SqlSessionStore) Save(
 		   AND revoked_at = 0
 		   AND idle_expires_at > ?
 		   AND expires_at > ?`,
-		candidate.UserId,
-		candidate.CreateAt,
-		candidate.CreateAt,
+		candidate.UserID.String(),
+		createMillis,
+		createMillis,
 	); err != nil {
 		return nil, nil, fmt.Errorf("count active sessions: %w", err)
 	}
@@ -141,15 +144,15 @@ func (s SqlSessionStore) Save(
 		       last_login_at = GREATEST(last_login_at, ?),
 		       last_activity_at = GREATEST(last_activity_at, ?)
 		 WHERE id = ? AND delete_at = 0 AND disabled_at = 0`,
-		candidate.CreateAt,
-		candidate.CreateAt,
-		candidate.CreateAt,
-		candidate.UserId,
+		createMillis,
+		createMillis,
+		createMillis,
+		candidate.UserID.String(),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("update user login time: %w", err)
 	}
-	if err := requireAffected(userResult, "user", candidate.UserId); err != nil {
+	if err := requireAffected(userResult, "user", candidate.UserID.String()); err != nil {
 		return nil, nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -161,6 +164,7 @@ func (s SqlSessionStore) Save(
 func prepareInitialSessionCredentials(
 	session *model.Session,
 	credentials []*model.SessionCredential,
+	at time.Time,
 ) ([]*model.SessionCredential, error) {
 	if len(credentials) != 2 {
 		return nil, store.NewErrInvalidInput("session", "credentials", len(credentials))
@@ -171,20 +175,20 @@ func prepareInitialSessionCredentials(
 		if credential == nil {
 			return nil, store.NewErrInvalidInput("session_credential", "value", nil)
 		}
-		if credential.Id != "" {
-			return nil, store.NewErrInvalidInput("session_credential", "id", credential.Id)
+		if !credential.ID.IsZero() {
+			return nil, store.NewErrInvalidInput("session_credential", "id", credential.ID.String())
 		}
 		candidate := *credential
-		candidate.SessionId = session.Id
-		candidate.PreSave()
-		if appErr := candidate.IsValid(); appErr != nil {
-			return nil, appErr
+		candidate.SessionID = session.ID
+		candidate.PrepareCreate(model.NewSessionCredentialID(), at)
+		if err := candidate.Validate(); err != nil {
+			return nil, err
 		}
-		if candidate.ExpiresAt > session.ExpiresAt {
+		if candidate.ExpiresAt.After(session.ExpiresAt) {
 			return nil, store.NewErrInvalidInput(
 				"session_credential",
 				"expires_at",
-				candidate.ExpiresAt,
+				model.MillisFromTime(candidate.ExpiresAt),
 			)
 		}
 		if kinds[candidate.Kind] {
@@ -215,7 +219,7 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 			:last_activity_at, :idle_expires_at, :expires_at, :revoked_at,
 			:revocation_reason
 		)`, &row); err != nil {
-		return fmt.Errorf("save session: %w", translateError("session", session.Id, err))
+		return fmt.Errorf("save session: %w", translateError("session", session.ID.String(), err))
 	}
 	return nil
 }
@@ -377,8 +381,11 @@ func (s SqlSessionStore) RevokeWithAudit(
 		return nil, err
 	}
 	session := row.model()
-	session.UpdateAt = max(session.UpdateAt, input.RevokedAt)
-	session.RevokedAt = input.RevokedAt
+	revokedAt := model.TimeFromMillis(input.RevokedAt)
+	if session.UpdatedAt.Before(revokedAt) {
+		session.UpdatedAt = revokedAt
+	}
+	session.RevokedAt = model.OptionalTimeFrom(revokedAt)
 	session.RevocationReason = reason
 	encoded, appErr := model.EncodeAuditData(session.Auditable())
 	if appErr != nil {
@@ -595,10 +602,13 @@ func revokedSessionModels(
 	reason string,
 ) []*model.Session {
 	sessions := make([]*model.Session, 0, len(rows))
+	at := model.TimeFromMillis(revokedAt)
 	for _, row := range rows {
 		session := row.model()
-		session.UpdateAt = max(session.UpdateAt, revokedAt)
-		session.RevokedAt = revokedAt
+		if session.UpdatedAt.Before(at) {
+			session.UpdatedAt = at
+		}
+		session.RevokedAt = model.OptionalTimeFrom(at)
 		session.RevocationReason = model.SanitizeUnicode(reason)
 		sessions = append(sessions, session)
 	}
@@ -641,44 +651,44 @@ func selectActiveTokenHashes(
 
 func newSessionRow(session *model.Session) sessionRow {
 	return sessionRow{
-		ID:                     session.Id,
-		CreateAt:               session.CreateAt,
-		UpdateAt:               session.UpdateAt,
-		DeleteAt:               session.DeleteAt,
-		UserID:                 session.UserId,
+		ID:                     session.ID.String(),
+		CreateAt:               model.MillisFromTime(session.CreatedAt),
+		UpdateAt:               model.MillisFromTime(session.UpdatedAt),
+		DeleteAt:               session.ArchivedAt.Millis(),
+		UserID:                 session.UserID.String(),
 		ClientType:             string(session.ClientType),
-		DeviceID:               session.DeviceId,
+		DeviceID:               session.DeviceID,
 		DeviceName:             session.DeviceName,
 		AuthenticationMethod:   session.AuthenticationMethod,
 		AuthenticationStrength: string(session.AuthenticationStrength),
-		AuthenticatedAt:        session.AuthenticatedAt,
-		MFACompletedAt:         session.MFACompletedAt,
-		LastActivityAt:         session.LastActivityAt,
-		IdleExpiresAt:          session.IdleExpiresAt,
-		ExpiresAt:              session.ExpiresAt,
-		RevokedAt:              session.RevokedAt,
+		AuthenticatedAt:        model.MillisFromTime(session.AuthenticatedAt),
+		MFACompletedAt:         session.MFACompletedAt.Millis(),
+		LastActivityAt:         model.MillisFromTime(session.LastActivityAt),
+		IdleExpiresAt:          model.MillisFromTime(session.IdleExpiresAt),
+		ExpiresAt:              model.MillisFromTime(session.ExpiresAt),
+		RevokedAt:              session.RevokedAt.Millis(),
 		RevocationReason:       session.RevocationReason,
 	}
 }
 
 func (row sessionRow) model() *model.Session {
 	return &model.Session{
-		Id:                     row.ID,
-		CreateAt:               row.CreateAt,
-		UpdateAt:               row.UpdateAt,
-		DeleteAt:               row.DeleteAt,
-		UserId:                 row.UserID,
+		ID:                     model.SessionID(row.ID),
+		CreatedAt:              model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:              model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:             model.OptionalTimeFromMillis(row.DeleteAt),
+		UserID:                 model.UserID(row.UserID),
 		ClientType:             model.SessionClientType(row.ClientType),
-		DeviceId:               row.DeviceID,
+		DeviceID:               row.DeviceID,
 		DeviceName:             row.DeviceName,
 		AuthenticationMethod:   row.AuthenticationMethod,
 		AuthenticationStrength: model.AuthenticationStrength(row.AuthenticationStrength),
-		AuthenticatedAt:        row.AuthenticatedAt,
-		MFACompletedAt:         row.MFACompletedAt,
-		LastActivityAt:         row.LastActivityAt,
-		IdleExpiresAt:          row.IdleExpiresAt,
-		ExpiresAt:              row.ExpiresAt,
-		RevokedAt:              row.RevokedAt,
+		AuthenticatedAt:        model.TimeFromMillis(row.AuthenticatedAt),
+		MFACompletedAt:         model.OptionalTimeFromMillis(row.MFACompletedAt),
+		LastActivityAt:         model.TimeFromMillis(row.LastActivityAt),
+		IdleExpiresAt:          model.TimeFromMillis(row.IdleExpiresAt),
+		ExpiresAt:              model.TimeFromMillis(row.ExpiresAt),
+		RevokedAt:              model.OptionalTimeFromMillis(row.RevokedAt),
 		RevocationReason:       row.RevocationReason,
 	}
 }

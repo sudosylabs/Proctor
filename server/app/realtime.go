@@ -366,7 +366,7 @@ func sessionIds(sessions []*model.Session) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		if session != nil {
-			ids = append(ids, session.Id)
+			ids = append(ids, session.ID.String())
 		}
 	}
 	return ids
@@ -430,8 +430,8 @@ func (a *App) ValidateWebSocketPrincipal(
 		}
 		return authenticationUnavailable(err)
 	}
-	if session.UserId != principal.UserId ||
-		session.IsExpiredAt(time.Now().UnixMilli()) {
+	if session.UserID.String() != principal.UserId ||
+		session.IsExpiredAt(time.Now().UTC()) {
 		return invalidTokenAppError()
 	}
 	user, err := a.Store().User().Get(ctx, principal.UserId)

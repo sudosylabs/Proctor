@@ -77,9 +77,12 @@ func (a *App) CreatePersonalAccessToken(
 
 	rawCredential := model.NewCredentialToken()
 	candidate := &model.PersonalAccessToken{
-		UserId: principal.UserId, Description: command.Description,
-		TokenHash: model.HashToken(rawCredential), Scopes: normalizedScopes,
-		AcademicUnitId: command.AcademicUnitID, ExpiresAt: command.ExpiresAt,
+		UserID:      model.UserID(principal.UserId),
+		Description: command.Description,
+		TokenHash:   model.HashToken(rawCredential),
+		Scopes:      normalizedScopes,
+		AcademicUnitID: model.AcademicUnitID(command.AcademicUnitID),
+		ExpiresAt:      model.TimeFromMillis(command.ExpiresAt),
 	}
 	parameters := map[string]any{
 		"description": command.Description, "scopes": normalizedScopes,
@@ -147,7 +150,7 @@ func (a *App) RevokePersonalAccessToken(
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
 	current, err := a.Store().PersonalAccessToken().Get(ctx, command.TokenID)
-	if err != nil || current.UserId != principal.UserId {
+	if err != nil || current.UserID.String() != principal.UserId {
 		if err == nil {
 			err = store.NewErrNotFound("personal_access_token", command.TokenID)
 		}
@@ -203,7 +206,7 @@ func (a *App) SetPersonalAccessTokenDisabled(
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
 	current, err := a.Store().PersonalAccessToken().Get(ctx, command.TokenID)
-	if err != nil || current.UserId != principal.UserId {
+	if err != nil || current.UserID.String() != principal.UserId {
 		if err == nil {
 			err = store.NewErrNotFound("personal_access_token", command.TokenID)
 		}

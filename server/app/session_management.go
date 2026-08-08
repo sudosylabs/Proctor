@@ -77,13 +77,13 @@ func (a *App) RevokeSession(
 		}
 		return authenticationUnavailable(err)
 	}
-	if session.UserId != principal.UserId {
+	if session.UserID.String() != principal.UserId {
 		return NewError("session.not_found")
 	}
 
 	hashes, err := a.Store().Session().Revoke(
 		ctx,
-		session.Id,
+		session.ID.String(),
 		principal.UserId,
 		a.authentication.now().UnixMilli(),
 		"user session revocation",
@@ -95,11 +95,11 @@ func (a *App) RevokeSession(
 		return authenticationUnavailable(err)
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
-	a.authentication.deleteActivityCache(ctx, session.Id)
+	a.authentication.deleteActivityCache(ctx, session.ID.String())
 	a.realtime.PropagateSessionRevocation(
 		ctx,
 		principal.UserId,
-		[]string{session.Id},
+		[]string{session.ID.String()},
 		hashes,
 	)
 	return nil
@@ -125,7 +125,7 @@ func (a *App) RevokeAllSessions(
 	}
 	a.authentication.deleteAuthenticationCache(ctx, hashes)
 	for _, session := range sessions {
-		a.authentication.deleteActivityCache(ctx, session.Id)
+		a.authentication.deleteActivityCache(ctx, session.ID.String())
 	}
 	a.realtime.PropagateSessionRevocation(
 		ctx,

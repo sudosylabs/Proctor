@@ -46,7 +46,7 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	updated := *user
 	updated.DisabledAt = model.OptionalTimeFromMillis(500)
 	updated.Revision++
-	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{{Id: model.NewId()}}, RevokedTokenHashes: []string{"hash"}}}
+	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{{ID: model.NewSessionID()}}, RevokedTokenHashes: []string{"hash"}}}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})

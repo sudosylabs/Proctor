@@ -46,7 +46,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 	// Commit revocation on node A only; intentionally skip peer fan-out.
 	sessionID := ""
 	for id, session := range storeFake.sessions {
-		if session.UserId == user.ID.String() {
+		if session.UserID == user.ID {
 			sessionID = id
 			break
 		}
@@ -211,13 +211,13 @@ func TestStaleAuthenticationCacheBoundedBySessionExpiry(t *testing.T) {
 	// while the cached session is already past absolute/idle expiry.
 	for _, session := range storeFake.sessions {
 		for hash, credential := range storeFake.accessByHash {
-			if credential.SessionId != session.Id {
+			if credential.SessionID != session.ID {
 				continue
 			}
-			user := storeFake.users[session.UserId]
+			user := storeFake.users[session.UserID.String()]
 			expiredSession := *session
-			expiredSession.ExpiresAt = fixedNow.Add(-time.Minute).UnixMilli()
-			expiredSession.IdleExpiresAt = fixedNow.Add(-time.Minute).UnixMilli()
+			expiredSession.ExpiresAt = fixedNow.Add(-time.Minute)
+			expiredSession.IdleExpiresAt = fixedNow.Add(-time.Minute)
 			resolved := &cachedAuthentication{
 				Credential: credential,
 				Session:    &expiredSession,

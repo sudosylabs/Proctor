@@ -134,7 +134,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()),
 	)
 	requireNoError(t, err)
-	now := max(model.MillisFromTime(token.CreatedAt), session.CreateAt) + 100
+	now := max(model.MillisFromTime(token.CreatedAt), model.MillisFromTime(session.CreatedAt)) + 100
 	result, err := ss.UserToken().ConsumePasswordReset(
 		ctx,
 		token.TokenHash,
@@ -157,7 +157,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 		model.SessionCredentialAccess,
 	)
 	requireNoError(t, err)
-	if resolved.RevokedAt != now || resolvedSession.RevokedAt != now {
+	if resolved.RevokedAt.Millis() != now || resolvedSession.RevokedAt.Millis() != now {
 		t.Fatalf("reset session remained active: %#v %#v", resolved, resolvedSession)
 	}
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{

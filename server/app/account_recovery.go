@@ -312,7 +312,7 @@ func (a *App) CompletePasswordReset(
 	}
 	a.authentication.deleteAuthenticationCache(ctx, result.RevokedAccessHashes)
 	for _, session := range result.RevokedSessions {
-		a.authentication.deleteActivityCache(ctx, session.Id)
+		a.authentication.deleteActivityCache(ctx, session.ID.String())
 	}
 	a.realtime.PropagateSessionRevocation(
 		ctx,

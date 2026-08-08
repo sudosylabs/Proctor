@@ -8,7 +8,10 @@
 
 package model
 
-import "unicode/utf8"
+import (
+	"time"
+	"unicode/utf8"
+)
 
 const (
 	SessionDeviceIdMaxLength       = 128
@@ -36,61 +39,99 @@ const (
 // assurance and safe client metadata but never bearer credentials, role
 // bindings, or permission snapshots. SessionCredential owns the hashed access
 // and refresh credentials for this session.
+//
+// Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
+// Soft archive uses ArchivedAt (legacy delete_at).
 type Session struct {
-	Id                     string                 `json:"id"`
-	CreateAt               int64                  `json:"create_at"`
-	UpdateAt               int64                  `json:"update_at"`
-	DeleteAt               int64                  `json:"delete_at"`
-	UserId                 string                 `json:"user_id"`
-	ClientType             SessionClientType      `json:"client_type"`
-	DeviceId               string                 `json:"device_id,omitempty"`
-	DeviceName             string                 `json:"device_name,omitempty"`
-	AuthenticationMethod   string                 `json:"authentication_method"`
-	AuthenticationStrength AuthenticationStrength `json:"authentication_strength"`
-	AuthenticatedAt        int64                  `json:"authenticated_at"`
-	MFACompletedAt         int64                  `json:"mfa_completed_at,omitempty"`
-	LastActivityAt         int64                  `json:"last_activity_at"`
-	IdleExpiresAt          int64                  `json:"idle_expires_at"`
-	ExpiresAt              int64                  `json:"expires_at"`
-	RevokedAt              int64                  `json:"revoked_at,omitempty"`
-	RevocationReason       string                 `json:"revocation_reason,omitempty"`
+	ID                     SessionID
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	ArchivedAt             OptionalTime
+	UserID                 UserID
+	ClientType             SessionClientType
+	DeviceID               string
+	DeviceName             string
+	AuthenticationMethod   string
+	AuthenticationStrength AuthenticationStrength
+	AuthenticatedAt        time.Time
+	MFACompletedAt         OptionalTime
+	LastActivityAt         time.Time
+	IdleExpiresAt          time.Time
+	ExpiresAt              time.Time
+	RevokedAt              OptionalTime
+	RevocationReason       string
 }
 
-func (s *Session) PreSave() {
-	preSave(&s.Id, &s.CreateAt, &s.UpdateAt)
-	if s.AuthenticatedAt == 0 {
-		s.AuthenticatedAt = s.CreateAt
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (s *Session) PrepareCreate(id SessionID, at time.Time) {
+	if s == nil {
+		return
 	}
-	if s.LastActivityAt < s.CreateAt {
-		s.LastActivityAt = s.CreateAt
+	s.ID = id
+	at = TimeUTC(at)
+	s.CreatedAt = at
+	s.UpdatedAt = at
+	s.ArchivedAt = OptionalTime{}
+	if s.AuthenticatedAt.IsZero() {
+		s.AuthenticatedAt = at
+	} else {
+		s.AuthenticatedAt = TimeUTC(s.AuthenticatedAt)
 	}
-	s.DeviceId = SanitizeUnicode(s.DeviceId)
+	if s.LastActivityAt.IsZero() || s.LastActivityAt.Before(at) {
+		s.LastActivityAt = at
+	} else {
+		s.LastActivityAt = TimeUTC(s.LastActivityAt)
+	}
+	s.IdleExpiresAt = TimeUTC(s.IdleExpiresAt)
+	s.ExpiresAt = TimeUTC(s.ExpiresAt)
+	if s.MFACompletedAt.Valid {
+		s.MFACompletedAt = s.MFACompletedAt.UTC()
+	}
+	if s.RevokedAt.Valid {
+		s.RevokedAt = s.RevokedAt.UTC()
+	}
+	s.DeviceID = SanitizeUnicode(s.DeviceID)
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
 	s.AuthenticationMethod = SanitizeUnicode(s.AuthenticationMethod)
 	s.RevocationReason = SanitizeUnicode(s.RevocationReason)
 }
 
-func (s *Session) PreUpdate() {
-	preUpdate(&s.UpdateAt)
-	s.DeviceId = SanitizeUnicode(s.DeviceId)
+// PrepareUpdate applies the application-selected transition time and normalizes
+// mutable metadata fields.
+func (s *Session) PrepareUpdate(at time.Time) {
+	if s == nil {
+		return
+	}
+	s.UpdatedAt = TimeUTC(at)
+	s.DeviceID = SanitizeUnicode(s.DeviceID)
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
 	s.AuthenticationMethod = SanitizeUnicode(s.AuthenticationMethod)
 	s.RevocationReason = SanitizeUnicode(s.RevocationReason)
 }
 
-func (s *Session) IsValid() error {
-	const where = "Session.IsValid"
-	if appErr := validatePersistentFields(where, "session", s.Id, s.CreateAt, s.UpdateAt); appErr != nil {
-		return appErr
+// Validate checks rehydrated session state.
+func (s *Session) Validate() error {
+	const where = "Session.Validate"
+	if s == nil {
+		return invalidModelError(where, "session", "value", "is required", "")
 	}
-	details := "id=" + s.Id
-	if !IsValidId(s.UserId) {
+	if !s.ID.IsValid() {
+		return invalidModelError(where, "session", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + s.ID.String()
+	if s.CreatedAt.IsZero() || s.UpdatedAt.IsZero() {
+		return invalidModelError(where, "session", "created_at", "must be set", details)
+	}
+	if s.UpdatedAt.Before(s.CreatedAt) {
+		return invalidModelError(where, "session", "updated_at", "must not precede created_at", details)
+	}
+	if !s.UserID.IsValid() {
 		return invalidModelError(where, "session", "user_id", "must be a valid identifier", details)
 	}
 	if !s.ClientType.IsValid() {
 		return invalidModelError(where, "session", "client_type", "has an unknown value", details)
 	}
-	if len(s.DeviceId) > SessionDeviceIdMaxLength {
+	if len(s.DeviceID) > SessionDeviceIdMaxLength {
 		return invalidModelError(where, "session", "device_id", "is too long", details)
 	}
 	if utf8.RuneCountInString(s.DeviceName) > SessionDeviceNameMaxRunes {
@@ -104,14 +145,17 @@ func (s *Session) IsValid() error {
 	if !s.AuthenticationStrength.IsValid() {
 		return invalidModelError(where, "session", "authentication_strength", "has an unknown value", details)
 	}
-	if s.AuthenticatedAt <= 0 || s.AuthenticatedAt > s.CreateAt {
+	if s.AuthenticatedAt.IsZero() || s.AuthenticatedAt.After(s.CreatedAt) {
 		return invalidModelError(where, "session", "authenticated_at", "must be set and not follow create_at", details)
 	}
-	if s.AuthenticationStrength == AuthenticationMultiFactor &&
-		(s.MFACompletedAt < s.AuthenticatedAt || s.MFACompletedAt > s.CreateAt) {
-		return invalidModelError(where, "session", "mfa_completed_at", "is inconsistent", details)
+	if s.AuthenticationStrength == AuthenticationMultiFactor {
+		if !s.MFACompletedAt.Valid ||
+			s.MFACompletedAt.Time.Before(s.AuthenticatedAt) ||
+			s.MFACompletedAt.Time.After(s.CreatedAt) {
+			return invalidModelError(where, "session", "mfa_completed_at", "is inconsistent", details)
+		}
 	}
-	if s.AuthenticationStrength == AuthenticationSingleFactor && s.MFACompletedAt != 0 {
+	if s.AuthenticationStrength == AuthenticationSingleFactor && s.MFACompletedAt.Valid {
 		return invalidModelError(
 			where,
 			"session",
@@ -120,13 +164,13 @@ func (s *Session) IsValid() error {
 			details,
 		)
 	}
-	if s.LastActivityAt < s.CreateAt {
+	if s.LastActivityAt.Before(s.CreatedAt) {
 		return invalidModelError(where, "session", "last_activity_at", "must not precede create_at", details)
 	}
-	if s.ExpiresAt <= s.CreateAt {
+	if !s.ExpiresAt.After(s.CreatedAt) {
 		return invalidModelError(where, "session", "expires_at", "must be after create_at", details)
 	}
-	if s.IdleExpiresAt <= s.LastActivityAt || s.IdleExpiresAt > s.ExpiresAt {
+	if !s.IdleExpiresAt.After(s.LastActivityAt) || s.IdleExpiresAt.After(s.ExpiresAt) {
 		return invalidModelError(
 			where,
 			"session",
@@ -135,13 +179,16 @@ func (s *Session) IsValid() error {
 			details,
 		)
 	}
-	if s.RevokedAt != 0 && s.RevokedAt < s.CreateAt {
+	if s.ArchivedAt.Valid && s.ArchivedAt.Time.Before(s.CreatedAt) {
+		return invalidModelError(where, "session", "archived_at", "must not precede created_at", details)
+	}
+	if s.RevokedAt.Valid && s.RevokedAt.Time.Before(s.CreatedAt) {
 		return invalidModelError(where, "session", "revoked_at", "must not precede create_at", details)
 	}
 	if utf8.RuneCountInString(s.RevocationReason) > SessionRevocationMaxRunes {
 		return invalidModelError(where, "session", "revocation_reason", "is too long", details)
 	}
-	if s.RevokedAt == 0 && s.RevocationReason != "" {
+	if !s.RevokedAt.Valid && s.RevocationReason != "" {
 		return invalidModelError(
 			where,
 			"session",
@@ -171,28 +218,42 @@ func (as AuthenticationStrength) IsValid() bool {
 	}
 }
 
-func (s *Session) IsExpiredAt(now int64) bool {
-	return s == nil ||
-		s.DeleteAt != 0 ||
-		s.RevokedAt != 0 ||
-		now >= s.IdleExpiresAt ||
-		now >= s.ExpiresAt
+// IsExpiredAt reports whether the session is archived, revoked, idle-expired,
+// or absolutely expired at now.
+func (s *Session) IsExpiredAt(now time.Time) bool {
+	if s == nil {
+		return true
+	}
+	now = TimeUTC(now)
+	return s.ArchivedAt.Valid ||
+		s.RevokedAt.Valid ||
+		!now.Before(s.IdleExpiresAt) ||
+		!now.Before(s.ExpiresAt)
 }
 
+// Auditable returns a deliberately safe audit projection.
 func (s *Session) Auditable() map[string]any {
-	fields := auditFields(s.Id, s.CreateAt, s.UpdateAt, s.DeleteAt)
-	fields["user_id"] = s.UserId
-	fields["client_type"] = s.ClientType
-	fields["device_id"] = s.DeviceId
-	fields["authentication_method"] = s.AuthenticationMethod
-	fields["authentication_strength"] = s.AuthenticationStrength
-	fields["authenticated_at"] = s.AuthenticatedAt
-	fields["mfa_completed_at"] = s.MFACompletedAt
-	fields["last_activity_at"] = s.LastActivityAt
-	fields["idle_expires_at"] = s.IdleExpiresAt
-	fields["expires_at"] = s.ExpiresAt
-	fields["revoked_at"] = s.RevokedAt
-	return fields
+	if s == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":                      s.ID.String(),
+		"created_at":              MillisFromTime(s.CreatedAt),
+		"updated_at":              MillisFromTime(s.UpdatedAt),
+		"archived_at":             s.ArchivedAt.Millis(),
+		"delete_at":               s.ArchivedAt.Millis(),
+		"user_id":                 s.UserID.String(),
+		"client_type":             s.ClientType,
+		"device_id":               s.DeviceID,
+		"authentication_method":   s.AuthenticationMethod,
+		"authentication_strength": s.AuthenticationStrength,
+		"authenticated_at":        MillisFromTime(s.AuthenticatedAt),
+		"mfa_completed_at":        s.MFACompletedAt.Millis(),
+		"last_activity_at":        MillisFromTime(s.LastActivityAt),
+		"idle_expires_at":         MillisFromTime(s.IdleExpiresAt),
+		"expires_at":              MillisFromTime(s.ExpiresAt),
+		"revoked_at":              s.RevokedAt.Millis(),
+	}
 }
 
 var _ Auditable = (*Session)(nil)

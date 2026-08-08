@@ -509,8 +509,8 @@ func (s *ExternalAuthenticationService) revokeUnreportedSession(
 ) {
 	hashes, err := s.store.Session().Revoke(
 		ctx,
-		session.Id,
-		session.UserId,
+		session.ID.String(),
+		session.UserID.String(),
 		s.now().UnixMilli(),
 		"authentication audit completion failed",
 	)

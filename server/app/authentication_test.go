@@ -238,7 +238,7 @@ func (s authenticationSessionStore) Save(
 	if maximumPerUser > 0 {
 		count := 0
 		for _, existing := range s.root.sessions {
-			if existing.UserId == session.UserId && existing.RevokedAt == 0 {
+			if existing.UserID == session.UserID && !existing.RevokedAt.Valid {
 				count++
 			}
 		}
@@ -247,20 +247,20 @@ func (s authenticationSessionStore) Save(
 		}
 	}
 	cloned := *session
-	if cloned.Id == "" {
-		cloned.Id = model.NewId()
+	now := model.NowUTC()
+	if cloned.ID.IsZero() {
+		cloned.PrepareCreate(model.NewSessionID(), now)
+	} else {
+		cloned.PrepareUpdate(now)
 	}
-	now := time.Now().UnixMilli()
-	cloned.CreateAt = now
-	cloned.UpdateAt = now
-	s.root.sessions[cloned.Id] = &cloned
+	s.root.sessions[cloned.ID.String()] = &cloned
 	savedCredentials := make([]*model.SessionCredential, 0, len(credentials))
 	for _, credential := range credentials {
 		item := *credential
-		item.Id = model.NewId()
-		item.SessionId = cloned.Id
-		item.CreateAt = now
-		item.UpdateAt = now
+		item.SessionID = cloned.ID
+		if item.ID.IsZero() {
+			item.PrepareCreate(model.NewSessionCredentialID(), now)
+		}
 		savedCredentials = append(savedCredentials, &item)
 		if item.Kind == model.SessionCredentialAccess {
 			s.root.accessByHash[item.TokenHash] = &item
@@ -275,9 +275,10 @@ func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID 
 	if !ok {
 		return store.NewErrNotFound("session", sessionID)
 	}
-	session.LastActivityAt = lastActivityAt
-	session.IdleExpiresAt = idleExpiresAt
-	session.UpdateAt = lastActivityAt
+	at := model.TimeFromMillis(lastActivityAt)
+	session.LastActivityAt = at
+	session.IdleExpiresAt = model.TimeFromMillis(idleExpiresAt)
+	session.UpdatedAt = at
 	return nil
 }
 
@@ -286,11 +287,15 @@ func (s authenticationSessionStore) Revoke(_ context.Context, sessionID, _ strin
 	if !ok {
 		return nil, store.NewErrNotFound("session", sessionID)
 	}
-	session.RevokedAt = revokedAt
+	at := model.TimeFromMillis(revokedAt)
+	session.RevokedAt = model.OptionalTimeFrom(at)
 	session.RevocationReason = reason
+	if session.UpdatedAt.Before(at) {
+		session.UpdatedAt = at
+	}
 	var hashes []string
 	for hash, credential := range s.root.accessByHash {
-		if credential.SessionId == sessionID {
+		if credential.SessionID.String() == sessionID {
 			hashes = append(hashes, hash)
 			delete(s.root.accessByHash, hash)
 			delete(s.root.sessionByCredential, hash)
@@ -458,7 +463,7 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if principal.UserId != user.ID.String() || principal.SessionId != result.Session.Id {
+	if principal.UserId != user.ID.String() || principal.SessionId != result.Session.ID.String() {
 		t.Fatalf("principal = %#v", principal)
 	}
 	if principal.CredentialType != model.CredentialSessionAccess {

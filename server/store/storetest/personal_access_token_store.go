@@ -41,18 +41,18 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	user, _ := saveLocalUser(t, ctx, ss)
 	raw := model.NewCredentialToken()
 	token := newPersonalAccessToken(user.ID.String(), raw)
-	token.AcademicUnitId = unit.ID.String()
+	token.AcademicUnitID = unit.ID
 	token, err := ss.PersonalAccessToken().Save(ctx, token, 10)
 	requireNoError(t, err)
 
-	got, err := ss.PersonalAccessToken().Get(ctx, token.Id)
+	got, err := ss.PersonalAccessToken().Get(ctx, token.ID.String())
 	requireNoError(t, err)
 	if got.TokenHash != model.HashToken(raw) ||
-		got.AcademicUnitId != unit.ID.String() ||
+		got.AcademicUnitID != unit.ID ||
 		len(got.Scopes) != 2 {
 		t.Fatalf("Get() = %#v", got)
 	}
-	now := token.CreateAt + 10
+	now := model.MillisFromTime(token.CreatedAt) + 10
 	resolved, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
@@ -61,8 +61,8 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	)
 	requireNoError(t, err)
 	if resolved.User.ID.String() != user.ID.String() ||
-		resolved.Token.Id != token.Id ||
-		resolved.Token.LastUsedAt != now {
+		resolved.Token.ID != token.ID ||
+		resolved.Token.LastUsedAt.Millis() != now {
 		t.Fatalf("Resolve() = %#v", resolved)
 	}
 	debounced, err := ss.PersonalAccessToken().Resolve(
@@ -72,19 +72,19 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 		1000,
 	)
 	requireNoError(t, err)
-	if debounced.Token.LastUsedAt != now {
-		t.Fatalf("debounced last_used_at = %d, want %d", debounced.Token.LastUsedAt, now)
+	if debounced.Token.LastUsedAt.Millis() != now {
+		t.Fatalf("debounced last_used_at = %d, want %d", debounced.Token.LastUsedAt.Millis(), now)
 	}
 	disabled, err := ss.PersonalAccessToken().SetDisabled(
 		ctx,
-		token.Id,
+		token.ID.String(),
 		user.ID.String(),
 		true,
 		now+150,
 		10,
 	)
 	requireNoError(t, err)
-	if disabled.DisabledAt != now+150 || disabled.IsActiveAt(now+151) {
+	if disabled.DisabledAt.Millis() != now+150 || disabled.IsActiveAt(model.TimeFromMillis(now+151)) {
 		t.Fatalf("disabled token = %#v", disabled)
 	}
 	if _, err := ss.PersonalAccessToken().Resolve(
@@ -97,20 +97,20 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	}
 	enabled, err := ss.PersonalAccessToken().SetDisabled(
 		ctx,
-		token.Id,
+		token.ID.String(),
 		user.ID.String(),
 		false,
 		now+175,
 		10,
 	)
 	requireNoError(t, err)
-	if enabled.DisabledAt != 0 || !enabled.IsActiveAt(now+176) {
+	if enabled.DisabledAt.Valid || !enabled.IsActiveAt(model.TimeFromMillis(now+176)) {
 		t.Fatalf("enabled token = %#v", enabled)
 	}
 	other, _ := saveLocalUser(t, ctx, ss)
 	if _, err := ss.PersonalAccessToken().Revoke(
 		ctx,
-		token.Id,
+		token.ID.String(),
 		other.ID.String(),
 		now+200,
 	); !store.IsNotFound(err) {
@@ -118,13 +118,13 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	}
 	revoked, err := ss.PersonalAccessToken().Revoke(
 		ctx,
-		token.Id,
+		token.ID.String(),
 		user.ID.String(),
 		now+200,
 	)
 	requireNoError(t, err)
-	if revoked.RevokedAt != now+200 {
-		t.Fatalf("revoked_at = %d", revoked.RevokedAt)
+	if revoked.RevokedAt.Millis() != now+200 {
+		t.Fatalf("revoked_at = %d", revoked.RevokedAt.Millis())
 	}
 	if _, err := ss.PersonalAccessToken().Resolve(
 		ctx,
@@ -136,7 +136,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	}
 	list, err := ss.PersonalAccessToken().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
-	if len(list) != 1 || list[0].RevokedAt == 0 {
+	if len(list) != 1 || !list[0].RevokedAt.Valid {
 		t.Fatalf("ListByUser() = %#v", list)
 	}
 }
@@ -151,9 +151,9 @@ func testPersonalAccessTokenReenableMaximum(t *testing.T, ss store.Store) {
 		1,
 	)
 	requireNoError(t, err)
-	now := first.CreateAt + 10
+	now := model.MillisFromTime(first.CreatedAt) + 10
 	_, err = ss.PersonalAccessToken().SetDisabled(
-		ctx, first.Id, user.ID.String(), true, now, 1,
+		ctx, first.ID.String(), user.ID.String(), true, now, 1,
 	)
 	requireNoError(t, err)
 	second, err := ss.PersonalAccessToken().Save(
@@ -163,19 +163,19 @@ func testPersonalAccessTokenReenableMaximum(t *testing.T, ss store.Store) {
 	)
 	requireNoError(t, err)
 	if _, err := ss.PersonalAccessToken().SetDisabled(
-		ctx, first.Id, user.ID.String(), false, now+1, 1,
+		ctx, first.ID.String(), user.ID.String(), false, now+1, 1,
 	); !store.IsConflict(err) {
 		t.Fatalf("reenable at active limit error = %v, want conflict", err)
 	}
 	_, err = ss.PersonalAccessToken().Revoke(
-		ctx, second.Id, user.ID.String(), now+2,
+		ctx, second.ID.String(), user.ID.String(), now+2,
 	)
 	requireNoError(t, err)
 	enabled, err := ss.PersonalAccessToken().SetDisabled(
-		ctx, first.Id, user.ID.String(), false, now+3, 1,
+		ctx, first.ID.String(), user.ID.String(), false, now+3, 1,
 	)
 	requireNoError(t, err)
-	if enabled.DisabledAt != 0 {
+	if enabled.DisabledAt.Valid {
 		t.Fatalf("reenabled token = %#v", enabled)
 	}
 }
@@ -241,12 +241,13 @@ func newPersonalAccessToken(
 	raw string,
 ) *model.PersonalAccessToken {
 	return &model.PersonalAccessToken{
-		UserId: userID, Description: "automation token",
-		TokenHash: model.HashToken(raw),
+		UserID:      model.UserID(userID),
+		Description: "automation token",
+		TokenHash:   model.HashToken(raw),
 		Scopes: []string{
 			string(model.ActionAcademicUnitView),
 			string(model.ActionClassView),
 		},
-		ExpiresAt: model.GetMillis() + (24 * time.Hour).Milliseconds(),
+		ExpiresAt: model.NowUTC().Add(24 * time.Hour),
 	}
 }

@@ -48,13 +48,13 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 			{CodeHash: firstHash},
 			{CodeHash: secondHash},
 		},
-		session.Id,
+		session.ID.String(),
 		now,
 	)
 	requireNoError(t, err)
 	if !activated.Credential.IsActive() ||
 		activated.Session.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		activated.Session.MFACompletedAt != now ||
+		activated.Session.MFACompletedAt.Millis() != now ||
 		len(activated.AccessTokenHashes) != 1 ||
 		activated.AccessTokenHashes[0] != model.HashToken(raw.access) {
 		t.Fatalf("Activate() = %#v", activated)
@@ -108,10 +108,10 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 		disabled.AccessTokenHashes[0] != model.HashToken(raw.access) {
 		t.Fatalf("Disable() = %#v", disabled)
 	}
-	gotSession, err := ss.Session().Get(ctx, session.Id)
+	gotSession, err := ss.Session().Get(ctx, session.ID.String())
 	requireNoError(t, err)
 	if gotSession.AuthenticationStrength != model.AuthenticationSingleFactor ||
-		gotSession.MFACompletedAt != 0 {
+		gotSession.MFACompletedAt.Valid {
 		t.Fatalf("disabled session assurance = %#v", gotSession)
 	}
 	if _, err := ss.MFA().GetByUser(ctx, user.ID.String()); !store.IsNotFound(err) {
@@ -146,7 +146,7 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 		user.ID.String(),
 		2_000,
 		[]*model.MFARecoveryCode{{CodeHash: codeHash}},
-		session.Id,
+		session.ID.String(),
 		pending.CreateAt+1,
 	)
 	requireNoError(t, err)

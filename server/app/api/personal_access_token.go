@@ -51,11 +51,18 @@ func personalAccessTokenResponseFromModel(token *model.PersonalAccessToken) pers
 		scopes = []string{}
 	}
 	return personalAccessTokenResponse{
-		ID: token.Id, CreateAt: token.CreateAt, UpdateAt: token.UpdateAt, DeleteAt: token.DeleteAt,
-		UserID: token.UserId, Description: token.Description,
-		Scopes: append([]string(nil), scopes...), AcademicUnitID: token.AcademicUnitId,
-		ExpiresAt: token.ExpiresAt, LastUsedAt: token.LastUsedAt,
-		DisabledAt: token.DisabledAt, RevokedAt: token.RevokedAt,
+		ID:             token.ID.String(),
+		CreateAt:       model.MillisFromTime(token.CreatedAt),
+		UpdateAt:       model.MillisFromTime(token.UpdatedAt),
+		DeleteAt:       token.ArchivedAt.Millis(),
+		UserID:         token.UserID.String(),
+		Description:    token.Description,
+		Scopes:         append([]string(nil), scopes...),
+		AcademicUnitID: token.AcademicUnitID.String(),
+		ExpiresAt:      model.MillisFromTime(token.ExpiresAt),
+		LastUsedAt:     token.LastUsedAt.Millis(),
+		DisabledAt:     token.DisabledAt.Millis(),
+		RevokedAt:      token.RevokedAt.Millis(),
 	}
 }
 

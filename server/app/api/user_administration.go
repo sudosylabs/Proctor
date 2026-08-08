@@ -100,9 +100,9 @@ func (a *API) listUserSessions(w http.ResponseWriter, r *http.Request) {
 	if sessions == nil {
 		sessions = []*model.Session{}
 	}
-	// Session models deliberately exclude bearer/refresh credentials; keep the
-	// existing bare-array wire shape for administrative listing.
-	writeJSON(w, http.StatusOK, sessions)
+	// Transport-owned DTOs keep the historical bare-array millis wire shape
+	// while domain Session values use typed IDs and UTC times.
+	writeJSON(w, http.StatusOK, sessionResponsesFromModels(sessions))
 }
 
 func (a *API) revokeUserSession(w http.ResponseWriter, r *http.Request) {

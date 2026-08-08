@@ -234,7 +234,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	disable := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
-		"/api/v1/users/me/tokens/"+created.Token.Id+"/disable",
+		"/api/v1/users/me/tokens/"+created.Token.ID+"/disable",
 		nil,
 		session.Tokens.AccessToken,
 	)
@@ -258,7 +258,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	enable := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
-		"/api/v1/users/me/tokens/"+created.Token.Id+"/enable",
+		"/api/v1/users/me/tokens/"+created.Token.ID+"/enable",
 		nil,
 		session.Tokens.AccessToken,
 	)
@@ -282,7 +282,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	revoke := performJSONRequest(
 		helper.Handler(),
 		http.MethodDelete,
-		"/api/v1/users/me/tokens/"+created.Token.Id,
+		"/api/v1/users/me/tokens/"+created.Token.ID,
 		nil,
 		session.Tokens.AccessToken,
 	)
@@ -747,7 +747,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatalf("sessions = %#v", sessions)
 	}
 	for _, session := range sessions {
-		if session.UserId != user.ID || session.RevokedAt != 0 {
+		if session.UserID != user.ID || session.RevokedAt != 0 {
 			t.Fatalf("unsafe session listing = %#v", session)
 		}
 	}
@@ -761,7 +761,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke",
-		map[string]any{"session_id": firstLogin.Session.Id, "unknown": true},
+		map[string]any{"session_id": firstLogin.Session.ID, "unknown": true},
 		secondLogin.Tokens.AccessToken,
 	)
 	if unknownField.Code != http.StatusBadRequest {
@@ -772,7 +772,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke",
-		map[string]any{"session_id": firstLogin.Session.Id},
+		map[string]any{"session_id": firstLogin.Session.ID},
 		secondLogin.Tokens.AccessToken,
 	)
 	if revokeFirst.Code != http.StatusNoContent {
@@ -830,7 +830,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		helper.Handler(),
 		http.MethodPost,
 		"/api/v1/users/me/sessions/revoke",
-		map[string]any{"session_id": otherLogin.Session.Id},
+		map[string]any{"session_id": otherLogin.Session.ID},
 		secondLogin.Tokens.AccessToken,
 	)
 	if crossUserRevoke.Code != http.StatusNotFound {
@@ -892,7 +892,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	}
 	if activeAfterRevokeAll.Code != http.StatusOK ||
 		len(sessions) != 1 ||
-		sessions[0].Id != thirdLogin.Session.Id {
+		sessions[0].ID != thirdLogin.Session.ID {
 		t.Fatalf(
 			"active sessions after revoke-all status=%d sessions=%#v",
 			activeAfterRevokeAll.Code,

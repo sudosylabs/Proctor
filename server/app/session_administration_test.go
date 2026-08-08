@@ -77,7 +77,7 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	session := &model.Session{Id: model.NewId(), UserId: userID}
+	session := &model.Session{ID: model.NewSessionID(), UserID: model.UserID(userID)}
 	service := newSessionAdministrationService(
 		&sessionAdministrationStoreFake{events: &events, list: []*model.Session{session}},
 		&sessionAdministrationAuthorizerFake{events: &events},
@@ -89,7 +89,7 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Id != session.Id {
+	if len(got) != 1 || got[0].ID.String() != session.ID.String() {
 		t.Fatalf("list = %#v", got)
 	}
 	want := []string{"authorize-view", "list-active"}
@@ -102,9 +102,12 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	session := &model.Session{Id: model.NewId(), UserId: userID, CreateAt: 100, UpdateAt: 100}
+	session := &model.Session{
+		ID: model.NewSessionID(), UserID: model.UserID(userID),
+		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+	}
 	revoked := *session
-	revoked.RevokedAt = 500
+	revoked.RevokedAt = model.OptionalTimeFromMillis(500)
 	persistence := &sessionAdministrationStoreFake{
 		events:  &events,
 		session: session,
@@ -120,11 +123,11 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	if err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
-		UserID: userID, SessionID: session.Id,
+		UserID: userID, SessionID: session.ID.String(),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if persistence.revokeInput.SessionID != session.Id || persistence.revokeInput.AuditEventID == "" {
+	if persistence.revokeInput.SessionID != session.ID.String() || persistence.revokeInput.AuditEventID == "" {
 		t.Fatalf("input = %#v", persistence.revokeInput)
 	}
 	want := []string{"authorize-manage", "get-session", "audit-begin", "store-revoke", "publish-revocation"}
@@ -137,7 +140,10 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	session := &model.Session{Id: model.NewId(), UserId: userID, CreateAt: 100, UpdateAt: 100}
+	session := &model.Session{
+		ID: model.NewSessionID(), UserID: model.UserID(userID),
+		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+	}
 	service := newSessionAdministrationService(
 		&sessionAdministrationStoreFake{
 			events:    &events,
@@ -150,7 +156,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 		time.Now,
 	)
 	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
-		UserID: userID, SessionID: session.Id,
+		UserID: userID, SessionID: session.ID.String(),
 	})
 	if !Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
@@ -165,7 +171,7 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	session := &model.Session{Id: model.NewId(), UserId: userID}
+	session := &model.Session{ID: model.NewSessionID(), UserID: model.UserID(userID)}
 	persistence := &sessionAdministrationStoreFake{
 		events: &events,
 		revokeAllResult: &store.UserSessionsRevocationResult{
@@ -195,7 +201,7 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	session := &model.Session{Id: model.NewId(), UserId: model.NewId()}
+	session := &model.Session{ID: model.NewSessionID(), UserID: model.NewUserID()}
 	service := newSessionAdministrationService(
 		&sessionAdministrationStoreFake{events: &events, session: session},
 		&sessionAdministrationAuthorizerFake{events: &events},
@@ -204,7 +210,7 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 		time.Now,
 	)
 	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
-		UserID: userID, SessionID: session.Id,
+		UserID: userID, SessionID: session.ID.String(),
 	})
 	if !Is(err, "session.not_found") {
 		t.Fatalf("error = %v", err)

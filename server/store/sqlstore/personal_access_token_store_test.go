@@ -18,7 +18,7 @@ func TestPersonalAccessTokenRowConversion(t *testing.T) {
 		ExpiresAt: 3,
 	}
 	token := row.model()
-	if token.AcademicUnitId != unitID || len(token.Scopes) != 1 {
+	if token.AcademicUnitID.String() != unitID || len(token.Scopes) != 1 {
 		t.Fatalf("row.model() = %#v", token)
 	}
 	token.Scopes[0] = "mutated"

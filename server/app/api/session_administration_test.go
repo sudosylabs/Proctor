@@ -31,10 +31,11 @@ func TestAdminSessionListUsesApplicationQueryAndOmitsCredentials(t *testing.T) {
 	sessionID := model.NewId()
 	sessions := &sessionAdministrationHTTPApplication{
 		list: []*model.Session{{
-			Id: sessionID, UserId: userID, ClientType: model.SessionClientCLI,
+			ID: model.SessionID(sessionID), UserID: model.UserID(userID), ClientType: model.SessionClientCLI,
 			AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-			AuthenticatedAt: 100, CreateAt: 100, UpdateAt: 100, LastActivityAt: 100,
-			IdleExpiresAt: 200, ExpiresAt: 300,
+			AuthenticatedAt: model.TimeFromMillis(100), CreatedAt: model.TimeFromMillis(100),
+			UpdatedAt: model.TimeFromMillis(100), LastActivityAt: model.TimeFromMillis(100),
+			IdleExpiresAt: model.TimeFromMillis(200), ExpiresAt: model.TimeFromMillis(300),
 		}},
 	}
 	transport := &academicUnitHTTPApplication{principal: principal}

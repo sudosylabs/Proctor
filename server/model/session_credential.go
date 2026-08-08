@@ -3,6 +3,8 @@
 
 package model
 
+import "time"
+
 type SessionCredentialKind string
 
 const (
@@ -11,48 +13,76 @@ const (
 )
 
 // SessionCredential is one hashed opaque credential for a Session. Refresh
-// credentials form a rotation family: UsedAt, ParentId, and ReplacedById allow
+// credentials form a rotation family: UsedAt, ParentID, and ReplacedByID allow
 // the application to detect replay and revoke the entire family.
+//
+// Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
+// Soft archive uses ArchivedAt (legacy delete_at). TokenHash is excluded from
+// JSON and must never be logged or audited.
 type SessionCredential struct {
-	Id           string                `json:"id"`
-	CreateAt     int64                 `json:"create_at"`
-	UpdateAt     int64                 `json:"update_at"`
-	DeleteAt     int64                 `json:"delete_at"`
-	SessionId    string                `json:"session_id"`
-	Kind         SessionCredentialKind `json:"kind"`
-	TokenHash    string                `json:"-"`
-	FamilyId     string                `json:"family_id,omitempty"`
-	ParentId     string                `json:"parent_id,omitempty"`
-	ReplacedById string                `json:"replaced_by_id,omitempty"`
-	ExpiresAt    int64                 `json:"expires_at"`
-	UsedAt       int64                 `json:"used_at,omitempty"`
-	RevokedAt    int64                 `json:"revoked_at,omitempty"`
+	ID           SessionCredentialID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	ArchivedAt   OptionalTime
+	SessionID    SessionID
+	Kind         SessionCredentialKind
+	TokenHash    string `json:"-"`
+	FamilyID     string // valid ID for refresh credentials; empty for access
+	ParentID     SessionCredentialID
+	ReplacedByID SessionCredentialID
+	ExpiresAt    time.Time
+	UsedAt       OptionalTime
+	RevokedAt    OptionalTime
 }
 
-func (sc *SessionCredential) PreSave() {
-	preSave(&sc.Id, &sc.CreateAt, &sc.UpdateAt)
-	if sc.Kind == SessionCredentialRefresh && sc.FamilyId == "" {
-		sc.FamilyId = NewId()
+// PrepareCreate applies application-owned lifecycle fields before validation.
+// Refresh credentials without a family receive a fresh family identifier.
+func (sc *SessionCredential) PrepareCreate(id SessionCredentialID, at time.Time) {
+	if sc == nil {
+		return
+	}
+	sc.ID = id
+	at = TimeUTC(at)
+	sc.CreatedAt = at
+	sc.UpdatedAt = at
+	sc.ArchivedAt = OptionalTime{}
+	sc.ExpiresAt = TimeUTC(sc.ExpiresAt)
+	if sc.Kind == SessionCredentialRefresh && sc.FamilyID == "" {
+		sc.FamilyID = NewId()
+	}
+	if sc.UsedAt.Valid {
+		sc.UsedAt = sc.UsedAt.UTC()
+	}
+	if sc.RevokedAt.Valid {
+		sc.RevokedAt = sc.RevokedAt.UTC()
 	}
 }
 
-func (sc *SessionCredential) PreUpdate() {
-	preUpdate(&sc.UpdateAt)
+// PrepareUpdate applies the application-selected transition time.
+func (sc *SessionCredential) PrepareUpdate(at time.Time) {
+	if sc == nil {
+		return
+	}
+	sc.UpdatedAt = TimeUTC(at)
 }
 
-func (sc *SessionCredential) IsValid() error {
-	const where = "SessionCredential.IsValid"
-	if appErr := validatePersistentFields(
-		where,
-		"session_credential",
-		sc.Id,
-		sc.CreateAt,
-		sc.UpdateAt,
-	); appErr != nil {
-		return appErr
+// Validate checks rehydrated session-credential state.
+func (sc *SessionCredential) Validate() error {
+	const where = "SessionCredential.Validate"
+	if sc == nil {
+		return invalidModelError(where, "session_credential", "value", "is required", "")
 	}
-	details := "id=" + sc.Id
-	if !IsValidId(sc.SessionId) {
+	if !sc.ID.IsValid() {
+		return invalidModelError(where, "session_credential", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + sc.ID.String()
+	if sc.CreatedAt.IsZero() || sc.UpdatedAt.IsZero() {
+		return invalidModelError(where, "session_credential", "created_at", "must be set", details)
+	}
+	if sc.UpdatedAt.Before(sc.CreatedAt) {
+		return invalidModelError(where, "session_credential", "updated_at", "must not precede created_at", details)
+	}
+	if !sc.SessionID.IsValid() {
 		return invalidModelError(where, "session_credential", "session_id", "must be a valid identifier", details)
 	}
 	if !sc.Kind.IsValid() {
@@ -61,11 +91,11 @@ func (sc *SessionCredential) IsValid() error {
 	if !IsValidTokenHash(sc.TokenHash) {
 		return invalidModelError(where, "session_credential", "token_hash", "has an invalid format", details)
 	}
-	if sc.ExpiresAt <= sc.CreateAt {
+	if !sc.ExpiresAt.After(sc.CreatedAt) {
 		return invalidModelError(where, "session_credential", "expires_at", "must be after create_at", details)
 	}
 	if sc.Kind == SessionCredentialAccess {
-		if sc.FamilyId != "" || sc.ParentId != "" || sc.ReplacedById != "" || sc.UsedAt != 0 {
+		if sc.FamilyID != "" || !sc.ParentID.IsZero() || !sc.ReplacedByID.IsZero() || sc.UsedAt.Valid {
 			return invalidModelError(
 				where,
 				"session_credential",
@@ -75,7 +105,7 @@ func (sc *SessionCredential) IsValid() error {
 			)
 		}
 	} else {
-		if !IsValidId(sc.FamilyId) {
+		if !IsValidId(sc.FamilyID) {
 			return invalidModelError(
 				where,
 				"session_credential",
@@ -84,10 +114,10 @@ func (sc *SessionCredential) IsValid() error {
 				details,
 			)
 		}
-		if sc.ParentId != "" && !IsValidId(sc.ParentId) {
+		if !sc.ParentID.IsZero() && !sc.ParentID.IsValid() {
 			return invalidModelError(where, "session_credential", "parent_id", "must be a valid identifier", details)
 		}
-		if sc.ParentId == sc.Id {
+		if sc.ParentID == sc.ID {
 			return invalidModelError(
 				where,
 				"session_credential",
@@ -96,7 +126,7 @@ func (sc *SessionCredential) IsValid() error {
 				details,
 			)
 		}
-		if sc.ReplacedById != "" && !IsValidId(sc.ReplacedById) {
+		if !sc.ReplacedByID.IsZero() && !sc.ReplacedByID.IsValid() {
 			return invalidModelError(
 				where,
 				"session_credential",
@@ -105,7 +135,7 @@ func (sc *SessionCredential) IsValid() error {
 				details,
 			)
 		}
-		if sc.ReplacedById == sc.Id {
+		if sc.ReplacedByID == sc.ID {
 			return invalidModelError(
 				where,
 				"session_credential",
@@ -114,7 +144,7 @@ func (sc *SessionCredential) IsValid() error {
 				details,
 			)
 		}
-		if sc.ReplacedById != "" && sc.UsedAt == 0 {
+		if !sc.ReplacedByID.IsZero() && !sc.UsedAt.Valid {
 			return invalidModelError(
 				where,
 				"session_credential",
@@ -124,7 +154,8 @@ func (sc *SessionCredential) IsValid() error {
 			)
 		}
 	}
-	if sc.UsedAt != 0 && (sc.UsedAt < sc.CreateAt || sc.UsedAt >= sc.ExpiresAt) {
+	if sc.UsedAt.Valid &&
+		(sc.UsedAt.Time.Before(sc.CreatedAt) || !sc.UsedAt.Time.Before(sc.ExpiresAt)) {
 		return invalidModelError(
 			where,
 			"session_credential",
@@ -133,7 +164,10 @@ func (sc *SessionCredential) IsValid() error {
 			details,
 		)
 	}
-	if sc.RevokedAt != 0 && sc.RevokedAt < sc.CreateAt {
+	if sc.ArchivedAt.Valid && sc.ArchivedAt.Time.Before(sc.CreatedAt) {
+		return invalidModelError(where, "session_credential", "archived_at", "must not precede created_at", details)
+	}
+	if sc.RevokedAt.Valid && sc.RevokedAt.Time.Before(sc.CreatedAt) {
 		return invalidModelError(where, "session_credential", "revoked_at", "must not precede create_at", details)
 	}
 	return nil
@@ -143,21 +177,36 @@ func (k SessionCredentialKind) IsValid() bool {
 	return k == SessionCredentialAccess || k == SessionCredentialRefresh
 }
 
-func (sc *SessionCredential) IsExpiredAt(now int64) bool {
-	return sc == nil || sc.DeleteAt != 0 || sc.RevokedAt != 0 || now >= sc.ExpiresAt
+// IsExpiredAt reports whether the credential is archived, revoked, or expired.
+func (sc *SessionCredential) IsExpiredAt(now time.Time) bool {
+	if sc == nil {
+		return true
+	}
+	now = TimeUTC(now)
+	return sc.ArchivedAt.Valid || sc.RevokedAt.Valid || !now.Before(sc.ExpiresAt)
 }
 
+// Auditable returns a deliberately safe audit projection. The token hash is
+// never included.
 func (sc *SessionCredential) Auditable() map[string]any {
-	fields := auditFields(sc.Id, sc.CreateAt, sc.UpdateAt, sc.DeleteAt)
-	fields["session_id"] = sc.SessionId
-	fields["kind"] = sc.Kind
-	fields["family_id"] = sc.FamilyId
-	fields["parent_id"] = sc.ParentId
-	fields["replaced_by_id"] = sc.ReplacedById
-	fields["expires_at"] = sc.ExpiresAt
-	fields["used_at"] = sc.UsedAt
-	fields["revoked_at"] = sc.RevokedAt
-	return fields
+	if sc == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":             sc.ID.String(),
+		"created_at":     MillisFromTime(sc.CreatedAt),
+		"updated_at":     MillisFromTime(sc.UpdatedAt),
+		"archived_at":    sc.ArchivedAt.Millis(),
+		"delete_at":      sc.ArchivedAt.Millis(),
+		"session_id":     sc.SessionID.String(),
+		"kind":           sc.Kind,
+		"family_id":      sc.FamilyID,
+		"parent_id":      sc.ParentID.String(),
+		"replaced_by_id": sc.ReplacedByID.String(),
+		"expires_at":     MillisFromTime(sc.ExpiresAt),
+		"used_at":        sc.UsedAt.Millis(),
+		"revoked_at":     sc.RevokedAt.Millis(),
+	}
 }
 
 var _ Auditable = (*SessionCredential)(nil)
