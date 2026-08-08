@@ -32,4 +32,14 @@
 // Models in this package own shape-level invariants. Invariants that need
 // authoritative state, such as hierarchy cycle detection or uniqueness, belong
 // to the application and persistence layers.
+//
+// Expand-phase primitives for the domain migration:
+//
+//   - entity-specific IDs (UserID, ClassID, …) share the opaque 26-character
+//     z-base-32 representation but are not freely assignable across entities;
+//   - TimeUTC, MillisFromTime/TimeFromMillis, and OptionalTime bridge legacy
+//     integer-millisecond fields and native UTC time.Time.
+//
+// Aggregates still using plain string Id fields, millisecond timestamps, and
+// PreSave/PreUpdate/IsValid are migrated vertically in later tickets.
 package model

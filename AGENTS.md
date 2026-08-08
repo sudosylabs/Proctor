@@ -97,9 +97,10 @@ walking skeleton is operational and includes:
   public fields, and RFC 9457 HTTP Problem Details mapping;
 - a cohesive `model` package with Mattermost-inspired IDs, integer-millisecond
   timestamps, `PreSave`, `PreUpdate`, `IsValid`, and safe `Auditable`
-  representations; replacing its persistence lifecycle and timestamp
-  conventions with explicit domain operations and native temporal types is a
-  documented architecture migration;
+  representations on existing aggregates; expand-phase entity-specific ID
+  types (`UserID`, `ClassID`, …), UTC/`OptionalTime` helpers, and SQL/HTTP
+  boundary converters are available for vertical migrations that replace
+  persistence lifecycle methods and millisecond fields;
 - the confirmed structural academic models: institution, hierarchical academic
   unit, programme, programme level, academic period, and class;
 - identity and authorization model foundations: user, external identity, local
