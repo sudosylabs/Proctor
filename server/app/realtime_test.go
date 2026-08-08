@@ -25,7 +25,6 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 			Type: model.ResourceAcademicUnit,
 			Id:   unitID,
 		},
-		Delivery: DeliveryBestEffort,
 	}
 	if err := valid.ValidateForPublish(); err != nil {
 		t.Fatalf("valid event: %v", err)
@@ -44,9 +43,6 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 		event RealtimeEvent
 	}{
 		{name: "empty name", event: RealtimeEvent{UserID: model.NewId()}},
-		{name: "bad delivery", event: RealtimeEvent{
-			Name: "x", UserID: model.NewId(), Delivery: "slow",
-		}},
 		{name: "missing target", event: RealtimeEvent{Name: "orphan.event"}},
 		{name: "invalid data", event: RealtimeEvent{
 			Name: "x", UserID: model.NewId(), Data: json.RawMessage(`{`),
@@ -84,7 +80,6 @@ func TestRealtimePublishIsLocalFirstAndLoopFree(t *testing.T) {
 			Type: model.ResourceAcademicUnit,
 			Id:   unitID,
 		},
-		Delivery: DeliveryBestEffort,
 	}
 	if err := service.Publish(context.Background(), event); err != nil {
 		t.Fatal(err)
@@ -99,8 +94,7 @@ func TestRealtimePublishIsLocalFirstAndLoopFree(t *testing.T) {
 	if len(cluster.broadcasts) != 1 {
 		t.Fatalf("cluster broadcasts = %d, want 1", len(cluster.broadcasts))
 	}
-	if cluster.broadcasts[0].event != realtimeClusterEventPublication ||
-		cluster.broadcasts[0].reliable {
+	if cluster.broadcasts[0].event != realtimeClusterEventPublication {
 		t.Fatalf("broadcast = %#v", cluster.broadcasts[0])
 	}
 
@@ -154,8 +148,7 @@ func TestRealtimeSessionRevocationClosesLocalSessions(t *testing.T) {
 		t.Fatalf("close reason = %q", sink.sessionCloses[0].reason)
 	}
 	if len(cluster.broadcasts) != 1 ||
-		cluster.broadcasts[0].event != realtimeClusterEventSessionRevoked ||
-		!cluster.broadcasts[0].reliable {
+		cluster.broadcasts[0].event != realtimeClusterEventSessionRevoked {
 		t.Fatalf("revocation broadcast = %#v", cluster.broadcasts)
 	}
 }
@@ -220,9 +213,8 @@ type recordingRealtimeCluster struct {
 }
 
 type clusterBroadcast struct {
-	event    string
-	data     []byte
-	reliable bool
+	event string
+	data  []byte
 }
 
 func (c *recordingRealtimeCluster) RegisterHandler(
@@ -245,14 +237,12 @@ func (c *recordingRealtimeCluster) Broadcast(
 	_ context.Context,
 	event string,
 	data []byte,
-	reliable bool,
 ) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.broadcasts = append(c.broadcasts, clusterBroadcast{
-		event:    event,
-		data:     append([]byte(nil), data...),
-		reliable: reliable,
+		event: event,
+		data:  append([]byte(nil), data...),
 	})
 	return nil
 }

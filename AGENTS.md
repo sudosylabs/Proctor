@@ -19,6 +19,14 @@ If the implementation and this document disagree:
 4. explain the discrepancy;
 5. update the implementation, this document, or both as authorized by the task.
 
+Core architecture documents:
+
+- [`CONTEXT.md`](CONTEXT.md) defines the implementation-independent domain
+  glossary;
+- [`docs/architecture.md`](docs/architecture.md) is the canonical developer
+  guide to boundaries, dependencies, structure, naming, errors, and testing;
+- [`docs/adr/`](docs/adr/) records the rationale for durable decisions.
+
 ## Project Mission
 
 Proctor is an open-source, self-hosted examination and proctoring platform for
@@ -38,6 +46,12 @@ the upstream license and notices, record exact provenance immediately, and make
 the adaptation explicit. Do not rewrite sound upstream code merely to make it
 look different. Equally, do not copy folders or subsystems wholesale when their
 product assumptions, coupling, or complexity do not fit Proctor.
+
+Mattermost is never a directory template. Prohibit wholesale, cosmetic, or
+unreviewed file copying. Narrowly targeted source adaptation is allowed only
+when the behavior genuinely fits Proctor, the exact upstream revision and path
+are recorded, required notices are preserved, the adaptation is explained, and
+Proctor-specific architecture and security review passes.
 
 ## Current Repository State
 
@@ -69,8 +83,10 @@ walking skeleton is operational and includes:
   or JSON targets, dynamic reconfiguration, bounded field sizes, contextual
   fields, standard-library log bridging, configuration locking, flushing,
   shutdown, and thread-safe test capture;
-- one cohesive construction graph rooted at `app.NewServer`, containing one
-  `platform.Service`, one `app.App`, one configuration store, and one logger;
+- one cohesive construction graph currently rooted at `app.NewServer`,
+  containing one `platform.Service`, one `app.App`, one configuration store,
+  and one logger; moving this graph to the module-root `server.New` composition
+  package is a documented architecture migration;
 - a shared `testlib` that constructs the same application graph with memory
   configuration and captured logs;
 - bounded HTTP server timeouts, request body/header limits, request IDs,
@@ -79,9 +95,11 @@ walking skeleton is operational and includes:
 - a Mattermost-adapted `model.AppError` flow with stable translation IDs,
   translation hooks, wrapping, protected internal details, explicitly safe
   public fields, and RFC 9457 HTTP Problem Details mapping;
-- a cohesive `model` package with Mattermost-inspired IDs, millisecond
+- a cohesive `model` package with Mattermost-inspired IDs, integer-millisecond
   timestamps, `PreSave`, `PreUpdate`, `IsValid`, and safe `Auditable`
-  representations;
+  representations; replacing its persistence lifecycle and timestamp
+  conventions with explicit domain operations and native temporal types is a
+  documented architecture migration;
 - the confirmed structural academic models: institution, hierarchical academic
   unit, programme, programme level, academic period, and class;
 - identity and authorization model foundations: user, external identity, local
@@ -93,29 +111,29 @@ walking skeleton is operational and includes:
   `APIStrongSessionRequired`, `APIRecentSessionRequired`, composed
   strong/recent, and `APIRefreshCredentialRequired` wrappers that make the
   authentication contract explicit for every registered route;
-- Mattermost-style per-domain `Init*` API registration, with one central
-  `BaseRoutes` tree and registrar enforcing explicit authentication policy,
-  duplicate detection, regex-constrained path variables, centralized typed
-  request parameters, and route-matrix tests;
+- Mattermost-style per-domain API registration, currently using exported
+  `Init*` methods, with one central `BaseRoutes` tree and registrar enforcing
+  explicit authentication policy, duplicate detection, regex-constrained path
+  variables, centralized typed request parameters, and route-matrix tests;
+  replacing exported initializers with unexported `register<Area>Routes`
+  functions is a documented convention migration;
 - platform-owned cache, mail, and VFS adapters selected from typed deployment
   configuration, with memory/Redis cache, disabled/SMTP mail, local/S3 VFS,
   dependency checks, deterministic cleanup, and memory test implementations;
 - a Mattermost-shaped cluster message contract and server-owned cluster port
-  with typed handlers, explicit best-effort/reliable delivery classes, stable
-  node identity, bounded messages, startup/readiness/shutdown ownership, and a
-  loop-safe single-node local transport;
-- a Proctor-owned Redis multi-node transport with lease-backed node discovery,
-  Pub/Sub best-effort fan-out, per-node acknowledged Streams for at-least-once
-  reliable delivery, retry-after-handler-failure, bounded reliable queues, and
-  duplicate node-ID rejection;
+  with typed handlers, best-effort-only delivery, stable node identity, bounded
+  messages, startup/readiness/shutdown ownership, a loop-safe single-node
+  `local` transport, and a built-in multi-node Memberlist transport with
+  PostgreSQL discovery leases and encrypted gossip; clustering requires no
+  Redis service and configuration accepts only `local` or `memberlist`;
 - a Mattermost-shaped WebSocket hub with authenticated session upgrades,
   CPU-sharded connection ownership, cookie-origin enforcement,
   resource/action-authorized subscriptions,
   bounded outbound and replay queues, monotonically increasing per-connection
   sequences, ping/pong liveness, backpressure disconnects, local reconnection
   replay, and explicit client resynchronization when replay is unavailable;
-- application-owned local-first event publication with loop-free cluster
-  fan-out, plus reliable cross-node session revocation, authentication-cache
+- application-owned local-first event publication with loop-free best-effort
+  cluster fan-out, plus cross-node session revocation, authentication-cache
   invalidation, and role/permission-change connection invalidation;
 - the first complete identity slice: transactional local-user/password
   persistence, bounded Argon2id password hashing, generic login failures,
@@ -161,7 +179,9 @@ walking skeleton is operational and includes:
   role-binding, and audit administration routes, with a private, sealed,
   request-bound, one-use decision receipt that prevents duplicate
   authorization queries/audits while preserving authoritative application
-  authorization for direct and non-HTTP callers;
+  authorization for direct and non-HTTP callers; retiring these preflights and
+  receipts in favor of application-only resource authorization is a documented
+  architecture migration;
 - complete audited structural-academic administration through application and
   HTTP layers for the singleton institution, academic-unit hierarchy,
   programmes, programme levels, academic periods, and classes;
@@ -266,12 +286,14 @@ on it.
 14. Avoid speculative abstraction. Extract a reusable package only when its
     contract is understood independently of Proctor.
 15. `server/model` is the deliberate cohesive package for durable domain
-    contracts, following Mattermost's readable one-package model organization.
-    Do not turn it into a general utility dumping ground, and avoid catch-all
-    packages named `utils`, `common`, or `shared`.
+    contracts, following the readable aspect of Mattermost's one-package model
+    organization without adopting its broader shared-contract role. Do not put
+    HTTP, WebSocket wire, cluster transport, SQL, Redis, SMTP, or filesystem
+    contracts there. Do not turn it into a general utility dumping ground, and
+    avoid catch-all packages named `utils`, `common`, or `shared`.
 16. Avoid global mutable application state and global service locators.
-17. Use Proctor's cohesive `app.Server`, `app.App`, and `platform.Service`
-    construction flow. Persistence deliberately has one bounded root
+17. Use Proctor's module-root `server.Server`, `app.App`, and bounded
+    `platform.Service` construction flow. Persistence deliberately has one bounded root
     `store.Store` with per-model store contracts, following Mattermost; do not
     turn the application or platform objects into cyclic, unlimited general
     service locators.
@@ -315,6 +337,13 @@ Rules:
   relative replacements in committed module files.
 - Do not move code into `packages/` merely because two server directories call
   it. It must have a coherent independent contract and plausible external use.
+- Identity, authorization, academics, exams, application services, transports,
+  and persistence remain within the cohesive server module while they are
+  Proctor-specific. Internal package size or reuse by multiple server packages
+  is not sufficient reason to create another module.
+- Extract a server capability into an independently versioned module only when
+  it has a coherent Proctor-independent contract, plausible external
+  consumers, its own compatibility policy, and no imports from the server.
 - Before v1, public package APIs may evolve, but changes must update tests,
   documentation, and compatibility notes.
 
@@ -644,8 +673,8 @@ panic recovery
 → session authentication
 → principal attached to context
 → route authentication-strength requirement
-→ handler-level resource permission preflight
-→ application use case with authoritative authorization/receipt verification
+→ request DTO decoding and application invocation construction
+→ application use case with immediate authoritative resource authorization
 → response/error mapping
 → audit and operational logging
 ```
@@ -666,15 +695,33 @@ actual resource. A valid session alone never implies administrative access.
 Route authentication requirements must be composable and testable. Add a route
 matrix test that fails when a route lacks an explicit classification.
 
-The API package follows Mattermost's readable route-ownership convention:
-`api.New` constructs shared routing state and calls domain initializers such as
-`InitSystem`, `InitAuthentication`, `InitSessions`, `InitRoles`, and
-`InitRoleBindings`. Each domain file owns its initializer and handlers.
-Initializers must register through the central `API.Register` boundary; they
-must wrap each handler with `APIHandler`, `APISessionRequired`, or another
-explicit typed wrapper and must not mutate router internals. The registrar
-rejects nil/unclassified handlers and duplicate route shapes. The root
-`api.go` must not become a flat inventory of every endpoint again.
+The API package follows Mattermost's readable per-domain route ownership
+without exporting its initialization surface. `api.New` constructs shared
+routing state and calls unexported functions such as
+`registerSystemRoutes`, `registerAuthenticationRoutes`, and
+`registerAcademicUnitRoutes`. Each transport-area file owns its routes, DTOs,
+handlers, and mappings. Registration must pass through the central registrar,
+use an explicit typed authentication/assurance wrapper, and never mutate router
+internals directly. The registrar rejects nil or unclassified handlers and
+duplicate route shapes. The root `api.go` must not become a flat inventory of
+every endpoint. Existing exported `Init*` methods predate this convention and
+are migration work.
+
+Ordinary HTTP handlers return a typed status/body result and standard `error`
+through one handler adapter. Central code writes JSON, common headers, and
+Problem Details; a handler must not partially write a response while an
+operation can still fail. Streaming, downloads, WebSocket upgrades, and similar
+protocols are explicit dedicated-handler exceptions.
+
+Command and mutation DTOs decode exactly one bounded JSON value, reject unknown
+fields and trailing data, and return field-specific safe validation errors.
+Unknown keys are allowed only inside an explicitly named, bounded extension
+object whose contract is designed for them.
+
+PATCH DTOs use a transport-owned `Optional[T]` representation that distinguishes
+omitted, present zero, and explicit null where clearing is allowed. Handlers map
+that state into typed application patch commands; plain pointers do not carry
+ambiguous merge semantics into domain models.
 
 The root router is a `gorilla/mux` route tree exposed through `API.BaseRoutes`.
 All versioned resource routers descend from `BaseRoutes.APIRoot`, which is
@@ -682,8 +729,10 @@ constructed from the single client-facing `model.APIURLSuffix` constant. Domain
 initializers register paths relative to their resource router; they must never
 repeat `/api/v1` or another API generation in individual endpoint files.
 Resource identifiers use named regex variables with the canonical Proctor
-z-base-32 alphabet and length. Add literal resource routes before permissive
-variable routes when their patterns could overlap.
+z-base-32 alphabet and length. Registration functions add paths relative to
+their resource router and never repeat `/api/v1` or another API generation.
+Add literal resource routes before permissive variable routes when their
+patterns could overlap.
 
 Route variables are read exactly once through `ParamsFromRequest`, normalized,
 and attached to the request context before authentication and handlers run.
@@ -694,17 +743,12 @@ variables or common bounded query parameters actually used by registered
 routes.
 
 Authentication proves identity. It does not grant permission to a resource.
-Privileged handlers must make their required stable action and resource
-visible before decoding request bodies, parsing expensive filters, or invoking
-the use case. The handler must directly call the appropriately scoped
-`PrincipalHasPermissionTo*` application method; do not hide that call behind a
-generic API preauthorization helper. The application use case remains an
-independent authorization boundary. A successful API preflight attaches a
-sealed, short-lived, one-use decision receipt bound to the principal, action,
-resource, request ID, and process; the use case verifies and consumes it.
-Direct application callers or calls with an absent, expired, forged,
-mismatched, or already consumed receipt perform the complete current-state
-authorization and durable decision audit.
+Transport middleware classifies credential and assurance requirements, then
+constructs the explicit application invocation. Handlers do not preflight
+resource permissions. The application use case is the single authoritative
+resource-authorization boundary and performs its action/resource check
+immediately, before avoidable expensive work or mutation. Request and body
+limits protect the decoding boundary without duplicating policy in transport.
 
 ### Request principal
 
@@ -913,24 +957,24 @@ deny rules without a documented need and precedence model.
 ### Enforcement rules
 
 - HTTP middleware verifies that a valid credential/assurance level exists.
-- Privileged HTTP handlers perform a visible, fail-fast resource/action
-  preflight before decoding bodies or performing avoidable handler work.
-- Application use cases independently enforce permission to the actual
-  resource. They may consume a verified one-use decision receipt from that
-  same request, but must fully authorize when no valid receipt is present.
+- HTTP and WebSocket handlers do not evaluate resource permissions or issue
+  authorization receipts.
+- Every actor-sensitive application use case authorizes its stable action
+  against the actual resource immediately and records the required durable
+  authorization decision.
 - Generic resource `PrincipalHasPermissionTo*` methods are non-auditing
-  predicates for composing policy. API-facing scoped variants may return a
-  permission result plus an authorization-decision context so the handler can
-  visibly enforce the check and the use case can consume its already-audited
-  one-use receipt. Direct security boundaries use `AuthorizePrincipalTo*`,
-  which records the allow/deny decision durably and fails closed.
+  predicates for composing policy inside the application.
+  `AuthorizePrincipalTo*` methods are the application security boundaries;
+  they record allow/deny decisions durably and fail closed.
 - Visibility helpers such as `UserCanSeeOtherUser` are contextual application
   policy, not aliases for session authentication.
-- Repository list/search methods must constrain results by authorized scope;
+- Store list/search methods must constrain results by authorized scope;
   do not fetch all records and filter them in memory.
 - WebSocket commands and subscriptions must use the same authorization service.
-- Background tasks act under an explicit system/service principal where an
-  actor is required.
+- Background jobs invoke application use cases through an explicit
+  system/service `Invocation`; they do not manipulate stores directly to
+  bypass authorization, audit, invariants, or atomic operations. Batch work may
+  use a dedicated application use case, which remains the policy boundary.
 - Permission and role changes must invalidate authorization/session-related
   caches across cluster nodes.
 - Centralize policy evaluation, but keep action checks explicit at use-case
@@ -958,6 +1002,16 @@ resource and the institution as the separate academic authorization scope.
 The server should use explicit composition and business-oriented vertical
 slices.
 
+Transport, application, domain, and persistence are conceptual responsibility
+and dependency boundaries, not mandatory top-level directory names. Preserve
+the cohesive Proctor package shape where responsibilities remain clear:
+`app/api` owns HTTP transport, `app` owns application use cases, `model` owns domain
+contracts, `store` owns persistence ports, `store/sqlstore` owns PostgreSQL
+adapters, `websocket` owns the WebSocket transport, and `platform` owns shared
+infrastructure lifecycle and external adapters. Introduce a new package only
+when it creates a clearer ownership boundary; do not mirror every conceptual
+layer with a directory mechanically.
+
 Current foundation and growth direction:
 
 ```text
@@ -965,12 +1019,16 @@ server/
 ├── go.mod
 ├── LICENSE
 ├── NOTICE
+├── cluster/
+│   ├── local/
+│   └── memberlist/
 ├── cmd/
 │   └── proctor/
 ├── config/
 │   └── configtest/
 ├── mlog/
 ├── platform/
+├── websocket/
 ├── app/
 │   └── api/
 ├── store/
@@ -984,24 +1042,165 @@ Only create `store`, `migrations`, or further directories when they receive
 working code. Prefer several cohesive files in an existing package over a new
 one-file package.
 
+Application capabilities begin as cohesive vertical-slice files in `app`.
+Extract `app/<domain>` only when the capability has substantial internal
+structure, a stable responsibility, several collaborating components, and a
+narrow facade. An extracted domain package must not import its parent `app`
+package. Do not create generic `services`, `usecases`, or `controllers`
+directory trees, and do not create one package per entity for symmetry.
+
+Within a package, organize files by responsibility or vertical slice, not by
+arbitrary size or a mechanical type-per-file rule. Split a file when part of it
+has a distinct reason to change. Keep tests beside the responsibility they
+verify. Do not create catch-all `helpers.go`, `utils.go`, `common.go`, or
+`types.go` files; name a shared file after the precise concept it owns.
+
+Package names are short, lowercase, singular, and describe one responsibility.
+Do not use underscores or vague names such as `util`, `common`, `shared`,
+`base`, or `core`; do not create layer-only packages such as `services` or
+`repositories`. Avoid package/type stutter. Protocol names such as `oidc` and
+`cas` are appropriate for concrete adapters when the protocol is the package's
+actual responsibility.
+
+Keep readable direct server package paths rather than moving the implementation
+under a broad `internal/` tree. The server module is not a promised reusable Go
+library; independently reusable contracts belong in separate `packages/*`
+modules. Control exported identifiers deliberately and enforce production
+imports through architecture tests.
+
+Application use cases are explicit methods with typed command or query inputs
+and typed results, for example `CreateAcademicUnit(ctx,
+CreateAcademicUnitCommand)` or `GetAcademicUnit(ctx, GetAcademicUnitQuery)`.
+Use direct calls through small consumer-owned interfaces. Do not introduce a
+generic command bus, query bus, reflection-based dispatcher, or a one-method
+`Execute` interface for every use case. Command and query structs replace long
+positional parameter lists and provide a visible home for use-case input.
+
+Every actor-sensitive use case receives an explicit immutable `app.Invocation`
+beside its command or query. The invocation contains the acting principal and
+safe call metadata required for authorization and audit and is constructed by
+HTTP, WebSocket, CLI, job, or test callers. Do not hide principals, permissions,
+or audit metadata inside `context.Context`; reserve context for cancellation,
+deadlines, and request-scoped propagation.
+
+Focused service implementations inside package `app` are normally unexported,
+for example `authenticationService`, `authorizationService`, and
+`auditService`. The package exports only commands, queries, results,
+`Invocation`, `Error`, and construction contracts genuinely needed across a
+package boundary. If a capability is later extracted into `app/<domain>`, that
+package may export one narrow facade and constructor.
+
 Dependency direction:
 
 ```text
-cmd/proctor → app.NewServer
-app.Server → config + platform + app/api + app.App
-platform.Service → config + mlog + concrete shared infrastructure
-app/api → narrow application-facing contracts
-app.App → platform-owned capabilities and product services
-testlib → the same app.NewServer construction path with test overrides
+model
+  ↑
+store
+  ↑
+app
+  ↑       ↑
+app/api  websocket
+   ↖     ↗
+    server (composition root)
+  ↑
+cmd/proctor
 ```
 
-`app.NewServer` is the composition root. The command must not independently
-construct another logger, cache, store, mailer, VFS, or application service.
+The module-root `server.New` is the sole composition root. The command must not
+independently construct another logger, cache, store, mailer, VFS, or
+application service. Only this composition flow may select concrete
+infrastructure implementations or depend on the broad `platform.Service`.
+`server.New` translates platform-owned capabilities into an explicit
+application dependency bundle; individual application services receive only
+the narrow ports they consume.
+
+Backend selection may be organized across cohesive files in the module-root
+`server` package, but it remains part of the one composition boundary.
+`platform.New` receives already-constructed persistence, cache, cluster, mail,
+VFS, external-authentication, and similar capabilities and owns their shared
+lifecycle; it must not switch on configuration to select their concrete
+implementations.
+
+`platform.Service` remains a bounded runtime owner for shared infrastructure
+health, dynamic reconfiguration, startup, and orderly shutdown. It may be
+retained by `server.Server`, but it is not passed into `app` and is not a
+general capability locator. Composition passes each constructed capability
+both to the platform lifecycle owner and, through a narrow port, to the actual
+consumer that needs it.
+
+Constructors build inert objects and do not normally start goroutines,
+listeners, or background work. Explicit `Start` methods begin owned work;
+`Close` or `Shutdown` is idempotent and bounded. The root starts components in
+dependency order and unwinds every already-constructed or started resource if
+later construction or startup fails.
+
+The current runtime `Server` and `NewServer` still live in package `app`.
+Because Go dependency boundaries apply to packages rather than files, this
+forces the application package itself to import transport and platform
+packages. Moving runtime composition to the module-root `server` package is a
+documented architecture migration; after it, package `app` must not import
+`platform`, `app/api`, or concrete adapters.
+
+Production imports follow the inward dependency graph:
+
+- `model` imports no other Proctor server package;
+- `store` imports domain contracts from `model`;
+- `app` imports `model`, persistence contracts from `store`, and
+  consumer-owned capability ports, but no transport, platform, or concrete
+  adapter;
+- `app/api` is an outer transport boundary and may import `app` and `model`,
+  but not persistence or concrete infrastructure;
+- `websocket` is a sibling outer transport boundary with the same inward
+  dependency rule; it owns the hub, connections, protocol DTOs, sequencing,
+  replay, protocol errors, and upgrade handler;
+- `platform` and concrete adapters sit on the infrastructure side, implement
+  inward-facing ports, and never become application dependencies;
+- the module-root `server` composition package may import all packages needed
+  to select concrete backends and assemble the graph;
+- `cmd/proctor` remains a thin invocation boundary for `server.New`.
+
+Tests and `testlib` may cross production boundaries to assemble and inspect the
+real graph. A small automated import-boundary test must enforce the production
+allowlist. The current code predates this graph: `app` imports `platform` and
+`app/api`, and `app/api` exposes persistence option types. These are documented
+migration gaps. `platform.New` also still selects concrete SQL, cache, mail,
+VFS, cluster, and external-authentication adapters internally; moving those
+choices to the module-root composition package is part of the same migration.
+The WebSocket hub and protocol also still live in `app/api`; extracting them to
+the sibling `websocket` package is another documented migration.
 
 The server module is deliberately cohesive and may have internal coupling.
 Coupling must follow ownership and construction flow rather than form import
 cycles. API handlers receive the application operations they need; product
 logic must not create infrastructure independently.
+
+Interfaces are normally owned by the consuming package and expose only the
+capability that consumer needs. Transport domains in `app/api` depend on
+narrow application-operation interfaces, and application services define
+narrow ports for infrastructure they consume. A broad aggregate interface may
+exist at a composition boundary for wiring, but it must not become the
+day-to-day dependency of unrelated handlers or services.
+
+Persistence is the deliberate exception: the cohesive per-model store
+contracts and bounded root `store.Store` live together in `server/store`.
+Concrete adapters implement those contracts without redefining them, and
+consumers may accept a narrower per-model store contract when they do not need
+the root store.
+
+`app.App` must not retain `*platform.Service` or expose general `Platform`,
+`Store`, `Cache`, `Cluster`, `Mailer`, or `VFS` accessors. Such accessors hide
+dependencies and turn the application facade into a service locator. The
+current implementation predates this decision and still retains the platform
+service; removing that dependency is a documented architecture migration, not
+authorization to perform an unrelated rewrite.
+
+Application services do not receive a logger by default. Request-driven use
+cases return failures and let the outer operational boundary log unexpected
+errors once. A long-lived worker or service may receive a small consumer-owned
+logging port only for meaningful operational events no caller can observe.
+Application code never reaches a global logger or depends directly on
+`mlog.Logger`; the current `App.Log()` accessor is part of the platform-facade
+migration.
 
 ## Configuration
 
@@ -1033,6 +1232,13 @@ Deployment configuration is operator-owned, loaded from a typed configuration
 file and environment variables, and normally immutable for the process
 lifetime. Application settings are durable application data and may be changed
 through authorized application APIs.
+
+Application services do not receive the full deployment `config.Config` or
+`config.Store`. The composition root translates required values into small
+immutable application policy structs or narrow provider functions, such as
+`SessionPolicy` or `PasswordPolicy`. Runtime changes reach a consumer only
+through an explicit capability-specific port; unrelated deployment settings
+must not become visible to that service.
 
 Configuration rules:
 
@@ -1072,25 +1278,94 @@ Planned administrative commands:
 
 ## Models and Error Flow
 
-`server/model` is an intentional shared domain-contract package. Keep model
-files flat and cohesive, normally one file per substantive model, rather than
-creating a directory tree for every entity.
+`server/model` is the cohesive, domain-focused package. Keep domain model files
+flat and cohesive, normally one file per substantive model, rather than
+creating a directory tree for every entity or bounded context. It owns domain
+entities, value objects, principals, actions and resources, local invariants,
+and domain validation failures. Application error identity belongs to `app`,
+not the domain package.
 
-Durable models use the Mattermost-inspired conventions:
+`server/model` is not a general server contract package. HTTP Problem Details,
+WebSocket wire messages, cluster transport messages, persistence rows, and
+adapter-specific configuration belong to their owning boundaries. Request and
+client metadata that exist only to describe a transport invocation belong at
+the application/transport boundary rather than in the domain package.
 
-- 26-character z-base-32 random IDs generated by `model.NewId`;
-- `CreateAt`, `UpdateAt`, and `DeleteAt` Unix-millisecond fields;
-- `PreSave` to assign ID/timestamps and sanitize stored text;
-- `PreUpdate` to update timestamps and sanitize stored text;
-- `IsValid() *model.AppError` for shape-level invariants;
-- `Auditable() map[string]any` for a deliberately safe, bounded audit
-  representation.
+HTTP request and response DTOs belong to the corresponding transport area in
+`app/api`. Handlers map request DTOs into application commands or queries and
+map application results into stable response DTOs. Mutable domain entities do
+not double as JSON wire formats. Domain identifiers and enums may be reused
+only when they are deliberately part of the public contract.
 
-`IsValid` must validate a fully prepared persistent model. It must not perform
-database or network I/O. Cross-row invariants such as uniqueness, academic-unit
-cycle detection, parent/child institution consistency, and the student's
-single-active-class rule belong in application/store transactions and database
+Domain models own pure local invariants and state transitions involving one
+entity or aggregate. Application services own use-case orchestration,
+authorization, multi-aggregate coordination, transaction intent, auditing,
+and external effects. Persistence adapters enforce storage constraints and
+translate driver failures but must not decide business policy. Transports
+validate and map wire contracts and establish authentication requirements but
+must not implement business rules.
+
+Validation follows the same ownership boundaries:
+
+- transport validates wire shape, required encoded fields, and size limits;
+- application commands validate use-case prerequisites and authorization;
+- domain constructors and transitions enforce local business invariants;
+- atomic store operations and database constraints enforce cross-row and
+  concurrency invariants.
+
+Do not duplicate the complete validation rule set across handlers, models, and
+SQL. Each boundary translates only the validation failures it owns.
+
+The current implementation predates this clarified boundary: cluster and
+WebSocket contracts, request/client metadata, and `model.AppError` remain in
+`server/model`; application methods still return the concrete
+`*model.AppError`, which carries HTTP status and translation state. Their
+relocation or redesign is a documented architecture migration to perform
+through coherent vertical changes, not a reason for an unrelated bulk rewrite.
+Several HTTP handlers also still decode or serialize model types directly;
+introducing transport-owned DTOs is part of that vertical migration.
+
+Domain models use explicit constructors and named domain transition methods
+for normalization and local invariants. Use `Validate() error` when complete
+rehydrated state must be checked. Do not use persistence-lifecycle methods such
+as `PreSave`, `PreUpdate`, or `IsValid`: a domain model must not know whether it
+is about to be inserted or updated in PostgreSQL.
+
+The application supplies generated IDs and timestamps through narrow
+dependencies where determinism matters. Domain operations may accept the
+resulting ID or time explicitly, but must not reach for a global clock or
+random generator. Domain and application time uses UTC `time.Time`; PostgreSQL
+uses `timestamptz`; HTTP uses RFC 3339. Optional lifecycle times use nullable
+values such as `archived_at`, never integer zero sentinels. The current
+integer-millisecond model fields and `delete_at = 0` schema predate this
+decision and are migration work. Existing 26-character ID representation
+remains the canonical identifier format: IDs are opaque, URL-safe, random
+z-base-32 values generated without database coordination. Do not encode
+ordering, institution, or domain meaning in an ID.
+
+Each domain entity uses a distinct string-backed identifier type, such as
+`UserID`, `ClassID`, or `AcademicUnitID`, with explicit parsing and validation;
+the zero value is invalid. Transport DTOs and SQL rows convert at their
+boundaries. Do not pass untyped strings through domain or application
+contracts merely because the wire and database representations are textual.
+Current model fields using plain strings predate this rule and are migration
+work.
+
+Validation operates on complete domain state and returns a domain failure
+through the standard `error` interface. It performs no database or network I/O.
+Cross-row invariants such as uniqueness, academic-unit cycle detection,
+parent/child institution consistency, and the student's single-active-class
+rule belong in explicit application/store transactions and database
 constraints.
+
+Mutable, conflict-prone aggregates carry a revision. Update commands supply the
+expected revision, and the atomic store operation compares and increments it;
+a mismatch becomes a stable application conflict. Do not use timestamps as
+concurrency tokens and do not add revisions mechanically to immutable or
+append-only records.
+
+Models expose `Auditable() map[string]any` only when a deliberately safe,
+bounded audit projection is required.
 
 `Auditable` is not a replacement for an audit event. It controls which model
 fields may appear in the prior/result state of a future audit record. Actor,
@@ -1098,30 +1373,58 @@ session, request, action, outcome, and cluster metadata belong to the audit
 service. Never include secrets, credentials, tokens, exam answers, or unbounded
 user-controlled content in an `Auditable` map.
 
-Models and application services use the Mattermost-adapted `model.AppError`.
-Its `Id` is both the stable machine-readable error code and the translation ID.
-It may carry:
+Application methods return Go's standard `error` interface. Expected
+application failures use `*app.Error`, containing only:
 
-- translation parameters that remain private unless explicitly exposed;
-- translated public message;
-- HTTP status for the HTTP-oriented server contract;
-- request ID assigned at a transport boundary;
-- explicitly safe public fields;
-- internal detail and a wrapped cause compatible with `errors.Is/As`.
+- a stable machine-readable code;
+- explicitly safe parameters or fields;
+- an optional wrapped cause compatible with `errors.Is/As`.
 
-`DetailedError` and wrapped causes are operator-only and must never be
-serialized to an untrusted client. HTTP maps `AppError` to RFC 9457 Problem
-Details and adds request correlation. A WebSocket boundary will map the same
-error to its versioned protocol shape. Translation can occur at construction
-through the one-time default translator and again at the boundary for the
-request/user locale.
+`app.Error` is transport-neutral. It contains no HTTP status, Problem Details
+fields, WebSocket code, localization state, translated message, or request ID.
+Each transport maps recognized application codes to its protocol, adds request
+correlation, and localizes public text when required. Unexpected failures use
+ordinary wrapped errors and become a generic internal response at the
+transport boundary. Wrapped causes and internal details are operator-only and
+must never be serialized to an untrusted client.
+
+HTTP owns one centralized, exhaustive mapping from stable application codes to
+status, Problem Details type, and localization key. Tests fail when a public
+application code lacks a mapping. Handlers never select statuses ad hoc.
+Unknown or unexpected errors become a generic HTTP 500 response with request
+correlation and no internal details.
+
+WebSocket owns a separate versioned protocol error envelope. It carries the
+same stable application code and explicitly safe fields, but defines its own
+message type, correlation ID, and retry or resynchronization semantics through
+another centralized, tested mapping. Do not serialize HTTP Problem Details
+directly onto the WebSocket protocol.
+
+Application error codes use lowercase dotted domain names that describe the
+condition, such as `authentication.invalid_credentials`,
+`academic_unit.not_found`, or `class.enrollment_conflict`. Do not encode
+package names, function names, HTTP status names, or generic transport
+conditions such as `bad_request`. Never repurpose a published code; safe
+structured fields carry specific context, and localization keys may map from
+codes without being identical to them.
 
 Unexpected errors are logged once at a boundary. Do not log and wrap the same
 error at every layer. Expected client errors normally do not require error-level
 logs.
 
-Persistence adapters translate driver errors into domain/application errors.
-Never expose SQL, Redis, SMTP, filesystem, stack, or credential details to
+Each layer translates only failures owned by the layer immediately beneath it:
+
+- SQL and other adapters translate driver failures into typed `store` or
+  capability-port errors;
+- domain models return typed validation or state-transition errors;
+- public application use cases translate expected domain and port errors into
+  stable `*app.Error` codes;
+- transports inspect `app.Error` only and never branch on PostgreSQL, Redis,
+  SMTP, filesystem, or `store` errors.
+
+Unexpected failures preserve their wrapped cause until the outer operational
+boundary logs them once and returns a generic protocol response. Never expose
+SQL, Redis, SMTP, filesystem, stack, credential, or wrapped-cause details to
 clients.
 
 ## Logging, Metrics, and Audit
@@ -1134,6 +1437,10 @@ Rules:
 
 - the platform service owns the active logger and configures it from the shared
   configuration store;
+- request-driven application use cases do not log returned failures; the outer
+  operational boundary logs unexpected failures once;
+- application workers receive a narrow logging port only when they own
+  otherwise unobservable operational events;
 - support multiple independently leveled text or JSON console/file targets;
 - a failed reconfiguration must leave the previous working targets active;
 - logger configuration can be locked by tests so application startup cannot
@@ -1147,6 +1454,10 @@ Rules:
 - never attach complete user, session, configuration, exam-answer, or token
   objects;
 - keep metrics/tracing hooks optional and boundary-oriented.
+- instrument HTTP, WebSocket, store, and outbound-adapter boundaries through
+  explicit wrappers or decorators;
+- application use cases may produce named domain outcomes or events but do not
+  call Prometheus, OpenTelemetry, or a global metrics facade directly.
 
 Operational logs and audit records are separate systems.
 
@@ -1198,7 +1509,7 @@ Load balancer
 Proctor A   Proctor B
   ↘           ↙
 shared PostgreSQL
-Redis cluster transport
+built-in Memberlist cluster transport
 shared VFS
 shared SMTP/provider
 ```
@@ -1219,7 +1530,10 @@ Cluster requirements:
 - rolling upgrades use backward-compatible expand/migrate/contract schema
   changes;
 - local VFS is rejected in explicitly clustered production mode;
-- session, permission, and cache invalidation reaches every node;
+- cluster notifications accelerate session, permission, and cache convergence,
+  but correctness recovers from PostgreSQL, bounded TTLs, periodic
+  revalidation, and client resynchronization rather than assuming every peer
+  receives every message;
 - singleton work uses safe coordination rather than every node running it.
 
 Prefer durable database-backed work claiming for jobs over broad leader
@@ -1239,25 +1553,66 @@ The narrow server-owned cluster transport supports:
 - broadcast to peers;
 - targeted node messages;
 - best-effort messages;
-- reliable messages where required;
 - cache and session invalidation;
 - WebSocket event fan-out;
 - local WebSocket reconnection replay.
 
-Business code depends on the port, not Redis. Cross-node WebSocket queue
-handoff may extend the port later, but ordinary event publication and
-invalidation must not depend on that future feature.
-Do not turn the cache package into a message-bus package.
+Business code depends on narrow application ports, not the concrete cluster
+package. Cross-node WebSocket queue handoff may extend those ports later, but
+ordinary event publication and invalidation must not depend on that future
+feature. Do not turn the cache package into a message-bus package.
 
 Do not extract the cluster transport into `packages/` until its API is stable
 and independently useful.
 
-The current implementation establishes the transport-independent contract:
+The top-level `cluster` package owns inter-node transport contracts, wire
+messages, node discovery, and concrete transports. It
+provides:
 
-- `model.ClusterMessage` carries a typed event, explicit best-effort or reliable
-  send class, bounded opaque data, and bounded string properties;
+- `cluster/local`, the in-process degenerate transport for a single node and
+  tests;
+- `cluster/memberlist`, the built-in peer-to-peer multi-node transport using gossip
+  membership and direct node messaging without an external broker.
+
+Both adapters implement `cluster.Transport`; only the module-root composition
+package imports them. Memberlist discovery persistence uses a narrow `store`
+contract and never imports SQL adapter types.
+
+Multi-node bootstrap discovery uses short-lived node records and heartbeats in
+the shared PostgreSQL database to find initial join addresses. Memberlist owns
+live membership and messages after joining; PostgreSQL is never the cluster
+message transport. Operators may configure static seed addresses as an
+override, but static seeds are not the sole discovery mechanism.
+
+Multi-node mode requires an explicit shared cluster key. Memberlist gossip
+encryption and authentication are mandatory. Bind and advertised addresses are
+explicit operator configuration, and binding the cluster transport to a public
+interface is rejected by default. Key rotation uses Memberlist's keyring
+capability without weakening traffic protection.
+
+Discovery advertises the server version and supported cluster-protocol range;
+every cluster message carries its protocol version. A node rejects
+incompatible peers before becoming ready. Adjacent compatible versions ignore
+unknown message types and fields where safe so rolling upgrades remain
+possible.
+
+Deployment configuration explicitly selects `local` or `memberlist`; Proctor
+never auto-detects or silently promotes cluster mode. Memberlist mode validates
+its key, bind and advertised addresses, shared VFS, discovery availability, and
+other cluster prerequisites before the node becomes ready.
+
+Redis is optional cache infrastructure and is not required for clustering.
+The root composition package constructs the selected cluster transport;
+`platform.Service` owns its health and lifecycle; application services receive
+only narrow event-publication or invalidation ports. Cluster wire contracts do
+not live in `model`.
+
+The transport-independent contract retains these rules:
+
+- `cluster.Message` carries a typed event, bounded opaque data, and bounded
+  string properties;
 - the transport owns source/target identity, wire versioning, message IDs,
-  serialization, acknowledgements, and retry mechanics;
+  serialization, and bounded direct-send mechanics;
 - one handler owns each event on a node, matching the Mattermost application
   dispatch shape and making duplicate ownership an explicit error;
 - `Broadcast` means peers only and must never call the sending node's handler;
@@ -1266,37 +1621,27 @@ The current implementation establishes the transport-independent contract:
   mutate shared message state;
 - handler panics are contained at the transport boundary and message data is
   never included in ordinary logs;
-- the platform constructs and health-checks the transport, the server starts
-  it before becoming ready, and platform shutdown stops it before shared
-  infrastructure is closed;
+- the root composition package constructs the transport, the platform
+  health-checks and owns it, the server starts it before becoming ready, and
+  platform shutdown stops it before shared infrastructure is closed;
 - `local` is the valid single-node degenerate transport: peer broadcasts
   succeed without local delivery, while self-targeted messages exercise
   registered handlers synchronously;
-- `redis` is the multi-node backend. A lease key and expiry-indexed node set
-  establish live node identity; duplicate live node IDs are rejected;
 - cluster transport and cache selection are independent. A clustered node may
   use a local memory cache or a shared Redis cache; node-local cache entries
-  remain disposable and security-sensitive invalidations use reliable cluster
-  messages;
-- Redis Pub/Sub carries best-effort messages and therefore has at-most-once
-  delivery: a disconnected subscriber can miss them;
-- reliable broadcasts are copied to each currently live peer's dedicated
-  Redis Stream. A stable per-node consumer acknowledges and deletes an entry
-  only after its handler succeeds. Handler failure leaves the entry pending
-  and retries it with backoff;
-- reliable delivery is at least once and ordered by each target stream.
-  Handlers for reliable events must be idempotent because a process can fail
-  after applying a message and before acknowledging it;
-- the reliable stream has a hard configured entry ceiling. Sending fails
-  visibly when a target queue is full; unacknowledged entries are never
-  silently trimmed;
-- when a node lease expires, new broadcasts no longer target it. Pending
-  entries already in its stream are consumed if that stable node ID returns;
-  clients must resynchronize authoritative state missed while the node was
-  absent;
+  remain disposable;
 - two-node conformance verifies peer-only fan-out, best-effort delivery,
-  reliable retry, duplicate-node rejection, application event publication,
-  permission invalidation, and session revocation.
+  duplicate-node rejection, application event publication, permission
+  invalidation, and session revocation.
+
+Memberlist delivery is best-effort and non-durable. Handlers are idempotent,
+but the transport does not claim durable at-least-once processing. Security and
+business correctness recover from authoritative PostgreSQL state, bounded
+cache TTLs, periodic revalidation, and client resynchronization. Work requiring
+durable eventual delivery uses a database-backed job or outbox. Normative
+transport guarantees and non-guarantees live in `server/cluster/GUARANTEES.md`;
+Memberlist rejoin/loss/duplicate recovery tests and application session,
+authorization, and realtime recovery tests encode those expectations.
 
 ## WebSocket Architecture
 
@@ -1309,6 +1654,13 @@ Mattermost's application-side flow is the behavioral reference:
 5. peers broadcast it locally without rebroadcasting to the cluster.
 
 Proctor must prevent cluster rebroadcast loops.
+
+The top-level `websocket` package is the concrete transport boundary. It owns
+the hub, connections, wire DTOs, versioned errors, sequencing, replay, and
+upgrade handler. `app/api` owns HTTP routing and mounts the supplied upgrade
+handler without owning its protocol. `app` owns transport-neutral realtime use
+cases and event intent. The module-root `server` package composes both
+transports.
 
 Each WebSocket connection is owned by exactly one application node. The owning
 node manages:
@@ -1349,7 +1701,8 @@ affected connections rather than allowing a stale subscription to survive.
 Event delivery classes:
 
 - best effort for presence, typing, transient diagnostics, and similar hints;
-- reliable cluster send/replay for selected state-change notifications;
+- best-effort cluster notification plus bounded node-local replay for selected
+  state changes;
 - durable business state is committed independently before publication.
 
 Starting or updating an exam follows:
@@ -1363,6 +1716,23 @@ An outbox may be used for mail, durable jobs, integrations, or future
 requirements that truly need durable event processing. Do not automatically
 place the normal WebSocket fan-out path through a database outbox.
 
+More generally, an application use case commits authoritative state before it
+invokes explicit narrow ports for transient events, cache invalidation, or
+WebSocket publication. Never publish a state-change notification before its
+commit. Use an atomic outbox only when a confirmed business requirement needs
+durable eventual delivery, such as queued mail or an external integration.
+
+Application events are past-tense domain facts such as `ClassCreated`,
+`SessionRevoked`, or `RoleBindingEnded`, never imperative commands or
+transport topic names. Transport packages map them into versioned wire event
+names and payload DTOs.
+
+Event payloads contain only the minimum typed facts consumers need, normally
+entity-specific IDs, event time, a safe revision, and narrowly approved
+metadata. Do not publish full mutable entities, credentials, exam answers,
+arbitrary maps, or transport-ready JSON; consumers fetch authoritative state
+when they need more.
+
 WebSocket subscriptions and commands must use the same principal and
 authorization service as HTTP.
 
@@ -1372,28 +1742,117 @@ PostgreSQL is the initial supported relational database.
 
 Rules:
 
+- migrations use plural `snake_case` table names, singular `id` primary keys,
+  `<entity>_id` foreign keys, and meaning-specific `_at` temporal columns;
+- constraints and indexes use deterministic
+  `<table>_<columns>_{key|idx|fkey|check}` names;
+- schema vocabulary matches the canonical terms in `CONTEXT.md`;
 - migrations are versioned and explicit;
-- the server validates schema compatibility at startup;
-- production deployment runs migrations separately from normal serving;
+- before the first supported release, no installation depends on migration
+  history: existing migrations may be rewritten or squashed and development
+  databases may be recreated from scratch;
+- the first supported release freezes its migration baseline. From that point,
+  historical migrations are immutable and all changes are append-only
+  expand/backfill/contract migrations;
+- temporal columns use `timestamptz`; optional lifecycle events are nullable
+  and named for their meaning, such as `archived_at`, rather than encoded with
+  zero-value integer sentinels;
+- normal server startup validates schema compatibility but never applies
+  migrations;
+- production deployment runs `proctor migrate` as a separate step under a
+  database migration lock;
+- rolling upgrades use expand/migrate/contract sequencing so compatible server
+  versions can overlap safely;
 - `store.Store` is the root persistence contract and exposes model-specific
   stores such as `InstitutionStore` and `AcademicUnitStore`;
+- `Store` is the canonical durable-persistence term. Use `<Model>Store` or
+  `<Aggregate>Store` for contracts, `Sql<Model>Store` for PostgreSQL
+  implementations, and `storetest` for reusable conformance suites;
+- do not use `Repository`, `DAO`, `Manager`, or `Gateway` as synonyms for a
+  store. Reserve `Gateway` or `Client` for outbound remote-service adapters
+  when that vocabulary accurately describes the boundary;
 - each persisted model or cohesive aggregate receives its own store contract,
   `Sql<Model>Store` implementation, store file, adapter test, and reusable
   conformance suite when that persistence slice is implemented;
+- `Get` requires the entity to exist and returns typed `store.ErrNotFound` on
+  absence; `Find` reserves absence as an expected outcome and returns
+  `(value, found, error)`; never encode absence as `(nil, nil)`;
+- `List` returns an empty collection without error when no rows match;
+- name aggregate mutations after the durable operation when generic `Save`,
+  `Update`, or `Delete` would hide important behavior;
+- `Archive` means reversible removal from ordinary active use; `Disable` means
+  reversible prevention of an identity, credential, or capability from
+  operating; `Delete` is used only when deletion is the actual non-recoverable
+  domain operation; `Purge` means irreversible physical removal under an
+  explicit retention or privacy workflow;
+- do not call a soft archive `Delete` or expose generic hard-delete operations
+  for sensitive educational records;
 - the root store owns connection and schema lifecycle methods, while domain
   operations remain on their corresponding model stores;
 - application and platform code consume `store.Store` or a model-store
   contract, never concrete SQL store types;
 - do not expose raw database handles outside the adapter/composition boundary;
-- database row structs, domain objects, and API DTOs are distinct where their
-  responsibilities differ;
-- cross-repository business transactions are explicit;
+- store contracts accept and return domain types or explicit aggregate results
+  defined in `store`;
+- SQL row structs remain private to `store/sqlstore` and map explicitly to
+  domain types. Application and transport code never receive nullable driver
+  types, query builders, database column names, or row representations;
+- simple reads return domain types. Join-heavy listings and reports use
+  explicit projection types defined with their persistence query contract in
+  `store`; application queries map them into application results when policy or
+  presentation requires it;
+- do not distort domain entities to match report rows or return anonymous maps
+  or SQL-shaped structs through the application boundary;
+- adapters validate rehydrated domain state. Invalid persisted state is an
+  internal integrity failure, never a client validation error;
+- cross-model business transactions are represented by explicit
+  aggregate-oriented persistence operations whose contracts state their
+  atomic guarantees, such as installation bootstrap, enrollment transfer, or
+  password-reset consumption;
+- the application authorizes and selects policy before invoking an atomic
+  operation; the adapter owns transaction mechanics, locking, concurrency
+  checks, constraint enforcement, and commit/rollback;
+- do not expose raw database handles, SQL transaction objects, or a generic
+  `WithTransaction(func(Store))` unit-of-work callback to application code;
 - uniqueness and foreign-key constraints enforce domain invariants where
   possible;
 - use transactions for enrollment transfer, token consumption, state
   transitions, and related audit/outbox writes;
 - translate driver-specific errors inside the PostgreSQL adapter;
-- avoid generic retry layers; retry only known-safe idempotent work;
+- the root composition package may wrap a concrete store with constrained
+  `timerlayer`, `retrylayer`, and `localcachelayer` decorators before passing
+  the resulting `store.Store` inward;
+- the standard chain is
+  `localcachelayer(timerlayer(retrylayer(sqlstore)))`: cache hits use cache
+  hit/miss metrics and bypass database timing, timing measures the total
+  cache-miss latency including safe retries, and retry remains nearest SQL for
+  accurate transient-failure classification;
+- `timerlayer` is observability-only and must not change store semantics;
+- `retrylayer` retries only an explicit allowlist of known-safe idempotent
+  operations and never retries arbitrary mutations;
+- `localcachelayer` caches only an explicit allowlist of disposable read
+  methods whose keys, TTLs, invalidation, and security-staleness rules are
+  documented and tested;
+- the initial cache allowlist excludes authorization decisions, active
+  role-binding resolution, account enabled state, session or credential
+  validity, MFA assurance, and token revocation. A security-sensitive read may
+  be added only after a separately reviewed bounded-staleness, revalidation,
+  and recovery contract is tested;
+- begin with low-risk reference data and add caches only from measured need;
+- store decorators implement the same contracts and remain invisible to
+  application callers. Application- or workflow-specific caches still use
+  explicit application cache ports;
+- each decorator implements the complete root `store.Store`, returns wrapped
+  per-model or per-aggregate stores from its accessors, overrides only methods
+  with layer behavior, and forwards the rest mechanically. Do not use
+  reflection-based proxies or runtime interception;
+- the composition root produces one final layered `store.Store`; application
+  wiring does not select layers per model;
+- deterministic `go generate` tooling may generate mechanical pass-through
+  wrappers for the complete store contracts. Generated files are checked in,
+  clearly marked, never edited manually, and verified clean by CI;
+- caching, retry, timing policy, and exceptional methods remain handwritten;
+  generation must not encode or obscure behavioral policy;
 - pagination and authorization filters belong in queries, not post-processing;
 - tests must prove cross-academic-unit isolation.
 
@@ -1439,8 +1898,10 @@ The server owns:
 - cluster invalidation messages.
 
 Do not use cache as durable state, a distributed lock without an explicit
-contract, or an implicit repository decorator. Prefer versioned namespaces for
-broad invalidation.
+contract, or an unconstrained store decorator. A constrained
+`store/localcachelayer` may provide semantically transparent read caching only
+for the documented allowlist in the persistence rules above. Prefer versioned
+namespaces for broad invalidation.
 
 ### Mail
 
@@ -1475,15 +1936,16 @@ model, and deployment topology are defined.
 
 ## Server Lifecycle
 
-`app.NewServer` is the composition root and initializes in a deterministic
+The module-root `server.New` composition root initializes in a deterministic
 order:
 
 1. parse command and locate configuration;
 2. create the configuration backing and shared `config.Store`;
-3. begin `platform.Service` construction and initialize operational logging;
-4. within the platform, open PostgreSQL and validate schema compatibility;
-5. within the platform, construct cache, VFS, and mail infrastructure, followed
-   by cluster infrastructure when that transport exists;
+3. in the root composition package, select and construct PostgreSQL, cache,
+   VFS, mail, cluster, and external-authentication adapters from configuration;
+4. validate persistence schema compatibility and mandatory dependency health;
+5. construct `platform.Service` from those already-created capabilities so it
+   can own their shared lifecycle;
 6. construct the long-lived `app.App` and its product services;
 7. finish cross-service wiring through the composition root;
 8. construct HTTP API and WebSocket transports;
@@ -1510,11 +1972,31 @@ probably a CLI.
 Requirements:
 
 - versioned HTTP API, initially `/api/v1`;
+- plural lowercase kebab-case resource paths;
+- `snake_case` JSON fields, query parameters, and route-variable names;
+- noun and subresource paths by default; use an explicit command endpoint only
+  for a genuine domain action that does not fit ordinary resource mutation;
+- transport-owned request and response DTOs, with explicit mapping to and from
+  application/domain types;
 - consistent JSON and Problem Details error contracts;
-- OpenAPI description maintained with the API;
+- a reviewed OpenAPI document checked into the repository as the public
+  contract;
 - stable machine-readable error codes;
 - cursor-based pagination where collections can grow;
-- explicit idempotency support for commands vulnerable to client retry;
+- collection responses use an object envelope with a non-null `items` array
+  and optional opaque `next_cursor`; empty collections serialize as `[]`, not
+  `null`, and public endpoints do not return bare arrays;
+- cursors are opaque and versioned, encode only the stable keyset needed to
+  continue a query, and are treated as untrusted input. Transport validates
+  and maps them to typed store keysets; cursors never contain SQL fragments or
+  become domain identifiers;
+- do not use growing offset pagination for unbounded collections;
+- explicit idempotency support for commands vulnerable to client retry:
+  transport extracts and bounds the key, the application command defines its
+  meaning, and an atomic store operation records the key with principal,
+  operation, request fingerprint, outcome, and expiry;
+- reusing an idempotency key with different input is a conflict; replaying the
+  same input returns the recorded outcome;
 - request IDs returned to clients;
 - capability/version endpoint;
 - documented compatibility and deprecation policy;
@@ -1525,6 +2007,18 @@ Avoid privileged behavior available only through an in-process API. The CLI
 should normally use the same authenticated public/admin API as other clients.
 Any local Unix-socket administrative mode requires an explicit threat model and
 must not be an unauthenticated shortcut by default.
+
+Once an API version is declared stable, changes within it are additive:
+existing fields, meanings, routes, and error codes are not removed or
+repurposed; clients tolerate unknown response fields; new required request
+fields or changed semantics require a new version. Deprecations are documented
+before removal. Pre-stable behavior may change only when release notes state
+that compatibility is not yet promised.
+
+CI verifies that registered routes, authentication classifications, transport
+DTO schemas, and stable error responses agree with OpenAPI. Documentation and
+clients may be generated from the specification, but application handlers and
+domain models are handwritten and are never generated from the wire contract.
 
 ## Security and Privacy
 
@@ -1556,6 +2050,45 @@ Review and test every copied or adapted path.
 
 Every module must remain independently testable.
 
+Default test doubles are small hand-written fakes or spies for narrow
+consumer-owned interfaces. Keep them beside the consuming package's tests
+unless several packages genuinely share the same contract. Use reusable
+conformance suites for store and infrastructure-port implementations. Avoid
+mocking frameworks, generated mocks for every interface, and expectations tied
+to incidental call order. Integration tests that need wiring confidence use
+the real module-root `server.New` graph through `testlib`.
+
+`testlib` may configure the real `server.New` graph with explicit test
+overrides, manage integration resources, and expose safe test clients. It must
+not maintain a second wiring path, bypass application use cases, or make
+concrete SQL internals the normal test-setup API. Unit-test fakes remain local
+to their consumers.
+
+Use external `package_test` tests by default for exported contracts and
+conformance behavior. Use same-package tests only when directly exercising
+important unexported logic is clearer than forcing an export or testing it
+indirectly.
+
+Name tests and subtests after observable domain or contract behavior, so their
+CI output explains the rule being exercised. Avoid generic names such as
+`success`, `error case`, or numbered cases; table entries use short scenario
+phrases.
+
+Pure unit tests and isolated table subtests use `t.Parallel()`. Integration
+tests run in parallel only when each test owns an isolated database or schema,
+Redis namespace, storage prefix, ports, and cleanup. Tests that intentionally
+share process-global configuration or infrastructure remain serial and state
+the reason.
+
+Ordinary `go test ./...` is network-free. Tests requiring PostgreSQL, Redis,
+SMTP, S3, or multiple nodes use the `integration` build tag and dedicated Make
+targets. CI compiles and runs every tagged suite; invoking an integration target
+without its required service is a failure rather than a silent skip. Shared
+conformance suites run against both in-memory implementations and tagged real
+adapters. Existing external-service tests that are not consistently tagged
+predate this convention and must migrate coherently with their Make and CI
+targets.
+
 General Go checks:
 
 ```text
@@ -1563,6 +2096,20 @@ go test ./...
 go test -race ./...
 go vet ./...
 ```
+
+CI additionally requires:
+
+- formatting and checked-in generated-file cleanliness;
+- unit tests and `go vet` for every module;
+- race tests for network-free suites;
+- production import-boundary architecture tests;
+- OpenAPI, route-matrix, authentication-classification, and public-error
+  mapping consistency;
+- tagged integration and conformance suites in dedicated jobs;
+- glossary and ADR link validation.
+
+Do not enable a broad opinionated linter bundle until each rule is reviewed and
+accepted for this repository.
 
 Follow each module README and Makefile for its supported workflows.
 
@@ -1581,6 +2128,7 @@ construction through `testlib`.
 
 Future server tests should include:
 
+- an import-boundary architecture test for the production package allowlist;
 - pure domain invariant tests;
 - configuration default/validation/redaction tests;
 - error-to-transport contract tests;
@@ -1589,7 +2137,8 @@ Future server tests should include:
 - authorization matrices across institution, academic unit, class, and exam;
 - further enrollment concurrency and progression-policy tests;
 - PostgreSQL repository integration tests;
-- two-node cluster tests sharing PostgreSQL, Redis/transport, and VFS;
+- two-node Memberlist cluster tests sharing PostgreSQL and VFS, independently
+  exercised with local-memory and optional Redis cache configurations;
 - cross-node session and permission invalidation tests;
 - cross-node WebSocket fan-out tests;
 - WebSocket sequence, replay, loss, and resynchronization tests;
@@ -1617,17 +2166,40 @@ Mattermost checkout.
 
 ## Go Engineering Rules
 
+- Preserve standard initialisms in identifiers: `ID`, `URL`, `HTTP`, `API`,
+  `SQL`, `MFA`, `VFS`, `OIDC`, and `CAS`.
+- Do not prefix interfaces with `I`; name them for the capability they provide.
+- Use `New` for a package's primary exported construction and precise
+  `New<Type>` constructors only when several exported constructions coexist.
+  Use unexported `new<Type>` constructors for internal services.
+- Use `With<Option>` only for genuinely optional construction behavior.
+- Name methods with domain verbs. Avoid vague names such as `Process`, `Handle`,
+  `Execute`, or `Manage` unless that word is the established domain term.
 - Pass `context.Context` as the first parameter for I/O, waiting, and
   request-scoped operations.
+- Pass security and audit call state explicitly as `app.Invocation`; do not use
+  context values as an implicit dependency carrier.
 - Do not store request contexts in long-lived structs.
 - Wrap errors with useful operation context and preserve `errors.Is/As`.
 - Avoid panic for expected runtime/configuration/input failures.
+- Panic is reserved for impossible programmer invariants during initialization
+  and test-only `Must*` helpers. Transport and worker boundaries recover
+  unexpected panics, record safe diagnostics, and isolate or fail the affected
+  operation without exposing stack details.
 - Constructors validate dependencies and return errors.
+- Dependency injection is explicit constructor wiring in the module-root
+  `server` package. Do not use reflection-based DI frameworks, generated
+  containers, service containers, or global registries.
+- Use named options only when a dependency or behavior is genuinely optional
+  and absence has defined semantics.
 - Prefer concrete types at construction and narrow interfaces at consumption.
 - Define ordinary service interfaces near the consuming use case, not the
   adapter. Persistence contracts are the deliberate exception: root and
   per-model contracts live together in `server/store`, following Mattermost's
   cohesive store organization.
+- Add compile-time interface assertions where a concrete adapter or generated
+  store layer intentionally implements an important cross-package contract.
+  Do not add assertions for incidental interface satisfaction.
 - Keep interfaces purposeful; a model store should contain the complete known
   persistence surface for that model rather than being fragmented into
   one-method interfaces. Do not add methods for hypothetical consumers.
@@ -1639,6 +2211,10 @@ Mattermost checkout.
 - Use clocks and ID generators as injectable ports only where deterministic
   behavior or domain control requires it.
 - Keep public APIs documented and stable in independently published modules.
+- Every substantive package has a concise package comment, normally in
+  `doc.go`, stating what it owns, what it explicitly does not own, and its
+  dependency direction. Exported contracts document behavioral guarantees and
+  failure semantics rather than merely restating identifier names.
 - Format code with `gofmt`.
 
 ## Implementation Sequence
@@ -1646,8 +2222,9 @@ Mattermost checkout.
 Unless the user reprioritizes, build the server as a walking skeleton:
 
 1. licensing/provenance files and server module — complete;
-2. cohesive `config → platform → app.Server → app.App → app/api` composition
-   flow and shared `testlib` — complete;
+2. cohesive current `config → platform → app.Server → app.App → app/api`
+   composition flow and shared `testlib` — complete; moving composition to the
+   module-root `server` package is documented migration work;
 3. configuration store, validation, backings, overrides, diffs, and listeners
    — complete for the current schema;
 4. Proctor `mlog`, platform-owned configuration, and request correlation —
@@ -1666,8 +2243,9 @@ Unless the user reprioritizes, build the server as a walking skeleton:
 10. cluster transport — complete for typed, bounded messages,
     one-handler-per-event dispatch, stable node identity, peer-only broadcast
     semantics, self-targeted local delivery, platform health/lifecycle
-    ownership, startup readiness gating, and the lease/Streams-backed Redis
-    multi-node adapter;
+    ownership, startup readiness gating, local and Memberlist backends only,
+    and retirement of the Redis cluster adapter and reliable delivery class;
+    Redis remains optional solely as a disposable cache backend;
 11. identity/authentication services, credential rotation, and authentication
     middleware — complete for the first local-password, access/refresh session,
     login/refresh/logout/current-user vertical slice and self-service active
@@ -1684,16 +2262,20 @@ Unless the user reprioritizes, build the server as a walking skeleton:
     administration with last-administrator protection, plus user resource
     actions, default-deny visibility helpers, and audited cross-user reads;
 13. institution/academic hierarchy, membership/enrollment, and administrative
-    user vertical slices — complete for application services, visible
-    handler-level permission preflights, audited mutations, authorized scoped
-    reads, PostgreSQL conformance, and end-to-end API integration;
+    user vertical slices — complete for application services, audited
+    mutations, authorized scoped reads, PostgreSQL conformance, and end-to-end
+    API integration; removing the existing handler permission preflights is a
+    documented architecture migration;
 14. remaining identity phase: personal access tokens, MFA/recovery codes, and
     administrative session management — complete; registry-backed direct CAS
     and generic OIDC external identity login are also complete, while
     account-linking administration, SAML, and service accounts remain;
-15. first two-node cluster tests — complete for reliable and best-effort
-    transport, handler retry, duplicate node identity, application event
-    fan-out, permission invalidation, and session revocation;
+15. first two-node cluster tests — complete for best-effort Memberlist
+    transport, rejoin after churn, lost-message non-recovery with later
+    delivery, duplicate-delivery tolerance, application event fan-out,
+    and recovery proofs that session revocation and authorization correctness
+    depend on PostgreSQL plus bounded auth-cache TTLs rather than cluster
+    delivery;
 16. WebSocket hub, cluster fan-out, and replay — complete for authenticated
     sockets, authorized subscriptions, bounded local replay, explicit
     resynchronization, and cross-node events; cross-node replay handoff remains
@@ -1705,9 +2287,53 @@ Complete one vertical path through transport, use case, authorization,
 persistence, and tests, then extend the root store with the next implemented
 model store.
 
+Architecture migrations are incremental and keep the repository buildable; do
+not perform a big-bang package rewrite. Sequence the current migration as:
+
+1. establish import-boundary tests and the module-root composition package;
+2. remove platform/service-location dependencies one application capability
+   at a time;
+3. migrate each capability's invocation, commands/queries, errors, DTOs,
+   domain lifecycle, and tests as one coherent vertical change;
+4. introduce store layers and extract WebSocket and cluster transports behind
+   stable contracts;
+5. establish native temporal types and entity-specific IDs in the pre-release
+   schema baseline, recreating development databases as needed.
+
 ## Architecture and Documentation Evolution
 
 This file must evolve with the project.
+
+Architecture documentation has distinct authorities:
+
+- root `CONTEXT.md` is the implementation-free domain glossary;
+- `docs/architecture.md` is the canonical developer-facing guide for
+  boundaries, dependencies, layout, naming, errors, testing, and structural
+  examples;
+- `docs/adr/` records why durable decisions were made;
+- `AGENTS.md` summarizes normative rules, current implementation state,
+  workflow, and links to the canonical documents.
+
+Do not require developers to reconstruct the current architecture from ADRs
+alone, and avoid duplicating detailed narrative across these files.
+
+`docs/architecture.md` includes concise paired correct/incorrect directory
+trees and Go snippets, explains the boundary consequence of each, and links to
+real repository examples when available. Do not create artificial production
+packages solely as documentation. A snippet claiming executable behavior is
+covered by a compiled Go example test; purely structural snippets are labeled
+illustrative.
+
+Accepted ADRs remain as historical records. Minor factual corrections are
+allowed, but reversing a decision requires a new ADR that names and supersedes
+the old one; both remain with explicit status metadata. ADRs created during
+this architecture session are accepted unless later superseded.
+
+The project-wide domain glossary lives in the root `CONTEXT.md`. Keep it free
+of implementation details and group the shared language by domain area. Create
+a root `CONTEXT-MAP.md` and split the glossary only when bounded contexts
+develop genuinely distinct language, ownership, or meanings; do not infer code
+package boundaries from glossary headings.
 
 Update `AGENTS.md` when a change affects:
 
@@ -1793,39 +2419,55 @@ Before handing off:
 - Clustered/horizontally scaled deployment will not be commercially gated.
 - WebSocket fan-out is application-side and uses inter-node messages, not the
   database as an event transport.
-- Redis is the concrete multi-node cluster backend. Pub/Sub is at-most-once for
-  transient events, while per-node Streams provide bounded, acknowledged,
-  at-least-once reliable delivery with idempotent handlers.
-- Cache and cluster-transport backends are independent: clustered nodes may use
-  per-node memory caches or a shared Redis cache, while reliable cluster
-  invalidation preserves current security state.
+- The top-level `cluster` package provides an in-process `local` transport and
+  a built-in Memberlist peer transport for multi-node deployments; clustering
+  requires no Redis service.
+- Cache and cluster transport are independent: clustered nodes may use
+  per-node memory caches or optional shared Redis cache.
 - Authentication route wrappers, sessions, tokens, scoped permissions, and
   audit behavior should be inspired by Mattermost while using Proctor's
   immutable principal and current durable role bindings.
-- API route ownership uses per-domain `Init*` methods called by `api.New`; one
-  typed Mattermost-style wrapper classifies each handler before the central
-  registrar detects duplicate route shapes and records the route matrix; all
-  resource routers derive from the single versioned `BaseRoutes.APIRoot`, and
-  typed request parameters are populated centrally from regex-constrained
-  route variables.
+- API route ownership uses unexported per-domain
+  `register<Area>Routes` functions called by `api.New`; one typed wrapper
+  classifies each handler before the central registrar detects duplicate route
+  shapes and records the route matrix. All resource routers derive from the
+  single versioned `BaseRoutes.APIRoot`, and typed request parameters are
+  populated centrally from regex-constrained route variables.
 - Route authentication and application authorization are deliberately
-  separate: `APISessionRequired` establishes the principal, while explicit
-  handler preflights, `PrincipalHasPermissionTo*`, `AuthorizePrincipalTo*`, and
-  contextual visibility helpers evaluate current access to resources. A
-  sealed one-use request receipt connects a successful handler preflight to
-  the authoritative use case without duplicating its database and audit work.
+  separate: typed transport wrappers establish credential and assurance
+  requirements, while each application use case immediately performs the sole
+  authoritative action/resource check and durable decision audit. Handlers do
+  not preflight resource permissions or issue decision receipts.
 - Initial administrator creation is an explicit one-time, PostgreSQL-serialized
   bootstrap aggregate and never an implicit first-user side effect.
 - Built-in roles are server-owned and immutable through administration APIs;
   the last active institution system-administrator binding cannot be ended.
-- The server follows a cohesive Mattermost-inspired construction flow:
-  `config.Store → platform.Service → app.Server/app.App → app/api`.
-- `app.NewServer` is the sole composition root and `testlib` reuses that exact
+- The server follows an explicit construction flow:
+  `config.Store → concrete adapters → platform.Service → app.App + app/api`,
+  all owned by the module-root `server` package.
+- The module-root `server.New` is the sole composition root and `testlib`
+  reuses that exact
   graph.
+- Only the module-root composition package selects concrete infrastructure;
+  `platform.New` receives constructed capabilities and owns their shared
+  lifecycle.
+- Production package imports follow the enforced inward graph
+  `model ← store ← app ← {app/api, websocket} ← server ← cmd/proctor`, with
+  platform and concrete adapters confined to the infrastructure side.
 - Proctor owns its `mlog` API and implementation; the platform service owns its
   active configuration and lifecycle.
 - `server/model` is the cohesive durable model package and uses
-  Mattermost-inspired lifecycle, validation, audit, and `AppError` conventions.
+  explicit domain construction, named transitions, `Validate() error`, and
+  safe audit projections while remaining domain-focused rather than becoming
+  a general shared-contract package.
+- Persistence-lifecycle methods such as `PreSave`, `PreUpdate`, and `IsValid`
+  do not belong on domain models; the application supplies IDs and timestamps.
+- Application methods return standard `error`; expected failures use a
+  transport-neutral `*app.Error` with stable codes and explicitly safe fields,
+  while transports own protocol status, localization, and request correlation.
+- Domain models own local invariants and pure state transitions; application
+  services own use-case policy, authorization, transactions, audit, and
+  external-effect orchestration; adapters do not decide business policy.
 - Academic identity is contextual: affiliations and memberships describe a
   user's relationships, while role bindings determine access.
 - Sessions and API credentials persist hashes only and do not carry
@@ -1836,6 +2478,9 @@ Before handing off:
 - Persistence follows Mattermost's store shape: one root `store.Store`,
   complete per-model store interfaces, one `Sql<Model>Store` per implemented
   model, and interface-returning accessors on `SqlStore`.
+- Atomic changes spanning models use explicit aggregate-oriented store
+  operations rather than exposing a generic transaction callback or database
+  transaction to the application.
 - SQL execution, PostgreSQL rebinding, timeouts, builders, and transactions are
   centralized in SQL wrappers. Per-model stores reuse select builders for reads
   and dynamic filters while retaining named SQL where clearer for writes.

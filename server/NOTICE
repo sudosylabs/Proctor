@@ -556,22 +556,24 @@ Upstream paths:
 
 Corresponding Proctor paths:
 
-- server/model/cluster_message.go
-- server/model/websocket.go
+- server/cluster/message.go
+- server/cluster/transport.go
+- server/cluster/local/
+- server/cluster/memberlist/
 - server/platform/cluster.go
-- server/platform/cluster_redis.go
 - server/platform/service.go
 - server/app/app.go
 - server/app/realtime.go
-- server/app/server.go
+- server/server.go
+- server/websocket/
 - server/app/api/websocket.go
 - server/app/api/middleware.go
 
 Modifications:
 
-- substantially adapted the public typed event, message, properties, and
-  best-effort/reliable send-class contract while adding validation, cloning,
-  and hard data/property bounds;
+- substantially adapted the public typed event, message, and properties
+  contract into a best-effort-only Proctor message type with validation,
+  cloning, and hard data/property bounds (no durable/reliable send class);
 - retained the one-handler-per-event, broadcast, targeted-send, and explicit
   start/stop concepts from Mattermost's public cluster boundary;
 - omitted enterprise-only discovery, gossip, leader election, transport,
@@ -580,10 +582,10 @@ Modifications:
 - implemented an original Proctor local transport as the single-node
   degenerate architecture, with peer-only no-op broadcasts and explicit
   self-targeted handler dispatch;
-- implemented an original Proctor Redis transport with lease-backed discovery,
-  Pub/Sub at-most-once best effort, per-node Streams with post-handler
-  acknowledgement and retry for at-least-once reliable delivery, bounded
-  queues, and duplicate-node protection;
+- implemented an original Proctor Memberlist multi-node transport with
+  encrypted gossip, PostgreSQL discovery leases for bootstrap seeds, and
+  best-effort direct peer messaging (no Redis service required for
+  clustering; Redis remains optional only as disposable cache);
 - substantially adapted Mattermost's CPU-sharded node-owned hub, bounded
   send/dead queue, per-connection sequencing, ping/pong, reconnect/replay,
   backpressure, and WebSocket router concepts for Proctor's Gorilla HTTP
@@ -594,15 +596,17 @@ Modifications:
 - retained Mattermost's local-first publication followed by a cluster publish
   whose peer handler performs local-only delivery, preventing rebroadcast
   loops;
-- added reliable cross-node session revocation, access-cache invalidation, and
-  permission-change connection invalidation;
+- added best-effort cross-node session revocation, access-cache invalidation,
+  and permission-change connection invalidation, with correctness recovering
+  from PostgreSQL and bounded cache TTLs when messages are lost;
 - made platform startup gate server readiness and made platform shutdown own
   transport cleanup, while draining WebSocket connections before stopping the
   cluster transport;
 - contained handler panics, cloned inbound messages, and restricted operational
-  logs to event, send class, and byte-count metadata;
-- added Redis and full application two-node conformance tests for peer-only
-  fan-out, retry, permission propagation, and session revocation.
+  logs away from message payloads;
+- added Memberlist and application two-node conformance and recovery tests for
+  peer-only fan-out, rejoin after churn, permission propagation, and session
+  revocation.
 
 The Morph migration dependency is separately licensed under the MIT License.
 The Masterminds Squirrel query-builder dependency is separately licensed under

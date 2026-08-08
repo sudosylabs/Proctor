@@ -33,10 +33,11 @@ type RealtimeSink interface {
 
 // RealtimeClusterFanout is the composition-owned inter-node publication port.
 // Application code supplies opaque event names and payloads; the adapter owns
-// cluster wire envelopes, send classes, and handler registration.
+// cluster wire envelopes and handler registration. Delivery is always
+// best-effort (ADR-0026).
 type RealtimeClusterFanout interface {
 	RegisterHandler(event string, handler func(context.Context, []byte) error) error
-	Broadcast(ctx context.Context, event string, data []byte, reliable bool) error
+	Broadcast(ctx context.Context, event string, data []byte) error
 }
 
 // RealtimeDiagnostics reports non-fatal publication failures without depending
@@ -123,14 +124,11 @@ func (s *RealtimeService) SetSink(sink RealtimeSink) error {
 }
 
 // Publish delivers a transport-neutral event locally first, then fans it out
-// to peers. Callers must invoke this only after durable commit.
+// to peers best-effort. Callers must invoke this only after durable commit.
 func (s *RealtimeService) Publish(ctx context.Context, event RealtimeEvent) error {
 	candidate := event.Clone()
 	if candidate.ID == "" {
 		candidate.ID = model.NewId()
-	}
-	if candidate.Delivery == "" {
-		candidate.Delivery = DeliveryBestEffort
 	}
 	if err := candidate.ValidateForPublish(); err != nil {
 		return invalidRealtimeRequest(err.Error())
@@ -143,7 +141,7 @@ func (s *RealtimeService) Publish(ctx context.Context, event RealtimeEvent) erro
 	if err != nil {
 		return internalRealtimeError(err)
 	}
-	if err := s.broadcast(ctx, realtimeClusterEventPublication, payload, candidate.Delivery == DeliveryReliable); err != nil {
+	if err := s.broadcast(ctx, realtimeClusterEventPublication, payload); err != nil {
 		return internalRealtimeError(err)
 	}
 	return nil
@@ -186,7 +184,7 @@ func (s *RealtimeService) PropagateSessionRevocation(
 		return
 	}
 	s.applySessionRevocation(ctx, message)
-	s.broadcastReliable(ctx, realtimeClusterEventSessionRevoked, message)
+	s.broadcastSecurityInvalidation(ctx, realtimeClusterEventSessionRevoked, message)
 }
 
 func (s *RealtimeService) PropagateAuthenticationCacheInvalidation(
@@ -203,7 +201,7 @@ func (s *RealtimeService) PropagateAuthenticationCacheInvalidation(
 		return
 	}
 	s.applySessionRevocation(ctx, message)
-	s.broadcastReliable(ctx, realtimeClusterEventSessionRevoked, message)
+	s.broadcastSecurityInvalidation(ctx, realtimeClusterEventSessionRevoked, message)
 }
 
 func (s *RealtimeService) InvalidateAuthorization(ctx context.Context, userID string) {
@@ -216,7 +214,7 @@ func (s *RealtimeService) InvalidateAuthorization(ctx context.Context, userID st
 		return
 	}
 	s.applyAuthorizationInvalidation(userID)
-	s.broadcastReliable(
+	s.broadcastSecurityInvalidation(
 		ctx,
 		realtimeClusterEventAuthorizationInvalidated,
 		authorizationInvalidationMessage{UserId: userID},
@@ -230,13 +228,16 @@ func (s *RealtimeService) reportInvalidPropagation(ctx context.Context, message 
 	s.diagnostics.ErrorContext(ctx, message, err)
 }
 
-func (s *RealtimeService) broadcastReliable(ctx context.Context, event string, value any) {
+// broadcastSecurityInvalidation fans out session or authorization invalidation
+// best-effort. Correctness recovers from PostgreSQL and bounded cache TTLs when
+// peers miss the message.
+func (s *RealtimeService) broadcastSecurityInvalidation(ctx context.Context, event string, value any) {
 	payload, err := json.Marshal(value)
 	if err == nil {
-		err = s.broadcast(ctx, event, payload, true)
+		err = s.broadcast(ctx, event, payload)
 	}
 	if err != nil {
-		s.reportInvalidPropagation(ctx, "reliable security invalidation broadcast failed", err)
+		s.reportInvalidPropagation(ctx, "security invalidation broadcast failed", err)
 	}
 }
 
@@ -244,7 +245,6 @@ func (s *RealtimeService) broadcast(
 	ctx context.Context,
 	event string,
 	data []byte,
-	reliable bool,
 ) error {
 	s.mu.RLock()
 	cluster := s.cluster
@@ -252,7 +252,7 @@ func (s *RealtimeService) broadcast(
 	if cluster == nil {
 		return errors.New("realtime cluster fan-out is not attached")
 	}
-	return cluster.Broadcast(ctx, event, data, reliable)
+	return cluster.Broadcast(ctx, event, data)
 }
 
 func (s *RealtimeService) handlePeerPublication(ctx context.Context, data []byte) error {
@@ -263,8 +263,7 @@ func (s *RealtimeService) handlePeerPublication(ctx context.Context, data []byte
 	if publication.Event == nil {
 		return errors.New("cluster realtime publication has no event")
 	}
-	// Peer payloads must not re-specify delivery; local apply only.
-	publication.Event.Delivery = DeliveryBestEffort
+	// Peer payloads apply only locally and must not rebroadcast.
 	if err := publication.Event.ValidateForPublish(); err != nil {
 		return err
 	}

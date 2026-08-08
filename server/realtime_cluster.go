@@ -49,12 +49,7 @@ func (a *realtimeClusterAdapter) Broadcast(
 	ctx context.Context,
 	event string,
 	data []byte,
-	reliable bool,
 ) error {
-	// Delivery is best-effort only (ADR-0026). The reliable flag remains on the
-	// application port for transitional call sites; correctness still recovers
-	// from PostgreSQL and client resynchronization.
-	_ = reliable
 	return a.cluster.Broadcast(ctx, &cluster.Message{
 		Event: cluster.Event(event),
 		Data:  data,

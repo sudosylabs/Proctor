@@ -80,15 +80,15 @@ The server also includes:
 - platform-owned memory/Redis cache, disabled/SMTP mail, and local/S3 VFS
   adapters with startup dependency checks and deterministic shutdown;
 - a typed, bounded cluster message contract and server-owned transport port,
-  with a loop-safe `local` backend and a Redis multi-node backend using
-  lease-backed discovery, Pub/Sub best effort, and acknowledged per-node
-  Streams for reliable delivery;
+  with a loop-safe `local` backend and a built-in Memberlist multi-node
+  backend using PostgreSQL discovery leases, encrypted gossip, and best-effort
+  peer messaging (no Redis service required for clustering);
 - authenticated WebSocket sessions with exact-origin cookie upgrades,
   CPU-sharded connection ownership, resource/action-authorized subscriptions,
   bounded send and replay queues, per-connection sequences, ping/pong
   liveness, backpressure handling, and local reconnection replay;
 - local-first application event publication with loop-free cluster fan-out,
-  reliable session revocation, cache invalidation, and permission-change
+  best-effort session revocation, cache invalidation, and permission-change
   propagation across nodes;
 - bounded Argon2id local-password authentication;
 - revocable server-side sessions with separately hashed opaque access and
@@ -418,16 +418,17 @@ backend has no peers: broadcast is deliberately a no-op and never loops back
 into local handlers. The transport still participates in dependency checks and
 is started before readiness and stopped through the platform lifecycle.
 
-Set `cluster.backend` to `redis` and give every process a unique stable
-`cluster.node_id` for a multi-node installation. Redis Pub/Sub carries
-best-effort messages with at-most-once semantics. Reliable messages use one
-acknowledged Stream per live node, remain pending when a handler fails, and are
-retried with at-least-once semantics; reliable handlers must therefore be
-idempotent. `reliable_maximum` is a hard queue ceiling and messages are not
-silently trimmed. The cache backend is selected independently: each node may
-use its own memory cache, with reliable cluster invalidation, or use Redis as a
-shared cache. Clustered configuration requires shared VFS rather than
-node-local storage.
+Set `cluster.backend` to `memberlist` and give every process a unique stable
+`cluster.node_id` for a multi-node installation. Memberlist uses encrypted
+gossip membership, PostgreSQL discovery heartbeats for bootstrap seeds, and
+best-effort direct peer messaging. There is no durable cluster delivery class:
+session and authorization correctness recover from PostgreSQL and bounded
+authentication-cache TTLs when messages are delayed or lost. Handlers must be
+idempotent under duplicates. The cache backend is selected independently: each
+node may use its own memory cache or optional Redis as a shared disposable
+cache. Clustering does not require Redis. Multi-node configuration requires
+shared VFS rather than node-local storage, plus a shared encryption key and
+explicit bind/advertise addresses.
 
 ## Verify
 
@@ -470,7 +471,8 @@ suite with:
 make -C server integration-postgres
 ```
 
-Run only Redis cluster compatibility with:
+Run optional Redis **cache** adapter tests (clustering does not require Redis)
+with:
 
 ```sh
 make -C server integration-redis
@@ -483,7 +485,8 @@ servers and PostgreSQL, with:
 make -C server integration-providers
 ```
 
-Run the Redis and two-node WebSocket/cluster suite with:
+Run the WebSocket and two-node Memberlist cluster suite (PostgreSQL; optional
+Redis only when testing shared-cache mode) with:
 
 ```sh
 make -C server integration-realtime

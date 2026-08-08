@@ -11,27 +11,14 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-// DeliveryClass selects how a realtime event is fan-out across cluster peers.
-// Application code does not know cluster wire send types; the composition
-// adapter maps these classes onto the current transport.
-type DeliveryClass string
-
-const (
-	// DeliveryBestEffort is for ordinary state-change notifications.
-	DeliveryBestEffort DeliveryClass = "best_effort"
-	// DeliveryReliable is retained for security-sensitive call sites that once
-	// preferred at-least-once cluster delivery. The cluster transport is
-	// best-effort only (ADR-0026); callers must remain correct using
-	// PostgreSQL recovery, cache TTLs, and client resynchronization.
-	DeliveryReliable DeliveryClass = "reliable"
-)
-
 // RealtimeEvent is a transport-neutral, past-tense application fact published
 // after durable commit. Sequence is never assigned here: each owning connection
 // stamps sequence at the WebSocket boundary.
 //
 // JSON field names match the existing cluster publication payload so multi-node
 // peers remain wire-compatible while ownership of wire DTOs moves outward.
+// Cluster fan-out is always best-effort (ADR-0026); there is no durable
+// delivery class.
 type RealtimeEvent struct {
 	ID       string          `json:"id"`
 	Name     string          `json:"event"`
@@ -39,9 +26,6 @@ type RealtimeEvent struct {
 	Action   model.Action    `json:"action,omitempty"`
 	Resource model.Resource  `json:"resource,omitempty"`
 	Data     json.RawMessage `json:"data,omitempty"`
-	// Delivery is publication policy and is never serialized on the cluster
-	// payload; the fan-out port carries it separately.
-	Delivery DeliveryClass `json:"-"`
 }
 
 const (
@@ -86,12 +70,6 @@ func (e RealtimeEvent) ValidateForPublish() error {
 	if len(e.Data) != 0 && !json.Valid(e.Data) {
 		return errors.New("realtime event data is not valid JSON")
 	}
-	switch e.Delivery {
-	case DeliveryBestEffort, DeliveryReliable, "":
-		// Empty delivery is normalized to best-effort at publish time.
-	default:
-		return fmt.Errorf("invalid realtime delivery class %q", e.Delivery)
-	}
 	return nil
 }
 
@@ -107,9 +85,9 @@ const (
 // Stable cluster event names owned by application publication policy. The
 // composition adapter maps these onto cluster wire event identifiers.
 const (
-	realtimeClusterEventPublication               = "websocket.publish"
-	realtimeClusterEventSessionRevoked            = "authentication.session_revoked"
-	realtimeClusterEventAuthorizationInvalidated  = "authorization.invalidated"
+	realtimeClusterEventPublication              = "websocket.publish"
+	realtimeClusterEventSessionRevoked           = "authentication.session_revoked"
+	realtimeClusterEventAuthorizationInvalidated = "authorization.invalidated"
 )
 
 func validRealtimeName(value string) bool {

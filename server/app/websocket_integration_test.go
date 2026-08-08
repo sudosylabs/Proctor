@@ -7,8 +7,11 @@ package app_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -26,6 +29,16 @@ import (
 	"github.com/sudosylabs/proctor/server/testlib"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port
+}
 
 func TestWebSocketIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
@@ -152,7 +165,6 @@ func TestWebSocketIntegration(t *testing.T) {
 			Action:   subscription.Action,
 			Resource: subscription.Resource,
 			Data:     eventData,
-			Delivery: app.DeliveryBestEffort,
 		},
 	); appErr != nil {
 		t.Fatal(appErr)
@@ -242,10 +254,12 @@ func TestWebSocketIntegration(t *testing.T) {
 
 func TestWebSocketTwoNodeConformance(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	redisAddress := os.Getenv("PROCTOR_TEST_REDIS_ADDRESS")
-	if dataSource == "" || redisAddress == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL and PROCTOR_TEST_REDIS_ADDRESS are required")
+	if dataSource == "" {
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is required")
 	}
+	// Optional Redis remains an independent cache backend; clustering itself
+	// uses Memberlist and does not require Redis.
+	redisAddress := os.Getenv("PROCTOR_TEST_REDIS_ADDRESS")
 	persistenceA := openAuthenticationStore(t, dataSource)
 	database := config.Default().Database
 	database.DataSource = dataSource
@@ -256,15 +270,30 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	namespace := "proctor_test_" + model.NewId()
-	nodeConfig := func(nodeID string) testlib.Option {
+	clusterKey := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	// Distinct loopback ports so both nodes can bind Memberlist in one process.
+	portA := freeTCPPort(t)
+	portB := freeTCPPort(t)
+	nodeConfig := func(nodeID string, port int) testlib.Option {
 		return testlib.WithConfig(func(cfg *config.Config) {
-			cfg.Cluster.Backend = "redis"
+			cfg.Cluster.Backend = "memberlist"
 			cfg.Cluster.NodeID = nodeID
-			cfg.Cluster.Redis.Addresses = []string{redisAddress}
-			cfg.Cluster.Redis.Namespace = namespace
-			cfg.Cache.Backend = "redis"
-			cfg.Cache.Redis.Addresses = []string{redisAddress}
+			address := fmt.Sprintf("127.0.0.1:%d", port)
+			cfg.Cluster.Memberlist.BindAddress = address
+			cfg.Cluster.Memberlist.AdvertiseAddress = address
+			cfg.Cluster.Memberlist.EncryptionKey = clusterKey
+			cfg.Cluster.Memberlist.SeedAddresses = []string{
+				fmt.Sprintf("127.0.0.1:%d", portA),
+				fmt.Sprintf("127.0.0.1:%d", portB),
+			}
+			cfg.Cluster.Memberlist.DiscoveryTTL.Duration = 5 * time.Second
+			cfg.Cluster.Memberlist.DiscoveryHeartbeat.Duration = time.Second
+			if redisAddress != "" {
+				cfg.Cache.Backend = "redis"
+				cfg.Cache.Redis.Addresses = []string{redisAddress}
+			} else {
+				cfg.Cache.Backend = "memory"
+			}
 			cfg.VFS.Backend = "s3"
 			cfg.VFS.S3.Endpoint = "127.0.0.1:19000"
 			cfg.VFS.S3.Bucket = "proctor-test"
@@ -272,12 +301,12 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	}
 	nodeA := testlib.Setup(
 		t,
-		nodeConfig("node-a"),
+		nodeConfig("node-a", portA),
 		testlib.WithStore(persistenceA),
 	)
 	nodeB := testlib.Setup(
 		t,
-		nodeConfig("node-b"),
+		nodeConfig("node-b", portB),
 		testlib.WithStore(persistenceB),
 	)
 	if err := nodeA.Platform.Start(context.Background()); err != nil {
@@ -353,7 +382,6 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 			Action:   subscription.Action,
 			Resource: subscription.Resource,
 			Data:     json.RawMessage(`{"source":"node-a"}`),
-			Delivery: app.DeliveryReliable,
 		},
 	); appErr != nil {
 		t.Fatal(appErr)

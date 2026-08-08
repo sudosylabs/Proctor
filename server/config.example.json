@@ -33,15 +33,16 @@
   "cluster": {
     "backend": "local",
     "node_id": "local",
-    "redis": {
-      "addresses": ["127.0.0.1:6379"],
-      "database": 0,
-      "tls": false,
-      "connect_timeout": "5s",
-      "namespace": "proctor",
-      "lease_ttl": "15s",
-      "heartbeat": "5s",
-      "reliable_maximum": 10000
+    "memberlist": {
+      "bind_address": "127.0.0.1:7946",
+      "advertise_address": "127.0.0.1:7946",
+      "encryption_key": "",
+      "seed_addresses": [],
+      "discovery_ttl": "30s",
+      "discovery_heartbeat": "10s",
+      "protocol_min": 1,
+      "protocol_max": 1,
+      "allow_public_bind": false
     }
   },
   "mail": {

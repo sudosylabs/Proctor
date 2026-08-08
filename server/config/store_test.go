@@ -198,7 +198,7 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	cfg := Default()
 	cfg.Database.DataSource = "postgres://proctor:secret@db.example/proctor?sslmode=require"
 	cfg.Cache.Redis.Password = "cache-secret"
-	cfg.Cluster.Redis.Password = "cluster-secret"
+	cfg.Cluster.Memberlist.EncryptionKey = "dGVzdC1tZW1iZXJsaXN0LWtleS0zMmJ5dGVzISE="
 	cfg.Mail.SMTP.Password = "mail-secret"
 	cfg.VFS.S3.AccessKey = "vfs-access-key"
 	cfg.VFS.S3.SecretKey = "vfs-secret-key"
@@ -213,7 +213,7 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"cache-secret",
-		"cluster-secret",
+		"dGVzdC1tZW1iZXJsaXN0LWtleS0zMmJ5dGVzISE=",
 		"mail-secret",
 		"db.example",
 		"vfs-access-key",
@@ -250,8 +250,9 @@ func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
 	cfg.Authentication.MFA.EncryptionKey = "not-base64"
 	cfg.Authentication.MFA.RecoveryCodeCount = 2
 	cfg.Authentication.Sessions.AccessTTL.Duration = cfg.Authentication.Sessions.IdleTTL.Duration + time.Second
-	cfg.Cluster.Backend = "redis"
+	cfg.Cluster.Backend = "memberlist"
 	cfg.Cluster.NodeID = "invalid node"
+	cfg.Cluster.Memberlist.EncryptionKey = ""
 
 	err := cfg.Validate()
 	var validationError *ValidationError
@@ -263,11 +264,12 @@ func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
 	}
 }
 
-func TestRedisClusterAllowsMemoryCacheButRequiresSharedVFS(t *testing.T) {
+func TestMemberlistClusterAllowsMemoryCacheButRequiresSharedVFS(t *testing.T) {
 	t.Parallel()
 
 	cfg := Default()
-	cfg.Cluster.Backend = "redis"
+	cfg.Cluster.Backend = "memberlist"
+	cfg.Cluster.Memberlist.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
 	err := cfg.Validate()
 	var validationError *ValidationError
 	if !errors.As(err, &validationError) {
@@ -282,6 +284,28 @@ func TestRedisClusterAllowsMemoryCacheButRequiresSharedVFS(t *testing.T) {
 	}
 	if fields["vfs.backend"] == "" {
 		t.Fatalf("cluster shared-infrastructure fields = %#v", validationError.Fields)
+	}
+}
+
+func TestRedisClusterBackendIsRejected(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Cluster.Backend = "redis"
+	err := cfg.Validate()
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("Validate() error = %v, want ValidationError", err)
+	}
+	found := false
+	for _, field := range validationError.Fields {
+		if field.Field == "cluster.backend" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Validate() fields = %#v, want cluster.backend rejection", validationError.Fields)
 	}
 }
 

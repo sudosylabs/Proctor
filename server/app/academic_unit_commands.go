@@ -84,7 +84,6 @@ func (e academicUnitRealtimeEffects) publish(
 			Type: model.ResourceAcademicUnit,
 			Id:   unitID,
 		},
-		Delivery: DeliveryBestEffort,
 	})
 }
 

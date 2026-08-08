@@ -262,7 +262,6 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 			Type: model.ResourceAcademicUnit,
 			Id:   unitID,
 		},
-		Delivery: DeliveryBestEffort,
 	}
 	if err := service.Publish(context.Background(), event); err != nil {
 		t.Fatal(err)

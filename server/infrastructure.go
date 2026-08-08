@@ -375,8 +375,6 @@ func newCluster(
 			mlog.String("component", "cluster"),
 			mlog.String("node_id", settings.NodeID),
 		)})
-	case "redis":
-		return platform.NewRedisCluster(settings, logger)
 	case "memberlist":
 		if discovery == nil {
 			return nil, fmt.Errorf("cluster discovery store is required for memberlist")

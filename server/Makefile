@@ -71,7 +71,7 @@ integration-redis:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait redis; \
 	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
-		go test -tags=integration ./platform -run '^TestRedisClusterTwoNodeConformance$$' -count=1
+		go test -tags=integration ./platform -run 'Redis' -count=1
 
 integration-providers:
 	@set -eu; \
@@ -85,11 +85,8 @@ integration-realtime:
 	@set -eu; \
 	cleanup() { $(COMPOSE) down --remove-orphans; }; \
 	trap cleanup EXIT INT TERM; \
-	$(COMPOSE) up --detach --wait postgres redis; \
-	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
-		go test -tags=integration ./platform -run '^TestRedisClusterTwoNodeConformance$$' -count=1; \
+	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
 		go test -tags=integration ./app -run '^TestWebSocket(Integration|TwoNodeConformance)$$' -count=1
 
 conformance-postgres: integration-postgres

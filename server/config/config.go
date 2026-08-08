@@ -90,19 +90,6 @@ type Cache struct {
 	Redis     CacheRedis `json:"redis"`
 }
 
-type ClusterRedis struct {
-	Addresses       []string `json:"addresses"`
-	Username        string   `json:"username,omitempty"`
-	Password        string   `json:"password,omitempty"`
-	Database        int      `json:"database"`
-	TLS             bool     `json:"tls"`
-	ConnectTimeout  Duration `json:"connect_timeout"`
-	Namespace       string   `json:"namespace"`
-	LeaseTTL        Duration `json:"lease_ttl"`
-	Heartbeat       Duration `json:"heartbeat"`
-	ReliableMaximum int      `json:"reliable_maximum"`
-}
-
 // ClusterMemberlist configures the built-in multi-node gossip transport.
 type ClusterMemberlist struct {
 	BindAddress        string   `json:"bind_address"`
@@ -118,12 +105,10 @@ type ClusterMemberlist struct {
 
 // Cluster selects the inter-node transport and gives this process its stable
 // runtime identity. "local" is the single-node degenerate transport.
-// "memberlist" is the built-in multi-node backend. "redis" remains a
-// transitional multi-node adapter.
+// "memberlist" is the built-in multi-node backend and requires no Redis service.
 type Cluster struct {
 	Backend    string            `json:"backend"`
 	NodeID     string            `json:"node_id"`
-	Redis      ClusterRedis      `json:"redis"`
 	Memberlist ClusterMemberlist `json:"memberlist"`
 }
 
@@ -277,14 +262,6 @@ func Default() Config {
 		Cluster: Cluster{
 			Backend: "local",
 			NodeID:  "local",
-			Redis: ClusterRedis{
-				Addresses:       []string{"127.0.0.1:6379"},
-				ConnectTimeout:  Duration{Duration: 5 * time.Second},
-				Namespace:       "proctor",
-				LeaseTTL:        Duration{Duration: 15 * time.Second},
-				Heartbeat:       Duration{Duration: 5 * time.Second},
-				ReliableMaximum: 10000,
-			},
 			Memberlist: ClusterMemberlist{
 				BindAddress:        "127.0.0.1:7946",
 				AdvertiseAddress:   "127.0.0.1:7946",
@@ -380,7 +357,6 @@ func (c Config) Clone() Config {
 	cloned := c
 	cloned.Log.Targets = append([]LogTarget(nil), c.Log.Targets...)
 	cloned.Cache.Redis.Addresses = append([]string(nil), c.Cache.Redis.Addresses...)
-	cloned.Cluster.Redis.Addresses = append([]string(nil), c.Cluster.Redis.Addresses...)
 	cloned.Cluster.Memberlist.SeedAddresses = append(
 		[]string(nil),
 		c.Cluster.Memberlist.SeedAddresses...,
@@ -431,7 +407,6 @@ func (c Config) Redacted() Config {
 		redacted.Database.DataSource = "[redacted]"
 	}
 	redacted.Cache.Redis.Password = redactSecret(redacted.Cache.Redis.Password)
-	redacted.Cluster.Redis.Password = redactSecret(redacted.Cluster.Redis.Password)
 	redacted.Cluster.Memberlist.EncryptionKey = redactSecret(redacted.Cluster.Memberlist.EncryptionKey)
 	redacted.Mail.SMTP.Password = redactSecret(redacted.Mail.SMTP.Password)
 	redacted.VFS.S3.AccessKey = redactSecret(redacted.VFS.S3.AccessKey)
@@ -527,7 +502,7 @@ func (c Config) Validate() error {
 	validateCluster(c.Cluster, add)
 	validateMail(c.Mail, add)
 	validateVFS(c.VFS, add)
-	if c.Cluster.Backend == "redis" || c.Cluster.Backend == "memberlist" {
+	if c.Cluster.Backend == "memberlist" {
 		if c.VFS.Backend == "local" {
 			add("vfs.backend", "must be shared when cluster.backend is multi-node")
 		}
@@ -585,36 +560,6 @@ func (c Config) Validate() error {
 func validateCluster(cluster Cluster, add func(string, string)) {
 	switch cluster.Backend {
 	case "local":
-	case "redis":
-		if len(cluster.Redis.Addresses) == 0 {
-			add("cluster.redis.addresses", "must contain at least one address")
-		}
-		for index, address := range cluster.Redis.Addresses {
-			if !validHostPort(address) {
-				add(
-					fmt.Sprintf("cluster.redis.addresses[%d]", index),
-					"must be a host:port TCP address",
-				)
-			}
-		}
-		if cluster.Redis.Database < 0 {
-			add("cluster.redis.database", "must not be negative")
-		}
-		if cluster.Redis.ConnectTimeout.Duration <= 0 {
-			add("cluster.redis.connect_timeout", "must be greater than zero")
-		}
-		if cluster.Redis.LeaseTTL.Duration < 3*time.Second {
-			add("cluster.redis.lease_ttl", "must be at least 3s")
-		}
-		if cluster.Redis.Heartbeat.Duration <= 0 ||
-			cluster.Redis.Heartbeat.Duration*2 >= cluster.Redis.LeaseTTL.Duration {
-			add("cluster.redis.heartbeat", "must be greater than zero and less than half the lease TTL")
-		}
-		if cluster.Redis.ReliableMaximum < 128 ||
-			cluster.Redis.ReliableMaximum > 1_000_000 {
-			add("cluster.redis.reliable_maximum", "must be between 128 and 1000000")
-		}
-		validateNamespace("cluster.redis.namespace", cluster.Redis.Namespace, add)
 	case "memberlist":
 		if !validHostPort(cluster.Memberlist.BindAddress) {
 			add("cluster.memberlist.bind_address", "must be a host:port TCP address")
@@ -652,7 +597,7 @@ func validateCluster(cluster Cluster, add func(string, string)) {
 			}
 		}
 	default:
-		add("cluster.backend", "must be local, memberlist, or redis")
+		add("cluster.backend", "must be local or memberlist")
 	}
 	if len(cluster.NodeID) == 0 || len(cluster.NodeID) > 128 {
 		add("cluster.node_id", "must contain between 1 and 128 characters")
