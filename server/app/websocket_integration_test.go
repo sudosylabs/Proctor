@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	gwebsocket "github.com/gorilla/websocket"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
@@ -80,13 +80,13 @@ func TestWebSocketIntegration(t *testing.T) {
 	headers := http.Header{"Authorization": []string{"Bearer " + login.Tokens.AccessToken}}
 	invalidOriginHeaders := headers.Clone()
 	invalidOriginHeaders.Set("Origin", "https://attacker.example")
-	_, response, err := websocket.DefaultDialer.Dial(socketURL, invalidOriginHeaders)
+	_, response, err := gwebsocket.DefaultDialer.Dial(socketURL, invalidOriginHeaders)
 	if err == nil || response == nil || response.StatusCode != http.StatusForbidden {
 		t.Fatalf("cross-origin WebSocket response = %#v, %v", response, err)
 	}
 
 	resyncURL := socketURL + "?connection_id=" + model.NewId() + "&sequence_number=0"
-	resyncConnection, response, err := websocket.DefaultDialer.Dial(resyncURL, headers)
+	resyncConnection, response, err := gwebsocket.DefaultDialer.Dial(resyncURL, headers)
 	if err != nil {
 		t.Fatalf("WebSocket resync dial = %v, response = %#v", err, response)
 	}
@@ -101,7 +101,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	}
 	_ = resyncConnection.Close()
 
-	connection, response, err := websocket.DefaultDialer.Dial(socketURL, headers)
+	connection, response, err := gwebsocket.DefaultDialer.Dial(socketURL, headers)
 	if err != nil {
 		if response != nil {
 			t.Fatalf("WebSocket dial = %v, status = %d", err, response.StatusCode)
@@ -164,16 +164,16 @@ func TestWebSocketIntegration(t *testing.T) {
 		t.Fatalf("published event = %#v", event)
 	}
 	_ = connection.WriteMessage(
-		websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "reconnect"),
+		gwebsocket.CloseMessage,
+		gwebsocket.FormatCloseMessage(gwebsocket.CloseNormalClosure, "reconnect"),
 	)
 	_, _, _ = connection.ReadMessage()
 	_ = connection.Close()
 	resumeURL := socketURL + "?connection_id=" +
 		url.QueryEscape(helloData.ConnectionId) + "&sequence_number=1"
-	var resumed *websocket.Conn
+	var resumed *gwebsocket.Conn
 	for attempt := 0; attempt < 20; attempt++ {
-		candidate, candidateResponse, dialErr := websocket.DefaultDialer.Dial(resumeURL, headers)
+		candidate, candidateResponse, dialErr := gwebsocket.DefaultDialer.Dial(resumeURL, headers)
 		if dialErr != nil {
 			t.Fatalf("WebSocket resume dial = %v, response = %#v", dialErr, candidateResponse)
 		}
@@ -221,7 +221,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, _, err = connection.ReadMessage()
-	var closeError *websocket.CloseError
+	var closeError *gwebsocket.CloseError
 	if !errors.As(err, &closeError) ||
 		closeError.Code != websocket.CloseSessionRevoked {
 		t.Fatalf("revoked WebSocket close = %v", err)
@@ -231,7 +231,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, response, err = websocket.DefaultDialer.Dial(unauthenticatedURL.String(), nil)
+	_, response, err = gwebsocket.DefaultDialer.Dial(unauthenticatedURL.String(), nil)
 	if err == nil {
 		t.Fatal("unauthenticated WebSocket connection succeeded")
 	}
@@ -324,7 +324,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	t.Cleanup(serverB.Close)
 	socketURL := "ws" + strings.TrimPrefix(serverB.URL, "http") + "/api/v1/websocket"
 	headers := http.Header{"Authorization": []string{"Bearer " + login.Tokens.AccessToken}}
-	connection, response, err := websocket.DefaultDialer.Dial(socketURL, headers)
+	connection, response, err := gwebsocket.DefaultDialer.Dial(socketURL, headers)
 	if err != nil {
 		if response != nil {
 			t.Fatalf("node B WebSocket dial = %v, status = %d", err, response.StatusCode)
@@ -392,13 +392,13 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _, err = connection.ReadMessage()
-	var closeError *websocket.CloseError
+	var closeError *gwebsocket.CloseError
 	if !errors.As(err, &closeError) ||
 		closeError.Code != websocket.CloseAuthorizationChanged {
 		t.Fatalf("node B authorization-change close = %v", err)
 	}
 
-	connection, response, err = websocket.DefaultDialer.Dial(socketURL, headers)
+	connection, response, err = gwebsocket.DefaultDialer.Dial(socketURL, headers)
 	if err != nil {
 		if response != nil {
 			t.Fatalf("node B reconnect = %v, status = %d", err, response.StatusCode)
@@ -425,7 +425,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 
 func writeWebSocketRequest(
 	t *testing.T,
-	connection *websocket.Conn,
+	connection *gwebsocket.Conn,
 	sequence int64,
 	action string,
 	data any,
@@ -444,7 +444,7 @@ func writeWebSocketRequest(
 
 func readWebSocketEvent(
 	t *testing.T,
-	connection *websocket.Conn,
+	connection *gwebsocket.Conn,
 ) *websocket.Event {
 	t.Helper()
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -466,7 +466,7 @@ func readWebSocketEvent(
 
 func readWebSocketResponse(
 	t *testing.T,
-	connection *websocket.Conn,
+	connection *gwebsocket.Conn,
 ) *websocket.Response {
 	t.Helper()
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))

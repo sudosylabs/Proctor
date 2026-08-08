@@ -36,6 +36,7 @@ type Store interface {
 	RoleBinding() RoleBindingStore
 	Audit() AuditStore
 	Installation() InstallationStore
+	ClusterDiscovery() ClusterDiscoveryStore
 
 	Ping(context.Context) error
 	GetDBSchemaVersion(context.Context) (int, error)

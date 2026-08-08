@@ -184,6 +184,7 @@ func (testStore) Role() store.RoleStore                             { return nil
 func (testStore) RoleBinding() store.RoleBindingStore               { return nil }
 func (testStore) Audit() store.AuditStore                           { return nil }
 func (testStore) Installation() store.InstallationStore             { return nil }
+func (testStore) ClusterDiscovery() store.ClusterDiscoveryStore     { return nil }
 func (testStore) Ping(context.Context) error                        { return nil }
 func (testStore) GetDBSchemaVersion(context.Context) (int, error)   { return 0, nil }
 func (testStore) GetLocalSchemaVersion() (int, error)               { return 0, nil }

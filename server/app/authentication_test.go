@@ -122,6 +122,7 @@ func (s *authenticationStoreFake) Role() store.RoleStore                        
 func (s *authenticationStoreFake) RoleBinding() store.RoleBindingStore                   { return nil }
 func (s *authenticationStoreFake) Audit() store.AuditStore                               { return nil }
 func (s *authenticationStoreFake) Installation() store.InstallationStore                 { return nil }
+func (s *authenticationStoreFake) ClusterDiscovery() store.ClusterDiscoveryStore         { return nil }
 func (s *authenticationStoreFake) Ping(context.Context) error                            { return nil }
 func (s *authenticationStoreFake) GetDBSchemaVersion(context.Context) (int, error)       { return 0, nil }
 func (s *authenticationStoreFake) GetLocalSchemaVersion() (int, error)                   { return 0, nil }

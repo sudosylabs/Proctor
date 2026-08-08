@@ -25,7 +25,7 @@ func TestMigrateIntegration(t *testing.T) {
 	if err := run(context.Background(), []string{"migrate", "up"}, &stdout, &stderr); err != nil {
 		t.Fatalf("migrate up error = %v, stderr = %q", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "version 10") {
+	if !strings.Contains(stdout.String(), "version 11") {
 		t.Fatalf("migrate up output = %q", stdout.String())
 	}
 

@@ -216,6 +216,7 @@ func (s *Store) Role() store.RoleStore                           { return nil }
 func (s *Store) RoleBinding() store.RoleBindingStore             { return nil }
 func (s *Store) Audit() store.AuditStore                         { return nil }
 func (s *Store) Installation() store.InstallationStore           { return nil }
+func (s *Store) ClusterDiscovery() store.ClusterDiscoveryStore   { return nil }
 func (s *Store) Ping(context.Context) error                      { return nil }
 func (s *Store) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
 func (s *Store) GetLocalSchemaVersion() (int, error)             { return 0, nil }

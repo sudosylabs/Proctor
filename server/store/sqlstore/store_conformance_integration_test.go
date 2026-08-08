@@ -67,6 +67,10 @@ func TestSessionStores(t *testing.T) {
 	StoreTest(t, storetest.TestSessionStores)
 }
 
+func TestClusterDiscoveryStore(t *testing.T) {
+	StoreTest(t, storetest.TestClusterDiscoveryStore)
+}
+
 func TestAffiliationStore(t *testing.T) {
 	StoreTest(t, storetest.TestAffiliationStore)
 }
