@@ -24,7 +24,7 @@ func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "computing", DisplayName: "Computing"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,8 +35,8 @@ func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
 			t.Fatal(err)
 		}
 		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{
-			Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID},
-			ScopeType: model.RoleScopeAcademicUnit, ScopeId: unit.ID,
+			Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID.String()},
+			ScopeType: model.RoleScopeAcademicUnit, ScopeId: unit.ID.String(),
 			Status: model.AuditStatusAttempt, NodeId: "test-node",
 		})
 		if err != nil {

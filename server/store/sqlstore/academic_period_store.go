@@ -66,9 +66,12 @@ func (s SqlAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 	if input == nil || input.Period == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "creation", nil)
 	}
+	if !input.Period.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("academic_period", "id", input.Period.ID.String())
+	}
 	candidate := *input.Period
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("academic_period", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_period", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -88,7 +91,7 @@ func (s SqlAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 			:id, :create_at, :update_at, :delete_at, :institution_id,
 			:name, :display_name, :description, :start_at, :end_at
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("create academic period: %w", translateError("academic_period", candidate.Id, err))
+		return nil, fmt.Errorf("create academic period: %w", translateError("academic_period", candidate.ID.String(), err))
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 		return nil, fmt.Errorf("complete academic period creation audit: %w", err)
@@ -106,14 +109,18 @@ func (s SqlAcademicPeriodStore) Save(
 	if period == nil {
 		return nil, store.NewErrInvalidInput("academic_period", "value", nil)
 	}
-	if period.Id != "" {
-		return nil, store.NewErrInvalidInput("academic_period", "id", period.Id)
+	if !period.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("academic_period", "id", period.ID.String())
 	}
 
+	id, err := model.ParseAcademicPeriodID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
 	candidate := *period
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(id, model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_period", "value", nil).Wrap(err)
 	}
 
 	row := newAcademicPeriodRow(&candidate)
@@ -127,7 +134,7 @@ func (s SqlAcademicPeriodStore) Save(
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"save academic period: %w",
-			translateError("academic_period", candidate.Id, err),
+			translateError("academic_period", candidate.ID.String(), err),
 		)
 	}
 	return &candidate, nil
@@ -219,9 +226,9 @@ func (s SqlAcademicPeriodStore) Update(
 	}
 
 	candidate := *period
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_period", "value", nil).Wrap(err)
 	}
 
 	row := newAcademicPeriodRow(&candidate)
@@ -238,10 +245,10 @@ func (s SqlAcademicPeriodStore) Update(
 	if err != nil {
 		return nil, fmt.Errorf(
 			"update academic period: %w",
-			translateError("academic_period", candidate.Id, err),
+			translateError("academic_period", candidate.ID.String(), err),
 		)
 	}
-	if err := requireAffected(result, "academic_period", candidate.Id); err != nil {
+	if err := requireAffected(result, "academic_period", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	return &candidate, nil
@@ -252,8 +259,8 @@ func (s SqlAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *stor
 		return nil, store.NewErrInvalidInput("academic_period", "update", nil)
 	}
 	candidate := *input.Period
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("academic_period", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_period", "value", nil).Wrap(err)
 	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -271,9 +278,9 @@ func (s SqlAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *stor
 		       description = :description, start_at = :start_at, end_at = :end_at
 		 WHERE id = :id AND institution_id = :institution_id AND delete_at = 0`, &row)
 	if err != nil {
-		return nil, fmt.Errorf("update academic period: %w", translateError("academic_period", candidate.Id, err))
+		return nil, fmt.Errorf("update academic period: %w", translateError("academic_period", candidate.ID.String(), err))
 	}
-	if err := requireAffected(result, "academic_period", candidate.Id); err != nil {
+	if err := requireAffected(result, "academic_period", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
@@ -335,7 +342,9 @@ func (s SqlAcademicPeriodStore) Delete(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit academic period delete: %w", err)
 	}
-	current.UpdateAt, current.DeleteAt = deleteAt, deleteAt
+	at := model.TimeFromMillis(deleteAt)
+	current.UpdatedAt = at
+	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
 	return current, nil
 }
 
@@ -374,7 +383,9 @@ func (s SqlAcademicPeriodStore) ArchiveWithAudit(ctx context.Context, input *sto
 		return nil, err
 	}
 	period := row.model()
-	period.UpdateAt, period.DeleteAt = input.ArchiveAt, input.ArchiveAt
+	at := model.TimeFromMillis(input.ArchiveAt)
+	period.UpdatedAt = at
+	period.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
 	encoded, appErr := model.EncodeAuditData(period.Auditable())
 	if appErr != nil {
 		return nil, appErr
@@ -408,31 +419,40 @@ func validateActiveAcademicPeriod(ctx context.Context, executor sqlxExecutor, id
 
 func newAcademicPeriodRow(period *model.AcademicPeriod) academicPeriodRow {
 	return academicPeriodRow{
-		ID:            period.Id,
-		CreateAt:      period.CreateAt,
-		UpdateAt:      period.UpdateAt,
-		DeleteAt:      period.DeleteAt,
-		InstitutionID: period.InstitutionId,
+		ID:            period.ID.String(),
+		CreateAt:      model.MillisFromTime(period.CreatedAt),
+		UpdateAt:      model.MillisFromTime(period.UpdatedAt),
+		DeleteAt:      period.ArchivedAt.Millis(),
+		InstitutionID: period.InstitutionID.String(),
 		Name:          period.Name,
 		DisplayName:   period.DisplayName,
 		Description:   period.Description,
-		StartAt:       period.StartAt,
-		EndAt:         period.EndAt,
+		StartAt:       model.MillisFromTime(period.StartsAt),
+		EndAt:         model.MillisFromTime(period.EndsAt),
 	}
 }
 
 func (row academicPeriodRow) model() *model.AcademicPeriod {
+	id, err := model.ParseAcademicPeriodID(row.ID)
+	if err != nil {
+		id = model.AcademicPeriodID(row.ID)
+	}
+	institutionID, err := model.ParseInstitutionID(row.InstitutionID)
+	if err != nil {
+		institutionID = model.InstitutionID(row.InstitutionID)
+	}
 	return &model.AcademicPeriod{
-		Id:            row.ID,
-		CreateAt:      row.CreateAt,
-		UpdateAt:      row.UpdateAt,
-		DeleteAt:      row.DeleteAt,
-		InstitutionId: row.InstitutionID,
+		ID:            id,
+		CreatedAt:     model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:     model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:    model.OptionalTimeFromMillis(row.DeleteAt),
+		Revision:      1,
+		InstitutionID: institutionID,
 		Name:          row.Name,
 		DisplayName:   row.DisplayName,
 		Description:   row.Description,
-		StartAt:       row.StartAt,
-		EndAt:         row.EndAt,
+		StartsAt:      model.TimeFromMillis(row.StartAt),
+		EndsAt:        model.TimeFromMillis(row.EndAt),
 	}
 }
 

@@ -67,9 +67,12 @@ func (s SqlClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 	if input == nil || input.Class == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "creation", nil)
 	}
+	if !input.Class.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("class", "id", input.Class.ID.String())
+	}
 	candidate := *input.Class
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(err)
 	}
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
@@ -89,10 +92,10 @@ func (s SqlClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 	if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 		return nil, err
 	}
-	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodId); err != nil {
+	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
 		return nil, err
 	}
 	row := newClassRow(&candidate)
@@ -103,7 +106,7 @@ func (s SqlClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 		:id, :create_at, :update_at, :delete_at, :revision, :programme_level_id,
 		:academic_period_id, :name, :display_name, :description
 	)`, &row); err != nil {
-		return nil, fmt.Errorf("create class: %w", translateError("class", candidate.Id, err))
+		return nil, fmt.Errorf("create class: %w", translateError("class", candidate.ID.String(), err))
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 		return nil, fmt.Errorf("complete class creation audit: %w", err)
@@ -118,14 +121,18 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	if class == nil {
 		return nil, store.NewErrInvalidInput("class", "value", nil)
 	}
-	if class.Id != "" {
-		return nil, store.NewErrInvalidInput("class", "id", class.Id)
+	if !class.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("class", "id", class.ID.String())
 	}
 
+	id, err := model.ParseClassID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
 	candidate := *class
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(id, model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(err)
 	}
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
@@ -141,10 +148,10 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 		return nil, err
 	}
-	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodId); err != nil {
+	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
 		return nil, err
 	}
 	row := newClassRow(&candidate)
@@ -156,7 +163,7 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 			:id, :create_at, :update_at, :delete_at, :revision, :programme_level_id,
 			:academic_period_id, :name, :display_name, :description
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("save class: %w", translateError("class", candidate.Id, err))
+		return nil, fmt.Errorf("save class: %w", translateError("class", candidate.ID.String(), err))
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit class save: %w", err)
@@ -286,9 +293,10 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	}
 
 	candidate := *class
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	expectedRevision := candidate.Revision
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(err)
 	}
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
@@ -310,14 +318,12 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	if err := lockClassLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 		return nil, err
 	}
-	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodId); err != nil {
+	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
 		return nil, err
 	}
-	expectedRevision := candidate.Revision
-	candidate.Revision++
 	result, err := tx.NamedExec(ctx, `
 		UPDATE classes
 		   SET update_at = :update_at,
@@ -328,15 +334,15 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 		       display_name = :display_name,
 		       description = :description
 		 WHERE id = :id AND delete_at = 0 AND revision = :expected_revision`, map[string]any{
-		"id": candidate.Id, "update_at": candidate.UpdateAt, "revision": candidate.Revision,
-		"programme_level_id": candidate.ProgrammeLevelId, "academic_period_id": candidate.AcademicPeriodId,
+		"id": candidate.ID.String(), "update_at": model.MillisFromTime(candidate.UpdatedAt), "revision": candidate.Revision,
+		"programme_level_id": candidate.ProgrammeLevelID.String(), "academic_period_id": candidate.AcademicPeriodID.String(),
 		"name": candidate.Name, "display_name": candidate.DisplayName, "description": candidate.Description,
 		"expected_revision": expectedRevision,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("update class: %w", translateError("class", candidate.Id, err))
+		return nil, fmt.Errorf("update class: %w", translateError("class", candidate.ID.String(), err))
 	}
-	if err := requireClassRevisionAffected(ctx, tx, result, candidate.Id); err != nil {
+	if err := requireClassRevisionAffected(ctx, tx, result, candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -352,8 +358,8 @@ func (s SqlClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 	}
 	candidate := *input.Class
 	candidate.Revision = input.ExpectedRevision + 1
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(err)
 	}
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
@@ -379,13 +385,13 @@ func (s SqlClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 	if err := lockClassLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := requireExpectedClassSnapshot(ctx, tx, candidate.Id, input.ExpectedAcademicUnitID, input.ExpectedRevision); err != nil {
+	if err := requireExpectedClassSnapshot(ctx, tx, candidate.ID.String(), input.ExpectedAcademicUnitID, input.ExpectedRevision); err != nil {
 		return nil, err
 	}
-	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelId); err != nil {
+	if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 		return nil, err
 	}
-	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodId); err != nil {
+	if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
 		return nil, err
 	}
 	result, err := tx.NamedExec(ctx, `UPDATE classes SET
@@ -393,15 +399,15 @@ func (s SqlClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 		academic_period_id = :academic_period_id, revision = :revision, name = :name,
 		display_name = :display_name, description = :description
 	 WHERE id = :id AND delete_at = 0 AND revision = :expected_revision`, map[string]any{
-		"id": candidate.Id, "update_at": candidate.UpdateAt, "programme_level_id": candidate.ProgrammeLevelId,
-		"academic_period_id": candidate.AcademicPeriodId, "revision": candidate.Revision,
+		"id": candidate.ID.String(), "update_at": model.MillisFromTime(candidate.UpdatedAt), "programme_level_id": candidate.ProgrammeLevelID.String(),
+		"academic_period_id": candidate.AcademicPeriodID.String(), "revision": candidate.Revision,
 		"name": candidate.Name, "display_name": candidate.DisplayName, "description": candidate.Description,
 		"expected_revision": input.ExpectedRevision,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("update class: %w", translateError("class", candidate.Id, err))
+		return nil, fmt.Errorf("update class: %w", translateError("class", candidate.ID.String(), err))
 	}
-	if err := requireClassRevisionAffected(ctx, tx, result, candidate.Id); err != nil {
+	if err := requireClassRevisionAffected(ctx, tx, result, candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
@@ -462,7 +468,10 @@ func (s SqlClassStore) Delete(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit class delete: %w", err)
 	}
-	current.UpdateAt, current.DeleteAt, current.Revision = deleteAt, deleteAt, current.Revision+1
+	at := model.TimeFromMillis(deleteAt)
+	current.UpdatedAt = at
+	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
+	current.Revision++
 	return current, nil
 }
 
@@ -508,7 +517,10 @@ func (s SqlClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassA
 		return nil, err
 	}
 	class := row.model()
-	class.UpdateAt, class.DeleteAt, class.Revision = input.ArchiveAt, input.ArchiveAt, input.ExpectedRevision+1
+	at := model.TimeFromMillis(input.ArchiveAt)
+	class.UpdatedAt = at
+	class.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
+	class.Revision = input.ExpectedRevision + 1
 	encoded, appErr := model.EncodeAuditData(class.Auditable())
 	if appErr != nil {
 		return nil, appErr
@@ -585,14 +597,14 @@ func (s SqlClassStore) validateInstitution(
 		   AND programme_levels.delete_at = 0
 		   AND programmes.delete_at = 0
 		   AND academic_units.delete_at = 0`,
-		class.ProgrammeLevelId,
+		class.ProgrammeLevelID.String(),
 	); err != nil {
 		var exists bool
 		if existsErr := s.GetMaster().Get(
 			ctx,
 			&exists,
 			"SELECT EXISTS (SELECT 1 FROM programme_levels WHERE id = ?)",
-			class.ProgrammeLevelId,
+			class.ProgrammeLevelID.String(),
 		); existsErr != nil {
 			return fmt.Errorf("check programme level reference: %w", existsErr)
 		}
@@ -611,14 +623,14 @@ func (s SqlClassStore) validateInstitution(
 		SELECT institution_id
 		  FROM academic_periods
 		 WHERE id = ? AND delete_at = 0`,
-		class.AcademicPeriodId,
+		class.AcademicPeriodID.String(),
 	); err != nil {
 		var exists bool
 		if existsErr := s.GetMaster().Get(
 			ctx,
 			&exists,
 			"SELECT EXISTS (SELECT 1 FROM academic_periods WHERE id = ?)",
-			class.AcademicPeriodId,
+			class.AcademicPeriodID.String(),
 		); existsErr != nil {
 			return fmt.Errorf("check academic period reference: %w", existsErr)
 		}
@@ -640,13 +652,13 @@ func (s SqlClassStore) validateInstitution(
 
 func newClassRow(class *model.Class) classRow {
 	return classRow{
-		ID:               class.Id,
-		CreateAt:         class.CreateAt,
-		UpdateAt:         class.UpdateAt,
-		DeleteAt:         class.DeleteAt,
+		ID:               class.ID.String(),
+		CreateAt:         model.MillisFromTime(class.CreatedAt),
+		UpdateAt:         model.MillisFromTime(class.UpdatedAt),
+		DeleteAt:         class.ArchivedAt.Millis(),
 		Revision:         class.Revision,
-		ProgrammeLevelID: class.ProgrammeLevelId,
-		AcademicPeriodID: class.AcademicPeriodId,
+		ProgrammeLevelID: class.ProgrammeLevelID.String(),
+		AcademicPeriodID: class.AcademicPeriodID.String(),
 		Name:             class.Name,
 		DisplayName:      class.DisplayName,
 		Description:      class.Description,
@@ -654,14 +666,26 @@ func newClassRow(class *model.Class) classRow {
 }
 
 func (row classRow) model() *model.Class {
+	id, err := model.ParseClassID(row.ID)
+	if err != nil {
+		id = model.ClassID(row.ID)
+	}
+	levelID, err := model.ParseProgrammeLevelID(row.ProgrammeLevelID)
+	if err != nil {
+		levelID = model.ProgrammeLevelID(row.ProgrammeLevelID)
+	}
+	periodID, err := model.ParseAcademicPeriodID(row.AcademicPeriodID)
+	if err != nil {
+		periodID = model.AcademicPeriodID(row.AcademicPeriodID)
+	}
 	return &model.Class{
-		Id:               row.ID,
-		CreateAt:         row.CreateAt,
-		UpdateAt:         row.UpdateAt,
-		DeleteAt:         row.DeleteAt,
+		ID:               id,
+		CreatedAt:        model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:        model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:       model.OptionalTimeFromMillis(row.DeleteAt),
 		Revision:         row.Revision,
-		ProgrammeLevelId: row.ProgrammeLevelID,
-		AcademicPeriodId: row.AcademicPeriodID,
+		ProgrammeLevelID: levelID,
+		AcademicPeriodID: periodID,
 		Name:             row.Name,
 		DisplayName:      row.DisplayName,
 		Description:      row.Description,

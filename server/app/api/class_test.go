@@ -76,7 +76,7 @@ func TestClassHTTPMapsBothParentsAndIgnoresServerOwnedFields(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
-	class := &model.Class{Id: model.NewId(), ProgrammeLevelId: model.NewId(), AcademicPeriodId: model.NewId(), Name: "class-a", DisplayName: "Class A"}
+	class := &model.Class{ID: model.ClassID(model.NewId()), ProgrammeLevelID: model.ProgrammeLevelID(model.NewId()), AcademicPeriodID: model.AcademicPeriodID(model.NewId()), Name: "class-a", DisplayName: "Class A"}
 	classes := &classHTTPApplication{result: class}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: classes, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
@@ -84,7 +84,7 @@ func TestClassHTTPMapsBothParentsAndIgnoresServerOwnedFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = httpAPI.Close() })
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/programme-levels/"+class.ProgrammeLevelId+"/classes", strings.NewReader(`{"id":"ignored","programme_level_id":"ignored","academic_period_id":"`+class.AcademicPeriodId+`","name":"class-a","display_name":"Class A"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/programme-levels/"+class.ProgrammeLevelID.String()+"/classes", strings.NewReader(`{"id":"ignored","programme_level_id":"ignored","academic_period_id":"`+class.AcademicPeriodID.String()+`","name":"class-a","display_name":"Class A"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -92,14 +92,14 @@ func TestClassHTTPMapsBothParentsAndIgnoresServerOwnedFields(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelId || classes.createCommand.AcademicPeriodID != class.AcademicPeriodId {
+	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelID.String() || classes.createCommand.AcademicPeriodID != class.AcademicPeriodID.String() {
 		t.Fatalf("command = %#v", classes.createCommand)
 	}
 	var body classResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.ID != class.Id || body.AcademicPeriodID != class.AcademicPeriodId {
+	if body.ID != class.ID.String() || body.AcademicPeriodID != class.AcademicPeriodID.String() {
 		t.Fatalf("response = %#v", body)
 	}
 }

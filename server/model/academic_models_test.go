@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// persistentModel is the legacy PreSave/IsValid contract still used by
+// identity membership models until those aggregates are migrated.
 type persistentModel interface {
 	PreSave()
 	PreUpdate()
@@ -15,67 +17,72 @@ type persistentModel interface {
 	Auditable() map[string]any
 }
 
-func TestAcademicModelsImplementLifecycleContract(t *testing.T) {
+func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 	t.Parallel()
 
-	levelID := NewId()
-	periodID := NewId()
-	institutionID := NewId()
-
-	tests := []struct {
-		name  string
-		model persistentModel
-	}{
-		{
-			name: "academic period",
-			model: &AcademicPeriod{
-				InstitutionId: institutionID,
-				Name:          "2026-2027",
-				DisplayName:   "2026–2027",
-				StartAt:       1788213600000,
-				EndAt:         1819749600000,
-			},
-		},
-		{
-			name: "class",
-			model: &Class{
-				ProgrammeLevelId: levelID,
-				AcademicPeriodId: periodID,
-				Name:             "year-1-a",
-				DisplayName:      "Year 1 - Class A",
-			},
-		},
+	at := time.UnixMilli(1_700_000_000_000).UTC()
+	institutionID, err := ParseInstitutionID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	periodID, err := ParseAcademicPeriodID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	period, err := NewAcademicPeriod(
+		periodID, institutionID, "2026-2027", "2026–2027", "",
+		time.UnixMilli(1788213600000).UTC(), time.UnixMilli(1819749600000).UTC(), at,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := period.Validate(); err != nil {
+		t.Fatalf("AcademicPeriod.Validate() = %v", err)
+	}
+	audit := period.Auditable()
+	if audit["id"] != period.ID.String() ||
+		audit["institution_id"] != institutionID.String() ||
+		audit["created_at"] != MillisFromTime(at) ||
+		audit["start_at"] != MillisFromTime(period.StartsAt) ||
+		audit["end_at"] != MillisFromTime(period.EndsAt) {
+		t.Fatalf("academic period audit = %#v", audit)
+	}
+	if _, exposed := audit["description"]; exposed {
+		t.Fatalf("academic period audit exposes description: %#v", audit)
+	}
+	period.PrepareUpdate(at.Add(time.Second))
+	if err := period.Validate(); err != nil {
+		t.Fatalf("AcademicPeriod after PrepareUpdate: %v", err)
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			test.model.PreSave()
-			if appErr := test.model.IsValid(); appErr != nil {
-				t.Fatalf("model is invalid after PreSave: %v", appErr)
-			}
-			audit := test.model.Auditable()
-			id, ok := audit["id"].(string)
-			if !ok {
-				t.Fatalf("audit id = %#v", audit["id"])
-			}
-			if !IsValidId(id) {
-				t.Fatalf("id = %q", id)
-			}
-			if audit["id"] != id || audit["create_at"] == int64(0) || audit["update_at"] == int64(0) {
-				t.Fatalf("audit fields = %#v", audit)
-			}
-			if _, exposed := audit["description"]; exposed {
-				t.Fatalf("audit fields expose unbounded description: %#v", audit)
-			}
-			audit["id"] = "mutated"
-			if test.model.Auditable()["id"] != id {
-				t.Fatal("Auditable exposed mutable model state")
-			}
-			test.model.PreUpdate()
-			if appErr := test.model.IsValid(); appErr != nil {
-				t.Fatalf("model is invalid after PreUpdate: %v", appErr)
-			}
-		})
+	levelID, err := ParseProgrammeLevelID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	classID, err := ParseClassID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	class, err := NewClass(classID, levelID, periodID, "year-1-a", "Year 1 - Class A", "", at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := class.Validate(); err != nil {
+		t.Fatalf("Class.Validate() = %v", err)
+	}
+	classAudit := class.Auditable()
+	if classAudit["id"] != class.ID.String() ||
+		classAudit["programme_level_id"] != levelID.String() ||
+		classAudit["academic_period_id"] != periodID.String() ||
+		classAudit["created_at"] != MillisFromTime(at) {
+		t.Fatalf("class audit = %#v", classAudit)
+	}
+	if _, exposed := classAudit["description"]; exposed {
+		t.Fatalf("class audit exposes description: %#v", classAudit)
+	}
+	class.PrepareUpdate(at.Add(time.Second))
+	if err := class.Validate(); err != nil {
+		t.Fatalf("Class after PrepareUpdate: %v", err)
 	}
 }
 
@@ -230,28 +237,29 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 		{
 			name: "academic period end",
 			err: (&AcademicPeriod{
-				Id:            NewId(),
-				CreateAt:      1,
-				UpdateAt:      1,
-				InstitutionId: NewId(),
+				ID:            AcademicPeriodID(NewId()),
+				CreatedAt:     at,
+				UpdatedAt:     at,
+				Revision:      1,
+				InstitutionID: InstitutionID(NewId()),
 				Name:          "2026-2027",
 				DisplayName:   "2026–2027",
-				StartAt:       100,
-				EndAt:         100,
-			}).IsValid(),
+				StartsAt:      time.UnixMilli(100).UTC(),
+				EndsAt:        time.UnixMilli(100).UTC(),
+			}).Validate(),
 			code: "model.academic_period.is_valid.end_at.app_error",
 		},
 		{
 			name: "class academic period",
 			err: (&Class{
-				Id:               NewId(),
-				CreateAt:         1,
-				UpdateAt:         1,
+				ID:               ClassID(NewId()),
+				CreatedAt:        at,
+				UpdatedAt:        at,
 				Revision:         1,
-				ProgrammeLevelId: NewId(),
+				ProgrammeLevelID: ProgrammeLevelID(NewId()),
 				Name:             "year-1-a",
 				DisplayName:      "Year 1 - Class A",
-			}).IsValid(),
+			}).Validate(),
 			code: "model.class.is_valid.academic_period_id.app_error",
 		},
 		{

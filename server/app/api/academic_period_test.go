@@ -48,7 +48,7 @@ func TestAcademicPeriodHTTPMapsDTOAndIgnoresServerOwnedCreateFields(t *testing.T
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	principal := model.Principal{UserId: model.NewId(), SessionId: model.NewId(), CredentialId: model.NewId(), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli()}
-	period := &model.AcademicPeriod{Id: model.NewId(), InstitutionId: model.NewId(), Name: "2026-2027", DisplayName: "2026-2027", StartAt: 100, EndAt: 200}
+	period := &model.AcademicPeriod{ID: model.AcademicPeriodID(model.NewId()), InstitutionID: model.InstitutionID(model.NewId()), Name: "2026-2027", DisplayName: "2026-2027", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(200)}
 	periods := &academicPeriodHTTPApplication{result: period}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: periods, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
@@ -64,14 +64,14 @@ func TestAcademicPeriodHTTPMapsDTOAndIgnoresServerOwnedCreateFields(t *testing.T
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if periods.createCommand.Name != period.Name || periods.createCommand.StartAt != period.StartAt || periods.createCommand.EndAt != period.EndAt {
+	if periods.createCommand.Name != period.Name || periods.createCommand.StartAt != model.MillisFromTime(period.StartsAt) || periods.createCommand.EndAt != model.MillisFromTime(period.EndsAt) {
 		t.Fatalf("create command = %#v", periods.createCommand)
 	}
 	var body academicPeriodResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.ID != period.Id || body.InstitutionID != period.InstitutionId {
+	if body.ID != period.ID.String() || body.InstitutionID != period.InstitutionID.String() {
 		t.Fatalf("response = %#v", body)
 	}
 }

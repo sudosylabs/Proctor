@@ -99,7 +99,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 
 	withClass := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "level-with-class")
 	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "2026-2027", 1_800_000_000_000)
-	saveClass(t, ctx, ss, withClass.ID.String(), period.Id, "class-a")
+	saveClass(t, ctx, ss, withClass.ID.String(), period.ID.String(), "class-a")
 	blockedAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	if _, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: withClass.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active class error = %v, want conflict", err)

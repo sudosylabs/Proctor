@@ -155,10 +155,28 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return nil, err
 	}
-	candidate := &model.Class{ProgrammeLevelId: levelID, AcademicPeriodId: strings.TrimSpace(command.AcademicPeriodID), Name: command.Name, DisplayName: command.DisplayName, Description: command.Description}
-	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("class.invalid", appErr)
+	classID, err := model.ParseClassID(s.newID())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "class_id").Wrap(err)
+	}
+	programmeLevelID, err := model.ParseProgrammeLevelID(levelID)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "programme_level_id").Wrap(err)
+	}
+	academicPeriodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(command.AcademicPeriodID))
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "academic_period_id").Wrap(err)
+	}
+	candidate := &model.Class{
+		ProgrammeLevelID: programmeLevelID,
+		AcademicPeriodID: academicPeriodID,
+		Name:             command.Name,
+		DisplayName:      command.DisplayName,
+		Description:      command.Description,
+	}
+	candidate.PrepareCreate(classID, s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("class.invalid", err)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
@@ -193,10 +211,18 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	}
 	candidate := *current
 	if command.ProgrammeLevelID != nil {
-		candidate.ProgrammeLevelId = strings.TrimSpace(*command.ProgrammeLevelID)
+		levelID, err := model.ParseProgrammeLevelID(strings.TrimSpace(*command.ProgrammeLevelID))
+		if err != nil {
+			return nil, NewError("request.invalid").WithField("field", "programme_level_id").Wrap(err)
+		}
+		candidate.ProgrammeLevelID = levelID
 	}
 	if command.AcademicPeriodID != nil {
-		candidate.AcademicPeriodId = strings.TrimSpace(*command.AcademicPeriodID)
+		periodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(*command.AcademicPeriodID))
+		if err != nil {
+			return nil, NewError("request.invalid").WithField("field", "academic_period_id").Wrap(err)
+		}
+		candidate.AcademicPeriodID = periodID
 	}
 	if command.Name != nil {
 		candidate.Name = *command.Name
@@ -207,8 +233,8 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	if command.Description != nil {
 		candidate.Description = *command.Description
 	}
-	if candidate.ProgrammeLevelId != current.ProgrammeLevelId {
-		destination, err := s.programmeLevelResource(ctx, candidate.ProgrammeLevelId)
+	if candidate.ProgrammeLevelID != current.ProgrammeLevelID {
+		destination, err := s.programmeLevelResource(ctx, candidate.ProgrammeLevelID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -216,13 +242,13 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 			return nil, err
 		}
 	}
-	updateAt := s.now().UnixMilli()
-	if updateAt <= current.UpdateAt {
-		updateAt = current.UpdateAt + 1
+	at := s.now()
+	if !at.After(current.UpdatedAt) {
+		at = current.UpdatedAt.Add(time.Millisecond)
 	}
-	candidate.PrepareUpdate(updateAt)
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("class.invalid", appErr)
+	candidate.PrepareUpdate(at)
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("class.invalid", err)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
 	if err != nil {
@@ -265,17 +291,18 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 	if err != nil {
 		return err
 	}
-	at := s.now().UnixMilli()
-	if at <= current.UpdateAt {
-		at = current.UpdateAt + 1
+	at := s.now()
+	if !at.After(current.UpdatedAt) {
+		at = current.UpdatedAt.Add(time.Millisecond)
 	}
+	archiveAt := at.UnixMilli()
 	_, err = s.store.ArchiveWithAudit(ctx, &store.ClassArchive{
 		ID:                     id,
 		ExpectedAcademicUnitID: unitID,
 		ExpectedRevision:       current.Revision,
-		ArchiveAt:              at,
+		ArchiveAt:              archiveAt,
 		AuditEventID:           auditID,
-		AuditAt:                at,
+		AuditAt:                archiveAt,
 	})
 	if err != nil {
 		return s.failMutation(ctx, auditID, err)

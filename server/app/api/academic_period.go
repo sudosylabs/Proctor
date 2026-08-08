@@ -150,5 +150,16 @@ func academicPeriodResponseFromModel(period *model.AcademicPeriod) academicPerio
 	if period == nil {
 		return academicPeriodResponse{}
 	}
-	return academicPeriodResponse{ID: period.Id, CreateAt: period.CreateAt, UpdateAt: period.UpdateAt, DeleteAt: period.DeleteAt, InstitutionID: period.InstitutionId, Name: period.Name, DisplayName: period.DisplayName, Description: period.Description, StartAt: period.StartAt, EndAt: period.EndAt}
+	return academicPeriodResponse{
+		ID:            period.ID.String(),
+		CreateAt:      model.MillisFromTime(period.CreatedAt),
+		UpdateAt:      model.MillisFromTime(period.UpdatedAt),
+		DeleteAt:      period.ArchivedAt.Millis(),
+		InstitutionID: period.InstitutionID.String(),
+		Name:          period.Name,
+		DisplayName:   period.DisplayName,
+		Description:   period.Description,
+		StartAt:       model.MillisFromTime(period.StartsAt),
+		EndAt:         model.MillisFromTime(period.EndsAt),
+	}
 }

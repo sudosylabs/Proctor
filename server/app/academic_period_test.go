@@ -77,15 +77,25 @@ func TestAcademicPeriodCreateRejectsInvalidHalfOpenIntervalBeforeAudit(t *testin
 func TestAcademicPeriodUpdatePreservesInstitutionOwnership(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	period := &model.AcademicPeriod{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, InstitutionId: model.NewId(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200}
+	period := &model.AcademicPeriod{
+		ID:            model.AcademicPeriodID(model.NewId()),
+		CreatedAt:     model.TimeFromMillis(100),
+		UpdatedAt:     model.TimeFromMillis(100),
+		Revision:      1,
+		InstitutionID: model.InstitutionID(model.NewId()),
+		Name:          "2026",
+		DisplayName:   "2026",
+		StartsAt:      model.TimeFromMillis(100),
+		EndsAt:        model.TimeFromMillis(200),
+	}
 	persistence := &academicPeriodStoreFake{events: &events, current: period}
 	service := newAcademicPeriodService(persistence, &academicPeriodAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	name := "2026-revised"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: period.Id, Name: &name})
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: period.ID.String(), Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.InstitutionId != period.InstitutionId || persistence.updateInput.Period.InstitutionId != period.InstitutionId {
+	if updated.InstitutionID != period.InstitutionID || persistence.updateInput.Period.InstitutionID != period.InstitutionID {
 		t.Fatalf("ownership changed: %#v", updated)
 	}
 }
@@ -150,7 +160,7 @@ func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) 
 	t.Parallel()
 	events := []string{}
 	institutionID, periodID, auditID := model.NewId(), model.NewId(), model.NewId()
-	created := &model.AcademicPeriod{Id: periodID, InstitutionId: institutionID}
+	created := &model.AcademicPeriod{ID: model.AcademicPeriodID(periodID), InstitutionID: model.InstitutionID(institutionID)}
 	persistence := &academicPeriodStoreFake{events: &events, created: created}
 	service := newAcademicPeriodService(
 		persistence,
@@ -165,7 +175,10 @@ func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) 
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)
 	}
-	if persistence.createInput == nil || persistence.createInput.Period.InstitutionId != institutionID || persistence.createInput.Period.Id != periodID || persistence.createInput.AuditEventID != auditID {
+	if persistence.createInput == nil ||
+		persistence.createInput.Period.InstitutionID.String() != institutionID ||
+		persistence.createInput.Period.ID.String() != periodID ||
+		persistence.createInput.AuditEventID != auditID {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize-installation", "audit-begin", "store-create"}) {

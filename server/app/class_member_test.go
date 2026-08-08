@@ -56,7 +56,7 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 	events := []string{}
 	classID, periodID, userID := model.NewId(), model.NewId(), model.NewId()
 	persistence := &classMemberStoreFake{events: &events}
-	classes := &classMemberClassStoreFake{events: &events, value: &model.Class{Id: classID, AcademicPeriodId: periodID}}
+	classes := &classMemberClassStoreFake{events: &events, value: &model.Class{ID: model.ClassID(classID), AcademicPeriodID: model.AcademicPeriodID(periodID)}}
 	service := newClassMemberService(persistence, classes, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	enrollment, err := service.Enroll(context.Background(), Invocation{}, EnrollClassMemberCommand{ClassID: classID, UserID: userID, StartAt: 100})
 	if err != nil {

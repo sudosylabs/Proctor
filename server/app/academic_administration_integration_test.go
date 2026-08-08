@@ -59,7 +59,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		map[string]any{"name": "computing", "display_name": "Computing"},
 		adminToken,
 	)
-	if child.ParentID != root.ID || child.InstitutionID != installation.Institution.ID.String() {
+	if child.ParentID != root.ID || child.InstitutionID != installation.Institution.ID {
 		t.Fatalf("academic hierarchy = %#v", child)
 	}
 	programme := createIntegrationResource[model.Programme](
@@ -84,7 +84,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	firstClass := createIntegrationResource[model.Class](
 		t, handler, http.MethodPost, "/api/v1/programme-levels/"+level.ID.String()+"/classes",
 		map[string]any{
-			"academic_period_id": period.Id,
+			"academic_period_id": period.ID.String(),
 			"name":               "class-a", "display_name": "Class A",
 		},
 		adminToken,
@@ -92,7 +92,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	secondClass := createIntegrationResource[model.Class](
 		t, handler, http.MethodPost, "/api/v1/programme-levels/"+level.ID.String()+"/classes",
 		map[string]any{
-			"academic_period_id": period.Id,
+			"academic_period_id": period.ID.String(),
 			"name":               "class-b", "display_name": "Class B",
 		},
 		adminToken,
@@ -119,7 +119,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		adminToken,
 	)
 	firstEnrollment := createIntegrationResource[model.ClassEnrollment](
-		t, handler, http.MethodPost, "/api/v1/classes/"+firstClass.Id+"/members",
+		t, handler, http.MethodPost, "/api/v1/classes/"+firstClass.ID.String()+"/members",
 		map[string]any{"user_id": student.Id, "start_at": now - 5_000},
 		adminToken,
 	)
@@ -127,7 +127,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("first enrollment = %#v", firstEnrollment)
 	}
 	transfer := createIntegrationResource[model.ClassEnrollment](
-		t, handler, http.MethodPost, "/api/v1/classes/"+secondClass.Id+"/members",
+		t, handler, http.MethodPost, "/api/v1/classes/"+secondClass.ID.String()+"/members",
 		map[string]any{"user_id": student.Id, "start_at": now - 1_000},
 		adminToken,
 	)
@@ -149,7 +149,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	if _, err := persistence.RoleBinding().Save(context.Background(), &model.RoleBinding{
 		UserId: teacher.Id, RoleId: teacherRole.Id,
-		ScopeType: model.RoleScopeAcademicUnit, ScopeId: root.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeId: root.ID.String(),
 		StartAt: now - 10_000,
 	}); err != nil {
 		t.Fatal(err)
@@ -244,7 +244,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 
 	activeMembers := performJSONRequest(
-		handler, http.MethodGet, "/api/v1/classes/"+secondClass.Id+"/members", nil,
+		handler, http.MethodGet, "/api/v1/classes/"+secondClass.ID.String()+"/members", nil,
 		adminToken,
 	)
 	if activeMembers.Code != http.StatusOK {

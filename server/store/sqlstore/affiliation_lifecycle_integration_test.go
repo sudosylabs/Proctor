@@ -22,7 +22,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "unit", DisplayName: "Unit"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "unit", DisplayName: "Unit"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +34,11 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: "period", DisplayName: "Period", StartAt: 1, EndAt: model.GetMillis() + 1_000_000})
+	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(model.GetMillis() + 1_000_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.Id, "affiliation-race-class")
+	class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.ID.String(), "affiliation-race-class")
 	for iteration := 0; iteration < 20; iteration++ {
 		userID := model.NewId()
 		user, err := persistence.User().Save(ctx, &model.User{Username: "affiliation-" + userID, Email: userID + "@example.edu", DisplayName: "User"})
@@ -65,7 +65,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, enrollErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: class.Id, UserId: user.Id, StartAt: model.GetMillis()})
+			_, enrollErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: class.ID.String(), UserId: user.Id, StartAt: model.GetMillis()})
 		}()
 		close(start)
 		wait.Wait()

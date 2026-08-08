@@ -91,7 +91,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		return nil, classMemberError(err)
 	}
 	at := s.now().UnixMilli()
-	candidate := &model.ClassMember{ClassId: classID, AcademicPeriodId: class.AcademicPeriodId, UserId: strings.TrimSpace(command.UserID), StartAt: command.StartAt, EndAt: command.EndAt}
+	candidate := &model.ClassMember{ClassId: classID, AcademicPeriodId: class.AcademicPeriodID.String(), UserId: strings.TrimSpace(command.UserID), StartAt: command.StartAt, EndAt: command.EndAt}
 	candidate.PrepareCreate(s.newID(), at)
 	if appErr := candidate.IsValid(); appErr != nil {
 		return nil, domainInvalid("class_member.invalid", appErr)

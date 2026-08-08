@@ -24,7 +24,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "computing", DisplayName: "Computing"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 10_000_000})
+	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: "2026", DisplayName: "2026", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(10_000_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +56,8 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	t.Run("enrollment", func(t *testing.T) {
 		baseStart := model.GetMillis() + 1_000
 		for iteration := 0; iteration < 20; iteration++ {
-			class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.Id, fmt.Sprintf("enrollment-%d", iteration))
-			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.ID)
+			class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.ID.String(), fmt.Sprintf("enrollment-%d", iteration))
+			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.ID.String())
 			start := make(chan struct{})
 			var wait sync.WaitGroup
 			wait.Add(2)
@@ -65,12 +65,12 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.Id, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID.String(), ExpectedAcademicUnitID: unit.ID.String(), ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()
 				<-start
-				_, dependentErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: class.Id, UserId: user.Id, StartAt: baseStart + int64(iteration*10)})
+				_, dependentErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: class.ID.String(), UserId: user.Id, StartAt: baseStart + int64(iteration*10)})
 			}()
 			close(start)
 			wait.Wait()
@@ -79,8 +79,8 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	})
 	t.Run("role_binding", func(t *testing.T) {
 		for iteration := 0; iteration < 20; iteration++ {
-			class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.Id, fmt.Sprintf("binding-%d", iteration))
-			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.ID)
+			class := saveLifecycleClass(t, ctx, persistence, level.ID.String(), period.ID.String(), fmt.Sprintf("binding-%d", iteration))
+			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.ID.String())
 			start := make(chan struct{})
 			var wait sync.WaitGroup
 			wait.Add(2)
@@ -88,12 +88,12 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.Id, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID.String(), ExpectedAcademicUnitID: unit.ID.String(), ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()
 				<-start
-				_, dependentErr = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeClass, ScopeId: class.Id, StartAt: model.GetMillis()})
+				_, dependentErr = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeClass, ScopeId: class.ID.String(), StartAt: model.GetMillis()})
 			}()
 			close(start)
 			wait.Wait()
@@ -120,7 +120,7 @@ func assertClassLifecycleWinner(t *testing.T, iteration int, archiveErr, depende
 
 func saveLifecycleClass(t *testing.T, ctx context.Context, persistence store.Store, levelID, periodID, name string) *model.Class {
 	t.Helper()
-	class, err := persistence.Class().Save(ctx, &model.Class{ProgrammeLevelId: levelID, AcademicPeriodId: periodID, Name: name, DisplayName: name})
+	class, err := persistence.Class().Save(ctx, &model.Class{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID), Name: name, DisplayName: name})
 	if err != nil {
 		t.Fatal(err)
 	}

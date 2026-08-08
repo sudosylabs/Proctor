@@ -120,13 +120,13 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	root, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
-		InstitutionID: institution.ID.String(), Name: "engineering", DisplayName: "Engineering",
+		InstitutionID: institution.ID, Name: "engineering", DisplayName: "Engineering",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	child, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
-		InstitutionID: institution.ID.String(), ParentID: root.ID,
+		InstitutionID: institution.ID, ParentID: root.ID,
 		Name: "computing", DisplayName: "Computing",
 	})
 	if err != nil {
@@ -146,14 +146,14 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionId: institution.ID.String(), Name: "2026-2027", DisplayName: "2026-2027",
-		StartAt: 1_800_000_000_000, EndAt: 1_830_000_000_000,
+		InstitutionID: institution.ID, Name: "2026-2027", DisplayName: "2026-2027",
+		StartsAt: model.TimeFromMillis(1_800_000_000_000), EndsAt: model.TimeFromMillis(1_830_000_000_000),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	class, err := persistence.Class().Save(ctx, &model.Class{
-		ProgrammeLevelId: level.ID.String(), AcademicPeriodId: period.Id,
+		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "class-a", DisplayName: "Class A",
 	})
 	if err != nil {
@@ -176,7 +176,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: root.ID,
+		AcademicUnitId: root.ID.String(),
 		UserId:         user.Id,
 		StartAt:        model.GetMillis() - 1_000,
 	}); err != nil {
@@ -187,7 +187,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	// nil checks through a shared interface variable.
 	allowed, permErr := helper.App.Can(
 		ctx, *principal, model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: class.Id},
+		model.Resource{Type: model.ResourceClass, Id: class.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("academic-unit membership unexpectedly granted class permission = %v, %v", allowed, permErr)
@@ -201,14 +201,14 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeAcademicUnit,
-		ScopeId: root.ID, StartAt: model.GetMillis() - 1_000,
+		ScopeId: root.ID.String(), StartAt: model.GetMillis() - 1_000,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: class.Id},
+		model.Resource{Type: model.ResourceClass, Id: class.ID.String()},
 	)
 	if permErr != nil || !allowed {
 		t.Fatalf("ancestor class permission = %v, %v", allowed, permErr)
@@ -225,7 +225,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
-		model.Resource{Type: model.ResourceClass, Id: class.Id},
+		model.Resource{Type: model.ResourceClass, Id: class.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("ended binding permission = %v, %v", allowed, permErr)

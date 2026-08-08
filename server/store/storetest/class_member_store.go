@@ -16,35 +16,35 @@ import (
 func TestClassMemberStore(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	fixture := saveClassFixture(t, ctx, ss)
-	firstClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.Id, "class-member-a")
-	secondClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.Id, "class-member-b")
-	nextPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-next-period", fixture.period.EndAt+1)
-	nextClass := saveClass(t, ctx, ss, fixture.level.ID.String(), nextPeriod.Id, "class-member-next")
+	firstClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "class-member-a")
+	secondClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "class-member-b")
+	nextPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-next-period", model.MillisFromTime(fixture.period.EndsAt)+1)
+	nextClass := saveClass(t, ctx, ss, fixture.level.ID.String(), nextPeriod.ID.String(), "class-member-next")
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start - 1})
 	requireNoError(t, err)
 
 	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
-		ClassId: firstClass.Id, AcademicPeriodId: model.NewId(),
+		ClassId: firstClass.ID.String(), AcademicPeriodId: model.NewId(),
 		UserId: user.Id, StartAt: start,
 	})
 	requireNoError(t, err)
-	if first.Previous != nil || first.Membership.AcademicPeriodId != fixture.period.Id {
+	if first.Previous != nil || first.Membership.AcademicPeriodId != fixture.period.ID.String() {
 		t.Fatalf("first Enroll() = %#v", first)
 	}
 	if first.Membership.Revision != 1 {
 		t.Fatalf("first enrollment revision = %d, want 1", first.Membership.Revision)
 	}
 	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
-		ClassId: firstClass.Id, UserId: user.Id, StartAt: start + 1,
+		ClassId: firstClass.ID.String(), UserId: user.Id, StartAt: start + 1,
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) {
 		t.Fatalf("duplicate enrollment error = %v", err)
 	}
 	transfer, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
-		ClassId: secondClass.Id, UserId: user.Id, StartAt: start + 10,
+		ClassId: secondClass.ID.String(), UserId: user.Id, StartAt: start + 10,
 	})
 	requireNoError(t, err)
 	if transfer.Previous == nil ||
@@ -72,7 +72,7 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 		t.Fatalf("stale End() error = %v", err)
 	}
 	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
-		ClassId: firstClass.Id, UserId: user.Id, StartAt: start + 5,
+		ClassId: firstClass.ID.String(), UserId: user.Id, StartAt: start + 5,
 	})
 	if !errors.As(err, &conflict) {
 		t.Fatalf("backdated overlapping enrollment error = %v", err)
@@ -107,16 +107,16 @@ func testAuditedClassMemberLifecycle(
 	})
 	requireNoError(t, err)
 
-	first := &model.ClassMember{ClassId: firstClass.Id, UserId: user.Id, StartAt: start}
+	first := &model.ClassMember{ClassId: firstClass.ID.String(), UserId: user.Id, StartAt: start}
 	first.PrepareCreate(model.NewId(), model.GetMillis())
-	createAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.Id)
+	createAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	created, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: first, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	requireSuccessfulAudit(t, ctx, ss, createAttempt.Id)
 
-	rolledBackTransfer := &model.ClassMember{ClassId: secondClass.Id, UserId: user.Id, StartAt: start + 5}
+	rolledBackTransfer := &model.ClassMember{ClassId: secondClass.ID.String(), UserId: user.Id, StartAt: start + 5}
 	rolledBackTransfer.PrepareCreate(model.NewId(), model.GetMillis())
 	if _, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBackTransfer, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
@@ -129,9 +129,9 @@ func testAuditedClassMemberLifecycle(
 		t.Fatalf("prior enrollment close survived transfer audit rollback: %#v", unchanged)
 	}
 
-	second := &model.ClassMember{ClassId: secondClass.Id, UserId: user.Id, StartAt: start + 10}
+	second := &model.ClassMember{ClassId: secondClass.ID.String(), UserId: user.Id, StartAt: start + 10}
 	second.PrepareCreate(model.NewId(), model.GetMillis())
-	transferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.Id)
+	transferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	transferred, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: second, AuditEventID: transferAttempt.Id, AuditAt: model.GetMillis(),
 	})
@@ -149,7 +149,7 @@ func testAuditedClassMemberLifecycle(
 		t.Fatalf("audited enrollment history = %#v", history)
 	}
 
-	endAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.Id)
+	endAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	ended, err := ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
 		ID: transferred.Membership.Id, ExpectedRevision: transferred.Membership.Revision,
 		EndAt: start + 30, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis(),
@@ -160,7 +160,7 @@ func testAuditedClassMemberLifecycle(
 	}
 	requireSuccessfulAudit(t, ctx, ss, endAttempt.Id)
 
-	staleAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.Id)
+	staleAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	if _, err := ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
 		ID: ended.Id, ExpectedRevision: transferred.Membership.Revision,
 		EndAt: start + 31, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis(),
@@ -173,7 +173,7 @@ func testAuditedClassMemberLifecycle(
 		UserId: rollbackUser.Id, Kind: model.AffiliationStudent, StartAt: start - 1,
 	})
 	requireNoError(t, err)
-	rolledBack := &model.ClassMember{ClassId: firstClass.Id, UserId: rollbackUser.Id, StartAt: start}
+	rolledBack := &model.ClassMember{ClassId: firstClass.ID.String(), UserId: rollbackUser.Id, StartAt: start}
 	rolledBack.PrepareCreate(model.NewId(), model.GetMillis())
 	if _, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
@@ -191,9 +191,9 @@ func testDistinctPeriodClassMemberEnrollment(t *testing.T, ss store.Store, first
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start - 1})
 	requireNoError(t, err)
-	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: firstClass.Id, UserId: user.Id, StartAt: start})
+	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: firstClass.ID.String(), UserId: user.Id, StartAt: start})
 	requireNoError(t, err)
-	next, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: nextClass.Id, UserId: user.Id, StartAt: start})
+	next, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: nextClass.ID.String(), UserId: user.Id, StartAt: start})
 	requireNoError(t, err)
 	if next.Previous != nil {
 		t.Fatalf("distinct-period enrollment replaced prior membership: %#v", next)
@@ -211,7 +211,7 @@ func testFiniteAffiliationCannotBackOpenEnrollment(t *testing.T, ss store.Store,
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStudent, StartAt: start - 1, EndAt: start + 100})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: class.Id, UserId: user.Id, StartAt: start})
+	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassId: class.ID.String(), UserId: user.Id, StartAt: start})
 	if !store.IsConflict(err) {
 		t.Fatalf("open enrollment with finite affiliation error = %v", err)
 	}
@@ -232,8 +232,8 @@ func testConcurrentClassMemberEnrollment(
 	})
 	requireNoError(t, err)
 	members := []*model.ClassMember{
-		{ClassId: firstClass.Id, UserId: user.Id, StartAt: start},
-		{ClassId: secondClass.Id, UserId: user.Id, StartAt: start},
+		{ClassId: firstClass.ID.String(), UserId: user.Id, StartAt: start},
+		{ClassId: secondClass.ID.String(), UserId: user.Id, StartAt: start},
 	}
 	attempts := make([]*model.AuditEvent, len(members))
 	for i, member := range members {

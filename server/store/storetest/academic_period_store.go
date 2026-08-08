@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -40,8 +41,14 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	createAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	candidate := &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: "audited-period", DisplayName: "Audited Period", StartAt: 100, EndAt: 200}
-	candidate.PrepareCreate(model.NewId(), model.GetMillis())
+	candidate := &model.AcademicPeriod{
+		InstitutionID: institution.ID,
+		Name:          "audited-period",
+		DisplayName:   "Audited Period",
+		StartsAt:      model.TimeFromMillis(100),
+		EndsAt:        model.TimeFromMillis(200),
+	}
+	candidate.PrepareCreate(model.AcademicPeriodID(model.NewId()), model.NowUTC())
 	created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	completed, err := ss.Audit().Get(ctx, createAttempt.Id)
@@ -50,19 +57,25 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		t.Fatalf("create audit status = %q", completed.Status)
 	}
 
-	rolledBackCreate := &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: "rolled-back-period", DisplayName: "Rolled Back", StartAt: 300, EndAt: 400}
-	rolledBackCreate.PrepareCreate(model.NewId(), model.GetMillis())
+	rolledBackCreate := &model.AcademicPeriod{
+		InstitutionID: institution.ID,
+		Name:          "rolled-back-period",
+		DisplayName:   "Rolled Back",
+		StartsAt:      model.TimeFromMillis(300),
+		EndsAt:        model.TimeFromMillis(400),
+	}
+	rolledBackCreate.PrepareCreate(model.AcademicPeriodID(model.NewId()), model.NowUTC())
 	if _, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: rolledBackCreate, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without its audit attempt")
 	}
-	if _, err := ss.AcademicPeriod().Get(ctx, rolledBackCreate.Id); !store.IsNotFound(err) {
+	if _, err := ss.AcademicPeriod().Get(ctx, rolledBackCreate.ID.String()); !store.IsNotFound(err) {
 		t.Fatalf("create survived audit rollback: %v", err)
 	}
 
 	updateAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
 	updatedCandidate := *created
-	updatedCandidate.EndAt = 250
-	updatedCandidate.PrepareUpdate(model.GetMillis())
+	updatedCandidate.EndsAt = model.TimeFromMillis(250)
+	updatedCandidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &updatedCandidate, AuditEventID: updateAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	completed, err = ss.Audit().Get(ctx, updateAttempt.Id)
@@ -73,36 +86,36 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
-	rolledBack.PrepareUpdate(model.GetMillis())
+	rolledBack.PrepareUpdate(model.NowUTC())
 	if _, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
 	}
-	persisted, err := ss.AcademicPeriod().Get(ctx, updated.Id)
+	persisted, err := ss.AcademicPeriod().Get(ctx, updated.ID.String())
 	requireNoError(t, err)
 	if persisted.DisplayName != updated.DisplayName {
 		t.Fatalf("update survived audit rollback: %#v", persisted)
 	}
 
 	wrongOwner := *updated
-	wrongOwner.InstitutionId = model.NewId()
-	wrongOwner.PrepareUpdate(model.GetMillis())
+	wrongOwner.InstitutionID = model.InstitutionID(model.NewId())
+	wrongOwner.PrepareUpdate(model.NowUTC())
 	wrongOwnerAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
 	if _, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &wrongOwner, AuditEventID: wrongOwnerAttempt.Id, AuditAt: model.GetMillis()}); !store.IsNotFound(err) {
 		t.Fatalf("ownership move error = %v, want not found", err)
 	}
 
 	archiveAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	archived, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: updated.Id, ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
+	archived, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	if archived.DeleteAt == 0 {
+	if !archived.IsArchived() {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
 	}
 
 	archiveRollback := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "rolled-back-archive", 500)
-	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: archiveRollback.Id, ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: archiveRollback.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
 	}
-	if _, err := ss.AcademicPeriod().Get(ctx, archiveRollback.Id); err != nil {
+	if _, err := ss.AcademicPeriod().Get(ctx, archiveRollback.ID.String()); err != nil {
 		t.Fatalf("archive survived audit rollback: %v", err)
 	}
 
@@ -110,9 +123,9 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	programme := saveProgramme(t, ctx, ss, unit.ID.String(), "period-dependency-programme")
 	level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "period-dependency-level")
 	withClass := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "period-with-class", 1_000)
-	saveClass(t, ctx, ss, level.ID.String(), withClass.Id, "period-dependency-class")
+	saveClass(t, ctx, ss, level.ID.String(), withClass.ID.String(), "period-dependency-class")
 	blockedAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: withClass.Id, ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: withClass.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active class error = %v, want conflict", err)
 	}
 }
@@ -128,9 +141,9 @@ func testAcademicPeriodStoreAllowsInstitutionDefinedOverlap(t *testing.T, ss sto
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	first := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "year", 1_000)
-	overlapping := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "semester", first.StartAt+1)
-	adjacent := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "next", first.EndAt)
-	if overlapping.Id == "" || adjacent.Id == "" {
+	overlapping := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "semester", model.MillisFromTime(first.StartsAt)+1)
+	adjacent := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "next", model.MillisFromTime(first.EndsAt))
+	if overlapping.ID.IsZero() || adjacent.ID.IsZero() {
 		t.Fatalf("overlap/adjacency not persisted: %#v %#v", overlapping, adjacent)
 	}
 }
@@ -145,12 +158,12 @@ func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
 		ctx, institution.ID.String(), "summer", 10,
 	)
 	requireNoError(t, err)
-	if len(found) != 1 || found[0].Id != period.Id {
+	if len(found) != 1 || found[0].ID != period.ID {
 		t.Fatalf("SearchByInstitution() = %#v", found)
 	}
-	archived, err := ss.AcademicPeriod().Delete(ctx, period.Id, model.GetMillis())
+	archived, err := ss.AcademicPeriod().Delete(ctx, period.ID.String(), model.GetMillis())
 	requireNoError(t, err)
-	if archived.DeleteAt == 0 {
+	if !archived.IsArchived() {
 		t.Fatalf("Delete() = %#v", archived)
 	}
 }
@@ -159,21 +172,21 @@ func testAcademicPeriodStoreSave(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	period := &model.AcademicPeriod{
-		InstitutionId: institution.ID.String(),
+		InstitutionID: institution.ID,
 		Name:          "2026-2027",
 		DisplayName:   "Academic Year 2026-2027",
 		Description:   "Primary academic year",
-		StartAt:       1_800_000_000_000,
-		EndAt:         1_830_000_000_000,
+		StartsAt:      model.TimeFromMillis(1_800_000_000_000),
+		EndsAt:        model.TimeFromMillis(1_830_000_000_000),
 	}
 
 	saved, err := ss.AcademicPeriod().Save(ctx, period)
 	requireNoError(t, err)
-	if !model.IsValidId(saved.Id) {
-		t.Fatalf("Save() id = %q", saved.Id)
+	if !saved.ID.IsValid() {
+		t.Fatalf("Save() id = %q", saved.ID)
 	}
-	if period.Id != "" {
-		t.Fatalf("Save() mutated input id to %q", period.Id)
+	if !period.ID.IsZero() {
+		t.Fatalf("Save() mutated input id to %q", period.ID)
 	}
 
 	_, err = ss.AcademicPeriod().Save(ctx, saved)
@@ -188,7 +201,7 @@ func testAcademicPeriodStoreGet(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	period := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "2026-2027", 1_800_000_000_000)
 
-	got, err := ss.AcademicPeriod().Get(ctx, period.Id)
+	got, err := ss.AcademicPeriod().Get(ctx, period.ID.String())
 	requireNoError(t, err)
 	if *got != *period {
 		t.Fatalf("Get() = %#v, want %#v", got, period)
@@ -205,8 +218,8 @@ func testAcademicPeriodStoreGetByName(t *testing.T, ss store.Store) {
 
 	got, err := ss.AcademicPeriod().GetByName(ctx, institution.ID.String(), period.Name)
 	requireNoError(t, err)
-	if got.Id != period.Id {
-		t.Fatalf("GetByName() id = %q, want %q", got.Id, period.Id)
+	if got.ID != period.ID {
+		t.Fatalf("GetByName() id = %q, want %q", got.ID, period.ID)
 	}
 	if _, err := ss.AcademicPeriod().GetByName(ctx, institution.ID.String(), "missing"); !store.IsNotFound(err) {
 		t.Fatalf("GetByName(missing) error = %v, want not found", err)
@@ -221,7 +234,7 @@ func testAcademicPeriodStoreListByInstitution(t *testing.T, ss store.Store) {
 
 	periods, err := ss.AcademicPeriod().ListByInstitution(ctx, institution.ID.String())
 	requireNoError(t, err)
-	if len(periods) != 2 || periods[0].Id != first.Id || periods[1].Id != second.Id {
+	if len(periods) != 2 || periods[0].ID != first.ID || periods[1].ID != second.ID {
 		t.Fatalf("ListByInstitution() = %#v", periods)
 	}
 	empty, err := ss.AcademicPeriod().ListByInstitution(ctx, model.NewId())
@@ -235,22 +248,23 @@ func testAcademicPeriodStoreUpdate(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	period := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "2026-2027", 1_800_000_000_000)
-	createAt := period.CreateAt
+	createAt := period.CreatedAt
+	previousUpdateAt := period.UpdatedAt
 
 	period.Name = "2026-2027-revised"
 	period.DisplayName = "Academic Year 2026-2027 Revised"
-	period.EndAt += 1_000
+	period.EndsAt = period.EndsAt.Add(time.Second)
 	updated, err := ss.AcademicPeriod().Update(ctx, period)
 	requireNoError(t, err)
-	if updated.Name != "2026-2027-revised" || updated.EndAt != period.EndAt {
+	if updated.Name != "2026-2027-revised" || !updated.EndsAt.Equal(period.EndsAt) {
 		t.Fatalf("Update() = %#v", updated)
 	}
-	if updated.CreateAt != createAt || updated.UpdateAt < period.UpdateAt {
+	if !updated.CreatedAt.Equal(createAt) || updated.UpdatedAt.Before(previousUpdateAt) {
 		t.Fatalf("Update() timestamps = %#v", updated)
 	}
 
 	missing := *updated
-	missing.Id = model.NewId()
+	missing.ID = model.AcademicPeriodID(model.NewId())
 	_, err = ss.AcademicPeriod().Update(ctx, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
@@ -261,11 +275,11 @@ func testAcademicPeriodStoreRejectUnknownInstitution(t *testing.T, ss store.Stor
 	ctx := context.Background()
 
 	_, err := ss.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionId: model.NewId(),
+		InstitutionID: model.InstitutionID(model.NewId()),
 		Name:          "2026-2027",
 		DisplayName:   "Academic Year 2026-2027",
-		StartAt:       1_800_000_000_000,
-		EndAt:         1_830_000_000_000,
+		StartsAt:      model.TimeFromMillis(1_800_000_000_000),
+		EndsAt:        model.TimeFromMillis(1_830_000_000_000),
 	})
 	var reference *store.ErrReference
 	if !errors.As(err, &reference) ||
@@ -280,11 +294,11 @@ func testAcademicPeriodStoreEnforceInstitutionNameUniqueness(t *testing.T, ss st
 	saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "2026-2027", 1_800_000_000_000)
 
 	_, err := ss.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionId: institution.ID.String(),
+		InstitutionID: institution.ID,
 		Name:          "2026-2027",
 		DisplayName:   "Duplicate",
-		StartAt:       1_900_000_000_000,
-		EndAt:         1_930_000_000_000,
+		StartsAt:      model.TimeFromMillis(1_900_000_000_000),
+		EndsAt:        model.TimeFromMillis(1_930_000_000_000),
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) ||
@@ -303,11 +317,11 @@ func saveAcademicPeriod(
 ) *model.AcademicPeriod {
 	t.Helper()
 	period, err := ss.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionId: institutionID,
+		InstitutionID: model.InstitutionID(institutionID),
 		Name:          name,
 		DisplayName:   name,
-		StartAt:       startAt,
-		EndAt:         startAt + 30_000_000_000,
+		StartsAt:      model.TimeFromMillis(startAt),
+		EndsAt:        model.TimeFromMillis(startAt + 30_000_000_000),
 	})
 	requireNoError(t, err)
 	return period

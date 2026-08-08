@@ -46,7 +46,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	parentUnit, err := persistence.AcademicUnit().Save(
 		context.Background(),
 		&model.AcademicUnit{
-			InstitutionID: institution.ID.String(), Name: "engineering",
+			InstitutionID: institution.ID, Name: "engineering",
 			DisplayName: "Engineering",
 		},
 	)
@@ -56,7 +56,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	childUnit, err := persistence.AcademicUnit().Save(
 		context.Background(),
 		&model.AcademicUnit{
-			InstitutionID: institution.ID.String(), ParentID: parentUnit.ID,
+			InstitutionID: institution.ID, ParentID: parentUnit.ID,
 			Name: "computing", DisplayName: "Computing",
 		},
 	)
@@ -66,7 +66,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	siblingUnit, err := persistence.AcademicUnit().Save(
 		context.Background(),
 		&model.AcademicUnit{
-			InstitutionID: institution.ID.String(), Name: "health",
+			InstitutionID: institution.ID, Name: "health",
 			DisplayName: "Health",
 		},
 	)

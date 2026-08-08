@@ -102,10 +102,25 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 	if err != nil {
 		return nil, err
 	}
-	candidate := &model.AcademicPeriod{InstitutionId: resource.Id, Name: command.Name, DisplayName: command.DisplayName, Description: command.Description, StartAt: command.StartAt, EndAt: command.EndAt}
-	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("academic_period.invalid", appErr)
+	periodID, err := model.ParseAcademicPeriodID(s.newID())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "academic_period_id").Wrap(err)
+	}
+	institutionID, err := model.ParseInstitutionID(resource.Id)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "institution_id").Wrap(err)
+	}
+	candidate := &model.AcademicPeriod{
+		InstitutionID: institutionID,
+		Name:          command.Name,
+		DisplayName:   command.DisplayName,
+		Description:   command.Description,
+		StartsAt:      model.TimeFromMillis(command.StartAt),
+		EndsAt:        model.TimeFromMillis(command.EndAt),
+	}
+	candidate.PrepareCreate(periodID, s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("academic_period.invalid", err)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionInstitutionManage, resource, "create", candidate.Auditable(), nil)
 	if err != nil {
@@ -142,14 +157,14 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 		candidate.Description = *command.Description
 	}
 	if command.StartAt != nil {
-		candidate.StartAt = *command.StartAt
+		candidate.StartsAt = model.TimeFromMillis(*command.StartAt)
 	}
 	if command.EndAt != nil {
-		candidate.EndAt = *command.EndAt
+		candidate.EndsAt = model.TimeFromMillis(*command.EndAt)
 	}
-	candidate.PrepareUpdate(s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("academic_period.invalid", appErr)
+	candidate.PrepareUpdate(s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("academic_period.invalid", err)
 	}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionInstitutionManage, resource, "patch", candidate.Auditable(), current.Auditable())
 	if err != nil {
@@ -180,7 +195,7 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 		return err
 	}
 	at := s.now().UnixMilli()
-	_, err = s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: current.Id, ArchiveAt: at, AuditEventID: auditID, AuditAt: at})
+	_, err = s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: current.ID.String(), ArchiveAt: at, AuditEventID: auditID, AuditAt: at})
 	if err != nil {
 		return s.failMutation(ctx, auditID, err)
 	}

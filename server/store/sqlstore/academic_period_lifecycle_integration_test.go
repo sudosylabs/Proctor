@@ -24,7 +24,7 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "computing", DisplayName: "Computing"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartAt: int64(1_800_000_000_000 + iteration*1_000_000), EndAt: int64(1_800_000_500_000 + iteration*1_000_000)})
+		period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartsAt: model.TimeFromMillis(int64(1_800_000_000_000 + iteration*1_000_000)), EndsAt: model.TimeFromMillis(int64(1_800_000_500_000 + iteration*1_000_000))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,12 +53,12 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: period.Id, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: period.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()
 			<-start
-			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelId: level.ID.String(), AcademicPeriodId: period.Id, Name: "class-a", DisplayName: "Class A"})
+			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID, Name: "class-a", DisplayName: "Class A"})
 		}()
 		close(start)
 		wait.Wait()

@@ -24,7 +24,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "computing", DisplayName: "Computing"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: "2026-2027", DisplayName: "2026-2027", StartAt: 1_800_000_000_000, EndAt: 1_830_000_000_000})
+	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: "2026-2027", DisplayName: "2026-2027", StartsAt: model.TimeFromMillis(1_800_000_000_000), EndsAt: model.TimeFromMillis(1_830_000_000_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unit.ID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID.String()}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unit.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +58,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelId: level.ID.String(), AcademicPeriodId: period.Id, Name: "class-a", DisplayName: "Class A"})
+			_, classErr = persistence.Class().Save(ctx, &model.Class{ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID, Name: "class-a", DisplayName: "Class A"})
 		}()
 		close(start)
 		wait.Wait()

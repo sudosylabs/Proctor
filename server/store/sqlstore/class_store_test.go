@@ -10,14 +10,26 @@ import (
 )
 
 func TestClassRowConversion(t *testing.T) {
+	id, err := model.ParseClassID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	levelID, err := model.ParseProgrammeLevelID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	periodID, err := model.ParseAcademicPeriodID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
 	class := &model.Class{
-		Id:               model.NewId(),
-		CreateAt:         1,
-		UpdateAt:         2,
-		DeleteAt:         3,
+		ID:               id,
+		CreatedAt:        model.TimeFromMillis(1),
+		UpdatedAt:        model.TimeFromMillis(2),
+		ArchivedAt:       model.OptionalTimeFromMillis(3),
 		Revision:         4,
-		ProgrammeLevelId: model.NewId(),
-		AcademicPeriodId: model.NewId(),
+		ProgrammeLevelID: levelID,
+		AcademicPeriodID: periodID,
 		Name:             "class-a",
 		DisplayName:      "Class A",
 		Description:      "Student roster",
@@ -25,5 +37,8 @@ func TestClassRowConversion(t *testing.T) {
 	row := newClassRow(class)
 	if got := row.model(); *got != *class {
 		t.Fatalf("row.model() = %#v, want %#v", got, class)
+	}
+	if row.CreateAt != 1 || row.UpdateAt != 2 || row.DeleteAt != 3 || row.Revision != 4 {
+		t.Fatalf("row millis = %#v", row)
 	}
 }

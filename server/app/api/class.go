@@ -151,7 +151,17 @@ func classResponseFromModel(class *model.Class) classResponse {
 	if class == nil {
 		return classResponse{}
 	}
-	return classResponse{ID: class.Id, CreateAt: class.CreateAt, UpdateAt: class.UpdateAt, DeleteAt: class.DeleteAt, ProgrammeLevelID: class.ProgrammeLevelId, AcademicPeriodID: class.AcademicPeriodId, Name: class.Name, DisplayName: class.DisplayName, Description: class.Description}
+	return classResponse{
+		ID:               class.ID.String(),
+		CreateAt:         model.MillisFromTime(class.CreatedAt),
+		UpdateAt:         model.MillisFromTime(class.UpdatedAt),
+		DeleteAt:         class.ArchivedAt.Millis(),
+		ProgrammeLevelID: class.ProgrammeLevelID.String(),
+		AcademicPeriodID: class.AcademicPeriodID.String(),
+		Name:             class.Name,
+		DisplayName:      class.DisplayName,
+		Description:      class.Description,
+	}
 }
 func classResponses(classes []*model.Class) []classResponse {
 	result := make([]classResponse, 0, len(classes))
