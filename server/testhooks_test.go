@@ -21,6 +21,7 @@ import (
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
 
 // hookStore is a persistence override whose per-model stores are unused by
@@ -111,6 +112,16 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	t.Parallel()
 
 	overrides, persistence, cache, mailer := newHookOverrides(t)
+	var timedOperations atomic.Int64
+	overrides.StoreMetrics = timerlayer.RecorderFunc(func(
+		operation timerlayer.Operation,
+		outcome timerlayer.Outcome,
+		duration time.Duration,
+	) {
+		if operation.String() == "store.ping" && outcome == timerlayer.OutcomeSuccess && duration >= 0 {
+			timedOperations.Add(1)
+		}
+	})
 	configuration := overrides.Configuration
 	logs := &mlog.Buffer{}
 	if err := overrides.Logger.Configure(mlog.Config{
@@ -132,17 +143,28 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	if runtime.Server.Ready() {
 		t.Fatal("server is ready before Start")
 	}
-	if runtime.Application.Store() != persistence {
-		t.Fatal("application was not constructed with the provided persistence store")
+	if runtime.Application.Store() == persistence {
+		t.Fatal("application persistence bypassed the root store timing layer")
 	}
 	if runtime.Platform.ConfigStore() != configuration {
 		t.Fatal("platform does not own the provided configuration store")
 	}
-	if runtime.Platform.Store() != persistence {
-		t.Fatal("platform does not own the provided persistence store")
+	if runtime.Platform.Store() != runtime.Application.Store() {
+		t.Fatal("platform and application do not share the root-decorated persistence store")
 	}
 	if runtime.Platform.Cluster() == nil {
 		t.Fatal("cluster was not selected from configuration")
+	}
+	observationsBeforePing := timedOperations.Load()
+	if err := runtime.Application.Store().Ping(context.Background()); err != nil {
+		t.Fatalf("timed persistence Ping() error = %v", err)
+	}
+	if timedOperations.Load() != observationsBeforePing+1 {
+		t.Fatalf(
+			"timed persistence observations = %d, want %d",
+			timedOperations.Load(),
+			observationsBeforePing+1,
+		)
 	}
 
 	if err := runtime.Server.Close(); err != nil {

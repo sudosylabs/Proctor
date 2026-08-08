@@ -8,8 +8,52 @@ package sqlstore
 import (
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
+	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
+
+func TestTimerLayerConformance(t *testing.T) {
+	sqlStore := openTestStore(t)
+	timedStore, err := timerlayer.New(sqlStore, timerlayer.NopRecorder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		run  func(*testing.T, store.Store)
+	}{
+		{"Institution", storetest.TestInstitutionStore},
+		{"AcademicUnit", storetest.TestAcademicUnitStore},
+		{"Programme", storetest.TestProgrammeStore},
+		{"ProgrammeLevel", storetest.TestProgrammeLevelStore},
+		{"AcademicPeriod", storetest.TestAcademicPeriodStore},
+		{"Class", storetest.TestClassStore},
+		{"User", storetest.TestUserStore},
+		{"ExternalIdentity", storetest.TestExternalIdentityStore},
+		{"ExternalLoginState", storetest.TestExternalLoginStateStore},
+		{"PasswordCredential", storetest.TestPasswordCredentialStore},
+		{"UserToken", storetest.TestUserTokenStore},
+		{"PersonalAccessToken", storetest.TestPersonalAccessTokenStore},
+		{"MFA", storetest.TestMFAStore},
+		{"Session", storetest.TestSessionStores},
+		{"ClusterDiscovery", storetest.TestClusterDiscoveryStore},
+		{"Affiliation", storetest.TestAffiliationStore},
+		{"AcademicUnitMember", storetest.TestAcademicUnitMemberStore},
+		{"ClassMember", storetest.TestClassMemberStore},
+		{"Role", storetest.TestRoleStore},
+		{"RoleBinding", storetest.TestRoleBindingStore},
+		{"Audit", storetest.TestAuditStore},
+		{"Installation", storetest.TestInstallationStore},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resetTestStore(t, sqlStore)
+			test.run(t, timedStore)
+		})
+	}
+}
 
 func TestInstitutionStore(t *testing.T) {
 	StoreTest(t, storetest.TestInstitutionStore)

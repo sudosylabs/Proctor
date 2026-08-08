@@ -241,7 +241,11 @@ external-identity, external-login-state, session, session-credential,
 user-token, personal-access-token, MFA credential, MFA recovery-code,
 affiliation, academic-unit-member, class-member, role, role-binding, and audit
 SQL stores with reusable conformance tests, plus the atomic
-installation-bootstrap store.
+installation-bootstrap store. Root composition wraps that complete store in a
+semantics-preserving timer layer whose closed operation and outcome vocabulary
+cannot receive persistence arguments, results, context values, or error
+details; deterministic generated forwarding and SQL conformance tests keep the
+decorator aligned with every bounded store contract.
 External account-linking administration, service accounts, exam-domain, and
 SAML/LDAP providers remain unimplemented. Cross-node WebSocket replay handoff
 is also not implemented: reconnecting on a node without the prior bounded

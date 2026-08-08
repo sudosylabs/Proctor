@@ -14,6 +14,7 @@ import (
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
 
 // TestingOverrides replaces individual runtime capabilities for tests. A nil
@@ -28,6 +29,7 @@ type TestingOverrides struct {
 	Configuration *config.Store
 	Logger        *mlog.Logger
 	Persistence   store.Store
+	StoreMetrics  timerlayer.Recorder
 	Cache         platform.Cache
 	Cluster       platform.Cluster
 	Mailer        platform.Mailer

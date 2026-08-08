@@ -26,6 +26,7 @@ import (
 	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
+	"github.com/sudosylabs/proctor/server/store/timerlayer"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
 
@@ -228,6 +229,15 @@ func openRuntimeInfrastructure(
 		}
 		result.persistence = persistence
 	}
+	storeMetrics := overrides.StoreMetrics
+	if storeMetrics == nil {
+		storeMetrics = timerlayer.NopRecorder{}
+	}
+	timedPersistence, err := timerlayer.New(result.persistence, storeMetrics)
+	if err != nil {
+		return result, fmt.Errorf("construct store timing layer: %w", err)
+	}
+	result.persistence = timedPersistence
 	if overrides.Cache != nil {
 		result.cache = overrides.Cache
 	} else {
