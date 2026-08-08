@@ -70,7 +70,9 @@ behavior reference, not part of the new implementation. The local `/tools`,
 old root frontend/build files, and old GitHub workflows are ignored for the
 same reason.
 
-The tracked `/server` directory is the new server implementation. Its first
+The tracked `/server` directory is the new server implementation. The
+required architecture migration roadmap is complete; see
+`docs/architecture-migration-acceptance-20260808.md`. Its first
 walking skeleton is operational and includes:
 
 - the `proctor serve`, `proctor config validate`, `proctor version`, and
