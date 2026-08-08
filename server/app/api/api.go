@@ -131,6 +131,24 @@ type Options struct {
 	MaxBodyBytes            int64
 	RecentAuthenticationTTL time.Duration
 	NodeID                  string
+	// WebSocket is the sibling transport constructed at composition root.
+	// HTTP owns only route mounting and session middleware around Accept.
+	WebSocket WebSocketTransport
+}
+
+// WebSocketTransport is the narrow mount surface HTTP needs from the sibling
+// websocket package. Composition supplies the concrete hub.
+type WebSocketTransport interface {
+	Accept(
+		writer http.ResponseWriter,
+		request *http.Request,
+		principal model.Principal,
+		metadata model.RequestMetadata,
+		connectionID string,
+		sequence int64,
+		allowMissingOrigin bool,
+	) error
+	Close() error
 }
 
 type Authenticator interface {
@@ -359,7 +377,8 @@ type Realtime interface {
 		context.Context,
 		model.Principal,
 		model.RequestMetadata,
-		model.WebSocketSubscription,
+		model.Action,
+		model.Resource,
 	) error
 	ValidateWebSocketPrincipal(context.Context, model.Principal) error
 }
@@ -407,8 +426,8 @@ type API struct {
 	routes                  []Route
 	routeMatchers           []routeMatcher
 	routeKeys               map[string]struct{}
-	prefixes                map[*mux.Router]string
-	webSocketHub            *WebSocketHub
+	prefixes  map[*mux.Router]string
+	webSocket WebSocketTransport
 }
 
 func New(options Options) (*API, error) {
@@ -508,15 +527,12 @@ func New(options Options) (*API, error) {
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
 		routeKeys:               make(map[string]struct{}),
 		prefixes:                make(map[*mux.Router]string),
+		webSocket:               options.WebSocket,
 	}
-	api.webSocketHub, err = NewWebSocketHub(
-		options.Application,
-		options.Logger,
-		options.PublicURL,
-		options.NodeID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("construct WebSocket hub: %w", err)
+	if api.webSocket == nil {
+		// Unit tests that exercise only HTTP DTO mapping may omit the hub.
+		// Production composition always supplies the sibling websocket.Hub.
+		api.webSocket = noopWebSocketTransport{}
 	}
 	api.initializeBaseRoutes(model.APIURLSuffix)
 	initializers := []func() error{
@@ -670,63 +686,27 @@ func (a *API) initializeBaseRoutes(apiURLSuffix string) {
 }
 
 func (a *API) Close() error {
-	if a.webSocketHub == nil {
+	if a.webSocket == nil {
 		return nil
 	}
-	return a.webSocketHub.Close()
+	return a.webSocket.Close()
 }
 
-// PublishLocal adapts a transport-neutral application event onto the current
-// WebSocket wire event. The hub still owns sequencing and subscription fan-out.
-func (a *API) PublishLocal(ctx context.Context, event application.RealtimeEvent) {
-	a.webSocketHub.PublishLocal(ctx, webSocketEventFromRealtime(event))
+type noopWebSocketTransport struct{}
+
+func (noopWebSocketTransport) Accept(
+	http.ResponseWriter,
+	*http.Request,
+	model.Principal,
+	model.RequestMetadata,
+	string,
+	int64,
+	bool,
+) error {
+	return errors.New("websocket transport is not configured")
 }
 
-func (a *API) CloseSession(sessionID string, reason application.ConnectionCloseReason) {
-	code, text := webSocketCloseForReason(reason)
-	a.webSocketHub.CloseSession(sessionID, code, text)
-}
-
-func (a *API) CloseUser(userID string, reason application.ConnectionCloseReason) {
-	code, text := webSocketCloseForReason(reason)
-	a.webSocketHub.CloseUser(userID, code, text)
-}
-
-func (a *API) CloseAll(reason application.ConnectionCloseReason) {
-	code, text := webSocketCloseForReason(reason)
-	a.webSocketHub.CloseAll(code, text)
-}
-
-// Stable WebSocket close codes for session and authorization invalidation.
-// Kept at the transport boundary; application code uses ConnectionCloseReason.
-const (
-	WebSocketCloseSessionRevoked       = 4001
-	WebSocketCloseAuthorizationChanged = 4003
-)
-
-var _ application.RealtimeSink = (*API)(nil)
-
-func webSocketEventFromRealtime(event application.RealtimeEvent) *model.WebSocketEvent {
-	return &model.WebSocketEvent{
-		Id:       event.ID,
-		Event:    event.Name,
-		UserId:   event.UserID,
-		Action:   event.Action,
-		Resource: event.Resource,
-		Data:     append(json.RawMessage(nil), event.Data...),
-	}
-}
-
-func webSocketCloseForReason(reason application.ConnectionCloseReason) (int, string) {
-	switch reason {
-	case application.ConnectionCloseSessionRevoked:
-		return WebSocketCloseSessionRevoked, "session revoked"
-	case application.ConnectionCloseAuthorizationChanged:
-		return WebSocketCloseAuthorizationChanged, "authorization changed"
-	default:
-		return 4000, "connection closed"
-	}
-}
+func (noopWebSocketTransport) Close() error { return nil }
 
 func canonicalIDRoutePattern() string {
 	return "[" + model.IdAlphabet + "]{" + strconv.Itoa(model.IdLength) + "}"

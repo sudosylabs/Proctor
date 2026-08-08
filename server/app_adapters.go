@@ -326,3 +326,20 @@ func (d mlogRecoveryDiagnostics) ErrorContext(ctx context.Context, message strin
 	}
 	d.log.ErrorContext(ctx, message, fields...)
 }
+
+// websocketLogger adapts mlog to the narrow websocket.Logger port so the
+// sibling transport package never imports mlog.
+type websocketLogger struct {
+	log *mlog.Logger
+}
+
+func (l websocketLogger) WarnContext(ctx context.Context, message string, err error) {
+	if l.log == nil {
+		return
+	}
+	fields := []mlog.Field{}
+	if err != nil {
+		fields = append(fields, mlog.Err(err))
+	}
+	l.log.WarnContext(ctx, message, fields...)
+}

@@ -23,6 +23,7 @@ import (
 	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
+	"github.com/sudosylabs/proctor/server/websocket"
 )
 
 type runtimeInfrastructure struct {
@@ -114,6 +115,25 @@ func assembleRuntime(
 			BuildTime: current.BuildTime, GoVersion: current.GoVersion,
 		}
 	}
+	webSocketHub, err := websocket.NewHub(
+		application,
+		websocketLogger{log: applicationPlatform.Log()},
+		cfg.Server.PublicURL,
+		applicationPlatform.Cluster().NodeID(),
+	)
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("construct WebSocket hub: %w", err),
+			applicationPlatform.Close(),
+		)
+	}
+	if err := application.AttachRealtimeSink(webSocketHub); err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("attach realtime sink: %w", err),
+			webSocketHub.Close(),
+			applicationPlatform.Close(),
+		)
+	}
 	httpAPI, err := api.New(api.Options{
 		Logger:                  applicationPlatform.Log(),
 		Health:                  readiness,
@@ -139,17 +159,12 @@ func assembleRuntime(
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,
 		RecentAuthenticationTTL: cfg.Authentication.RecentAuthenticationTTL.Duration,
 		NodeID:                  applicationPlatform.Cluster().NodeID(),
+		WebSocket:               webSocketHub,
 	})
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("construct HTTP API: %w", err),
-			applicationPlatform.Close(),
-		)
-	}
-	if err := application.AttachRealtimeSink(httpAPI); err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("attach realtime sink: %w", err),
-			httpAPI.Close(),
+			webSocketHub.Close(),
 			applicationPlatform.Close(),
 		)
 	}

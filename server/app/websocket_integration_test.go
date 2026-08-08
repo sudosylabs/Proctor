@@ -20,11 +20,11 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/testlib"
+	"github.com/sudosylabs/proctor/server/websocket"
 )
 
 func TestWebSocketIntegration(t *testing.T) {
@@ -116,7 +116,7 @@ func TestWebSocketIntegration(t *testing.T) {
 		!model.IsValidId(hello.Id) {
 		t.Fatalf("hello event = %#v", hello)
 	}
-	var helloData model.WebSocketHello
+	var helloData websocket.Hello
 	if err := json.Unmarshal(hello.Data, &helloData); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestWebSocketIntegration(t *testing.T) {
 		t.Fatalf("ping response = %#v", ping)
 	}
 
-	subscription := model.WebSocketSubscription{
+	subscription := websocket.Subscription{
 		Action: model.ActionInstitutionManage,
 		Resource: model.Resource{
 			Type: model.ResourceInstitution,
@@ -190,7 +190,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	}
 	connection = resumed
 	resumedHello := readWebSocketEvent(t, connection)
-	var resumedData model.WebSocketHello
+	var resumedData websocket.Hello
 	if err := json.Unmarshal(resumedHello.Data, &resumedData); err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	_, _, err = connection.ReadMessage()
 	var closeError *websocket.CloseError
 	if !errors.As(err, &closeError) ||
-		closeError.Code != api.WebSocketCloseSessionRevoked {
+		closeError.Code != websocket.CloseSessionRevoked {
 		t.Fatalf("revoked WebSocket close = %v", err)
 	}
 
@@ -334,7 +334,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	t.Cleanup(func() { _ = connection.Close() })
 	_ = readWebSocketEvent(t, connection)
 
-	subscription := model.WebSocketSubscription{
+	subscription := websocket.Subscription{
 		Action: model.ActionInstitutionManage,
 		Resource: model.Resource{
 			Type: model.ResourceInstitution,
@@ -394,7 +394,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	_, _, err = connection.ReadMessage()
 	var closeError *websocket.CloseError
 	if !errors.As(err, &closeError) ||
-		closeError.Code != api.WebSocketCloseAuthorizationChanged {
+		closeError.Code != websocket.CloseAuthorizationChanged {
 		t.Fatalf("node B authorization-change close = %v", err)
 	}
 
@@ -418,7 +418,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	_, _, err = connection.ReadMessage()
 	closeError = nil
 	if !errors.As(err, &closeError) ||
-		closeError.Code != api.WebSocketCloseSessionRevoked {
+		closeError.Code != websocket.CloseSessionRevoked {
 		t.Fatalf("node B revocation close = %v", err)
 	}
 }
@@ -435,7 +435,7 @@ func writeWebSocketRequest(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := connection.WriteJSON(&model.WebSocketRequest{
+	if err := connection.WriteJSON(&websocket.Request{
 		Sequence: sequence, Action: action, Data: raw,
 	}); err != nil {
 		t.Fatal(err)
@@ -445,7 +445,7 @@ func writeWebSocketRequest(
 func readWebSocketEvent(
 	t *testing.T,
 	connection *websocket.Conn,
-) *model.WebSocketEvent {
+) *websocket.Event {
 	t.Helper()
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, payload, err := connection.ReadMessage()
@@ -457,7 +457,7 @@ func readWebSocketEvent(
 		payload,
 		[]string{"id", "event", "sequence"},
 	)
-	var event model.WebSocketEvent
+	var event websocket.Event
 	if err := json.Unmarshal(payload, &event); err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +467,7 @@ func readWebSocketEvent(
 func readWebSocketResponse(
 	t *testing.T,
 	connection *websocket.Conn,
-) *model.WebSocketResponse {
+) *websocket.Response {
 	t.Helper()
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, payload, err := connection.ReadMessage()
@@ -479,7 +479,7 @@ func readWebSocketResponse(
 		payload,
 		[]string{"status", "sequence"},
 	)
-	var response model.WebSocketResponse
+	var response websocket.Response
 	if err := json.Unmarshal(payload, &response); err != nil {
 		t.Fatal(err)
 	}

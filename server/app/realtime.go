@@ -401,16 +401,18 @@ func (a *App) AuthorizeWebSocketSubscription(
 	ctx context.Context,
 	principal model.Principal,
 	metadata model.RequestMetadata,
-	subscription model.WebSocketSubscription,
+	action model.Action,
+	resource model.Resource,
 ) error {
-	if !subscription.IsValid() {
+	definition, ok := model.DefinitionForAction(action)
+	if !ok || !resource.IsValid() || definition.ResourceType != resource.Type {
 		return invalidRealtimeRequest("subscription")
 	}
 	return a.AuthorizePrincipalTo(
 		ctx,
 		principal,
-		subscription.Action,
-		subscription.Resource,
+		action,
+		resource,
 		metadata,
 	)
 }

@@ -7,7 +7,6 @@ app/api/api.go	github.com/sudosylabs/proctor/server/mlog
 app/api/authentication.go	github.com/sudosylabs/proctor/server/mlog
 app/api/handler.go	github.com/sudosylabs/proctor/server/mlog
 app/api/middleware.go	github.com/sudosylabs/proctor/server/mlog
-app/api/websocket.go	github.com/sudosylabs/proctor/server/mlog
 platform/cluster_redis.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/sudosylabs/proctor/packages/cache/memory
