@@ -9,10 +9,10 @@ import (
 	"context"
 	"errors"
 	"os"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
@@ -68,47 +68,46 @@ func TestRedisClusterTwoNodeConformance(t *testing.T) {
 	})
 
 	const (
-		reliableEvent   model.ClusterEvent = "test.reliable"
-		bestEffortEvent model.ClusterEvent = "test.best_effort"
-		retryEvent      model.ClusterEvent = "test.retry"
+		fanoutEvent     cluster.Event = "test.fanout"
+		bestEffortEvent cluster.Event = "test.best_effort"
 	)
-	reliableReceived := make(chan string, 1)
-	if err := nodeA.RegisterMessageHandler(
-		reliableEvent,
-		func(context.Context, *model.ClusterMessage) error {
+	fanoutReceived := make(chan string, 1)
+	if err := nodeA.RegisterHandler(
+		fanoutEvent,
+		func(context.Context, *cluster.Message) error {
 			t.Error("peer-only broadcast was delivered back to its source")
 			return nil
 		},
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := nodeB.RegisterMessageHandler(
-		reliableEvent,
-		func(_ context.Context, message *model.ClusterMessage) error {
-			reliableReceived <- string(message.Data)
+	if err := nodeB.RegisterHandler(
+		fanoutEvent,
+		func(_ context.Context, message *cluster.Message) error {
+			fanoutReceived <- string(message.Data)
 			return nil
 		},
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := nodeA.Broadcast(ctx, &model.ClusterMessage{
-		Event: reliableEvent, SendType: model.ClusterSendReliable, Data: []byte("reliable"),
+	if err := nodeA.Broadcast(ctx, &cluster.Message{
+		Event: fanoutEvent, Data: []byte("fanout"),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case received := <-reliableReceived:
-		if received != "reliable" {
-			t.Fatalf("reliable payload = %q", received)
+	case received := <-fanoutReceived:
+		if received != "fanout" {
+			t.Fatalf("fanout payload = %q", received)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("reliable peer broadcast was not delivered")
+		t.Fatal("fanout peer broadcast was not delivered")
 	}
 
 	bestEffortReceived := make(chan struct{}, 1)
-	if err := nodeB.RegisterMessageHandler(
+	if err := nodeB.RegisterHandler(
 		bestEffortEvent,
-		func(context.Context, *model.ClusterMessage) error {
+		func(context.Context, *cluster.Message) error {
 			select {
 			case bestEffortReceived <- struct{}{}:
 			default:
@@ -120,8 +119,8 @@ func TestRedisClusterTwoNodeConformance(t *testing.T) {
 	}
 	bestEffortDeadline := time.Now().Add(5 * time.Second)
 	for {
-		if err := nodeA.Broadcast(ctx, &model.ClusterMessage{
-			Event: bestEffortEvent, SendType: model.ClusterSendBestEffort,
+		if err := nodeA.Broadcast(ctx, &cluster.Message{
+			Event: bestEffortEvent,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -136,36 +135,9 @@ func TestRedisClusterTwoNodeConformance(t *testing.T) {
 	}
 bestEffortDone:
 
-	var attempts atomic.Int32
-	retrySucceeded := make(chan struct{}, 1)
-	if err := nodeB.RegisterMessageHandler(
-		retryEvent,
-		func(context.Context, *model.ClusterMessage) error {
-			if attempts.Add(1) == 1 {
-				return errors.New("transient handler failure")
-			}
-			select {
-			case retrySucceeded <- struct{}{}:
-			default:
-			}
-			return nil
-		},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := nodeA.Broadcast(ctx, &model.ClusterMessage{
-		Event: retryEvent, SendType: model.ClusterSendReliable,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-retrySucceeded:
-		if attempts.Load() < 2 {
-			t.Fatalf("reliable handler attempts = %d", attempts.Load())
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("pending reliable message was not retried")
-	}
+	// Public cluster contract is best-effort only (ADR-0026). Handler retry
+	// after failure is no longer a transport promise; correctness recovers
+	// from PostgreSQL and client resynchronization.
 
 	duplicate, err := NewRedisCluster(settings("node-a"), logger)
 	if err != nil {
@@ -183,8 +155,8 @@ bestEffortDone:
 	if err := nodeB.Stop(stopCtx); err != nil {
 		t.Fatal(err)
 	}
-	if err := nodeA.Broadcast(ctx, &model.ClusterMessage{
-		Event: reliableEvent, SendType: model.ClusterSendReliable,
+	if err := nodeA.Broadcast(ctx, &cluster.Message{
+		Event: fanoutEvent,
 	}); err != nil {
 		t.Fatalf("broadcast to remaining live nodes: %v", err)
 	}

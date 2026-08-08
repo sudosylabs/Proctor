@@ -15,6 +15,8 @@ import (
 	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	"github.com/sudosylabs/proctor/server/cluster"
+	"github.com/sudosylabs/proctor/server/cluster/local"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -356,15 +358,34 @@ func newVFS(settings config.VFS) (vfspkg.FileSystem, error) {
 	}
 }
 
-func newCluster(settings config.Cluster, logger *mlog.Logger) (platform.Cluster, error) {
+func newCluster(settings config.Cluster, logger *mlog.Logger) (cluster.Transport, error) {
 	switch settings.Backend {
 	case "local":
-		return platform.NewLocalCluster(settings.NodeID, logger)
+		return local.New(settings.NodeID, mlogClusterLogger{log: logger.With(
+			mlog.String("component", "cluster"),
+			mlog.String("node_id", settings.NodeID),
+		)})
 	case "redis":
 		return platform.NewRedisCluster(settings, logger)
 	default:
 		return nil, fmt.Errorf("unsupported cluster backend %q", settings.Backend)
 	}
+}
+
+// mlogClusterLogger adapts mlog to cluster.Logger at the composition root.
+type mlogClusterLogger struct {
+	log *mlog.Logger
+}
+
+func (l mlogClusterLogger) ErrorContext(ctx context.Context, message string, err error) {
+	if l.log == nil {
+		return
+	}
+	fields := []mlog.Field{}
+	if err != nil {
+		fields = append(fields, mlog.Err(err))
+	}
+	l.log.ErrorContext(ctx, message, fields...)
 }
 
 func newExternalAuthenticationRegistry() (*externalauth.Registry, error) {

@@ -19,10 +19,10 @@ type DeliveryClass string
 const (
 	// DeliveryBestEffort is for ordinary state-change notifications.
 	DeliveryBestEffort DeliveryClass = "best_effort"
-	// DeliveryReliable is for security invalidations that the current Redis
-	// cluster adapter still delivers with its reliable class. Memberlist will
-	// collapse this to best-effort recovery later; callers must remain correct
-	// without durable delivery.
+	// DeliveryReliable is retained for security-sensitive call sites that once
+	// preferred at-least-once cluster delivery. The cluster transport is
+	// best-effort only (ADR-0026); callers must remain correct using
+	// PostgreSQL recovery, cache TTLs, and client resynchronization.
 	DeliveryReliable DeliveryClass = "reliable"
 )
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/redis/rueidis"
 
+	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
@@ -63,7 +64,7 @@ type redisClusterEnvelope struct {
 	Source    string                `json:"source"`
 	Target    string                `json:"target,omitempty"`
 	CreatedAt int64                 `json:"created_at"`
-	Message   *model.ClusterMessage `json:"message"`
+	Message   *cluster.Message `json:"message"`
 }
 
 // redisCluster is Proctor's own open-source multi-node transport. Pub/Sub is
@@ -78,7 +79,7 @@ type redisCluster struct {
 
 	mu       sync.RWMutex
 	state    redisClusterState
-	handlers map[model.ClusterEvent]ClusterMessageHandler
+	handlers map[cluster.Event]cluster.Handler
 	cancel   context.CancelFunc
 	done     chan struct{}
 	token    string
@@ -118,7 +119,7 @@ func NewRedisCluster(
 			mlog.String("node_id", settings.NodeID),
 			mlog.String("backend", "redis"),
 		),
-		handlers: make(map[model.ClusterEvent]ClusterMessageHandler),
+		handlers: make(map[cluster.Event]cluster.Handler),
 		token:    model.NewCredentialToken(),
 	}, nil
 }
@@ -138,7 +139,7 @@ func (c *redisCluster) Start(ctx context.Context) error {
 		return nil
 	case redisClusterStopped:
 		c.mu.Unlock()
-		return ErrClusterStopped
+		return cluster.ErrStopped
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
@@ -207,7 +208,7 @@ func (c *redisCluster) Ping(ctx context.Context) error {
 	state := c.state
 	c.mu.RUnlock()
 	if state == redisClusterStopped {
-		return ErrClusterStopped
+		return cluster.ErrStopped
 	}
 	if err := c.client.Do(ctx, c.client.B().Ping().Build()).Error(); err != nil {
 		return err
@@ -221,34 +222,34 @@ func (c *redisCluster) Ping(ctx context.Context) error {
 	).ToString()
 	if err != nil {
 		if rueidis.IsRedisNil(err) {
-			return fmt.Errorf("%w: lease for %s was lost", ErrClusterNodeUnavailable, c.nodeID)
+			return fmt.Errorf("%w: lease for %s was lost", cluster.ErrNodeUnavailable, c.nodeID)
 		}
 		return err
 	}
 	if token != c.token {
-		return fmt.Errorf("%w: %s", ErrClusterNodeIDInUse, c.nodeID)
+		return fmt.Errorf("%w: %s", cluster.ErrNodeIDInUse, c.nodeID)
 	}
 	return nil
 }
 
-func (c *redisCluster) RegisterMessageHandler(
-	event model.ClusterEvent,
-	handler ClusterMessageHandler,
+func (c *redisCluster) RegisterHandler(
+	event cluster.Event,
+	handler cluster.Handler,
 ) error {
 	if handler == nil {
 		return errors.New("cluster message handler is nil")
 	}
-	probe := &model.ClusterMessage{Event: event, SendType: model.ClusterSendBestEffort}
+	probe := &cluster.Message{Event: event}
 	if err := probe.Validate(); err != nil {
 		return err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.state == redisClusterStopped {
-		return ErrClusterStopped
+		return cluster.ErrStopped
 	}
 	if _, exists := c.handlers[event]; exists {
-		return fmt.Errorf("%w: %s", ErrClusterHandlerExists, event)
+		return fmt.Errorf("%w: %s", cluster.ErrHandlerExists, event)
 	}
 	c.handlers[event] = handler
 	return nil
@@ -256,38 +257,20 @@ func (c *redisCluster) RegisterMessageHandler(
 
 func (c *redisCluster) Broadcast(
 	ctx context.Context,
-	message *model.ClusterMessage,
+	message *cluster.Message,
 ) error {
 	if err := c.validateSend(ctx, message); err != nil {
 		return err
 	}
-	switch message.SendType {
-	case model.ClusterSendBestEffort:
-		return c.publishBestEffort(ctx, "", message)
-	case model.ClusterSendReliable:
-		nodes, err := c.liveNodes(ctx)
-		if err != nil {
-			return err
-		}
-		var result error
-		for _, nodeID := range nodes {
-			if nodeID == c.nodeID {
-				continue
-			}
-			if err := c.appendReliable(ctx, nodeID, message); err != nil {
-				result = errors.Join(result, fmt.Errorf("send reliable message to %s: %w", nodeID, err))
-			}
-		}
-		return result
-	default:
-		return fmt.Errorf("unknown cluster send type %q", message.SendType)
-	}
+	// Public contract is best-effort only (ADR-0026). Streams remain for
+	// transitional targeted delivery helpers but are not a durable promise.
+	return c.publishBestEffort(ctx, "", message)
 }
 
 func (c *redisCluster) SendToNode(
 	ctx context.Context,
 	nodeID string,
-	message *model.ClusterMessage,
+	message *cluster.Message,
 ) error {
 	if err := c.validateSend(ctx, message); err != nil {
 		return err
@@ -300,17 +283,14 @@ func (c *redisCluster) SendToNode(
 		return err
 	}
 	if !available {
-		return fmt.Errorf("%w: %s", ErrClusterNodeUnavailable, nodeID)
-	}
-	if message.SendType == model.ClusterSendReliable {
-		return c.appendReliable(ctx, nodeID, message)
+		return fmt.Errorf("%w: %s", cluster.ErrNodeUnavailable, nodeID)
 	}
 	return c.publishBestEffort(ctx, nodeID, message)
 }
 
 func (c *redisCluster) validateSend(
 	ctx context.Context,
-	message *model.ClusterMessage,
+	message *cluster.Message,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -325,9 +305,9 @@ func (c *redisCluster) validateSend(
 	case redisClusterStarted:
 		return nil
 	case redisClusterStopped:
-		return ErrClusterStopped
+		return cluster.ErrStopped
 	default:
-		return ErrClusterNotStarted
+		return cluster.ErrNotStarted
 	}
 }
 
@@ -553,7 +533,7 @@ func validRedisClusterNodeID(value string) bool {
 
 func (c *redisCluster) envelope(
 	target string,
-	message *model.ClusterMessage,
+	message *cluster.Message,
 ) *redisClusterEnvelope {
 	return &redisClusterEnvelope{
 		Version: redisClusterProtocolVersion,
@@ -565,7 +545,7 @@ func (c *redisCluster) envelope(
 func (c *redisCluster) publishBestEffort(
 	ctx context.Context,
 	target string,
-	message *model.ClusterMessage,
+	message *cluster.Message,
 ) error {
 	payload, err := json.Marshal(c.envelope(target, message))
 	if err != nil {
@@ -580,7 +560,7 @@ func (c *redisCluster) publishBestEffort(
 func (c *redisCluster) appendReliable(
 	ctx context.Context,
 	target string,
-	message *model.ClusterMessage,
+	message *cluster.Message,
 ) error {
 	payload, err := json.Marshal(c.envelope(target, message))
 	if err != nil {
@@ -621,7 +601,7 @@ func (c *redisCluster) acquireLease(ctx context.Context) error {
 	)
 	if err := result.Error(); err != nil {
 		if rueidis.IsRedisNil(err) {
-			return fmt.Errorf("%w: %s", ErrClusterNodeIDInUse, c.nodeID)
+			return fmt.Errorf("%w: %s", cluster.ErrNodeIDInUse, c.nodeID)
 		}
 		return err
 	}

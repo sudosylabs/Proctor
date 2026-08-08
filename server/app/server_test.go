@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
@@ -38,18 +38,15 @@ func (c *failingStartCluster) Ping(context.Context) error {
 	return nil
 }
 
-func (c *failingStartCluster) RegisterMessageHandler(
-	model.ClusterEvent,
-	platform.ClusterMessageHandler,
-) error {
+func (c *failingStartCluster) RegisterHandler(cluster.Event, cluster.Handler) error {
 	return nil
 }
 
-func (c *failingStartCluster) Broadcast(context.Context, *model.ClusterMessage) error {
+func (c *failingStartCluster) Broadcast(context.Context, *cluster.Message) error {
 	return nil
 }
 
-func (c *failingStartCluster) SendToNode(context.Context, string, *model.ClusterMessage) error {
+func (c *failingStartCluster) SendToNode(context.Context, string, *cluster.Message) error {
 	return nil
 }
 

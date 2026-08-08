@@ -8,22 +8,20 @@ import (
 	"fmt"
 
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/platform"
+	"github.com/sudosylabs/proctor/server/cluster"
 )
 
 // realtimeClusterAdapter maps the application RealtimeClusterFanout port onto
-// the current platform cluster wire contract. Application code never sees
-// ClusterMessage, ClusterEvent, or ClusterSendType.
+// the best-effort cluster.Transport contract.
 type realtimeClusterAdapter struct {
-	cluster platform.Cluster
+	cluster cluster.Transport
 }
 
-func newRealtimeClusterAdapter(cluster platform.Cluster) (*realtimeClusterAdapter, error) {
-	if cluster == nil {
+func newRealtimeClusterAdapter(transport cluster.Transport) (*realtimeClusterAdapter, error) {
+	if transport == nil {
 		return nil, fmt.Errorf("cluster is nil")
 	}
-	return &realtimeClusterAdapter{cluster: cluster}, nil
+	return &realtimeClusterAdapter{cluster: transport}, nil
 }
 
 func (a *realtimeClusterAdapter) RegisterHandler(
@@ -33,9 +31,9 @@ func (a *realtimeClusterAdapter) RegisterHandler(
 	if handler == nil {
 		return fmt.Errorf("realtime cluster handler for %q is nil", event)
 	}
-	return a.cluster.RegisterMessageHandler(
-		model.ClusterEvent(event),
-		func(ctx context.Context, message *model.ClusterMessage) error {
+	return a.cluster.RegisterHandler(
+		cluster.Event(event),
+		func(ctx context.Context, message *cluster.Message) error {
 			if message == nil {
 				return fmt.Errorf("cluster message is nil")
 			}
@@ -53,14 +51,13 @@ func (a *realtimeClusterAdapter) Broadcast(
 	data []byte,
 	reliable bool,
 ) error {
-	sendType := model.ClusterSendBestEffort
-	if reliable {
-		sendType = model.ClusterSendReliable
-	}
-	return a.cluster.Broadcast(ctx, &model.ClusterMessage{
-		Event:    model.ClusterEvent(event),
-		SendType: sendType,
-		Data:     data,
+	// Delivery is best-effort only (ADR-0026). The reliable flag remains on the
+	// application port for transitional call sites; correctness still recovers
+	// from PostgreSQL and client resynchronization.
+	_ = reliable
+	return a.cluster.Broadcast(ctx, &cluster.Message{
+		Event: cluster.Event(event),
+		Data:  data,
 	})
 }
 

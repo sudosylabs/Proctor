@@ -15,9 +15,9 @@ import (
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
+	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
-	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
 	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
@@ -259,15 +259,15 @@ func (c *trackedCluster) Ping(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (c *trackedCluster) RegisterMessageHandler(model.ClusterEvent, ClusterMessageHandler) error {
+func (c *trackedCluster) RegisterHandler(cluster.Event, cluster.Handler) error {
 	return nil
 }
 
-func (c *trackedCluster) Broadcast(context.Context, *model.ClusterMessage) error {
+func (c *trackedCluster) Broadcast(context.Context, *cluster.Message) error {
 	return nil
 }
 
-func (c *trackedCluster) SendToNode(context.Context, string, *model.ClusterMessage) error {
+func (c *trackedCluster) SendToNode(context.Context, string, *cluster.Message) error {
 	return nil
 }
 
