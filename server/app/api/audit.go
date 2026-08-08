@@ -53,10 +53,11 @@ type auditListResponse struct {
 
 func auditEventResponseFromModel(event *model.AuditEvent) auditEventResponse {
 	return auditEventResponse{
-		ID: event.Id, CreateAt: event.CreateAt, UpdateAt: event.UpdateAt,
-		ActorID: event.ActorId, SessionID: event.SessionId, Action: event.Action,
-		Resource: event.Resource, ScopeType: event.ScopeType, ScopeID: event.ScopeId,
-		Status: event.Status, RequestID: event.RequestId, NodeID: event.NodeId,
+		ID: event.ID.String(), CreateAt: model.MillisFromTime(event.CreatedAt),
+		UpdateAt: model.MillisFromTime(event.UpdatedAt),
+		ActorID: event.ActorID.String(), SessionID: event.SessionID.String(), Action: event.Action,
+		Resource: event.Resource, ScopeType: event.ScopeType, ScopeID: event.ScopeID,
+		Status: event.Status, RequestID: event.RequestID, NodeID: event.NodeID,
 		ClientType: event.ClientType, AuthMethod: event.AuthMethod,
 		IPAddress: event.IPAddress, UserAgent: event.UserAgent, ErrorCode: event.ErrorCode,
 	}
@@ -97,7 +98,10 @@ func (a *API) listAuditEvents(writer http.ResponseWriter, request *http.Request)
 	}
 	if len(events) == query.Limit {
 		last := events[len(events)-1]
-		response.NextCursor = encodeAuditCursor(auditCursor{CreateAt: last.CreateAt, Id: last.Id})
+		response.NextCursor = encodeAuditCursor(auditCursor{
+			CreateAt: model.MillisFromTime(last.CreatedAt),
+			Id:       last.ID.String(),
+		})
 	}
 	writeJSON(writer, http.StatusOK, response)
 }

@@ -95,9 +95,9 @@ func (s SqlInstallationStore) Bootstrap(
 		INSERT INTO installation_state (
 			singleton, initialized_at, institution_id, administrator_user_id
 		) VALUES (1, $1, $2, $3)`,
-		prepared.State.InitializedAt,
-		prepared.State.InstitutionId,
-		prepared.State.AdministratorUserId,
+		model.MillisFromTime(prepared.State.InitializedAt),
+		prepared.State.InstitutionID.String(),
+		prepared.State.AdministratorUserID.String(),
 	); err != nil {
 		return nil, fmt.Errorf(
 			"save installation state: %w",
@@ -160,42 +160,42 @@ func prepareInstallationBootstrap(
 		return nil, err
 	}
 	role := input.Role.Clone()
-	role.Id = ""
-	role.CreateAt = 0
-	role.UpdateAt = 0
-	role.DeleteAt = 0
-	role.PreSave()
-	if appErr := role.IsValid(); appErr != nil {
-		return nil, appErr
+	role.ID = ""
+	role.CreatedAt = time.Time{}
+	role.UpdatedAt = time.Time{}
+	role.ArchivedAt = model.OptionalTime{}
+	role.PrepareCreate(model.NewRoleID(), at)
+	if err := role.Validate(); err != nil {
+		return nil, err
 	}
 	if role.Name != model.SystemAdministratorRoleName || !role.BuiltIn {
 		return nil, store.NewErrInvalidInput("installation", "administrator_role", role.Name)
 	}
 	binding := *input.RoleBinding
-	binding.Id = ""
-	binding.CreateAt = 0
-	binding.UpdateAt = 0
-	binding.DeleteAt = 0
-	binding.EndAt = 0
-	binding.UserId = administrator.ID.String()
-	binding.RoleId = role.Id
+	binding.ID = ""
+	binding.CreatedAt = time.Time{}
+	binding.UpdatedAt = time.Time{}
+	binding.ArchivedAt = model.OptionalTime{}
+	binding.EndsAt = model.OptionalTime{}
+	binding.UserID = administrator.ID
+	binding.RoleID = role.ID
 	binding.ScopeType = model.RoleScopeInstitution
-	binding.ScopeId = institution.ID.String()
-	binding.PreSave()
-	if appErr := binding.IsValid(); appErr != nil {
-		return nil, appErr
+	binding.ScopeID = institution.ID.String()
+	binding.PrepareCreate(model.NewRoleBindingID(), at)
+	if err := binding.Validate(); err != nil {
+		return nil, err
 	}
 	event := input.AuditEvent.Clone()
-	event.Id = ""
-	event.CreateAt = 0
-	event.UpdateAt = 0
-	event.ActorId = administrator.ID.String()
+	event.ID = ""
+	event.CreatedAt = time.Time{}
+	event.UpdatedAt = time.Time{}
+	event.ActorID = administrator.ID
 	event.Resource = model.Resource{
 		Type: model.ResourceInstitution,
 		Id:   institution.ID.String(),
 	}
 	event.ScopeType = model.RoleScopeInstitution
-	event.ScopeId = institution.ID.String()
+	event.ScopeID = institution.ID.String()
 	event.Status = model.AuditStatusSuccess
 	parameters, appErr := model.EncodeAuditData(map[string]any{
 		"institution":   institution.Auditable(),
@@ -207,14 +207,14 @@ func prepareInstallationBootstrap(
 		return nil, appErr
 	}
 	event.Parameters = parameters
-	event.PreSave()
-	if appErr := event.IsValid(); appErr != nil {
-		return nil, appErr
+	event.PrepareCreate(model.NewAuditEventID(), at)
+	if err := event.Validate(); err != nil {
+		return nil, err
 	}
 	state := &model.InstallationState{
-		InitializedAt:       event.CreateAt,
-		InstitutionId:       institution.ID.String(),
-		AdministratorUserId: administrator.ID.String(),
+		InitializedAt:       event.CreatedAt,
+		InstitutionID:       institution.ID,
+		AdministratorUserID: administrator.ID,
 	}
 	return &preparedInstallationBootstrap{
 		InstallationBootstrapResult: &model.InstallationBootstrapResult{
@@ -277,7 +277,7 @@ func insertInstallationRole(
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save bootstrap role: %w",
-			translateError("role", role.Id, err),
+			translateError("role", role.ID.String(), err),
 		)
 	}
 	return nil
@@ -302,7 +302,7 @@ func insertInstallationRoleBinding(
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save bootstrap role binding: %w",
-			translateError("role_binding", binding.Id, err),
+			translateError("role_binding", binding.ID.String(), err),
 		)
 	}
 	return nil
@@ -328,7 +328,7 @@ func insertInstallationAudit(
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save bootstrap audit event: %w",
-			translateError("audit_event", event.Id, err),
+			translateError("audit_event", event.ID.String(), err),
 		)
 	}
 	return nil
@@ -336,9 +336,9 @@ func insertInstallationAudit(
 
 func (row installationStateRow) model() *model.InstallationState {
 	return &model.InstallationState{
-		InitializedAt:       row.InitializedAt,
-		InstitutionId:       row.InstitutionID,
-		AdministratorUserId: row.AdministratorUserID,
+		InitializedAt:       model.TimeFromMillis(row.InitializedAt),
+		InstitutionID:       model.InstitutionID(row.InstitutionID),
+		AdministratorUserID: model.UserID(row.AdministratorUserID),
 	}
 }
 

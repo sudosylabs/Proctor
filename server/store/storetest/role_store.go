@@ -24,14 +24,14 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 		saved, err := ss.Role().Save(ctx, input)
 		requireNoError(t, err)
-		if !model.IsValidId(saved.Id) || input.Id != "" {
+		if !saved.ID.IsValid() || !input.ID.IsZero() {
 			t.Fatalf("Save() = %#v, input = %#v", saved, input)
 		}
-		byID, err := ss.Role().Get(ctx, saved.Id)
+		byID, err := ss.Role().Get(ctx, saved.ID.String())
 		requireNoError(t, err)
 		byName, err := ss.Role().GetByName(ctx, saved.Name)
 		requireNoError(t, err)
-		if byID.Id != saved.Id || byName.Id != saved.Id {
+		if byID.ID != saved.ID || byName.ID != saved.ID {
 			t.Fatalf("role queries = %#v, %#v", byID, byName)
 		}
 		saved.Permissions = append(saved.Permissions, string(model.ActionClassMembersView))
@@ -42,17 +42,17 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 		list, err := ss.Role().List(ctx)
 		requireNoError(t, err)
-		batch, err := ss.Role().GetByIds(ctx, []string{saved.Id, model.NewId()})
+		batch, err := ss.Role().GetByIds(ctx, []string{saved.ID.String(), model.NewId()})
 		requireNoError(t, err)
 		if len(list) != 1 || len(batch) != 1 {
 			t.Fatalf("List/GetByIds = %d/%d", len(list), len(batch))
 		}
-		deleted, err := ss.Role().Delete(ctx, saved.Id, model.GetMillis())
+		deleted, err := ss.Role().Delete(ctx, saved.ID.String(), model.GetMillis())
 		requireNoError(t, err)
-		if deleted.DeleteAt == 0 {
+		if !deleted.IsArchived() {
 			t.Fatalf("Delete() = %#v", deleted)
 		}
-		if _, err := ss.Role().Get(ctx, saved.Id); !store.IsNotFound(err) {
+		if _, err := ss.Role().Get(ctx, saved.ID.String()); !store.IsNotFound(err) {
 			t.Fatalf("Get(deleted) error = %v", err)
 		}
 	})
@@ -70,7 +70,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if !errors.As(err, &conflict) || conflict.Constraint != "roles_active_name_key" {
 			t.Fatalf("duplicate role error = %v", err)
 		}
-		if _, err := ss.Role().Delete(ctx, first.Id, model.GetMillis()); !store.IsConflict(err) {
+		if _, err := ss.Role().Delete(ctx, first.ID.String(), model.GetMillis()); !store.IsConflict(err) {
 			t.Fatalf("Delete(built-in) error = %v", err)
 		}
 		first.DisplayName = "Modified Built-in"
@@ -99,10 +99,10 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		createAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		created, err := ss.Role().SaveWithAudit(ctx, &store.RoleCreation{
 			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
-			AuditEventID: createAttempt.Id, AuditAt: at,
+			AuditEventID: createAttempt.ID.String(), AuditAt: at,
 		})
 		requireNoError(t, err)
-		createAudit, err := ss.Audit().Get(ctx, createAttempt.Id)
+		createAudit, err := ss.Audit().Get(ctx, createAttempt.ID.String())
 		requireNoError(t, err)
 		if createAudit.Status != model.AuditStatusSuccess {
 			t.Fatalf("create audit = %#v", createAudit)
@@ -114,14 +114,14 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}); err == nil {
 			t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
 		}
-		unchanged, err := ss.Role().Get(ctx, created.Id)
+		unchanged, err := ss.Role().Get(ctx, created.ID.String())
 		requireNoError(t, err)
 		if unchanged.DisplayName != "Audited Teacher" {
 			t.Fatalf("role update survived audit rollback: %#v", unchanged)
 		}
 		updateAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		updated, err := ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
-			Role: created, AuditEventID: updateAttempt.Id, AuditAt: at + 1,
+			Role: created, AuditEventID: updateAttempt.ID.String(), AuditAt: at + 1,
 		})
 		requireNoError(t, err)
 		if updated.DisplayName != "Audited Teacher Updated" {
@@ -129,24 +129,24 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 
 		if _, err := ss.Role().DeleteWithAudit(ctx, &store.RoleDeletion{
-			ID: created.Id, DeleteAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
+			ID: created.ID.String(), DeleteAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
 		}); err == nil {
 			t.Fatal("DeleteWithAudit() succeeded without its audit attempt")
 		}
-		stillPresent, err := ss.Role().Get(ctx, created.Id)
+		stillPresent, err := ss.Role().Get(ctx, created.ID.String())
 		requireNoError(t, err)
-		if stillPresent.DeleteAt != 0 {
+		if stillPresent.IsArchived() {
 			t.Fatalf("role delete survived audit rollback: %#v", stillPresent)
 		}
 		deleteAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		deleted, err := ss.Role().DeleteWithAudit(ctx, &store.RoleDeletion{
-			ID: created.Id, DeleteAt: at + 2, AuditEventID: deleteAttempt.Id, AuditAt: at + 2,
+			ID: created.ID.String(), DeleteAt: at + 2, AuditEventID: deleteAttempt.ID.String(), AuditAt: at + 2,
 		})
 		requireNoError(t, err)
-		if deleted.DeleteAt != at+2 {
+		if deleted.ArchivedAt.Millis() != at+2 {
 			t.Fatalf("DeleteWithAudit() = %#v", deleted)
 		}
-		if _, err := ss.Role().Get(ctx, created.Id); !store.IsNotFound(err) {
+		if _, err := ss.Role().Get(ctx, created.ID.String()); !store.IsNotFound(err) {
 			t.Fatalf("Get(deleted) error = %v", err)
 		}
 	})
@@ -157,8 +157,8 @@ func saveRoleAuditAttempt(t *testing.T, ctx context.Context, ss store.Store) *mo
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionRoleManage),
 		Resource:  model.Resource{Type: model.ResourceInstitution, Id: model.NewId()},
-		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(),
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	return attempt

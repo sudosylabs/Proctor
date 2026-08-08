@@ -47,7 +47,8 @@ func roleResponseFromModel(role *model.Role) roleResponse {
 		permissions = []string{}
 	}
 	return roleResponse{
-		ID: role.Id, CreateAt: role.CreateAt, UpdateAt: role.UpdateAt, DeleteAt: role.DeleteAt,
+		ID: role.ID.String(), CreateAt: model.MillisFromTime(role.CreatedAt),
+		UpdateAt: model.MillisFromTime(role.UpdatedAt), DeleteAt: role.ArchivedAt.Millis(),
 		Name: role.Name, DisplayName: role.DisplayName, Description: role.Description,
 		Permissions: append([]string(nil), permissions...), BuiltIn: role.BuiltIn,
 	}

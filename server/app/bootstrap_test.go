@@ -75,7 +75,7 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	result := &model.InstallationBootstrapResult{
-		State: &model.InstallationState{InitializedAt: 1, InstitutionId: model.NewId(), AdministratorUserId: model.NewId()},
+		State: &model.InstallationState{InitializedAt: model.TimeFromMillis(1), InstitutionID: model.NewInstitutionID(), AdministratorUserID: model.NewUserID()},
 	}
 	persistence := &installationStoreFake{
 		events: &events, getErr: store.NewErrNotFound("installation", ""), result: result,
@@ -95,10 +95,10 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State.InstitutionId != result.State.InstitutionId || persistence.input.PasswordHash != "encoded" {
+	if got.State.InstitutionID != result.State.InstitutionID || persistence.input.PasswordHash != "encoded" {
 		t.Fatalf("result/input = %#v / %#v", got, persistence.input)
 	}
-	if persistence.input.AuditEvent.NodeId != "node-a" || persistence.input.Role.BuiltIn != true {
+	if persistence.input.AuditEvent.NodeID != "node-a" || persistence.input.Role.BuiltIn != true {
 		t.Fatalf("bootstrap input = %#v", persistence.input)
 	}
 	want := []string{"get-status", "rate-limit", "hash-password", "bootstrap"}
@@ -112,7 +112,7 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 	events := []string{}
 	service := newBootstrapService(
 		&installationStoreFake{events: &events, state: &model.InstallationState{
-			InitializedAt: 1, InstitutionId: model.NewId(), AdministratorUserId: model.NewId(),
+			InitializedAt: model.TimeFromMillis(1), InstitutionID: model.NewInstitutionID(), AdministratorUserID: model.NewUserID(),
 		}},
 		&passwordHasherFake{events: &events},
 		&bootstrapRateLimiterFake{events: &events},

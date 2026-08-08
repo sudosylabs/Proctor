@@ -372,14 +372,14 @@ func recoveryAuditEvent(
 ) *model.AuditEvent {
 	event := &model.AuditEvent{
 		Action: action, Resource: resource,
-		ScopeType: model.RoleScopeInstitution, ScopeId: institutionID,
-		Status: model.AuditStatusSuccess, RequestId: metadata.RequestId,
-		NodeId: nodeID, AuthMethod: authenticationMethod,
+		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
+		Status: model.AuditStatusSuccess, RequestID: metadata.RequestId,
+		NodeID: nodeID, AuthMethod: authenticationMethod,
 		IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
 	}
 	if principal != nil {
-		event.ActorId = principal.UserId
-		event.SessionId = principal.SessionId
+		event.ActorID = model.UserID(principal.UserId)
+		event.SessionID = model.SessionID(principal.SessionId)
 		event.ClientType = string(principal.ClientType)
 		event.AuthMethod = principal.AuthenticationMethod
 	}

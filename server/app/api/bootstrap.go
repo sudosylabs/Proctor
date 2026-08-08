@@ -60,9 +60,9 @@ func installationStateResponseFromModel(state *model.InstallationState) *install
 		return nil
 	}
 	return &installationStateResponse{
-		InitializedAt:       state.InitializedAt,
-		InstitutionID:       state.InstitutionId,
-		AdministratorUserID: state.AdministratorUserId,
+		InitializedAt:       model.MillisFromTime(state.InitializedAt),
+		InstitutionID:       state.InstitutionID.String(),
+		AdministratorUserID: state.AdministratorUserID.String(),
 	}
 }
 

@@ -24,6 +24,8 @@ type SqlRoleBindingStore struct {
 	bindingsQuery sq.SelectBuilder
 }
 
+// roleBindingRow is the legacy integer-millisecond column layout. Domain
+// RoleBinding uses time.Time / OptionalTime; conversion is at this boundary.
 type roleBindingRow struct {
 	ID        string              `db:"id"`
 	CreateAt  int64               `db:"create_at"`
@@ -61,13 +63,13 @@ func (s SqlRoleBindingStore) Save(
 	if binding == nil {
 		return nil, store.NewErrInvalidInput("role_binding", "value", nil)
 	}
-	if binding.Id != "" {
-		return nil, store.NewErrInvalidInput("role_binding", "id", binding.Id)
+	if !binding.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("role_binding", "id", binding.ID.String())
 	}
 	candidate := *binding
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewRoleBindingID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -87,14 +89,19 @@ func (s SqlRoleBindingStore) SaveWithAudit(
 	ctx context.Context,
 	input *store.RoleBindingCreation,
 ) (*model.RoleBinding, error) {
-	if input == nil || input.Binding == nil || input.Binding.Id != "" ||
+	if input == nil || input.Binding == nil || !input.Binding.ID.IsZero() ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role_binding", "creation", nil)
 	}
 	candidate := *input.Binding
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("role_binding", "value", nil).Wrap(appErr)
+	at := model.TimeFromMillis(input.AuditAt)
+	if at.IsZero() {
+		at = model.NowUTC()
+	}
+	// Explicit StartsAt from the application is preserved; zero uses audit time.
+	candidate.PrepareCreate(model.NewRoleBindingID(), at)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("role_binding", "value", nil).Wrap(err)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -125,8 +132,8 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 			return err
 		}
 	}
-	lockKey := candidate.UserId + ":" + candidate.RoleId + ":" +
-		string(candidate.ScopeType) + ":" + candidate.ScopeId
+	lockKey := candidate.UserID.String() + ":" + candidate.RoleID.String() + ":" +
+		string(candidate.ScopeType) + ":" + candidate.ScopeID
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
 		return fmt.Errorf("lock role binding grant: %w", err)
 	}
@@ -136,6 +143,8 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 	if err := validateSystemAdministratorScope(ctx, tx, candidate); err != nil {
 		return err
 	}
+	startAt := model.MillisFromTime(candidate.StartsAt)
+	endAt := candidate.EndsAt.Millis()
 	var overlap bool
 	if err := tx.Get(ctx, &overlap, `
 		SELECT EXISTS (
@@ -145,8 +154,8 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 			   AND delete_at = 0
 			   AND start_at < CASE WHEN $6 = 0 THEN 9223372036854775807 ELSE $6 END
 			   AND (end_at = 0 OR end_at > $5)
-		)`, candidate.UserId, candidate.RoleId, candidate.ScopeType,
-		candidate.ScopeId, candidate.StartAt, candidate.EndAt); err != nil {
+		)`, candidate.UserID.String(), candidate.RoleID.String(), candidate.ScopeType,
+		candidate.ScopeID, startAt, endAt); err != nil {
 		return fmt.Errorf("check role binding overlap: %w", err)
 	}
 	if overlap {
@@ -165,7 +174,7 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save role binding: %w",
-			translateError("role_binding", candidate.Id, err),
+			translateError("role_binding", candidate.ID.String(), err),
 		)
 	}
 	return nil
@@ -179,21 +188,21 @@ func validateRoleBindingReferences(
 	checks := []struct {
 		table, id, constraint string
 	}{
-		{"users", binding.UserId, "role_bindings_user_id_fkey"},
-		{"roles", binding.RoleId, "role_bindings_role_id_fkey"},
+		{"users", binding.UserID.String(), "role_bindings_user_id_fkey"},
+		{"roles", binding.RoleID.String(), "role_bindings_role_id_fkey"},
 	}
 	switch binding.ScopeType {
 	case model.RoleScopeInstitution:
 		checks = append(checks, struct{ table, id, constraint string }{
-			"institutions", binding.ScopeId, "role_bindings_institution_scope_fkey",
+			"institutions", binding.ScopeID, "role_bindings_institution_scope_fkey",
 		})
 	case model.RoleScopeAcademicUnit:
 		checks = append(checks, struct{ table, id, constraint string }{
-			"academic_units", binding.ScopeId, "role_bindings_academic_unit_scope_fkey",
+			"academic_units", binding.ScopeID, "role_bindings_academic_unit_scope_fkey",
 		})
 	case model.RoleScopeClass:
 		checks = append(checks, struct{ table, id, constraint string }{
-			"classes", binding.ScopeId, "role_bindings_class_scope_fkey",
+			"classes", binding.ScopeID, "role_bindings_class_scope_fkey",
 		})
 	}
 	for _, check := range checks {
@@ -219,9 +228,9 @@ func validateSystemAdministratorScope(
 		ctx,
 		&roleName,
 		`SELECT name FROM roles WHERE id = $1 AND delete_at = 0`,
-		binding.RoleId,
+		binding.RoleID.String(),
 	); err != nil {
-		return translateError("role", binding.RoleId, err)
+		return translateError("role", binding.RoleID.String(), err)
 	}
 	if roleName == model.SystemAdministratorRoleName &&
 		binding.ScopeType != model.RoleScopeInstitution {
@@ -420,19 +429,21 @@ func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int
 
 func newRoleBindingRow(binding *model.RoleBinding) roleBindingRow {
 	return roleBindingRow{
-		ID: binding.Id, CreateAt: binding.CreateAt, UpdateAt: binding.UpdateAt,
-		DeleteAt: binding.DeleteAt, UserID: binding.UserId, RoleID: binding.RoleId,
-		ScopeType: binding.ScopeType, ScopeID: binding.ScopeId,
-		StartAt: binding.StartAt, EndAt: binding.EndAt,
+		ID: binding.ID.String(), CreateAt: model.MillisFromTime(binding.CreatedAt),
+		UpdateAt: model.MillisFromTime(binding.UpdatedAt), DeleteAt: binding.ArchivedAt.Millis(),
+		UserID: binding.UserID.String(), RoleID: binding.RoleID.String(),
+		ScopeType: binding.ScopeType, ScopeID: binding.ScopeID,
+		StartAt: model.MillisFromTime(binding.StartsAt), EndAt: binding.EndsAt.Millis(),
 	}
 }
 
 func (row roleBindingRow) model() *model.RoleBinding {
 	return &model.RoleBinding{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt,
-		DeleteAt: row.DeleteAt, UserId: row.UserID, RoleId: row.RoleID,
-		ScopeType: row.ScopeType, ScopeId: row.ScopeID,
-		StartAt: row.StartAt, EndAt: row.EndAt,
+		ID: model.RoleBindingID(row.ID), CreatedAt: model.TimeFromMillis(row.CreateAt),
+		UpdatedAt: model.TimeFromMillis(row.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		UserID: model.UserID(row.UserID), RoleID: model.RoleID(row.RoleID),
+		ScopeType: row.ScopeType, ScopeID: row.ScopeID,
+		StartsAt: model.TimeFromMillis(row.StartAt), EndsAt: model.OptionalTimeFromMillis(row.EndAt),
 	}
 }
 

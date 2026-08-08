@@ -140,9 +140,9 @@ func saveAcademicEntity[T model.Auditable](
 	}
 	saved, err := save()
 	if err != nil {
-		return zero, a.failAdministrationMutation(ctx, attempt.Id, where, entity, err)
+		return zero, a.failAdministrationMutation(ctx, attempt.ID.String(), where, entity, err)
 	}
-	if appErr := a.completeAdministrationMutation(ctx, attempt.Id, saved); appErr != nil {
+	if appErr := a.completeAdministrationMutation(ctx, attempt.ID.String(), saved); appErr != nil {
 		return zero, appErr
 	}
 	return saved, nil
@@ -170,9 +170,9 @@ func updateAcademicEntity[T model.Auditable](
 	}
 	updated, err := update()
 	if err != nil {
-		return zero, a.failAdministrationMutation(ctx, attempt.Id, where, entity, err)
+		return zero, a.failAdministrationMutation(ctx, attempt.ID.String(), where, entity, err)
 	}
-	if appErr := a.completeAdministrationMutation(ctx, attempt.Id, updated); appErr != nil {
+	if appErr := a.completeAdministrationMutation(ctx, attempt.ID.String(), updated); appErr != nil {
 		return zero, appErr
 	}
 	return updated, nil
@@ -200,7 +200,7 @@ func archiveAcademicEntity[T model.Auditable](
 	}
 	archived, err := archive(time.Now().UnixMilli())
 	if err != nil {
-		return a.failAdministrationMutation(ctx, attempt.Id, where, entity, err)
+		return a.failAdministrationMutation(ctx, attempt.ID.String(), where, entity, err)
 	}
-	return a.completeAdministrationMutation(ctx, attempt.Id, archived)
+	return a.completeAdministrationMutation(ctx, attempt.ID.String(), archived)
 }

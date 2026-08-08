@@ -33,7 +33,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 		{
 			name: "institution role inherits to class",
 			binding: &model.RoleBinding{
-				ScopeType: model.RoleScopeInstitution, ScopeId: institutionID,
+				ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
 			},
 			definition: classDefinition,
 			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
@@ -42,7 +42,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 		{
 			name: "ancestor academic unit inherits to class",
 			binding: &model.RoleBinding{
-				ScopeType: model.RoleScopeAcademicUnit, ScopeId: parentID,
+				ScopeType: model.RoleScopeAcademicUnit, ScopeID: parentID,
 			},
 			definition: classDefinition,
 			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
@@ -51,7 +51,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 		{
 			name: "unrelated academic unit does not inherit",
 			binding: &model.RoleBinding{
-				ScopeType: model.RoleScopeAcademicUnit, ScopeId: model.NewId(),
+				ScopeType: model.RoleScopeAcademicUnit, ScopeID: model.NewId(),
 			},
 			definition: classDefinition,
 			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
@@ -59,7 +59,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 		{
 			name: "class binding applies only to exact class",
 			binding: &model.RoleBinding{
-				ScopeType: model.RoleScopeClass, ScopeId: classID,
+				ScopeType: model.RoleScopeClass, ScopeID: classID,
 			},
 			definition: classDefinition,
 			resource:   model.Resource{Type: model.ResourceClass, Id: classID},
@@ -68,7 +68,7 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 		{
 			name: "lower scope cannot manage institution",
 			binding: &model.RoleBinding{
-				ScopeType: model.RoleScopeAcademicUnit, ScopeId: childID,
+				ScopeType: model.RoleScopeAcademicUnit, ScopeID: childID,
 			},
 			definition: institutionDefinition,
 			resource: model.Resource{

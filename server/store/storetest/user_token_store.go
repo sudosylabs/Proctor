@@ -307,9 +307,9 @@ func userTokenAudit(
 			Id:   userID,
 		},
 		ScopeType:  model.RoleScopeInstitution,
-		ScopeId:    institutionID,
+		ScopeID:    institutionID,
 		Status:     model.AuditStatusSuccess,
-		NodeId:     "storetest",
+		NodeID:     "storetest",
 		AuthMethod: "test",
 	}
 }
@@ -322,9 +322,9 @@ func userTokenCompletionAudit(
 		Action:     action,
 		Resource:   model.Resource{Type: model.ResourceUser},
 		ScopeType:  model.RoleScopeInstitution,
-		ScopeId:    institutionID,
+		ScopeID:    institutionID,
 		Status:     model.AuditStatusSuccess,
-		NodeId:     "storetest",
+		NodeID:     "storetest",
 		AuthMethod: "test_token",
 	}
 }

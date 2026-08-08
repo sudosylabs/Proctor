@@ -49,9 +49,9 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		EndsAt:        model.TimeFromMillis(200),
 	}
 	candidate.PrepareCreate(model.AcademicPeriodID(model.NewId()), model.NowUTC())
-	created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	created, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completed, err := ss.Audit().Get(ctx, createAttempt.Id)
+	completed, err := ss.Audit().Get(ctx, createAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("create audit status = %q", completed.Status)
@@ -76,9 +76,9 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	updatedCandidate := *created
 	updatedCandidate.EndsAt = model.TimeFromMillis(250)
 	updatedCandidate.PrepareUpdate(model.NowUTC())
-	updated, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &updatedCandidate, AuditEventID: updateAttempt.Id, AuditAt: model.GetMillis()})
+	updated, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &updatedCandidate, AuditEventID: updateAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completed, err = ss.Audit().Get(ctx, updateAttempt.Id)
+	completed, err = ss.Audit().Get(ctx, updateAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q", completed.Status)
@@ -100,12 +100,12 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	wrongOwner.InstitutionID = model.InstitutionID(model.NewId())
 	wrongOwner.PrepareUpdate(model.NowUTC())
 	wrongOwnerAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	if _, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &wrongOwner, AuditEventID: wrongOwnerAttempt.Id, AuditAt: model.GetMillis()}); !store.IsNotFound(err) {
+	if _, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &wrongOwner, AuditEventID: wrongOwnerAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsNotFound(err) {
 		t.Fatalf("ownership move error = %v, want not found", err)
 	}
 
 	archiveAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	archived, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
+	archived, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if !archived.IsArchived() {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
@@ -125,14 +125,14 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	withClass := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "period-with-class", 1_000)
 	saveClass(t, ctx, ss, level.ID.String(), withClass.ID.String(), "period-dependency-class")
 	blockedAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: withClass.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: withClass.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active class error = %v, want conflict", err)
 	}
 }
 
 func saveAcademicPeriodAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, institutionID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institutionID}, ScopeType: model.RoleScopeInstitution, ScopeId: institutionID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institutionID}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }

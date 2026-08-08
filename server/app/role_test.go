@@ -80,7 +80,7 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	resource := model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}
-	created := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
+	created := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 	persistence := &roleStoreFake{events: &events, createResult: created}
 	service := newRoleService(
 		persistence,
@@ -95,7 +95,7 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Id != created.Id || persistence.createInput.AuditEventID == "" {
+	if got.ID.String() != created.ID.String() || persistence.createInput.AuditEventID == "" {
 		t.Fatalf("result/input = %#v / %#v", got, persistence.createInput)
 	}
 	want := []string{"authorize-manage", "audit-begin", "store-create"}
@@ -129,7 +129,7 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	role := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
+	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 	updated := role.Clone()
 	updated.DisplayName = "Lead Teacher"
 	displayName := "Lead Teacher"
@@ -141,7 +141,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.Id, DisplayName: &displayName})
+	got, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	role := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
+	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
 	displayName := "Lead Teacher"
 	service := newRoleService(
 		&roleStoreFake{events: &events, role: role, updateErr: store.NewErrConflict("role", "roles_active_name_key", errors.New("dup"))},
@@ -166,7 +166,7 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.Id, DisplayName: &displayName})
+	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
 	if !Is(err, "role.conflict") {
 		t.Fatalf("error = %v", err)
 	}
@@ -179,7 +179,7 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	role := &model.Role{Id: model.NewId(), Name: model.SystemAdministratorRoleName, DisplayName: "Admin", BuiltIn: true}
+	role := &model.Role{ID: model.NewRoleID(), Name: model.SystemAdministratorRoleName, DisplayName: "Admin", BuiltIn: true}
 	displayName := "Nope"
 	service := newRoleService(
 		&roleStoreFake{events: &events, role: role},
@@ -188,7 +188,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.Id, DisplayName: &displayName})
+	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
 	if !Is(err, "role.built_in.protected") {
 		t.Fatalf("error = %v", err)
 	}
@@ -201,7 +201,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 func TestRoleDeleteCommitsBeforeInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	role := &model.Role{Id: model.NewId(), Name: "teacher", DisplayName: "Teacher"}
+	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher"}
 	service := newRoleService(
 		&roleStoreFake{events: &events, role: role, deleteResult: role},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
@@ -209,7 +209,7 @@ func TestRoleDeleteCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.Delete(context.Background(), Invocation{}, DeleteRoleCommand{ID: role.Id}); err != nil {
+	if err := service.Delete(context.Background(), Invocation{}, DeleteRoleCommand{ID: role.ID.String()}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"authorize-manage", "get-role", "audit-begin", "store-delete", "invalidate-authorization"}

@@ -37,29 +37,29 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 
 func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 	event := &AuditEvent{
-		ActorId: NewId(), SessionId: NewId(), Action: string(ActionUserView),
+		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionUserView),
 		Resource:  Resource{Type: ResourceUser, Id: NewId()},
-		ScopeType: RoleScopeInstitution, ScopeId: NewId(),
-		Status: AuditStatusSuccess, NodeId: "node-1",
+		ScopeType: RoleScopeInstitution, ScopeID: NewId(),
+		Status: AuditStatusSuccess, NodeID: "node-1",
 	}
-	event.PreSave()
-	if appErr := event.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	event.PrepareCreate(NewAuditEventID(), NowUTC())
+	if err := event.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestAuditEventValidationCloningAndBounds(t *testing.T) {
 	event := &AuditEvent{
-		ActorId: NewId(), SessionId: NewId(), Action: string(ActionAuditView),
+		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionAuditView),
 		Resource:  Resource{Type: ResourceInstitution, Id: NewId()},
-		ScopeType: RoleScopeInstitution, ScopeId: NewId(),
-		Status: AuditStatusSuccess, NodeId: "node-1",
+		ScopeType: RoleScopeInstitution, ScopeID: NewId(),
+		Status: AuditStatusSuccess, NodeID: "node-1",
 		IPAddress: "fe80::1%en0", UserAgent: strings.Repeat("a", 600),
 		Parameters: []byte(`{"safe":true}`),
 	}
-	event.PreSave()
-	if appErr := event.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	event.PrepareCreate(NewAuditEventID(), NowUTC())
+	if err := event.Validate(); err != nil {
+		t.Fatal(err)
 	}
 	if len(event.UserAgent) != 512 {
 		t.Fatalf("bounded user agent length = %d", len(event.UserAgent))
@@ -72,11 +72,11 @@ func TestAuditEventValidationCloningAndBounds(t *testing.T) {
 
 	invalid := event.Clone()
 	invalid.IPAddress = "not-an-address"
-	if appErr := invalid.IsValid(); appErr == nil ||
-		appErr.(*ValidationError).Code != "model.audit_event.is_valid.ip_address.app_error" {
-		t.Fatalf("invalid IP error = %v", appErr)
+	if err := invalid.Validate(); err == nil ||
+		err.(*ValidationError).Code != "model.audit_event.is_valid.ip_address.app_error" {
+		t.Fatalf("invalid IP error = %v", err)
 	}
-	if _, appErr := EncodeAuditData(strings.Repeat("x", AuditJSONMaxBytes)); appErr == nil {
+	if _, err := EncodeAuditData(strings.Repeat("x", AuditJSONMaxBytes)); err == nil {
 		t.Fatal("oversized encoded audit data was accepted")
 	}
 }

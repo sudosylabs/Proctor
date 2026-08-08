@@ -7,7 +7,11 @@
 
 package model
 
-import "regexp"
+import (
+	"fmt"
+	"regexp"
+	"time"
+)
 
 const (
 	RolePermissionMaxLength = 128
@@ -21,16 +25,20 @@ var validPermission = regexp.MustCompile(`^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+
 // Role is a reusable named set of stable domain permissions. It has no scope
 // by itself; RoleBinding assigns it to a User at an institution, AcademicUnit,
 // or Class scope.
+//
+// Domain time is UTC time.Time. Soft archive uses ArchivedAt (legacy delete_at).
+// Roles are not revisioned: updates and soft-delete are serialized through
+// explicit store operations and built-in protection, not optimistic concurrency.
 type Role struct {
-	Id          string   `json:"id"`
-	CreateAt    int64    `json:"create_at"`
-	UpdateAt    int64    `json:"update_at"`
-	DeleteAt    int64    `json:"delete_at"`
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name"`
-	Description string   `json:"description"`
-	Permissions []string `json:"permissions"`
-	BuiltIn     bool     `json:"built_in"`
+	ID          RoleID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	ArchivedAt  OptionalTime
+	Name        string
+	DisplayName string
+	Description string
+	Permissions []string
+	BuiltIn     bool
 }
 
 // RolePatch contains the mutable fields of a custom role. Role names are
@@ -41,6 +49,7 @@ type RolePatch struct {
 	Permissions *[]string `json:"permissions,omitempty"`
 }
 
+// Patch applies non-nil fields from patch.
 func (r *Role) Patch(patch *RolePatch) {
 	if r == nil || patch == nil {
 		return
@@ -56,32 +65,83 @@ func (r *Role) Patch(patch *RolePatch) {
 	}
 }
 
+// IsEmpty reports whether the patch carries no field updates.
 func (rp *RolePatch) IsEmpty() bool {
 	return rp == nil ||
 		(rp.DisplayName == nil && rp.Description == nil && rp.Permissions == nil)
 }
 
-func (r *Role) PreSave() {
-	preSave(&r.Id, &r.CreateAt, &r.UpdateAt)
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (r *Role) PrepareCreate(id RoleID, at time.Time) {
+	if r == nil {
+		return
+	}
+	r.ID = id
+	at = TimeUTC(at)
+	r.CreatedAt = at
+	r.UpdatedAt = at
+	r.ArchivedAt = OptionalTime{}
 	sanitizeNamed(&r.Name, &r.DisplayName, &r.Description)
 	r.Permissions = cloneStrings(r.Permissions)
 }
 
-func (r *Role) PreUpdate() {
-	preUpdate(&r.UpdateAt)
+// PrepareUpdate applies the application-selected transition time.
+func (r *Role) PrepareUpdate(at time.Time) {
+	if r == nil {
+		return
+	}
+	r.UpdatedAt = TimeUTC(at)
 	sanitizeNamed(&r.Name, &r.DisplayName, &r.Description)
 	r.Permissions = cloneStrings(r.Permissions)
 }
 
-func (r *Role) IsValid() error {
-	const where = "Role.IsValid"
-	if appErr := validatePersistentFields(where, "role", r.Id, r.CreateAt, r.UpdateAt); appErr != nil {
-		return appErr
+// Archive marks the role soft-archived (legacy soft-delete).
+func (r *Role) Archive(at time.Time) error {
+	if r == nil {
+		return fmt.Errorf("model: role is nil")
 	}
-	if appErr := validateNamed(where, "role", r.Id, r.Name, r.DisplayName, r.Description); appErr != nil {
-		return appErr
+	at = TimeUTC(at)
+	if at.IsZero() {
+		return fmt.Errorf("model: role archive time is required")
 	}
-	details := "id=" + r.Id
+	if r.IsArchived() {
+		return fmt.Errorf("model: role is already archived")
+	}
+	if r.BuiltIn {
+		return fmt.Errorf("model: built-in role cannot be archived")
+	}
+	r.ArchivedAt = OptionalTimeFrom(at)
+	r.UpdatedAt = at
+	return r.Validate()
+}
+
+// IsArchived reports soft archive state.
+func (r *Role) IsArchived() bool {
+	return r != nil && r.ArchivedAt.Valid
+}
+
+// Validate checks rehydrated role state.
+func (r *Role) Validate() error {
+	const where = "Role.Validate"
+	if r == nil {
+		return invalidModelError(where, "role", "value", "is required", "")
+	}
+	if !r.ID.IsValid() {
+		return invalidModelError(where, "role", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + r.ID.String()
+	if r.CreatedAt.IsZero() || r.UpdatedAt.IsZero() {
+		return invalidModelError(where, "role", "created_at", "must be set", details)
+	}
+	if r.UpdatedAt.Before(r.CreatedAt) {
+		return invalidModelError(where, "role", "updated_at", "must not precede created_at", details)
+	}
+	if r.ArchivedAt.Valid && r.ArchivedAt.Time.Before(r.CreatedAt) {
+		return invalidModelError(where, "role", "archived_at", "must not precede created_at", details)
+	}
+	if err := validateNamed(where, "role", r.ID.String(), r.Name, r.DisplayName, r.Description); err != nil {
+		return err
+	}
 	if len(r.Permissions) > RolePermissionMaxCount {
 		return invalidModelError(where, "role", "permissions", "contains too many values", details)
 	}
@@ -98,6 +158,7 @@ func (r *Role) IsValid() error {
 	return nil
 }
 
+// Clone returns a deep copy of the role including its permissions slice.
 func (r *Role) Clone() *Role {
 	if r == nil {
 		return nil
@@ -107,13 +168,23 @@ func (r *Role) Clone() *Role {
 	return &cloned
 }
 
+// Auditable returns a deliberately safe audit projection. Lifecycle times remain
+// as Unix milliseconds for wire and audit compatibility during expand.
 func (r *Role) Auditable() map[string]any {
-	fields := auditFields(r.Id, r.CreateAt, r.UpdateAt, r.DeleteAt)
-	fields["name"] = r.Name
-	fields["display_name"] = r.DisplayName
-	fields["permissions"] = cloneStrings(r.Permissions)
-	fields["built_in"] = r.BuiltIn
-	return fields
+	if r == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":           r.ID.String(),
+		"created_at":   MillisFromTime(r.CreatedAt),
+		"updated_at":   MillisFromTime(r.UpdatedAt),
+		"archived_at":  r.ArchivedAt.Millis(),
+		"delete_at":    r.ArchivedAt.Millis(), // legacy audit key during expand
+		"name":         r.Name,
+		"display_name": r.DisplayName,
+		"permissions":  cloneStrings(r.Permissions),
+		"built_in":     r.BuiltIn,
+	}
 }
 
 func cloneStrings(values []string) []string {

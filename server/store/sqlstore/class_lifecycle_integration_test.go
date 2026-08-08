@@ -65,7 +65,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID.String(), ExpectedAcademicUnitID: unit.ID.String(), ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID.String(), ExpectedAcademicUnitID: unit.ID.String(), ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()
@@ -88,12 +88,12 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID.String(), ExpectedAcademicUnitID: unit.ID.String(), ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.ID.String(), ExpectedAcademicUnitID: unit.ID.String(), ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()
 				<-start
-				_, dependentErr = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: user.ID, RoleId: role.Id, ScopeType: model.RoleScopeClass, ScopeId: class.ID.String(), StartAt: model.GetMillis()})
+				_, dependentErr = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis())})
 			}()
 			close(start)
 			wait.Wait()
@@ -128,7 +128,7 @@ func saveLifecycleClass(t *testing.T, ctx context.Context, persistence store.Sto
 }
 func saveLifecycleClassAudit(t *testing.T, ctx context.Context, persistence store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+	attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	if err != nil {
 		t.Fatal(err)
 	}

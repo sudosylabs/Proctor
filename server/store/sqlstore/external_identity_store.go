@@ -172,7 +172,7 @@ func (s SqlExternalIdentityStore) ResolveOrProvision(
 		return nil, store.NewErrNotFound("external_identity", provider)
 	}
 	if user == nil || !user.ID.IsZero() || provisionAudit == nil ||
-		provisionAudit.Id != "" {
+		!provisionAudit.ID.IsZero() {
 		return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
 	}
 
@@ -199,7 +199,7 @@ func (s SqlExternalIdentityStore) ResolveOrProvision(
 		return nil, err
 	}
 	auditCandidate := provisionAudit.Clone()
-	auditCandidate.ActorId = userCandidate.ID.String()
+	auditCandidate.ActorID = userCandidate.ID
 	auditCandidate.Resource = model.Resource{
 		Type: model.ResourceUser,
 		Id:   userCandidate.ID.String(),

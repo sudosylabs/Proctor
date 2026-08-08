@@ -42,7 +42,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID.String()}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unit.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
+		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID.String()}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,7 +53,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: level.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: level.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()

@@ -3,6 +3,11 @@
 
 package model
 
+import (
+	"fmt"
+	"time"
+)
+
 // RoleScopeType identifies the resource at which a role begins to apply.
 // Programme and ProgrammeLevel scopes are intentionally absent until their
 // authorization requirements are confirmed.
@@ -17,54 +22,83 @@ const (
 // RoleBinding assigns one Role to one User at one scope for a time range.
 // Permission inheritance is evaluated by the authorization service from the
 // resource hierarchy and action rules; it is not copied into sessions.
+//
+// ScopeID remains a plain string because the target table depends on
+// ScopeType (polymorphic scope reference). Effective dates use StartsAt and
+// EndsAt OptionalTime like Affiliation.
 type RoleBinding struct {
-	Id        string        `json:"id"`
-	CreateAt  int64         `json:"create_at"`
-	UpdateAt  int64         `json:"update_at"`
-	DeleteAt  int64         `json:"delete_at"`
-	UserId    string        `json:"user_id"`
-	RoleId    string        `json:"role_id"`
-	ScopeType RoleScopeType `json:"scope_type"`
-	ScopeId   string        `json:"scope_id"`
-	StartAt   int64         `json:"start_at"`
-	EndAt     int64         `json:"end_at,omitempty"`
+	ID        RoleBindingID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ArchivedAt OptionalTime
+	UserID    UserID
+	RoleID    RoleID
+	ScopeType RoleScopeType
+	ScopeID   string
+	StartsAt  time.Time
+	EndsAt    OptionalTime // absent means open-ended
 }
 
-func (rb *RoleBinding) PreSave() {
-	preSaveMembership(&rb.Id, &rb.CreateAt, &rb.UpdateAt, &rb.StartAt)
-}
-
-func (rb *RoleBinding) PreUpdate() {
-	preUpdate(&rb.UpdateAt)
-}
-
-func (rb *RoleBinding) IsValid() error {
-	const where = "RoleBinding.IsValid"
-	if appErr := validatePersistentFields(
-		where,
-		"role_binding",
-		rb.Id,
-		rb.CreateAt,
-		rb.UpdateAt,
-	); appErr != nil {
-		return appErr
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (rb *RoleBinding) PrepareCreate(id RoleBindingID, at time.Time) {
+	if rb == nil {
+		return
 	}
-	details := "id=" + rb.Id
-	if !IsValidId(rb.UserId) {
+	rb.ID = id
+	at = TimeUTC(at)
+	rb.CreatedAt = at
+	rb.UpdatedAt = at
+	rb.ArchivedAt = OptionalTime{}
+	if rb.StartsAt.IsZero() {
+		rb.StartsAt = at
+	} else {
+		rb.StartsAt = TimeUTC(rb.StartsAt)
+	}
+}
+
+// PrepareUpdate applies the application-selected transition time.
+func (rb *RoleBinding) PrepareUpdate(at time.Time) {
+	if rb == nil {
+		return
+	}
+	rb.UpdatedAt = TimeUTC(at)
+}
+
+// Validate checks rehydrated role-binding state.
+func (rb *RoleBinding) Validate() error {
+	const where = "RoleBinding.Validate"
+	if rb == nil {
+		return invalidModelError(where, "role_binding", "value", "is required", "")
+	}
+	if !rb.ID.IsValid() {
+		return invalidModelError(where, "role_binding", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + rb.ID.String()
+	if rb.CreatedAt.IsZero() || rb.UpdatedAt.IsZero() {
+		return invalidModelError(where, "role_binding", "created_at", "must be set", details)
+	}
+	if rb.UpdatedAt.Before(rb.CreatedAt) {
+		return invalidModelError(where, "role_binding", "updated_at", "must not precede created_at", details)
+	}
+	if rb.ArchivedAt.Valid && rb.ArchivedAt.Time.Before(rb.CreatedAt) {
+		return invalidModelError(where, "role_binding", "archived_at", "must not precede created_at", details)
+	}
+	if !rb.UserID.IsValid() {
 		return invalidModelError(where, "role_binding", "user_id", "must be a valid identifier", details)
 	}
-	if !IsValidId(rb.RoleId) {
+	if !rb.RoleID.IsValid() {
 		return invalidModelError(where, "role_binding", "role_id", "must be a valid identifier", details)
 	}
 	if !rb.ScopeType.IsValid() {
 		return invalidModelError(where, "role_binding", "scope_type", "has an unknown value", details)
 	}
-	if !IsValidId(rb.ScopeId) {
+	if !IsValidId(rb.ScopeID) {
 		return invalidModelError(where, "role_binding", "scope_id", "must be a valid identifier", details)
 	}
-	return validateEffectiveTimes(where, "role_binding", details, rb.StartAt, rb.EndAt)
+	return validateEffectiveInterval(where, "role_binding", details, rb.StartsAt, rb.EndsAt)
 }
 
+// IsValid reports whether the scope type is recognized.
 func (st RoleScopeType) IsValid() bool {
 	switch st {
 	case RoleScopeInstitution, RoleScopeAcademicUnit, RoleScopeClass:
@@ -74,19 +108,58 @@ func (st RoleScopeType) IsValid() bool {
 	}
 }
 
-func (rb *RoleBinding) IsActiveAt(now int64) bool {
-	return rb != nil && rb.DeleteAt == 0 && rb.StartAt <= now && (rb.EndAt == 0 || now < rb.EndAt)
+// IsActiveAt reports whether the binding covers the given instant.
+func (rb *RoleBinding) IsActiveAt(now time.Time) bool {
+	if rb == nil || rb.IsArchived() {
+		return false
+	}
+	now = TimeUTC(now)
+	if rb.StartsAt.After(now) {
+		return false
+	}
+	if rb.EndsAt.Valid && !now.Before(rb.EndsAt.Time) {
+		return false
+	}
+	return true
 }
 
+// IsArchived reports soft archive state.
+func (rb *RoleBinding) IsArchived() bool {
+	return rb != nil && rb.ArchivedAt.Valid
+}
+
+// End closes an open-ended binding at the given exclusive end time.
+func (rb *RoleBinding) End(at time.Time) error {
+	if rb == nil {
+		return fmt.Errorf("model: role binding is nil")
+	}
+	at = TimeUTC(at)
+	if rb.EndsAt.Valid {
+		return fmt.Errorf("model: role binding already ended")
+	}
+	rb.EndsAt = OptionalTimeFrom(at)
+	rb.UpdatedAt = at
+	return rb.Validate()
+}
+
+// Auditable returns a deliberately safe audit projection.
 func (rb *RoleBinding) Auditable() map[string]any {
-	fields := auditFields(rb.Id, rb.CreateAt, rb.UpdateAt, rb.DeleteAt)
-	fields["user_id"] = rb.UserId
-	fields["role_id"] = rb.RoleId
-	fields["scope_type"] = rb.ScopeType
-	fields["scope_id"] = rb.ScopeId
-	fields["start_at"] = rb.StartAt
-	fields["end_at"] = rb.EndAt
-	return fields
+	if rb == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":          rb.ID.String(),
+		"created_at":  MillisFromTime(rb.CreatedAt),
+		"updated_at":  MillisFromTime(rb.UpdatedAt),
+		"archived_at": rb.ArchivedAt.Millis(),
+		"delete_at":   rb.ArchivedAt.Millis(), // legacy audit key during expand
+		"user_id":     rb.UserID.String(),
+		"role_id":     rb.RoleID.String(),
+		"scope_type":  rb.ScopeType,
+		"scope_id":    rb.ScopeID,
+		"start_at":    MillisFromTime(rb.StartsAt),
+		"end_at":      rb.EndsAt.Millis(),
+	}
 }
 
 var _ Auditable = (*RoleBinding)(nil)

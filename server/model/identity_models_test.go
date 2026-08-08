@@ -20,33 +20,20 @@ func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
 	sessionID := NewId()
 	tokenHash := HashToken(NewCredentialToken())
 
-	// Affiliation, AcademicUnitMember, and ClassMember use the typed
-	// PrepareCreate/Validate lifecycle; see membership-specific tests below.
+	// Role, RoleBinding, Affiliation, AcademicUnitMember, ClassMember, User,
+	// and AuditEvent use the typed PrepareCreate/Validate lifecycle; see
+	// their dedicated tests. Remaining session/token models still use PreSave.
+	_ = userID
+	_ = unitID
+	_ = roleID
 	tests := []struct {
 		name  string
 		model persistentModel
 	}{
 		{
-			name: "role",
-			model: &Role{
-				Name:        "department_teacher",
-				DisplayName: "Department Teacher",
-				Permissions: []string{"class.view", "class.members.view"},
-			},
-		},
-		{
-			name: "role binding",
-			model: &RoleBinding{
-				UserId:    userID,
-				RoleId:    roleID,
-				ScopeType: RoleScopeAcademicUnit,
-				ScopeId:   unitID,
-			},
-		},
-		{
 			name: "session",
 			model: &Session{
-				UserId:                 userID,
+				UserId: userID,
 				ClientType:             SessionClientDesktop,
 				AuthenticationMethod:   "oidc",
 				AuthenticationStrength: AuthenticationSingleFactor,
@@ -66,7 +53,7 @@ func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
 		{
 			name: "personal access token",
 			model: &PersonalAccessToken{
-				UserId:      userID,
+				UserId: userID,
 				Description: "Automation on my workstation",
 				TokenHash:   tokenHash,
 				Scopes:      []string{"class.view"},
@@ -148,25 +135,71 @@ func TestExternalIdentityPreservesOpaqueSubject(t *testing.T) {
 	}
 }
 
-func TestRoleAndAuditCopiesDoNotExposeMutablePermissions(t *testing.T) {
+func TestRoleAndRoleBindingTypedLifecycle(t *testing.T) {
 	t.Parallel()
 
-	r := &Role{
-		Name:        "class_viewer",
-		DisplayName: "Class Viewer",
-		Permissions: []string{"class.view"},
+	at := NowUTC()
+	role := &Role{
+		Name:        "department_teacher",
+		DisplayName: "Department Teacher",
+		Permissions: []string{"class.view", "class.members.view"},
 	}
-	r.PreSave()
-	clone := r.Clone()
+	role.PrepareCreate(NewRoleID(), at)
+	if err := role.Validate(); err != nil {
+		t.Fatalf("role Validate() = %v", err)
+	}
+	if role.IsArchived() {
+		t.Fatal("new role should not be archived")
+	}
+	clone := role.Clone()
 	clone.Permissions[0] = "class.members.manage"
-	if r.Permissions[0] != "class.view" {
+	if role.Permissions[0] != "class.view" {
 		t.Fatal("Clone exposed role permission storage")
 	}
-
-	audit := r.Auditable()
+	audit := role.Auditable()
 	audit["permissions"].([]string)[0] = "class.members.manage"
-	if r.Auditable()["permissions"].([]string)[0] != "class.view" {
+	if role.Auditable()["permissions"].([]string)[0] != "class.view" {
 		t.Fatal("Auditable exposed role permission storage")
+	}
+
+	binding := &RoleBinding{
+		UserID:    NewUserID(),
+		RoleID:    role.ID,
+		ScopeType: RoleScopeAcademicUnit,
+		ScopeID:   NewId(),
+	}
+	binding.PrepareCreate(NewRoleBindingID(), at)
+	if err := binding.Validate(); err != nil {
+		t.Fatalf("binding Validate() = %v", err)
+	}
+	if !binding.IsActiveAt(at) {
+		t.Fatal("binding should be active at create time")
+	}
+	if err := binding.End(at.Add(time.Hour)); err != nil {
+		t.Fatalf("End() = %v", err)
+	}
+	if binding.IsActiveAt(at.Add(time.Hour)) {
+		t.Fatal("binding should not be active at exclusive end time")
+	}
+}
+
+func TestInstallationStateTypedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	state := &InstallationState{
+		InitializedAt:       NowUTC(),
+		InstitutionID:       NewInstitutionID(),
+		AdministratorUserID: NewUserID(),
+	}
+	if err := state.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+	if !state.IsValid() {
+		t.Fatal("IsValid() = false")
+	}
+	fields := state.Auditable()
+	if fields["institution_id"] != state.InstitutionID.String() {
+		t.Fatalf("Auditable() = %#v", fields)
 	}
 }
 
@@ -175,7 +208,7 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 
 	beforeCreate := GetMillis()
 	s := &Session{
-		UserId:                 NewId(),
+		UserId: NewId(),
 		ClientType:             SessionClientCLI,
 		AuthenticationMethod:   "password",
 		AuthenticationStrength: AuthenticationMultiFactor,
@@ -417,8 +450,8 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 					DisplayName: "Viewer",
 					Permissions: []string{"class.view", "class.view"},
 				}
-				r.PreSave()
-				return r.IsValid()
+				r.PrepareCreate(NewRoleID(), NowUTC())
+				return r.Validate()
 			}(),
 			code: "model.role.is_valid.permissions.app_error",
 		},
@@ -426,7 +459,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			name: "personal token without expiry",
 			err: func() error {
 				token := &PersonalAccessToken{
-					UserId:      NewId(),
+					UserId: NewId(),
 					Description: "CLI",
 					TokenHash:   HashToken(NewCredentialToken()),
 					Scopes:      []string{"class.view"},
@@ -440,7 +473,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			name: "session idle deadline after absolute deadline",
 			err: func() error {
 				s := &Session{
-					UserId:                 NewId(),
+					UserId: NewId(),
 					ClientType:             SessionClientDesktop,
 					AuthenticationMethod:   "oidc",
 					AuthenticationStrength: AuthenticationSingleFactor,

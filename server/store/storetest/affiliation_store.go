@@ -80,9 +80,9 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	createAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.ID.String())
 	candidate := &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStaff, StartsAt: model.TimeFromMillis(start)}
 	candidate.PrepareCreate(model.NewAffiliationID(), model.NowUTC())
-	created, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	created, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completedCreate, err := ss.Audit().Get(ctx, createAttempt.Id)
+	completedCreate, err := ss.Audit().Get(ctx, createAttempt.ID.String())
 	requireNoError(t, err)
 	if completedCreate.Status != model.AuditStatusSuccess {
 		t.Fatalf("create audit = %#v", completedCreate)
@@ -96,18 +96,18 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 		t.Fatalf("create survived audit rollback: %v", err)
 	}
 	endAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.ID.String())
-	endedWithAudit, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis()})
+	endedWithAudit, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if endedWithAudit.Revision != created.Revision+1 || endedWithAudit.EndsAt.Millis() != start+20 {
 		t.Fatalf("EndWithAudit() = %#v", endedWithAudit)
 	}
-	completedEnd, err := ss.Audit().Get(ctx, endAttempt.Id)
+	completedEnd, err := ss.Audit().Get(ctx, endAttempt.ID.String())
 	requireNoError(t, err)
 	if completedEnd.Status != model.AuditStatusSuccess {
 		t.Fatalf("end audit = %#v", completedEnd)
 	}
 	staleAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.ID.String())
-	if _, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 21, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 21, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("stale EndWithAudit() error = %v", err)
 	}
 	unit, err := ss.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "affiliation-unit", DisplayName: "Affiliation Unit"})
@@ -135,7 +135,7 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 
 func saveAffiliationAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, institutionID, userID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: userID}, ScopeType: model.RoleScopeInstitution, ScopeId: institutionID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: userID}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }

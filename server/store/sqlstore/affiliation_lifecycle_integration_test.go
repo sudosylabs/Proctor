@@ -49,7 +49,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
+		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, endErr = persistence.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: affiliation.ID.String(), ExpectedRevision: affiliation.Revision, EndAt: model.GetMillis() + 100, AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+			_, endErr = persistence.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: affiliation.ID.String(), ExpectedRevision: affiliation.Revision, EndAt: model.GetMillis() + 100, AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()

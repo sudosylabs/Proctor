@@ -24,6 +24,8 @@ type SqlRoleStore struct {
 	rolesQuery sq.SelectBuilder
 }
 
+// roleRow is the legacy integer-millisecond column layout. Domain Role uses
+// time.Time / OptionalTime; conversion is at this boundary.
 type roleRow struct {
 	ID          string         `db:"id"`
 	CreateAt    int64          `db:"create_at"`
@@ -54,13 +56,13 @@ func (s SqlRoleStore) Save(ctx context.Context, role *model.Role) (*model.Role, 
 	if role == nil {
 		return nil, store.NewErrInvalidInput("role", "value", nil)
 	}
-	if role.Id != "" {
-		return nil, store.NewErrInvalidInput("role", "id", role.Id)
+	if !role.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("role", "id", role.ID.String())
 	}
 	candidate := role.Clone()
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewRoleID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	if _, err := insertRole(ctx, s.GetMaster(), candidate); err != nil {
 		return nil, err
@@ -69,15 +71,19 @@ func (s SqlRoleStore) Save(ctx context.Context, role *model.Role) (*model.Role, 
 }
 
 func (s SqlRoleStore) SaveWithAudit(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
-	if input == nil || input.Role == nil || input.Role.Id != "" ||
+	if input == nil || input.Role == nil || !input.Role.ID.IsZero() ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "creation", nil)
 	}
 	candidate := input.Role.Clone()
 	candidate.BuiltIn = false
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("role", "value", nil).Wrap(appErr)
+	at := model.TimeFromMillis(input.AuditAt)
+	if at.IsZero() {
+		at = model.NowUTC()
+	}
+	candidate.PrepareCreate(model.NewRoleID(), at)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("role", "value", nil).Wrap(err)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -112,7 +118,7 @@ func insertRole(ctx context.Context, executor sqlxExecutor, role *model.Role) (r
 			:id, :create_at, :update_at, :delete_at, :name, :display_name,
 			:description, :permissions, :built_in
 		)`, &row); err != nil {
-		return roleRow{}, fmt.Errorf("save role: %w", translateError("role", role.Id, err))
+		return roleRow{}, fmt.Errorf("save role: %w", translateError("role", role.ID.String(), err))
 	}
 	return row, nil
 }
@@ -182,9 +188,9 @@ func (s SqlRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role
 		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 	}
 	candidate := role.Clone()
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	if err := updateRole(ctx, s.GetMaster(), candidate); err != nil {
 		return nil, err
@@ -193,7 +199,7 @@ func (s SqlRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role
 }
 
 func (s SqlRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
-	if input == nil || input.Role == nil || !model.IsValidId(input.Role.Id) ||
+	if input == nil || input.Role == nil || !input.Role.ID.IsValid() ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "update", nil)
 	}
@@ -201,9 +207,13 @@ func (s SqlRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpda
 		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 	}
 	candidate := input.Role.Clone()
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("role", "value", nil).Wrap(appErr)
+	at := model.TimeFromMillis(input.AuditAt)
+	if at.IsZero() {
+		at = model.NowUTC()
+	}
+	candidate.PrepareUpdate(at)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("role", "value", nil).Wrap(err)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -236,9 +246,9 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role) er
 		       description = :description, permissions = :permissions
 		 WHERE id = :id AND delete_at = 0 AND built_in = :built_in`, &row)
 	if err != nil {
-		return fmt.Errorf("update role: %w", translateError("role", role.Id, err))
+		return fmt.Errorf("update role: %w", translateError("role", role.ID.String(), err))
 	}
-	return requireAffected(result, "role", role.Id)
+	return requireAffected(result, "role", role.ID.String())
 }
 
 func (s SqlRoleStore) Delete(ctx context.Context, id string, deleteAt int64) (*model.Role, error) {
@@ -255,8 +265,9 @@ func (s SqlRoleStore) Delete(ctx context.Context, id string, deleteAt int64) (*m
 	if err := softDeleteRole(ctx, s.GetMaster(), id, deleteAt); err != nil {
 		return nil, err
 	}
-	role.UpdateAt = deleteAt
-	role.DeleteAt = deleteAt
+	at := model.TimeFromMillis(deleteAt)
+	role.UpdatedAt = at
+	role.ArchivedAt = model.OptionalTimeFrom(at)
 	return role, nil
 }
 
@@ -286,8 +297,9 @@ func (s SqlRoleStore) DeleteWithAudit(ctx context.Context, input *store.RoleDele
 	if err := softDeleteRole(ctx, tx, input.ID, input.DeleteAt); err != nil {
 		return nil, err
 	}
-	role.UpdateAt = input.DeleteAt
-	role.DeleteAt = input.DeleteAt
+	at := model.TimeFromMillis(input.DeleteAt)
+	role.UpdatedAt = at
+	role.ArchivedAt = model.OptionalTimeFrom(at)
 	encoded, appErr := model.EncodeAuditData(role.Auditable())
 	if appErr != nil {
 		return nil, appErr
@@ -319,8 +331,9 @@ func newRoleRow(role *model.Role) roleRow {
 		permissions = pq.StringArray{}
 	}
 	return roleRow{
-		ID: role.Id, CreateAt: role.CreateAt, UpdateAt: role.UpdateAt,
-		DeleteAt: role.DeleteAt, Name: role.Name, DisplayName: role.DisplayName,
+		ID: role.ID.String(), CreateAt: model.MillisFromTime(role.CreatedAt),
+		UpdateAt: model.MillisFromTime(role.UpdatedAt), DeleteAt: role.ArchivedAt.Millis(),
+		Name: role.Name, DisplayName: role.DisplayName,
 		Description: role.Description, Permissions: permissions,
 		BuiltIn: role.BuiltIn,
 	}
@@ -328,8 +341,9 @@ func newRoleRow(role *model.Role) roleRow {
 
 func (row roleRow) model() *model.Role {
 	return &model.Role{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt,
-		DeleteAt: row.DeleteAt, Name: row.Name, DisplayName: row.DisplayName,
+		ID: model.RoleID(row.ID), CreatedAt: model.TimeFromMillis(row.CreateAt),
+		UpdatedAt: model.TimeFromMillis(row.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		Name: row.Name, DisplayName: row.DisplayName,
 		Description: row.Description, Permissions: append([]string(nil), row.Permissions...),
 		BuiltIn: row.BuiltIn,
 	}

@@ -64,8 +64,8 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserID: user.ID, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
-		ScopeId: institution.ID.String(), StartAt: model.GetMillis(),
+		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis()),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -89,11 +89,11 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	statuses := map[model.AuditStatus]bool{}
 	for _, event := range response.Events {
 		if event.Action == string(model.ActionAuditView) &&
-			event.ActorId == user.ID &&
+			event.ActorID == user.ID &&
 			event.Resource.Id == institution.ID.String() {
 			statuses[event.Status] = true
 		}
-		if event.SessionId == "" || event.NodeId == "" || event.RequestId == "" {
+		if event.SessionID == "" || event.NodeID == "" || event.RequestID == "" {
 			t.Fatalf("incomplete security audit event = %#v", event)
 		}
 	}
@@ -200,8 +200,8 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserID: user.ID, RoleId: role.Id, ScopeType: model.RoleScopeAcademicUnit,
-		ScopeId: root.ID.String(), StartAt: model.GetMillis() - 1_000,
+		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
+		ScopeID: root.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if permErr != nil || allowed {
 		t.Fatalf("lower-scope institution permission = %v, %v", allowed, permErr)
 	}
-	if _, err := persistence.RoleBinding().End(ctx, binding.Id, model.GetMillis()); err != nil {
+	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
 	allowed, permErr = helper.App.Can(
@@ -310,8 +310,8 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: viewer.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
-		ScopeId: institution.ID.String(), StartAt: model.GetMillis() - 1_000,
+		UserID: viewer.Id, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -334,7 +334,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, permErr)
 	}
 
-	if _, err := persistence.RoleBinding().End(ctx, binding.Id, model.GetMillis()); err != nil {
+	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
 	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.Id)
@@ -365,7 +365,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		if event.Resource.Type != model.ResourceUser ||
 			event.Resource.Id != target.Id ||
 			event.ScopeType != model.RoleScopeInstitution ||
-			event.ScopeId != institution.ID.String() {
+			event.ScopeID != institution.ID.String() {
 			t.Fatalf("user authorization audit scope = %#v", event)
 		}
 	}

@@ -102,11 +102,11 @@ func (a *App) CreatePersonalAccessToken(
 		settings.MaximumPerUser,
 	)
 	if err != nil {
-		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.Id, err)
+		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.ID.String(), err)
 	}
 	if _, appErr := a.audit.CompleteCriticalAction(
 		ctx,
-		attempt.Id,
+		attempt.ID.String(),
 		model.AuditStatusSuccess,
 		"",
 		saved.Auditable(),
@@ -172,11 +172,11 @@ func (a *App) RevokePersonalAccessToken(
 		time.Now().UnixMilli(),
 	)
 	if err != nil {
-		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.Id, err)
+		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.ID.String(), err)
 	}
 	if _, appErr := a.audit.CompleteCriticalAction(
 		ctx,
-		attempt.Id,
+		attempt.ID.String(),
 		model.AuditStatusSuccess,
 		"",
 		revoked.Auditable(),
@@ -233,11 +233,11 @@ func (a *App) SetPersonalAccessTokenDisabled(
 		a.personalAccessTokens.MaximumPerUser,
 	)
 	if err != nil {
-		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.Id, err)
+		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.ID.String(), err)
 	}
 	if _, appErr := a.audit.CompleteCriticalAction(
 		ctx,
-		attempt.Id,
+		attempt.ID.String(),
 		model.AuditStatusSuccess,
 		"",
 		updated.Auditable(),

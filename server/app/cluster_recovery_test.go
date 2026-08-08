@@ -128,18 +128,18 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 
 	role := &model.Role{
-		Id:          roleID,
+		ID: model.RoleID(roleID),
 		Name:        "recovery_admin",
 		DisplayName: "Recovery Admin",
 		Permissions: []string{string(model.ActionInstitutionManage)},
 	}
 	binding := &model.RoleBinding{
-		Id:        bindingID,
-		UserId:    userID,
-		RoleId:    roleID,
+		ID: model.RoleBindingID(bindingID),
+		UserID: model.UserID(userID),
+		RoleID: model.RoleID(roleID),
 		ScopeType: model.RoleScopeInstitution,
-		ScopeId:   institutionID,
-		StartAt:   now.Add(-time.Hour).UnixMilli(),
+		ScopeID:   institutionID,
+		StartsAt: model.TimeFromMillis(now.Add(-time.Hour).UnixMilli()),
 	}
 	institution := &model.Institution{ID: model.InstitutionID(institutionID), Name: "Recovery University"}
 
@@ -437,13 +437,13 @@ type recoveryRoleBindingStore struct{ root *recoveryAuthorizationStore }
 func (s recoveryRoleBindingStore) ListActiveByUser(_ context.Context, userID string, at int64) ([]*model.RoleBinding, error) {
 	out := make([]*model.RoleBinding, 0)
 	for _, binding := range s.root.bindings {
-		if binding.UserId != userID {
+		if binding.UserID.String() != userID {
 			continue
 		}
-		if binding.StartAt > at {
+		if model.MillisFromTime(binding.StartsAt) > at {
 			continue
 		}
-		if binding.EndAt != 0 && binding.EndAt <= at {
+		if binding.EndsAt.Millis() != 0 && binding.EndsAt.Millis() <= at {
 			continue
 		}
 		cloned := *binding

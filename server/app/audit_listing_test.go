@@ -38,10 +38,10 @@ func (a *auditListingAuthorizerFake) AuthorizeView(context.Context, Invocation) 
 func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	event := &model.AuditEvent{Id: model.NewId(), CreateAt: 100}
+	event := &model.AuditEvent{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(100)}
 	persistence := &auditListingStoreFake{events: &events, list: []*model.AuditEvent{event}}
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{events: &events})
-	got, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewId()})
+	got, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID().String()})
 	if err != nil {
 		t.Fatal(err)
 	}

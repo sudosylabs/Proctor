@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"net/netip"
 	"strings"
+	"time"
 )
 
 const AuditJSONMaxBytes = 16 * 1024
@@ -27,43 +28,73 @@ const (
 // AuditEvent is an append-oriented security record. Critical mutations are
 // inserted as attempts and may transition exactly once; point-in-time
 // authorization decisions are inserted directly with their terminal result.
+//
+// ActorID and SessionID are optional typed identifiers (zero means absent).
+// ScopeID remains a plain string because the target depends on ScopeType.
+// Create/update times use UTC time.Time; public list DTOs still project millis.
 type AuditEvent struct {
-	Id         string          `json:"id"`
-	CreateAt   int64           `json:"create_at"`
-	UpdateAt   int64           `json:"update_at"`
-	ActorId    string          `json:"actor_id,omitempty"`
-	SessionId  string          `json:"session_id,omitempty"`
-	Action     string          `json:"action"`
-	Resource   Resource        `json:"resource"`
-	ScopeType  RoleScopeType   `json:"scope_type"`
-	ScopeId    string          `json:"scope_id"`
-	Status     AuditStatus     `json:"status"`
-	RequestId  string          `json:"request_id,omitempty"`
-	NodeId     string          `json:"node_id"`
-	ClientType string          `json:"client_type,omitempty"`
-	AuthMethod string          `json:"authentication_method,omitempty"`
-	IPAddress  string          `json:"ip_address,omitempty"`
-	UserAgent  string          `json:"user_agent,omitempty"`
-	ErrorCode  string          `json:"error_code,omitempty"`
-	Parameters json.RawMessage `json:"parameters,omitempty"`
-	PriorState json.RawMessage `json:"prior_state,omitempty"`
-	Result     json.RawMessage `json:"result,omitempty"`
+	ID         AuditEventID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	ActorID    UserID
+	SessionID  SessionID
+	Action     string
+	Resource   Resource
+	ScopeType  RoleScopeType
+	ScopeID    string
+	Status     AuditStatus
+	RequestID  string
+	NodeID     string
+	ClientType string
+	AuthMethod string
+	IPAddress  string
+	UserAgent  string
+	ErrorCode  string
+	Parameters json.RawMessage
+	PriorState json.RawMessage
+	Result     json.RawMessage
 }
 
+// AuditQuery is the application/store listing filter for audit events.
 type AuditQuery struct {
-	ActorId    string
+	ActorID    string
 	Action     string
 	Resource   *Resource
 	BeforeTime int64
-	BeforeId   string
+	BeforeID   string
 	Limit      int
 }
 
-func (ae *AuditEvent) PreSave() {
-	preSave(&ae.Id, &ae.CreateAt, &ae.UpdateAt)
+// PrepareCreate applies application-owned identity and lifecycle fields and
+// bounds string fields that arrive from transport or operational metadata.
+func (ae *AuditEvent) PrepareCreate(id AuditEventID, at time.Time) {
+	if ae == nil {
+		return
+	}
+	ae.ID = id
+	at = TimeUTC(at)
+	ae.CreatedAt = at
+	ae.UpdatedAt = at
+	ae.normalize()
+}
+
+// PrepareUpdate applies the application-selected completion time.
+func (ae *AuditEvent) PrepareUpdate(at time.Time) {
+	if ae == nil {
+		return
+	}
+	ae.UpdatedAt = TimeUTC(at)
+	ae.ErrorCode = boundedString(strings.TrimSpace(ae.ErrorCode), 128)
+	ae.Result = cloneRawMessage(ae.Result)
+}
+
+func (ae *AuditEvent) normalize() {
+	if ae == nil {
+		return
+	}
 	ae.Action = strings.TrimSpace(ae.Action)
-	ae.RequestId = boundedString(strings.TrimSpace(ae.RequestId), 128)
-	ae.NodeId = boundedString(strings.TrimSpace(ae.NodeId), 128)
+	ae.RequestID = boundedString(strings.TrimSpace(ae.RequestID), 128)
+	ae.NodeID = boundedString(strings.TrimSpace(ae.NodeID), 128)
 	ae.ClientType = boundedString(strings.TrimSpace(ae.ClientType), 32)
 	ae.AuthMethod = boundedString(strings.TrimSpace(ae.AuthMethod), 64)
 	ae.IPAddress = boundedString(strings.TrimSpace(ae.IPAddress), 64)
@@ -74,16 +105,26 @@ func (ae *AuditEvent) PreSave() {
 	ae.Result = cloneRawMessage(ae.Result)
 }
 
-func (ae *AuditEvent) IsValid() error {
-	const where = "AuditEvent.IsValid"
-	if appErr := validatePersistentFields(where, "audit_event", ae.Id, ae.CreateAt, ae.UpdateAt); appErr != nil {
-		return appErr
+// Validate checks rehydrated audit-event state.
+func (ae *AuditEvent) Validate() error {
+	const where = "AuditEvent.Validate"
+	if ae == nil {
+		return invalidModelError(where, "audit_event", "value", "is required", "")
 	}
-	details := "id=" + ae.Id
-	if ae.ActorId != "" && !IsValidId(ae.ActorId) {
+	if !ae.ID.IsValid() {
+		return invalidModelError(where, "audit_event", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + ae.ID.String()
+	if ae.CreatedAt.IsZero() || ae.UpdatedAt.IsZero() {
+		return invalidModelError(where, "audit_event", "created_at", "must be set", details)
+	}
+	if ae.UpdatedAt.Before(ae.CreatedAt) {
+		return invalidModelError(where, "audit_event", "updated_at", "must not precede created_at", details)
+	}
+	if !ae.ActorID.IsZero() && !ae.ActorID.IsValid() {
 		return invalidModelError(where, "audit_event", "actor_id", "must be empty or a valid identifier", details)
 	}
-	if ae.SessionId != "" && !IsValidId(ae.SessionId) {
+	if !ae.SessionID.IsZero() && !ae.SessionID.IsValid() {
 		return invalidModelError(where, "audit_event", "session_id", "must be empty or a valid identifier", details)
 	}
 	if len(ae.Action) == 0 || len(ae.Action) > RolePermissionMaxLength || !validPermission.MatchString(ae.Action) {
@@ -92,13 +133,13 @@ func (ae *AuditEvent) IsValid() error {
 	if !ae.Resource.IsValid() {
 		return invalidModelError(where, "audit_event", "resource", "must identify a valid resource", details)
 	}
-	if !ae.ScopeType.IsValid() || !IsValidId(ae.ScopeId) {
+	if !ae.ScopeType.IsValid() || !IsValidId(ae.ScopeID) {
 		return invalidModelError(where, "audit_event", "scope", "must identify a valid authorization scope", details)
 	}
 	if ae.Status != AuditStatusAttempt && ae.Status != AuditStatusSuccess && ae.Status != AuditStatusFail {
 		return invalidModelError(where, "audit_event", "status", "has an unknown value", details)
 	}
-	if ae.NodeId == "" {
+	if ae.NodeID == "" {
 		return invalidModelError(where, "audit_event", "node_id", "must not be empty", details)
 	}
 	if ae.IPAddress != "" {
@@ -107,7 +148,7 @@ func (ae *AuditEvent) IsValid() error {
 		}
 	}
 	for field, value := range map[string]json.RawMessage{
-		"parameters":  ae.Parameters,
+		"parameters":   ae.Parameters,
 		"prior_state": ae.PriorState,
 		"result":      ae.Result,
 	} {
@@ -118,6 +159,7 @@ func (ae *AuditEvent) IsValid() error {
 	return nil
 }
 
+// Clone returns a deep copy of the audit event including JSON payloads.
 func (ae *AuditEvent) Clone() *AuditEvent {
 	if ae == nil {
 		return nil
@@ -129,6 +171,7 @@ func (ae *AuditEvent) Clone() *AuditEvent {
 	return &cloned
 }
 
+// EncodeAuditData marshals a value into a bounded audit JSON payload.
 func EncodeAuditData(value any) (json.RawMessage, error) {
 	if value == nil {
 		return nil, nil

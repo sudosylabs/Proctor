@@ -49,8 +49,8 @@ func saveAcademicUnitAuditAttempt(
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionAcademicUnitManage),
 		Resource:  model.Resource{Type: model.ResourceAcademicUnit, Id: unitID},
-		ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID,
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID,
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	return attempt
@@ -65,13 +65,13 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	candidate.DisplayName = "Audited Update"
 	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
-		Unit: &candidate, AuditEventID: attempt.Id, AuditAt: model.GetMillis(),
+		Unit: &candidate, AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if updated.DisplayName != "Audited Update" {
 		t.Fatalf("UpdateWithAudit() = %#v", updated)
 	}
-	completed, err := ss.Audit().Get(ctx, attempt.Id)
+	completed, err := ss.Audit().Get(ctx, attempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q, want success", completed.Status)
@@ -96,13 +96,13 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	archiveAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, archiveUnit.ID.String())
 	archived, err := ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
 		ID: archiveUnit.ID.String(), ArchiveAt: model.GetMillis(),
-		AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis(),
+		AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
 	}
-	completed, err = ss.Audit().Get(ctx, archiveAttempt.Id)
+	completed, err = ss.Audit().Get(ctx, archiveAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("archive audit status = %q, want success", completed.Status)
@@ -127,8 +127,8 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionInstitutionManage),
 		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	unit := &model.AcademicUnit{
@@ -138,11 +138,11 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	unit.PrepareCreate(model.AcademicUnitID(model.NewId()), model.NowUTC())
 	saved, err := ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 		Unit:         unit,
-		AuditEventID: attempt.Id,
+		AuditEventID: attempt.ID.String(),
 		AuditAt:      model.GetMillis(),
 	})
 	requireNoError(t, err)
-	completed, err := ss.Audit().Get(ctx, attempt.Id)
+	completed, err := ss.Audit().Get(ctx, attempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit status = %q, want success", completed.Status)

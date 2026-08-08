@@ -323,7 +323,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	removeLast := performJSONRequest(
 		handler,
 		http.MethodDelete,
-		"/api/v1/role-bindings/"+secondBinding.Id,
+		"/api/v1/role-bindings/"+secondBinding.ID.String(),
 		nil,
 		secondLogin.Tokens.AccessToken,
 	)
@@ -343,7 +343,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		if event.Action != string(model.ActionRoleManage) {
 			continue
 		}
-		if event.RequestId == authorizedRequestID {
+		if event.RequestID == authorizedRequestID {
 			receiptAudits++
 		}
 		switch event.Status {

@@ -90,9 +90,10 @@ func (s *AuthorizationService) evaluate(
 	roleIDs := make([]string, 0, len(bindings))
 	seen := make(map[string]struct{}, len(bindings))
 	for _, binding := range bindings {
-		if _, exists := seen[binding.RoleId]; !exists {
-			seen[binding.RoleId] = struct{}{}
-			roleIDs = append(roleIDs, binding.RoleId)
+		roleKey := binding.RoleID.String()
+		if _, exists := seen[roleKey]; !exists {
+			seen[roleKey] = struct{}{}
+			roleIDs = append(roleIDs, roleKey)
 		}
 	}
 	roles, err := s.store.Role().GetByIds(ctx, roleIDs)
@@ -105,13 +106,13 @@ func (s *AuthorizationService) evaluate(
 		for _, permission := range role.Permissions {
 			permissions[permission] = struct{}{}
 		}
-		permissionByRole[role.Id] = permissions
+		permissionByRole[role.ID.String()] = permissions
 	}
 	for _, binding := range bindings {
 		if !roleBindingApplies(binding, definition, resource, resolved) {
 			continue
 		}
-		if _, grants := permissionByRole[binding.RoleId][string(action)]; grants {
+		if _, grants := permissionByRole[binding.RoleID.String()][string(action)]; grants {
 			return true, resolved, nil
 		}
 	}
@@ -319,16 +320,16 @@ func roleBindingApplies(
 ) bool {
 	switch binding.ScopeType {
 	case model.RoleScopeInstitution:
-		return definition.InheritInstitutionScope && binding.ScopeId == resolved.institutionID
+		return definition.InheritInstitutionScope && binding.ScopeID == resolved.institutionID
 	case model.RoleScopeAcademicUnit:
 		if !definition.InheritAcademicUnitScopes {
 			return false
 		}
-		_, applies := resolved.academicUnitID[binding.ScopeId]
+		_, applies := resolved.academicUnitID[binding.ScopeID]
 		return applies
 	case model.RoleScopeClass:
 		return resource.Type == model.ResourceClass &&
-			binding.ScopeId == resolved.classID
+			binding.ScopeID == resolved.classID
 	default:
 		return false
 	}

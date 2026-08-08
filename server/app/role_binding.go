@@ -121,20 +121,32 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	if err != nil {
 		return nil, err
 	}
-	candidate := &model.RoleBinding{
-		UserId: strings.TrimSpace(command.UserID), RoleId: strings.TrimSpace(command.RoleID),
-		ScopeType: command.ScopeType, ScopeId: strings.TrimSpace(command.ScopeID),
-		StartAt: command.StartAt, EndAt: command.EndAt,
+	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "user_id")
 	}
-	if candidate.StartAt == 0 {
-		candidate.StartAt = s.now().UnixMilli()
+	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "role_id")
 	}
-	if !model.IsValidId(candidate.UserId) || !model.IsValidId(candidate.RoleId) ||
-		!candidate.ScopeType.IsValid() || !model.IsValidId(candidate.ScopeId) ||
-		candidate.StartAt < 0 || (candidate.EndAt != 0 && candidate.EndAt <= candidate.StartAt) {
+	scopeID := strings.TrimSpace(command.ScopeID)
+	if !command.ScopeType.IsValid() || !model.IsValidId(scopeID) {
 		return nil, NewError("request.invalid").WithField("field", "role_binding")
 	}
-	role, err := s.roles.Get(ctx, candidate.RoleId)
+	if command.StartAt < 0 || (command.EndAt != 0 && command.EndAt <= command.StartAt) {
+		return nil, NewError("request.invalid").WithField("field", "role_binding")
+	}
+	candidate := &model.RoleBinding{
+		UserID: userID, RoleID: roleID,
+		ScopeType: command.ScopeType, ScopeID: scopeID,
+	}
+	if command.StartAt > 0 {
+		candidate.StartsAt = model.TimeFromMillis(command.StartAt)
+	}
+	if command.EndAt > 0 {
+		candidate.EndsAt = model.OptionalTimeFromMillis(command.EndAt)
+	}
+	role, err := s.roles.Get(ctx, candidate.RoleID.String())
 	if err != nil {
 		return nil, roleBindingError(err)
 	}
@@ -156,7 +168,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}
-	s.effects.AuthorizationChangedForUser(ctx, saved.UserId)
+	s.effects.AuthorizationChangedForUser(ctx, saved.UserID.String())
 	return saved, nil
 }
 
@@ -191,7 +203,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, err)
 	}
-	s.effects.AuthorizationChangedForUser(ctx, ended.UserId)
+	s.effects.AuthorizationChangedForUser(ctx, ended.UserID.String())
 	return ended, nil
 }
 

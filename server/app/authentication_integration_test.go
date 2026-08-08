@@ -98,8 +98,8 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	if _, err := persistence.RoleBinding().Save(
 		context.Background(),
 		&model.RoleBinding{
-			UserID: user.ID, RoleId: role.Id,
-			ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
+			UserID: user.ID, RoleID: role.ID,
+			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -481,7 +481,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	disabledAt := model.GetMillis()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
 		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.ID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(), Status: model.AuditStatusAttempt, NodeId: "authentication-integration",
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(), Status: model.AuditStatusAttempt, NodeID: "authentication-integration",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -489,7 +489,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: currentUser.Revision, Disabled: true,
 		ChangedAt: disabledAt, RevocationReason: "authentication integration disabled account",
-		AuditEventID: auditAttempt.Id, AuditAt: disabledAt,
+		AuditEventID: auditAttempt.ID.String(), AuditAt: disabledAt,
 	}); err != nil {
 		t.Fatal(err)
 	}

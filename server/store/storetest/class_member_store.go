@@ -117,10 +117,10 @@ func testAuditedClassMemberLifecycle(
 	first.AcademicPeriodID = firstClass.AcademicPeriodID
 	createAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	created, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
-		Member: first, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis(),
+		Member: first, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
-	requireSuccessfulAudit(t, ctx, ss, createAttempt.Id)
+	requireSuccessfulAudit(t, ctx, ss, createAttempt.ID.String())
 
 	rolledBackTransfer := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5)}
 	rolledBackTransfer.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
@@ -141,14 +141,14 @@ func testAuditedClassMemberLifecycle(
 	second.AcademicPeriodID = secondClass.AcademicPeriodID
 	transferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	transferred, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
-		Member: second, AuditEventID: transferAttempt.Id, AuditAt: model.GetMillis(),
+		Member: second, AuditEventID: transferAttempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if transferred.Previous == nil || transferred.Previous.ID != created.Membership.ID ||
 		transferred.Previous.EndsAt.Millis() != model.MillisFromTime(second.StartsAt) || transferred.Previous.Revision != 2 {
 		t.Fatalf("audited transfer = %#v", transferred)
 	}
-	requireSuccessfulAudit(t, ctx, ss, transferAttempt.Id)
+	requireSuccessfulAudit(t, ctx, ss, transferAttempt.ID.String())
 
 	history, err := ss.ClassMember().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
@@ -160,18 +160,18 @@ func testAuditedClassMemberLifecycle(
 	endAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	ended, err := ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
 		ID: transferred.Membership.ID.String(), ExpectedRevision: transferred.Membership.Revision,
-		EndAt: start + 30, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis(),
+		EndAt: start + 30, AuditEventID: endAttempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if ended.Revision != transferred.Membership.Revision+1 || ended.EndsAt.Millis() != start+30 {
 		t.Fatalf("EndWithAudit() = %#v", ended)
 	}
-	requireSuccessfulAudit(t, ctx, ss, endAttempt.Id)
+	requireSuccessfulAudit(t, ctx, ss, endAttempt.ID.String())
 
 	staleAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	if _, err := ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
 		ID: ended.ID.String(), ExpectedRevision: transferred.Membership.Revision,
-		EndAt: start + 31, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis(),
+		EndAt: start + 31, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
 		t.Fatalf("stale EndWithAudit() error = %v", err)
 	}
@@ -264,7 +264,7 @@ func testConcurrentClassMemberEnrollment(
 		go func(index int) {
 			defer wg.Done()
 			_, errs[index] = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
-				Member: members[index], AuditEventID: attempts[index].Id, AuditAt: model.GetMillis(),
+				Member: members[index], AuditEventID: attempts[index].ID.String(), AuditAt: model.GetMillis(),
 			})
 		}(i)
 	}
@@ -287,7 +287,7 @@ func testConcurrentClassMemberEnrollment(
 	}
 	completedAudits := 0
 	for _, attempt := range attempts {
-		event, err := ss.Audit().Get(ctx, attempt.Id)
+		event, err := ss.Audit().Get(ctx, attempt.ID.String())
 		requireNoError(t, err)
 		if event.Status == model.AuditStatusSuccess {
 			completedAudits++
@@ -310,8 +310,8 @@ func saveClassMemberAuditAttempt(
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionClassMembersManage),
 		Resource:  model.Resource{Type: model.ResourceClass, Id: classID},
-		ScopeType: model.RoleScopeClass, ScopeId: classID,
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeClass, ScopeID: classID,
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	return attempt

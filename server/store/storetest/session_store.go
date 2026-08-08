@@ -156,13 +156,13 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	result, err := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
 		SessionID: session.Id, UserID: user.ID.String(), RevokedAt: at,
-		Reason: "session revoked by administrator", AuditEventID: attempt.Id, AuditAt: at,
+		Reason: "session revoked by administrator", AuditEventID: attempt.ID.String(), AuditAt: at,
 	})
 	requireNoError(t, err)
 	if result.Session.RevokedAt != at || len(result.TokenHashes) != 2 {
 		t.Fatalf("RevokeWithAudit() = %#v", result)
 	}
-	audit, err := ss.Audit().Get(ctx, attempt.Id)
+	audit, err := ss.Audit().Get(ctx, attempt.ID.String())
 	requireNoError(t, err)
 	if audit.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit status = %#v", audit)
@@ -237,13 +237,13 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	result, err := ss.Session().RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
 		UserID: user.ID.String(), RevokedAt: at, Reason: "sessions revoked by administrator",
-		AuditEventID: attempt.Id, AuditAt: at,
+		AuditEventID: attempt.ID.String(), AuditAt: at,
 	})
 	requireNoError(t, err)
 	if len(result.Sessions) != 2 || len(result.TokenHashes) != 4 {
 		t.Fatalf("RevokeAllForUserWithAudit() = %#v", result)
 	}
-	audit, err := ss.Audit().Get(ctx, attempt.Id)
+	audit, err := ss.Audit().Get(ctx, attempt.ID.String())
 	requireNoError(t, err)
 	if audit.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit status = %#v", audit)
@@ -255,8 +255,8 @@ func saveSessionAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, 
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionSessionManage),
 		Resource:  model.Resource{Type: model.ResourceUser, Id: userID},
-		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(),
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewId(),
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	return attempt

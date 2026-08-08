@@ -51,9 +51,9 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 		DisplayName:      "Audited Class",
 	}
 	candidate.PrepareCreate(model.ClassID(model.NewId()), model.NowUTC())
-	created, err := ss.Class().Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	created, err := ss.Class().Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completed, err := ss.Audit().Get(ctx, createAttempt.Id)
+	completed, err := ss.Audit().Get(ctx, createAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("create audit status = %q", completed.Status)
@@ -77,7 +77,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Class"
 	updatedCandidate.PrepareUpdate(created.UpdatedAt.Add(1_000_000)) // 1ms
-	updated, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID.String(), ExpectedRevision: created.Revision, AuditEventID: updateAttempt.Id, AuditAt: model.GetMillis()})
+	updated, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &updatedCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID.String(), ExpectedRevision: created.Revision, AuditEventID: updateAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if updated.Revision != created.Revision+1 {
 		t.Fatalf("update revision = %d, want %d", updated.Revision, created.Revision+1)
@@ -91,11 +91,11 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	staleCandidate := *updated
 	staleCandidate.DisplayName = "Stale Update"
 	staleCandidate.PrepareUpdate(updated.UpdatedAt.Add(1_000_000))
-	if _, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID.String(), ExpectedRevision: created.Revision, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: &staleCandidate, ExpectedAcademicUnitID: fixture.programme.AcademicUnitID.String(), ExpectedRevision: created.Revision, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("stale UpdateWithAudit() error = %v", err)
 	}
 	wrongOwnerAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
-	if _, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.ID.String(), ExpectedAcademicUnitID: model.NewId(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: wrongOwnerAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.ID.String(), ExpectedAcademicUnitID: model.NewId(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: wrongOwnerAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("wrong-owner ArchiveWithAudit() error = %v", err)
 	}
 	rolledBack := *updated
@@ -111,7 +111,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	}
 
 	archiveAttempt := saveClassAuditAttempt(t, ctx, ss, fixture.programme.AcademicUnitID.String())
-	archived, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.ID.String(), ExpectedAcademicUnitID: fixture.programme.AcademicUnitID.String(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
+	archived, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: updated.ID.String(), ExpectedAcademicUnitID: fixture.programme.AcademicUnitID.String(), ExpectedRevision: updated.Revision, ArchiveAt: model.MillisFromTime(updated.UpdatedAt) + 1, AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if archived.Revision != updated.Revision+1 {
 		t.Fatalf("archive revision = %d, want %d", archived.Revision, updated.Revision+1)
@@ -130,7 +130,7 @@ func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 
 func saveClassAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }

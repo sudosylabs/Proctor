@@ -32,21 +32,21 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionInstitutionManage),
 		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	candidate := *institution
 	candidate.DisplayName = "Audited Northbridge"
 	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
-		Institution: &candidate, AuditEventID: attempt.Id, AuditAt: model.GetMillis(),
+		Institution: &candidate, AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if updated.DisplayName != "Audited Northbridge" {
 		t.Fatalf("UpdateWithAudit() = %#v", updated)
 	}
-	completed, err := ss.Audit().Get(ctx, attempt.Id)
+	completed, err := ss.Audit().Get(ctx, attempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit status = %q", completed.Status)

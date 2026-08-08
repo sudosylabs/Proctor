@@ -26,6 +26,8 @@ type SqlAuditStore struct {
 	auditsQuery sq.SelectBuilder
 }
 
+// auditRow is the legacy integer-millisecond column layout. Domain AuditEvent
+// uses time.Time and typed optional IDs; conversion is at this boundary.
 type auditRow struct {
 	ID           string              `db:"id"`
 	CreateAt     int64               `db:"create_at"`
@@ -84,13 +86,13 @@ func insertAuditEvent(
 	if event == nil {
 		return nil, store.NewErrInvalidInput("audit_event", "value", nil)
 	}
-	if event.Id != "" {
-		return nil, store.NewErrInvalidInput("audit_event", "id", event.Id)
+	if !event.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("audit_event", "id", event.ID.String())
 	}
 	candidate := event.Clone()
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewAuditEventID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	row := newAuditRow(candidate)
 	if _, err := executor.NamedExec(ctx, `
@@ -105,7 +107,7 @@ func insertAuditEvent(
 			:request_id, :node_id, :client_type, :authentication_method,
 			:ip_address, :user_agent, :error_code, :parameters, :prior_state, :result
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("save audit event: %w", translateError("audit_event", candidate.Id, err))
+		return nil, fmt.Errorf("save audit event: %w", translateError("audit_event", candidate.ID.String(), err))
 	}
 	return candidate, nil
 }
@@ -213,11 +215,12 @@ func (s SqlAuditStore) List(
 
 func newAuditRow(event *model.AuditEvent) auditRow {
 	return auditRow{
-		ID: event.Id, CreateAt: event.CreateAt, UpdateAt: event.UpdateAt,
-		ActorID: nullableAuditString(event.ActorId), SessionID: nullableAuditString(event.SessionId),
+		ID: event.ID.String(), CreateAt: model.MillisFromTime(event.CreatedAt),
+		UpdateAt: model.MillisFromTime(event.UpdatedAt),
+		ActorID: nullableAuditString(event.ActorID.String()), SessionID: nullableAuditString(event.SessionID.String()),
 		Action: event.Action, ResourceType: event.Resource.Type, ResourceID: event.Resource.Id,
-		ScopeType: event.ScopeType, ScopeID: event.ScopeId, Status: event.Status,
-		RequestID: event.RequestId, NodeID: event.NodeId, ClientType: event.ClientType,
+		ScopeType: event.ScopeType, ScopeID: event.ScopeID, Status: event.Status,
+		RequestID: event.RequestID, NodeID: event.NodeID, ClientType: event.ClientType,
 		AuthMethod: event.AuthMethod, IPAddress: event.IPAddress, UserAgent: event.UserAgent,
 		ErrorCode: event.ErrorCode, Parameters: jsonValue(event.Parameters),
 		PriorState: jsonValue(event.PriorState), Result: jsonValue(event.Result),
@@ -226,11 +229,13 @@ func newAuditRow(event *model.AuditEvent) auditRow {
 
 func (row auditRow) model() *model.AuditEvent {
 	return &model.AuditEvent{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt,
-		ActorId: row.ActorID.String, SessionId: row.SessionID.String, Action: row.Action,
+		ID: model.AuditEventID(row.ID), CreatedAt: model.TimeFromMillis(row.CreateAt),
+		UpdatedAt: model.TimeFromMillis(row.UpdateAt),
+		ActorID: model.UserID(row.ActorID.String), SessionID: model.SessionID(row.SessionID.String),
+		Action: row.Action,
 		Resource:  model.Resource{Type: row.ResourceType, Id: row.ResourceID},
-		ScopeType: row.ScopeType, ScopeId: row.ScopeID, Status: row.Status,
-		RequestId: row.RequestID, NodeId: row.NodeID, ClientType: row.ClientType,
+		ScopeType: row.ScopeType, ScopeID: row.ScopeID, Status: row.Status,
+		RequestID: row.RequestID, NodeID: row.NodeID, ClientType: row.ClientType,
 		AuthMethod: row.AuthMethod, IPAddress: row.IPAddress, UserAgent: row.UserAgent,
 		ErrorCode: row.ErrorCode, Parameters: append([]byte(nil), row.Parameters...),
 		PriorState: append([]byte(nil), row.PriorState...), Result: append([]byte(nil), row.Result...),

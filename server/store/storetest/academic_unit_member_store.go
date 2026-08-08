@@ -57,10 +57,10 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	createAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: auditedUser.ID, StartsAt: model.TimeFromMillis(start)}
 	candidate.PrepareCreate(model.NewAcademicUnitMemberID(), model.NowUTC())
-	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	endAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
-	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis()})
+	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.ID.String(), ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if endedAudited.Revision != created.Revision+1 {
 		t.Fatalf("EndWithAudit() = %#v", endedAudited)

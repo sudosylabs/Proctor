@@ -372,9 +372,9 @@ func (s *ExternalAuthenticationService) complete(
 		&model.AuditEvent{
 			Action:    "authentication.external_provision",
 			ScopeType: model.RoleScopeInstitution,
-			ScopeId:   institution.ID.String(), Status: model.AuditStatusSuccess,
-			RequestId:  metadata.RequestId,
-			NodeId:     s.policy.NodeID,
+			ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
+			RequestID:  metadata.RequestId,
+			NodeID:     s.policy.NodeID,
 			ClientType: string(state.ClientType), AuthMethod: method,
 			IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
 			Parameters: provisionParameters,
@@ -455,7 +455,7 @@ func (s *ExternalAuthenticationService) complete(
 		legacy := sessionErr
 		if _, completionErr := s.audit.CompleteCriticalAction(
 			ctx,
-			auditEvent.Id,
+			auditEvent.ID.String(),
 			model.AuditStatusFail,
 			func() string { if f,ok:=As(legacy); ok { return f.Code() }; return "authentication.internal" }(),
 			nil,
@@ -466,7 +466,7 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	if _, appErr := s.audit.CompleteCriticalAction(
 		ctx,
-		auditEvent.Id,
+		auditEvent.ID.String(),
 		model.AuditStatusSuccess,
 		"",
 		session.Auditable(),

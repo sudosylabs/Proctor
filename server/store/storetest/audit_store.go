@@ -20,50 +20,50 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	user := saveUser(t, ctx, ss)
 	event, err := ss.Audit().Save(ctx, &model.AuditEvent{
-		ActorId: user.ID.String(), Action: string(model.ActionRoleManage),
+		ActorID: user.ID, Action: string(model.ActionRoleManage),
 		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 		Parameters: []byte(`{"role_id":"safe"}`),
 	})
 	requireNoError(t, err)
-	got, err := ss.Audit().Get(ctx, event.Id)
+	got, err := ss.Audit().Get(ctx, event.ID.String())
 	requireNoError(t, err)
 	if got.Status != model.AuditStatusAttempt || string(got.Parameters) == "" {
 		t.Fatalf("Get() = %#v", got)
 	}
 	completed, err := ss.Audit().Complete(
-		ctx, event.Id, model.AuditStatusSuccess, "", []byte(`{"updated":true}`),
-		event.UpdateAt+1,
+		ctx, event.ID.String(), model.AuditStatusSuccess, "", []byte(`{"updated":true}`),
+		model.MillisFromTime(event.UpdatedAt)+1,
 	)
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("Complete() = %#v", completed)
 	}
 	if _, err := ss.Audit().Complete(
-		ctx, event.Id, model.AuditStatusFail, "late", nil, event.UpdateAt+2,
+		ctx, event.ID.String(), model.AuditStatusFail, "late", nil, model.MillisFromTime(event.UpdatedAt)+2,
 	); !store.IsNotFound(err) {
 		t.Fatalf("second Complete() error = %v", err)
 	}
 	time.Sleep(2 * time.Millisecond)
 	second, err := ss.Audit().Save(ctx, &model.AuditEvent{
-		ActorId: user.ID.String(), Action: string(model.ActionAuditView),
+		ActorID: user.ID, Action: string(model.ActionAuditView),
 		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
-		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
-		Status: model.AuditStatusSuccess, NodeId: "test-node",
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	list, err := ss.Audit().List(ctx, store.AuditListOptions{ActorId: user.ID.String(), Limit: 1})
 	requireNoError(t, err)
-	if len(list) != 1 || list[0].Id != second.Id {
+	if len(list) != 1 || list[0].ID != second.ID {
 		t.Fatalf("List() = %#v", list)
 	}
 	next, err := ss.Audit().List(ctx, store.AuditListOptions{
 		ActorId: user.ID.String(), Limit: 10,
-		BeforeTime: list[0].CreateAt, BeforeId: list[0].Id,
+		BeforeTime: model.MillisFromTime(list[0].CreatedAt), BeforeId: list[0].ID.String(),
 	})
 	requireNoError(t, err)
-	if len(next) != 1 || next[0].Id != event.Id {
+	if len(next) != 1 || next[0].ID != event.ID {
 		t.Fatalf("cursor List() = %#v", next)
 	}
 }

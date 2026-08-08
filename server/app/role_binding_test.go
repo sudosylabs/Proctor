@@ -76,23 +76,23 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	created := &model.RoleBinding{Id: model.NewId(), UserId: userID, RoleId: model.NewId()}
+	created := &model.RoleBinding{ID: model.NewRoleBindingID(), UserID: model.UserID(userID), RoleID: model.NewRoleID()}
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events, createResult: created},
-		&roleBindingRoleStoreFake{events: &events, role: &model.Role{Id: created.RoleId, Name: "teacher"}},
+		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: created.RoleID, Name: "teacher"}},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleBindingEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	got, err := service.Create(context.Background(), Invocation{}, CreateRoleBindingCommand{
-		UserID: userID, RoleID: created.RoleId, ScopeType: model.RoleScopeInstitution,
+		UserID: userID, RoleID: created.RoleID.String(), ScopeType: model.RoleScopeInstitution,
 		ScopeID: model.NewId(), StartAt: 100,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Id != created.Id {
+	if got.ID != created.ID {
 		t.Fatalf("result = %#v", got)
 	}
 	want := []string{"authorize-manage", "get-role", "audit-begin", "store-create", "invalidate-authorization"}
@@ -107,7 +107,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 	roleID := model.NewId()
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events},
-		&roleBindingRoleStoreFake{events: &events, role: &model.Role{Id: roleID, Name: model.SystemAdministratorRoleName}},
+		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: model.RoleID(roleID), Name: model.SystemAdministratorRoleName}},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
 		&institutionAuditorFake{events: &events},
 		&roleBindingEffectsFake{events: &events},
@@ -129,7 +129,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	binding := &model.RoleBinding{Id: model.NewId(), UserId: model.NewId()}
+	binding := &model.RoleBinding{ID: model.NewRoleBindingID(), UserID: model.NewUserID()}
 	service := newRoleBindingService(
 		&roleBindingStoreFake{
 			events: &events, binding: binding,
@@ -141,7 +141,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.End(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.Id})
+	_, err := service.End(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID.String()})
 	if !Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("error = %v", err)
 	}
@@ -156,7 +156,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 	events := []string{}
 	userID := model.NewId()
 	service := newRoleBindingService(
-		&roleBindingStoreFake{events: &events, list: []*model.RoleBinding{{Id: model.NewId(), UserId: userID}}},
+		&roleBindingStoreFake{events: &events, list: []*model.RoleBinding{{ID: model.NewRoleBindingID(), UserID: model.UserID(userID)}}},
 		&roleBindingRoleStoreFake{events: &events},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, Id: model.NewId()}},
 		&institutionAuditorFake{events: &events},

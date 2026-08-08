@@ -34,9 +34,11 @@ type roleBindingResponse struct {
 
 func roleBindingResponseFromModel(binding *model.RoleBinding) roleBindingResponse {
 	return roleBindingResponse{
-		ID: binding.Id, CreateAt: binding.CreateAt, UpdateAt: binding.UpdateAt, DeleteAt: binding.DeleteAt,
-		UserID: binding.UserId, RoleID: binding.RoleId, ScopeType: binding.ScopeType, ScopeID: binding.ScopeId,
-		StartAt: binding.StartAt, EndAt: binding.EndAt,
+		ID: binding.ID.String(), CreateAt: model.MillisFromTime(binding.CreatedAt),
+		UpdateAt: model.MillisFromTime(binding.UpdatedAt), DeleteAt: binding.ArchivedAt.Millis(),
+		UserID: binding.UserID.String(), RoleID: binding.RoleID.String(),
+		ScopeType: binding.ScopeType, ScopeID: binding.ScopeID,
+		StartAt: model.MillisFromTime(binding.StartsAt), EndAt: binding.EndsAt.Millis(),
 	}
 }
 

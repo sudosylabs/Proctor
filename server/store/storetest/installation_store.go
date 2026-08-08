@@ -59,19 +59,19 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		t.Fatalf("winner/conflicts = %#v/%d", winner, conflicts)
 	}
 	if !winner.State.IsValid() ||
-		winner.Institution.ID.String() != winner.State.InstitutionId ||
-		winner.Administrator.ID.String() != winner.State.AdministratorUserId ||
+		winner.Institution.ID != winner.State.InstitutionID ||
+		winner.Administrator.ID != winner.State.AdministratorUserID ||
 		winner.Role.Name != model.SystemAdministratorRoleName ||
 		!winner.Role.BuiltIn ||
 		winner.RoleBinding.ScopeType != model.RoleScopeInstitution ||
-		winner.RoleBinding.ScopeId != winner.Institution.ID.String() ||
+		winner.RoleBinding.ScopeID != winner.Institution.ID.String() ||
 		winner.Institution.IsArchived() ||
 		winner.Administrator.ArchivedAt.Valid ||
 		winner.Administrator.EmailVerified ||
 		winner.Administrator.DisabledAt.Valid ||
-		winner.Role.DeleteAt != 0 ||
-		winner.RoleBinding.DeleteAt != 0 ||
-		winner.RoleBinding.EndAt != 0 {
+		winner.Role.ArchivedAt.Millis() != 0 ||
+		winner.RoleBinding.ArchivedAt.Millis() != 0 ||
+		winner.RoleBinding.EndsAt.Millis() != 0 {
 		t.Fatalf("Bootstrap() = %#v", winner)
 	}
 	state, err := ss.Installation().Get(ctx)
@@ -90,7 +90,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if len(events) != 1 ||
 		events[0].Status != model.AuditStatusSuccess ||
-		events[0].ActorId != winner.Administrator.ID.String() {
+		events[0].ActorID != winner.Administrator.ID {
 		t.Fatalf("bootstrap audit events = %#v", events)
 	}
 	if _, err := ss.Installation().Bootstrap(ctx, testInstallationBootstrap(99)); !store.IsConflict(err) {
@@ -105,7 +105,11 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 	institution := &model.Institution{
 		Name: "northbridge", DisplayName: "Northbridge University",
 	}
-	user := &model.User{ID: model.UserID(model.NewId()), CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
+	// Bootstrap prepareInstallationBootstrap clears identity/lifecycle fields
+	// and regenerates them; stale IDs/times here prove they are not trusted.
+	user := &model.User{
+		ID: model.UserID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+		UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 		Username:      fmt.Sprintf("administrator-%d", index),
 		Email:         fmt.Sprintf("administrator-%d@example.test", index),
 		DisplayName:   "Administrator",
@@ -119,16 +123,20 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 		Institution: institution, Administrator: user,
 		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$MTIzNDU2Nzg5MDEyMzQ1Ng$MTIzNDU2Nzg5MDEyMzQ1Ng",
 		Role: &model.Role{
-			Id: model.NewId(), CreateAt: 1, UpdateAt: 1, DeleteAt: 1,
+			ID: model.RoleID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+			UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 			Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
 			Permissions: model.AllActions(), BuiltIn: true,
 		},
 		RoleBinding: &model.RoleBinding{
-			Id: model.NewId(), CreateAt: 1, UpdateAt: 1, DeleteAt: 1, EndAt: 2,
+			ID: model.RoleBindingID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+			UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
+			EndsAt: model.OptionalTimeFromMillis(2),
 		},
 		AuditEvent: &model.AuditEvent{
-			Id: model.NewId(), CreateAt: 1, UpdateAt: 1,
-			Action: "installation.bootstrap", NodeId: "store-test",
+			ID: model.AuditEventID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+			UpdatedAt: model.TimeFromMillis(1),
+			Action: "installation.bootstrap", NodeID: "store-test",
 			Parameters: parameters,
 		},
 	}

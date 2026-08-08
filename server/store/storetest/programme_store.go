@@ -41,9 +41,9 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	createAttempt := saveProgrammeAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.Programme{AcademicUnitID: unit.ID, Name: "audited-programme", DisplayName: "Audited Programme"}
 	candidate.PrepareCreate(model.ProgrammeID(model.NewId()), model.NowUTC())
-	created, err := ss.Programme().Create(ctx, &store.ProgrammeCreation{Programme: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	created, err := ss.Programme().Create(ctx, &store.ProgrammeCreation{Programme: candidate, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completed, err := ss.Audit().Get(ctx, createAttempt.Id)
+	completed, err := ss.Audit().Get(ctx, createAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("create audit status = %q", completed.Status)
@@ -61,9 +61,9 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Programme"
 	updatedCandidate.PrepareUpdate(model.NowUTC())
-	updated, err := ss.Programme().UpdateWithAudit(ctx, &store.ProgrammeUpdate{Programme: &updatedCandidate, AuditEventID: updateAttempt.Id, AuditAt: model.GetMillis()})
+	updated, err := ss.Programme().UpdateWithAudit(ctx, &store.ProgrammeUpdate{Programme: &updatedCandidate, AuditEventID: updateAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completed, err = ss.Audit().Get(ctx, updateAttempt.Id)
+	completed, err = ss.Audit().Get(ctx, updateAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q", completed.Status)
@@ -82,12 +82,12 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	}
 
 	archiveAttempt := saveProgrammeAuditAttempt(t, ctx, ss, unit.ID.String())
-	archived, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
+	archived, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
 	}
-	completed, err = ss.Audit().Get(ctx, archiveAttempt.Id)
+	completed, err = ss.Audit().Get(ctx, archiveAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("archive audit status = %q", completed.Status)
@@ -104,7 +104,7 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	withLevel := saveProgramme(t, ctx, ss, unit.ID.String(), "programme-with-level")
 	saveProgrammeLevel(t, ctx, ss, withLevel.ID.String(), "year-1")
 	blockedAttempt := saveProgrammeAuditAttempt(t, ctx, ss, unit.ID.String())
-	if _, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: withLevel.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: withLevel.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active level error = %v, want conflict", err)
 	}
 }
@@ -114,8 +114,8 @@ func saveProgrammeAuditAttempt(t *testing.T, ctx context.Context, ss store.Store
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionAcademicUnitManage),
 		Resource:  model.Resource{Type: model.ResourceAcademicUnit, Id: unitID},
-		ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID,
-		Status: model.AuditStatusAttempt, NodeId: "test-node",
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID,
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
 	})
 	requireNoError(t, err)
 	return attempt

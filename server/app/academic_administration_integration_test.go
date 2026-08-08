@@ -158,9 +158,9 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.RoleBinding().Save(context.Background(), &model.RoleBinding{
-		UserId: teacher.Id, RoleId: teacherRole.Id,
-		ScopeType: model.RoleScopeAcademicUnit, ScopeId: root.ID.String(),
-		StartAt: now - 10_000,
+		UserID: teacher.Id, RoleID: teacherRole.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: root.ID.String(),
+		StartsAt: model.TimeFromMillis(now - 10_000),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	if len(visibilityEvents) != 1 ||
 		visibilityEvents[0].Status != model.AuditStatusSuccess ||
 		visibilityEvents[0].ScopeType != model.RoleScopeInstitution ||
-		visibilityEvents[0].ScopeId != installation.Institution.ID.String() {
+		visibilityEvents[0].ScopeID != installation.Institution.ID.String() {
 		t.Fatalf("teacher student visibility audit = %#v", visibilityEvents)
 	}
 	hidden := performJSONRequest(

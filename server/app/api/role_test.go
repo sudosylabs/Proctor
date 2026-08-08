@@ -29,8 +29,7 @@ func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now().UnixMilli(),
 	}
 	roleID := model.NewId()
-	roles := &roleHTTPApplication{result: &model.Role{
-		Id: roleID, Name: "teacher", DisplayName: "Teacher",
+	roles := &roleHTTPApplication{result: &model.Role{ID: model.RoleID(roleID), Name: "teacher", DisplayName: "Teacher",
 		Permissions: []string{string(model.ActionClassView)},
 	}}
 	transport := &academicUnitHTTPApplication{principal: principal}
@@ -76,11 +75,15 @@ func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 func TestRoleResponsePreservesExistingWireShape(t *testing.T) {
 	t.Parallel()
 	role := &model.Role{
-		Id: model.NewId(), CreateAt: 10, UpdateAt: 20, Name: "teacher",
+		ID: model.NewRoleID(), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20), Name: "teacher",
 		DisplayName: "Teacher", Description: "desc",
 		Permissions: []string{string(model.ActionClassView)}, BuiltIn: false,
 	}
-	want, err := json.Marshal(role)
+	want, err := json.Marshal(roleResponse{
+		ID: role.ID.String(), CreateAt: 10, UpdateAt: 20, DeleteAt: 0,
+		Name: "teacher", DisplayName: "Teacher", Description: "desc",
+		Permissions: []string{string(model.ActionClassView)}, BuiltIn: false,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

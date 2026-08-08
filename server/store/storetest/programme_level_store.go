@@ -41,9 +41,9 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	createAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "audited-level", DisplayName: "Audited Level"}
 	candidate.PrepareCreate(model.ProgrammeLevelID(model.NewId()), model.NowUTC())
-	created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
+	created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completed, err := ss.Audit().Get(ctx, createAttempt.Id)
+	completed, err := ss.Audit().Get(ctx, createAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("create audit status = %q", completed.Status)
@@ -62,9 +62,9 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Level"
 	updatedCandidate.PrepareUpdate(model.NowUTC())
-	updated, err := ss.ProgrammeLevel().UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{Level: &updatedCandidate, AuditEventID: updateAttempt.Id, AuditAt: model.GetMillis()})
+	updated, err := ss.ProgrammeLevel().UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{Level: &updatedCandidate, AuditEventID: updateAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	completed, err = ss.Audit().Get(ctx, updateAttempt.Id)
+	completed, err = ss.Audit().Get(ctx, updateAttempt.ID.String())
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q", completed.Status)
@@ -83,7 +83,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	}
 
 	archiveAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
-	archived, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
+	archived, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
@@ -101,14 +101,14 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "2026-2027", 1_800_000_000_000)
 	saveClass(t, ctx, ss, withClass.ID.String(), period.ID.String(), "class-a")
 	blockedAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
-	if _, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: withClass.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: withClass.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active class error = %v, want conflict", err)
 	}
 }
 
 func saveProgrammeLevelAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, unitID string) *model.AuditEvent {
 	t.Helper()
-	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeId: unitID, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unitID}, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID, Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return attempt
 }

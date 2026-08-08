@@ -15,7 +15,7 @@ func TestInvocationCarriesPrincipalAndSafeMetadataImmutably(t *testing.T) {
 	t.Parallel()
 
 	principal := model.Principal{
-		UserId:           model.NewId(),
+		UserId: model.NewId(),
 		SessionId:        model.NewId(),
 		CredentialId:     model.NewId(),
 		CredentialType:   model.CredentialSessionAccess,

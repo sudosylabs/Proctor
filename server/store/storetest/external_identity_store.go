@@ -67,8 +67,8 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			&model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
-				ScopeId:   institution.ID.String(), Status: model.AuditStatusSuccess,
-				NodeId: "test-node", AuthMethod: "cas",
+				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
+				NodeID: "test-node", AuthMethod: "cas",
 			},
 		)
 		requireNoError(t, err)
@@ -83,7 +83,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		})
 		requireNoError(t, err)
 		if len(audits) != 1 ||
-			audits[0].ActorId != resolved.User.ID.String() ||
+			audits[0].ActorID != resolved.User.ID ||
 			audits[0].Resource.Id != resolved.User.ID.String() {
 			t.Fatalf("provision audits = %#v", audits)
 		}
@@ -126,8 +126,8 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			&model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
-				ScopeId:   institution.ID.String(), Status: model.AuditStatusSuccess,
-				NodeId: "test-node", AuthMethod: "cas",
+				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
+				NodeID: "test-node", AuthMethod: "cas",
 			},
 		)
 		var conflict *store.ErrConflict

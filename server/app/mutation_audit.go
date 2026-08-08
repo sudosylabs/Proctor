@@ -36,7 +36,7 @@ func (a mutationAuditAdapter) Begin(
 	if appErr != nil {
 		return "", appErr
 	}
-	return event.Id, nil
+	return event.ID.String(), nil
 }
 
 func (a mutationAuditAdapter) Fail(
