@@ -118,10 +118,10 @@ func (s *academicUnitReadStore) Update(
 ) (*model.AcademicUnit, error) {
 	panic("unexpected Update")
 }
-func (s *academicUnitReadStore) Delete(
+func (s *academicUnitReadStore) Archive(
 	context.Context, string, int64,
 ) (*model.AcademicUnit, error) {
-	panic("unexpected Delete")
+	panic("unexpected Archive")
 }
 
 func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {

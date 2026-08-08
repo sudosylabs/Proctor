@@ -322,17 +322,17 @@ func (s SqlAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *stor
 	return &candidate, nil
 }
 
-func (s SqlAcademicPeriodStore) Delete(
+func (s SqlAcademicPeriodStore) Archive(
 	ctx context.Context,
 	id string,
-	deleteAt int64,
+	archiveAt int64,
 ) (*model.AcademicPeriod, error) {
-	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("academic_period", "archived_at", deleteAt)
+	if archiveAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_period", "archived_at", archiveAt)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin academic period delete: %w", err)
+		return nil, fmt.Errorf("begin academic period archive: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
@@ -365,7 +365,7 @@ func (s SqlAcademicPeriodStore) Delete(
 	}
 	result, err := tx.Exec(ctx, `
 		UPDATE academic_periods SET updated_at = ?, archived_at = ?, revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id, current.Revision)
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive academic period: %w", err)
 	}
@@ -373,11 +373,11 @@ func (s SqlAcademicPeriodStore) Delete(
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic period delete: %w", err)
+		return nil, fmt.Errorf("commit academic period archive: %w", err)
 	}
-	at := model.TimeFromMillis(deleteAt)
+	at := model.TimeFromMillis(archiveAt)
 	current.UpdatedAt = at
-	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
+	current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
 	current.Revision++
 	return current, nil
 }

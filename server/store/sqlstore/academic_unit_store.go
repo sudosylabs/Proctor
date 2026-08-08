@@ -410,21 +410,21 @@ func (s SqlAcademicUnitStore) ArchiveWithAudit(
 	)
 }
 
-func (s SqlAcademicUnitStore) Delete(
+func (s SqlAcademicUnitStore) Archive(
 	ctx context.Context,
 	id string,
-	deleteAt int64,
+	archiveAt int64,
 ) (*model.AcademicUnit, error) {
-	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("academic_unit", "archived_at", deleteAt)
+	if archiveAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit", "archived_at", archiveAt)
 	}
-	return s.archiveAcademicUnit(ctx, id, deleteAt, nil)
+	return s.archiveAcademicUnit(ctx, id, archiveAt, nil)
 }
 
 func (s SqlAcademicUnitStore) archiveAcademicUnit(
 	ctx context.Context,
 	id string,
-	deleteAt int64,
+	archiveAt int64,
 	audit *academicUnitAuditCompletion,
 ) (*model.AcademicUnit, error) {
 	tx, err := s.GetMaster().Begin(ctx)
@@ -457,16 +457,16 @@ func (s SqlAcademicUnitStore) archiveAcademicUnit(
 	}
 	result, err := tx.Exec(ctx, `
 		UPDATE academic_units SET updated_at = ?, archived_at = ?, revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id, current.Revision)
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive academic unit: %w", err)
 	}
 	if err := requireRevisionAffected(ctx, tx, result, "academic_unit", "academic_units", id); err != nil {
 		return nil, err
 	}
-	at := model.TimeFromMillis(deleteAt)
+	at := model.TimeFromMillis(archiveAt)
 	current.UpdatedAt = at
-	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
+	current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
 	current.Revision++
 	if audit != nil {
 		encoded, appErr := model.EncodeAuditData(current.Auditable())

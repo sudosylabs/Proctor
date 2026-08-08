@@ -99,7 +99,7 @@ func (a *API) InitRoles() error {
 		a.BaseRoutes.Role,
 		"",
 		http.MethodDelete,
-		a.APIPrincipalRequired(http.HandlerFunc(a.deleteRole)),
+		a.APIPrincipalRequired(http.HandlerFunc(a.archiveRole)),
 	)
 }
 
@@ -189,15 +189,15 @@ func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, http.StatusOK, roleResponseFromModel(updated))
 }
 
-func (a *API) deleteRole(writer http.ResponseWriter, request *http.Request) {
+func (a *API) archiveRole(writer http.ResponseWriter, request *http.Request) {
 	principal, roleID, ok := principalAndRoleId(writer, request)
 	if !ok {
 		return
 	}
-	if err := a.roles.DeleteRole(
+	if err := a.roles.ArchiveRole(
 		request.Context(),
 		application.NewInvocation(principal, RequestMetadata(request.Context())),
-		application.DeleteRoleCommand{ID: roleID},
+		application.ArchiveRoleCommand{ID: roleID},
 	); err != nil {
 		writeApplicationError(writer, request, a.logger, err)
 		return

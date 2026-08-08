@@ -386,7 +386,7 @@ func (recoveryInstitutionStore) Update(context.Context, *model.Institution) (*mo
 func (recoveryInstitutionStore) UpdateWithAudit(context.Context, *store.InstitutionUpdate) (*model.Institution, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryInstitutionStore) Delete(context.Context, string, int64) error {
+func (recoveryInstitutionStore) Archive(context.Context, string, int64) error {
 	return errors.New("unused")
 }
 
@@ -425,10 +425,10 @@ func (recoveryRoleStore) Update(context.Context, *model.Role) (*model.Role, erro
 func (recoveryRoleStore) UpdateWithAudit(context.Context, *store.RoleUpdate) (*model.Role, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryRoleStore) Delete(context.Context, string, int64) (*model.Role, error) {
+func (recoveryRoleStore) Archive(context.Context, string, int64) (*model.Role, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryRoleStore) DeleteWithAudit(context.Context, *store.RoleDeletion) (*model.Role, error) {
+func (recoveryRoleStore) ArchiveWithAudit(context.Context, *store.RoleArchive) (*model.Role, error) {
 	return nil, errors.New("unused")
 }
 

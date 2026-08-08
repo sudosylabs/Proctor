@@ -354,17 +354,17 @@ func (s SqlProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *stor
 	return &candidate, nil
 }
 
-func (s SqlProgrammeLevelStore) Delete(
+func (s SqlProgrammeLevelStore) Archive(
 	ctx context.Context,
 	id string,
-	deleteAt int64,
+	archiveAt int64,
 ) (*model.ProgrammeLevel, error) {
-	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("programme_level", "archived_at", deleteAt)
+	if archiveAt <= 0 {
+		return nil, store.NewErrInvalidInput("programme_level", "archived_at", archiveAt)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin programme level delete: %w", err)
+		return nil, fmt.Errorf("begin programme level archive: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
@@ -396,7 +396,7 @@ func (s SqlProgrammeLevelStore) Delete(
 	}
 	result, err := tx.Exec(ctx, `
 		UPDATE programme_levels SET updated_at = ?, archived_at = ?, revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id, current.Revision)
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive programme level: %w", err)
 	}
@@ -404,11 +404,11 @@ func (s SqlProgrammeLevelStore) Delete(
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit programme level delete: %w", err)
+		return nil, fmt.Errorf("commit programme level archive: %w", err)
 	}
-	at := model.TimeFromMillis(deleteAt)
+	at := model.TimeFromMillis(archiveAt)
 	current.UpdatedAt = at
-	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
+	current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
 	current.Revision++
 	return current, nil
 }

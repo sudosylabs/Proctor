@@ -33,7 +33,7 @@ type UpdateRoleCommand struct {
 	Permissions *[]string
 }
 
-type DeleteRoleCommand struct {
+type ArchiveRoleCommand struct {
 	ID string
 }
 
@@ -42,7 +42,7 @@ type roleStore interface {
 	List(context.Context) ([]*model.Role, error)
 	SaveWithAudit(context.Context, *store.RoleCreation) (*model.Role, error)
 	UpdateWithAudit(context.Context, *store.RoleUpdate) (*model.Role, error)
-	DeleteWithAudit(context.Context, *store.RoleDeletion) (*model.Role, error)
+	ArchiveWithAudit(context.Context, *store.RoleArchive) (*model.Role, error)
 }
 
 type roleAuthorizer interface {
@@ -192,11 +192,11 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 	return updated, nil
 }
 
-func (a *App) DeleteRole(ctx context.Context, invocation Invocation, command DeleteRoleCommand) error {
-	return a.roles.Delete(ctx, invocation, command)
+func (a *App) ArchiveRole(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
+	return a.roles.Archive(ctx, invocation, command)
 }
 
-func (s *roleService) Delete(ctx context.Context, invocation Invocation, command DeleteRoleCommand) error {
+func (s *roleService) Archive(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
 		return NewError("request.invalid").WithField("field", "role_id")
@@ -213,15 +213,15 @@ func (s *roleService) Delete(ctx context.Context, invocation Invocation, command
 		return NewError("role.built_in.protected").WithField("resource", "role")
 	}
 	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionRoleManage, resource, "delete",
+		ctx, invocation, model.ActionRoleManage, resource, "archive",
 		map[string]any{"role_id": id}, current.Auditable(),
 	)
 	if err != nil {
 		return err
 	}
 	at := s.now().UnixMilli()
-	if _, err := s.roles.DeleteWithAudit(ctx, &store.RoleDeletion{
-		ID: id, DeleteAt: at, AuditEventID: auditID, AuditAt: at,
+	if _, err := s.roles.ArchiveWithAudit(ctx, &store.RoleArchive{
+		ID: id, ArchiveAt: at, AuditEventID: auditID, AuditAt: at,
 	}); err != nil {
 		return s.failMutation(ctx, auditID, err)
 	}

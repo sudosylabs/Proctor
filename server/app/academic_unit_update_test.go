@@ -46,8 +46,8 @@ func (*academicUnitMutationStore) Search(context.Context, string, string, int) (
 func (*academicUnitMutationStore) Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
 	panic("unexpected Update")
 }
-func (*academicUnitMutationStore) Delete(context.Context, string, int64) (*model.AcademicUnit, error) {
-	panic("unexpected Delete")
+func (*academicUnitMutationStore) Archive(context.Context, string, int64) (*model.AcademicUnit, error) {
+	panic("unexpected Archive")
 }
 func (s *academicUnitMutationStore) UpdateWithAudit(
 	_ context.Context,

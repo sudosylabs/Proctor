@@ -47,13 +47,13 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if len(list) != 1 || len(batch) != 1 {
 			t.Fatalf("List/GetByIds = %d/%d", len(list), len(batch))
 		}
-		deleted, err := ss.Role().Delete(ctx, saved.ID.String(), model.GetMillis())
+		archived, err := ss.Role().Archive(ctx, saved.ID.String(), model.GetMillis())
 		requireNoError(t, err)
-		if !deleted.IsArchived() {
-			t.Fatalf("Delete() = %#v", deleted)
+		if !archived.IsArchived() {
+			t.Fatalf("Archive() = %#v", archived)
 		}
 		if _, err := ss.Role().Get(ctx, saved.ID.String()); !store.IsNotFound(err) {
-			t.Fatalf("Get(deleted) error = %v", err)
+			t.Fatalf("Get(archived) error = %v", err)
 		}
 	})
 
@@ -70,8 +70,8 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if !errors.As(err, &conflict) || conflict.Constraint != "roles_name_key" {
 			t.Fatalf("duplicate role error = %v", err)
 		}
-		if _, err := ss.Role().Delete(ctx, first.ID.String(), model.GetMillis()); !store.IsConflict(err) {
-			t.Fatalf("Delete(built-in) error = %v", err)
+		if _, err := ss.Role().Archive(ctx, first.ID.String(), model.GetMillis()); !store.IsConflict(err) {
+			t.Fatalf("Archive(built-in) error = %v", err)
 		}
 		first.DisplayName = "Modified Built-in"
 		if _, err := ss.Role().Update(ctx, first); !store.IsConflict(err) {
@@ -128,26 +128,26 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 			t.Fatalf("UpdateWithAudit() = %#v", updated)
 		}
 
-		if _, err := ss.Role().DeleteWithAudit(ctx, &store.RoleDeletion{
-			ID: created.ID.String(), DeleteAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
+		if _, err := ss.Role().ArchiveWithAudit(ctx, &store.RoleArchive{
+			ID: created.ID.String(), ArchiveAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
 		}); err == nil {
-			t.Fatal("DeleteWithAudit() succeeded without its audit attempt")
+			t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
 		}
 		stillPresent, err := ss.Role().Get(ctx, created.ID.String())
 		requireNoError(t, err)
 		if stillPresent.IsArchived() {
-			t.Fatalf("role delete survived audit rollback: %#v", stillPresent)
+			t.Fatalf("role archive survived audit rollback: %#v", stillPresent)
 		}
-		deleteAttempt := saveRoleAuditAttempt(t, ctx, ss)
-		deleted, err := ss.Role().DeleteWithAudit(ctx, &store.RoleDeletion{
-			ID: created.ID.String(), DeleteAt: at + 2, AuditEventID: deleteAttempt.ID.String(), AuditAt: at + 2,
+		archiveAttempt := saveRoleAuditAttempt(t, ctx, ss)
+		archived, err := ss.Role().ArchiveWithAudit(ctx, &store.RoleArchive{
+			ID: created.ID.String(), ArchiveAt: at + 2, AuditEventID: archiveAttempt.ID.String(), AuditAt: at + 2,
 		})
 		requireNoError(t, err)
-		if deleted.ArchivedAt.Millis() != at+2 {
-			t.Fatalf("DeleteWithAudit() = %#v", deleted)
+		if archived.ArchivedAt.Millis() != at+2 {
+			t.Fatalf("ArchiveWithAudit() = %#v", archived)
 		}
 		if _, err := ss.Role().Get(ctx, created.ID.String()); !store.IsNotFound(err) {
-			t.Fatalf("Get(deleted) error = %v", err)
+			t.Fatalf("Get(archived) error = %v", err)
 		}
 	})
 }

@@ -168,10 +168,10 @@ func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	if len(found) != 1 || found[0].ID != period.ID {
 		t.Fatalf("SearchByInstitution() = %#v", found)
 	}
-	archived, err := ss.AcademicPeriod().Delete(ctx, period.ID.String(), model.GetMillis())
+	archived, err := ss.AcademicPeriod().Archive(ctx, period.ID.String(), model.GetMillis())
 	requireNoError(t, err)
 	if !archived.IsArchived() {
-		t.Fatalf("Delete() = %#v", archived)
+		t.Fatalf("Archive() = %#v", archived)
 	}
 }
 

@@ -129,10 +129,10 @@ func testProgrammeLevelStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	if len(found) != 1 || found[0].ID != level.ID {
 		t.Fatalf("SearchByProgramme() = %#v", found)
 	}
-	archived, err := ss.ProgrammeLevel().Delete(ctx, level.ID.String(), model.GetMillis())
+	archived, err := ss.ProgrammeLevel().Archive(ctx, level.ID.String(), model.GetMillis())
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
-		t.Fatalf("Delete() = %#v", archived)
+		t.Fatalf("Archive() = %#v", archived)
 	}
 }
 
@@ -238,7 +238,7 @@ func testProgrammeLevelStoreUpdate(t *testing.T, ss store.Store) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
 	}
 	archivedProgramme := saveProgramme(t, ctx, ss, unit.ID.String(), "archived-programme")
-	if _, err := ss.Programme().Delete(ctx, archivedProgramme.ID.String(), model.GetMillis()); err != nil {
+	if _, err := ss.Programme().Archive(ctx, archivedProgramme.ID.String(), model.GetMillis()); err != nil {
 		t.Fatalf("archive destination programme: %v", err)
 	}
 	invalidMove := *updated

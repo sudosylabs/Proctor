@@ -283,15 +283,15 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	if endBinding.Code != http.StatusOK {
 		t.Fatalf("end binding status = %d: %s", endBinding.Code, endBinding.Body.String())
 	}
-	deleteRole := performJSONRequest(
+	archiveRole := performJSONRequest(
 		handler,
 		http.MethodDelete,
 		"/api/v1/roles/"+customRole.ID.String(),
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
-	if deleteRole.Code != http.StatusNoContent {
-		t.Fatalf("delete role status = %d: %s", deleteRole.Code, deleteRole.Body.String())
+	if archiveRole.Code != http.StatusNoContent {
+		t.Fatalf("archive role status = %d: %s", archiveRole.Code, archiveRole.Body.String())
 	}
 
 	secondAdminBinding := performJSONRequest(

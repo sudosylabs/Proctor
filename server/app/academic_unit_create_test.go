@@ -61,8 +61,8 @@ func (*academicUnitCreateStore) Search(context.Context, string, string, int) ([]
 func (*academicUnitCreateStore) Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
 	panic("unexpected Update")
 }
-func (*academicUnitCreateStore) Delete(context.Context, string, int64) (*model.AcademicUnit, error) {
-	panic("unexpected Delete")
+func (*academicUnitCreateStore) Archive(context.Context, string, int64) (*model.AcademicUnit, error) {
+	panic("unexpected Archive")
 }
 
 type academicUnitCommandAuditor struct {

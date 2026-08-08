@@ -15,20 +15,20 @@ import (
 )
 
 type roleStoreFake struct {
-	events       *[]string
-	role         *model.Role
-	list         []*model.Role
-	createInput  *store.RoleCreation
-	updateInput  *store.RoleUpdate
-	deleteInput  *store.RoleDeletion
-	createResult *model.Role
-	updateResult *model.Role
-	deleteResult *model.Role
-	getErr       error
-	listErr      error
-	createErr    error
-	updateErr    error
-	deleteErr    error
+	events        *[]string
+	role          *model.Role
+	list          []*model.Role
+	createInput   *store.RoleCreation
+	updateInput   *store.RoleUpdate
+	archiveInput  *store.RoleArchive
+	createResult  *model.Role
+	updateResult  *model.Role
+	archiveResult *model.Role
+	getErr        error
+	listErr       error
+	createErr     error
+	updateErr     error
+	archiveErr    error
 }
 
 func (s *roleStoreFake) Get(context.Context, string) (*model.Role, error) {
@@ -53,10 +53,10 @@ func (s *roleStoreFake) UpdateWithAudit(_ context.Context, input *store.RoleUpda
 	return s.updateResult, s.updateErr
 }
 
-func (s *roleStoreFake) DeleteWithAudit(_ context.Context, input *store.RoleDeletion) (*model.Role, error) {
-	*s.events = append(*s.events, "store-delete")
-	s.deleteInput = input
-	return s.deleteResult, s.deleteErr
+func (s *roleStoreFake) ArchiveWithAudit(_ context.Context, input *store.RoleArchive) (*model.Role, error) {
+	*s.events = append(*s.events, "store-archive")
+	s.archiveInput = input
+	return s.archiveResult, s.archiveErr
 }
 
 type roleAuthorizerFake struct {
@@ -198,21 +198,21 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 	}
 }
 
-func TestRoleDeleteCommitsBeforeInvalidation(t *testing.T) {
+func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher"}
 	service := newRoleService(
-		&roleStoreFake{events: &events, role: role, deleteResult: role},
+		&roleStoreFake{events: &events, role: role, archiveResult: role},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.Delete(context.Background(), Invocation{}, DeleteRoleCommand{ID: role.ID.String()}); err != nil {
+	if err := service.Archive(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID.String()}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"authorize-manage", "get-role", "audit-begin", "store-delete", "invalidate-authorization"}
+	want := []string{"authorize-manage", "get-role", "audit-begin", "store-archive", "invalidate-authorization"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}

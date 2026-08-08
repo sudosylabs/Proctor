@@ -60,11 +60,11 @@ func (a *sessionAdministrationHTTPApplication) RevokeUserSessions(_ context.Cont
 
 type roleHTTPApplication struct {
 	RoleApplication
-	list          []*model.Role
-	result        *model.Role
-	createCommand application.CreateRoleCommand
-	updateCommand application.UpdateRoleCommand
-	deleteCommand application.DeleteRoleCommand
+	list           []*model.Role
+	result         *model.Role
+	createCommand  application.CreateRoleCommand
+	updateCommand  application.UpdateRoleCommand
+	archiveCommand application.ArchiveRoleCommand
 }
 
 func (a *roleHTTPApplication) ListRoles(context.Context, application.Invocation, application.ListRolesQuery) ([]*model.Role, error) {
@@ -85,8 +85,8 @@ func (a *roleHTTPApplication) UpdateRole(_ context.Context, _ application.Invoca
 	return a.result, nil
 }
 
-func (a *roleHTTPApplication) DeleteRole(_ context.Context, _ application.Invocation, command application.DeleteRoleCommand) error {
-	a.deleteCommand = command
+func (a *roleHTTPApplication) ArchiveRole(_ context.Context, _ application.Invocation, command application.ArchiveRoleCommand) error {
+	a.archiveCommand = command
 	return nil
 }
 

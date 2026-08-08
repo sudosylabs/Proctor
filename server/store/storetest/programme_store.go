@@ -137,10 +137,10 @@ func testProgrammeStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	if len(found) != 1 || found[0].ID != programme.ID {
 		t.Fatalf("SearchByAcademicUnit() = %#v", found)
 	}
-	archived, err := ss.Programme().Delete(ctx, programme.ID.String(), model.GetMillis())
+	archived, err := ss.Programme().Archive(ctx, programme.ID.String(), model.GetMillis())
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
-		t.Fatalf("Delete() = %#v", archived)
+		t.Fatalf("Archive() = %#v", archived)
 	}
 }
 
@@ -252,7 +252,7 @@ func testProgrammeStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	archivedUnit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "archived-unit")
-	if _, err := ss.AcademicUnit().Delete(ctx, archivedUnit.ID.String(), model.GetMillis()); err != nil {
+	if _, err := ss.AcademicUnit().Archive(ctx, archivedUnit.ID.String(), model.GetMillis()); err != nil {
 		t.Fatalf("archive destination unit: %v", err)
 	}
 	invalidMove := *updated

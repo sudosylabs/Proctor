@@ -52,7 +52,7 @@ type InstitutionStore interface {
 	GetSingleton(context.Context) (*model.Institution, error)
 	Update(context.Context, *model.Institution) (*model.Institution, error)
 	UpdateWithAudit(context.Context, *InstitutionUpdate) (*model.Institution, error)
-	Delete(context.Context, string, int64) error
+	Archive(context.Context, string, int64) error
 }
 
 type InstitutionUpdate struct {
@@ -93,7 +93,7 @@ type AcademicUnitStore interface {
 	ListAncestors(context.Context, string) ([]*model.AcademicUnit, error)
 	Search(context.Context, string, string, int) ([]*model.AcademicUnit, error)
 	Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
-	Delete(context.Context, string, int64) (*model.AcademicUnit, error)
+	Archive(context.Context, string, int64) (*model.AcademicUnit, error)
 }
 
 // ProgrammeStore persists courses of study owned by academic units.
@@ -126,7 +126,7 @@ type ProgrammeStore interface {
 	ListByAcademicUnit(context.Context, string) ([]*model.Programme, error)
 	SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Programme, error)
 	Update(context.Context, *model.Programme) (*model.Programme, error)
-	Delete(context.Context, string, int64) (*model.Programme, error)
+	Archive(context.Context, string, int64) (*model.Programme, error)
 }
 
 // ProgrammeLevelStore persists reusable curriculum stages owned by programmes.
@@ -159,7 +159,7 @@ type ProgrammeLevelStore interface {
 	ListByProgramme(context.Context, string) ([]*model.ProgrammeLevel, error)
 	SearchByProgramme(context.Context, string, string, int) ([]*model.ProgrammeLevel, error)
 	Update(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
-	Delete(context.Context, string, int64) (*model.ProgrammeLevel, error)
+	Archive(context.Context, string, int64) (*model.ProgrammeLevel, error)
 }
 
 // AcademicPeriodStore persists institution-wide enrollment periods.
@@ -192,7 +192,7 @@ type AcademicPeriodStore interface {
 	ListByInstitution(context.Context, string) ([]*model.AcademicPeriod, error)
 	SearchByInstitution(context.Context, string, string, int) ([]*model.AcademicPeriod, error)
 	Update(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
-	Delete(context.Context, string, int64) (*model.AcademicPeriod, error)
+	Archive(context.Context, string, int64) (*model.AcademicPeriod, error)
 }
 
 // ClassStore persists concrete programme-level rosters for academic periods.
@@ -231,7 +231,7 @@ type ClassStore interface {
 	SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Class, error)
 	GetAcademicUnitId(context.Context, string) (string, error)
 	Update(context.Context, *model.Class) (*model.Class, error)
-	Delete(context.Context, string, int64) (*model.Class, error)
+	Archive(context.Context, string, int64) (*model.Class, error)
 }
 
 type UserListOptions struct {
@@ -610,11 +610,11 @@ type RoleUpdate struct {
 	AuditAt      int64
 }
 
-// RoleDeletion is the durable input for soft-deleting a custom role under an
+// RoleArchive is the durable input for archiving a custom role under an
 // already-persisted audit attempt.
-type RoleDeletion struct {
+type RoleArchive struct {
 	ID           string
-	DeleteAt     int64
+	ArchiveAt    int64
 	AuditEventID string
 	AuditAt      int64
 }
@@ -629,8 +629,8 @@ type RoleStore interface {
 	List(context.Context) ([]*model.Role, error)
 	Update(context.Context, *model.Role) (*model.Role, error)
 	UpdateWithAudit(context.Context, *RoleUpdate) (*model.Role, error)
-	Delete(context.Context, string, int64) (*model.Role, error)
-	DeleteWithAudit(context.Context, *RoleDeletion) (*model.Role, error)
+	Archive(context.Context, string, int64) (*model.Role, error)
+	ArchiveWithAudit(context.Context, *RoleArchive) (*model.Role, error)
 }
 
 // RoleBindingCreation is the durable input for creating a binding under an

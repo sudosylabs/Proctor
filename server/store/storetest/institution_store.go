@@ -23,7 +23,7 @@ func TestInstitutionStore(t *testing.T, ss store.Store) {
 	t.Run("GetSingleton", func(t *testing.T) { testInstitutionStoreGetSingleton(t, ss) })
 	t.Run("Update", func(t *testing.T) { testInstitutionStoreUpdate(t, ss) })
 	t.Run("UpdateWithAudit", func(t *testing.T) { testInstitutionStoreUpdateWithAudit(t, ss) })
-	t.Run("Delete", func(t *testing.T) { testInstitutionStoreDelete(t, ss) })
+	t.Run("Archive", func(t *testing.T) { testInstitutionStoreArchive(t, ss) })
 }
 
 func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
@@ -167,24 +167,24 @@ func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	}
 }
 
-func testInstitutionStoreDelete(t *testing.T, ss store.Store) {
+func testInstitutionStoreArchive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	if err := ss.Institution().Delete(ctx, institution.ID.String(), model.GetMillis()); err != nil {
-		t.Fatalf("Delete() error = %v", err)
+	if err := ss.Institution().Archive(ctx, institution.ID.String(), model.GetMillis()); err != nil {
+		t.Fatalf("Archive() error = %v", err)
 	}
 	if _, err := ss.Institution().Get(ctx, institution.ID.String()); !store.IsNotFound(err) {
-		t.Fatalf("Get(deleted) error = %v, want not found", err)
+		t.Fatalf("Get(archived) error = %v, want not found", err)
 	}
-	if err := ss.Institution().Delete(ctx, institution.ID.String(), model.GetMillis()); !store.IsNotFound(err) {
-		t.Fatalf("second Delete() error = %v, want not found", err)
+	if err := ss.Institution().Archive(ctx, institution.ID.String(), model.GetMillis()); !store.IsNotFound(err) {
+		t.Fatalf("second Archive() error = %v, want not found", err)
 	}
 	if _, err := ss.Institution().Save(ctx, &model.Institution{
 		Name:        "replacement",
 		DisplayName: "Replacement University",
 	}); err != nil {
-		t.Fatalf("Save() after deletion error = %v", err)
+		t.Fatalf("Save() after archive error = %v", err)
 	}
 }
 
@@ -207,7 +207,7 @@ func cleanupInstitution(t *testing.T, ctx context.Context, ss store.Store) {
 		return
 	}
 	requireNoError(t, err)
-	if err := ss.Institution().Delete(ctx, institution.ID.String(), model.GetMillis()); err != nil {
+	if err := ss.Institution().Archive(ctx, institution.ID.String(), model.GetMillis()); err != nil {
 		t.Fatalf("cleanup institution: %v", err)
 	}
 }

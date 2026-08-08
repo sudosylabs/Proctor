@@ -194,13 +194,13 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	if len(found) != 1 || found[0].ID != child.ID {
 		t.Fatalf("Search() = %#v", found)
 	}
-	if _, err = ss.AcademicUnit().Delete(ctx, parent.ID.String(), model.GetMillis()); !store.IsConflict(err) {
-		t.Fatalf("Delete(parent with child) error = %v", err)
+	if _, err = ss.AcademicUnit().Archive(ctx, parent.ID.String(), model.GetMillis()); !store.IsConflict(err) {
+		t.Fatalf("Archive(parent with child) error = %v", err)
 	}
-	archived, err := ss.AcademicUnit().Delete(ctx, child.ID.String(), model.GetMillis())
+	archived, err := ss.AcademicUnit().Archive(ctx, child.ID.String(), model.GetMillis())
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
-		t.Fatalf("Delete(child) = %#v", archived)
+		t.Fatalf("Archive(child) = %#v", archived)
 	}
 	if _, err = ss.AcademicUnit().Get(ctx, child.ID.String()); !store.IsNotFound(err) {
 		t.Fatalf("Get(archived) error = %v", err)
@@ -378,7 +378,7 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 	ctx := context.Background()
 	first := saveInstitution(t, ctx, ss)
 	parent := saveAcademicUnit(t, ctx, ss, first.ID.String(), "", "engineering")
-	requireNoError(t, ss.Institution().Delete(ctx, first.ID.String(), model.GetMillis()))
+	requireNoError(t, ss.Institution().Archive(ctx, first.ID.String(), model.GetMillis()))
 
 	second, err := ss.Institution().Save(ctx, &model.Institution{
 		Name:        "second-" + model.NewId(),

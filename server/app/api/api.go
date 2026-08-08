@@ -363,7 +363,7 @@ type RoleApplication interface {
 	GetRole(context.Context, application.Invocation, application.GetRoleQuery) (*model.Role, error)
 	CreateRole(context.Context, application.Invocation, application.CreateRoleCommand) (*model.Role, error)
 	UpdateRole(context.Context, application.Invocation, application.UpdateRoleCommand) (*model.Role, error)
-	DeleteRole(context.Context, application.Invocation, application.DeleteRoleCommand) error
+	ArchiveRole(context.Context, application.Invocation, application.ArchiveRoleCommand) error
 }
 
 type RoleBindingApplication interface {

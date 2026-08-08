@@ -191,19 +191,19 @@ func (s SqlInstitutionStore) updateInstitution(
 	return candidate, nil
 }
 
-func (s SqlInstitutionStore) Delete(ctx context.Context, id string, deleteAt int64) error {
-	if deleteAt <= 0 {
-		return store.NewErrInvalidInput("institution", "archived_at", deleteAt)
+func (s SqlInstitutionStore) Archive(ctx context.Context, id string, archiveAt int64) error {
+	if archiveAt <= 0 {
+		return store.NewErrInvalidInput("institution", "archived_at", archiveAt)
 	}
 	result, err := s.GetMaster().Exec(
 		ctx,
 		"UPDATE institutions SET updated_at = ?, archived_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL",
-		model.TimeFromMillis(deleteAt),
-		model.TimeFromMillis(deleteAt),
+		model.TimeFromMillis(archiveAt),
+		model.TimeFromMillis(archiveAt),
 		id,
 	)
 	if err != nil {
-		return fmt.Errorf("delete institution: %w", translateError("institution", id, err))
+		return fmt.Errorf("archive institution: %w", translateError("institution", id, err))
 	}
 	return requireAffected(result, "institution", id)
 }

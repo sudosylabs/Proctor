@@ -4,7 +4,7 @@
 //
 // Adapted from Mattermost server/channels/store/sqlstore/role_store.go.
 // Proctor retains a dedicated role store, reusable select builder, explicit
-// row conversion, lifecycle validation, batch lookup, and soft deletion.
+// row conversion, lifecycle validation, batch lookup, and archival.
 
 package sqlstore
 
@@ -253,9 +253,9 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role) er
 	return requireAffected(result, "role", role.ID.String())
 }
 
-func (s SqlRoleStore) Delete(ctx context.Context, id string, deleteAt int64) (*model.Role, error) {
-	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("role", "archived_at", deleteAt)
+func (s SqlRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (*model.Role, error) {
+	if archiveAt <= 0 {
+		return nil, store.NewErrInvalidInput("role", "archived_at", archiveAt)
 	}
 	role, err := s.Get(ctx, id)
 	if err != nil {
@@ -264,23 +264,23 @@ func (s SqlRoleStore) Delete(ctx context.Context, id string, deleteAt int64) (*m
 	if role.BuiltIn {
 		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 	}
-	if err := softDeleteRole(ctx, s.GetMaster(), id, deleteAt); err != nil {
+	if err := archiveRole(ctx, s.GetMaster(), id, archiveAt); err != nil {
 		return nil, err
 	}
-	at := model.TimeFromMillis(deleteAt)
+	at := model.TimeFromMillis(archiveAt)
 	role.UpdatedAt = at
 	role.ArchivedAt = model.OptionalTimeFrom(at)
 	return role, nil
 }
 
-func (s SqlRoleStore) DeleteWithAudit(ctx context.Context, input *store.RoleDeletion) (*model.Role, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.DeleteAt <= 0 ||
+func (s SqlRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
+	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
-		return nil, store.NewErrInvalidInput("role", "deletion", nil)
+		return nil, store.NewErrInvalidInput("role", "archive", nil)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin audited role deletion: %w", err)
+		return nil, fmt.Errorf("begin audited role archive: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	var row roleRow
@@ -296,10 +296,10 @@ func (s SqlRoleStore) DeleteWithAudit(ctx context.Context, input *store.RoleDele
 	if role.BuiltIn {
 		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 	}
-	if err := softDeleteRole(ctx, tx, input.ID, input.DeleteAt); err != nil {
+	if err := archiveRole(ctx, tx, input.ID, input.ArchiveAt); err != nil {
 		return nil, err
 	}
-	at := model.TimeFromMillis(input.DeleteAt)
+	at := model.TimeFromMillis(input.ArchiveAt)
 	role.UpdatedAt = at
 	role.ArchivedAt = model.OptionalTimeFrom(at)
 	encoded, appErr := model.EncodeAuditData(role.Auditable())
@@ -309,20 +309,20 @@ func (s SqlRoleStore) DeleteWithAudit(ctx context.Context, input *store.RoleDele
 	if _, err := completeAuditEvent(
 		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
 	); err != nil {
-		return nil, fmt.Errorf("complete role deletion audit: %w", err)
+		return nil, fmt.Errorf("complete role archive audit: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit audited role deletion: %w", err)
+		return nil, fmt.Errorf("commit audited role archive: %w", err)
 	}
 	return role, nil
 }
 
-func softDeleteRole(ctx context.Context, executor sqlxExecutor, id string, deleteAt int64) error {
+func archiveRole(ctx context.Context, executor sqlxExecutor, id string, archiveAt int64) error {
 	result, err := executor.Exec(ctx, `
 		UPDATE roles SET updated_at = ?, archived_at = ?
-		 WHERE id = ? AND archived_at IS NULL AND built_in = false`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id)
+		 WHERE id = ? AND archived_at IS NULL AND built_in = false`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id)
 	if err != nil {
-		return fmt.Errorf("delete role: %w", err)
+		return fmt.Errorf("archive role: %w", err)
 	}
 	return requireAffected(result, "role", id)
 }

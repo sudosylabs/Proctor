@@ -424,17 +424,17 @@ func (s SqlClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 	return &candidate, nil
 }
 
-func (s SqlClassStore) Delete(
+func (s SqlClassStore) Archive(
 	ctx context.Context,
 	id string,
-	deleteAt int64,
+	archiveAt int64,
 ) (*model.Class, error) {
-	if deleteAt <= 0 {
-		return nil, store.NewErrInvalidInput("class", "archived_at", deleteAt)
+	if archiveAt <= 0 {
+		return nil, store.NewErrInvalidInput("class", "archived_at", archiveAt)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin class delete: %w", err)
+		return nil, fmt.Errorf("begin class archive: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := lockClassLifecycle(ctx, tx); err != nil {
@@ -466,7 +466,7 @@ func (s SqlClassStore) Delete(
 	}
 	result, err := tx.Exec(ctx, `
 		UPDATE classes SET updated_at = ?, archived_at = ?, revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL`, model.TimeFromMillis(deleteAt), model.TimeFromMillis(deleteAt), id)
+		 WHERE id = ? AND archived_at IS NULL`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id)
 	if err != nil {
 		return nil, fmt.Errorf("archive class: %w", err)
 	}
@@ -474,11 +474,11 @@ func (s SqlClassStore) Delete(
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit class delete: %w", err)
+		return nil, fmt.Errorf("commit class archive: %w", err)
 	}
-	at := model.TimeFromMillis(deleteAt)
+	at := model.TimeFromMillis(archiveAt)
 	current.UpdatedAt = at
-	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
+	current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
 	current.Revision++
 	return current, nil
 }
