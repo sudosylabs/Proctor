@@ -49,6 +49,21 @@ func (t *lifecycleTransport) Close() error {
 	return nil
 }
 
+type lifecycleWebSocket struct {
+	startErr error
+	events   *[]string
+}
+
+func (w *lifecycleWebSocket) Start(context.Context) error {
+	*w.events = append(*w.events, "websocket-start")
+	return w.startErr
+}
+
+func (w *lifecycleWebSocket) Close() error {
+	*w.events = append(*w.events, "websocket-close")
+	return nil
+}
+
 type lifecycleReadiness struct {
 	ready atomic.Bool
 }
@@ -138,6 +153,7 @@ func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {
 	node := newLifecycleTestServer(t, runtimeComponents{
 		platform:  &lifecyclePlatform{events: &events},
 		transport: &lifecycleTransport{events: &events},
+		websocket: &lifecycleWebSocket{events: &events},
 		readiness: readiness,
 		listen: func(string, string) (net.Listener, error) {
 			return nil, listenErr
@@ -151,7 +167,15 @@ func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {
 	if node.Ready() {
 		t.Fatal("Ready() = true after listener failure")
 	}
-	assertLifecycleEvents(t, events, "platform-start", "transport-close", "platform-close")
+	assertLifecycleEvents(
+		t,
+		events,
+		"platform-start",
+		"websocket-start",
+		"websocket-close",
+		"transport-close",
+		"platform-close",
+	)
 }
 
 func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
@@ -167,6 +191,7 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	node := newLifecycleTestServer(t, runtimeComponents{
 		platform:  &lifecyclePlatform{events: &events},
 		transport: &lifecycleTransport{events: &events},
+		websocket: &lifecycleWebSocket{events: &events},
 		readiness: readiness,
 		listen: func(string, string) (net.Listener, error) {
 			return lifecycleListener{}, nil
@@ -203,7 +228,9 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 		t,
 		events,
 		"platform-start",
+		"websocket-start",
 		"http-shutdown",
+		"websocket-close",
 		"transport-close",
 		"platform-close",
 	)
@@ -214,7 +241,9 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 		t,
 		events,
 		"platform-start",
+		"websocket-start",
 		"http-shutdown",
+		"websocket-close",
 		"transport-close",
 		"platform-close",
 	)
@@ -236,6 +265,7 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	node := newLifecycleTestServer(t, runtimeComponents{
 		platform:  &lifecyclePlatform{events: &events},
 		transport: &lifecycleTransport{events: &events},
+		websocket: &lifecycleWebSocket{events: &events},
 		readiness: readiness,
 		listen: func(string, string) (net.Listener, error) {
 			return lifecycleListener{}, nil
@@ -267,7 +297,9 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 		t,
 		events,
 		"platform-start",
+		"websocket-start",
 		"http-shutdown",
+		"websocket-close",
 		"transport-close",
 		"platform-close",
 	)

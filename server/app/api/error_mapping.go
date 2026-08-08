@@ -111,6 +111,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"user.conflict":                                        {status: http.StatusConflict},
 	"user.last_system_admin":                               {status: http.StatusConflict},
 	"websocket.internal": {status: http.StatusInternalServerError},
+	"websocket.unavailable": {status: http.StatusServiceUnavailable},
 	"websocket.request.invalid": {status: http.StatusBadRequest},
 	"websocket.origin.invalid": {status: http.StatusForbidden},
 	"authentication.strong_required": {status: http.StatusForbidden},

@@ -8,9 +8,8 @@
 // those components must not depend back on the module-root package.
 //
 // New selects and assembles infrastructure while this package owns startup,
-// readiness, graceful HTTP shutdown, and cleanup. WebSocket replay maintenance
-// currently starts during transport construction; callers must call Close even
-// when Start is never called.
+// readiness, graceful HTTP shutdown, and cleanup. WebSocket construction is
+// inert; Start owns replay reaping and Close drains the hub.
 package server
 
 import (
@@ -63,6 +62,13 @@ type runtimeTransport interface {
 	Close() error
 }
 
+// runtimeWebSocket is the sibling WebSocket transport lifecycle. Construction
+// is inert; Start owns background reaping and Close drains connections.
+type runtimeWebSocket interface {
+	Start(context.Context) error
+	Close() error
+}
+
 type runtimeReadiness interface {
 	Ready() bool
 	SetReady(bool)
@@ -87,6 +93,7 @@ type httpServerSettings struct {
 type runtimeComponents struct {
 	platform  runtimePlatform
 	transport runtimeTransport
+	websocket runtimeWebSocket
 	readiness runtimeReadiness
 	listen    func(string, string) (net.Listener, error)
 	newHTTP   func(httpServerSettings) httpRuntime
@@ -113,10 +120,8 @@ type Server struct {
 // configuration or infrastructure construction failures without a partially
 // usable Server.
 //
-// New does not start network listeners. During the architecture migration its
-// legacy component constructor does start bounded WebSocket replay maintenance,
-// so callers must call Close on every successfully constructed Server even if
-// Start is never called.
+// New does not start network listeners or WebSocket background work. Call
+// Start to begin serving and Close to drain transports and infrastructure.
 func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 	settings := options{runtimeFactory: constructRuntime}
 	for _, option := range optionValues {
@@ -183,6 +188,14 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 			return nil
 		}
 		return fmt.Errorf("start platform: %w", err)
+	}
+	if s.components.websocket != nil {
+		if err := s.components.websocket.Start(runCtx); err != nil {
+			if errors.Is(err, context.Canceled) && errors.Is(runCtx.Err(), context.Canceled) {
+				return nil
+			}
+			return fmt.Errorf("start WebSocket: %w", err)
+		}
 	}
 
 	cfg := s.components.platform.Config()
@@ -299,10 +312,15 @@ func (s *Server) shutdownHTTP(timeout time.Duration) error {
 
 func (s *Server) closeRuntime() error {
 	s.closeOnce.Do(func() {
-		// Connections are drained before shared infrastructure is stopped so
-		// no socket remains attached to a node that can no longer receive
+		// Drain WebSocket connections before shared infrastructure so no
+		// socket remains attached to a node that can no longer receive
 		// revocation or authorization invalidations.
+		var websocketErr error
+		if s.components.websocket != nil {
+			websocketErr = s.components.websocket.Close()
+		}
 		s.closeErr = errors.Join(
+			websocketErr,
 			s.components.transport.Close(),
 			s.components.platform.Close(),
 		)

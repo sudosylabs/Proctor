@@ -172,6 +172,7 @@ func assembleRuntime(
 		components: runtimeComponents{
 			platform:  applicationPlatform,
 			transport: httpAPI,
+			websocket: webSocketHub,
 			readiness: readiness,
 			listen:    net.Listen,
 			newHTTP:   newHTTPServer,

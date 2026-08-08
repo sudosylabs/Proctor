@@ -59,9 +59,20 @@ type replayState struct {
 	expiresAt     time.Time
 }
 
+type hubState uint8
+
+const (
+	hubCreated hubState = iota
+	hubStarted
+	hubStopped
+)
+
 // Hub owns only connections attached to this process. Application
 // events arrive through PublishLocal after the application has performed the
 // local-first/cluster-peer publication flow.
+//
+// Construction is inert: Start owns the replay reaper; Close is idempotent and
+// drains connections when the hub was started.
 type Hub struct {
 	application Application
 	logger      Logger
@@ -70,7 +81,7 @@ type Hub struct {
 	hashSeed    maphash.Seed
 
 	mu     sync.RWMutex
-	closed bool
+	state  hubState
 	shards []*shard
 	stop   chan struct{}
 	done   chan struct{}
@@ -116,9 +127,8 @@ type Application interface {
 	ValidateWebSocketPrincipal(context.Context, model.Principal) error
 }
 
-// NewHub constructs the hub and starts the replay reaper. Making construction
-// fully inert with an explicit Start is ticket #43; Close remains the bounded
-// shutdown path for the reaper and open connections.
+// NewHub constructs an inert hub. Call Start before Accept; Close stops any
+// started background work and open connections.
 func NewHub(
 	application Application,
 	logger Logger,
@@ -142,9 +152,8 @@ func NewHub(
 		publicURL:   parsed,
 		nodeID:      nodeID,
 		hashSeed:    maphash.MakeSeed(),
+		state:       hubCreated,
 		shards:      make([]*shard, shardCount),
-		stop:        make(chan struct{}),
-		done:        make(chan struct{}),
 	}
 	for index := range hub.shards {
 		hub.shards[index] = &shard{
@@ -152,8 +161,36 @@ func NewHub(
 			replay: make(map[string]*replayState),
 		}
 	}
-	go hub.reapReplayStates()
 	return hub, nil
+}
+
+// Start begins replay-state reaping. It is idempotent while the hub is running
+// and fails after Close.
+func (h *Hub) Start(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	switch h.state {
+	case hubCreated:
+		h.stop = make(chan struct{})
+		h.done = make(chan struct{})
+		h.state = hubStarted
+		go h.reapReplayStates()
+		return nil
+	case hubStarted:
+		return nil
+	default:
+		return errors.New("websocket hub is closed")
+	}
+}
+
+// Started reports whether Start has succeeded and Close has not completed.
+func (h *Hub) Started() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.state == hubStarted
 }
 
 func (h *Hub) OriginAllowed(origin string, allowMissingOrigin bool) bool {
@@ -168,6 +205,7 @@ func (h *Hub) OriginAllowed(origin string, allowMissingOrigin bool) bool {
 
 // Accept upgrades an already-authenticated HTTP request to a WebSocket
 // connection. Callers must enforce session authentication before Accept.
+// The hub must be Start'ed; construction alone does not accept connections.
 func (h *Hub) Accept(
 	writer http.ResponseWriter,
 	request *http.Request,
@@ -177,6 +215,9 @@ func (h *Hub) Accept(
 	sequence int64,
 	allowMissingOrigin bool,
 ) error {
+	if !h.Started() {
+		return app.NewError("websocket.unavailable")
+	}
 	if !h.OriginAllowed(request.Header.Get("Origin"), allowMissingOrigin) {
 		return app.NewError("websocket.origin.invalid")
 	}
@@ -221,20 +262,20 @@ func (h *Hub) register(
 	requestedID string,
 	requestedSequence int64,
 ) (*connection, bool) {
-	h.mu.Lock()
-	if h.closed {
-		h.mu.Unlock()
+	h.mu.RLock()
+	started := h.state == hubStarted
+	h.mu.RUnlock()
+	if !started {
 		return nil, false
 	}
-	h.mu.Unlock()
 
 	shard := h.shardForUser(principal.UserId)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 	h.mu.RLock()
-	closed := h.closed
+	started = h.state == hubStarted
 	h.mu.RUnlock()
-	if closed {
+	if !started {
 		return nil, false
 	}
 	h.pruneReplayLocked(shard, time.Now())
@@ -305,9 +346,9 @@ func (h *Hub) unregister(connection *connection) {
 	delete(shard.conns, connection.id)
 	connection.mu.Lock()
 	h.mu.RLock()
-	closed := h.closed
+	started := h.state == hubStarted
 	h.mu.RUnlock()
-	if connection.replayable && !closed {
+	if connection.replayable && started {
 		shard.replay[connection.id] = &replayState{
 			userID:        connection.principal.UserId,
 			sessionID:     connection.principal.SessionId,
@@ -422,30 +463,45 @@ func (h *Hub) closeMatching(
 	}
 }
 
+// Close stops the reaper when running, drains connections, and is idempotent.
+// Closing a never-started hub is a no-op success.
 func (h *Hub) Close() error {
 	h.mu.Lock()
-	if h.closed {
+	switch h.state {
+	case hubCreated:
+		h.state = hubStopped
 		h.mu.Unlock()
-		<-h.done
+		return nil
+	case hubStopped:
+		done := h.done
+		h.mu.Unlock()
+		if done != nil {
+			<-done
+		}
+		return nil
+	case hubStarted:
+		h.state = hubStopped
+		close(h.stop)
+		done := h.done
+		h.mu.Unlock()
+		var connections []*connection
+		for _, shard := range h.shards {
+			shard.mu.Lock()
+			for _, connection := range shard.conns {
+				connections = append(connections, connection)
+			}
+			shard.replay = make(map[string]*replayState)
+			shard.mu.Unlock()
+		}
+		for _, connection := range connections {
+			connection.close(CloseServer, "server shutting down", false)
+		}
+		<-done
+		return nil
+	default:
+		h.mu.Unlock()
 		return nil
 	}
-	h.closed = true
-	close(h.stop)
-	var connections []*connection
-	h.mu.Unlock()
-	for _, shard := range h.shards {
-		shard.mu.Lock()
-		for _, connection := range shard.conns {
-			connections = append(connections, connection)
-		}
-		shard.replay = make(map[string]*replayState)
-		shard.mu.Unlock()
-	}
-	for _, connection := range connections {
-		connection.close(CloseServer, "server shutting down", false)
-	}
-	<-h.done
-	return nil
 }
 
 func (h *Hub) reapReplayStates() {

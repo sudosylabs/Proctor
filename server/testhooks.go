@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
@@ -64,6 +65,15 @@ func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRun
 	})
 	if err != nil {
 		return nil, err
+	}
+	// Tests that serve the HTTP handler without Server.Start still need the
+	// WebSocket hub running so upgrade and realtime fan-out work. Production
+	// Start owns this step for real processes.
+	if assembled.components.websocket != nil {
+		if err := assembled.components.websocket.Start(ctx); err != nil {
+			_ = node.Close()
+			return nil, fmt.Errorf("start WebSocket for testing: %w", err)
+		}
 	}
 	return &TestingRuntime{
 		Server:      node,
