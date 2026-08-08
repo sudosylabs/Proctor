@@ -57,7 +57,7 @@ func (a *App) CreatePersonalAccessToken(
 		return nil, err
 	}
 	now := time.Now().UnixMilli()
-	settings := a.Config().Authentication.PersonalAccessTokens
+	settings := a.personalAccessTokens
 	if command.ExpiresAt < now+settings.MinimumLifetime.Milliseconds() ||
 		command.ExpiresAt > now+settings.MaximumLifetime.Milliseconds() {
 		return nil, invalidPersonalAccessTokenRequest("expires_at")
@@ -230,7 +230,7 @@ func (a *App) SetPersonalAccessTokenDisabled(
 		principal.UserId,
 		command.Disabled,
 		time.Now().UnixMilli(),
-		a.Config().Authentication.PersonalAccessTokens.MaximumPerUser,
+		a.personalAccessTokens.MaximumPerUser,
 	)
 	if err != nil {
 		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.Id, err)
@@ -254,7 +254,7 @@ func (a *App) requireInteractiveSession(principal model.Principal, recent bool) 
 	}
 	if recent && !principal.IsRecentlyAuthenticated(
 		time.Now(),
-		a.Config().Authentication.RecentAuthenticationTTL.Duration,
+		a.recentAuthenticationTTL,
 	) {
 		return NewError("authentication.reauthentication_required")
 	}

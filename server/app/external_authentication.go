@@ -12,16 +12,56 @@ import (
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	"github.com/sudosylabs/proctor/server/store"
 )
+
+// Sentinel errors returned by the composition-owned external provider adapter.
+// Application code never imports concrete protocol packages.
+var (
+	ErrExternalAuthenticationRejected   = errors.New("external authentication rejected")
+	ErrExternalAuthenticationInvalid    = errors.New("external authentication response is invalid")
+	ErrExternalAuthenticationUnavailable = errors.New("external authentication provider is unavailable")
+)
+
+// ExternalProviderBeginRequest is the protocol-neutral start challenge.
+type ExternalProviderBeginRequest struct {
+	CallbackURL string
+	State       string
+	Proof       string
+}
+
+// ExternalProviderBeginResponse is the protocol-neutral redirect challenge.
+type ExternalProviderBeginResponse struct {
+	RedirectURL string
+}
+
+// ExternalProviderCompleteRequest is the protocol-neutral callback completion.
+type ExternalProviderCompleteRequest struct {
+	CallbackURL string
+	State       string
+	Proof       string
+	Callback    model.ExternalAuthenticationCallback
+}
+
+// ExternalIdentityProvider is the app-owned protocol-neutral provider port.
+// Composition adapts concrete CAS/OIDC implementations to this surface.
+type ExternalIdentityProvider interface {
+	Descriptor() model.ExternalAuthenticationProvider
+	AutoProvision() bool
+	Begin(context.Context, ExternalProviderBeginRequest) (*ExternalProviderBeginResponse, error)
+	State(model.ExternalAuthenticationCallback) (string, error)
+	Complete(
+		context.Context,
+		ExternalProviderCompleteRequest,
+	) (*model.ExternalAuthenticationAssertion, error)
+}
 
 // externalProviderSource is the protocol-neutral registry surface consumed by
 // application external-login orchestration. Concrete CAS/OIDC adapters remain
 // outside package app (ADR-0010, ticket #35).
 type externalProviderSource interface {
 	Descriptors() []model.ExternalAuthenticationProvider
-	Provider(id string) (externalauth.Provider, bool)
+	Provider(id string) (ExternalIdentityProvider, bool)
 }
 
 // ExternalAuthenticationPolicy is the deployment projection for external login.
@@ -147,7 +187,7 @@ func (s *ExternalAuthenticationService) begin(
 	}
 	challenge, err := provider.Begin(
 		ctx,
-		externalauth.BeginRequest{
+		ExternalProviderBeginRequest{
 			CallbackURL: callbackURL,
 			State:       stateToken,
 			Proof:       bindingToken,
@@ -270,7 +310,7 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	assertion, providerErr := provider.Complete(
 		ctx,
-		externalauth.CompleteRequest{
+		ExternalProviderCompleteRequest{
 			CallbackURL: callbackURL,
 			State:       stateToken,
 			Proof:       bindingToken,
@@ -279,10 +319,7 @@ func (s *ExternalAuthenticationService) complete(
 	)
 	if providerErr != nil {
 		errorCode := "authentication.external.rejected"
-		if !errors.Is(
-			providerErr,
-			externalauth.ErrAuthenticationRejected,
-		) {
+		if !errors.Is(providerErr, ErrExternalAuthenticationRejected) {
 			errorCode = "authentication.external.unavailable"
 		}
 		if appErr := s.audit.RecordExternalAuthenticationFailure(
@@ -531,31 +568,12 @@ func externalProviderOperationError(
 	err error,
 ) error {
 	_ = where
-	if errors.Is(err, externalauth.ErrAuthenticationRejected) {
+	if errors.Is(err, ErrExternalAuthenticationRejected) {
 		return NewError("authentication.external.rejected").Wrap(err)
 	}
-	if errors.Is(err, externalauth.ErrProviderUnavailable) ||
-		errors.Is(err, externalauth.ErrInvalidResponse) {
+	if errors.Is(err, ErrExternalAuthenticationUnavailable) ||
+		errors.Is(err, ErrExternalAuthenticationInvalid) {
 		return NewError("authentication.external.unavailable").Wrap(err)
 	}
 	return authenticationUnavailable(err)
-}
-
-
-// platformExternalProviders adapts platform registry accessors to the narrow
-// application externalProviderSource port without exposing concrete protocol
-// adapters to application orchestration.
-type platformExternalProviders struct {
-	service interface {
-		ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
-		ExternalAuthenticationProvider(string) (externalauth.Provider, bool)
-	}
-}
-
-func (p platformExternalProviders) Descriptors() []model.ExternalAuthenticationProvider {
-	return p.service.ExternalAuthenticationProviders()
-}
-
-func (p platformExternalProviders) Provider(id string) (externalauth.Provider, bool) {
-	return p.service.ExternalAuthenticationProvider(id)
 }

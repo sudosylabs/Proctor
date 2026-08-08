@@ -28,9 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -47,14 +45,13 @@ const (
 )
 
 type MFAService struct {
-	settings config.MFA
+	settings MFAPolicy
 	keys     map[string][]byte
 	primary  string
 	now      func() time.Time
 }
 
-func newMFAService(applicationPlatform *platform.Service) (*MFAService, error) {
-	settings := applicationPlatform.Config().Authentication.MFA
+func newMFAService(settings MFAPolicy) (*MFAService, error) {
 	service := &MFAService{
 		settings: settings,
 		keys:     make(map[string][]byte),

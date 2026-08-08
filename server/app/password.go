@@ -20,8 +20,6 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
-
-	"github.com/sudosylabs/proctor/server/config"
 )
 
 var ErrPasswordMismatch = errors.New("password does not match")
@@ -46,7 +44,7 @@ type passwordHasher struct {
 	dummyHash     string
 }
 
-func newPasswordHasher(settings config.Password) (*passwordHasher, error) {
+func newPasswordHasher(settings PasswordPolicy) (*passwordHasher, error) {
 	hasher := &passwordHasher{
 		minimumLength: settings.MinimumLength,
 		maximumLength: settings.MaximumLength,

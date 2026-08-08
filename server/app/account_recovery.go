@@ -17,8 +17,6 @@ import (
 	"strings"
 	"time"
 
-	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -59,7 +57,7 @@ func (a *App) RequestEmailVerification(
 	invocation Invocation,
 	command RequestEmailVerificationCommand,
 ) error {
-	if !a.Mailer().Enabled() {
+	if !a.mailer.Enabled() {
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	principal := invocation.Principal()
@@ -89,9 +87,7 @@ func (a *App) RequestEmailVerification(
 		Purpose:   model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(rawToken),
 		Target:    user.Email,
-		ExpiresAt: now.Add(
-			a.Config().Authentication.AccountRecovery.EmailVerificationTTL.Duration,
-		).UnixMilli(),
+		ExpiresAt: now.Add(a.accountRecovery.EmailVerificationTTL).UnixMilli(),
 	}
 	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
@@ -99,7 +95,7 @@ func (a *App) RequestEmailVerification(
 		model.Resource{Type: model.ResourceUser, Id: user.Id},
 		institution.Id,
 		metadata,
-		a.Cluster().NodeID(),
+		a.nodeID,
 		&principal,
 		"session",
 	)
@@ -107,7 +103,7 @@ func (a *App) RequestEmailVerification(
 		return accountRecoveryStoreFailure(err)
 	}
 	link, err := accountCredentialLink(
-		a.Config().Server.PublicURL,
+		a.publicURL,
 		"/account/verify-email",
 		rawToken,
 	)
@@ -138,7 +134,7 @@ func (a *App) RequestPasswordReset(
 	invocation Invocation,
 	command RequestPasswordResetCommand,
 ) error {
-	if !a.Mailer().Enabled() {
+	if !a.mailer.Enabled() {
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	normalizedEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
@@ -178,9 +174,7 @@ func (a *App) RequestPasswordReset(
 		Purpose:   model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(rawToken),
 		Target:    user.Email,
-		ExpiresAt: now.Add(
-			a.Config().Authentication.AccountRecovery.PasswordResetTTL.Duration,
-		).UnixMilli(),
+		ExpiresAt: now.Add(a.accountRecovery.PasswordResetTTL).UnixMilli(),
 	}
 	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
@@ -188,7 +182,7 @@ func (a *App) RequestPasswordReset(
 		model.Resource{Type: model.ResourceUser, Id: user.Id},
 		institution.Id,
 		metadata,
-		a.Cluster().NodeID(),
+		a.nodeID,
 		nil,
 		"anonymous",
 	)
@@ -197,7 +191,7 @@ func (a *App) RequestPasswordReset(
 		return nil
 	}
 	link, err := accountCredentialLink(
-		a.Config().Server.PublicURL,
+		a.publicURL,
 		"/account/reset-password",
 		rawToken,
 	)
@@ -247,7 +241,7 @@ func (a *App) CompleteEmailVerification(
 		model.Resource{Type: model.ResourceUser},
 		institution.Id,
 		metadata,
-		a.Cluster().NodeID(),
+		a.nodeID,
 		nil,
 		"email_verification_token",
 	)
@@ -298,7 +292,7 @@ func (a *App) CompletePasswordReset(
 		model.Resource{Type: model.ResourceUser},
 		institution.Id,
 		metadata,
-		a.Cluster().NodeID(),
+		a.nodeID,
 		nil,
 		"password_reset_token",
 	)
@@ -343,20 +337,16 @@ func (a *App) checkAccountRecoveryRateLimit(
 	identity string,
 	source string,
 ) error {
-	settings := a.Config().Authentication.AccountRecovery.RateLimit
+	settings := a.accountRecovery.RateLimit
 	identityKey := "authentication/recovery/" + operation + "/identity/" +
 		digestCacheKey(strings.ToLower(strings.TrimSpace(identity)))
 	sourceKey := "authentication/recovery/" + operation + "/source/" +
 		digestCacheKey(normalizeLoginSource(source))
-	identityCount, err := a.Cache().Add(
-		ctx, identityKey, 1, settings.Window.Duration,
-	)
+	identityCount, err := a.cache.Add(ctx, identityKey, 1, settings.Window)
 	if err != nil {
 		return rateLimitUnavailableAppError(err)
 	}
-	sourceCount, err := a.Cache().Add(
-		ctx, sourceKey, 1, settings.Window.Duration,
-	)
+	sourceCount, err := a.cache.Add(ctx, sourceKey, 1, settings.Window)
 	if err != nil {
 		return rateLimitUnavailableAppError(err)
 	}
@@ -420,16 +410,15 @@ func (a *App) sendAccountCredentialMail(
 	htmlBody string,
 	now time.Time,
 ) error {
-	_, err := a.Mailer().Send(ctx, mailpkg.Message{
-		To: []mailpkg.Address{{
-			Name: user.DisplayName, Address: user.Email,
-		}},
-		Subject: subject,
-		Text:    textBody,
-		HTML:    htmlBody,
-		Date:    now,
-	})
-	return err
+	return a.mailer.SendCredentialMail(
+		ctx,
+		user.DisplayName,
+		user.Email,
+		subject,
+		textBody,
+		htmlBody,
+		now,
+	)
 }
 
 func (a *App) logHiddenRecoveryFailure(
@@ -437,11 +426,10 @@ func (a *App) logHiddenRecoveryFailure(
 	message string,
 	err error,
 ) {
-	a.Log().ErrorContext(
-		ctx,
-		message,
-		mlog.Err(err),
-	)
+	if a.recoveryDiagnostics == nil {
+		return
+	}
+	a.recoveryDiagnostics.ErrorContext(ctx, message, err)
 }
 
 func invalidAccountCredential() error {

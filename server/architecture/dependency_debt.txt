@@ -3,21 +3,11 @@
 # Format: <module-relative Go file><tab><forbidden import path>
 # Entries are sorted. Delete an entry in the same change that removes its import;
 # new entries are forbidden because this ledger may only shrink.
-app/account_recovery.go	github.com/sudosylabs/proctor/packages/mail
-app/account_recovery.go	github.com/sudosylabs/proctor/server/mlog
 app/api/api.go	github.com/sudosylabs/proctor/server/mlog
 app/api/authentication.go	github.com/sudosylabs/proctor/server/mlog
 app/api/handler.go	github.com/sudosylabs/proctor/server/mlog
 app/api/middleware.go	github.com/sudosylabs/proctor/server/mlog
 app/api/websocket.go	github.com/sudosylabs/proctor/server/mlog
-app/app.go	github.com/sudosylabs/proctor/packages/vfs
-app/app.go	github.com/sudosylabs/proctor/server/config
-app/app.go	github.com/sudosylabs/proctor/server/mlog
-app/app.go	github.com/sudosylabs/proctor/server/platform
-app/external_authentication.go	github.com/sudosylabs/proctor/server/platform/externalauth
-app/mfa.go	github.com/sudosylabs/proctor/server/config
-app/mfa.go	github.com/sudosylabs/proctor/server/platform
-app/password.go	github.com/sudosylabs/proctor/server/config
 platform/cluster_redis.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/redis/rueidis
 platform/infrastructure.go	github.com/sudosylabs/proctor/packages/cache/memory

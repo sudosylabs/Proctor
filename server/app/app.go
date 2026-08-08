@@ -9,22 +9,16 @@ import (
 	"errors"
 	"time"
 
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-// Composition-root adapters for authentication live here so authentication.go
-// stays free of platform and mlog imports while app.go already carries that
-// temporary dependency debt (ADR-0004, ticket #29).
-
-// App is the long-lived application facade. Product capabilities will be
-// composed here as their contracts become concrete.
+// App is the long-lived application facade. Construction receives only the
+// explicit Dependencies bundle; infrastructure getters and platform location
+// are not part of the public surface (ADR-0004).
 type App struct {
-	platform               *platform.Service
+	store store.Store
+
 	authentication         *AuthenticationService
 	externalAuthentication *ExternalAuthenticationService
 	mfa                    *MFAService
@@ -48,174 +42,209 @@ type App struct {
 	bootstrap              *bootstrapService
 	audit                  *AuditService
 	realtime               *RealtimeService
+
+	// Cross-cutting policy and ports still used by App-method facades that
+	// have not yet been extracted into focused services.
+	mailer                  AccountMailer
+	cache                   authenticationCache
+	nodeID                  string
+	publicURL               string
+	accountRecovery         AccountRecoveryPolicy
+	personalAccessTokens    PersonalAccessTokenPolicy
+	recentAuthenticationTTL time.Duration
+	recoveryDiagnostics     recoveryDiagnostics
 }
 
-func New(applicationPlatform *platform.Service) (*App, error) {
-	mfa, err := newMFAService(applicationPlatform)
+// New constructs the application graph from explicit dependencies. Only the
+// module-root composition package should call this.
+func New(deps Dependencies) (*App, error) {
+	if deps.Store == nil {
+		return nil, errors.New("store is required")
+	}
+	if deps.Cache == nil {
+		return nil, errors.New("cache is required")
+	}
+	if deps.Mailer == nil {
+		return nil, errors.New("mailer is required")
+	}
+	if deps.Registry == nil {
+		return nil, errors.New("external provider registry is required")
+	}
+	if deps.NodeID == "" {
+		return nil, errors.New("node ID is required")
+	}
+	if deps.AuthenticationDiagnostics == nil {
+		return nil, errors.New("authentication diagnostics is required")
+	}
+	if deps.RealtimeDiagnostics == nil {
+		return nil, errors.New("realtime diagnostics is required")
+	}
+	if deps.RecoveryDiagnostics == nil {
+		return nil, errors.New("recovery diagnostics is required")
+	}
+
+	mfa, err := newMFAService(deps.MFA)
 	if err != nil {
 		return nil, err
 	}
-	authSettings := applicationPlatform.Config().Authentication
-	hasher, err := newPasswordHasher(authSettings.Password)
+	hasher, err := newPasswordHasher(deps.Password)
 	if err != nil {
 		return nil, err
 	}
+
+	// Expand PAT policy used both at bearer resolution and administration.
+	patPolicy := deps.PersonalAccessToken
 	authentication := newAuthenticationService(
-		applicationPlatform.Store(),
-		platformAuthenticationCache{cache: applicationPlatform.Cache()},
+		deps.Store,
+		deps.Cache,
 		hasher,
 		mfa,
-		SessionPolicy{
-			AccessTTL:              authSettings.Sessions.AccessTTL.Duration,
-			RefreshTTL:             authSettings.Sessions.RefreshTTL.Duration,
-			IdleTTL:                authSettings.Sessions.IdleTTL.Duration,
-			AbsoluteTTL:            authSettings.Sessions.AbsoluteTTL.Duration,
-			ActivityUpdateInterval: authSettings.Sessions.ActivityUpdateInterval.Duration,
-			MaximumPerUser:         authSettings.Sessions.MaximumPerUser,
-		},
-		LoginRateLimitPolicy{
-			Window:                authSettings.LoginRateLimit.Window.Duration,
-			MaximumAttempts:       authSettings.LoginRateLimit.MaximumAttempts,
-			MaximumSourceAttempts: authSettings.LoginRateLimit.MaximumSourceAttempts,
-		},
-		PersonalAccessTokenPolicy{
-			LastUsedUpdateInterval: authSettings.PersonalAccessTokens.LastUsedUpdateInterval.Duration,
-		},
-		mlogAuthenticationDiagnostics{log: applicationPlatform.Log()},
+		deps.Sessions,
+		deps.LoginRateLimit,
+		patPolicy,
+		deps.AuthenticationDiagnostics,
 		time.Now,
 	)
-	audit := newAuditService(
-		applicationPlatform.Store(),
-		applicationPlatform.Cluster().NodeID(),
-	)
+	audit := newAuditService(deps.Store, deps.NodeID)
+	externalPolicy := deps.ExternalAuth
+	if externalPolicy.PublicURL == "" {
+		externalPolicy.PublicURL = deps.PublicURL
+	}
+	if externalPolicy.NodeID == "" {
+		externalPolicy.NodeID = deps.NodeID
+	}
+	if externalPolicy.LoginRateLimit == (LoginRateLimitPolicy{}) {
+		externalPolicy.LoginRateLimit = deps.LoginRateLimit
+	}
 	externalAuthentication := newExternalAuthenticationService(
-		platformExternalProviders{service: applicationPlatform},
-		applicationPlatform.Store(),
-		platformAuthenticationCache{cache: applicationPlatform.Cache()},
+		deps.Registry,
+		deps.Store,
+		deps.Cache,
 		authentication,
 		audit,
-		ExternalAuthenticationPolicy{
-			PublicURL:     applicationPlatform.Config().Server.PublicURL,
-			LoginStateTTL: authSettings.External.LoginStateTTL.Duration,
-			LoginRateLimit: LoginRateLimitPolicy{
-				Window:                authSettings.LoginRateLimit.Window.Duration,
-				MaximumAttempts:       authSettings.LoginRateLimit.MaximumAttempts,
-				MaximumSourceAttempts: authSettings.LoginRateLimit.MaximumSourceAttempts,
-			},
-			NodeID: applicationPlatform.Cluster().NodeID(),
-		},
-		mlogAuthenticationDiagnostics{log: applicationPlatform.Log()},
+		externalPolicy,
+		deps.AuthenticationDiagnostics,
 		time.Now,
 	)
-	authorization := newAuthorizationService(applicationPlatform.Store(), audit)
+	authorization := newAuthorizationService(deps.Store, audit)
 	academicAuthorization := academicUnitAuthorization{
 		authorization: authorization,
-		institutions:  applicationPlatform.Store().Institution(),
+		institutions:  deps.Store.Institution(),
 	}
 	academicUnits := newAcademicUnitQueryService(
-		applicationPlatform.Store().AcademicUnit(), academicAuthorization,
+		deps.Store.AcademicUnit(), academicAuthorization,
 	)
-	realtime := newRealtimeService(
-		authentication,
-		mlogRealtimeDiagnostics{log: applicationPlatform.Log()},
-	)
+	realtime := newRealtimeService(authentication, deps.RealtimeDiagnostics)
 	authentication.propagateAuthenticationCacheInvalidation =
 		realtime.PropagateAuthenticationCacheInvalidation
 	authentication.propagateSessionRevocation =
 		realtime.PropagateSessionRevocation
 	academicUnitCommands := newAcademicUnitCommandService(
-		applicationPlatform.Store().AcademicUnit(), academicAuthorization,
+		deps.Store.AcademicUnit(), academicAuthorization,
 		mutationAuditAdapter{audit: audit},
 		academicUnitRealtimeEffects{realtime: realtime},
 		academicUnitEffectReporter{realtime: realtime},
 		time.Now, model.NewId,
 	)
 	institutions := newInstitutionService(
-		applicationPlatform.Store().Institution(), academicAuthorization,
+		deps.Store.Institution(), academicAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now,
 	)
 	programmes := newProgrammeService(
-		applicationPlatform.Store().Programme(), academicAuthorization,
+		deps.Store.Programme(), academicAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	programmeLevels := newProgrammeLevelService(
-		applicationPlatform.Store().ProgrammeLevel(), applicationPlatform.Store().Programme(),
+		deps.Store.ProgrammeLevel(), deps.Store.Programme(),
 		academicAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	academicPeriods := newAcademicPeriodService(
-		applicationPlatform.Store().AcademicPeriod(), academicAuthorization,
+		deps.Store.AcademicPeriod(), academicAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	classes := newClassService(
-		applicationPlatform.Store().Class(), applicationPlatform.Store().ProgrammeLevel(),
-		applicationPlatform.Store().Programme(), academicAuthorization,
+		deps.Store.Class(), deps.Store.ProgrammeLevel(),
+		deps.Store.Programme(), academicAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	affiliations := newAffiliationService(
-		applicationPlatform.Store().Affiliation(), applicationPlatform.Store().ClassMember(),
+		deps.Store.Affiliation(), deps.Store.ClassMember(),
 		academicAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	academicUnitMembers := newAcademicUnitMemberService(
-		applicationPlatform.Store().AcademicUnitMember(), academicAuthorization,
+		deps.Store.AcademicUnitMember(), academicAuthorization,
 		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	classMembers := newClassMemberService(
-		applicationPlatform.Store().ClassMember(), applicationPlatform.Store().Class(),
+		deps.Store.ClassMember(), deps.Store.Class(),
 		academicAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
 	)
 	userProfiles := newUserProfileService(
-		applicationPlatform.Store().User(),
-		userProfileAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution(), classMembers: applicationPlatform.Store().ClassMember(), now: time.Now},
+		deps.Store.User(),
+		userProfileAuthorization{
+			authorization: authorization,
+			institutions:  deps.Store.Institution(),
+			classMembers:  deps.Store.ClassMember(),
+			now:           time.Now,
+		},
 		mutationAuditAdapter{audit: audit}, time.Now,
 	)
 	accountStates := newAccountStateService(
-		applicationPlatform.Store().User(),
-		userProfileAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution(), classMembers: applicationPlatform.Store().ClassMember(), now: time.Now},
+		deps.Store.User(),
+		userProfileAuthorization{
+			authorization: authorization,
+			institutions:  deps.Store.Institution(),
+			classMembers:  deps.Store.ClassMember(),
+			now:           time.Now,
+		},
 		mutationAuditAdapter{audit: audit},
 		accountStateRealtimeEffects{realtime: realtime},
 		time.Now,
 	)
 	sessionAdministrations := newSessionAdministrationService(
-		applicationPlatform.Store().Session(),
+		deps.Store.Session(),
 		sessionAdministrationAuthorization{authorization: authorization},
 		mutationAuditAdapter{audit: audit},
 		sessionAdministrationRealtimeEffects{realtime: realtime},
 		time.Now,
 	)
 	roles := newRoleService(
-		applicationPlatform.Store().Role(),
-		roleAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution()},
+		deps.Store.Role(),
+		roleAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
 		mutationAuditAdapter{audit: audit},
 		roleRealtimeEffects{realtime: realtime},
 		time.Now,
 	)
 	roleBindings := newRoleBindingService(
-		applicationPlatform.Store().RoleBinding(),
-		applicationPlatform.Store().Role(),
-		roleAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution()},
+		deps.Store.RoleBinding(),
+		deps.Store.Role(),
+		roleAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
 		mutationAuditAdapter{audit: audit},
 		roleBindingRealtimeEffects{realtime: realtime},
 		time.Now,
 	)
 	auditListings := newAuditListingService(
-		applicationPlatform.Store().Audit(),
-		auditListingAuthorization{authorization: authorization, institutions: applicationPlatform.Store().Institution()},
+		deps.Store.Audit(),
+		auditListingAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
 	)
 	bootstrap := newBootstrapService(
-		applicationPlatform.Store().Installation(),
+		deps.Store.Installation(),
 		authentication.hasher,
 		bootstrapRateLimit{
-			cache:                 applicationPlatform.Cache(),
-			window:                authSettings.LoginRateLimit.Window.Duration,
-			maximumSourceAttempts: authSettings.LoginRateLimit.MaximumSourceAttempts,
+			cache:                 deps.Cache,
+			window:                deps.LoginRateLimit.Window,
+			maximumSourceAttempts: deps.LoginRateLimit.MaximumSourceAttempts,
 		},
-		applicationPlatform.Cluster().NodeID(),
+		deps.NodeID,
 		time.Now,
 	)
 	return &App{
-		platform: applicationPlatform, authentication: authentication,
-		externalAuthentication: externalAuthentication, mfa: mfa,
-		authorization: authorization, academicUnits: academicUnits,
+		store:                  deps.Store,
+		authentication:         authentication,
+		externalAuthentication: externalAuthentication,
+		mfa:                    mfa,
+		authorization:          authorization,
+		academicUnits:          academicUnits,
 		academicUnitCommands:   academicUnitCommands,
 		institutions:           institutions,
 		programmes:             programmes,
@@ -232,7 +261,16 @@ func New(applicationPlatform *platform.Service) (*App, error) {
 		roleBindings:           roleBindings,
 		auditListings:          auditListings,
 		bootstrap:              bootstrap,
-		audit:                  audit, realtime: realtime,
+		audit:                  audit,
+		realtime:               realtime,
+		mailer:                 deps.Mailer,
+		cache:                  deps.Cache,
+		nodeID:                 deps.NodeID,
+		publicURL:              deps.PublicURL,
+		accountRecovery:        deps.AccountRecovery,
+		personalAccessTokens:   patPolicy,
+		recentAuthenticationTTL: deps.RecentAuthenticationTTL,
+		recoveryDiagnostics:    deps.RecoveryDiagnostics,
 	}, nil
 }
 
@@ -245,141 +283,25 @@ func (a *App) Can(
 	return a.PrincipalHasPermissionTo(ctx, principal, action, resource)
 }
 
-func (a *App) Platform() *platform.Service {
-	return a.platform
-}
-
-func (a *App) Config() config.Config {
-	return a.platform.Config()
-}
-
-func (a *App) Log() *mlog.Logger {
-	return a.platform.Log()
-}
-
+// Store returns the root persistence contract. Focused services receive narrow
+// store ports; App-method facades that still share this root should migrate
+// onto explicit ports in later tickets.
 func (a *App) Store() store.Store {
-	return a.platform.Store()
-}
-
-func (a *App) Cache() platform.Cache {
-	return a.platform.Cache()
-}
-
-func (a *App) Cluster() platform.Cluster {
-	return a.platform.Cluster()
-}
-
-func (a *App) Mailer() platform.Mailer {
-	return a.platform.Mailer()
-}
-
-func (a *App) VFS() vfspkg.FileSystem {
-	return a.platform.VFS()
+	return a.store
 }
 
 // errAuthenticationCacheMiss and errAuthenticationCacheNotStored are the
 // transport-neutral sentinels authentication uses for disposable cache
-// outcomes. Adapters translate platform cache errors into these values so the
-// authentication service never imports platform.
+// outcomes. Composition adapters translate infrastructure cache errors into
+// these values so authentication never imports platform.
 var (
-	errAuthenticationCacheMiss      = errors.New("authentication cache: key not found")
-	errAuthenticationCacheNotStored = errors.New("authentication cache: conditional write not applied")
+	ErrAuthenticationCacheMiss      = errors.New("authentication cache: key not found")
+	ErrAuthenticationCacheNotStored = errors.New("authentication cache: conditional write not applied")
 )
 
-// platformAuthenticationCache adapts platform.Cache to the narrow
-// authenticationCache port used by AuthenticationService.
-type platformAuthenticationCache struct {
-	cache platform.Cache
-}
-
-func (c platformAuthenticationCache) Get(ctx context.Context, key string) ([]byte, error) {
-	data, err := c.cache.Get(ctx, key)
-	if errors.Is(err, platform.ErrCacheMiss) {
-		return nil, errAuthenticationCacheMiss
-	}
-	return data, err
-}
-
-func (c platformAuthenticationCache) SetAlways(
-	ctx context.Context,
-	key string,
-	value []byte,
-	ttl time.Duration,
-) error {
-	return c.cache.Set(ctx, key, value, ttl, platform.CacheSetAlways)
-}
-
-func (c platformAuthenticationCache) SetIfAbsent(
-	ctx context.Context,
-	key string,
-	value []byte,
-	ttl time.Duration,
-) error {
-	err := c.cache.Set(ctx, key, value, ttl, platform.CacheSetIfAbsent)
-	if errors.Is(err, platform.ErrCacheNotStored) {
-		return errAuthenticationCacheNotStored
-	}
-	return err
-}
-
-func (c platformAuthenticationCache) Delete(ctx context.Context, key string) error {
-	return c.cache.Delete(ctx, key)
-}
-
-func (c platformAuthenticationCache) Add(
-	ctx context.Context,
-	key string,
-	delta int64,
-	ttl time.Duration,
-) (int64, error) {
-	return c.cache.Add(ctx, key, delta, ttl)
-}
-
-// mlogAuthenticationDiagnostics reports non-fatal authentication operational
-// events without making the authentication service depend on mlog directly.
-type mlogAuthenticationDiagnostics struct {
-	log *mlog.Logger
-}
-
-func (d mlogAuthenticationDiagnostics) WarnContext(ctx context.Context, message string, err error) {
-	if d.log == nil {
-		return
-	}
-	fields := []mlog.Field{}
-	if err != nil {
-		fields = append(fields, mlog.Err(err))
-	}
-	d.log.WarnContext(ctx, message, fields...)
-}
-
-// mlogRealtimeDiagnostics adapts mlog to the narrow RealtimeDiagnostics port so
-// RealtimeService never imports mlog or platform (ticket #40).
-type mlogRealtimeDiagnostics struct {
-	log *mlog.Logger
-}
-
-func (d mlogRealtimeDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
-	if d.log == nil {
-		return
-	}
-	fields := []mlog.Field{}
-	if err != nil {
-		fields = append(fields, mlog.Err(err))
-	}
-	d.log.ErrorContext(ctx, message, fields...)
-}
-
-func (d mlogRealtimeDiagnostics) ErrorContextWithEvent(
-	ctx context.Context,
-	message, event string,
-	err error,
-) {
-	if d.log == nil {
-		return
-	}
-	fields := []mlog.Field{mlog.String("event", event)}
-	if err != nil {
-		fields = append(fields, mlog.Err(err))
-	}
-	d.log.ErrorContext(ctx, message, fields...)
-}
+// Deprecated aliases kept unexported for any same-package references during
+// the transition; prefer the exported Err* names in new code.
+var (
+	errAuthenticationCacheMiss      = ErrAuthenticationCacheMiss
+	errAuthenticationCacheNotStored = ErrAuthenticationCacheNotStored
+)

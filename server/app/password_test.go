@@ -11,11 +11,21 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 )
 
-func TestPasswordHasherRoundTripAndRehash(t *testing.T) {
+func testPasswordPolicy() PasswordPolicy {
 	settings := config.Default().Authentication.Password
-	settings.ArgonMemoryKiB = 19 * 1024
-	settings.ArgonIterations = 1
-	settings.ArgonParallelism = 1
+	return PasswordPolicy{
+		MinimumLength:    settings.MinimumLength,
+		MaximumLength:    settings.MaximumLength,
+		ArgonMemoryKiB:   19 * 1024,
+		ArgonIterations:  1,
+		ArgonParallelism: 1,
+		ArgonSaltBytes:   settings.ArgonSaltBytes,
+		ArgonKeyBytes:    settings.ArgonKeyBytes,
+	}
+}
+
+func TestPasswordHasherRoundTripAndRehash(t *testing.T) {
+	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -49,10 +59,7 @@ func TestPasswordHasherRoundTripAndRehash(t *testing.T) {
 }
 
 func TestPasswordHasherRejectsUnsafeInputsAndParameters(t *testing.T) {
-	settings := config.Default().Authentication.Password
-	settings.ArgonMemoryKiB = 19 * 1024
-	settings.ArgonIterations = 1
-	settings.ArgonParallelism = 1
+	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings)
 	if err != nil {
 		t.Fatal(err)

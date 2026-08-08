@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -353,11 +352,7 @@ func (authenticationSessionCredentialStore) RotateRefresh(
 
 func newTestAuthenticationService(t *testing.T, persistence *authenticationStoreFake) *AuthenticationService {
 	t.Helper()
-	settings := config.Default().Authentication.Password
-	// Memory must stay at or above the Argon2id parse floor (19 MiB).
-	settings.ArgonMemoryKiB = 19 * 1024
-	settings.ArgonIterations = 1
-	settings.ArgonParallelism = 1
+	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings)
 	if err != nil {
 		t.Fatal(err)

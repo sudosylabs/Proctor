@@ -131,8 +131,8 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	if runtime.Server.Ready() {
 		t.Fatal("server is ready before Start")
 	}
-	if runtime.Application.Platform() != runtime.Platform {
-		t.Fatal("application was not constructed with the runtime platform")
+	if runtime.Application.Store() != persistence {
+		t.Fatal("application was not constructed with the provided persistence store")
 	}
 	if runtime.Platform.ConfigStore() != configuration {
 		t.Fatal("platform does not own the provided configuration store")

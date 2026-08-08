@@ -57,14 +57,8 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
-	if helper.App.Platform() != helper.Platform {
-		t.Fatal("application graph contains more than one platform service")
-	}
 	if helper.Platform.ConfigStore() != helper.ConfigStore {
 		t.Fatal("platform and test helper do not share the same configuration store")
-	}
-	if helper.App.Log() != helper.Platform.Log() {
-		t.Fatal("application and platform do not share the same logger")
 	}
 	if helper.Platform.Store() != helper.Store {
 		t.Fatal("platform and test helper do not share the same persistence store")
@@ -72,7 +66,7 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	if helper.App.Store() != helper.Store {
 		t.Fatal("application and platform do not share the same persistence store")
 	}
-	if helper.App.Cluster() != helper.Cluster || helper.Platform.Cluster() != helper.Cluster {
+	if helper.Platform.Cluster() != helper.Cluster {
 		t.Fatal("application graph contains more than one cluster transport")
 	}
 	if helper.Handler() != helper.API {

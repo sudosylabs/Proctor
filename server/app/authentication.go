@@ -49,10 +49,13 @@ type LoginRateLimitPolicy struct {
 	MaximumSourceAttempts int
 }
 
-// PersonalAccessTokenPolicy controls PAT last-used write debouncing during
-// bearer resolution.
+// PersonalAccessTokenPolicy controls PAT lifetime bounds, per-user limits, and
+// last-used write debouncing during bearer resolution.
 type PersonalAccessTokenPolicy struct {
+	MinimumLifetime         time.Duration
+	MaximumLifetime         time.Duration
 	LastUsedUpdateInterval time.Duration
+	MaximumPerUser         int
 }
 
 // LoginCommand is the local-password login use-case input.

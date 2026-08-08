@@ -77,7 +77,14 @@ func assembleRuntime(
 	if err != nil {
 		return nil, err
 	}
-	application, err := app.New(applicationPlatform)
+	applicationDeps, err := applicationDependencies(applicationPlatform)
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("project application dependencies: %w", err),
+			applicationPlatform.Close(),
+		)
+	}
+	application, err := app.New(applicationDeps)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("construct application: %w", err),
