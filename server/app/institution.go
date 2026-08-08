@@ -65,7 +65,7 @@ func (s *institutionService) Get(
 	}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionInstitutionManage,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		model.Resource{Type: model.ResourceInstitution, Id: institution.ResourceID()},
 	); err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (s *institutionService) Update(
 	if err != nil {
 		return nil, institutionError(err)
 	}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: current.Id}
+	resource := model.Resource{Type: model.ResourceInstitution, Id: current.ResourceID()}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionInstitutionManage, resource,
 	); err != nil {
@@ -105,9 +105,9 @@ func (s *institutionService) Update(
 	if command.Description != nil {
 		candidate.Description = *command.Description
 	}
-	candidate.PrepareUpdate(s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("institution.invalid", appErr)
+	candidate.PrepareUpdate(s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("institution.invalid", err)
 	}
 	auditID, err := s.audit.Begin(
 		ctx, invocation, model.ActionInstitutionManage, resource,

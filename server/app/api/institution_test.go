@@ -69,7 +69,7 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
 	institution := &model.Institution{
-		Id: model.NewId(), CreateAt: 10, UpdateAt: 20,
+		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
 		Name: "northbridge", DisplayName: "Northbridge University",
 		Description: "A university",
 	}
@@ -112,7 +112,7 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	if err := json.Unmarshal(getResponse.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != institution.Id || got.Name != institution.Name {
+	if got.ID != institution.ID.String() || got.Name != institution.Name {
 		t.Fatalf("get response = %#v", got)
 	}
 

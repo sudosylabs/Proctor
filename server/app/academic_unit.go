@@ -45,7 +45,7 @@ func (a academicUnitAuthorization) Installation(
 	if err != nil {
 		return model.Resource{}, academicUnitReadError("institution", err)
 	}
-	return model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, nil
+	return model.Resource{Type: model.ResourceInstitution, Id: institution.ResourceID()}, nil
 }
 
 type academicUnitAuthorization struct {

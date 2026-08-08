@@ -24,11 +24,11 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionId: institution.Id, Name: "computing", DisplayName: "Computing"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.Id, Name: "computer-science", DisplayName: "Computer Science"})
+	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,11 +38,11 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.Id, Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartAt: int64(1_800_000_000_000 + iteration*1_000_000), EndAt: int64(1_800_000_500_000 + iteration*1_000_000)})
+		period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartAt: int64(1_800_000_000_000 + iteration*1_000_000), EndAt: int64(1_800_000_500_000 + iteration*1_000_000)})
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id, Status: model.AuditStatusAttempt, NodeId: "test-node"})
+		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionInstitutionManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
 		if err != nil {
 			t.Fatal(err)
 		}

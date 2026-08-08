@@ -24,19 +24,19 @@ func TestProgrammeArchiveSerializesWithLevelCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionId: institution.Id, Name: "computing", DisplayName: "Computing"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.Id, Name: fmt.Sprintf("programme-%d", iteration), DisplayName: "Programme"})
+		programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID, Name: fmt.Sprintf("programme-%d", iteration), DisplayName: "Programme"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{
-			Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.Id},
-			ScopeType: model.RoleScopeAcademicUnit, ScopeId: unit.Id,
+			Action: string(model.ActionAcademicUnitManage), Resource: model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID},
+			ScopeType: model.RoleScopeAcademicUnit, ScopeId: unit.ID,
 			Status: model.AuditStatusAttempt, NodeId: "test-node",
 		})
 		if err != nil {

@@ -571,7 +571,7 @@ func (a *App) mfaAuditResource(
 	if err != nil {
 		return model.Resource{}, mfaStoreError("MFA.audit_resource", err)
 	}
-	return model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, nil
+	return model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, nil
 }
 
 func (a *App) failMFAMutation(

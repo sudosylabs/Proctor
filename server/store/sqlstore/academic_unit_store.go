@@ -65,14 +65,14 @@ func (s SqlAcademicUnitStore) Create(
 	if !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "audit", nil)
 	}
-	if !model.IsValidId(input.Unit.Id) {
-		return nil, store.NewErrInvalidInput("academic_unit", "id", input.Unit.Id)
+	if !input.Unit.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("academic_unit", "id", input.Unit.ID.String())
 	}
 	candidate := *input.Unit
-	if appErr := candidate.IsValid(); appErr != nil {
+	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput(
 			"academic_unit", "value", nil,
-		).Wrap(appErr)
+		).Wrap(err)
 	}
 	result, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
@@ -88,7 +88,10 @@ func (s SqlAcademicUnitStore) Create(
 		return nil, err
 	}
 	if err := validateAcademicUnitParent(
-		ctx, tx, candidate.Id, candidate.InstitutionId, candidate.ParentId,
+		ctx, tx,
+		candidate.ID.String(),
+		candidate.InstitutionID.String(),
+		candidate.ParentID.String(),
 	); err != nil {
 		return nil, err
 	}
@@ -103,7 +106,7 @@ func (s SqlAcademicUnitStore) Create(
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"create academic unit: %w",
-			translateError("academic_unit", candidate.Id, err),
+			translateError("academic_unit", candidate.ID.String(), err),
 		)
 	}
 	if _, err := completeAuditEvent(
@@ -127,13 +130,17 @@ func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 	if unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
 	}
-	if unit.Id != "" {
-		return nil, store.NewErrInvalidInput("academic_unit", "id", unit.Id)
+	if !unit.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("academic_unit", "id", unit.ID.String())
+	}
+	id, err := model.ParseAcademicUnitID(model.NewId())
+	if err != nil {
+		return nil, err
 	}
 	candidate := *unit
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(id, model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(err)
 	}
 
 	tx, err := s.GetMaster().Begin(ctx)
@@ -145,7 +152,12 @@ func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateAcademicUnitParent(ctx, tx, candidate.Id, candidate.InstitutionId, candidate.ParentId); err != nil {
+	if err := validateAcademicUnitParent(
+		ctx, tx,
+		candidate.ID.String(),
+		candidate.InstitutionID.String(),
+		candidate.ParentID.String(),
+	); err != nil {
 		return nil, err
 	}
 	row := newAcademicUnitRow(&candidate)
@@ -157,7 +169,10 @@ func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 			:id, :create_at, :update_at, :delete_at, :institution_id,
 			:parent_id, :name, :display_name, :description
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("save academic unit: %w", translateError("academic_unit", candidate.Id, err))
+		return nil, fmt.Errorf(
+			"save academic unit: %w",
+			translateError("academic_unit", candidate.ID.String(), err),
+		)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit academic unit save: %w", err)
@@ -278,8 +293,8 @@ func (s SqlAcademicUnitStore) UpdateWithAudit(
 		return nil, store.NewErrInvalidInput("academic_unit", "update", nil)
 	}
 	candidate := *input.Unit
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(err)
 	}
 	return s.updateAcademicUnit(ctx, &candidate, &academicUnitAuditCompletion{
 		eventID: input.AuditEventID, at: input.AuditAt,
@@ -291,9 +306,9 @@ func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUn
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
 	}
 	candidate := *unit
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(err)
 	}
 	return s.updateAcademicUnit(ctx, &candidate, nil)
 }
@@ -312,7 +327,12 @@ func (s SqlAcademicUnitStore) updateAcademicUnit(
 	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
 		return nil, err
 	}
-	if err := validateAcademicUnitParent(ctx, tx, candidate.Id, candidate.InstitutionId, candidate.ParentId); err != nil {
+	if err := validateAcademicUnitParent(
+		ctx, tx,
+		candidate.ID.String(),
+		candidate.InstitutionID.String(),
+		candidate.ParentID.String(),
+	); err != nil {
 		return nil, err
 	}
 	row := newAcademicUnitRow(candidate)
@@ -325,9 +345,12 @@ func (s SqlAcademicUnitStore) updateAcademicUnit(
 		       description = :description
 		 WHERE id = :id AND institution_id = :institution_id AND delete_at = 0`, &row)
 	if err != nil {
-		return nil, fmt.Errorf("update academic unit: %w", translateError("academic_unit", candidate.Id, err))
+		return nil, fmt.Errorf(
+			"update academic unit: %w",
+			translateError("academic_unit", candidate.ID.String(), err),
+		)
 	}
-	if err := requireAffected(result, "academic_unit", candidate.Id); err != nil {
+	if err := requireAffected(result, "academic_unit", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if audit != nil {
@@ -411,8 +434,9 @@ func (s SqlAcademicUnitStore) archiveAcademicUnit(
 		 WHERE id = ? AND delete_at = 0`, deleteAt, deleteAt, id); err != nil {
 		return nil, fmt.Errorf("archive academic unit: %w", err)
 	}
-	current.UpdateAt = deleteAt
-	current.DeleteAt = deleteAt
+	at := model.TimeFromMillis(deleteAt)
+	current.UpdatedAt = at
+	current.ArchivedAt = model.OptionalTimeFromMillis(deleteAt)
 	if audit != nil {
 		encoded, appErr := model.EncodeAuditData(current.Auditable())
 		if appErr != nil {
@@ -504,12 +528,12 @@ func validateAcademicUnitParent(
 
 func newAcademicUnitRow(unit *model.AcademicUnit) academicUnitRow {
 	return academicUnitRow{
-		ID:            unit.Id,
-		CreateAt:      unit.CreateAt,
-		UpdateAt:      unit.UpdateAt,
-		DeleteAt:      unit.DeleteAt,
-		InstitutionID: unit.InstitutionId,
-		ParentID:      nullableString(unit.ParentId),
+		ID:            unit.ID.String(),
+		CreateAt:      model.MillisFromTime(unit.CreatedAt),
+		UpdateAt:      model.MillisFromTime(unit.UpdatedAt),
+		DeleteAt:      unit.ArchivedAt.Millis(),
+		InstitutionID: unit.InstitutionID.String(),
+		ParentID:      nullableString(unit.ParentID.String()),
 		Name:          unit.Name,
 		DisplayName:   unit.DisplayName,
 		Description:   unit.Description,
@@ -517,13 +541,31 @@ func newAcademicUnitRow(unit *model.AcademicUnit) academicUnitRow {
 }
 
 func (row academicUnitRow) model() *model.AcademicUnit {
+	id, err := model.ParseAcademicUnitID(row.ID)
+	if err != nil {
+		id = model.AcademicUnitID(row.ID)
+	}
+	institutionID, err := model.ParseInstitutionID(row.InstitutionID)
+	if err != nil {
+		institutionID = model.InstitutionID(row.InstitutionID)
+	}
+	var parentID model.AcademicUnitID
+	if row.ParentID.Valid && row.ParentID.String != "" {
+		parsed, parseErr := model.ParseAcademicUnitID(row.ParentID.String)
+		if parseErr != nil {
+			parentID = model.AcademicUnitID(row.ParentID.String)
+		} else {
+			parentID = parsed
+		}
+	}
 	return &model.AcademicUnit{
-		Id:            row.ID,
-		CreateAt:      row.CreateAt,
-		UpdateAt:      row.UpdateAt,
-		DeleteAt:      row.DeleteAt,
-		InstitutionId: row.InstitutionID,
-		ParentId:      row.ParentID.String,
+		ID:            id,
+		CreatedAt:     model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:     model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:    model.OptionalTimeFromMillis(row.DeleteAt),
+		Revision:      1,
+		InstitutionID: institutionID,
+		ParentID:      parentID,
 		Name:          row.Name,
 		DisplayName:   row.DisplayName,
 		Description:   row.Description,

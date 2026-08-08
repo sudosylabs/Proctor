@@ -3,7 +3,10 @@
 
 package model
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 type persistentModel interface {
 	PreSave()
@@ -15,32 +18,16 @@ type persistentModel interface {
 func TestAcademicModelsImplementLifecycleContract(t *testing.T) {
 	t.Parallel()
 
-	institutionID := NewId()
 	unitID := NewId()
 	programmeID := NewId()
 	levelID := NewId()
 	periodID := NewId()
+	institutionID := NewId()
 
 	tests := []struct {
 		name  string
 		model persistentModel
 	}{
-		{
-			name: "institution",
-			model: &Institution{
-				Name:        "northbridge",
-				DisplayName: "Northbridge University",
-				Description: "Institution",
-			},
-		},
-		{
-			name: "academic unit",
-			model: &AcademicUnit{
-				InstitutionId: institutionID,
-				Name:          "engineering",
-				DisplayName:   "College of Engineering",
-			},
-		},
 		{
 			name: "programme",
 			model: &Programme{
@@ -110,8 +97,74 @@ func TestAcademicModelsImplementLifecycleContract(t *testing.T) {
 	}
 }
 
+func TestInstitutionAndAcademicUnitTypedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	at := time.UnixMilli(1_700_000_000_000).UTC()
+	institutionID, err := ParseInstitutionID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	institution, err := NewInstitution(
+		institutionID, "northbridge", "Northbridge University", "Institution", at,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := institution.Validate(); err != nil {
+		t.Fatalf("Institution.Validate() = %v", err)
+	}
+	audit := institution.Auditable()
+	if audit["id"] != institution.ID.String() ||
+		audit["created_at"] != MillisFromTime(at) ||
+		audit["updated_at"] != MillisFromTime(at) {
+		t.Fatalf("institution audit = %#v", audit)
+	}
+	if _, exposed := audit["description"]; exposed {
+		t.Fatalf("institution audit exposes description: %#v", audit)
+	}
+	institution.PrepareUpdate(at.Add(time.Second))
+	if err := institution.Validate(); err != nil {
+		t.Fatalf("Institution after PrepareUpdate: %v", err)
+	}
+
+	unitID, err := ParseAcademicUnitID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit, err := NewAcademicUnit(
+		unitID, institutionID, "", "engineering", "College of Engineering", "", at,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unit.Validate(); err != nil {
+		t.Fatalf("AcademicUnit.Validate() = %v", err)
+	}
+	unitAudit := unit.Auditable()
+	if unitAudit["id"] != unit.ID.String() ||
+		unitAudit["institution_id"] != institutionID.String() ||
+		unitAudit["created_at"] != MillisFromTime(at) {
+		t.Fatalf("academic unit audit = %#v", unitAudit)
+	}
+	unit.PrepareUpdate(at.Add(time.Second))
+	if err := unit.Validate(); err != nil {
+		t.Fatalf("AcademicUnit after PrepareUpdate: %v", err)
+	}
+}
+
 func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 	t.Parallel()
+
+	selfParentID, err := ParseAcademicUnitID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	institutionID, err := ParseInstitutionID(NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.UnixMilli(1).UTC()
 
 	tests := []struct {
 		name string
@@ -120,18 +173,16 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 	}{
 		{
 			name: "self-parent academic unit",
-			err: func() error {
-				id := NewId()
-				return (&AcademicUnit{
-					Id:            id,
-					CreateAt:      1,
-					UpdateAt:      1,
-					InstitutionId: NewId(),
-					ParentId:      id,
-					Name:          "computing",
-					DisplayName:   "School of Computing",
-				}).IsValid()
-			}(),
+			err: (&AcademicUnit{
+				ID:            selfParentID,
+				CreatedAt:     at,
+				UpdatedAt:     at,
+				Revision:      1,
+				InstitutionID: institutionID,
+				ParentID:      selfParentID,
+				Name:          "computing",
+				DisplayName:   "School of Computing",
+			}).Validate(),
 			code: "model.academic_unit.is_valid.parent_id.app_error",
 		},
 		{
@@ -178,7 +229,7 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.err == nil {
-				t.Fatal("IsValid() returned nil")
+				t.Fatal("validation returned nil")
 			}
 			validation, ok := test.err.(*ValidationError)
 			if !ok {
@@ -194,15 +245,23 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 	}
 }
 
-func TestPreSaveSanitizesUnsafeUnicode(t *testing.T) {
+func TestInstitutionSanitizesUnsafeUnicode(t *testing.T) {
 	t.Parallel()
 
-	institution := &Institution{
-		Name:        "northbridge",
-		DisplayName: "North\u202Ebridge",
-		Description: "safe\u2066text",
+	id, err := ParseInstitutionID(NewId())
+	if err != nil {
+		t.Fatal(err)
 	}
-	institution.PreSave()
+	institution, err := NewInstitution(
+		id,
+		"northbridge",
+		"North\u202Ebridge",
+		"safe\u2066text",
+		time.UnixMilli(1_700_000_000_000).UTC(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if institution.DisplayName != "Northbridge" || institution.Description != "safetext" {
 		t.Fatalf("institution = %#v", institution)
 	}

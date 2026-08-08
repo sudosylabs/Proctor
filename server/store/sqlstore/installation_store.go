@@ -123,14 +123,19 @@ func prepareInstallationBootstrap(
 		input.PasswordHash == "" {
 		return nil, store.NewErrInvalidInput("installation", "bootstrap", nil)
 	}
-	institution := *input.Institution
-	institution.Id = ""
-	institution.CreateAt = 0
-	institution.UpdateAt = 0
-	institution.DeleteAt = 0
-	institution.PreSave()
-	if appErr := institution.IsValid(); appErr != nil {
-		return nil, appErr
+	institutionID, err := model.ParseInstitutionID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
+	institution, err := model.NewInstitution(
+		institutionID,
+		input.Institution.Name,
+		input.Institution.DisplayName,
+		input.Institution.Description,
+		model.NowUTC(),
+	)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
 	administrator := *input.Administrator
 	administrator.Id = ""
@@ -173,7 +178,7 @@ func prepareInstallationBootstrap(
 	binding.UserId = administrator.Id
 	binding.RoleId = role.Id
 	binding.ScopeType = model.RoleScopeInstitution
-	binding.ScopeId = institution.Id
+	binding.ScopeId = institution.ID.String()
 	binding.PreSave()
 	if appErr := binding.IsValid(); appErr != nil {
 		return nil, appErr
@@ -185,10 +190,10 @@ func prepareInstallationBootstrap(
 	event.ActorId = administrator.Id
 	event.Resource = model.Resource{
 		Type: model.ResourceInstitution,
-		Id:   institution.Id,
+		Id:   institution.ID.String(),
 	}
 	event.ScopeType = model.RoleScopeInstitution
-	event.ScopeId = institution.Id
+	event.ScopeId = institution.ID.String()
 	event.Status = model.AuditStatusSuccess
 	parameters, appErr := model.EncodeAuditData(map[string]any{
 		"institution":   institution.Auditable(),
@@ -206,12 +211,12 @@ func prepareInstallationBootstrap(
 	}
 	state := &model.InstallationState{
 		InitializedAt:       event.CreateAt,
-		InstitutionId:       institution.Id,
+		InstitutionId:       institution.ID.String(),
 		AdministratorUserId: administrator.Id,
 	}
 	return &preparedInstallationBootstrap{
 		InstallationBootstrapResult: &model.InstallationBootstrapResult{
-			State: state, Institution: &institution, Administrator: &administrator,
+			State: state, Institution: institution, Administrator: &administrator,
 			Role: role, RoleBinding: &binding,
 		},
 		credential: credential,
@@ -248,7 +253,7 @@ func insertInstallationInstitution(
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save bootstrap institution: %w",
-			translateError("institution", institution.Id, err),
+			translateError("institution", institution.ID.String(), err),
 		)
 	}
 	return nil

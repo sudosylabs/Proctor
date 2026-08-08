@@ -77,7 +77,8 @@ func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 			InitializedAt: 100, InstitutionId: institutionID, AdministratorUserId: adminID,
 		},
 		Institution: &model.Institution{
-			Id: institutionID, CreateAt: 100, UpdateAt: 100, Name: "northbridge", DisplayName: "Northbridge",
+			ID: model.InstitutionID(institutionID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+			Name: "northbridge", DisplayName: "Northbridge",
 		},
 		Administrator: &model.User{
 			Id: adminID, CreateAt: 100, UpdateAt: 100, Username: "admin", Email: "admin@example.com",

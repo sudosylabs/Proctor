@@ -67,7 +67,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			&model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
-				ScopeId:   institution.Id, Status: model.AuditStatusSuccess,
+				ScopeId:   institution.ID.String(), Status: model.AuditStatusSuccess,
 				NodeId: "test-node", AuthMethod: "cas",
 			},
 		)
@@ -126,7 +126,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			&model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
-				ScopeId:   institution.Id, Status: model.AuditStatusSuccess,
+				ScopeId:   institution.ID.String(), Status: model.AuditStatusSuccess,
 				NodeId: "test-node", AuthMethod: "cas",
 			},
 		)

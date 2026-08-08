@@ -327,7 +327,7 @@ func (s *ExternalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.Id,
+			institution.ID.String(),
 			errorCode,
 		); appErr != nil {
 			return nil, appErr
@@ -340,7 +340,7 @@ func (s *ExternalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.Id,
+			institution.ID.String(),
 			"authentication.external.invalid_assertion",
 		); auditErr != nil {
 			return nil, auditErr
@@ -370,7 +370,7 @@ func (s *ExternalAuthenticationService) complete(
 		&model.AuditEvent{
 			Action:    "authentication.external_provision",
 			ScopeType: model.RoleScopeInstitution,
-			ScopeId:   institution.Id, Status: model.AuditStatusSuccess,
+			ScopeId:   institution.ID.String(), Status: model.AuditStatusSuccess,
 			RequestId:  metadata.RequestId,
 			NodeId:     s.policy.NodeID,
 			ClientType: string(state.ClientType), AuthMethod: method,
@@ -391,7 +391,7 @@ func (s *ExternalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.Id,
+			institution.ID.String(),
 			errorCode,
 		); auditErr != nil {
 			return nil, auditErr
@@ -412,7 +412,7 @@ func (s *ExternalAuthenticationService) complete(
 			providerID,
 			method,
 			metadata,
-			institution.Id,
+			institution.ID.String(),
 			"authentication.external.inactive_account",
 		); appErr != nil {
 			return nil, appErr
@@ -429,7 +429,7 @@ func (s *ExternalAuthenticationService) complete(
 		providerID,
 		state.ClientType,
 		metadata,
-		institution.Id,
+		institution.ID.String(),
 	)
 	if appErr != nil {
 		return nil, appErr

@@ -24,11 +24,11 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionId: institution.Id, Name: "computing", DisplayName: "Computing"})
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID.String(), Name: "computing", DisplayName: "Computing"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.Id, Name: "computer-science", DisplayName: "Computer Science"})
+	programme, err := persistence.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID, Name: "computer-science", DisplayName: "Computer Science"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.Id, Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 10_000_000})
+	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 10_000_000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 		baseStart := model.GetMillis() + 1_000
 		for iteration := 0; iteration < 20; iteration++ {
 			class := saveLifecycleClass(t, ctx, persistence, level.Id, period.Id, fmt.Sprintf("enrollment-%d", iteration))
-			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.Id)
+			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.ID)
 			start := make(chan struct{})
 			var wait sync.WaitGroup
 			wait.Add(2)
@@ -65,7 +65,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.Id, ExpectedAcademicUnitID: unit.Id, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.Id, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()
@@ -80,7 +80,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	t.Run("role_binding", func(t *testing.T) {
 		for iteration := 0; iteration < 20; iteration++ {
 			class := saveLifecycleClass(t, ctx, persistence, level.Id, period.Id, fmt.Sprintf("binding-%d", iteration))
-			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.Id)
+			attempt := saveLifecycleClassAudit(t, ctx, persistence, unit.ID)
 			start := make(chan struct{})
 			var wait sync.WaitGroup
 			wait.Add(2)
@@ -88,7 +88,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.Id, ExpectedAcademicUnitID: unit.Id, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
+				_, archiveErr = persistence.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: class.Id, ExpectedAcademicUnitID: unit.ID, ExpectedRevision: class.Revision, ArchiveAt: model.GetMillis(), AuditEventID: attempt.Id, AuditAt: model.GetMillis()})
 			}()
 			go func() {
 				defer wait.Done()

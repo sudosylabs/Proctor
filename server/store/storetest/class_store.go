@@ -230,7 +230,7 @@ func testClassStoreListByProgrammeLevel(t *testing.T, ss store.Store) {
 		t,
 		ctx,
 		ss,
-		fixture.institution.Id,
+		fixture.institution.ID.String(),
 		"2027-2028",
 		fixture.period.StartAt+40_000_000_000,
 	)
@@ -259,7 +259,7 @@ func testClassStoreListByAcademicPeriod(t *testing.T, ss store.Store) {
 		t,
 		ctx,
 		ss,
-		fixture.institution.Id,
+		fixture.institution.ID.String(),
 		"2027-2028",
 		fixture.period.StartAt+40_000_000_000,
 	)
@@ -291,7 +291,7 @@ func testClassStoreUpdate(t *testing.T, ss store.Store) {
 		t,
 		ctx,
 		ss,
-		fixture.institution.Id,
+		fixture.institution.ID.String(),
 		"2027-2028",
 		fixture.period.StartAt+40_000_000_000,
 	)
@@ -324,7 +324,7 @@ func testClassStoreUpdate(t *testing.T, ss store.Store) {
 func testClassStoreRejectUnknownProgrammeLevel(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
-	period := saveAcademicPeriod(t, ctx, ss, institution.Id, "2026-2027", 1_800_000_000_000)
+	period := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "2026-2027", 1_800_000_000_000)
 
 	_, err := ss.Class().Save(ctx, &model.Class{
 		ProgrammeLevelId: model.NewId(),
@@ -365,7 +365,7 @@ func testClassStoreEnforceScopedNameUniqueness(t *testing.T, ss store.Store) {
 		t,
 		ctx,
 		ss,
-		fixture.institution.Id,
+		fixture.institution.ID.String(),
 		"2027-2028",
 		fixture.period.StartAt+40_000_000_000,
 	)
@@ -411,9 +411,9 @@ func saveClassFixture(t *testing.T, ctx context.Context, ss store.Store) classFi
 	t.Helper()
 	unit, programme := saveProgrammeParents(t, ctx, ss, "computer-science")
 	level := saveProgrammeLevel(t, ctx, ss, programme.Id, "year-1")
-	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionId, "2026-2027", 1_800_000_000_000)
+	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "2026-2027", 1_800_000_000_000)
 	return classFixture{
-		institution: &model.Institution{Id: unit.InstitutionId},
+		institution: &model.Institution{ID: unit.InstitutionID},
 		programme:   programme,
 		level:       level,
 		period:      period,

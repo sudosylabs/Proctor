@@ -59,13 +59,13 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		t.Fatalf("winner/conflicts = %#v/%d", winner, conflicts)
 	}
 	if !winner.State.IsValid() ||
-		winner.Institution.Id != winner.State.InstitutionId ||
+		winner.Institution.ID.String() != winner.State.InstitutionId ||
 		winner.Administrator.Id != winner.State.AdministratorUserId ||
 		winner.Role.Name != model.SystemAdministratorRoleName ||
 		!winner.Role.BuiltIn ||
 		winner.RoleBinding.ScopeType != model.RoleScopeInstitution ||
-		winner.RoleBinding.ScopeId != winner.Institution.Id ||
-		winner.Institution.DeleteAt != 0 ||
+		winner.RoleBinding.ScopeId != winner.Institution.ID.String() ||
+		winner.Institution.IsArchived() ||
 		winner.Administrator.DeleteAt != 0 ||
 		winner.Administrator.EmailVerified ||
 		winner.Administrator.DisabledAt != 0 ||
@@ -103,7 +103,6 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 
 func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 	institution := &model.Institution{
-		Id: model.NewId(), CreateAt: 1, UpdateAt: 1, DeleteAt: 1,
 		Name: "northbridge", DisplayName: "Northbridge University",
 	}
 	user := &model.User{

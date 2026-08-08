@@ -46,7 +46,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	parentUnit, err := persistence.AcademicUnit().Save(
 		context.Background(),
 		&model.AcademicUnit{
-			InstitutionId: institution.Id, Name: "engineering",
+			InstitutionID: institution.ID.String(), Name: "engineering",
 			DisplayName: "Engineering",
 		},
 	)
@@ -56,7 +56,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	childUnit, err := persistence.AcademicUnit().Save(
 		context.Background(),
 		&model.AcademicUnit{
-			InstitutionId: institution.Id, ParentId: parentUnit.Id,
+			InstitutionID: institution.ID.String(), ParentID: parentUnit.ID,
 			Name: "computing", DisplayName: "Computing",
 		},
 	)
@@ -66,7 +66,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	siblingUnit, err := persistence.AcademicUnit().Save(
 		context.Background(),
 		&model.AcademicUnit{
-			InstitutionId: institution.Id, Name: "health",
+			InstitutionID: institution.ID.String(), Name: "health",
 			DisplayName: "Health",
 		},
 	)
@@ -99,7 +99,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		context.Background(),
 		&model.RoleBinding{
 			UserId: user.Id, RoleId: role.Id,
-			ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+			ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		map[string]any{
 			"description":      "local automation",
 			"scopes":           []string{string(model.ActionAcademicUnitView)},
-			"academic_unit_id": parentUnit.Id,
+			"academic_unit_id": parentUnit.ID,
 			"expires_at":       time.Now().Add(2 * time.Hour).UnixMilli(),
 		},
 		session.Tokens.AccessToken,
@@ -155,7 +155,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	descendant := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
-		"/api/v1/academic-units/"+childUnit.Id,
+		"/api/v1/academic-units/"+ childUnit.ID.String(),
 		nil,
 		created.Credential,
 	)
@@ -169,7 +169,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	outsideConstraint := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
-		"/api/v1/academic-units/"+siblingUnit.Id,
+		"/api/v1/academic-units/"+ siblingUnit.ID.String(),
 		nil,
 		created.Credential,
 	)

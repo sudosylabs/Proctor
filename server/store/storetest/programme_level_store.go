@@ -38,7 +38,7 @@ func TestProgrammeLevelStore(t *testing.T, ss store.Store) {
 func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	unit, programme := saveProgrammeParents(t, ctx, ss, "audited-level-programme")
-	createAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	createAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	candidate := &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: "audited-level", DisplayName: "Audited Level"}
 	candidate.PrepareCreate(model.NewId(), model.GetMillis())
 	created, err := ss.ProgrammeLevel().Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
@@ -58,7 +58,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		t.Fatalf("create survived audit rollback: %v", err)
 	}
 
-	updateAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	updateAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	updatedCandidate := *created
 	updatedCandidate.DisplayName = "Updated Level"
 	updatedCandidate.PrepareUpdate(model.GetMillis())
@@ -82,7 +82,7 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 		t.Fatalf("update survived audit rollback: %#v", persisted)
 	}
 
-	archiveAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	archiveAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	archived, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: updated.Id, ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if archived.DeleteAt == 0 {
@@ -98,9 +98,9 @@ func testProgrammeLevelStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	}
 
 	withClass := saveProgrammeLevel(t, ctx, ss, programme.Id, "level-with-class")
-	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionId, "2026-2027", 1_800_000_000_000)
+	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "2026-2027", 1_800_000_000_000)
 	saveClass(t, ctx, ss, withClass.Id, period.Id, "class-a")
-	blockedAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.Id)
+	blockedAttempt := saveProgrammeLevelAuditAttempt(t, ctx, ss, unit.ID.String())
 	if _, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: withClass.Id, ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active class error = %v, want conflict", err)
 	}
@@ -188,7 +188,7 @@ func testProgrammeLevelStoreGetByName(t *testing.T, ss store.Store) {
 func testProgrammeLevelStoreListByProgramme(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	unit, computing := saveProgrammeParents(t, ctx, ss, "computer-science")
-	engineering := saveProgramme(t, ctx, ss, unit.Id, "software-engineering")
+	engineering := saveProgramme(t, ctx, ss, unit.ID.String(), "software-engineering")
 	second := saveProgrammeLevel(t, ctx, ss, computing.Id, "year-2")
 	first := saveProgrammeLevel(t, ctx, ss, computing.Id, "year-1")
 	saveProgrammeLevel(t, ctx, ss, engineering.Id, "year-1")
@@ -208,7 +208,7 @@ func testProgrammeLevelStoreListByProgramme(t *testing.T, ss store.Store) {
 func testProgrammeLevelStoreUpdate(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	unit, computing := saveProgrammeParents(t, ctx, ss, "computer-science")
-	engineering := saveProgramme(t, ctx, ss, unit.Id, "software-engineering")
+	engineering := saveProgramme(t, ctx, ss, unit.ID.String(), "software-engineering")
 	level := saveProgrammeLevel(t, ctx, ss, computing.Id, "year-1")
 	createAt := level.CreateAt
 
@@ -230,7 +230,7 @@ func testProgrammeLevelStoreUpdate(t *testing.T, ss store.Store) {
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
 	}
-	archivedProgramme := saveProgramme(t, ctx, ss, unit.Id, "archived-programme")
+	archivedProgramme := saveProgramme(t, ctx, ss, unit.ID.String(), "archived-programme")
 	if _, err := ss.Programme().Delete(ctx, archivedProgramme.Id, model.GetMillis()); err != nil {
 		t.Fatalf("archive destination programme: %v", err)
 	}
@@ -262,7 +262,7 @@ func testProgrammeLevelStoreRejectUnknownProgramme(t *testing.T, ss store.Store)
 func testProgrammeLevelStoreEnforceProgrammeNameUniqueness(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	unit, computing := saveProgrammeParents(t, ctx, ss, "computer-science")
-	engineering := saveProgramme(t, ctx, ss, unit.Id, "software-engineering")
+	engineering := saveProgramme(t, ctx, ss, unit.ID.String(), "software-engineering")
 	saveProgrammeLevel(t, ctx, ss, computing.Id, "year-1")
 
 	_, err := ss.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
@@ -293,8 +293,8 @@ func saveProgrammeParents(
 ) (*model.AcademicUnit, *model.Programme) {
 	t.Helper()
 	institution := saveInstitution(t, ctx, ss)
-	unit := saveAcademicUnit(t, ctx, ss, institution.Id, "", "computing")
-	return unit, saveProgramme(t, ctx, ss, unit.Id, programmeName)
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "computing")
+	return unit, saveProgramme(t, ctx, ss, unit.ID.String(), programmeName)
 }
 
 func saveProgrammeLevel(

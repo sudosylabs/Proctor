@@ -87,7 +87,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	}
 	status = performJSONRequest(handler, http.MethodGet, "/api/v1/bootstrap", nil, "")
 	if status.Body.String() != "{\"initialized\":true}\n" ||
-		containsAny(status.Body.String(), created.Administrator.Id, created.Institution.Id) {
+		containsAny(status.Body.String(), created.Administrator.Id, created.Institution.ID.String()) {
 		t.Fatalf("initialized bootstrap status leaked identifiers: %s", status.Body.String())
 	}
 
@@ -231,7 +231,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		"/api/v1/role-bindings",
 		map[string]any{
 			"user_id": secondAdministrator.Id, "role_id": customRole.Id,
-			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.Id,
+			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.ID.String(),
 			"start_at": model.GetMillis(),
 		},
 		administratorLogin.Tokens.AccessToken,
@@ -280,7 +280,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		"/api/v1/role-bindings",
 		map[string]any{
 			"user_id": secondAdministrator.Id, "role_id": created.Role.Id,
-			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.Id,
+			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.ID.String(),
 			"start_at": model.GetMillis(),
 		},
 		administratorLogin.Tokens.AccessToken,

@@ -87,7 +87,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	institution := &model.Institution{Id: model.NewId()}
+	institution := &model.Institution{ID: model.InstitutionID(model.NewId())}
 	authorizer := &institutionAuthorizerFake{events: &events}
 	service := newInstitutionService(
 		&institutionStoreFake{events: &events, current: institution}, authorizer,
@@ -98,7 +98,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 		t.Fatalf("Get() = %#v, %v", got, err)
 	}
 	if authorizer.action != model.ActionInstitutionManage ||
-		authorizer.resource != (model.Resource{Type: model.ResourceInstitution, Id: institution.Id}) {
+		authorizer.resource != (model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}) {
 		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.resource)
 	}
 	if !reflect.DeepEqual(events, []string{"get", "authorize"}) {
@@ -111,8 +111,8 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 
 	events := []string{}
 	current := &model.Institution{
-		Id: model.NewId(), CreateAt: 100, UpdateAt: 100,
-		Name: "northbridge", DisplayName: "Northbridge University",
+		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Name: "northbridge", DisplayName: "Northbridge University", Revision: 1,
 	}
 	updated := *current
 	updated.DisplayName = "Northbridge"
@@ -133,7 +133,7 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 	}
 	if persistence.updateInput == nil ||
 		persistence.updateInput.Institution.DisplayName != displayName ||
-		persistence.updateInput.Institution.UpdateAt != 500 ||
+		!persistence.updateInput.Institution.UpdatedAt.Equal(time.UnixMilli(500).UTC()) ||
 		persistence.updateInput.AuditEventID != auditor.beginID {
 		t.Fatalf("update input = %#v", persistence.updateInput)
 	}
@@ -147,8 +147,8 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 
 	events := []string{}
 	current := &model.Institution{
-		Id: model.NewId(), CreateAt: 100, UpdateAt: 100,
-		Name: "northbridge", DisplayName: "Northbridge",
+		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Name: "northbridge", DisplayName: "Northbridge", Revision: 1,
 	}
 	persistence := &institutionStoreFake{
 		events: &events, current: current,

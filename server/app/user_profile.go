@@ -169,7 +169,7 @@ func (a userProfileAuthorization) AuthorizeSearch(ctx context.Context, invocatio
 	if err != nil {
 		return userProfileError(err)
 	}
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionInstitutionManage, model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, invocation.RequestMetadata())
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionInstitutionManage, model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, invocation.RequestMetadata())
 }
 
 func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation Invocation, userID string) error {

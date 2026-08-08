@@ -44,7 +44,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	first := saveUser(t, ctx, ss)
 	firstBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserId: first.Id, RoleId: role.Id,
-		ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		StartAt: model.GetMillis() - 100,
 	})
 	requireNoError(t, err)
@@ -63,7 +63,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	second := saveUser(t, ctx, ss)
 	secondBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserId: second.Id, RoleId: role.Id,
-		ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		StartAt: at - 100,
 	})
 	requireNoError(t, err)

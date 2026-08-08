@@ -15,25 +15,25 @@ import (
 func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
-	unit := saveAcademicUnit(t, ctx, ss, institution.Id, "", "member-unit")
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-unit")
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
 	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitId: unit.Id, UserId: user.Id, StartAt: start,
+		AcademicUnitId: unit.ID.String(), UserId: user.Id, StartAt: start,
 	})
 	requireNoError(t, err)
-	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.Id, start+1)
+	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.ID.String(), start+1)
 	requireNoError(t, err)
 	if len(active) != 1 || active[0].Id != saved.Id {
 		t.Fatalf("ListByAcademicUnit() = %#v", active)
 	}
 	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.Id, start+1)
 	requireNoError(t, err)
-	if len(byUser) != 1 || byUser[0].AcademicUnitId != unit.Id {
+	if len(byUser) != 1 || byUser[0].AcademicUnitId != unit.ID.String() {
 		t.Fatalf("ListActiveByUser() = %#v", byUser)
 	}
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitId: unit.Id, UserId: user.Id, StartAt: start + 2,
+		AcademicUnitId: unit.ID.String(), UserId: user.Id, StartAt: start + 2,
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) {
@@ -50,16 +50,16 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 		t.Fatalf("ListByUser() = %#v", history)
 	}
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitId: unit.Id, UserId: user.Id, StartAt: start + 10,
+		AcademicUnitId: unit.ID.String(), UserId: user.Id, StartAt: start + 10,
 	})
 	requireNoError(t, err)
 	auditedUser := saveUser(t, ctx, ss)
-	createAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.Id)
-	candidate := &model.AcademicUnitMember{AcademicUnitId: unit.Id, UserId: auditedUser.Id, StartAt: start}
+	createAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
+	candidate := &model.AcademicUnitMember{AcademicUnitId: unit.ID.String(), UserId: auditedUser.Id, StartAt: start}
 	candidate.PrepareCreate(model.NewId(), model.GetMillis())
 	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	endAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.Id)
+	endAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
 	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.Id, ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if endedAudited.Revision != created.Revision+1 {

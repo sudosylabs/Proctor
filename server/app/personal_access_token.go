@@ -283,7 +283,7 @@ func (a *App) personalAccessTokenAuditResource(ctx context.Context) (model.Resou
 	}
 	return model.Resource{
 		Type: model.ResourceInstitution,
-		Id:   institution.Id,
+		Id:   institution.ID.String(),
 	}, nil
 }
 

@@ -141,7 +141,7 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 		ScopeId:   institutionID,
 		StartAt:   now.Add(-time.Hour).UnixMilli(),
 	}
-	institution := &model.Institution{Id: institutionID, Name: "Recovery University"}
+	institution := &model.Institution{ID: model.InstitutionID(institutionID), Name: "Recovery University"}
 
 	root := &recoveryAuthorizationStore{
 		institution: institution,
@@ -368,7 +368,7 @@ func (s *recoveryAuthorizationStore) Close() error                              
 type recoveryInstitutionStore struct{ root *recoveryAuthorizationStore }
 
 func (s recoveryInstitutionStore) Get(_ context.Context, id string) (*model.Institution, error) {
-	if s.root.institution == nil || s.root.institution.Id != id {
+	if s.root.institution == nil || s.root.institution.ID.String() != id {
 		return nil, store.NewErrNotFound("institution", id)
 	}
 	cloned := *s.root.institution

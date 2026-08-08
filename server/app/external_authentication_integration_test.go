@@ -214,7 +214,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("external authentication audits = %#v, %v", audits, err)
 	}
 	for _, event := range audits {
-		if event.ScopeId != institution.Id ||
+		if event.ScopeId != institution.ID.String() ||
 			(event.Action != "authentication.external_provision" &&
 				event.Action != "authentication.external_login") {
 			t.Fatalf("unexpected external authentication audit = %#v", event)

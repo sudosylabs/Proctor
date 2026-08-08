@@ -37,18 +37,18 @@ func TestPersonalAccessTokenStore(t *testing.T, ss store.Store) {
 func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
-	unit := saveAcademicUnit(t, ctx, ss, institution.Id, "", "engineering")
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "engineering")
 	user, _ := saveLocalUser(t, ctx, ss)
 	raw := model.NewCredentialToken()
 	token := newPersonalAccessToken(user.Id, raw)
-	token.AcademicUnitId = unit.Id
+	token.AcademicUnitId = unit.ID.String()
 	token, err := ss.PersonalAccessToken().Save(ctx, token, 10)
 	requireNoError(t, err)
 
 	got, err := ss.PersonalAccessToken().Get(ctx, token.Id)
 	requireNoError(t, err)
 	if got.TokenHash != model.HashToken(raw) ||
-		got.AcademicUnitId != unit.Id ||
+		got.AcademicUnitId != unit.ID.String() ||
 		len(got.Scopes) != 2 {
 		t.Fatalf("Get() = %#v", got)
 	}

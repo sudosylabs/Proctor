@@ -93,7 +93,7 @@ func (a *App) RequestEmailVerification(
 	event := recoveryAuditEvent(
 		auditEmailVerificationRequest,
 		model.Resource{Type: model.ResourceUser, Id: user.Id},
-		institution.Id,
+		institution.ID.String(),
 		metadata,
 		a.nodeID,
 		&principal,
@@ -180,7 +180,7 @@ func (a *App) RequestPasswordReset(
 	event := recoveryAuditEvent(
 		auditPasswordResetRequest,
 		model.Resource{Type: model.ResourceUser, Id: user.Id},
-		institution.Id,
+		institution.ID.String(),
 		metadata,
 		a.nodeID,
 		nil,
@@ -239,7 +239,7 @@ func (a *App) CompleteEmailVerification(
 	event := recoveryAuditEvent(
 		auditEmailVerificationComplete,
 		model.Resource{Type: model.ResourceUser},
-		institution.Id,
+		institution.ID.String(),
 		metadata,
 		a.nodeID,
 		nil,
@@ -290,7 +290,7 @@ func (a *App) CompletePasswordReset(
 	event := recoveryAuditEvent(
 		auditPasswordResetComplete,
 		model.Resource{Type: model.ResourceUser},
-		institution.Id,
+		institution.ID.String(),
 		metadata,
 		a.nodeID,
 		nil,

@@ -81,7 +81,7 @@ func (a auditListingAuthorization) AuthorizeView(ctx context.Context, invocation
 		ctx,
 		invocation.Principal(),
 		model.ActionAuditView,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
 		invocation.RequestMetadata(),
 	)
 }

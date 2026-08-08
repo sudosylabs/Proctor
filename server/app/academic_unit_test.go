@@ -152,7 +152,7 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 	t.Parallel()
 
-	unit := &model.AcademicUnit{Id: model.NewId(), InstitutionId: model.NewId()}
+	unit := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewId()), InstitutionID: model.InstitutionID(model.NewId())}
 	units := &academicUnitReadStore{unit: unit}
 	var gotAction model.Action
 	var gotResource model.Resource
@@ -166,7 +166,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 		}),
 	)
 	got, err := service.Get(
-		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.Id},
+		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.ID.String()},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +175,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 		t.Fatalf("Get() = %#v, want %#v", got, unit)
 	}
 	if gotAction != model.ActionAcademicUnitView ||
-		gotResource != (model.Resource{Type: model.ResourceAcademicUnit, Id: unit.Id}) {
+		gotResource != (model.Resource{Type: model.ResourceAcademicUnit, Id: unit.ID.String()}) {
 		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
 	}
 }
@@ -183,7 +183,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testing.T) {
 	t.Parallel()
 
-	institution := &model.Institution{Id: model.NewId()}
+	institution := &model.Institution{ID: model.InstitutionID(model.NewId())}
 	units := &academicUnitReadStore{}
 	var gotAction model.Action
 	var gotResource model.Resource
@@ -195,7 +195,7 @@ func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testin
 			_ context.Context, _ Invocation, action model.Action,
 		) (model.Resource, error) {
 			gotAction = action
-			gotResource = model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
+			gotResource = model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}
 			return gotResource, nil
 		},
 	})
@@ -207,7 +207,7 @@ func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testin
 		t.Fatalf("List() = %#v, want non-nil empty result", got)
 	}
 	if gotAction != model.ActionInstitutionManage ||
-		gotResource != (model.Resource{Type: model.ResourceInstitution, Id: institution.Id}) {
+		gotResource != (model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}) {
 		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
 	}
 }
@@ -215,7 +215,7 @@ func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testin
 func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 	t.Parallel()
 
-	institution := &model.Institution{Id: model.NewId()}
+	institution := &model.Institution{ID: model.InstitutionID(model.NewId())}
 	units := &academicUnitReadStore{}
 	service := newAcademicUnitQueryService(units, academicUnitAuthorizerStub{
 		authorize: func(context.Context, Invocation, model.Action, model.Resource) error {
@@ -224,7 +224,7 @@ func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 		authorizeInstallation: func(
 			context.Context, Invocation, model.Action,
 		) (model.Resource, error) {
-			return model.Resource{Type: model.ResourceInstitution, Id: institution.Id}, nil
+			return model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, nil
 		},
 	})
 	got, err := service.Search(

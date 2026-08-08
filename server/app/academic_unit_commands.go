@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -165,16 +166,31 @@ func (s *academicUnitCommandService) Create(
 		}
 	}
 
+	unitID, err := model.ParseAcademicUnitID(s.newID())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
+	}
+	institutionID, err := model.ParseInstitutionID(institution.Id)
+	if err != nil {
+		return nil, NewError("administration.unavailable").WithField("resource", "institution").Wrap(err)
+	}
+	var parentUnitID model.AcademicUnitID
+	if parentID != "" {
+		parentUnitID, err = model.ParseAcademicUnitID(parentID)
+		if err != nil {
+			return nil, NewError("request.invalid").WithField("field", "parent_id").Wrap(err)
+		}
+	}
 	candidate := &model.AcademicUnit{
-		InstitutionId: institution.Id,
-		ParentId:      parentID,
+		InstitutionID: model.InstitutionID(institutionID),
+		ParentID: model.AcademicUnitID(parentUnitID),
 		Name:          command.Name,
 		DisplayName:   command.DisplayName,
 		Description:   command.Description,
 	}
-	candidate.PrepareCreate(s.newID(), s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("academic_unit.invalid", appErr)
+	candidate.PrepareCreate(unitID, s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("academic_unit.invalid", err)
 	}
 	auditID, err := s.audit.Begin(
 		ctx, invocation, action, authorized, "create", candidate.Auditable(), nil,
@@ -195,7 +211,7 @@ func (s *academicUnitCommandService) Create(
 	}
 	// The unit and success audit are committed before transient fan-out.
 	// Publication remains best effort so callers do not retry committed work.
-	if err := s.effects.Created(ctx, saved.Id); err != nil {
+	if err := s.effects.Created(ctx, saved.ID.String()); err != nil {
 		s.effectFailures.Report(ctx, "academic_unit_created", err)
 	}
 	return saved, nil
@@ -229,7 +245,16 @@ func (s *academicUnitCommandService) Update(
 	}
 	candidate := *current
 	if command.ParentID != nil {
-		candidate.ParentId = *command.ParentID
+		parentID := strings.TrimSpace(*command.ParentID)
+		if parentID == "" {
+			candidate.ParentID = ""
+		} else {
+			parentUnitID, parseErr := model.ParseAcademicUnitID(parentID)
+			if parseErr != nil {
+				return nil, NewError("request.invalid").WithField("field", "parent_id").Wrap(parseErr)
+			}
+			candidate.ParentID = parentUnitID
+		}
 	}
 	if command.Name != nil {
 		candidate.Name = *command.Name
@@ -240,15 +265,15 @@ func (s *academicUnitCommandService) Update(
 	if command.Description != nil {
 		candidate.Description = *command.Description
 	}
-	candidate.PrepareUpdate(s.now().UnixMilli())
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("academic_unit.invalid", appErr)
+	candidate.PrepareUpdate(s.now())
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("academic_unit.invalid", err)
 	}
-	if command.ParentID != nil && candidate.ParentId != "" &&
-		candidate.ParentId != current.ParentId {
+	if command.ParentID != nil && !candidate.ParentID.IsZero() &&
+		candidate.ParentID != current.ParentID {
 		if err := s.authorization.Authorize(
 			ctx, invocation, model.ActionAcademicUnitManage,
-			model.Resource{Type: model.ResourceAcademicUnit, Id: candidate.ParentId},
+			model.Resource{Type: model.ResourceAcademicUnit, Id: candidate.ParentID.String()},
 		); err != nil {
 			return nil, err
 		}
@@ -271,7 +296,7 @@ func (s *academicUnitCommandService) Update(
 		}
 		return nil, mapped
 	}
-	if err := s.effects.Updated(ctx, updated.Id); err != nil {
+	if err := s.effects.Updated(ctx, updated.ID.String()); err != nil {
 		s.effectFailures.Report(ctx, "academic_unit_updated", err)
 	}
 	return updated, nil
@@ -322,7 +347,7 @@ func (s *academicUnitCommandService) Archive(
 		}
 		return mapped
 	}
-	if err := s.effects.Archived(ctx, archived.Id); err != nil {
+	if err := s.effects.Archived(ctx, archived.ID.String()); err != nil {
 		s.effectFailures.Report(ctx, "academic_unit_archived", err)
 	}
 	return nil

@@ -44,14 +44,14 @@ func testUserTokenIssueReplacesPriorToken(t *testing.T, ss store.Store) {
 	first, err := ss.UserToken().Issue(
 		ctx,
 		first,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.Id),
+		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
 	)
 	requireNoError(t, err)
 	second := newUserToken(user, model.UserTokenEmailVerification)
 	second, err = ss.UserToken().Issue(
 		ctx,
 		second,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.Id),
+		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
 	)
 	requireNoError(t, err)
 	gotFirst, err := ss.UserToken().GetByHash(ctx, first.TokenHash, first.Purpose)
@@ -74,7 +74,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.Id),
+		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
 	)
 	requireNoError(t, err)
 	now := token.CreateAt + 100
@@ -82,7 +82,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		ctx,
 		token.TokenHash,
 		now,
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.Id),
+		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
 	requireNoError(t, err)
 	if !result.User.EmailVerified || result.User.Revision != user.Revision+1 || result.Token.ConsumedAt != now {
@@ -92,7 +92,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		ctx,
 		token.TokenHash,
 		now+1,
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.Id),
+		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	); !store.IsNotFound(err) {
 		t.Fatalf("second consumption error = %v, want not found", err)
 	}
@@ -105,7 +105,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		userTokenAudit(
 			"authentication.email_verification.request",
 			changedUser.Id,
-			institution.Id,
+			institution.ID.String(),
 		),
 	)
 	requireNoError(t, err)
@@ -116,7 +116,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		ctx,
 		changedToken.TokenHash,
 		now+2,
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.Id),
+		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	); !store.IsNotFound(err) {
 		t.Fatalf("changed-target consumption error = %v, want not found", err)
 	}
@@ -131,7 +131,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.password_reset.request", user.Id, institution.Id),
+		userTokenAudit("authentication.password_reset.request", user.Id, institution.ID.String()),
 	)
 	requireNoError(t, err)
 	now := max(token.CreateAt, session.CreateAt) + 100
@@ -141,7 +141,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 		"new-encoded-password-hash",
 		now,
 		"password reset",
-		userTokenCompletionAudit("authentication.password_reset.complete", institution.Id),
+		userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String()),
 	)
 	requireNoError(t, err)
 	if result.PasswordCredential.Id != credential.Id ||
@@ -180,7 +180,7 @@ func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.Id),
+		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
 	)
 	requireNoError(t, err)
 	now := token.CreateAt + 100
@@ -198,7 +198,7 @@ func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
 				now,
 				userTokenCompletionAudit(
 					"authentication.email_verification.complete",
-					institution.Id,
+					institution.ID.String(),
 				),
 			)
 			errorsByAttempt <- consumeErr
@@ -246,7 +246,7 @@ func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.Id),
+		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
 	)
 	requireNoError(t, err)
 	now := token.CreateAt + 100
@@ -262,7 +262,7 @@ func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
 		ctx,
 		token.TokenHash,
 		now+1,
-		userTokenCompletionAudit("authentication.email_verification.complete", institution.Id),
+		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	); err != nil {
 		t.Fatalf("audit-failed consumption changed token state: %v", err)
 	}

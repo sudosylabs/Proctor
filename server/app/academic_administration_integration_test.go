@@ -55,15 +55,15 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		adminToken,
 	)
 	child := createIntegrationResource[model.AcademicUnit](
-		t, handler, http.MethodPost, "/api/v1/academic-units/"+root.Id+"/children",
+		t, handler, http.MethodPost, "/api/v1/academic-units/"+ root.ID.String()+"/children",
 		map[string]any{"name": "computing", "display_name": "Computing"},
 		adminToken,
 	)
-	if child.ParentId != root.Id || child.InstitutionId != installation.Institution.Id {
+	if child.ParentID != root.ID || child.InstitutionID != installation.Institution.ID.String() {
 		t.Fatalf("academic hierarchy = %#v", child)
 	}
 	programme := createIntegrationResource[model.Programme](
-		t, handler, http.MethodPost, "/api/v1/academic-units/"+child.Id+"/programmes",
+		t, handler, http.MethodPost, "/api/v1/academic-units/"+ child.ID.String()+"/programmes",
 		map[string]any{"name": "computer-science", "display_name": "Computer Science"},
 		adminToken,
 	)
@@ -114,7 +114,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		adminToken,
 	)
 	unitMember := createIntegrationResource[model.AcademicUnitMember](
-		t, handler, http.MethodPost, "/api/v1/academic-units/"+child.Id+"/members",
+		t, handler, http.MethodPost, "/api/v1/academic-units/"+ child.ID.String()+"/members",
 		map[string]any{"user_id": teacher.Id, "start_at": now - 10_000},
 		adminToken,
 	)
@@ -149,7 +149,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	if _, err := persistence.RoleBinding().Save(context.Background(), &model.RoleBinding{
 		UserId: teacher.Id, RoleId: teacherRole.Id,
-		ScopeType: model.RoleScopeAcademicUnit, ScopeId: root.Id,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeId: root.ID,
 		StartAt: now - 10_000,
 	}); err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	if len(visibilityEvents) != 1 ||
 		visibilityEvents[0].Status != model.AuditStatusSuccess ||
 		visibilityEvents[0].ScopeType != model.RoleScopeInstitution ||
-		visibilityEvents[0].ScopeId != installation.Institution.Id {
+		visibilityEvents[0].ScopeId != installation.Institution.ID.String() {
 		t.Fatalf("teacher student visibility audit = %#v", visibilityEvents)
 	}
 	hidden := performJSONRequest(
@@ -228,7 +228,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	malformed := httptest.NewRequest(
 		http.MethodPost,
-		"/api/v1/academic-units/"+child.Id+"/children",
+		"/api/v1/academic-units/"+ child.ID.String()+"/children",
 		strings.NewReader("{"),
 	)
 	malformed.Header.Set("Authorization", "Bearer "+teacherLogin.Tokens.AccessToken)

@@ -204,7 +204,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 	if err != nil ||
 		len(audits) != 1 ||
 		audits[0].Resource.Id != user.Id ||
-		audits[0].ScopeId != institution.Id {
+		audits[0].ScopeId != institution.ID.String() {
 		t.Fatalf("password reset audits = %#v, %v", audits, err)
 	}
 }

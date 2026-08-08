@@ -18,7 +18,7 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	fixture := saveClassFixture(t, ctx, ss)
 	firstClass := saveClass(t, ctx, ss, fixture.level.Id, fixture.period.Id, "class-member-a")
 	secondClass := saveClass(t, ctx, ss, fixture.level.Id, fixture.period.Id, "class-member-b")
-	nextPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.Id, "class-member-next-period", fixture.period.EndAt+1)
+	nextPeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-next-period", fixture.period.EndAt+1)
 	nextClass := saveClass(t, ctx, ss, fixture.level.Id, nextPeriod.Id, "class-member-next")
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000

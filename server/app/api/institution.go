@@ -80,9 +80,12 @@ func institutionResponseFromModel(institution *model.Institution) institutionRes
 		return institutionResponse{}
 	}
 	return institutionResponse{
-		ID: institution.Id, CreateAt: institution.CreateAt,
-		UpdateAt: institution.UpdateAt, DeleteAt: institution.DeleteAt,
-		Name: institution.Name, DisplayName: institution.DisplayName,
+		ID:          institution.ID.String(),
+		CreateAt:    model.MillisFromTime(institution.CreatedAt),
+		UpdateAt:    model.MillisFromTime(institution.UpdatedAt),
+		DeleteAt:    institution.ArchivedAt.Millis(),
+		Name:        institution.Name,
+		DisplayName: institution.DisplayName,
 		Description: institution.Description,
 	}
 }

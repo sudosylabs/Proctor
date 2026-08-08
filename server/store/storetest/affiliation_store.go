@@ -73,7 +73,7 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	if next.Id == saved.Id {
 		t.Fatalf("new effective range reused the old row: %#v", next)
 	}
-	createAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.Id, user.Id)
+	createAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.Id)
 	candidate := &model.Affiliation{UserId: user.Id, Kind: model.AffiliationStaff, StartAt: start}
 	candidate.PrepareCreate(model.NewId(), model.GetMillis())
 	created, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
@@ -91,7 +91,7 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	if _, err := ss.Affiliation().Get(ctx, rolledBack.Id); !store.IsNotFound(err) {
 		t.Fatalf("create survived audit rollback: %v", err)
 	}
-	endAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.Id, user.Id)
+	endAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.Id)
 	endedWithAudit, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.Id, ExpectedRevision: created.Revision, EndAt: start + 20, AuditEventID: endAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if endedWithAudit.Revision != created.Revision+1 || endedWithAudit.EndAt != start+20 {
@@ -102,17 +102,17 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	if completedEnd.Status != model.AuditStatusSuccess {
 		t.Fatalf("end audit = %#v", completedEnd)
 	}
-	staleAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.Id, user.Id)
+	staleAttempt := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), user.Id)
 	if _, err := ss.Affiliation().EndWithAudit(ctx, &store.AffiliationEnd{ID: created.Id, ExpectedRevision: created.Revision, EndAt: start + 21, AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("stale EndWithAudit() error = %v", err)
 	}
-	unit, err := ss.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionId: institution.Id, Name: "affiliation-unit", DisplayName: "Affiliation Unit"})
+	unit, err := ss.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "affiliation-unit", DisplayName: "Affiliation Unit"})
 	requireNoError(t, err)
-	programme, err := ss.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.Id, Name: "affiliation-programme", DisplayName: "Affiliation Programme"})
+	programme, err := ss.Programme().Save(ctx, &model.Programme{AcademicUnitId: unit.ID.String(), Name: "affiliation-programme", DisplayName: "Affiliation Programme"})
 	requireNoError(t, err)
 	level, err := ss.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeId: programme.Id, Name: "affiliation-level", DisplayName: "Affiliation Level"})
 	requireNoError(t, err)
-	period, err := ss.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.Id, Name: "affiliation-period", DisplayName: "Affiliation Period", StartAt: 1, EndAt: start + 10_000})
+	period, err := ss.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionId: institution.ID.String(), Name: "affiliation-period", DisplayName: "Affiliation Period", StartAt: 1, EndAt: start + 10_000})
 	requireNoError(t, err)
 	class := saveClass(t, ctx, ss, level.Id, period.Id, "affiliation-class")
 	enrolledUser := saveUser(t, ctx, ss)

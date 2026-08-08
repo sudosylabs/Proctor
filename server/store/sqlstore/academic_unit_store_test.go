@@ -10,13 +10,26 @@ import (
 )
 
 func TestAcademicUnitRowConversion(t *testing.T) {
+	unitID, err := model.ParseAcademicUnitID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	institutionID, err := model.ParseInstitutionID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentID, err := model.ParseAcademicUnitID(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
 	unit := &model.AcademicUnit{
-		Id:            model.NewId(),
-		CreateAt:      1,
-		UpdateAt:      2,
-		DeleteAt:      3,
-		InstitutionId: model.NewId(),
-		ParentId:      model.NewId(),
+		ID:            unitID,
+		CreatedAt:     model.TimeFromMillis(1),
+		UpdatedAt:     model.TimeFromMillis(2),
+		ArchivedAt:    model.OptionalTimeFromMillis(3),
+		Revision:      1,
+		InstitutionID: institutionID,
+		ParentID:      parentID,
 		Name:          "computing",
 		DisplayName:   "Computing",
 		Description:   "School",
@@ -29,9 +42,12 @@ func TestAcademicUnitRowConversion(t *testing.T) {
 		t.Fatalf("row.model() = %#v, want %#v", got, unit)
 	}
 
-	unit.ParentId = ""
+	unit.ParentID = ""
 	row = newAcademicUnitRow(unit)
 	if row.ParentID.Valid {
 		t.Fatal("empty parent ID did not become NULL")
+	}
+	if got := row.model(); got.ParentID != "" {
+		t.Fatalf("NULL parent mapped to %q", got.ParentID)
 	}
 }

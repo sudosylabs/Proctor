@@ -274,15 +274,15 @@ func (s *AuthorizationService) resolveResource(
 		if err != nil {
 			return resolved, authorizationResourceError("institution", err)
 		}
-		resolved.institutionID = institution.Id
+		resolved.institutionID = institution.ID.String()
 	case model.ResourceAcademicUnit:
 		units, err := s.store.AcademicUnit().ListAncestors(ctx, resource.Id)
 		if err != nil {
 			return resolved, authorizationResourceError("academic_unit", err)
 		}
-		resolved.institutionID = units[0].InstitutionId
+		resolved.institutionID = units[0].InstitutionID.String()
 		for _, unit := range units {
-			resolved.academicUnitID[unit.Id] = struct{}{}
+			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
 	case model.ResourceClass:
 		academicUnitID, err := s.store.Class().GetAcademicUnitId(ctx, resource.Id)
@@ -294,9 +294,9 @@ func (s *AuthorizationService) resolveResource(
 			return resolved, authorizationResourceError("class_academic_unit", err)
 		}
 		resolved.classID = resource.Id
-		resolved.institutionID = units[0].InstitutionId
+		resolved.institutionID = units[0].InstitutionID.String()
 		for _, unit := range units {
-			resolved.academicUnitID[unit.Id] = struct{}{}
+			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
 	case model.ResourceUser:
 		if _, err := s.store.User().Get(ctx, resource.Id); err != nil {
@@ -306,7 +306,7 @@ func (s *AuthorizationService) resolveResource(
 		if err != nil {
 			return resolved, authorizationResourceError("institution", err)
 		}
-		resolved.institutionID = institution.Id
+		resolved.institutionID = institution.ID.String()
 	}
 	return resolved, nil
 }

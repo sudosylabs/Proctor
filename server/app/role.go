@@ -239,7 +239,7 @@ func (a roleAuthorization) AuthorizeManage(ctx context.Context, invocation Invoc
 	if err != nil {
 		return model.Resource{}, roleError(err)
 	}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
+	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}
 	if err := a.authorization.authorizeCurrentState(
 		ctx,
 		invocation.Principal(),

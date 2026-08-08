@@ -38,7 +38,7 @@ func (a *App) PrincipalHasPermissionToSystem(
 		ctx,
 		principal,
 		action,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
 		metadata,
 	)
 	return ctx, allowed, appErr
@@ -220,11 +220,11 @@ func (a *App) authorizePrincipalToSystem(
 	if err != nil {
 		return model.Resource{}, authorizationResourceError("institution", err)
 	}
-	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.Id}
+	resource := model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}
 	if appErr := a.AuthorizePrincipalToInstitution(
 		ctx,
 		principal,
-		institution.Id,
+		institution.ID.String(),
 		action,
 		metadata,
 	); appErr != nil {

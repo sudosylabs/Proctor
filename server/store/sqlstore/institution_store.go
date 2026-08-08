@@ -59,26 +59,32 @@ func (s SqlInstitutionStore) Save(ctx context.Context, institution *model.Instit
 	if institution == nil {
 		return nil, store.NewErrInvalidInput("institution", "value", nil)
 	}
-	if institution.Id != "" {
-		return nil, store.NewErrInvalidInput("institution", "id", institution.Id)
+	if !institution.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("institution", "id", institution.ID.String())
 	}
 
-	candidate := *institution
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	id, err := model.ParseInstitutionID(model.NewId())
+	if err != nil {
+		return nil, err
+	}
+	at := model.NowUTC()
+	created, err := model.NewInstitution(
+		id, institution.Name, institution.DisplayName, institution.Description, at,
+	)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
 
-	row := newInstitutionRow(&candidate)
+	row := newInstitutionRow(created)
 	if _, err := s.GetMaster().NamedExec(ctx, `
 		INSERT INTO institutions (
 			id, create_at, update_at, delete_at, name, display_name, description
 		) VALUES (
 			:id, :create_at, :update_at, :delete_at, :name, :display_name, :description
 		)`, &row); err != nil {
-		return nil, fmt.Errorf("save institution: %w", translateError("institution", candidate.Id, err))
+		return nil, fmt.Errorf("save institution: %w", translateError("institution", created.ID.String(), err))
 	}
-	return &candidate, nil
+	return created, nil
 }
 
 func (s SqlInstitutionStore) Get(ctx context.Context, id string) (*model.Institution, error) {
@@ -110,9 +116,9 @@ func (s SqlInstitutionStore) Update(ctx context.Context, institution *model.Inst
 		return nil, store.NewErrInvalidInput("institution", "value", nil)
 	}
 	candidate := *institution
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
 	return s.updateInstitution(ctx, &candidate, "", 0)
 }
@@ -126,8 +132,8 @@ func (s SqlInstitutionStore) UpdateWithAudit(
 		return nil, store.NewErrInvalidInput("institution", "update", nil)
 	}
 	candidate := *input.Institution
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
 	return s.updateInstitution(ctx, &candidate, input.AuditEventID, input.AuditAt)
 }
@@ -153,9 +159,9 @@ func (s SqlInstitutionStore) updateInstitution(
 		       description = :description
 		 WHERE id = :id AND singleton = TRUE AND delete_at = 0`, &row)
 	if err != nil {
-		return nil, fmt.Errorf("update institution: %w", translateError("institution", candidate.Id, err))
+		return nil, fmt.Errorf("update institution: %w", translateError("institution", candidate.ID.String(), err))
 	}
-	if err := requireAffected(result, "institution", candidate.Id); err != nil {
+	if err := requireAffected(result, "institution", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	if auditEventID != "" {
@@ -194,10 +200,10 @@ func (s SqlInstitutionStore) Delete(ctx context.Context, id string, deleteAt int
 
 func newInstitutionRow(institution *model.Institution) institutionRow {
 	return institutionRow{
-		ID:          institution.Id,
-		CreateAt:    institution.CreateAt,
-		UpdateAt:    institution.UpdateAt,
-		DeleteAt:    institution.DeleteAt,
+		ID:          institution.ID.String(),
+		CreateAt:    model.MillisFromTime(institution.CreatedAt),
+		UpdateAt:    model.MillisFromTime(institution.UpdatedAt),
+		DeleteAt:    institution.ArchivedAt.Millis(),
 		Name:        institution.Name,
 		DisplayName: institution.DisplayName,
 		Description: institution.Description,
@@ -205,11 +211,17 @@ func newInstitutionRow(institution *model.Institution) institutionRow {
 }
 
 func (row institutionRow) model() *model.Institution {
+	id, err := model.ParseInstitutionID(row.ID)
+	if err != nil {
+		// Invalid persisted state is an integrity failure; callers Validate later.
+		id = model.InstitutionID(row.ID)
+	}
 	return &model.Institution{
-		Id:          row.ID,
-		CreateAt:    row.CreateAt,
-		UpdateAt:    row.UpdateAt,
-		DeleteAt:    row.DeleteAt,
+		ID:          id,
+		CreatedAt:   model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:   model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:  model.OptionalTimeFromMillis(row.DeleteAt),
+		Revision:    1,
 		Name:        row.Name,
 		DisplayName: row.DisplayName,
 		Description: row.Description,

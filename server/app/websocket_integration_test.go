@@ -148,7 +148,7 @@ func TestWebSocketIntegration(t *testing.T) {
 		Action: model.ActionInstitutionManage,
 		Resource: model.Resource{
 			Type: model.ResourceInstitution,
-			Id:   installation.Institution.Id,
+			Id:   installation.Institution.ID.String(),
 		},
 	}
 	writeWebSocketRequest(t, connection, 2, "subscribe", subscription)
@@ -367,7 +367,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		Action: model.ActionInstitutionManage,
 		Resource: model.Resource{
 			Type: model.ResourceInstitution,
-			Id:   installation.Institution.Id,
+			Id:   installation.Institution.ID.String(),
 		},
 	}
 	writeWebSocketRequest(t, connection, 1, "subscribe", subscription)

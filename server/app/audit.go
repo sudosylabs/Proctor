@@ -150,7 +150,7 @@ func (s *AuditService) BeginCriticalAction(
 			return nil, auditUnavailable(err)
 		}
 		scopeType = model.RoleScopeInstitution
-		scopeID = institution.Id
+		scopeID = institution.ID.String()
 	}
 	event := &model.AuditEvent{
 		ActorId: principal.UserId, SessionId: principal.SessionId,

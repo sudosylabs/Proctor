@@ -65,7 +65,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	}
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
-		ScopeId: institution.Id, StartAt: model.GetMillis(),
+		ScopeId: institution.ID.String(), StartAt: model.GetMillis(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	for _, event := range response.Events {
 		if event.Action == string(model.ActionAuditView) &&
 			event.ActorId == user.Id &&
-			event.Resource.Id == institution.Id {
+			event.Resource.Id == institution.ID.String() {
 			statuses[event.Status] = true
 		}
 		if event.SessionId == "" || event.NodeId == "" || event.RequestId == "" {
@@ -120,20 +120,20 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	root, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
-		InstitutionId: institution.Id, Name: "engineering", DisplayName: "Engineering",
+		InstitutionID: institution.ID.String(), Name: "engineering", DisplayName: "Engineering",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	child, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
-		InstitutionId: institution.Id, ParentId: root.Id,
+		InstitutionID: institution.ID.String(), ParentID: root.ID,
 		Name: "computing", DisplayName: "Computing",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	programme, err := persistence.Programme().Save(ctx, &model.Programme{
-		AcademicUnitId: child.Id, Name: "computer-science",
+		AcademicUnitId: child.ID, Name: "computer-science",
 		DisplayName: "Computer Science",
 	})
 	if err != nil {
@@ -146,7 +146,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionId: institution.Id, Name: "2026-2027", DisplayName: "2026-2027",
+		InstitutionId: institution.ID.String(), Name: "2026-2027", DisplayName: "2026-2027",
 		StartAt: 1_800_000_000_000, EndAt: 1_830_000_000_000,
 	})
 	if err != nil {
@@ -176,7 +176,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitId: root.Id,
+		AcademicUnitId: root.ID,
 		UserId:         user.Id,
 		StartAt:        model.GetMillis() - 1_000,
 	}); err != nil {
@@ -201,7 +201,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeAcademicUnit,
-		ScopeId: root.Id, StartAt: model.GetMillis() - 1_000,
+		ScopeId: root.ID, StartAt: model.GetMillis() - 1_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +215,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionInstitutionManage,
-		model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
+		model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("lower-scope institution permission = %v, %v", allowed, permErr)
@@ -311,7 +311,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	}
 	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserId: viewer.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
-		ScopeId: institution.Id, StartAt: model.GetMillis() - 1_000,
+		ScopeId: institution.ID.String(), StartAt: model.GetMillis() - 1_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -365,7 +365,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		if event.Resource.Type != model.ResourceUser ||
 			event.Resource.Id != target.Id ||
 			event.ScopeType != model.RoleScopeInstitution ||
-			event.ScopeId != institution.Id {
+			event.ScopeId != institution.ID.String() {
 			t.Fatalf("user authorization audit scope = %#v", event)
 		}
 	}

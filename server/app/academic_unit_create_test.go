@@ -166,7 +166,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 
 	institutionID := model.NewId()
 	saved := &model.AcademicUnit{
-		Id: model.NewId(), InstitutionId: institutionID,
+		ID: model.AcademicUnitID(model.NewId()), InstitutionID: model.InstitutionID(institutionID),
 		Name: "engineering", DisplayName: "Engineering",
 	}
 	events := []string{}
@@ -203,14 +203,14 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	if got != saved {
 		t.Fatalf("Create() = %#v, want %#v", got, saved)
 	}
-	if creator.input == nil || creator.input.Unit.InstitutionId != institutionID ||
-		creator.input.Unit.ParentId != "" || creator.input.Unit.Id != createdID ||
+	if creator.input == nil || creator.input.Unit.InstitutionID.String() != institutionID ||
+		creator.input.Unit.ParentID.String() != "" || creator.input.Unit.ID.String() != createdID ||
 		creator.input.Unit.Name != "engineering" ||
 		creator.input.AuditEventID != auditor.beginID || creator.input.AuditAt != 500 {
 		t.Fatalf("creation input = %#v", creator.input)
 	}
-	if effects.unitID != saved.Id {
-		t.Fatalf("published unit = %q, want %q", effects.unitID, saved.Id)
+	if effects.unitID != saved.ID.String() {
+		t.Fatalf("published unit = %q, want %q", effects.unitID, saved.ID)
 	}
 	assertAcademicUnitCreateEvents(t, events, "authorize", "audit-begin", "store", "effect")
 }
@@ -296,7 +296,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	saved := &model.AcademicUnit{Id: model.NewId(), InstitutionId: model.NewId(), Name: "engineering"}
+	saved := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewId()), InstitutionID: model.InstitutionID(model.NewId()), Name: "engineering"}
 	creator := &academicUnitCreateStore{events: &events, result: saved}
 	reporter := &academicUnitEffectFailureReporterFake{events: &events}
 	effectErr := errors.New("cluster unavailable")
@@ -306,7 +306,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 			authorizeInstallation: func(
 				context.Context, Invocation, model.Action,
 			) (model.Resource, error) {
-				return model.Resource{Type: model.ResourceInstitution, Id: saved.InstitutionId}, nil
+				return model.Resource{Type: model.ResourceInstitution, Id: saved.InstitutionID.String()}, nil
 			},
 		},
 		&academicUnitCommandAuditor{events: &events, beginID: model.NewId()},

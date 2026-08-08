@@ -31,14 +31,14 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 		Action:    string(model.ActionInstitutionManage),
-		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.Id},
-		ScopeType: model.RoleScopeInstitution, ScopeId: institution.Id,
+		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
+		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeId: "test-node",
 	})
 	requireNoError(t, err)
 	candidate := *institution
 	candidate.DisplayName = "Audited Northbridge"
-	candidate.PrepareUpdate(model.GetMillis())
+	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
 		Institution: &candidate, AuditEventID: attempt.Id, AuditAt: model.GetMillis(),
 	})
@@ -54,7 +54,7 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 
 	rolledBack := *updated
 	rolledBack.DisplayName = "Must Roll Back"
-	rolledBack.PrepareUpdate(model.GetMillis())
+	rolledBack.PrepareUpdate(model.NowUTC())
 	_, err = ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
 		Institution: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
 	})
@@ -79,11 +79,11 @@ func testInstitutionStoreSave(t *testing.T, ss store.Store) {
 	}
 	saved, err := ss.Institution().Save(ctx, institution)
 	requireNoError(t, err)
-	if !model.IsValidId(saved.Id) {
-		t.Fatalf("Save() id = %q", saved.Id)
+	if !model.IsValidId(saved.ID.String()) {
+		t.Fatalf("Save() id = %q", saved.ID.String())
 	}
-	if institution.Id != "" {
-		t.Fatalf("Save() mutated input id to %q", institution.Id)
+	if !institution.ID.IsZero() {
+		t.Fatalf("Save() mutated input id to %q", institution.ID.String())
 	}
 
 	_, err = ss.Institution().Save(ctx, saved)
@@ -106,7 +106,7 @@ func testInstitutionStoreGet(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	got, err := ss.Institution().Get(ctx, institution.Id)
+	got, err := ss.Institution().Get(ctx, institution.ID.String())
 	requireNoError(t, err)
 	if *got != *institution {
 		t.Fatalf("Get() = %#v, want %#v", got, institution)
@@ -124,15 +124,15 @@ func testInstitutionStoreGetSingleton(t *testing.T, ss store.Store) {
 
 	got, err := ss.Institution().GetSingleton(ctx)
 	requireNoError(t, err)
-	if got.Id != institution.Id {
-		t.Fatalf("GetSingleton() id = %q, want %q", got.Id, institution.Id)
+	if got.ID.String() != institution.ID.String() {
+		t.Fatalf("GetSingleton() id = %q, want %q", got.ID.String(), institution.ID.String())
 	}
 }
 
 func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
-	createAt := institution.CreateAt
+	createAt := institution.CreatedAt
 
 	institution.DisplayName = "Northbridge"
 	updated, err := ss.Institution().Update(ctx, institution)
@@ -140,12 +140,14 @@ func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	if updated.DisplayName != "Northbridge" {
 		t.Fatalf("Update() display name = %q", updated.DisplayName)
 	}
-	if updated.CreateAt != createAt || updated.UpdateAt < institution.UpdateAt {
+	if !updated.CreatedAt.Equal(createAt) || updated.UpdatedAt.Before(institution.UpdatedAt) {
 		t.Fatalf("Update() timestamps = %#v", updated)
 	}
 
 	missing := *updated
-	missing.Id = model.NewId()
+	missingID, parseErr := model.ParseInstitutionID(model.NewId())
+	requireNoError(t, parseErr)
+	missing.ID = missingID
 	_, err = ss.Institution().Update(ctx, &missing)
 	if !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v, want not found", err)
@@ -156,13 +158,13 @@ func testInstitutionStoreDelete(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	if err := ss.Institution().Delete(ctx, institution.Id, model.GetMillis()); err != nil {
+	if err := ss.Institution().Delete(ctx, institution.ID.String(), model.GetMillis()); err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}
-	if _, err := ss.Institution().Get(ctx, institution.Id); !store.IsNotFound(err) {
+	if _, err := ss.Institution().Get(ctx, institution.ID.String()); !store.IsNotFound(err) {
 		t.Fatalf("Get(deleted) error = %v, want not found", err)
 	}
-	if err := ss.Institution().Delete(ctx, institution.Id, model.GetMillis()); !store.IsNotFound(err) {
+	if err := ss.Institution().Delete(ctx, institution.ID.String(), model.GetMillis()); !store.IsNotFound(err) {
 		t.Fatalf("second Delete() error = %v, want not found", err)
 	}
 	if _, err := ss.Institution().Save(ctx, &model.Institution{
@@ -192,7 +194,7 @@ func cleanupInstitution(t *testing.T, ctx context.Context, ss store.Store) {
 		return
 	}
 	requireNoError(t, err)
-	if err := ss.Institution().Delete(ctx, institution.Id, model.GetMillis()); err != nil {
+	if err := ss.Institution().Delete(ctx, institution.ID.String(), model.GetMillis()); err != nil {
 		t.Fatalf("cleanup institution: %v", err)
 	}
 }

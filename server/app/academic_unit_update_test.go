@@ -75,12 +75,12 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 	newParentID := model.NewId()
 	institutionID := model.NewId()
 	current := &model.AcademicUnit{
-		Id: unitID, CreateAt: 100, UpdateAt: 100,
-		InstitutionId: institutionID, ParentId: oldParentID,
-		Name: "computing", DisplayName: "Computing",
+		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		InstitutionID: model.InstitutionID(institutionID), ParentID: model.AcademicUnitID(oldParentID),
+		Name: "computing", DisplayName: "Computing", Revision: 1,
 	}
 	updated := *current
-	updated.ParentId = newParentID
+	updated.ParentID = model.AcademicUnitID(newParentID)
 	updated.DisplayName = "Applied Computing"
 	persistence := &academicUnitMutationStore{
 		events: &events, current: current, updated: &updated,
@@ -111,9 +111,9 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 		t.Fatalf("Update() = %#v, %v", got, err)
 	}
 	if persistence.updateInput == nil ||
-		persistence.updateInput.Unit.ParentId != newParentID ||
+		persistence.updateInput.Unit.ParentID.String() != newParentID ||
 		persistence.updateInput.Unit.DisplayName != "Applied Computing" ||
-		persistence.updateInput.Unit.UpdateAt != 500 ||
+		!persistence.updateInput.Unit.UpdatedAt.Equal(time.UnixMilli(500).UTC()) ||
 		persistence.updateInput.AuditEventID != auditor.beginID {
 		t.Fatalf("update input = %#v", persistence.updateInput)
 	}
@@ -130,8 +130,9 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 	events := []string{}
 	unitID := model.NewId()
 	current := &model.AcademicUnit{
-		Id: unitID, CreateAt: 100, UpdateAt: 100,
-		InstitutionId: model.NewId(), Name: "engineering", DisplayName: "Engineering",
+		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		InstitutionID: model.InstitutionID(model.NewId()), Name: "engineering", DisplayName: "Engineering",
+		Revision: 1,
 	}
 	persistence := &academicUnitMutationStore{
 		events: &events, current: current,
@@ -168,11 +169,13 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 	events := []string{}
 	unitID := model.NewId()
 	current := &model.AcademicUnit{
-		Id: unitID, CreateAt: 100, UpdateAt: 100,
-		InstitutionId: model.NewId(), Name: "engineering", DisplayName: "Engineering",
+		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		InstitutionID: model.InstitutionID(model.NewId()), Name: "engineering", DisplayName: "Engineering",
+		Revision: 1,
 	}
 	archived := *current
-	archived.UpdateAt, archived.DeleteAt = 500, 500
+	archived.UpdatedAt = time.UnixMilli(500).UTC()
+	archived.ArchivedAt = model.OptionalTimeFromMillis(500)
 	persistence := &academicUnitMutationStore{
 		events: &events, current: current, archived: &archived,
 	}

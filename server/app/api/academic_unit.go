@@ -246,10 +246,15 @@ func academicUnitResponseFromModel(unit *model.AcademicUnit) academicUnitRespons
 		return academicUnitResponse{}
 	}
 	return academicUnitResponse{
-		ID: unit.Id, CreateAt: unit.CreateAt, UpdateAt: unit.UpdateAt,
-		DeleteAt: unit.DeleteAt, InstitutionID: unit.InstitutionId,
-		ParentID: unit.ParentId, Name: unit.Name, DisplayName: unit.DisplayName,
-		Description: unit.Description,
+		ID:            unit.ID.String(),
+		CreateAt:      model.MillisFromTime(unit.CreatedAt),
+		UpdateAt:      model.MillisFromTime(unit.UpdatedAt),
+		DeleteAt:      unit.ArchivedAt.Millis(),
+		InstitutionID: unit.InstitutionID.String(),
+		ParentID:      unit.ParentID.String(),
+		Name:          unit.Name,
+		DisplayName:   unit.DisplayName,
+		Description:   unit.Description,
 	}
 }
 
