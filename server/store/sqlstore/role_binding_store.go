@@ -20,8 +20,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlRoleBindingStore struct {
-	*SqlStore
+type SQLRoleBindingStore struct {
+	*SQLStore
 	bindingsQuery sq.SelectBuilder
 }
 
@@ -49,15 +49,15 @@ func roleBindingSliceColumns() []string {
 	}
 }
 
-func newSqlRoleBindingStore(sqlStore *SqlStore) store.RoleBindingStore {
-	s := &SqlRoleBindingStore{SqlStore: sqlStore}
+func newSQLRoleBindingStore(sqlStore *SQLStore) store.RoleBindingStore {
+	s := &SQLRoleBindingStore{SQLStore: sqlStore}
 	s.bindingsQuery = s.getQueryBuilder().
 		Select(roleBindingSliceColumns()...).
 		From("role_bindings")
 	return s
 }
 
-func (s SqlRoleBindingStore) Save(
+func (s SQLRoleBindingStore) Save(
 	ctx context.Context,
 	binding *model.RoleBinding,
 ) (*model.RoleBinding, error) {
@@ -86,7 +86,7 @@ func (s SqlRoleBindingStore) Save(
 	return &candidate, nil
 }
 
-func (s SqlRoleBindingStore) SaveWithAudit(
+func (s SQLRoleBindingStore) SaveWithAudit(
 	ctx context.Context,
 	input *store.RoleBindingCreation,
 ) (*model.RoleBinding, error) {
@@ -244,7 +244,7 @@ func validateSystemAdministratorScope(
 	return nil
 }
 
-func (s SqlRoleBindingStore) Get(ctx context.Context, id string) (*model.RoleBinding, error) {
+func (s SQLRoleBindingStore) Get(ctx context.Context, id string) (*model.RoleBinding, error) {
 	var row roleBindingRow
 	query := s.bindingsQuery.Where(sq.Eq{
 		"role_bindings.id": id, "role_bindings.archived_at": nil,
@@ -255,7 +255,7 @@ func (s SqlRoleBindingStore) Get(ctx context.Context, id string) (*model.RoleBin
 	return row.model(), nil
 }
 
-func (s SqlRoleBindingStore) ListByUser(
+func (s SQLRoleBindingStore) ListByUser(
 	ctx context.Context,
 	userID string,
 ) ([]*model.RoleBinding, error) {
@@ -264,7 +264,7 @@ func (s SqlRoleBindingStore) ListByUser(
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by user")
 }
 
-func (s SqlRoleBindingStore) ListByScope(
+func (s SQLRoleBindingStore) ListByScope(
 	ctx context.Context,
 	scopeType model.RoleScopeType,
 	scopeID string,
@@ -277,7 +277,7 @@ func (s SqlRoleBindingStore) ListByScope(
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by scope")
 }
 
-func (s SqlRoleBindingStore) ListActiveByUser(
+func (s SQLRoleBindingStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
 	now int64,
@@ -291,7 +291,7 @@ func (s SqlRoleBindingStore) ListActiveByUser(
 		"list active role bindings by user")
 }
 
-func (s SqlRoleBindingStore) selectBindings(
+func (s SQLRoleBindingStore) selectBindings(
 	ctx context.Context,
 	query sq.SelectBuilder,
 	operation string,
@@ -307,7 +307,7 @@ func (s SqlRoleBindingStore) selectBindings(
 	return bindings, nil
 }
 
-func (s SqlRoleBindingStore) End(
+func (s SQLRoleBindingStore) End(
 	ctx context.Context,
 	id string,
 	endAt int64,
@@ -330,7 +330,7 @@ func (s SqlRoleBindingStore) End(
 	return ended, nil
 }
 
-func (s SqlRoleBindingStore) EndWithAudit(
+func (s SQLRoleBindingStore) EndWithAudit(
 	ctx context.Context,
 	input *store.RoleBindingEnd,
 ) (*model.RoleBinding, error) {
@@ -450,4 +450,4 @@ func (row roleBindingRow) model() *model.RoleBinding {
 	}
 }
 
-var _ store.RoleBindingStore = (*SqlRoleBindingStore)(nil)
+var _ store.RoleBindingStore = (*SQLRoleBindingStore)(nil)

@@ -14,8 +14,8 @@ import (
 
 const installationBootstrapLock = "proctor:installation-bootstrap"
 
-type SqlInstallationStore struct {
-	*SqlStore
+type SQLInstallationStore struct {
+	*SQLStore
 }
 
 type installationStateRow struct {
@@ -24,11 +24,11 @@ type installationStateRow struct {
 	AdministratorUserID string    `db:"administrator_user_id"`
 }
 
-func newSqlInstallationStore(sqlStore *SqlStore) store.InstallationStore {
-	return &SqlInstallationStore{SqlStore: sqlStore}
+func newSQLInstallationStore(sqlStore *SQLStore) store.InstallationStore {
+	return &SQLInstallationStore{SQLStore: sqlStore}
 }
 
-func (s SqlInstallationStore) Get(ctx context.Context) (*model.InstallationState, error) {
+func (s SQLInstallationStore) Get(ctx context.Context) (*model.InstallationState, error) {
 	var row installationStateRow
 	if err := s.GetMaster().Get(ctx, &row, `
 		SELECT initialized_at, institution_id, administrator_user_id
@@ -39,7 +39,7 @@ func (s SqlInstallationStore) Get(ctx context.Context) (*model.InstallationState
 	return row.model(), nil
 }
 
-func (s SqlInstallationStore) Bootstrap(
+func (s SQLInstallationStore) Bootstrap(
 	ctx context.Context,
 	input *store.InstallationBootstrap,
 ) (*model.InstallationBootstrapResult, error) {
@@ -342,4 +342,4 @@ func (row installationStateRow) model() *model.InstallationState {
 	}
 }
 
-var _ store.InstallationStore = (*SqlInstallationStore)(nil)
+var _ store.InstallationStore = (*SQLInstallationStore)(nil)

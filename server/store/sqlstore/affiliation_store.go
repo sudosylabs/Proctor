@@ -19,8 +19,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlAffiliationStore struct {
-	*SqlStore
+type SQLAffiliationStore struct {
+	*SQLStore
 	query sq.SelectBuilder
 }
 
@@ -49,7 +49,7 @@ func affiliationColumns() []string {
 
 const affiliationLifecycleLock = "proctor:affiliation-lifecycle"
 
-func (s SqlAffiliationStore) Create(ctx context.Context, input *store.AffiliationCreation) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) Create(ctx context.Context, input *store.AffiliationCreation) (*model.Affiliation, error) {
 	if input == nil || input.Affiliation == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "creation", nil)
 	}
@@ -95,13 +95,13 @@ func (s SqlAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 	return &candidate, nil
 }
 
-func newSqlAffiliationStore(ss *SqlStore) store.AffiliationStore {
-	s := &SqlAffiliationStore{SqlStore: ss}
+func newSQLAffiliationStore(ss *SQLStore) store.AffiliationStore {
+	s := &SQLAffiliationStore{SQLStore: ss}
 	s.query = s.getQueryBuilder().Select(affiliationColumns()...).From("affiliations")
 	return s
 }
 
-func (s SqlAffiliationStore) Save(
+func (s SQLAffiliationStore) Save(
 	ctx context.Context,
 	affiliation *model.Affiliation,
 ) (*model.Affiliation, error) {
@@ -152,7 +152,7 @@ func (s SqlAffiliationStore) Save(
 	return &candidate, nil
 }
 
-func (s SqlAffiliationStore) Get(ctx context.Context, id string) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) Get(ctx context.Context, id string) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
 		"affiliations.id": id, "affiliations.archived_at": nil,
@@ -162,7 +162,7 @@ func (s SqlAffiliationStore) Get(ctx context.Context, id string) (*model.Affilia
 	return row.model(), nil
 }
 
-func (s SqlAffiliationStore) ListByUser(
+func (s SQLAffiliationStore) ListByUser(
 	ctx context.Context,
 	userID string,
 ) ([]*model.Affiliation, error) {
@@ -171,7 +171,7 @@ func (s SqlAffiliationStore) ListByUser(
 	}).OrderBy("affiliations.start_at DESC", "affiliations.id"))
 }
 
-func (s SqlAffiliationStore) ListActiveByUser(
+func (s SQLAffiliationStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
 	at int64,
@@ -184,7 +184,7 @@ func (s SqlAffiliationStore) ListActiveByUser(
 		OrderBy("affiliations.kind", "affiliations.id"))
 }
 
-func (s SqlAffiliationStore) End(
+func (s SQLAffiliationStore) End(
 	ctx context.Context,
 	id string,
 	expectedRevision int64,
@@ -211,7 +211,7 @@ func (s SqlAffiliationStore) End(
 	return ended, nil
 }
 
-func (s SqlAffiliationStore) EndWithAudit(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) EndWithAudit(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
@@ -240,7 +240,7 @@ func (s SqlAffiliationStore) EndWithAudit(ctx context.Context, input *store.Affi
 	return current, nil
 }
 
-func (s SqlAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.archived_at": nil})); err != nil {
 		return nil, translateError("affiliation", id, err)
@@ -307,7 +307,7 @@ func ensureAffiliationRangeAvailable(ctx context.Context, executor sqlxExecutor,
 	return nil
 }
 
-func (s SqlAffiliationStore) selectAffiliations(
+func (s SQLAffiliationStore) selectAffiliations(
 	ctx context.Context,
 	query sq.SelectBuilder,
 ) ([]*model.Affiliation, error) {
@@ -358,4 +358,4 @@ func (r affiliationRow) model() *model.Affiliation {
 	}
 }
 
-var _ store.AffiliationStore = (*SqlAffiliationStore)(nil)
+var _ store.AffiliationStore = (*SQLAffiliationStore)(nil)

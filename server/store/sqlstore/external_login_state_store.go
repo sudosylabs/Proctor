@@ -17,8 +17,8 @@ import (
 
 const externalLoginStateRetention = 24 * time.Hour
 
-type SqlExternalLoginStateStore struct {
-	*SqlStore
+type SQLExternalLoginStateStore struct {
+	*SQLStore
 	statesQuery sq.SelectBuilder
 }
 
@@ -54,15 +54,15 @@ func externalLoginStateSliceColumns() []string {
 	}
 }
 
-func newSqlExternalLoginStateStore(sqlStore *SqlStore) store.ExternalLoginStateStore {
-	s := &SqlExternalLoginStateStore{SqlStore: sqlStore}
+func newSQLExternalLoginStateStore(sqlStore *SQLStore) store.ExternalLoginStateStore {
+	s := &SQLExternalLoginStateStore{SQLStore: sqlStore}
 	s.statesQuery = s.getQueryBuilder().
 		Select(externalLoginStateSliceColumns()...).
 		From("external_login_states")
 	return s
 }
 
-func (s SqlExternalLoginStateStore) Save(
+func (s SQLExternalLoginStateStore) Save(
 	ctx context.Context,
 	state *model.ExternalLoginState,
 ) (*model.ExternalLoginState, error) {
@@ -111,7 +111,7 @@ func (s SqlExternalLoginStateStore) Save(
 	return &candidate, nil
 }
 
-func (s SqlExternalLoginStateStore) GetByStateHash(
+func (s SQLExternalLoginStateStore) GetByStateHash(
 	ctx context.Context,
 	stateHash string,
 ) (*model.ExternalLoginState, error) {
@@ -125,7 +125,7 @@ func (s SqlExternalLoginStateStore) GetByStateHash(
 	return row.model(), nil
 }
 
-func (s SqlExternalLoginStateStore) Consume(
+func (s SQLExternalLoginStateStore) Consume(
 	ctx context.Context,
 	provider string,
 	stateHash string,
@@ -196,4 +196,4 @@ func (row externalLoginStateRow) model() *model.ExternalLoginState {
 	}
 }
 
-var _ store.ExternalLoginStateStore = (*SqlExternalLoginStateStore)(nil)
+var _ store.ExternalLoginStateStore = (*SQLExternalLoginStateStore)(nil)

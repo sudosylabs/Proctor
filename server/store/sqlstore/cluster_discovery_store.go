@@ -15,8 +15,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlClusterDiscoveryStore struct {
-	*SqlStore
+type SQLClusterDiscoveryStore struct {
+	*SQLStore
 }
 
 type clusterDiscoveryNodeRow struct {
@@ -29,11 +29,11 @@ type clusterDiscoveryNodeRow struct {
 	UpdatedAt        time.Time `db:"updated_at"`
 }
 
-func newSqlClusterDiscoveryStore(sqlStore *SqlStore) store.ClusterDiscoveryStore {
-	return &SqlClusterDiscoveryStore{SqlStore: sqlStore}
+func newSQLClusterDiscoveryStore(sqlStore *SQLStore) store.ClusterDiscoveryStore {
+	return &SQLClusterDiscoveryStore{SQLStore: sqlStore}
 }
 
-func (s SqlClusterDiscoveryStore) Upsert(
+func (s SQLClusterDiscoveryStore) Upsert(
 	ctx context.Context,
 	node *store.ClusterDiscoveryNode,
 ) error {
@@ -80,7 +80,7 @@ ON CONFLICT (node_id) DO UPDATE SET
 	return nil
 }
 
-func (s SqlClusterDiscoveryStore) ListLive(
+func (s SQLClusterDiscoveryStore) ListLive(
 	ctx context.Context,
 	nowMillis int64,
 ) ([]*store.ClusterDiscoveryNode, error) {
@@ -119,7 +119,7 @@ func (s SqlClusterDiscoveryStore) ListLive(
 	return nodes, nil
 }
 
-func (s SqlClusterDiscoveryStore) Delete(ctx context.Context, nodeID string) error {
+func (s SQLClusterDiscoveryStore) Delete(ctx context.Context, nodeID string) error {
 	nodeID = strings.TrimSpace(nodeID)
 	if nodeID == "" || len(nodeID) > store.ClusterDiscoveryNodeIDMaxBytes {
 		return fmt.Errorf("cluster discovery node_id is invalid")
@@ -137,7 +137,7 @@ func (s SqlClusterDiscoveryStore) Delete(ctx context.Context, nodeID string) err
 	return nil
 }
 
-func (s SqlClusterDiscoveryStore) DeleteExpired(
+func (s SQLClusterDiscoveryStore) DeleteExpired(
 	ctx context.Context,
 	nowMillis int64,
 ) (int64, error) {

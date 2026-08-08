@@ -23,8 +23,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlUserStore struct {
-	*SqlStore
+type SQLUserStore struct {
+	*SQLStore
 	usersQuery sq.SelectBuilder
 }
 
@@ -69,13 +69,13 @@ func userSliceColumns() []string {
 	}
 }
 
-func newSqlUserStore(sqlStore *SqlStore) store.UserStore {
-	s := &SqlUserStore{SqlStore: sqlStore}
+func newSQLUserStore(sqlStore *SQLStore) store.UserStore {
+	s := &SQLUserStore{SQLStore: sqlStore}
 	s.usersQuery = s.getQueryBuilder().Select(userSliceColumns()...).From("users")
 	return s
 }
 
-func (s SqlUserStore) Save(ctx context.Context, user *model.User) (*model.User, error) {
+func (s SQLUserStore) Save(ctx context.Context, user *model.User) (*model.User, error) {
 	if user == nil {
 		return nil, store.NewErrInvalidInput("user", "value", nil)
 	}
@@ -95,7 +95,7 @@ func (s SqlUserStore) Save(ctx context.Context, user *model.User) (*model.User, 
 	return &candidate, nil
 }
 
-func (s SqlUserStore) SaveWithPassword(
+func (s SQLUserStore) SaveWithPassword(
 	ctx context.Context,
 	user *model.User,
 	credential *model.PasswordCredential,
@@ -153,14 +153,14 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 	return nil
 }
 
-func (s SqlUserStore) Get(ctx context.Context, id string) (*model.User, error) {
+func (s SQLUserStore) Get(ctx context.Context, id string) (*model.User, error) {
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
 		"users.id":          id,
 		"users.archived_at": nil,
 	}), id)
 }
 
-func (s SqlUserStore) GetByUsername(ctx context.Context, username string) (*model.User, error) {
+func (s SQLUserStore) GetByUsername(ctx context.Context, username string) (*model.User, error) {
 	username = strings.ToLower(strings.TrimSpace(username))
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
 		"users.username":    username,
@@ -168,7 +168,7 @@ func (s SqlUserStore) GetByUsername(ctx context.Context, username string) (*mode
 	}), username)
 }
 
-func (s SqlUserStore) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+func (s SQLUserStore) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
 		"users.email":       email,
@@ -176,7 +176,7 @@ func (s SqlUserStore) GetByEmail(ctx context.Context, email string) (*model.User
 	}), email)
 }
 
-func (s SqlUserStore) List(
+func (s SQLUserStore) List(
 	ctx context.Context,
 	options store.UserListOptions,
 ) ([]*model.User, error) {
@@ -217,7 +217,7 @@ func (s SqlUserStore) List(
 	return users, nil
 }
 
-func (s SqlUserStore) get(
+func (s SQLUserStore) get(
 	ctx context.Context,
 	query sq.SelectBuilder,
 	key string,
@@ -229,7 +229,7 @@ func (s SqlUserStore) get(
 	return row.model(), nil
 }
 
-func (s SqlUserStore) Update(ctx context.Context, user *model.User) (*model.User, error) {
+func (s SQLUserStore) Update(ctx context.Context, user *model.User) (*model.User, error) {
 	if user == nil || user.Revision <= 0 {
 		return nil, store.NewErrInvalidInput("user", "value", nil)
 	}
@@ -258,7 +258,7 @@ func (s SqlUserStore) Update(ctx context.Context, user *model.User) (*model.User
 	return updated, nil
 }
 
-func (s SqlUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
+func (s SQLUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	if input == nil || input.User == nil || input.ExpectedRevision <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("user", "profile_update", nil)
@@ -353,7 +353,7 @@ func requireUserRevisionAffected(ctx context.Context, executor sqlxExecutor, res
 	return store.NewErrNotFound("user", id).Wrap(sql.ErrNoRows)
 }
 
-func (s SqlUserStore) SetDisabledWithAudit(
+func (s SQLUserStore) SetDisabledWithAudit(
 	ctx context.Context,
 	input *store.UserDisabledStateChange,
 ) (*store.UserDisabledStateResult, error) {
@@ -527,7 +527,7 @@ func setUserDisabled(
 	return &row, nil
 }
 
-func (s SqlUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) error {
+func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) error {
 	loginAt := model.TimeFromMillis(at)
 	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE users
@@ -588,4 +588,4 @@ func (row userRow) model() *model.User {
 	}
 }
 
-var _ store.UserStore = (*SqlUserStore)(nil)
+var _ store.UserStore = (*SQLUserStore)(nil)

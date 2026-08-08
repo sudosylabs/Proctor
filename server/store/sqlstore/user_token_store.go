@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlUserTokenStore struct {
-	*SqlStore
+type SQLUserTokenStore struct {
+	*SQLStore
 	tokensQuery sq.SelectBuilder
 }
 
@@ -54,15 +54,15 @@ func userTokenSliceColumns() []string {
 	}
 }
 
-func newSqlUserTokenStore(sqlStore *SqlStore) store.UserTokenStore {
-	s := &SqlUserTokenStore{SqlStore: sqlStore}
+func newSQLUserTokenStore(sqlStore *SQLStore) store.UserTokenStore {
+	s := &SQLUserTokenStore{SQLStore: sqlStore}
 	s.tokensQuery = s.getQueryBuilder().
 		Select(userTokenSliceColumns()...).
 		From("user_tokens")
 	return s
 }
 
-func (s SqlUserTokenStore) Issue(
+func (s SQLUserTokenStore) Issue(
 	ctx context.Context,
 	token *model.UserToken,
 	auditEvent *model.AuditEvent,
@@ -123,7 +123,7 @@ func (s SqlUserTokenStore) Issue(
 	return &candidate, nil
 }
 
-func (s SqlUserTokenStore) GetByHash(
+func (s SQLUserTokenStore) GetByHash(
 	ctx context.Context,
 	tokenHash string,
 	purpose model.UserTokenPurpose,
@@ -142,7 +142,7 @@ func (s SqlUserTokenStore) GetByHash(
 	return row.model(), nil
 }
 
-func (s SqlUserTokenStore) ConsumeEmailVerification(
+func (s SQLUserTokenStore) ConsumeEmailVerification(
 	ctx context.Context,
 	tokenHash string,
 	now int64,
@@ -202,7 +202,7 @@ func (s SqlUserTokenStore) ConsumeEmailVerification(
 	}, nil
 }
 
-func (s SqlUserTokenStore) ConsumePasswordReset(
+func (s SQLUserTokenStore) ConsumePasswordReset(
 	ctx context.Context,
 	tokenHash string,
 	passwordHash string,
@@ -444,4 +444,4 @@ func (row userTokenRow) model() *model.UserToken {
 	}
 }
 
-var _ store.UserTokenStore = (*SqlUserTokenStore)(nil)
+var _ store.UserTokenStore = (*SQLUserTokenStore)(nil)

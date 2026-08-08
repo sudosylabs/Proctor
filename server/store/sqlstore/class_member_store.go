@@ -20,8 +20,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlClassMemberStore struct {
-	*SqlStore
+type SQLClassMemberStore struct {
+	*SQLStore
 	query sq.SelectBuilder
 }
 
@@ -48,13 +48,13 @@ func classMemberColumns() []string {
 	}
 }
 
-func newSqlClassMemberStore(ss *SqlStore) store.ClassMemberStore {
-	s := &SqlClassMemberStore{SqlStore: ss}
+func newSQLClassMemberStore(ss *SQLStore) store.ClassMemberStore {
+	s := &SQLClassMemberStore{SQLStore: ss}
 	s.query = s.getQueryBuilder().Select(classMemberColumns()...).From("class_members")
 	return s
 }
 
-func (s SqlClassMemberStore) Enroll(
+func (s SQLClassMemberStore) Enroll(
 	ctx context.Context,
 	member *model.ClassMember,
 ) (*store.ClassEnrollmentResult, error) {
@@ -71,7 +71,7 @@ func (s SqlClassMemberStore) Enroll(
 	return s.enroll(ctx, &candidate, "", 0)
 }
 
-func (s SqlClassMemberStore) EnrollWithAudit(
+func (s SQLClassMemberStore) EnrollWithAudit(
 	ctx context.Context,
 	input *store.ClassMemberEnrollment,
 ) (*store.ClassEnrollmentResult, error) {
@@ -86,7 +86,7 @@ func (s SqlClassMemberStore) EnrollWithAudit(
 	return s.enroll(ctx, &candidate, input.AuditEventID, input.AuditAt)
 }
 
-func (s SqlClassMemberStore) enroll(
+func (s SQLClassMemberStore) enroll(
 	ctx context.Context,
 	candidate *model.ClassMember,
 	auditEventID string,
@@ -243,7 +243,7 @@ func isNoRows(err error) bool {
 	return err == sql.ErrNoRows
 }
 
-func (s SqlClassMemberStore) Get(
+func (s SQLClassMemberStore) Get(
 	ctx context.Context,
 	id string,
 ) (*model.ClassMember, error) {
@@ -256,7 +256,7 @@ func (s SqlClassMemberStore) Get(
 	return row.model(), nil
 }
 
-func (s SqlClassMemberStore) ListByUser(
+func (s SQLClassMemberStore) ListByUser(
 	ctx context.Context,
 	userID string,
 ) ([]*model.ClassMember, error) {
@@ -265,7 +265,7 @@ func (s SqlClassMemberStore) ListByUser(
 	}).OrderBy("class_members.start_at DESC", "class_members.id"))
 }
 
-func (s SqlClassMemberStore) ListByClass(
+func (s SQLClassMemberStore) ListByClass(
 	ctx context.Context,
 	classID string,
 	at int64,
@@ -281,7 +281,7 @@ func (s SqlClassMemberStore) ListByClass(
 	return s.selectMembers(ctx, query.OrderBy("class_members.user_id", "class_members.id"))
 }
 
-func (s SqlClassMemberStore) ListActiveByUser(
+func (s SQLClassMemberStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
 	at int64,
@@ -294,7 +294,7 @@ func (s SqlClassMemberStore) ListActiveByUser(
 		OrderBy("class_members.academic_period_id", "class_members.id"))
 }
 
-func (s SqlClassMemberStore) End(
+func (s SQLClassMemberStore) End(
 	ctx context.Context,
 	id string,
 	expectedRevision int64,
@@ -327,7 +327,7 @@ func (s SqlClassMemberStore) End(
 	return ended, nil
 }
 
-func (s SqlClassMemberStore) EndWithAudit(
+func (s SQLClassMemberStore) EndWithAudit(
 	ctx context.Context,
 	input *store.ClassMemberEnd,
 ) (*model.ClassMember, error) {
@@ -366,7 +366,7 @@ func (s SqlClassMemberStore) EndWithAudit(
 	return ended, nil
 }
 
-func (s SqlClassMemberStore) endClassMember(
+func (s SQLClassMemberStore) endClassMember(
 	ctx context.Context,
 	executor sqlxExecutor,
 	id string,
@@ -418,7 +418,7 @@ func lockClassEnrollment(ctx context.Context, executor sqlxExecutor, userID, per
 	return nil
 }
 
-func (s SqlClassMemberStore) selectMembers(
+func (s SQLClassMemberStore) selectMembers(
 	ctx context.Context,
 	query sq.SelectBuilder,
 ) ([]*model.ClassMember, error) {
@@ -479,4 +479,4 @@ func (r classMemberRow) model() *model.ClassMember {
 	}
 }
 
-var _ store.ClassMemberStore = (*SqlClassMemberStore)(nil)
+var _ store.ClassMemberStore = (*SQLClassMemberStore)(nil)

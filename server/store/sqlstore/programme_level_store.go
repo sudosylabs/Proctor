@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlProgrammeLevelStore struct {
-	*SqlStore
+type SQLProgrammeLevelStore struct {
+	*SQLStore
 	programmeLevelsQuery sq.SelectBuilder
 }
 
@@ -54,15 +54,15 @@ func programmeLevelSliceColumns() []string {
 	}
 }
 
-func newSqlProgrammeLevelStore(sqlStore *SqlStore) store.ProgrammeLevelStore {
-	s := &SqlProgrammeLevelStore{SqlStore: sqlStore}
+func newSQLProgrammeLevelStore(sqlStore *SQLStore) store.ProgrammeLevelStore {
+	s := &SQLProgrammeLevelStore{SQLStore: sqlStore}
 	s.programmeLevelsQuery = s.getQueryBuilder().
 		Select(programmeLevelSliceColumns()...).
 		From("programme_levels")
 	return s
 }
 
-func (s SqlProgrammeLevelStore) Create(ctx context.Context, input *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) Create(ctx context.Context, input *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
 	if input == nil || input.Level == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "creation", nil)
 	}
@@ -108,7 +108,7 @@ func (s SqlProgrammeLevelStore) Create(ctx context.Context, input *store.Program
 	return &candidate, nil
 }
 
-func (s SqlProgrammeLevelStore) Save(
+func (s SQLProgrammeLevelStore) Save(
 	ctx context.Context,
 	level *model.ProgrammeLevel,
 ) (*model.ProgrammeLevel, error) {
@@ -160,7 +160,7 @@ func (s SqlProgrammeLevelStore) Save(
 	return &candidate, nil
 }
 
-func (s SqlProgrammeLevelStore) Get(ctx context.Context, id string) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) Get(ctx context.Context, id string) (*model.ProgrammeLevel, error) {
 	var row programmeLevelRow
 	query := s.programmeLevelsQuery.Where(sq.Eq{
 		"programme_levels.id":          id,
@@ -172,7 +172,7 @@ func (s SqlProgrammeLevelStore) Get(ctx context.Context, id string) (*model.Prog
 	return row.model()
 }
 
-func (s SqlProgrammeLevelStore) GetByName(
+func (s SQLProgrammeLevelStore) GetByName(
 	ctx context.Context,
 	programmeID string,
 	name string,
@@ -189,7 +189,7 @@ func (s SqlProgrammeLevelStore) GetByName(
 	return row.model()
 }
 
-func (s SqlProgrammeLevelStore) ListByProgramme(
+func (s SQLProgrammeLevelStore) ListByProgramme(
 	ctx context.Context,
 	programmeID string,
 ) ([]*model.ProgrammeLevel, error) {
@@ -215,7 +215,7 @@ func (s SqlProgrammeLevelStore) ListByProgramme(
 	return levels, nil
 }
 
-func (s SqlProgrammeLevelStore) SearchByProgramme(
+func (s SQLProgrammeLevelStore) SearchByProgramme(
 	ctx context.Context,
 	programmeID string,
 	term string,
@@ -245,7 +245,7 @@ func (s SqlProgrammeLevelStore) SearchByProgramme(
 	return result, nil
 }
 
-func (s SqlProgrammeLevelStore) Update(
+func (s SQLProgrammeLevelStore) Update(
 	ctx context.Context,
 	level *model.ProgrammeLevel,
 ) (*model.ProgrammeLevel, error) {
@@ -301,7 +301,7 @@ func (s SqlProgrammeLevelStore) Update(
 	return &candidate, nil
 }
 
-func (s SqlProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
 	if input == nil || input.Level == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "update", nil)
 	}
@@ -354,7 +354,7 @@ func (s SqlProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *stor
 	return &candidate, nil
 }
 
-func (s SqlProgrammeLevelStore) Archive(
+func (s SQLProgrammeLevelStore) Archive(
 	ctx context.Context,
 	id string,
 	archiveAt int64,
@@ -413,7 +413,7 @@ func (s SqlProgrammeLevelStore) Archive(
 	return current, nil
 }
 
-func (s SqlProgrammeLevelStore) ArchiveWithAudit(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) ArchiveWithAudit(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "archive", nil)
 	}
@@ -523,4 +523,4 @@ func (row programmeLevelRow) model() (*model.ProgrammeLevel, error) {
 	return level, nil
 }
 
-var _ store.ProgrammeLevelStore = (*SqlProgrammeLevelStore)(nil)
+var _ store.ProgrammeLevelStore = (*SQLProgrammeLevelStore)(nil)

@@ -18,8 +18,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlExternalIdentityStore struct {
-	*SqlStore
+type SQLExternalIdentityStore struct {
+	*SQLStore
 	identitiesQuery sq.SelectBuilder
 }
 
@@ -47,15 +47,15 @@ func externalIdentitySliceColumns() []string {
 	}
 }
 
-func newSqlExternalIdentityStore(sqlStore *SqlStore) store.ExternalIdentityStore {
-	s := &SqlExternalIdentityStore{SqlStore: sqlStore}
+func newSQLExternalIdentityStore(sqlStore *SQLStore) store.ExternalIdentityStore {
+	s := &SQLExternalIdentityStore{SQLStore: sqlStore}
 	s.identitiesQuery = s.getQueryBuilder().
 		Select(externalIdentitySliceColumns()...).
 		From("external_identities")
 	return s
 }
 
-func (s SqlExternalIdentityStore) Save(
+func (s SQLExternalIdentityStore) Save(
 	ctx context.Context,
 	identity *model.ExternalIdentity,
 ) (*model.ExternalIdentity, error) {
@@ -76,7 +76,7 @@ func (s SqlExternalIdentityStore) Save(
 	return &candidate, nil
 }
 
-func (s SqlExternalIdentityStore) Get(
+func (s SQLExternalIdentityStore) Get(
 	ctx context.Context,
 	id string,
 ) (*model.ExternalIdentity, error) {
@@ -87,7 +87,7 @@ func (s SqlExternalIdentityStore) Get(
 	return s.get(ctx, query, id)
 }
 
-func (s SqlExternalIdentityStore) GetByProviderSubject(
+func (s SQLExternalIdentityStore) GetByProviderSubject(
 	ctx context.Context,
 	provider string,
 	subject string,
@@ -101,7 +101,7 @@ func (s SqlExternalIdentityStore) GetByProviderSubject(
 	return s.get(ctx, query, provider)
 }
 
-func (s SqlExternalIdentityStore) ListByUser(
+func (s SQLExternalIdentityStore) ListByUser(
 	ctx context.Context,
 	userID string,
 ) ([]*model.ExternalIdentity, error) {
@@ -122,7 +122,7 @@ func (s SqlExternalIdentityStore) ListByUser(
 	return identities, nil
 }
 
-func (s SqlExternalIdentityStore) ResolveOrProvision(
+func (s SQLExternalIdentityStore) ResolveOrProvision(
 	ctx context.Context,
 	identity *model.ExternalIdentity,
 	user *model.User,
@@ -295,7 +295,7 @@ func insertExternalIdentity(
 	return nil
 }
 
-func (s SqlExternalIdentityStore) get(
+func (s SQLExternalIdentityStore) get(
 	ctx context.Context,
 	query sq.SelectBuilder,
 	key string,
@@ -333,4 +333,4 @@ func (row externalIdentityRow) model() *model.ExternalIdentity {
 	}
 }
 
-var _ store.ExternalIdentityStore = (*SqlExternalIdentityStore)(nil)
+var _ store.ExternalIdentityStore = (*SQLExternalIdentityStore)(nil)

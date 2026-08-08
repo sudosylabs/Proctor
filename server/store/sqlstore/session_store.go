@@ -22,8 +22,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlSessionStore struct {
-	*SqlStore
+type SQLSessionStore struct {
+	*SQLStore
 	sessionsQuery sq.SelectBuilder
 }
 
@@ -69,13 +69,13 @@ func sessionSliceColumns() []string {
 	}
 }
 
-func newSqlSessionStore(sqlStore *SqlStore) store.SessionStore {
-	s := &SqlSessionStore{SqlStore: sqlStore}
+func newSQLSessionStore(sqlStore *SQLStore) store.SessionStore {
+	s := &SQLSessionStore{SQLStore: sqlStore}
 	s.sessionsQuery = s.getQueryBuilder().Select(sessionSliceColumns()...).From("sessions")
 	return s
 }
 
-func (s SqlSessionStore) Save(
+func (s SQLSessionStore) Save(
 	ctx context.Context,
 	session *model.Session,
 	credentials []*model.SessionCredential,
@@ -224,7 +224,7 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 	return nil
 }
 
-func (s SqlSessionStore) Get(ctx context.Context, id string) (*model.Session, error) {
+func (s SQLSessionStore) Get(ctx context.Context, id string) (*model.Session, error) {
 	var row sessionRow
 	query := s.sessionsQuery.Where(sq.Eq{
 		"sessions.id":          id,
@@ -236,7 +236,7 @@ func (s SqlSessionStore) Get(ctx context.Context, id string) (*model.Session, er
 	return row.model(), nil
 }
 
-func (s SqlSessionStore) ListByUser(ctx context.Context, userID string) ([]*model.Session, error) {
+func (s SQLSessionStore) ListByUser(ctx context.Context, userID string) ([]*model.Session, error) {
 	query := s.sessionsQuery.
 		Where(sq.Eq{
 			"sessions.user_id":     userID,
@@ -254,7 +254,7 @@ func (s SqlSessionStore) ListByUser(ctx context.Context, userID string) ([]*mode
 	return sessions, nil
 }
 
-func (s SqlSessionStore) ListActiveByUser(
+func (s SQLSessionStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
 	now int64,
@@ -284,7 +284,7 @@ func (s SqlSessionStore) ListActiveByUser(
 	return sessions, nil
 }
 
-func (s SqlSessionStore) UpdateActivity(
+func (s SQLSessionStore) UpdateActivity(
 	ctx context.Context,
 	id string,
 	lastActivityAt int64,
@@ -315,7 +315,7 @@ func (s SqlSessionStore) UpdateActivity(
 	return requireAffected(result, "session", id)
 }
 
-func (s SqlSessionStore) Revoke(
+func (s SQLSessionStore) Revoke(
 	ctx context.Context,
 	id string,
 	userID string,
@@ -341,7 +341,7 @@ func (s SqlSessionStore) Revoke(
 	return hashes, nil
 }
 
-func (s SqlSessionStore) RevokeWithAudit(
+func (s SQLSessionStore) RevokeWithAudit(
 	ctx context.Context,
 	input *store.SessionRevocation,
 ) (*store.SessionRevocationResult, error) {
@@ -405,7 +405,7 @@ func (s SqlSessionStore) RevokeWithAudit(
 	return &store.SessionRevocationResult{Session: session, TokenHashes: hashes}, nil
 }
 
-func (s SqlSessionStore) RevokeAllForUser(
+func (s SQLSessionStore) RevokeAllForUser(
 	ctx context.Context,
 	userID string,
 	revokedAt int64,
@@ -432,7 +432,7 @@ func (s SqlSessionStore) RevokeAllForUser(
 	return revokedSessionModels(rows, revokedAt, reason), hashes, nil
 }
 
-func (s SqlSessionStore) RevokeAllForUserWithAudit(
+func (s SQLSessionStore) RevokeAllForUserWithAudit(
 	ctx context.Context,
 	input *store.UserSessionsRevocation,
 ) (*store.UserSessionsRevocationResult, error) {
@@ -698,4 +698,4 @@ func (row sessionRow) model() *model.Session {
 	}
 }
 
-var _ store.SessionStore = (*SqlSessionStore)(nil)
+var _ store.SessionStore = (*SQLSessionStore)(nil)

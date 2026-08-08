@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Adapted from Mattermost server/channels/store/sqlstore/team_store.go. Proctor
-// retains the per-model Sql<Model>Store, embedded root store, reusable select
+// retains the per-model SQL<Model>Store, embedded root store, reusable select
 // builder, named writes, model lifecycle, and store-error boundary while
 // implementing Proctor's singleton-institution semantics.
 
@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlInstitutionStore struct {
-	*SqlStore
+type SQLInstitutionStore struct {
+	*SQLStore
 	institutionsQuery sq.SelectBuilder
 }
 
@@ -50,15 +50,15 @@ func institutionSliceColumns() []string {
 	}
 }
 
-func newSqlInstitutionStore(sqlStore *SqlStore) store.InstitutionStore {
-	s := &SqlInstitutionStore{SqlStore: sqlStore}
+func newSQLInstitutionStore(sqlStore *SQLStore) store.InstitutionStore {
+	s := &SQLInstitutionStore{SQLStore: sqlStore}
 	s.institutionsQuery = s.getQueryBuilder().
 		Select(institutionSliceColumns()...).
 		From("institutions")
 	return s
 }
 
-func (s SqlInstitutionStore) Save(ctx context.Context, institution *model.Institution) (*model.Institution, error) {
+func (s SQLInstitutionStore) Save(ctx context.Context, institution *model.Institution) (*model.Institution, error) {
 	if institution == nil {
 		return nil, store.NewErrInvalidInput("institution", "value", nil)
 	}
@@ -90,7 +90,7 @@ func (s SqlInstitutionStore) Save(ctx context.Context, institution *model.Instit
 	return created, nil
 }
 
-func (s SqlInstitutionStore) Get(ctx context.Context, id string) (*model.Institution, error) {
+func (s SQLInstitutionStore) Get(ctx context.Context, id string) (*model.Institution, error) {
 	var row institutionRow
 	query := s.institutionsQuery.Where(sq.Eq{
 		"institutions.id":          id,
@@ -102,7 +102,7 @@ func (s SqlInstitutionStore) Get(ctx context.Context, id string) (*model.Institu
 	return row.model()
 }
 
-func (s SqlInstitutionStore) GetSingleton(ctx context.Context) (*model.Institution, error) {
+func (s SQLInstitutionStore) GetSingleton(ctx context.Context) (*model.Institution, error) {
 	var row institutionRow
 	query := s.institutionsQuery.Where(sq.Eq{
 		"institutions.singleton":   true,
@@ -114,7 +114,7 @@ func (s SqlInstitutionStore) GetSingleton(ctx context.Context) (*model.Instituti
 	return row.model()
 }
 
-func (s SqlInstitutionStore) Update(ctx context.Context, institution *model.Institution) (*model.Institution, error) {
+func (s SQLInstitutionStore) Update(ctx context.Context, institution *model.Institution) (*model.Institution, error) {
 	if institution == nil {
 		return nil, store.NewErrInvalidInput("institution", "value", nil)
 	}
@@ -126,7 +126,7 @@ func (s SqlInstitutionStore) Update(ctx context.Context, institution *model.Inst
 	return s.updateInstitution(ctx, &candidate, "", 0)
 }
 
-func (s SqlInstitutionStore) UpdateWithAudit(
+func (s SQLInstitutionStore) UpdateWithAudit(
 	ctx context.Context,
 	input *store.InstitutionUpdate,
 ) (*model.Institution, error) {
@@ -141,7 +141,7 @@ func (s SqlInstitutionStore) UpdateWithAudit(
 	return s.updateInstitution(ctx, &candidate, input.AuditEventID, input.AuditAt)
 }
 
-func (s SqlInstitutionStore) updateInstitution(
+func (s SQLInstitutionStore) updateInstitution(
 	ctx context.Context,
 	candidate *model.Institution,
 	auditEventID string,
@@ -191,7 +191,7 @@ func (s SqlInstitutionStore) updateInstitution(
 	return candidate, nil
 }
 
-func (s SqlInstitutionStore) Archive(ctx context.Context, id string, archiveAt int64) error {
+func (s SQLInstitutionStore) Archive(ctx context.Context, id string, archiveAt int64) error {
 	if archiveAt <= 0 {
 		return store.NewErrInvalidInput("institution", "archived_at", archiveAt)
 	}
@@ -301,4 +301,4 @@ func requireOwnedRevisionAffected(
 	return store.NewErrConflict(resource, resource+"_changed", nil)
 }
 
-var _ store.InstitutionStore = (*SqlInstitutionStore)(nil)
+var _ store.InstitutionStore = (*SQLInstitutionStore)(nil)

@@ -20,8 +20,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlPasswordCredentialStore struct {
-	*SqlStore
+type SQLPasswordCredentialStore struct {
+	*SQLStore
 	credentialsQuery sq.SelectBuilder
 }
 
@@ -47,15 +47,15 @@ func passwordCredentialSliceColumns() []string {
 	}
 }
 
-func newSqlPasswordCredentialStore(sqlStore *SqlStore) store.PasswordCredentialStore {
-	s := &SqlPasswordCredentialStore{SqlStore: sqlStore}
+func newSQLPasswordCredentialStore(sqlStore *SQLStore) store.PasswordCredentialStore {
+	s := &SQLPasswordCredentialStore{SQLStore: sqlStore}
 	s.credentialsQuery = s.getQueryBuilder().
 		Select(passwordCredentialSliceColumns()...).
 		From("password_credentials")
 	return s
 }
 
-func (s SqlPasswordCredentialStore) Save(
+func (s SQLPasswordCredentialStore) Save(
 	ctx context.Context,
 	credential *model.PasswordCredential,
 ) (*model.PasswordCredential, error) {
@@ -99,7 +99,7 @@ func insertPasswordCredential(
 	return nil
 }
 
-func (s SqlPasswordCredentialStore) GetByUser(
+func (s SQLPasswordCredentialStore) GetByUser(
 	ctx context.Context,
 	userID string,
 ) (*model.PasswordCredential, error) {
@@ -114,7 +114,7 @@ func (s SqlPasswordCredentialStore) GetByUser(
 	return row.model(), nil
 }
 
-func (s SqlPasswordCredentialStore) Update(
+func (s SQLPasswordCredentialStore) Update(
 	ctx context.Context,
 	credential *model.PasswordCredential,
 ) (*model.PasswordCredential, error) {
@@ -170,4 +170,4 @@ func (row passwordCredentialRow) model() *model.PasswordCredential {
 	}
 }
 
-var _ store.PasswordCredentialStore = (*SqlPasswordCredentialStore)(nil)
+var _ store.PasswordCredentialStore = (*SQLPasswordCredentialStore)(nil)

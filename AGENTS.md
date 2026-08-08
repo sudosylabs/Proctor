@@ -1769,13 +1769,13 @@ Rules:
 - `store.Store` is the root persistence contract and exposes model-specific
   stores such as `InstitutionStore` and `AcademicUnitStore`;
 - `Store` is the canonical durable-persistence term. Use `<Model>Store` or
-  `<Aggregate>Store` for contracts, `Sql<Model>Store` for PostgreSQL
+  `<Aggregate>Store` for contracts, `SQL<Model>Store` for PostgreSQL
   implementations, and `storetest` for reusable conformance suites;
 - do not use `Repository`, `DAO`, `Manager`, or `Gateway` as synonyms for a
   store. Reserve `Gateway` or `Client` for outbound remote-service adapters
   when that vocabulary accurately describes the boundary;
 - each persisted model or cohesive aggregate receives its own store contract,
-  `Sql<Model>Store` implementation, store file, adapter test, and reusable
+  `SQL<Model>Store` implementation, store file, adapter test, and reusable
   conformance suite when that persistence slice is implemented;
 - `Get` requires the entity to exist and returns typed `store.ErrNotFound` on
   absence; `Find` reserves absence as an expected outcome and returns
@@ -2479,8 +2479,8 @@ Before handing off:
   lock; normal server startup validates schema compatibility but never applies
   migrations.
 - Persistence follows Mattermost's store shape: one root `store.Store`,
-  complete per-model store interfaces, one `Sql<Model>Store` per implemented
-  model, and interface-returning accessors on `SqlStore`.
+  complete per-model store interfaces, one `SQL<Model>Store` per implemented
+  model, and interface-returning accessors on `SQLStore`.
 - Atomic changes spanning models use explicit aggregate-oriented store
   operations rather than exposing a generic transaction callback or database
   transaction to the application.

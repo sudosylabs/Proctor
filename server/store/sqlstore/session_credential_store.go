@@ -20,8 +20,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlSessionCredentialStore struct {
-	*SqlStore
+type SQLSessionCredentialStore struct {
+	*SQLStore
 	credentialsQuery sq.SelectBuilder
 }
 
@@ -59,8 +59,8 @@ func sessionCredentialSliceColumns() []string {
 	}
 }
 
-func newSqlSessionCredentialStore(sqlStore *SqlStore) store.SessionCredentialStore {
-	s := &SqlSessionCredentialStore{SqlStore: sqlStore}
+func newSQLSessionCredentialStore(sqlStore *SQLStore) store.SessionCredentialStore {
+	s := &SQLSessionCredentialStore{SQLStore: sqlStore}
 	s.credentialsQuery = s.getQueryBuilder().
 		Select(sessionCredentialSliceColumns()...).
 		From("session_credentials")
@@ -91,7 +91,7 @@ func insertSessionCredential(
 	return nil
 }
 
-func (s SqlSessionCredentialStore) GetSessionByTokenHash(
+func (s SQLSessionCredentialStore) GetSessionByTokenHash(
 	ctx context.Context,
 	tokenHash string,
 	kind model.SessionCredentialKind,
@@ -119,7 +119,7 @@ func (s SqlSessionCredentialStore) GetSessionByTokenHash(
 	return credentialRow.model(), lockedSessionRow.model(), nil
 }
 
-func (s SqlSessionCredentialStore) RotateRefresh(
+func (s SQLSessionCredentialStore) RotateRefresh(
 	ctx context.Context,
 	tokenHash string,
 	access *model.SessionCredential,
@@ -397,4 +397,4 @@ func (row sessionCredentialRow) model() *model.SessionCredential {
 	}
 }
 
-var _ store.SessionCredentialStore = (*SqlSessionCredentialStore)(nil)
+var _ store.SessionCredentialStore = (*SQLSessionCredentialStore)(nil)

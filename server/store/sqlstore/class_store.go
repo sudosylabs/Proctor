@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlClassStore struct {
-	*SqlStore
+type SQLClassStore struct {
+	*SQLStore
 	classesQuery sq.SelectBuilder
 }
 
@@ -56,15 +56,15 @@ func classSliceColumns() []string {
 	}
 }
 
-func newSqlClassStore(sqlStore *SqlStore) store.ClassStore {
-	s := &SqlClassStore{SqlStore: sqlStore}
+func newSQLClassStore(sqlStore *SQLStore) store.ClassStore {
+	s := &SQLClassStore{SQLStore: sqlStore}
 	s.classesQuery = s.getQueryBuilder().
 		Select(classSliceColumns()...).
 		From("classes")
 	return s
 }
 
-func (s SqlClassStore) Create(ctx context.Context, input *store.ClassCreation) (*model.Class, error) {
+func (s SQLClassStore) Create(ctx context.Context, input *store.ClassCreation) (*model.Class, error) {
 	if input == nil || input.Class == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "creation", nil)
 	}
@@ -118,7 +118,7 @@ func (s SqlClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 	return &candidate, nil
 }
 
-func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Class, error) {
+func (s SQLClassStore) Save(ctx context.Context, class *model.Class) (*model.Class, error) {
 	if class == nil {
 		return nil, store.NewErrInvalidInput("class", "value", nil)
 	}
@@ -172,7 +172,7 @@ func (s SqlClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	return &candidate, nil
 }
 
-func (s SqlClassStore) Get(ctx context.Context, id string) (*model.Class, error) {
+func (s SQLClassStore) Get(ctx context.Context, id string) (*model.Class, error) {
 	var row classRow
 	query := s.classesQuery.Where(sq.Eq{
 		"classes.id":          id,
@@ -184,7 +184,7 @@ func (s SqlClassStore) Get(ctx context.Context, id string) (*model.Class, error)
 	return row.model()
 }
 
-func (s SqlClassStore) GetByName(
+func (s SQLClassStore) GetByName(
 	ctx context.Context,
 	programmeLevelID string,
 	academicPeriodID string,
@@ -204,7 +204,7 @@ func (s SqlClassStore) GetByName(
 	return row.model()
 }
 
-func (s SqlClassStore) ListByProgrammeLevel(
+func (s SQLClassStore) ListByProgrammeLevel(
 	ctx context.Context,
 	programmeLevelID string,
 ) ([]*model.Class, error) {
@@ -218,7 +218,7 @@ func (s SqlClassStore) ListByProgrammeLevel(
 	return s.selectClasses(ctx, query, "list classes by programme level")
 }
 
-func (s SqlClassStore) ListByAcademicPeriod(
+func (s SQLClassStore) ListByAcademicPeriod(
 	ctx context.Context,
 	academicPeriodID string,
 ) ([]*model.Class, error) {
@@ -231,7 +231,7 @@ func (s SqlClassStore) ListByAcademicPeriod(
 	return s.selectClasses(ctx, query, "list classes by academic period")
 }
 
-func (s SqlClassStore) SearchByAcademicUnit(
+func (s SQLClassStore) SearchByAcademicUnit(
 	ctx context.Context,
 	academicUnitID string,
 	term string,
@@ -256,7 +256,7 @@ func (s SqlClassStore) SearchByAcademicUnit(
 	return s.selectClasses(ctx, query, "search classes by academic unit")
 }
 
-func (s SqlClassStore) GetAcademicUnitId(ctx context.Context, id string) (string, error) {
+func (s SQLClassStore) GetAcademicUnitId(ctx context.Context, id string) (string, error) {
 	var academicUnitID string
 	if err := s.GetMaster().Get(ctx, &academicUnitID, `
 		SELECT programmes.academic_unit_id
@@ -272,7 +272,7 @@ func (s SqlClassStore) GetAcademicUnitId(ctx context.Context, id string) (string
 	return academicUnitID, nil
 }
 
-func (s SqlClassStore) selectClasses(
+func (s SQLClassStore) selectClasses(
 	ctx context.Context,
 	query sq.SelectBuilder,
 	operation string,
@@ -292,7 +292,7 @@ func (s SqlClassStore) selectClasses(
 	return classes, nil
 }
 
-func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.Class, error) {
+func (s SQLClassStore) Update(ctx context.Context, class *model.Class) (*model.Class, error) {
 	if class == nil {
 		return nil, store.NewErrInvalidInput("class", "value", nil)
 	}
@@ -356,7 +356,7 @@ func (s SqlClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	return &candidate, nil
 }
 
-func (s SqlClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
+func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
 	if input == nil || input.Class == nil || !model.IsValidId(input.ExpectedAcademicUnitID) ||
 		input.ExpectedRevision <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "update", nil)
@@ -424,7 +424,7 @@ func (s SqlClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 	return &candidate, nil
 }
 
-func (s SqlClassStore) Archive(
+func (s SQLClassStore) Archive(
 	ctx context.Context,
 	id string,
 	archiveAt int64,
@@ -483,7 +483,7 @@ func (s SqlClassStore) Archive(
 	return current, nil
 }
 
-func (s SqlClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
+func (s SQLClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
 	if input == nil || !model.IsValidId(input.ID) || !model.IsValidId(input.ExpectedAcademicUnitID) ||
 		input.ExpectedRevision <= 0 || input.ArchiveAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "archive", nil)
@@ -594,7 +594,7 @@ func requireClassRevisionAffected(ctx context.Context, executor sqlxExecutor, re
 	return store.NewErrNotFound("class", id).Wrap(sql.ErrNoRows)
 }
 
-func (s SqlClassStore) validateInstitution(
+func (s SQLClassStore) validateInstitution(
 	ctx context.Context,
 	class *model.Class,
 ) error {
@@ -707,4 +707,4 @@ func (row classRow) model() (*model.Class, error) {
 	return class, nil
 }
 
-var _ store.ClassStore = (*SqlClassStore)(nil)
+var _ store.ClassStore = (*SQLClassStore)(nil)

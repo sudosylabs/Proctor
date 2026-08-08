@@ -194,8 +194,8 @@ Corresponding Proctor paths:
 Modifications:
 
 - retained Mattermost's root store and per-model store composition:
-  `store.Store`, model-store interfaces, `SqlStoreStores`, concrete
-  `Sql<Model>Store` implementations, and interface-returning accessors;
+  `store.Store`, model-store interfaces, `SQLStoreStores`, concrete
+  `SQL<Model>Store` implementations, and interface-returning accessors;
 - retained explicit PostgreSQL pool lifecycle, centralized SQL execution
   wrappers, reusable Squirrel select builders, named writes, transaction
   executors, query timeouts, and minimum-version validation while omitting
@@ -208,7 +208,7 @@ Modifications:
 - adapted the per-model reusable store-conformance and thin SQL adapter-test
   pattern for every structural academic store;
 - kept explicit SQL row representations, colocated with their corresponding
-  `Sql<Model>Store`, instead of binding domain models directly to database
+  `SQL<Model>Store`, instead of binding domain models directly to database
   column names;
 - added Proctor-specific singleton-institution, generic academic hierarchy,
   hierarchy-cycle serialization, and same-parent-institution behavior;

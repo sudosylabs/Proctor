@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlRoleStore struct {
-	*SqlStore
+type SQLRoleStore struct {
+	*SQLStore
 	rolesQuery sq.SelectBuilder
 }
 
@@ -48,13 +48,13 @@ func roleSliceColumns() []string {
 	}
 }
 
-func newSqlRoleStore(sqlStore *SqlStore) store.RoleStore {
-	s := &SqlRoleStore{SqlStore: sqlStore}
+func newSQLRoleStore(sqlStore *SQLStore) store.RoleStore {
+	s := &SQLRoleStore{SQLStore: sqlStore}
 	s.rolesQuery = s.getQueryBuilder().Select(roleSliceColumns()...).From("roles")
 	return s
 }
 
-func (s SqlRoleStore) Save(ctx context.Context, role *model.Role) (*model.Role, error) {
+func (s SQLRoleStore) Save(ctx context.Context, role *model.Role) (*model.Role, error) {
 	if role == nil {
 		return nil, store.NewErrInvalidInput("role", "value", nil)
 	}
@@ -72,7 +72,7 @@ func (s SqlRoleStore) Save(ctx context.Context, role *model.Role) (*model.Role, 
 	return candidate, nil
 }
 
-func (s SqlRoleStore) SaveWithAudit(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
+func (s SQLRoleStore) SaveWithAudit(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsZero() ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "creation", nil)
@@ -125,11 +125,11 @@ func insertRole(ctx context.Context, executor sqlxExecutor, role *model.Role) (r
 	return row, nil
 }
 
-func (s SqlRoleStore) Get(ctx context.Context, id string) (*model.Role, error) {
+func (s SQLRoleStore) Get(ctx context.Context, id string) (*model.Role, error) {
 	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id, "roles.archived_at": nil}), id)
 }
 
-func (s SqlRoleStore) GetByName(ctx context.Context, name string) (*model.Role, error) {
+func (s SQLRoleStore) GetByName(ctx context.Context, name string) (*model.Role, error) {
 	return s.get(
 		ctx,
 		s.rolesQuery.Where(sq.Eq{"roles.name": name, "roles.archived_at": nil}),
@@ -137,7 +137,7 @@ func (s SqlRoleStore) GetByName(ctx context.Context, name string) (*model.Role, 
 	)
 }
 
-func (s SqlRoleStore) get(ctx context.Context, query sq.SelectBuilder, key string) (*model.Role, error) {
+func (s SQLRoleStore) get(ctx context.Context, query sq.SelectBuilder, key string) (*model.Role, error) {
 	var row roleRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("role", key, err)
@@ -145,7 +145,7 @@ func (s SqlRoleStore) get(ctx context.Context, query sq.SelectBuilder, key strin
 	return row.model(), nil
 }
 
-func (s SqlRoleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role, error) {
+func (s SQLRoleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role, error) {
 	if len(ids) == 0 {
 		return []*model.Role{}, nil
 	}
@@ -158,7 +158,7 @@ func (s SqlRoleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role
 	)
 }
 
-func (s SqlRoleStore) List(ctx context.Context) ([]*model.Role, error) {
+func (s SQLRoleStore) List(ctx context.Context) ([]*model.Role, error) {
 	return s.selectRoles(
 		ctx,
 		s.rolesQuery.Where(sq.Eq{"roles.archived_at": nil}).OrderBy("roles.name", "roles.id"),
@@ -166,7 +166,7 @@ func (s SqlRoleStore) List(ctx context.Context) ([]*model.Role, error) {
 	)
 }
 
-func (s SqlRoleStore) selectRoles(
+func (s SQLRoleStore) selectRoles(
 	ctx context.Context,
 	query sq.SelectBuilder,
 	operation string,
@@ -182,7 +182,7 @@ func (s SqlRoleStore) selectRoles(
 	return roles, nil
 }
 
-func (s SqlRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role, error) {
+func (s SQLRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role, error) {
 	if role == nil {
 		return nil, store.NewErrInvalidInput("role", "value", nil)
 	}
@@ -200,7 +200,7 @@ func (s SqlRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role
 	return candidate, nil
 }
 
-func (s SqlRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
+func (s SQLRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsValid() ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "update", nil)
@@ -253,7 +253,7 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role) er
 	return requireAffected(result, "role", role.ID.String())
 }
 
-func (s SqlRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (*model.Role, error) {
+func (s SQLRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (*model.Role, error) {
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "archived_at", archiveAt)
 	}
@@ -273,7 +273,7 @@ func (s SqlRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (
 	return role, nil
 }
 
-func (s SqlRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
+func (s SQLRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "archive", nil)
@@ -351,4 +351,4 @@ func (row roleRow) model() *model.Role {
 	}
 }
 
-var _ store.RoleStore = (*SqlRoleStore)(nil)
+var _ store.RoleStore = (*SQLRoleStore)(nil)

@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlProgrammeStore struct {
-	*SqlStore
+type SQLProgrammeStore struct {
+	*SQLStore
 	programmesQuery sq.SelectBuilder
 }
 
@@ -54,15 +54,15 @@ func programmeSliceColumns() []string {
 	}
 }
 
-func newSqlProgrammeStore(sqlStore *SqlStore) store.ProgrammeStore {
-	s := &SqlProgrammeStore{SqlStore: sqlStore}
+func newSQLProgrammeStore(sqlStore *SQLStore) store.ProgrammeStore {
+	s := &SQLProgrammeStore{SQLStore: sqlStore}
 	s.programmesQuery = s.getQueryBuilder().
 		Select(programmeSliceColumns()...).
 		From("programmes")
 	return s
 }
 
-func (s SqlProgrammeStore) Create(
+func (s SQLProgrammeStore) Create(
 	ctx context.Context,
 	input *store.ProgrammeCreation,
 ) (*model.Programme, error) {
@@ -114,7 +114,7 @@ func (s SqlProgrammeStore) Create(
 	return &candidate, nil
 }
 
-func (s SqlProgrammeStore) Save(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
+func (s SQLProgrammeStore) Save(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
 	if programme == nil {
 		return nil, store.NewErrInvalidInput("programme", "value", nil)
 	}
@@ -160,7 +160,7 @@ func (s SqlProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 	return &candidate, nil
 }
 
-func (s SqlProgrammeStore) Get(ctx context.Context, id string) (*model.Programme, error) {
+func (s SQLProgrammeStore) Get(ctx context.Context, id string) (*model.Programme, error) {
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
 		"programmes.id":          id,
@@ -172,7 +172,7 @@ func (s SqlProgrammeStore) Get(ctx context.Context, id string) (*model.Programme
 	return row.model()
 }
 
-func (s SqlProgrammeStore) GetByName(
+func (s SQLProgrammeStore) GetByName(
 	ctx context.Context,
 	academicUnitID string,
 	name string,
@@ -189,7 +189,7 @@ func (s SqlProgrammeStore) GetByName(
 	return row.model()
 }
 
-func (s SqlProgrammeStore) ListByAcademicUnit(
+func (s SQLProgrammeStore) ListByAcademicUnit(
 	ctx context.Context,
 	academicUnitID string,
 ) ([]*model.Programme, error) {
@@ -215,7 +215,7 @@ func (s SqlProgrammeStore) ListByAcademicUnit(
 	return programmes, nil
 }
 
-func (s SqlProgrammeStore) SearchByAcademicUnit(
+func (s SQLProgrammeStore) SearchByAcademicUnit(
 	ctx context.Context,
 	academicUnitID string,
 	term string,
@@ -245,7 +245,7 @@ func (s SqlProgrammeStore) SearchByAcademicUnit(
 	return result, nil
 }
 
-func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
+func (s SQLProgrammeStore) Update(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
 	if programme == nil {
 		return nil, store.NewErrInvalidInput("programme", "value", nil)
 	}
@@ -294,7 +294,7 @@ func (s SqlProgrammeStore) Update(ctx context.Context, programme *model.Programm
 	return &candidate, nil
 }
 
-func (s SqlProgrammeStore) UpdateWithAudit(
+func (s SQLProgrammeStore) UpdateWithAudit(
 	ctx context.Context,
 	input *store.ProgrammeUpdate,
 ) (*model.Programme, error) {
@@ -347,7 +347,7 @@ func (s SqlProgrammeStore) UpdateWithAudit(
 	return &candidate, nil
 }
 
-func (s SqlProgrammeStore) Archive(
+func (s SQLProgrammeStore) Archive(
 	ctx context.Context,
 	id string,
 	archiveAt int64,
@@ -402,7 +402,7 @@ func (s SqlProgrammeStore) Archive(
 	return current, nil
 }
 
-func (s SqlProgrammeStore) ArchiveWithAudit(
+func (s SQLProgrammeStore) ArchiveWithAudit(
 	ctx context.Context,
 	input *store.ProgrammeArchive,
 ) (*model.Programme, error) {
@@ -537,4 +537,4 @@ func (row programmeRow) model() (*model.Programme, error) {
 	return programme, nil
 }
 
-var _ store.ProgrammeStore = (*SqlProgrammeStore)(nil)
+var _ store.ProgrammeStore = (*SQLProgrammeStore)(nil)

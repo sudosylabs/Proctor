@@ -1185,7 +1185,7 @@ func assertProblemCode(
 	}
 }
 
-func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SqlStore {
+func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore {
 	t.Helper()
 	database := config.Default().Database
 	database.DataSource = dataSource

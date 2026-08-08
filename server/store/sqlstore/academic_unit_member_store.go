@@ -19,8 +19,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlAcademicUnitMemberStore struct {
-	*SqlStore
+type SQLAcademicUnitMemberStore struct {
+	*SQLStore
 	query sq.SelectBuilder
 }
 
@@ -49,7 +49,7 @@ func academicUnitMemberColumns() []string {
 
 const academicUnitMemberLifecycleLock = "proctor:academic-unit-member-lifecycle"
 
-func (s SqlAcademicUnitMemberStore) Create(ctx context.Context, input *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error) {
 	if input == nil || input.Member == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "creation", nil)
 	}
@@ -95,15 +95,15 @@ func (s SqlAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	return &candidate, nil
 }
 
-func newSqlAcademicUnitMemberStore(ss *SqlStore) store.AcademicUnitMemberStore {
-	s := &SqlAcademicUnitMemberStore{SqlStore: ss}
+func newSQLAcademicUnitMemberStore(ss *SQLStore) store.AcademicUnitMemberStore {
+	s := &SQLAcademicUnitMemberStore{SQLStore: ss}
 	s.query = s.getQueryBuilder().
 		Select(academicUnitMemberColumns()...).
 		From("academic_unit_members")
 	return s
 }
 
-func (s SqlAcademicUnitMemberStore) Save(
+func (s SQLAcademicUnitMemberStore) Save(
 	ctx context.Context,
 	member *model.AcademicUnitMember,
 ) (*model.AcademicUnitMember, error) {
@@ -156,7 +156,7 @@ func (s SqlAcademicUnitMemberStore) Save(
 	return &candidate, nil
 }
 
-func (s SqlAcademicUnitMemberStore) Get(
+func (s SQLAcademicUnitMemberStore) Get(
 	ctx context.Context,
 	id string,
 ) (*model.AcademicUnitMember, error) {
@@ -170,7 +170,7 @@ func (s SqlAcademicUnitMemberStore) Get(
 	return row.model(), nil
 }
 
-func (s SqlAcademicUnitMemberStore) ListByUser(
+func (s SQLAcademicUnitMemberStore) ListByUser(
 	ctx context.Context,
 	userID string,
 ) ([]*model.AcademicUnitMember, error) {
@@ -180,7 +180,7 @@ func (s SqlAcademicUnitMemberStore) ListByUser(
 	}).OrderBy("academic_unit_members.start_at DESC", "academic_unit_members.id"))
 }
 
-func (s SqlAcademicUnitMemberStore) ListByAcademicUnit(
+func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(
 	ctx context.Context,
 	unitID string,
 	at int64,
@@ -197,7 +197,7 @@ func (s SqlAcademicUnitMemberStore) ListByAcademicUnit(
 	return s.selectMembers(ctx, query.OrderBy("academic_unit_members.user_id", "academic_unit_members.id"))
 }
 
-func (s SqlAcademicUnitMemberStore) ListActiveByUser(
+func (s SQLAcademicUnitMemberStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
 	at int64,
@@ -211,7 +211,7 @@ func (s SqlAcademicUnitMemberStore) ListActiveByUser(
 		OrderBy("academic_unit_members.academic_unit_id", "academic_unit_members.id"))
 }
 
-func (s SqlAcademicUnitMemberStore) End(
+func (s SQLAcademicUnitMemberStore) End(
 	ctx context.Context,
 	id string,
 	expectedRevision int64,
@@ -238,7 +238,7 @@ func (s SqlAcademicUnitMemberStore) End(
 	return ended, nil
 }
 
-func (s SqlAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
@@ -267,7 +267,7 @@ func (s SqlAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *sto
 	return ended, nil
 }
 
-func (s SqlAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.archived_at": nil})); err != nil {
 		return nil, translateError("academic_unit_member", id, err)
@@ -325,7 +325,7 @@ func ensureAcademicUnitMemberRangeAvailable(ctx context.Context, executor sqlxEx
 	return nil
 }
 
-func (s SqlAcademicUnitMemberStore) selectMembers(
+func (s SQLAcademicUnitMemberStore) selectMembers(
 	ctx context.Context,
 	query sq.SelectBuilder,
 ) ([]*model.AcademicUnitMember, error) {
@@ -380,4 +380,4 @@ func (r academicUnitMemberRow) model() *model.AcademicUnitMember {
 	}
 }
 
-var _ store.AcademicUnitMemberStore = (*SqlAcademicUnitMemberStore)(nil)
+var _ store.AcademicUnitMemberStore = (*SQLAcademicUnitMemberStore)(nil)

@@ -24,7 +24,7 @@ import (
 )
 
 type Migrator struct {
-	store  *SqlStore
+	store  *SQLStore
 	engine *morph.Morph
 }
 
@@ -41,7 +41,7 @@ func NewMigrator(ctx context.Context, settings Settings) (*Migrator, error) {
 	return &Migrator{store: store, engine: engine}, nil
 }
 
-func newMigrationEngine(ctx context.Context, store *SqlStore, settings Settings, output io.Writer) (*morph.Morph, error) {
+func newMigrationEngine(ctx context.Context, store *SQLStore, settings Settings, output io.Writer) (*morph.Morph, error) {
 	names, err := migrationNames()
 	if err != nil {
 		return nil, fmt.Errorf("list embedded migrations: %w", err)

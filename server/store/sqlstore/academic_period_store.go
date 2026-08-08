@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlAcademicPeriodStore struct {
-	*SqlStore
+type SQLAcademicPeriodStore struct {
+	*SQLStore
 	academicPeriodsQuery sq.SelectBuilder
 }
 
@@ -58,15 +58,15 @@ func academicPeriodSliceColumns() []string {
 	}
 }
 
-func newSqlAcademicPeriodStore(sqlStore *SqlStore) store.AcademicPeriodStore {
-	s := &SqlAcademicPeriodStore{SqlStore: sqlStore}
+func newSQLAcademicPeriodStore(sqlStore *SQLStore) store.AcademicPeriodStore {
+	s := &SQLAcademicPeriodStore{SQLStore: sqlStore}
 	s.academicPeriodsQuery = s.getQueryBuilder().
 		Select(academicPeriodSliceColumns()...).
 		From("academic_periods")
 	return s
 }
 
-func (s SqlAcademicPeriodStore) Create(ctx context.Context, input *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
 	if input == nil || input.Period == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "creation", nil)
 	}
@@ -106,7 +106,7 @@ func (s SqlAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 	return &candidate, nil
 }
 
-func (s SqlAcademicPeriodStore) Save(
+func (s SQLAcademicPeriodStore) Save(
 	ctx context.Context,
 	period *model.AcademicPeriod,
 ) (*model.AcademicPeriod, error) {
@@ -144,7 +144,7 @@ func (s SqlAcademicPeriodStore) Save(
 	return &candidate, nil
 }
 
-func (s SqlAcademicPeriodStore) Get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) Get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
 	var row academicPeriodRow
 	query := s.academicPeriodsQuery.Where(sq.Eq{
 		"academic_periods.id":          id,
@@ -156,7 +156,7 @@ func (s SqlAcademicPeriodStore) Get(ctx context.Context, id string) (*model.Acad
 	return row.model()
 }
 
-func (s SqlAcademicPeriodStore) GetByName(
+func (s SQLAcademicPeriodStore) GetByName(
 	ctx context.Context,
 	institutionID string,
 	name string,
@@ -173,7 +173,7 @@ func (s SqlAcademicPeriodStore) GetByName(
 	return row.model()
 }
 
-func (s SqlAcademicPeriodStore) ListByInstitution(
+func (s SQLAcademicPeriodStore) ListByInstitution(
 	ctx context.Context,
 	institutionID string,
 ) ([]*model.AcademicPeriod, error) {
@@ -199,7 +199,7 @@ func (s SqlAcademicPeriodStore) ListByInstitution(
 	return periods, nil
 }
 
-func (s SqlAcademicPeriodStore) SearchByInstitution(
+func (s SQLAcademicPeriodStore) SearchByInstitution(
 	ctx context.Context,
 	institutionID string,
 	term string,
@@ -229,7 +229,7 @@ func (s SqlAcademicPeriodStore) SearchByInstitution(
 	return result, nil
 }
 
-func (s SqlAcademicPeriodStore) Update(
+func (s SQLAcademicPeriodStore) Update(
 	ctx context.Context,
 	period *model.AcademicPeriod,
 ) (*model.AcademicPeriod, error) {
@@ -274,7 +274,7 @@ func (s SqlAcademicPeriodStore) Update(
 	return &candidate, nil
 }
 
-func (s SqlAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
 	if input == nil || input.Period == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "update", nil)
 	}
@@ -322,7 +322,7 @@ func (s SqlAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *stor
 	return &candidate, nil
 }
 
-func (s SqlAcademicPeriodStore) Archive(
+func (s SQLAcademicPeriodStore) Archive(
 	ctx context.Context,
 	id string,
 	archiveAt int64,
@@ -382,7 +382,7 @@ func (s SqlAcademicPeriodStore) Archive(
 	return current, nil
 }
 
-func (s SqlAcademicPeriodStore) ArchiveWithAudit(ctx context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) ArchiveWithAudit(ctx context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "archive", nil)
 	}
@@ -499,4 +499,4 @@ func (row academicPeriodRow) model() (*model.AcademicPeriod, error) {
 	return period, nil
 }
 
-var _ store.AcademicPeriodStore = (*SqlAcademicPeriodStore)(nil)
+var _ store.AcademicPeriodStore = (*SQLAcademicPeriodStore)(nil)

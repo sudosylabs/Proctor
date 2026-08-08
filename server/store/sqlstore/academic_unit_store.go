@@ -17,8 +17,8 @@ import (
 
 const academicUnitHierarchyLock = "proctor:academic-unit-hierarchy"
 
-type SqlAcademicUnitStore struct {
-	*SqlStore
+type SQLAcademicUnitStore struct {
+	*SQLStore
 	academicUnitsQuery sq.SelectBuilder
 }
 
@@ -50,15 +50,15 @@ func academicUnitSliceColumns() []string {
 	}
 }
 
-func newSqlAcademicUnitStore(sqlStore *SqlStore) store.AcademicUnitStore {
-	s := &SqlAcademicUnitStore{SqlStore: sqlStore}
+func newSQLAcademicUnitStore(sqlStore *SQLStore) store.AcademicUnitStore {
+	s := &SQLAcademicUnitStore{SQLStore: sqlStore}
 	s.academicUnitsQuery = s.getQueryBuilder().
 		Select(academicUnitSliceColumns()...).
 		From("academic_units")
 	return s
 }
 
-func (s SqlAcademicUnitStore) Create(
+func (s SQLAcademicUnitStore) Create(
 	ctx context.Context,
 	input *store.AcademicUnitCreation,
 ) (*model.AcademicUnit, error) {
@@ -129,7 +129,7 @@ func (s SqlAcademicUnitStore) Create(
 	return &candidate, nil
 }
 
-func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
 	if unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
 	}
@@ -183,7 +183,7 @@ func (s SqlAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 	return &candidate, nil
 }
 
-func (s SqlAcademicUnitStore) Get(ctx context.Context, id string) (*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) Get(ctx context.Context, id string) (*model.AcademicUnit, error) {
 	var row academicUnitRow
 	query := s.academicUnitsQuery.Where(sq.Eq{
 		"academic_units.id":          id,
@@ -198,7 +198,7 @@ func (s SqlAcademicUnitStore) Get(ctx context.Context, id string) (*model.Academ
 // ListAncestors returns the target unit first, followed by each parent up to
 // the root. The recursive query is bounded by the cycle invariant enforced by
 // Save and Update.
-func (s SqlAcademicUnitStore) ListAncestors(
+func (s SQLAcademicUnitStore) ListAncestors(
 	ctx context.Context,
 	id string,
 ) ([]*model.AcademicUnit, error) {
@@ -237,7 +237,7 @@ func (s SqlAcademicUnitStore) ListAncestors(
 	return units, nil
 }
 
-func (s SqlAcademicUnitStore) ListChildren(ctx context.Context, institutionID, parentID string) ([]*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID, parentID string) ([]*model.AcademicUnit, error) {
 	query := s.academicUnitsQuery.
 		Where(sq.Eq{
 			"academic_units.institution_id": institutionID,
@@ -261,7 +261,7 @@ func (s SqlAcademicUnitStore) ListChildren(ctx context.Context, institutionID, p
 	return units, nil
 }
 
-func (s SqlAcademicUnitStore) Search(
+func (s SQLAcademicUnitStore) Search(
 	ctx context.Context,
 	institutionID string,
 	term string,
@@ -299,7 +299,7 @@ type academicUnitAuditCompletion struct {
 	at      int64
 }
 
-func (s SqlAcademicUnitStore) UpdateWithAudit(
+func (s SQLAcademicUnitStore) UpdateWithAudit(
 	ctx context.Context,
 	input *store.AcademicUnitUpdate,
 ) (*model.AcademicUnit, error) {
@@ -316,7 +316,7 @@ func (s SqlAcademicUnitStore) UpdateWithAudit(
 	})
 }
 
-func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
 	if unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil)
 	}
@@ -328,7 +328,7 @@ func (s SqlAcademicUnitStore) Update(ctx context.Context, unit *model.AcademicUn
 	return s.updateAcademicUnit(ctx, &candidate, nil)
 }
 
-func (s SqlAcademicUnitStore) updateAcademicUnit(
+func (s SQLAcademicUnitStore) updateAcademicUnit(
 	ctx context.Context,
 	candidate *model.AcademicUnit,
 	audit *academicUnitAuditCompletion,
@@ -396,7 +396,7 @@ func (s SqlAcademicUnitStore) updateAcademicUnit(
 	return candidate, nil
 }
 
-func (s SqlAcademicUnitStore) ArchiveWithAudit(
+func (s SQLAcademicUnitStore) ArchiveWithAudit(
 	ctx context.Context,
 	input *store.AcademicUnitArchive,
 ) (*model.AcademicUnit, error) {
@@ -410,7 +410,7 @@ func (s SqlAcademicUnitStore) ArchiveWithAudit(
 	)
 }
 
-func (s SqlAcademicUnitStore) Archive(
+func (s SQLAcademicUnitStore) Archive(
 	ctx context.Context,
 	id string,
 	archiveAt int64,
@@ -421,7 +421,7 @@ func (s SqlAcademicUnitStore) Archive(
 	return s.archiveAcademicUnit(ctx, id, archiveAt, nil)
 }
 
-func (s SqlAcademicUnitStore) archiveAcademicUnit(
+func (s SQLAcademicUnitStore) archiveAcademicUnit(
 	ctx context.Context,
 	id string,
 	archiveAt int64,
@@ -611,4 +611,4 @@ func nullableString(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
 }
 
-var _ store.AcademicUnitStore = (*SqlAcademicUnitStore)(nil)
+var _ store.AcademicUnitStore = (*SQLAcademicUnitStore)(nil)

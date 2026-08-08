@@ -22,8 +22,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlAuditStore struct {
-	*SqlStore
+type SQLAuditStore struct {
+	*SQLStore
 	auditsQuery sq.SelectBuilder
 }
 
@@ -66,13 +66,13 @@ func auditSliceColumns() []string {
 	}
 }
 
-func newSqlAuditStore(sqlStore *SqlStore) store.AuditStore {
-	s := &SqlAuditStore{SqlStore: sqlStore}
+func newSQLAuditStore(sqlStore *SQLStore) store.AuditStore {
+	s := &SQLAuditStore{SQLStore: sqlStore}
 	s.auditsQuery = s.getQueryBuilder().Select(auditSliceColumns()...).From("audit_events")
 	return s
 }
 
-func (s SqlAuditStore) Save(
+func (s SQLAuditStore) Save(
 	ctx context.Context,
 	event *model.AuditEvent,
 ) (*model.AuditEvent, error) {
@@ -113,7 +113,7 @@ func insertAuditEvent(
 	return candidate, nil
 }
 
-func (s SqlAuditStore) Get(ctx context.Context, id string) (*model.AuditEvent, error) {
+func (s SQLAuditStore) Get(ctx context.Context, id string) (*model.AuditEvent, error) {
 	var row auditRow
 	if err := s.GetMaster().GetBuilder(
 		ctx, &row, s.auditsQuery.Where(sq.Eq{"audit_events.id": id}),
@@ -123,7 +123,7 @@ func (s SqlAuditStore) Get(ctx context.Context, id string) (*model.AuditEvent, e
 	return row.model(), nil
 }
 
-func (s SqlAuditStore) Complete(
+func (s SQLAuditStore) Complete(
 	ctx context.Context,
 	id string,
 	status model.AuditStatus,
@@ -168,7 +168,7 @@ func completeAuditEvent(
 	return row.model(), nil
 }
 
-func (s SqlAuditStore) List(
+func (s SQLAuditStore) List(
 	ctx context.Context,
 	options store.AuditListOptions,
 ) ([]*model.AuditEvent, error) {
@@ -280,4 +280,4 @@ func (value *jsonValue) Scan(source any) error {
 	return nil
 }
 
-var _ store.AuditStore = (*SqlAuditStore)(nil)
+var _ store.AuditStore = (*SQLAuditStore)(nil)

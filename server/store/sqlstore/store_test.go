@@ -25,7 +25,7 @@ func StoreTest(t *testing.T, test func(*testing.T, store.Store)) {
 	test(t, sqlStore)
 }
 
-func openTestStore(t *testing.T) *SqlStore {
+func openTestStore(t *testing.T) *SQLStore {
 	t.Helper()
 	settings := testSettings(t)
 	migrator, err := NewMigrator(context.Background(), settings)
@@ -56,7 +56,7 @@ func openTestStore(t *testing.T) *SqlStore {
 	return sqlStore
 }
 
-func resetTestStore(t *testing.T, sqlStore *SqlStore) {
+func resetTestStore(t *testing.T, sqlStore *SQLStore) {
 	t.Helper()
 	_, err := sqlStore.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE

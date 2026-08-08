@@ -19,8 +19,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlMFAStore struct {
-	*SqlStore
+type SQLMFAStore struct {
+	*SQLStore
 }
 
 type mfaCredentialRow struct {
@@ -37,11 +37,11 @@ type mfaCredentialRow struct {
 	LastUsedTimeStep int64          `db:"last_used_time_step"`
 }
 
-func newSqlMFAStore(sqlStore *SqlStore) store.MFAStore {
-	return &SqlMFAStore{SqlStore: sqlStore}
+func newSQLMFAStore(sqlStore *SQLStore) store.MFAStore {
+	return &SQLMFAStore{SQLStore: sqlStore}
 }
 
-func (s SqlMFAStore) SavePending(
+func (s SQLMFAStore) SavePending(
 	ctx context.Context,
 	credential *model.MFACredential,
 ) (*model.MFACredential, error) {
@@ -98,7 +98,7 @@ func (s SqlMFAStore) SavePending(
 	return &candidate, nil
 }
 
-func (s SqlMFAStore) GetByUser(
+func (s SQLMFAStore) GetByUser(
 	ctx context.Context,
 	userID string,
 ) (*model.MFACredential, error) {
@@ -119,7 +119,7 @@ func (s SqlMFAStore) GetByUser(
 	return credential, nil
 }
 
-func (s SqlMFAStore) Activate(
+func (s SQLMFAStore) Activate(
 	ctx context.Context,
 	credentialID string,
 	userID string,
@@ -201,7 +201,7 @@ func (s SqlMFAStore) Activate(
 	}, nil
 }
 
-func (s SqlMFAStore) ConsumeSecondFactor(
+func (s SQLMFAStore) ConsumeSecondFactor(
 	ctx context.Context,
 	userID string,
 	timeStep int64,
@@ -267,7 +267,7 @@ func (s SqlMFAStore) ConsumeSecondFactor(
 	return nil
 }
 
-func (s SqlMFAStore) UpgradeSession(
+func (s SQLMFAStore) UpgradeSession(
 	ctx context.Context,
 	sessionID string,
 	userID string,
@@ -297,7 +297,7 @@ func (s SqlMFAStore) UpgradeSession(
 	return hashes, nil
 }
 
-func (s SqlMFAStore) ReplaceRecoveryCodes(
+func (s SQLMFAStore) ReplaceRecoveryCodes(
 	ctx context.Context,
 	userID string,
 	recoveryCodes []*model.MFARecoveryCode,
@@ -348,7 +348,7 @@ func (s SqlMFAStore) ReplaceRecoveryCodes(
 	return nil
 }
 
-func (s SqlMFAStore) CountRecoveryCodes(
+func (s SQLMFAStore) CountRecoveryCodes(
 	ctx context.Context,
 	userID string,
 ) (int, error) {
@@ -366,7 +366,7 @@ func (s SqlMFAStore) CountRecoveryCodes(
 	return count, nil
 }
 
-func (s SqlMFAStore) Disable(
+func (s SQLMFAStore) Disable(
 	ctx context.Context,
 	userID string,
 	now int64,
@@ -611,4 +611,4 @@ func (row mfaCredentialRow) model() (*model.MFACredential, error) {
 	return credential, nil
 }
 
-var _ store.MFAStore = (*SqlMFAStore)(nil)
+var _ store.MFAStore = (*SQLMFAStore)(nil)

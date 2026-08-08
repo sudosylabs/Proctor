@@ -68,10 +68,10 @@ func (s Settings) validate() error {
 	return nil
 }
 
-// SqlStoreStores holds the concrete adapters behind the model-store contracts.
-// Keeping this registry separate from SqlStore mirrors Mattermost's composition
+// SQLStoreStores holds the concrete adapters behind the model-store contracts.
+// Keeping this registry separate from SQLStore mirrors Mattermost's composition
 // flow and makes future store decorators possible without changing callers.
-type SqlStoreStores struct {
+type SQLStoreStores struct {
 	institution         store.InstitutionStore
 	academicUnit        store.AcademicUnitStore
 	programme           store.ProgrammeStore
@@ -97,14 +97,14 @@ type SqlStoreStores struct {
 	clusterDiscovery    store.ClusterDiscoveryStore
 }
 
-// SqlStore owns PostgreSQL connections and all concrete model stores.
-type SqlStore struct {
+// SQLStore owns PostgreSQL connections and all concrete model stores.
+type SQLStore struct {
 	masterX  *sqlxDBWrapper
-	stores   SqlStoreStores
+	stores   SQLStoreStores
 	settings Settings
 }
 
-func New(ctx context.Context, settings Settings) (*SqlStore, error) {
+func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	if err := settings.validate(); err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 	db.SetConnMaxLifetime(settings.ConnectionMaxLifetime)
 	db.SetConnMaxIdleTime(settings.ConnectionMaxIdleTime)
 
-	sqlStore := &SqlStore{
+	sqlStore := &SQLStore{
 		masterX:  newSqlxDBWrapper(db, settings.QueryTimeout),
 		settings: settings,
 	}
@@ -131,148 +131,148 @@ func New(ctx context.Context, settings Settings) (*SqlStore, error) {
 		return nil, err
 	}
 
-	sqlStore.stores.institution = newSqlInstitutionStore(sqlStore)
-	sqlStore.stores.academicUnit = newSqlAcademicUnitStore(sqlStore)
-	sqlStore.stores.programme = newSqlProgrammeStore(sqlStore)
-	sqlStore.stores.programmeLevel = newSqlProgrammeLevelStore(sqlStore)
-	sqlStore.stores.academicPeriod = newSqlAcademicPeriodStore(sqlStore)
-	sqlStore.stores.class = newSqlClassStore(sqlStore)
-	sqlStore.stores.user = newSqlUserStore(sqlStore)
-	sqlStore.stores.externalIdentity = newSqlExternalIdentityStore(sqlStore)
-	sqlStore.stores.externalLoginState = newSqlExternalLoginStateStore(sqlStore)
-	sqlStore.stores.userToken = newSqlUserTokenStore(sqlStore)
-	sqlStore.stores.personalAccessToken = newSqlPersonalAccessTokenStore(sqlStore)
-	sqlStore.stores.mfa = newSqlMFAStore(sqlStore)
-	sqlStore.stores.affiliation = newSqlAffiliationStore(sqlStore)
-	sqlStore.stores.academicUnitMember = newSqlAcademicUnitMemberStore(sqlStore)
-	sqlStore.stores.classMember = newSqlClassMemberStore(sqlStore)
-	sqlStore.stores.passwordCredential = newSqlPasswordCredentialStore(sqlStore)
-	sqlStore.stores.session = newSqlSessionStore(sqlStore)
-	sqlStore.stores.sessionCredential = newSqlSessionCredentialStore(sqlStore)
-	sqlStore.stores.role = newSqlRoleStore(sqlStore)
-	sqlStore.stores.roleBinding = newSqlRoleBindingStore(sqlStore)
-	sqlStore.stores.audit = newSqlAuditStore(sqlStore)
-	sqlStore.stores.installation = newSqlInstallationStore(sqlStore)
-	sqlStore.stores.clusterDiscovery = newSqlClusterDiscoveryStore(sqlStore)
+	sqlStore.stores.institution = newSQLInstitutionStore(sqlStore)
+	sqlStore.stores.academicUnit = newSQLAcademicUnitStore(sqlStore)
+	sqlStore.stores.programme = newSQLProgrammeStore(sqlStore)
+	sqlStore.stores.programmeLevel = newSQLProgrammeLevelStore(sqlStore)
+	sqlStore.stores.academicPeriod = newSQLAcademicPeriodStore(sqlStore)
+	sqlStore.stores.class = newSQLClassStore(sqlStore)
+	sqlStore.stores.user = newSQLUserStore(sqlStore)
+	sqlStore.stores.externalIdentity = newSQLExternalIdentityStore(sqlStore)
+	sqlStore.stores.externalLoginState = newSQLExternalLoginStateStore(sqlStore)
+	sqlStore.stores.userToken = newSQLUserTokenStore(sqlStore)
+	sqlStore.stores.personalAccessToken = newSQLPersonalAccessTokenStore(sqlStore)
+	sqlStore.stores.mfa = newSQLMFAStore(sqlStore)
+	sqlStore.stores.affiliation = newSQLAffiliationStore(sqlStore)
+	sqlStore.stores.academicUnitMember = newSQLAcademicUnitMemberStore(sqlStore)
+	sqlStore.stores.classMember = newSQLClassMemberStore(sqlStore)
+	sqlStore.stores.passwordCredential = newSQLPasswordCredentialStore(sqlStore)
+	sqlStore.stores.session = newSQLSessionStore(sqlStore)
+	sqlStore.stores.sessionCredential = newSQLSessionCredentialStore(sqlStore)
+	sqlStore.stores.role = newSQLRoleStore(sqlStore)
+	sqlStore.stores.roleBinding = newSQLRoleBindingStore(sqlStore)
+	sqlStore.stores.audit = newSQLAuditStore(sqlStore)
+	sqlStore.stores.installation = newSQLInstallationStore(sqlStore)
+	sqlStore.stores.clusterDiscovery = newSQLClusterDiscoveryStore(sqlStore)
 	return sqlStore, nil
 }
 
-func (ss *SqlStore) Close() error {
+func (ss *SQLStore) Close() error {
 	if ss == nil || ss.masterX == nil {
 		return nil
 	}
 	return ss.masterX.Close()
 }
 
-func (ss *SqlStore) Ping(ctx context.Context) error {
+func (ss *SQLStore) Ping(ctx context.Context) error {
 	return ss.GetMaster().Ping(ctx)
 }
 
-func (ss *SqlStore) Stats() sql.DBStats {
+func (ss *SQLStore) Stats() sql.DBStats {
 	return ss.GetMaster().Stats()
 }
 
-func (ss *SqlStore) Institution() store.InstitutionStore {
+func (ss *SQLStore) Institution() store.InstitutionStore {
 	return ss.stores.institution
 }
 
-func (ss *SqlStore) AcademicUnit() store.AcademicUnitStore {
+func (ss *SQLStore) AcademicUnit() store.AcademicUnitStore {
 	return ss.stores.academicUnit
 }
 
-func (ss *SqlStore) Programme() store.ProgrammeStore {
+func (ss *SQLStore) Programme() store.ProgrammeStore {
 	return ss.stores.programme
 }
 
-func (ss *SqlStore) ProgrammeLevel() store.ProgrammeLevelStore {
+func (ss *SQLStore) ProgrammeLevel() store.ProgrammeLevelStore {
 	return ss.stores.programmeLevel
 }
 
-func (ss *SqlStore) AcademicPeriod() store.AcademicPeriodStore {
+func (ss *SQLStore) AcademicPeriod() store.AcademicPeriodStore {
 	return ss.stores.academicPeriod
 }
 
-func (ss *SqlStore) Class() store.ClassStore {
+func (ss *SQLStore) Class() store.ClassStore {
 	return ss.stores.class
 }
 
-func (ss *SqlStore) User() store.UserStore {
+func (ss *SQLStore) User() store.UserStore {
 	return ss.stores.user
 }
 
-func (ss *SqlStore) ExternalIdentity() store.ExternalIdentityStore {
+func (ss *SQLStore) ExternalIdentity() store.ExternalIdentityStore {
 	return ss.stores.externalIdentity
 }
 
-func (ss *SqlStore) ExternalLoginState() store.ExternalLoginStateStore {
+func (ss *SQLStore) ExternalLoginState() store.ExternalLoginStateStore {
 	return ss.stores.externalLoginState
 }
 
-func (ss *SqlStore) UserToken() store.UserTokenStore {
+func (ss *SQLStore) UserToken() store.UserTokenStore {
 	return ss.stores.userToken
 }
 
-func (ss *SqlStore) PersonalAccessToken() store.PersonalAccessTokenStore {
+func (ss *SQLStore) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return ss.stores.personalAccessToken
 }
 
-func (ss *SqlStore) MFA() store.MFAStore {
+func (ss *SQLStore) MFA() store.MFAStore {
 	return ss.stores.mfa
 }
 
-func (ss *SqlStore) Affiliation() store.AffiliationStore {
+func (ss *SQLStore) Affiliation() store.AffiliationStore {
 	return ss.stores.affiliation
 }
 
-func (ss *SqlStore) AcademicUnitMember() store.AcademicUnitMemberStore {
+func (ss *SQLStore) AcademicUnitMember() store.AcademicUnitMemberStore {
 	return ss.stores.academicUnitMember
 }
 
-func (ss *SqlStore) ClassMember() store.ClassMemberStore {
+func (ss *SQLStore) ClassMember() store.ClassMemberStore {
 	return ss.stores.classMember
 }
 
-func (ss *SqlStore) PasswordCredential() store.PasswordCredentialStore {
+func (ss *SQLStore) PasswordCredential() store.PasswordCredentialStore {
 	return ss.stores.passwordCredential
 }
 
-func (ss *SqlStore) Session() store.SessionStore {
+func (ss *SQLStore) Session() store.SessionStore {
 	return ss.stores.session
 }
 
-func (ss *SqlStore) SessionCredential() store.SessionCredentialStore {
+func (ss *SQLStore) SessionCredential() store.SessionCredentialStore {
 	return ss.stores.sessionCredential
 }
 
-func (ss *SqlStore) Role() store.RoleStore {
+func (ss *SQLStore) Role() store.RoleStore {
 	return ss.stores.role
 }
 
-func (ss *SqlStore) RoleBinding() store.RoleBindingStore {
+func (ss *SQLStore) RoleBinding() store.RoleBindingStore {
 	return ss.stores.roleBinding
 }
 
-func (ss *SqlStore) Audit() store.AuditStore {
+func (ss *SQLStore) Audit() store.AuditStore {
 	return ss.stores.audit
 }
 
-func (ss *SqlStore) Installation() store.InstallationStore {
+func (ss *SQLStore) Installation() store.InstallationStore {
 	return ss.stores.installation
 }
 
-func (ss *SqlStore) ClusterDiscovery() store.ClusterDiscoveryStore {
+func (ss *SQLStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	return ss.stores.clusterDiscovery
 }
 
-func (ss *SqlStore) GetMaster() *sqlxDBWrapper {
+func (ss *SQLStore) GetMaster() *sqlxDBWrapper {
 	return ss.masterX
 }
 
-func (ss *SqlStore) getQueryBuilder() sq.StatementBuilderType {
+func (ss *SQLStore) getQueryBuilder() sq.StatementBuilderType {
 	return sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 }
 
-func (ss *SqlStore) verifyPostgresVersion(ctx context.Context) error {
+func (ss *SQLStore) verifyPostgresVersion(ctx context.Context) error {
 	var raw string
 	if err := ss.GetMaster().Get(ctx, &raw, "SHOW server_version_num"); err != nil {
 		return fmt.Errorf("read PostgreSQL version: %w", err)
@@ -294,4 +294,4 @@ func postgresVersionString(version int) string {
 	return strconv.Itoa(version/10000) + "." + strconv.Itoa(version%10000)
 }
 
-var _ store.Store = (*SqlStore)(nil)
+var _ store.Store = (*SQLStore)(nil)

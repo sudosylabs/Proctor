@@ -21,8 +21,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SqlPersonalAccessTokenStore struct {
-	*SqlStore
+type SQLPersonalAccessTokenStore struct {
+	*SQLStore
 }
 
 type personalAccessTokenRow struct {
@@ -41,11 +41,11 @@ type personalAccessTokenRow struct {
 	RevokedAt      sql.NullTime   `db:"revoked_at"`
 }
 
-func newSqlPersonalAccessTokenStore(sqlStore *SqlStore) store.PersonalAccessTokenStore {
-	return &SqlPersonalAccessTokenStore{SqlStore: sqlStore}
+func newSQLPersonalAccessTokenStore(sqlStore *SQLStore) store.PersonalAccessTokenStore {
+	return &SQLPersonalAccessTokenStore{SQLStore: sqlStore}
 }
 
-func (s SqlPersonalAccessTokenStore) Save(
+func (s SQLPersonalAccessTokenStore) Save(
 	ctx context.Context,
 	token *model.PersonalAccessToken,
 	maximumActive int,
@@ -113,7 +113,7 @@ func (s SqlPersonalAccessTokenStore) Save(
 	return clonePersonalAccessToken(&candidate), nil
 }
 
-func (s SqlPersonalAccessTokenStore) Get(
+func (s SQLPersonalAccessTokenStore) Get(
 	ctx context.Context,
 	id string,
 ) (*model.PersonalAccessToken, error) {
@@ -134,7 +134,7 @@ func (s SqlPersonalAccessTokenStore) Get(
 	return row.model(), nil
 }
 
-func (s SqlPersonalAccessTokenStore) ListByUser(
+func (s SQLPersonalAccessTokenStore) ListByUser(
 	ctx context.Context,
 	userID string,
 ) ([]*model.PersonalAccessToken, error) {
@@ -160,7 +160,7 @@ func (s SqlPersonalAccessTokenStore) ListByUser(
 	return result, nil
 }
 
-func (s SqlPersonalAccessTokenStore) Resolve(
+func (s SQLPersonalAccessTokenStore) Resolve(
 	ctx context.Context,
 	tokenHash string,
 	now int64,
@@ -233,7 +233,7 @@ func (s SqlPersonalAccessTokenStore) Resolve(
 	}, nil
 }
 
-func (s SqlPersonalAccessTokenStore) SetDisabled(
+func (s SQLPersonalAccessTokenStore) SetDisabled(
 	ctx context.Context,
 	id string,
 	userID string,
@@ -325,7 +325,7 @@ func (s SqlPersonalAccessTokenStore) SetDisabled(
 	return current.model(), nil
 }
 
-func (s SqlPersonalAccessTokenStore) Revoke(
+func (s SQLPersonalAccessTokenStore) Revoke(
 	ctx context.Context,
 	id string,
 	userID string,
