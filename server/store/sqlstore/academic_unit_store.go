@@ -456,7 +456,7 @@ func (s SQLAcademicUnitStore) archiveAcademicUnit(
 		return nil, store.NewErrConflict("academic_unit", "academic_unit_has_active_dependents", nil)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE academic_units SET updated_at = ?, archived_at = ?, revision = revision + 1
+		UPDATE academic_units SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive academic unit: %w", err)

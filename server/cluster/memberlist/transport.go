@@ -373,21 +373,19 @@ func (t *Transport) Stop(ctx context.Context) error {
 	return nil
 }
 
-// Ping reports whether the transport is still usable.
+// Ping reports whether the transport is still usable. Construction-time
+// dependency checks run before Start, so an unstarted transport is healthy;
+// only a permanently stopped transport fails.
 func (t *Transport) Ping(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	switch t.state {
-	case stateStarted:
-		return nil
-	case stateStopped:
+	if t.state == stateStopped {
 		return cluster.ErrStopped
-	default:
-		return cluster.ErrNotStarted
 	}
+	return nil
 }
 
 // RegisterHandler registers the sole handler for an event on this node.

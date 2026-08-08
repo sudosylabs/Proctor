@@ -384,7 +384,7 @@ func (s SQLProgrammeStore) Archive(
 		return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE programmes SET updated_at = ?, archived_at = ?, revision = revision + 1
+		UPDATE programmes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive programme: %w", err)
@@ -435,7 +435,7 @@ func (s SQLProgrammeStore) ArchiveWithAudit(
 		return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE programmes SET updated_at = ?, archived_at = ?, revision = revision + 1
+		UPDATE programmes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive programme: %w", err)

@@ -465,7 +465,7 @@ func (s SQLClassStore) Archive(
 		return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE classes SET updated_at = ?, archived_at = ?, revision = revision + 1
+		UPDATE classes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id)
 	if err != nil {
 		return nil, fmt.Errorf("archive class: %w", err)
@@ -517,7 +517,7 @@ func (s SQLClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassA
 	if dependent {
 		return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
 	}
-	result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = ?, archived_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, input.ExpectedRevision)
+	result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, input.ExpectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("archive class: %w", err)
 	}

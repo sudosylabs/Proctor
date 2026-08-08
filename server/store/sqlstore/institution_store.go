@@ -195,11 +195,16 @@ func (s SQLInstitutionStore) Archive(ctx context.Context, id string, archiveAt i
 	if archiveAt <= 0 {
 		return store.NewErrInvalidInput("institution", "archived_at", archiveAt)
 	}
+	at := model.TimeFromMillis(archiveAt)
 	result, err := s.GetMaster().Exec(
 		ctx,
-		"UPDATE institutions SET updated_at = ?, archived_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL",
-		model.TimeFromMillis(archiveAt),
-		model.TimeFromMillis(archiveAt),
+		`UPDATE institutions
+		    SET updated_at = GREATEST(created_at, ?),
+		        archived_at = GREATEST(created_at, ?),
+		        revision = revision + 1
+		  WHERE id = ? AND archived_at IS NULL`,
+		at,
+		at,
 		id,
 	)
 	if err != nil {

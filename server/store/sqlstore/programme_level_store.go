@@ -395,7 +395,7 @@ func (s SQLProgrammeLevelStore) Archive(
 		)
 	}
 	result, err := tx.Exec(ctx, `
-		UPDATE programme_levels SET updated_at = ?, archived_at = ?, revision = revision + 1
+		UPDATE programme_levels SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive programme level: %w", err)
@@ -437,7 +437,7 @@ func (s SQLProgrammeLevelStore) ArchiveWithAudit(ctx context.Context, input *sto
 	if dependent {
 		return nil, store.NewErrConflict("programme_level", "programme_level_has_active_classes", nil)
 	}
-	result, err := tx.Exec(ctx, `UPDATE programme_levels SET updated_at = ?, archived_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
+	result, err := tx.Exec(ctx, `UPDATE programme_levels SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("archive programme level: %w", err)
 	}
