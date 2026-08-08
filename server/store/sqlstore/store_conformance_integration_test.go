@@ -9,9 +9,19 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
+
+func TestRetryLayerConformance(t *testing.T) {
+	sqlStore := openTestStore(t)
+	retriedStore, err := retrylayer.New(sqlStore, retrylayer.DefaultPolicy(IsTransientError))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runLayerConformance(t, sqlStore, retriedStore)
+}
 
 func TestTimerLayerConformance(t *testing.T) {
 	sqlStore := openTestStore(t)
@@ -20,6 +30,11 @@ func TestTimerLayerConformance(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	runLayerConformance(t, sqlStore, timedStore)
+}
+
+func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store) {
+	t.Helper()
 	tests := []struct {
 		name string
 		run  func(*testing.T, store.Store)
@@ -50,7 +65,7 @@ func TestTimerLayerConformance(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			resetTestStore(t, sqlStore)
-			test.run(t, timedStore)
+			test.run(t, decorated)
 		})
 	}
 }

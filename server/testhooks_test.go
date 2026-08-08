@@ -21,6 +21,7 @@ import (
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
 
@@ -28,7 +29,9 @@ import (
 // graph construction.
 type hookStore struct {
 	store.Store
-	closed atomic.Bool
+	closed       atomic.Bool
+	pingAttempts atomic.Int64
+	ping         func(int64) error
 }
 
 func (s *hookStore) Institution() store.InstitutionStore               { return nil }
@@ -47,11 +50,17 @@ func (s *hookStore) Installation() store.InstallationStore             { return 
 func (s *hookStore) ClusterDiscovery() store.ClusterDiscoveryStore     { return nil }
 func (s *hookStore) ClassMember() store.ClassMemberStore               { return nil }
 func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
-func (s *hookStore) Ping(context.Context) error                        { return nil }
-func (s *hookStore) GetDBSchemaVersion(context.Context) (int, error)   { return 0, nil }
-func (s *hookStore) GetLocalSchemaVersion() (int, error)               { return 0, nil }
-func (s *hookStore) ValidateSchema(context.Context) error              { return nil }
-func (s *hookStore) Close() error                                      { s.closed.Store(true); return nil }
+func (s *hookStore) Ping(context.Context) error {
+	attempt := s.pingAttempts.Add(1)
+	if s.ping != nil {
+		return s.ping(attempt)
+	}
+	return nil
+}
+func (s *hookStore) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
+func (s *hookStore) GetLocalSchemaVersion() (int, error)             { return 0, nil }
+func (s *hookStore) ValidateSchema(context.Context) error            { return nil }
+func (s *hookStore) Close() error                                    { s.closed.Store(true); return nil }
 
 type hookCache struct{ closed atomic.Bool }
 
@@ -172,6 +181,50 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	}
 	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
 		t.Fatal("Close() did not close the overridden capabilities")
+	}
+}
+
+func TestRootComposesTimerOutsideRetry(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, _, _ := newHookOverrides(t)
+	transientErr := errors.New("serialization failure")
+	const transientFailuresBeforeSuccess int64 = 2
+	persistence.ping = func(attempt int64) error {
+		if attempt <= transientFailuresBeforeSuccess {
+			return transientErr
+		}
+		return nil
+	}
+	overrides.StoreRetry = &retrylayer.Policy{
+		MaxAttempts:    3,
+		InitialBackoff: time.Nanosecond,
+		MaxBackoff:     time.Nanosecond,
+		IsTransient:    func(err error) bool { return err == transientErr },
+	}
+	var observations atomic.Int64
+	overrides.StoreMetrics = timerlayer.RecorderFunc(func(
+		operation timerlayer.Operation,
+		_ timerlayer.Outcome,
+		_ time.Duration,
+	) {
+		if operation.String() == "store.ping" {
+			observations.Add(1)
+		}
+	})
+
+	runtime, err := server.NewForTesting(context.Background(), overrides)
+	if err != nil {
+		t.Fatalf("NewForTesting() error = %v", err)
+	}
+	t.Cleanup(func() { _ = runtime.Server.Close() })
+
+	attempts := persistence.pingAttempts.Load()
+	if attempts < 3 {
+		t.Fatalf("underlying Ping() attempts = %d, want at least 3", attempts)
+	}
+	if got, want := observations.Load(), attempts-transientFailuresBeforeSuccess; got != want {
+		t.Fatalf("timer observations = %d, want %d logical calls outside retries", got, want)
 	}
 }
 

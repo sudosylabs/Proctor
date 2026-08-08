@@ -14,6 +14,7 @@ import (
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
 
@@ -29,6 +30,7 @@ type TestingOverrides struct {
 	Configuration *config.Store
 	Logger        *mlog.Logger
 	Persistence   store.Store
+	StoreRetry    *retrylayer.Policy
 	StoreMetrics  timerlayer.Recorder
 	Cache         platform.Cache
 	Cluster       platform.Cluster

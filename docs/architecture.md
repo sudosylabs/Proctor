@@ -399,8 +399,8 @@ The target intentionally differs from existing code:
 8. some handlers serialize models directly;
 9. WebSocket transport still lives in `app/api`;
 10. clustering uses local and Memberlist backends only (Redis cluster retired);
-11. the root-composed store timer layer is present; retry and local-cache
-    layers are not yet present;
+11. root-composed store timer and safe retry layers are present; the
+    local-cache layer is not yet present;
 12. external-service tests are not consistently tagged `integration`;
 13. import-boundary and OpenAPI agreement tests are not yet present.
 

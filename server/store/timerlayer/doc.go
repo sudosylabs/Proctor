@@ -5,5 +5,5 @@
 // argument-free operation timing. It changes no store result, error, or
 // lifecycle semantics and depends only on the inward store contracts.
 //
-//go:generate go run ../storetest/timerlayergen -source .. -output forwarding_gen.go
+//go:generate go run ../storetest/layergen -layer timer -source .. -output forwarding_gen.go
 package timerlayer

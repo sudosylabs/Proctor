@@ -25,6 +25,7 @@ import (
 	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
 	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 	"github.com/sudosylabs/proctor/server/websocket"
@@ -229,6 +230,15 @@ func openRuntimeInfrastructure(
 		}
 		result.persistence = persistence
 	}
+	storeRetry := retrylayer.DefaultPolicy(sqlstore.IsTransientError)
+	if overrides.StoreRetry != nil {
+		storeRetry = *overrides.StoreRetry
+	}
+	retriedPersistence, err := retrylayer.New(result.persistence, storeRetry)
+	if err != nil {
+		return result, fmt.Errorf("construct store retry layer: %w", err)
+	}
+	result.persistence = retriedPersistence
 	storeMetrics := overrides.StoreMetrics
 	if storeMetrics == nil {
 		storeMetrics = timerlayer.NopRecorder{}
