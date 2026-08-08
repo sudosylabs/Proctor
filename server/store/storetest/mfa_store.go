@@ -34,15 +34,15 @@ func TestMFAStore(t *testing.T, ss store.Store) {
 func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
-	pending := savePendingMFA(t, ctx, ss, user.Id)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	pending := savePendingMFA(t, ctx, ss, user.ID.String())
 	firstHash := model.HashToken(model.NewCredentialToken())
 	secondHash := model.HashToken(model.NewCredentialToken())
 	now := pending.CreateAt + 1
 	activated, err := ss.MFA().Activate(
 		ctx,
 		pending.Id,
-		user.Id,
+		user.ID.String(),
 		1_000,
 		[]*model.MFARecoveryCode{
 			{CodeHash: firstHash},
@@ -59,28 +59,28 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 		activated.AccessTokenHashes[0] != model.HashToken(raw.access) {
 		t.Fatalf("Activate() = %#v", activated)
 	}
-	count, err := ss.MFA().CountRecoveryCodes(ctx, user.Id)
+	count, err := ss.MFA().CountRecoveryCodes(ctx, user.ID.String())
 	requireNoError(t, err)
 	if count != 2 {
 		t.Fatalf("CountRecoveryCodes() = %d, want 2", count)
 	}
 	requireNoError(t, ss.MFA().ConsumeSecondFactor(
-		ctx, user.Id, 1_001, "", now+1,
+		ctx, user.ID.String(), 1_001, "", now+1,
 	))
 	if err := ss.MFA().ConsumeSecondFactor(
-		ctx, user.Id, 1_001, "", now+2,
+		ctx, user.ID.String(), 1_001, "", now+2,
 	); !store.IsNotFound(err) {
 		t.Fatalf("replayed TOTP time step error = %v, want not found", err)
 	}
 	requireNoError(t, ss.MFA().ConsumeSecondFactor(
-		ctx, user.Id, 0, firstHash, now+3,
+		ctx, user.ID.String(), 0, firstHash, now+3,
 	))
 	if err := ss.MFA().ConsumeSecondFactor(
-		ctx, user.Id, 0, firstHash, now+4,
+		ctx, user.ID.String(), 0, firstHash, now+4,
 	); !store.IsNotFound(err) {
 		t.Fatalf("replayed recovery code error = %v, want not found", err)
 	}
-	count, err = ss.MFA().CountRecoveryCodes(ctx, user.Id)
+	count, err = ss.MFA().CountRecoveryCodes(ctx, user.ID.String())
 	requireNoError(t, err)
 	if count != 1 {
 		t.Fatalf("remaining recovery codes = %d, want 1", count)
@@ -88,21 +88,21 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	replacementHash := model.HashToken(model.NewCredentialToken())
 	requireNoError(t, ss.MFA().ReplaceRecoveryCodes(
 		ctx,
-		user.Id,
+		user.ID.String(),
 		[]*model.MFARecoveryCode{{CodeHash: replacementHash}},
 		now+5,
 	))
-	count, err = ss.MFA().CountRecoveryCodes(ctx, user.Id)
+	count, err = ss.MFA().CountRecoveryCodes(ctx, user.ID.String())
 	requireNoError(t, err)
 	if count != 1 {
 		t.Fatalf("replacement recovery codes = %d, want 1", count)
 	}
 	if err := ss.MFA().ConsumeSecondFactor(
-		ctx, user.Id, 0, secondHash, now+6,
+		ctx, user.ID.String(), 0, secondHash, now+6,
 	); !store.IsNotFound(err) {
 		t.Fatalf("superseded recovery code error = %v, want not found", err)
 	}
-	disabled, err := ss.MFA().Disable(ctx, user.Id, now+7)
+	disabled, err := ss.MFA().Disable(ctx, user.ID.String(), now+7)
 	requireNoError(t, err)
 	if len(disabled.AccessTokenHashes) != 1 ||
 		disabled.AccessTokenHashes[0] != model.HashToken(raw.access) {
@@ -114,7 +114,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 		gotSession.MFACompletedAt != 0 {
 		t.Fatalf("disabled session assurance = %#v", gotSession)
 	}
-	if _, err := ss.MFA().GetByUser(ctx, user.Id); !store.IsNotFound(err) {
+	if _, err := ss.MFA().GetByUser(ctx, user.ID.String()); !store.IsNotFound(err) {
 		t.Fatalf("GetByUser() after Disable error = %v, want not found", err)
 	}
 }
@@ -122,12 +122,12 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 func testMFAPendingReplacement(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	first := savePendingMFA(t, ctx, ss, user.Id)
-	second := savePendingMFA(t, ctx, ss, user.Id)
+	first := savePendingMFA(t, ctx, ss, user.ID.String())
+	second := savePendingMFA(t, ctx, ss, user.ID.String())
 	if first.Id == second.Id {
 		t.Fatal("pending MFA setup was not replaced")
 	}
-	current, err := ss.MFA().GetByUser(ctx, user.Id)
+	current, err := ss.MFA().GetByUser(ctx, user.ID.String())
 	requireNoError(t, err)
 	if current.Id != second.Id {
 		t.Fatalf("GetByUser() = %s, want %s", current.Id, second.Id)
@@ -137,13 +137,13 @@ func testMFAPendingReplacement(t *testing.T, ss store.Store) {
 func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, _ := saveSession(t, ctx, ss, user.Id, 10)
-	pending := savePendingMFA(t, ctx, ss, user.Id)
+	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
+	pending := savePendingMFA(t, ctx, ss, user.ID.String())
 	codeHash := model.HashToken(model.NewCredentialToken())
 	_, err := ss.MFA().Activate(
 		ctx,
 		pending.Id,
-		user.Id,
+		user.ID.String(),
 		2_000,
 		[]*model.MFARecoveryCode{{CodeHash: codeHash}},
 		session.Id,
@@ -162,7 +162,7 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 			<-start
 			results <- ss.MFA().ConsumeSecondFactor(
 				ctx,
-				user.Id,
+				user.ID.String(),
 				0,
 				codeHash,
 				pending.CreateAt+2+int64(offset),

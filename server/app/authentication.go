@@ -207,7 +207,7 @@ func (s *AuthenticationService) login(
 		}
 		return nil, invalidCredentialsAppError()
 	}
-	credential, err := s.store.PasswordCredential().GetByUser(ctx, user.Id)
+	credential, err := s.store.PasswordCredential().GetByUser(ctx, user.ID.String())
 	if err != nil {
 		s.hasher.VerifyDummy(command.Password)
 		if !store.IsNotFound(err) {
@@ -232,9 +232,9 @@ func (s *AuthenticationService) login(
 		mfaErr        error
 	)
 	if mfaPersistence == nil {
-		mfaErr = store.NewErrNotFound("mfa_credential", user.Id)
+		mfaErr = store.NewErrNotFound("mfa_credential", user.ID.String())
 	} else {
-		mfaCredential, mfaErr = mfaPersistence.GetByUser(ctx, user.Id)
+		mfaCredential, mfaErr = mfaPersistence.GetByUser(ctx, user.ID.String())
 	}
 	switch {
 	case mfaErr == nil && mfaCredential.IsActive():
@@ -247,7 +247,7 @@ func (s *AuthenticationService) login(
 		if appErr := s.mfa.consumeSecondFactor(
 			ctx,
 			s.store,
-			user.Id,
+			user.ID.String(),
 			command.MFACode,
 			now,
 		); appErr != nil {
@@ -321,7 +321,7 @@ func (s *AuthenticationService) createSession(
 	accessExpiresAt := min(nowMillis+settings.AccessTTL.Milliseconds(), absoluteExpiresAt)
 	refreshExpiresAt := min(nowMillis+settings.RefreshTTL.Milliseconds(), absoluteExpiresAt)
 	session := &model.Session{
-		UserId:                 user.Id,
+		UserId:                 user.ID.String(),
 		ClientType:             clientType,
 		DeviceId:               deviceID,
 		DeviceName:             deviceName,
@@ -499,7 +499,7 @@ func (s *AuthenticationService) authenticatePersonalAccessToken(
 		return nil, authenticationUnavailable(err)
 	}
 	principal := &model.Principal{
-		UserId:               resolved.User.Id,
+		UserId:               resolved.User.ID.String(),
 		CredentialId:         resolved.Token.Id,
 		CredentialType:       model.CredentialPersonalAccessToken,
 		AuthenticationMethod: "personal_access_token",
@@ -557,7 +557,7 @@ func (s *AuthenticationService) authenticateAccess(
 	}
 	s.cacheAuthentication(ctx, tokenHash, resolved, now)
 	principal := &model.Principal{
-		UserId:                 resolved.User.Id,
+		UserId:                 resolved.User.ID.String(),
 		SessionId:              resolved.Session.Id,
 		CredentialId:           resolved.Credential.Id,
 		CredentialType:         model.CredentialSessionAccess,

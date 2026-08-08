@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -44,31 +45,46 @@ var restrictedUsernames = map[string]struct{}{
 // Password hashes and external-provider subjects live in separate credential
 // and identity models so an account can use more than one authentication
 // method without overloading the profile.
+//
+// Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
+// Soft archive uses ArchivedAt (legacy delete_at). Revision supports optimistic
+// concurrency on profile updates.
 type User struct {
-	Id             string `json:"id"`
-	CreateAt       int64  `json:"create_at"`
-	UpdateAt       int64  `json:"update_at"`
-	DeleteAt       int64  `json:"delete_at"`
-	Revision       int64  `json:"-"`
-	Username       string `json:"username"`
-	Email          string `json:"email"`
-	EmailVerified  bool   `json:"email_verified"`
-	DisplayName    string `json:"display_name"`
-	FirstName      string `json:"first_name"`
-	LastName       string `json:"last_name"`
-	Locale         string `json:"locale"`
-	Timezone       string `json:"timezone"`
-	LastLoginAt    int64  `json:"last_login_at,omitempty"`
-	LastActivityAt int64  `json:"last_activity_at,omitempty"`
-	DisabledAt     int64  `json:"disabled_at,omitempty"`
+	ID             UserID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ArchivedAt     OptionalTime
+	Revision       int64
+	Username       string
+	Email          string
+	EmailVerified  bool
+	DisplayName    string
+	FirstName      string
+	LastName       string
+	Locale         string
+	Timezone       string
+	LastLoginAt    OptionalTime
+	LastActivityAt OptionalTime
+	DisabledAt     OptionalTime
 }
 
-func (u *User) PrepareCreate(id string, at int64) {
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (u *User) PrepareCreate(id UserID, at time.Time) {
+	if u == nil {
+		return
+	}
 	if u.Username == "" {
 		u.Username = "u" + NewId()
 	}
 	u.normalize()
-	u.Id, u.CreateAt, u.UpdateAt, u.DeleteAt, u.Revision = id, at, at, 0, 1
+	u.ID = id
+	at = TimeUTC(at)
+	u.CreatedAt = at
+	u.UpdatedAt = at
+	u.ArchivedAt = OptionalTime{}
+	if u.Revision <= 0 {
+		u.Revision = 1
+	}
 	if u.Locale == "" {
 		u.Locale = DefaultLocale
 	}
@@ -77,6 +93,18 @@ func (u *User) PrepareCreate(id string, at int64) {
 	}
 }
 
+// PrepareUpdate applies the application-selected transition time and normalizes
+// profile fields. Callers that need optimistic concurrency must manage
+// Revision separately.
+func (u *User) PrepareUpdate(at time.Time) {
+	if u == nil {
+		return
+	}
+	u.UpdatedAt = TimeUTC(at)
+	u.normalize()
+}
+
+// UserPatch carries optional profile field updates.
 type UserPatch struct {
 	Username      *string `json:"username,omitempty"`
 	Email         *string `json:"email,omitempty"`
@@ -88,7 +116,12 @@ type UserPatch struct {
 	Timezone      *string `json:"timezone,omitempty"`
 }
 
+// Patch applies non-nil fields from p. Changing email without an explicit
+// EmailVerified value clears verification.
 func (u *User) Patch(p *UserPatch) {
+	if u == nil || p == nil {
+		return
+	}
 	if p.Username != nil {
 		u.Username = *p.Username
 	}
@@ -119,34 +152,10 @@ func (u *User) Patch(p *UserPatch) {
 	}
 }
 
-func (u *User) PreSave() {
-	if u.Username == "" {
-		u.Username = "u" + NewId()
-	}
-	u.normalize()
-	preSave(&u.Id, &u.CreateAt, &u.UpdateAt)
-	if u.Revision == 0 {
-		u.Revision = 1
-	}
-	if u.Locale == "" {
-		u.Locale = DefaultLocale
-	}
-	if u.Timezone == "" {
-		u.Timezone = DefaultTimezone
-	}
-}
-
-func (u *User) PrepareUpdate(at int64) {
-	u.UpdateAt = at
-	u.normalize()
-}
-
-func (u *User) PreUpdate() {
-	u.normalize()
-	preUpdate(&u.UpdateAt)
-}
-
 func (u *User) normalize() {
+	if u == nil {
+		return
+	}
 	u.Username = strings.ToLower(SanitizeUnicode(u.Username))
 	u.Email = strings.ToLower(strings.TrimSpace(SanitizeUnicode(u.Email)))
 	u.DisplayName = SanitizeUnicode(u.DisplayName)
@@ -156,15 +165,25 @@ func (u *User) normalize() {
 	u.Timezone = SanitizeUnicode(u.Timezone)
 }
 
-func (u *User) IsValid() error {
-	const where = "User.IsValid"
-	if appErr := validatePersistentFields(where, "user", u.Id, u.CreateAt, u.UpdateAt); appErr != nil {
-		return appErr
+// Validate checks rehydrated user state.
+func (u *User) Validate() error {
+	const where = "User.Validate"
+	if u == nil {
+		return invalidModelError(where, "user", "value", "is required", "")
+	}
+	if !u.ID.IsValid() {
+		return invalidModelError(where, "user", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + u.ID.String()
+	if u.CreatedAt.IsZero() || u.UpdatedAt.IsZero() {
+		return invalidModelError(where, "user", "created_at", "must be set", details)
+	}
+	if u.UpdatedAt.Before(u.CreatedAt) {
+		return invalidModelError(where, "user", "updated_at", "must not precede created_at", details)
 	}
 	if u.Revision <= 0 {
-		return invalidModelError(where, "user", "revision", "must be positive", "id="+u.Id)
+		return invalidModelError(where, "user", "revision", "must be positive", details)
 	}
-	details := "id=" + u.Id
 	if !IsValidUsername(u.Username) {
 		return invalidModelError(where, "user", "username", "has an invalid format", details)
 	}
@@ -186,24 +205,49 @@ func (u *User) IsValid() error {
 	if len(u.Timezone) == 0 || len(u.Timezone) > UserTimezoneMaxLength {
 		return invalidModelError(where, "user", "timezone", "has an invalid length", details)
 	}
-	if u.DisabledAt != 0 && u.DisabledAt < u.CreateAt {
+	if u.ArchivedAt.Valid && u.ArchivedAt.Time.Before(u.CreatedAt) {
+		return invalidModelError(where, "user", "archived_at", "must not precede created_at", details)
+	}
+	if u.DisabledAt.Valid && u.DisabledAt.Time.Before(u.CreatedAt) {
 		return invalidModelError(where, "user", "disabled_at", "must not precede create_at", details)
+	}
+	if u.LastLoginAt.Valid && u.LastLoginAt.Time.Before(u.CreatedAt) {
+		return invalidModelError(where, "user", "last_login_at", "must not precede created_at", details)
+	}
+	if u.LastActivityAt.Valid && u.LastActivityAt.Time.Before(u.CreatedAt) {
+		return invalidModelError(where, "user", "last_activity_at", "must not precede created_at", details)
 	}
 	return nil
 }
 
+// IsActive reports whether the account is not archived and not disabled.
 func (u *User) IsActive() bool {
-	return u != nil && u.DeleteAt == 0 && u.DisabledAt == 0
+	return u != nil && !u.ArchivedAt.Valid && !u.DisabledAt.Valid
 }
 
+// IsArchived reports soft archive state.
+func (u *User) IsArchived() bool {
+	return u != nil && u.ArchivedAt.Valid
+}
+
+// Auditable returns a deliberately safe audit projection. Profile PII is
+// omitted; lifecycle times remain as Unix milliseconds for wire compatibility.
 func (u *User) Auditable() map[string]any {
-	fields := auditFields(u.Id, u.CreateAt, u.UpdateAt, u.DeleteAt)
-	fields["revision"] = u.Revision
-	fields["username"] = u.Username
-	fields["email_verified"] = u.EmailVerified
-	fields["disabled_at"] = u.DisabledAt
-	fields["last_login_at"] = u.LastLoginAt
-	return fields
+	if u == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":            u.ID.String(),
+		"created_at":    MillisFromTime(u.CreatedAt),
+		"updated_at":    MillisFromTime(u.UpdatedAt),
+		"archived_at":   u.ArchivedAt.Millis(),
+		"delete_at":     u.ArchivedAt.Millis(), // legacy audit key during expand
+		"revision":      u.Revision,
+		"username":      u.Username,
+		"email_verified": u.EmailVerified,
+		"disabled_at":   u.DisabledAt.Millis(),
+		"last_login_at": u.LastLoginAt.Millis(),
+	}
 }
 
 // IsValidUsername validates the normalized public username.

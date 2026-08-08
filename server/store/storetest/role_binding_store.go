@@ -21,12 +21,12 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		role, err := ss.Role().Save(ctx, &model.Role{Name: "audited-binding-role", DisplayName: "Audited", Permissions: []string{string(model.ActionClassView)}})
 		requireNoError(t, err)
 		at := model.GetMillis()
-		if _, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{Binding: &model.RoleBinding{UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), StartAt: at}, AuditEventID: model.NewId(), AuditAt: at}); err == nil {
+		if _, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{Binding: &model.RoleBinding{UserId: user.ID.String(), RoleId: role.Id, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), StartAt: at}, AuditEventID: model.NewId(), AuditAt: at}); err == nil {
 			t.Fatal("SaveWithAudit succeeded without audit attempt")
 		}
 		attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRoleManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
 		requireNoError(t, err)
-		saved, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{Binding: &model.RoleBinding{UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), StartAt: at}, AuditEventID: attempt.Id, AuditAt: at})
+		saved, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{Binding: &model.RoleBinding{UserId: user.ID.String(), RoleId: role.Id, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), StartAt: at}, AuditEventID: attempt.Id, AuditAt: at})
 		requireNoError(t, err)
 		endAttempt, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRoleManage), Resource: model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
 		requireNoError(t, err)
@@ -44,7 +44,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	start := model.GetMillis()
 	binding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
+		UserId: user.ID.String(), RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
 		ScopeId: institution.ID.String(), StartAt: start,
 	})
 	requireNoError(t, err)
@@ -53,19 +53,19 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	}
 	got, err := ss.RoleBinding().Get(ctx, binding.Id)
 	requireNoError(t, err)
-	byUser, err := ss.RoleBinding().ListByUser(ctx, user.Id)
+	byUser, err := ss.RoleBinding().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
 	byScope, err := ss.RoleBinding().ListByScope(
 		ctx, model.RoleScopeInstitution, institution.ID.String(),
 	)
 	requireNoError(t, err)
-	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.Id, start+1)
+	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), start+1)
 	requireNoError(t, err)
 	if got.Id != binding.Id || len(byUser) != 1 || len(byScope) != 1 || len(active) != 1 {
 		t.Fatalf("binding queries = %#v/%d/%d/%d", got, len(byUser), len(byScope), len(active))
 	}
 	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
+		UserId: user.ID.String(), RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
 		ScopeId: institution.ID.String(), StartAt: start + 1,
 	})
 	if !store.IsConflict(err) {
@@ -76,13 +76,13 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	if ended.EndAt != start+2 {
 		t.Fatalf("End() = %#v", ended)
 	}
-	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.Id, start+3)
+	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), start+3)
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("active ended bindings = %#v", active)
 	}
 	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeClass,
+		UserId: user.ID.String(), RoleId: role.Id, ScopeType: model.RoleScopeClass,
 		ScopeId: model.NewId(), StartAt: start,
 	})
 	var reference *store.ErrReference
@@ -97,7 +97,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	firstAdmin, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: user.Id, RoleId: adminRole.Id, ScopeType: model.RoleScopeInstitution,
+		UserId: user.ID.String(), RoleId: adminRole.Id, ScopeType: model.RoleScopeInstitution,
 		ScopeId: institution.ID.String(), StartAt: start,
 	})
 	requireNoError(t, err)
@@ -106,7 +106,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	}
 	secondUser := saveUser(t, ctx, ss)
 	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: secondUser.Id, RoleId: adminRole.Id, ScopeType: model.RoleScopeInstitution,
+		UserId: secondUser.ID.String(), RoleId: adminRole.Id, ScopeType: model.RoleScopeInstitution,
 		ScopeId: institution.ID.String(), StartAt: start,
 	})
 	requireNoError(t, err)

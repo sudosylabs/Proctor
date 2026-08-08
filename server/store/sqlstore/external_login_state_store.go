@@ -67,13 +67,13 @@ func (s SqlExternalLoginStateStore) Save(
 	if state == nil {
 		return nil, store.NewErrInvalidInput("external_login_state", "value", nil)
 	}
-	if state.Id != "" {
-		return nil, store.NewErrInvalidInput("external_login_state", "id", state.Id)
+	if !state.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("external_login_state", "id", state.ID.String())
 	}
 	candidate := *state
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewExternalLoginStateID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -83,7 +83,7 @@ func (s SqlExternalLoginStateStore) Save(
 	if _, err := tx.Exec(
 		ctx,
 		"DELETE FROM external_login_states WHERE expires_at < ?",
-		candidate.CreateAt-externalLoginStateRetentionMillis,
+		model.MillisFromTime(candidate.CreatedAt)-externalLoginStateRetentionMillis,
 	); err != nil {
 		return nil, fmt.Errorf("prune external login states: %w", err)
 	}
@@ -100,7 +100,7 @@ func (s SqlExternalLoginStateStore) Save(
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
 			"save external login state: %w",
-			translateError("external_login_state", candidate.Id, err),
+			translateError("external_login_state", candidate.ID.String(), err),
 		)
 	}
 	if err := tx.Commit(); err != nil {
@@ -161,23 +161,35 @@ func newExternalLoginStateRow(
 	state *model.ExternalLoginState,
 ) externalLoginStateRow {
 	return externalLoginStateRow{
-		ID: state.Id, CreateAt: state.CreateAt, UpdateAt: state.UpdateAt,
-		Provider: state.Provider, StateHash: state.StateHash,
-		BindingHash: state.BindingHash, ReturnTo: state.ReturnTo,
-		ClientType: string(state.ClientType), DeviceID: state.DeviceId,
-		DeviceName: state.DeviceName, ExpiresAt: state.ExpiresAt,
-		ConsumedAt: state.ConsumedAt,
+		ID:          state.ID.String(),
+		CreateAt:    model.MillisFromTime(state.CreatedAt),
+		UpdateAt:    model.MillisFromTime(state.UpdatedAt),
+		Provider:    state.Provider,
+		StateHash:   state.StateHash,
+		BindingHash: state.BindingHash,
+		ReturnTo:    state.ReturnTo,
+		ClientType:  string(state.ClientType),
+		DeviceID:    state.DeviceID,
+		DeviceName:  state.DeviceName,
+		ExpiresAt:   model.MillisFromTime(state.ExpiresAt),
+		ConsumedAt:  state.ConsumedAt.Millis(),
 	}
 }
 
 func (row externalLoginStateRow) model() *model.ExternalLoginState {
 	return &model.ExternalLoginState{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt,
-		Provider: row.Provider, StateHash: row.StateHash,
-		BindingHash: row.BindingHash, ReturnTo: row.ReturnTo,
-		ClientType: model.SessionClientType(row.ClientType),
-		DeviceId:   row.DeviceID, DeviceName: row.DeviceName,
-		ExpiresAt: row.ExpiresAt, ConsumedAt: row.ConsumedAt,
+		ID:          model.ExternalLoginStateID(row.ID),
+		CreatedAt:   model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:   model.TimeFromMillis(row.UpdateAt),
+		Provider:    row.Provider,
+		StateHash:   row.StateHash,
+		BindingHash: row.BindingHash,
+		ReturnTo:    row.ReturnTo,
+		ClientType:  model.SessionClientType(row.ClientType),
+		DeviceID:    row.DeviceID,
+		DeviceName:  row.DeviceName,
+		ExpiresAt:   model.TimeFromMillis(row.ExpiresAt),
+		ConsumedAt:  model.OptionalTimeFromMillis(row.ConsumedAt),
 	}
 }
 

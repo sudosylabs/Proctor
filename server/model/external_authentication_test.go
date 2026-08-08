@@ -32,17 +32,17 @@ func TestExternalLoginStateLifecycle(t *testing.T) {
 		BindingHash: HashToken(NewCredentialToken()),
 		ReturnTo:    "/exams",
 		ClientType:  SessionClientDesktop,
-		ExpiresAt:   GetMillis() + 60_000,
+		ExpiresAt: TimeFromMillis(GetMillis()+60_000),
 	}
-	state.PreSave()
+	state.PrepareCreate(NewExternalLoginStateID(), NowUTC())
 	if state.Provider != "campus-cas" {
 		t.Fatalf("PreSave() provider = %q", state.Provider)
 	}
-	if appErr := state.IsValid(); appErr != nil {
+	if appErr := state.Validate(); appErr != nil {
 		t.Fatalf("IsValid() = %v", appErr)
 	}
 	state.ClientType = SessionClientCLI
-	if appErr := state.IsValid(); appErr == nil {
+	if appErr := state.Validate(); appErr == nil {
 		t.Fatal("CLI external login state was accepted")
 	}
 }

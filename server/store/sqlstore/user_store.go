@@ -78,14 +78,14 @@ func (s SqlUserStore) Save(ctx context.Context, user *model.User) (*model.User, 
 	if user == nil {
 		return nil, store.NewErrInvalidInput("user", "value", nil)
 	}
-	if user.Id != "" {
-		return nil, store.NewErrInvalidInput("user", "id", user.Id)
+	if !user.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("user", "id", user.ID.String())
 	}
 
 	candidate := *user
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewUserID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 
 	if err := insertUser(ctx, s.GetMaster(), &candidate); err != nil {
@@ -102,19 +102,20 @@ func (s SqlUserStore) SaveWithPassword(
 	if user == nil || credential == nil {
 		return nil, nil, store.NewErrInvalidInput("user", "local_account", nil)
 	}
-	if user.Id != "" || credential.Id != "" {
+	if !user.ID.IsZero() || !credential.ID.IsZero() {
 		return nil, nil, store.NewErrInvalidInput("user", "id", "must_be_empty")
 	}
+	at := model.NowUTC()
 	userCandidate := *user
-	userCandidate.PreSave()
-	if appErr := userCandidate.IsValid(); appErr != nil {
-		return nil, nil, appErr
+	userCandidate.PrepareCreate(model.NewUserID(), at)
+	if err := userCandidate.Validate(); err != nil {
+		return nil, nil, err
 	}
 	credentialCandidate := *credential
-	credentialCandidate.UserId = userCandidate.Id
-	credentialCandidate.PreSave()
-	if appErr := credentialCandidate.IsValid(); appErr != nil {
-		return nil, nil, appErr
+	credentialCandidate.UserID = userCandidate.ID
+	credentialCandidate.PrepareCreate(model.NewPasswordCredentialID(), at)
+	if err := credentialCandidate.Validate(); err != nil {
+		return nil, nil, err
 	}
 
 	tx, err := s.GetMaster().Begin(ctx)
@@ -146,7 +147,7 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 			:email_verified, :display_name, :first_name, :last_name, :locale,
 			:timezone, :last_login_at, :last_activity_at, :disabled_at
 		)`, &row); err != nil {
-		return fmt.Errorf("save user: %w", translateError("user", user.Id, err))
+		return fmt.Errorf("save user: %w", translateError("user", user.ID.String(), err))
 	}
 	return nil
 }
@@ -233,10 +234,10 @@ func (s SqlUserStore) Update(ctx context.Context, user *model.User) (*model.User
 	}
 	candidate := *user
 	expectedRevision := candidate.Revision
-	candidate.PreUpdate()
+	candidate.PrepareUpdate(model.NowUTC())
 	candidate.Revision++
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -246,7 +247,7 @@ func (s SqlUserStore) Update(ctx context.Context, user *model.User) (*model.User
 	if err := updateUserProfile(ctx, tx, &candidate, expectedRevision); err != nil {
 		return nil, err
 	}
-	updated, err := getUserByID(ctx, tx, candidate.Id)
+	updated, err := getUserByID(ctx, tx, candidate.ID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -265,10 +266,10 @@ func (s SqlUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.U
 	if candidate.Revision != input.ExpectedRevision {
 		return nil, store.NewErrInvalidInput("user", "revision", candidate.Revision)
 	}
-	candidate.PrepareUpdate(input.AuditAt)
+	candidate.PrepareUpdate(model.TimeFromMillis(input.AuditAt))
 	candidate.Revision = input.ExpectedRevision + 1
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, store.NewErrInvalidInput("user", "value", nil).Wrap(appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("user", "value", nil).Wrap(err)
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
@@ -278,7 +279,7 @@ func (s SqlUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.U
 	if err := updateUserProfile(ctx, tx, &candidate, input.ExpectedRevision); err != nil {
 		return nil, err
 	}
-	updated, err := getUserByID(ctx, tx, candidate.Id)
+	updated, err := getUserByID(ctx, tx, candidate.ID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -325,9 +326,9 @@ func updateUserProfile(ctx context.Context, executor sqlxExecutor, candidate *mo
 		       timezone = :timezone
 		 WHERE id = :id AND delete_at = 0 AND revision = :expected_revision`, &row)
 	if err != nil {
-		return fmt.Errorf("update user profile: %w", translateError("user", candidate.Id, err))
+		return fmt.Errorf("update user profile: %w", translateError("user", candidate.ID.String(), err))
 	}
-	if err := requireUserRevisionAffected(ctx, executor, result, candidate.Id); err != nil {
+	if err := requireUserRevisionAffected(ctx, executor, result, candidate.ID.String()); err != nil {
 		return err
 	}
 	return nil
@@ -539,10 +540,10 @@ func (s SqlUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) 
 
 func newUserRow(user *model.User) userRow {
 	return userRow{
-		ID:             user.Id,
-		CreateAt:       user.CreateAt,
-		UpdateAt:       user.UpdateAt,
-		DeleteAt:       user.DeleteAt,
+		ID:             user.ID.String(),
+		CreateAt:       model.MillisFromTime(user.CreatedAt),
+		UpdateAt:       model.MillisFromTime(user.UpdatedAt),
+		DeleteAt:       user.ArchivedAt.Millis(),
 		Revision:       user.Revision,
 		Username:       user.Username,
 		Email:          user.Email,
@@ -552,18 +553,18 @@ func newUserRow(user *model.User) userRow {
 		LastName:       user.LastName,
 		Locale:         user.Locale,
 		Timezone:       user.Timezone,
-		LastLoginAt:    user.LastLoginAt,
-		LastActivityAt: user.LastActivityAt,
-		DisabledAt:     user.DisabledAt,
+		LastLoginAt:    user.LastLoginAt.Millis(),
+		LastActivityAt: user.LastActivityAt.Millis(),
+		DisabledAt:     user.DisabledAt.Millis(),
 	}
 }
 
 func (row userRow) model() *model.User {
 	return &model.User{
-		Id:             row.ID,
-		CreateAt:       row.CreateAt,
-		UpdateAt:       row.UpdateAt,
-		DeleteAt:       row.DeleteAt,
+		ID:             model.UserID(row.ID),
+		CreatedAt:      model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:      model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:     model.OptionalTimeFromMillis(row.DeleteAt),
 		Revision:       row.Revision,
 		Username:       row.Username,
 		Email:          row.Email,
@@ -573,9 +574,9 @@ func (row userRow) model() *model.User {
 		LastName:       row.LastName,
 		Locale:         row.Locale,
 		Timezone:       row.Timezone,
-		LastLoginAt:    row.LastLoginAt,
-		LastActivityAt: row.LastActivityAt,
-		DisabledAt:     row.DisabledAt,
+		LastLoginAt:    model.OptionalTimeFromMillis(row.LastLoginAt),
+		LastActivityAt: model.OptionalTimeFromMillis(row.LastActivityAt),
+		DisabledAt:     model.OptionalTimeFromMillis(row.DisabledAt),
 	}
 }
 

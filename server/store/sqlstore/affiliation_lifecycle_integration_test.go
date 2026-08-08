@@ -45,11 +45,11 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		affiliation, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)})
+		affiliation, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)})
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.Id}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
+		attempt, err := persistence.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(), Status: model.AuditStatusAttempt, NodeId: "test-node"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,7 +65,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, enrollErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(model.GetMillis())})
+			_, enrollErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(model.GetMillis())})
 		}()
 		close(start)
 		wait.Wait()

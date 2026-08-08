@@ -19,7 +19,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
 	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start),
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
 	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.ID.String(), start+1)
@@ -27,13 +27,13 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	if len(active) != 1 || active[0].ID != saved.ID {
 		t.Fatalf("ListByAcademicUnit() = %#v", active)
 	}
-	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.Id, start+1)
+	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID.String(), start+1)
 	requireNoError(t, err)
 	if len(byUser) != 1 || byUser[0].AcademicUnitID != unit.ID {
 		t.Fatalf("ListActiveByUser() = %#v", byUser)
 	}
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start + 2),
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 2),
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) {
@@ -44,18 +44,18 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	if ended.EndsAt.Millis() != start+10 {
 		t.Fatalf("End() = %#v", ended)
 	}
-	history, err := ss.AcademicUnitMember().ListByUser(ctx, user.Id)
+	history, err := ss.AcademicUnitMember().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
 	if len(history) != 1 || !history[0].EndsAt.Valid {
 		t.Fatalf("ListByUser() = %#v", history)
 	}
 	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
-		AcademicUnitID: unit.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start + 10),
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10),
 	})
 	requireNoError(t, err)
 	auditedUser := saveUser(t, ctx, ss)
 	createAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
-	candidate := &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: model.UserID(auditedUser.Id), StartsAt: model.TimeFromMillis(start)}
+	candidate := &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: auditedUser.ID, StartsAt: model.TimeFromMillis(start)}
 	candidate.PrepareCreate(model.NewAcademicUnitMemberID(), model.NowUTC())
 	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: createAttempt.Id, AuditAt: model.GetMillis()})
 	requireNoError(t, err)

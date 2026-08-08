@@ -36,8 +36,8 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, credentials, raw := saveSession(t, ctx, ss, user.Id, 10)
-	if len(credentials) != 2 || session.UserId != user.Id {
+	session, credentials, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	if len(credentials) != 2 || session.UserId != user.ID.String() {
 		t.Fatalf("Save() session=%#v credentials=%#v", session, credentials)
 	}
 	credential, resolved, err := ss.SessionCredential().GetSessionByTokenHash(
@@ -49,17 +49,17 @@ func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
 	if credential.SessionId != session.Id || resolved.Id != session.Id {
 		t.Fatalf("resolved credential=%#v session=%#v", credential, resolved)
 	}
-	list, err := ss.Session().ListByUser(ctx, user.Id)
+	list, err := ss.Session().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
 	if len(list) != 1 || list[0].Id != session.Id {
 		t.Fatalf("ListByUser() = %#v", list)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.Id, session.CreateAt)
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), session.CreateAt)
 	requireNoError(t, err)
 	if len(active) != 1 || active[0].Id != session.Id {
 		t.Fatalf("ListActiveByUser(active) = %#v", active)
 	}
-	active, err = ss.Session().ListActiveByUser(ctx, user.Id, session.ExpiresAt)
+	active, err = ss.Session().ListActiveByUser(ctx, user.ID.String(), session.ExpiresAt)
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("ListActiveByUser(expired) = %#v", active)
@@ -69,8 +69,8 @@ func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
 func testSessionMaximumActive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	saveSession(t, ctx, ss, user.Id, 1)
-	session, credentials, _ := newSession(user.Id)
+	saveSession(t, ctx, ss, user.ID.String(), 1)
+	session, credentials, _ := newSession(user.ID.String())
 	_, _, err := ss.Session().Save(ctx, session, credentials, 1)
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) || conflict.Constraint != "sessions_maximum_per_user" {
@@ -81,7 +81,7 @@ func testSessionMaximumActive(t *testing.T, ss store.Store) {
 func testSessionUpdateActivity(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := session.LastActivityAt + 1_000
 	idle := at + int64(time.Hour/time.Millisecond)
 	requireNoError(t, ss.Session().UpdateActivity(ctx, session.Id, at, idle))
@@ -95,10 +95,10 @@ func testSessionUpdateActivity(t *testing.T, ss store.Store) {
 func testSessionRevoke(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.GetMillis() + 100
 	other := saveUser(t, ctx, ss)
-	_, err := ss.Session().Revoke(ctx, session.Id, other.Id, at, "invalid owner")
+	_, err := ss.Session().Revoke(ctx, session.Id, other.ID.String(), at, "invalid owner")
 	if !store.IsNotFound(err) {
 		t.Fatalf("cross-user Revoke() error = %v", err)
 	}
@@ -107,7 +107,7 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	if unrevoked.RevokedAt != 0 {
 		t.Fatalf("cross-user Revoke() changed session = %#v", unrevoked)
 	}
-	hashes, err := ss.Session().Revoke(ctx, session.Id, user.Id, at, "user logout")
+	hashes, err := ss.Session().Revoke(ctx, session.Id, user.ID.String(), at, "user logout")
 	requireNoError(t, err)
 	if len(hashes) != 2 {
 		t.Fatalf("Revoke() hashes = %#v", hashes)
@@ -121,7 +121,7 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	if credential.RevokedAt != at || got.RevokedAt != at || got.RevocationReason != "user logout" {
 		t.Fatalf("revoked credential=%#v session=%#v", credential, got)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.Id, at)
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), at)
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("revoked session remained active: %#v", active)
@@ -131,11 +131,11 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.GetMillis() + 100
 
 	if _, err := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
-		SessionID: session.Id, UserID: user.Id, RevokedAt: at,
+		SessionID: session.Id, UserID: user.ID.String(), RevokedAt: at,
 		Reason: "session revoked by administrator", AuditEventID: model.NewId(), AuditAt: at,
 	}); err == nil {
 		t.Fatal("RevokeWithAudit() succeeded without its audit attempt")
@@ -153,9 +153,9 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 		t.Fatalf("credential survived audit rollback: %#v", credential)
 	}
 
-	attempt := saveSessionAuditAttempt(t, ctx, ss, user.Id)
+	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	result, err := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
-		SessionID: session.Id, UserID: user.Id, RevokedAt: at,
+		SessionID: session.Id, UserID: user.ID.String(), RevokedAt: at,
 		Reason: "session revoked by administrator", AuditEventID: attempt.Id, AuditAt: at,
 	})
 	requireNoError(t, err)
@@ -179,12 +179,12 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	first, _, _ := saveSession(t, ctx, ss, user.Id, 10)
-	second, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	first, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
+	second, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	other := saveUser(t, ctx, ss)
-	otherSession, _, _ := saveSession(t, ctx, ss, other.Id, 10)
+	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
 	at := model.GetMillis() + 100
-	revoked, hashes, err := ss.Session().RevokeAllForUser(ctx, user.Id, at, "security reset")
+	revoked, hashes, err := ss.Session().RevokeAllForUser(ctx, user.ID.String(), at, "security reset")
 	requireNoError(t, err)
 	if len(hashes) != 4 {
 		t.Fatalf("RevokeAllForUser() hashes = %#v", hashes)
@@ -209,12 +209,12 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	first, _, firstRaw := saveSession(t, ctx, ss, user.Id, 10)
-	second, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	first, _, firstRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	second, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.GetMillis() + 100
 
 	if _, err := ss.Session().RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
-		UserID: user.Id, RevokedAt: at, Reason: "sessions revoked by administrator",
+		UserID: user.ID.String(), RevokedAt: at, Reason: "sessions revoked by administrator",
 		AuditEventID: model.NewId(), AuditAt: at,
 	}); err == nil {
 		t.Fatal("RevokeAllForUserWithAudit() succeeded without its audit attempt")
@@ -234,9 +234,9 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 		t.Fatalf("credential survived audit rollback: %#v", credential)
 	}
 
-	attempt := saveSessionAuditAttempt(t, ctx, ss, user.Id)
+	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	result, err := ss.Session().RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
-		UserID: user.Id, RevokedAt: at, Reason: "sessions revoked by administrator",
+		UserID: user.ID.String(), RevokedAt: at, Reason: "sessions revoked by administrator",
 		AuditEventID: attempt.Id, AuditAt: at,
 	})
 	requireNoError(t, err)
@@ -265,7 +265,7 @@ func saveSessionAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, 
 func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	now := session.CreateAt + 1_000
 	newAccessRaw := model.NewCredentialToken()
 	newRefreshRaw := model.NewCredentialToken()
@@ -333,7 +333,7 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	now := session.CreateAt + 1_000
 
 	type result struct {
@@ -388,7 +388,7 @@ func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	rotateAt := session.CreateAt + 1_000
 	revokeAt := rotateAt + 100
 	newAccessRaw := model.NewCredentialToken()
@@ -418,7 +418,7 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 		<-start
 		_, _, err := ss.Session().RevokeAllForUser(
 			ctx,
-			user.Id,
+			user.ID.String(),
 			revokeAt,
 			"security reset",
 		)
@@ -440,7 +440,7 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 	if got.RevokedAt != revokeAt || got.RevocationReason != "security reset" {
 		t.Fatalf("session after concurrent revocation = %#v", got)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.Id, rotateAt)
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), rotateAt)
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("sessions remained active after revoke-all: %#v", active)

@@ -98,7 +98,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	if _, err := persistence.RoleBinding().Save(
 		context.Background(),
 		&model.RoleBinding{
-			UserId: user.Id, RoleId: role.Id,
+			UserID: user.ID, RoleId: role.Id,
 			ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		},
 	); err != nil {
@@ -355,7 +355,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("login status = %d: %s", login.Code, login.Body.String())
 	}
 	first := decodeAuthenticationResponse(t, login)
-	if first.User == nil || first.User.Id != user.Id || first.Tokens.AccessToken == "" ||
+	if first.User == nil || first.User.Id != user.ID || first.Tokens.AccessToken == "" ||
 		first.Tokens.RefreshToken == "" {
 		t.Fatalf("login response = %#v", first)
 	}
@@ -474,20 +474,20 @@ func TestAuthenticationIntegration(t *testing.T) {
 		)
 	}
 	fourth := decodeAuthenticationResponse(t, loginBeforeDisable)
-	currentUser, err := persistence.User().Get(context.Background(), user.Id)
+	currentUser, err := persistence.User().Get(context.Background(), user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	disabledAt := model.GetMillis()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
-		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.Id},
+		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, Id: user.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeId: model.NewId(), Status: model.AuditStatusAttempt, NodeId: "authentication-integration",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), &store.UserDisabledStateChange{
-		ID: user.Id, ExpectedRevision: currentUser.Revision, Disabled: true,
+		ID: user.ID.String(), ExpectedRevision: currentUser.Revision, Disabled: true,
 		ChangedAt: disabledAt, RevocationReason: "authentication integration disabled account",
 		AuditEventID: auditAttempt.Id, AuditAt: disabledAt,
 	}); err != nil {
@@ -747,7 +747,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatalf("sessions = %#v", sessions)
 	}
 	for _, session := range sessions {
-		if session.UserId != user.Id || session.RevokedAt != 0 {
+		if session.UserId != user.ID || session.RevokedAt != 0 {
 			t.Fatalf("unsafe session listing = %#v", session)
 		}
 	}

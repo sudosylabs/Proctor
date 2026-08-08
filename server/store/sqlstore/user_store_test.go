@@ -11,11 +11,13 @@ import (
 
 func TestUserRowConversion(t *testing.T) {
 	user := &model.User{
-		Id: model.NewId(), CreateAt: 1, UpdateAt: 2, DeleteAt: 3,
+		ID: model.UserID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
+		UpdatedAt: model.TimeFromMillis(2), ArchivedAt: model.OptionalTimeFromMillis(3),
 		Username: "user", Email: "user@example.edu", EmailVerified: true,
 		DisplayName: "User", FirstName: "First", LastName: "Last",
-		Locale: "en", Timezone: "UTC", LastLoginAt: 4, LastActivityAt: 5,
-		DisabledAt: 6,
+		Locale: "en", Timezone: "UTC", LastLoginAt: model.OptionalTimeFromMillis(4),
+		LastActivityAt: model.OptionalTimeFromMillis(5),
+		DisabledAt:     model.OptionalTimeFromMillis(6),
 	}
 	row := newUserRow(user)
 	if got := row.model(); *got != *user {

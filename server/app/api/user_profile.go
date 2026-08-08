@@ -115,7 +115,23 @@ func userProfileResponseFromModel(user *model.User) userProfileResponse {
 	if user == nil {
 		return userProfileResponse{}
 	}
-	return userProfileResponse{ID: user.Id, CreateAt: user.CreateAt, UpdateAt: user.UpdateAt, DeleteAt: user.DeleteAt, Username: user.Username, Email: user.Email, EmailVerified: user.EmailVerified, DisplayName: user.DisplayName, FirstName: user.FirstName, LastName: user.LastName, Locale: user.Locale, Timezone: user.Timezone, LastLoginAt: user.LastLoginAt, LastActivityAt: user.LastActivityAt, DisabledAt: user.DisabledAt}
+	return userProfileResponse{
+		ID:             user.ID.String(),
+		CreateAt:       model.MillisFromTime(user.CreatedAt),
+		UpdateAt:       model.MillisFromTime(user.UpdatedAt),
+		DeleteAt:       user.ArchivedAt.Millis(),
+		Username:       user.Username,
+		Email:          user.Email,
+		EmailVerified:  user.EmailVerified,
+		DisplayName:    user.DisplayName,
+		FirstName:      user.FirstName,
+		LastName:       user.LastName,
+		Locale:         user.Locale,
+		Timezone:       user.Timezone,
+		LastLoginAt:    user.LastLoginAt.Millis(),
+		LastActivityAt: user.LastActivityAt.Millis(),
+		DisabledAt:     user.DisabledAt.Millis(),
+	}
 }
 
 func userProfileResponses(users []*model.User) []userProfileResponse {

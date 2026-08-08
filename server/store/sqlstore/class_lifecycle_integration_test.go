@@ -45,7 +45,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)}); err != nil {
+	if _, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)}); err != nil {
 		t.Fatal(err)
 	}
 	role, err := persistence.Role().Save(ctx, &model.Role{Name: "class-reader", DisplayName: "Class Reader", Permissions: []string{string(model.ActionClassView)}})
@@ -70,7 +70,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, dependentErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(baseStart + int64(iteration*10))})
+				_, dependentErr = persistence.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(baseStart + int64(iteration*10))})
 			}()
 			close(start)
 			wait.Wait()
@@ -93,7 +93,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				_, dependentErr = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeClass, ScopeId: class.ID.String(), StartAt: model.GetMillis()})
+				_, dependentErr = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: user.ID, RoleId: role.Id, ScopeType: model.RoleScopeClass, ScopeId: class.ID.String(), StartAt: model.GetMillis()})
 			}()
 			close(start)
 			wait.Wait()

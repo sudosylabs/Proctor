@@ -61,13 +61,13 @@ func (s SqlExternalIdentityStore) Save(
 	if identity == nil {
 		return nil, store.NewErrInvalidInput("external_identity", "value", nil)
 	}
-	if identity.Id != "" {
-		return nil, store.NewErrInvalidInput("external_identity", "id", identity.Id)
+	if !identity.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("external_identity", "id", identity.ID.String())
 	}
 	candidate := *identity
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewExternalIdentityID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	if err := insertExternalIdentity(ctx, s.GetMaster(), &candidate); err != nil {
 		return nil, err
@@ -128,12 +128,13 @@ func (s SqlExternalIdentityStore) ResolveOrProvision(
 	autoProvision bool,
 	provisionAudit *model.AuditEvent,
 ) (*store.ExternalIdentityResolution, error) {
-	if identity == nil || identity.Id != "" ||
+	if identity == nil || !identity.ID.IsZero() ||
 		identity.Provider == "" || identity.Subject == "" ||
-		identity.LastSeenAt <= 0 {
+		!identity.LastSeenAt.Valid {
 		return nil, store.NewErrInvalidInput("external_identity", "resolution", nil)
 	}
 	provider := strings.ToLower(strings.TrimSpace(identity.Provider))
+	lastSeenAt := identity.LastSeenAt.Millis()
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin external identity resolution: %w", err)
@@ -153,7 +154,7 @@ func (s SqlExternalIdentityStore) ResolveOrProvision(
 		tx,
 		provider,
 		identity.Subject,
-		identity.LastSeenAt,
+		lastSeenAt,
 	)
 	if err == nil {
 		if err := tx.Commit(); err != nil {
@@ -170,22 +171,26 @@ func (s SqlExternalIdentityStore) ResolveOrProvision(
 	if !autoProvision {
 		return nil, store.NewErrNotFound("external_identity", provider)
 	}
-	if user == nil || user.Id != "" || provisionAudit == nil ||
+	if user == nil || !user.ID.IsZero() || provisionAudit == nil ||
 		provisionAudit.Id != "" {
 		return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
 	}
 
+	at := model.TimeFromMillis(lastSeenAt)
+	if at.IsZero() {
+		at = model.NowUTC()
+	}
 	userCandidate := *user
-	userCandidate.PreSave()
-	if appErr := userCandidate.IsValid(); appErr != nil {
-		return nil, appErr
+	userCandidate.PrepareCreate(model.NewUserID(), at)
+	if err := userCandidate.Validate(); err != nil {
+		return nil, err
 	}
 	identityCandidate := *identity
 	identityCandidate.Provider = provider
-	identityCandidate.UserId = userCandidate.Id
-	identityCandidate.PreSave()
-	if appErr := identityCandidate.IsValid(); appErr != nil {
-		return nil, appErr
+	identityCandidate.UserID = userCandidate.ID
+	identityCandidate.PrepareCreate(model.NewExternalIdentityID(), at)
+	if err := identityCandidate.Validate(); err != nil {
+		return nil, err
 	}
 	if err := insertUser(ctx, tx, &userCandidate); err != nil {
 		return nil, err
@@ -194,10 +199,10 @@ func (s SqlExternalIdentityStore) ResolveOrProvision(
 		return nil, err
 	}
 	auditCandidate := provisionAudit.Clone()
-	auditCandidate.ActorId = userCandidate.Id
+	auditCandidate.ActorId = userCandidate.ID.String()
 	auditCandidate.Resource = model.Resource{
 		Type: model.ResourceUser,
-		Id:   userCandidate.Id,
+		Id:   userCandidate.ID.String(),
 	}
 	if _, err := insertAuditEvent(ctx, tx, auditCandidate); err != nil {
 		return nil, err
@@ -278,7 +283,7 @@ func insertExternalIdentity(
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save external identity: %w",
-			translateError("external_identity", identity.Id, err),
+			translateError("external_identity", identity.ID.String(), err),
 		)
 	}
 	return nil
@@ -298,18 +303,27 @@ func (s SqlExternalIdentityStore) get(
 
 func newExternalIdentityRow(identity *model.ExternalIdentity) externalIdentityRow {
 	return externalIdentityRow{
-		ID: identity.Id, CreateAt: identity.CreateAt, UpdateAt: identity.UpdateAt,
-		DeleteAt: identity.DeleteAt, UserID: identity.UserId,
-		Provider: identity.Provider, Subject: identity.Subject,
-		LastSeenAt: identity.LastSeenAt,
+		ID:         identity.ID.String(),
+		CreateAt:   model.MillisFromTime(identity.CreatedAt),
+		UpdateAt:   model.MillisFromTime(identity.UpdatedAt),
+		DeleteAt:   identity.ArchivedAt.Millis(),
+		UserID:     identity.UserID.String(),
+		Provider:   identity.Provider,
+		Subject:    identity.Subject,
+		LastSeenAt: identity.LastSeenAt.Millis(),
 	}
 }
 
 func (row externalIdentityRow) model() *model.ExternalIdentity {
 	return &model.ExternalIdentity{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt,
-		DeleteAt: row.DeleteAt, UserId: row.UserID, Provider: row.Provider,
-		Subject: row.Subject, LastSeenAt: row.LastSeenAt,
+		ID:         model.ExternalIdentityID(row.ID),
+		CreatedAt:  model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:  model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		UserID:     model.UserID(row.UserID),
+		Provider:   row.Provider,
+		Subject:    row.Subject,
+		LastSeenAt: model.OptionalTimeFromMillis(row.LastSeenAt),
 	}
 }
 

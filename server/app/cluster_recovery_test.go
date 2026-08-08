@@ -46,7 +46,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 	// Commit revocation on node A only; intentionally skip peer fan-out.
 	sessionID := ""
 	for id, session := range storeFake.sessions {
-		if session.UserId == user.Id {
+		if session.UserId == user.ID.String() {
 			sessionID = id
 			break
 		}
@@ -54,7 +54,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 	if sessionID == "" {
 		t.Fatal("session not found")
 	}
-	hashes, err := storeFake.Session().Revoke(ctx, sessionID, user.Id, time.Now().UnixMilli(), "test")
+	hashes, err := storeFake.Session().Revoke(ctx, sessionID, user.ID.String(), time.Now().UnixMilli(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -137,21 +137,22 @@ func (s authenticationUserStore) SaveWithPassword(
 	credential *model.PasswordCredential,
 ) (*model.User, *model.PasswordCredential, error) {
 	cloned := *user
-	if cloned.Id == "" {
-		cloned.Id = model.NewId()
+	if cloned.ID.IsZero() {
+		cloned.ID = model.NewUserID()
 	}
 	now := time.Now().UnixMilli()
-	cloned.CreateAt = now
-	cloned.UpdateAt = now
-	s.root.users[cloned.Id] = &cloned
+	cloned.CreatedAt = model.TimeFromMillis(now)
+	cloned.UpdatedAt = model.TimeFromMillis(now)
+	s.root.users[cloned.ID.String()] = &cloned
 	s.root.usersByUsername[strings.ToLower(cloned.Username)] = &cloned
 	s.root.usersByEmail[strings.ToLower(cloned.Email)] = &cloned
 	pass := *credential
-	pass.Id = model.NewId()
-	pass.UserId = cloned.Id
-	pass.CreateAt = now
-	pass.UpdateAt = now
-	s.root.passwords[cloned.Id] = &pass
+	pass.ID = model.NewPasswordCredentialID()
+	pass.UserID = cloned.ID
+	pass.CreatedAt = model.TimeFromMillis(now)
+	pass.UpdatedAt = model.TimeFromMillis(now)
+	pass.PasswordChangedAt = model.TimeFromMillis(now)
+	s.root.passwords[cloned.ID.String()] = &pass
 	return &cloned, &pass, nil
 }
 
@@ -215,7 +216,7 @@ func (s authenticationPasswordStore) GetByUser(_ context.Context, userID string)
 
 func (s authenticationPasswordStore) Update(_ context.Context, credential *model.PasswordCredential) (*model.PasswordCredential, error) {
 	cloned := *credential
-	s.root.passwords[credential.UserId] = &cloned
+	s.root.passwords[credential.UserID.String()] = &cloned
 	return &cloned, nil
 }
 
@@ -457,7 +458,7 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if principal.UserId != user.Id || principal.SessionId != result.Session.Id {
+	if principal.UserId != user.ID.String() || principal.SessionId != result.Session.Id {
 		t.Fatalf("principal = %#v", principal)
 	}
 	if principal.CredentialType != model.CredentialSessionAccess {

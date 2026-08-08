@@ -60,15 +60,15 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	}
 	if !winner.State.IsValid() ||
 		winner.Institution.ID.String() != winner.State.InstitutionId ||
-		winner.Administrator.Id != winner.State.AdministratorUserId ||
+		winner.Administrator.ID.String() != winner.State.AdministratorUserId ||
 		winner.Role.Name != model.SystemAdministratorRoleName ||
 		!winner.Role.BuiltIn ||
 		winner.RoleBinding.ScopeType != model.RoleScopeInstitution ||
 		winner.RoleBinding.ScopeId != winner.Institution.ID.String() ||
 		winner.Institution.IsArchived() ||
-		winner.Administrator.DeleteAt != 0 ||
+		winner.Administrator.ArchivedAt.Valid ||
 		winner.Administrator.EmailVerified ||
-		winner.Administrator.DisabledAt != 0 ||
+		winner.Administrator.DisabledAt.Valid ||
 		winner.Role.DeleteAt != 0 ||
 		winner.RoleBinding.DeleteAt != 0 ||
 		winner.RoleBinding.EndAt != 0 {
@@ -79,7 +79,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if *state != *winner.State {
 		t.Fatalf("Get() = %#v, want %#v", state, winner.State)
 	}
-	credential, err := ss.PasswordCredential().GetByUser(ctx, winner.Administrator.Id)
+	credential, err := ss.PasswordCredential().GetByUser(ctx, winner.Administrator.ID.String())
 	requireNoError(t, err)
 	if credential.PasswordHash == "" {
 		t.Fatal("bootstrap password hash was not persisted")
@@ -90,7 +90,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if len(events) != 1 ||
 		events[0].Status != model.AuditStatusSuccess ||
-		events[0].ActorId != winner.Administrator.Id {
+		events[0].ActorId != winner.Administrator.ID.String() {
 		t.Fatalf("bootstrap audit events = %#v", events)
 	}
 	if _, err := ss.Installation().Bootstrap(ctx, testInstallationBootstrap(99)); !store.IsConflict(err) {
@@ -105,12 +105,11 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 	institution := &model.Institution{
 		Name: "northbridge", DisplayName: "Northbridge University",
 	}
-	user := &model.User{
-		Id: model.NewId(), CreateAt: 1, UpdateAt: 1, DeleteAt: 1,
+	user := &model.User{ID: model.UserID(model.NewId()), CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 		Username:      fmt.Sprintf("administrator-%d", index),
 		Email:         fmt.Sprintf("administrator-%d@example.test", index),
 		DisplayName:   "Administrator",
-		EmailVerified: true, DisabledAt: 1,
+		EmailVerified: true, DisabledAt: model.OptionalTimeFromMillis(1),
 	}
 	parameters, appErr := model.EncodeAuditData(map[string]any{"attempt": index})
 	if appErr != nil {

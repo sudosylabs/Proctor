@@ -81,7 +81,8 @@ func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 			Name: "northbridge", DisplayName: "Northbridge",
 		},
 		Administrator: &model.User{
-			Id: adminID, CreateAt: 100, UpdateAt: 100, Username: "admin", Email: "admin@example.com",
+			ID: model.UserID(adminID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+			Username: "admin", Email: "admin@example.com",
 			Locale: "en", Timezone: "UTC",
 		},
 		Role: &model.Role{
@@ -103,7 +104,7 @@ func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	if decoded.State == nil || decoded.State.InstitutionId != institutionID ||
-		decoded.Administrator == nil || decoded.Administrator.Id != adminID ||
+		decoded.Administrator == nil || decoded.Administrator.ID.String() != adminID ||
 		decoded.Role == nil || decoded.Role.Name != model.SystemAdministratorRoleName || !decoded.Role.BuiltIn ||
 		decoded.RoleBinding == nil || decoded.RoleBinding.ScopeType != model.RoleScopeInstitution {
 		t.Fatalf("decoded historical envelope = %#v from %s", decoded, encoded)

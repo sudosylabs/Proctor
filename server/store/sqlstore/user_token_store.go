@@ -68,16 +68,21 @@ func (s SqlUserTokenStore) Issue(
 	if token == nil || auditEvent == nil {
 		return nil, store.NewErrInvalidInput("user_token", "issue", nil)
 	}
-	if token.Id != "" {
-		return nil, store.NewErrInvalidInput("user_token", "id", token.Id)
+	if !token.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("user_token", "id", token.ID.String())
 	}
 	candidate := *token
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	// Preserve caller-supplied CreatedAt when set so expiry windows stay exact.
+	at := model.NowUTC()
+	if !candidate.CreatedAt.IsZero() {
+		at = model.TimeUTC(candidate.CreatedAt)
+	}
+	candidate.PrepareCreate(model.NewUserTokenID(), at)
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	if auditEvent.Resource.Type != model.ResourceUser ||
-		auditEvent.Resource.Id != candidate.UserId ||
+		auditEvent.Resource.Id != candidate.UserID.String() ||
 		auditEvent.Status != model.AuditStatusSuccess {
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
 	}
@@ -87,8 +92,9 @@ func (s SqlUserTokenStore) Issue(
 		return nil, fmt.Errorf("begin user token issue: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	createMillis := model.MillisFromTime(candidate.CreatedAt)
 	if err := lockUserTokenPurpose(
-		ctx, tx, candidate.UserId, candidate.Purpose,
+		ctx, tx, candidate.UserID.String(), candidate.Purpose,
 	); err != nil {
 		return nil, err
 	}
@@ -97,9 +103,9 @@ func (s SqlUserTokenStore) Issue(
 		   SET update_at = ?, delete_at = ?
 		 WHERE user_id = ? AND purpose = ?
 		   AND delete_at = 0 AND consumed_at = 0`,
-		candidate.CreateAt,
-		candidate.CreateAt,
-		candidate.UserId,
+		createMillis,
+		createMillis,
+		candidate.UserID.String(),
 		candidate.Purpose,
 	); err != nil {
 		return nil, fmt.Errorf("invalidate prior user tokens: %w", err)
@@ -185,7 +191,7 @@ func (s SqlUserTokenStore) ConsumeEmailVerification(
 	token.ConsumedAt = now
 	token.UpdateAt = now
 	verified := user.model()
-	verified.UpdateAt = now
+	verified.UpdatedAt = model.TimeFromMillis(now)
 	verified.EmailVerified = true
 	verified.Revision++
 	return &store.EmailVerificationResult{
@@ -296,7 +302,7 @@ func insertUserToken(
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save user token: %w",
-			translateError("user_token", token.Id, err),
+			translateError("user_token", token.ID.String(), err),
 		)
 	}
 	return nil
@@ -406,19 +412,31 @@ func tokenAuditEvent(
 
 func newUserTokenRow(token *model.UserToken) userTokenRow {
 	return userTokenRow{
-		ID: token.Id, CreateAt: token.CreateAt, UpdateAt: token.UpdateAt,
-		DeleteAt: token.DeleteAt, UserID: token.UserId, Purpose: token.Purpose,
-		TokenHash: token.TokenHash, Target: token.Target,
-		ExpiresAt: token.ExpiresAt, ConsumedAt: token.ConsumedAt,
+		ID:         token.ID.String(),
+		CreateAt:   model.MillisFromTime(token.CreatedAt),
+		UpdateAt:   model.MillisFromTime(token.UpdatedAt),
+		DeleteAt:   token.ArchivedAt.Millis(),
+		UserID:     token.UserID.String(),
+		Purpose:    token.Purpose,
+		TokenHash:  token.TokenHash,
+		Target:     token.Target,
+		ExpiresAt:  model.MillisFromTime(token.ExpiresAt),
+		ConsumedAt: token.ConsumedAt.Millis(),
 	}
 }
 
 func (row userTokenRow) model() *model.UserToken {
 	return &model.UserToken{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt,
-		DeleteAt: row.DeleteAt, UserId: row.UserID, Purpose: row.Purpose,
-		TokenHash: row.TokenHash, Target: row.Target,
-		ExpiresAt: row.ExpiresAt, ConsumedAt: row.ConsumedAt,
+		ID:         model.UserTokenID(row.ID),
+		CreatedAt:  model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:  model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt: model.OptionalTimeFromMillis(row.DeleteAt),
+		UserID:     model.UserID(row.UserID),
+		Purpose:    row.Purpose,
+		TokenHash:  row.TokenHash,
+		Target:     row.Target,
+		ExpiresAt:  model.TimeFromMillis(row.ExpiresAt),
+		ConsumedAt: model.OptionalTimeFromMillis(row.ConsumedAt),
 	}
 }
 

@@ -60,13 +60,13 @@ func (s SqlPasswordCredentialStore) Save(
 	if credential == nil {
 		return nil, store.NewErrInvalidInput("password_credential", "value", nil)
 	}
-	if credential.Id != "" {
-		return nil, store.NewErrInvalidInput("password_credential", "id", credential.Id)
+	if !credential.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("password_credential", "id", credential.ID.String())
 	}
 	candidate := *credential
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareCreate(model.NewPasswordCredentialID(), model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 
 	if err := insertPasswordCredential(ctx, s.GetMaster(), &candidate); err != nil {
@@ -91,7 +91,7 @@ func insertPasswordCredential(
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save password credential: %w",
-			translateError("password_credential", credential.Id, err),
+			translateError("password_credential", credential.ID.String(), err),
 		)
 	}
 	return nil
@@ -120,9 +120,9 @@ func (s SqlPasswordCredentialStore) Update(
 		return nil, store.NewErrInvalidInput("password_credential", "value", nil)
 	}
 	candidate := *credential
-	candidate.PreUpdate()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	candidate.PrepareUpdate(model.NowUTC())
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 
 	row := newPasswordCredentialRow(&candidate)
@@ -135,10 +135,10 @@ func (s SqlPasswordCredentialStore) Update(
 	if err != nil {
 		return nil, fmt.Errorf(
 			"update password credential: %w",
-			translateError("password_credential", candidate.Id, err),
+			translateError("password_credential", candidate.ID.String(), err),
 		)
 	}
-	if err := requireAffected(result, "password_credential", candidate.Id); err != nil {
+	if err := requireAffected(result, "password_credential", candidate.ID.String()); err != nil {
 		return nil, err
 	}
 	return &candidate, nil
@@ -146,25 +146,25 @@ func (s SqlPasswordCredentialStore) Update(
 
 func newPasswordCredentialRow(credential *model.PasswordCredential) passwordCredentialRow {
 	return passwordCredentialRow{
-		ID:                credential.Id,
-		CreateAt:          credential.CreateAt,
-		UpdateAt:          credential.UpdateAt,
-		DeleteAt:          credential.DeleteAt,
-		UserID:            credential.UserId,
+		ID:                credential.ID.String(),
+		CreateAt:          model.MillisFromTime(credential.CreatedAt),
+		UpdateAt:          model.MillisFromTime(credential.UpdatedAt),
+		DeleteAt:          credential.ArchivedAt.Millis(),
+		UserID:            credential.UserID.String(),
 		PasswordHash:      credential.PasswordHash,
-		PasswordChangedAt: credential.PasswordChangedAt,
+		PasswordChangedAt: model.MillisFromTime(credential.PasswordChangedAt),
 	}
 }
 
 func (row passwordCredentialRow) model() *model.PasswordCredential {
 	return &model.PasswordCredential{
-		Id:                row.ID,
-		CreateAt:          row.CreateAt,
-		UpdateAt:          row.UpdateAt,
-		DeleteAt:          row.DeleteAt,
-		UserId:            row.UserID,
+		ID:                model.PasswordCredentialID(row.ID),
+		CreatedAt:         model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:         model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:        model.OptionalTimeFromMillis(row.DeleteAt),
+		UserID:            model.UserID(row.UserID),
 		PasswordHash:      row.PasswordHash,
-		PasswordChangedAt: row.PasswordChangedAt,
+		PasswordChangedAt: model.TimeFromMillis(row.PasswordChangedAt),
 	}
 }
 

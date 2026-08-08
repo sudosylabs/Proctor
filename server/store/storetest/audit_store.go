@@ -20,7 +20,7 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	user := saveUser(t, ctx, ss)
 	event, err := ss.Audit().Save(ctx, &model.AuditEvent{
-		ActorId: user.Id, Action: string(model.ActionRoleManage),
+		ActorId: user.ID.String(), Action: string(model.ActionRoleManage),
 		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeId: "test-node",
@@ -47,19 +47,19 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	}
 	time.Sleep(2 * time.Millisecond)
 	second, err := ss.Audit().Save(ctx, &model.AuditEvent{
-		ActorId: user.Id, Action: string(model.ActionAuditView),
+		ActorId: user.ID.String(), Action: string(model.ActionAuditView),
 		Resource:  model.Resource{Type: model.ResourceInstitution, Id: institution.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		Status: model.AuditStatusSuccess, NodeId: "test-node",
 	})
 	requireNoError(t, err)
-	list, err := ss.Audit().List(ctx, store.AuditListOptions{ActorId: user.Id, Limit: 1})
+	list, err := ss.Audit().List(ctx, store.AuditListOptions{ActorId: user.ID.String(), Limit: 1})
 	requireNoError(t, err)
 	if len(list) != 1 || list[0].Id != second.Id {
 		t.Fatalf("List() = %#v", list)
 	}
 	next, err := ss.Audit().List(ctx, store.AuditListOptions{
-		ActorId: user.Id, Limit: 10,
+		ActorId: user.ID.String(), Limit: 10,
 		BeforeTime: list[0].CreateAt, BeforeId: list[0].Id,
 	})
 	requireNoError(t, err)

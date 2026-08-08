@@ -6,6 +6,7 @@ package sqlstore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -138,24 +139,25 @@ func prepareInstallationBootstrap(
 		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
 	administrator := *input.Administrator
-	administrator.Id = ""
-	administrator.CreateAt = 0
-	administrator.UpdateAt = 0
-	administrator.DeleteAt = 0
+	administrator.ID = ""
+	administrator.CreatedAt = time.Time{}
+	administrator.UpdatedAt = time.Time{}
+	administrator.ArchivedAt = model.OptionalTime{}
 	administrator.EmailVerified = false
-	administrator.LastLoginAt = 0
-	administrator.LastActivityAt = 0
-	administrator.DisabledAt = 0
-	administrator.PreSave()
-	if appErr := administrator.IsValid(); appErr != nil {
-		return nil, appErr
+	administrator.LastLoginAt = model.OptionalTime{}
+	administrator.LastActivityAt = model.OptionalTime{}
+	administrator.DisabledAt = model.OptionalTime{}
+	at := model.NowUTC()
+	administrator.PrepareCreate(model.NewUserID(), at)
+	if err := administrator.Validate(); err != nil {
+		return nil, err
 	}
 	credential := &model.PasswordCredential{
-		UserId: administrator.Id, PasswordHash: input.PasswordHash,
+		UserID: administrator.ID, PasswordHash: input.PasswordHash,
 	}
-	credential.PreSave()
-	if appErr := credential.IsValid(); appErr != nil {
-		return nil, appErr
+	credential.PrepareCreate(model.NewPasswordCredentialID(), at)
+	if err := credential.Validate(); err != nil {
+		return nil, err
 	}
 	role := input.Role.Clone()
 	role.Id = ""
@@ -175,7 +177,7 @@ func prepareInstallationBootstrap(
 	binding.UpdateAt = 0
 	binding.DeleteAt = 0
 	binding.EndAt = 0
-	binding.UserId = administrator.Id
+	binding.UserId = administrator.ID.String()
 	binding.RoleId = role.Id
 	binding.ScopeType = model.RoleScopeInstitution
 	binding.ScopeId = institution.ID.String()
@@ -187,7 +189,7 @@ func prepareInstallationBootstrap(
 	event.Id = ""
 	event.CreateAt = 0
 	event.UpdateAt = 0
-	event.ActorId = administrator.Id
+	event.ActorId = administrator.ID.String()
 	event.Resource = model.Resource{
 		Type: model.ResourceInstitution,
 		Id:   institution.ID.String(),
@@ -212,7 +214,7 @@ func prepareInstallationBootstrap(
 	state := &model.InstallationState{
 		InitializedAt:       event.CreateAt,
 		InstitutionId:       institution.ID.String(),
-		AdministratorUserId: administrator.Id,
+		AdministratorUserId: administrator.ID.String(),
 	}
 	return &preparedInstallationBootstrap{
 		InstallationBootstrapResult: &model.InstallationBootstrapResult{

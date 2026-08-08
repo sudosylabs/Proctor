@@ -43,15 +43,15 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	first := saveUser(t, ctx, ss)
 	firstBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: first.Id, RoleId: role.Id,
+		UserId: first.ID.String(), RoleId: role.Id,
 		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		StartAt: model.GetMillis() - 100,
 	})
 	requireNoError(t, err)
 	at := model.GetMillis()
-	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.Id)
+	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
 	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: first.Id, ExpectedRevision: first.Revision, Disabled: true,
+		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: attempt.Id, AuditAt: at,
 	})
@@ -62,13 +62,13 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	}
 	second := saveUser(t, ctx, ss)
 	secondBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: second.Id, RoleId: role.Id,
+		UserId: second.ID.String(), RoleId: role.Id,
 		ScopeType: model.RoleScopeInstitution, ScopeId: institution.ID.String(),
 		StartAt: at - 100,
 	})
 	requireNoError(t, err)
 	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: first.Id, ExpectedRevision: first.Revision, Disabled: true,
+		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: attempt.Id, AuditAt: at,
 	})
@@ -97,32 +97,32 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		Query: "Searchable Alpha", Limit: 10,
 	})
 	requireNoError(t, err)
-	if len(found) != 1 || found[0].Id != first.Id {
+	if len(found) != 1 || found[0].ID != first.ID {
 		t.Fatalf("List(search) = %#v", found)
 	}
 	page, err := ss.User().List(ctx, store.UserListOptions{
-		AfterUsername: first.Username, AfterId: first.Id, Limit: 10,
+		AfterUsername: first.Username, AfterId: first.ID.String(), Limit: 10,
 	})
 	requireNoError(t, err)
-	if len(page) == 0 || page[0].Id != second.Id {
+	if len(page) == 0 || page[0].ID != second.ID {
 		t.Fatalf("List(after) = %#v", page)
 	}
 	at := model.GetMillis() + 100
-	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.Id)
+	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
 	result, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: first.Id, ExpectedRevision: first.Revision, Disabled: true,
+		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: attempt.Id, AuditAt: at,
 	})
 	requireNoError(t, err)
 	disabled := result.User
-	if disabled.DisabledAt != at || disabled.Revision != first.Revision+1 {
+	if disabled.DisabledAt.Millis() != at || disabled.Revision != first.Revision+1 {
 		t.Fatalf("SetDisabledWithAudit() = %#v", result)
 	}
 	active, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
 	requireNoError(t, err)
 	for _, user := range active {
-		if user.Id == first.Id {
+		if user.ID == first.ID {
 			t.Fatalf("disabled user returned in active list: %#v", active)
 		}
 	}
@@ -132,7 +132,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	seen := false
 	for _, user := range all {
-		seen = seen || user.Id == first.Id
+		seen = seen || user.ID == first.ID
 	}
 	if !seen {
 		t.Fatalf("disabled user missing from inclusive list: %#v", all)
@@ -142,13 +142,13 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	first, _, firstRaw := saveSession(t, ctx, ss, user.Id, 10)
-	second, _, _ := saveSession(t, ctx, ss, user.Id, 10)
+	first, _, firstRaw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	second, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.GetMillis() + 100
 
-	oversizedAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	oversizedAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: user.Id, ExpectedRevision: user.Revision, Disabled: true,
+		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt:        at,
 		RevocationReason: strings.Repeat("x", model.SessionRevocationMaxRunes+1),
 		AuditEventID:     oversizedAttempt.Id,
@@ -170,15 +170,15 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	// A missing audit attempt must roll back both the user update and every
 	// session/credential revocation performed before completion was attempted.
 	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: user.Id, ExpectedRevision: user.Revision, Disabled: true,
+		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: model.NewId(), AuditAt: at,
 	}); err == nil {
 		t.Fatal("SetDisabledWithAudit() succeeded without its audit attempt")
 	}
-	unchanged, err := ss.User().Get(ctx, user.Id)
+	unchanged, err := ss.User().Get(ctx, user.ID.String())
 	requireNoError(t, err)
-	if unchanged.DisabledAt != 0 || unchanged.Revision != user.Revision {
+	if unchanged.DisabledAt.Valid || unchanged.Revision != user.Revision {
 		t.Fatalf("user state survived audit rollback: %#v", unchanged)
 	}
 	unrevoked, err := ss.Session().Get(ctx, first.Id)
@@ -193,14 +193,14 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		t.Fatalf("session revocation survived audit rollback: session=%#v credential=%#v", unrevoked, credential)
 	}
 
-	disableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	disableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	disabled, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: user.Id, ExpectedRevision: user.Revision, Disabled: true,
+		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: disableAttempt.Id, AuditAt: at,
 	})
 	requireNoError(t, err)
-	if disabled.User.DisabledAt != at || disabled.User.Revision != user.Revision+1 ||
+	if disabled.User.DisabledAt.Millis() != at || disabled.User.Revision != user.Revision+1 ||
 		len(disabled.RevokedSessions) != 2 || len(disabled.RevokedTokenHashes) != 4 {
 		t.Fatalf("SetDisabledWithAudit() = %#v", disabled)
 	}
@@ -217,9 +217,9 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		t.Fatalf("disable audit = %#v", completed)
 	}
 
-	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: user.Id, ExpectedRevision: user.Revision, Disabled: false,
+		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: false,
 		ChangedAt: at + 1, AuditEventID: staleAttempt.Id, AuditAt: at + 1,
 	}); !store.IsConflict(err) {
 		t.Fatalf("stale SetDisabledWithAudit() error = %v", err)
@@ -230,13 +230,13 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 		t.Fatalf("stale state change completed its audit: %#v", staleAudit)
 	}
 
-	enableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.Id)
+	enableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	enabled, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID: user.Id, ExpectedRevision: disabled.User.Revision, Disabled: false,
+		ID: user.ID.String(), ExpectedRevision: disabled.User.Revision, Disabled: false,
 		ChangedAt: at + 2, AuditEventID: enableAttempt.Id, AuditAt: at + 2,
 	})
 	requireNoError(t, err)
-	if enabled.User.DisabledAt != 0 || enabled.User.Revision != disabled.User.Revision+1 ||
+	if enabled.User.DisabledAt.Valid || enabled.User.Revision != disabled.User.Revision+1 ||
 		enabled.RevokedSessions == nil || len(enabled.RevokedSessions) != 0 ||
 		enabled.RevokedTokenHashes == nil || len(enabled.RevokedTokenHashes) != 0 {
 		t.Fatalf("enable result = %#v", enabled)
@@ -253,10 +253,10 @@ func testUserStoreSaveAndGet(t *testing.T, ss store.Store) {
 	input := newUser()
 	saved, err := ss.User().Save(ctx, input)
 	requireNoError(t, err)
-	if !model.IsValidId(saved.Id) || saved.Revision != 1 || input.Id != "" {
+	if !saved.ID.IsValid() || saved.Revision != 1 || !input.ID.IsZero() {
 		t.Fatalf("Save() saved=%#v input=%#v", saved, input)
 	}
-	got, err := ss.User().Get(ctx, saved.Id)
+	got, err := ss.User().Get(ctx, saved.ID.String())
 	requireNoError(t, err)
 	if *got != *saved {
 		t.Fatalf("Get() = %#v, want %#v", got, saved)
@@ -279,7 +279,7 @@ func testUserStoreNormalizedLookups(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	byEmail, err := ss.User().GetByEmail(ctx, "  "+user.Email+"  ")
 	requireNoError(t, err)
-	if byUsername.Id != user.Id || byEmail.Id != user.Id {
+	if byUsername.ID != user.ID || byEmail.ID != user.ID {
 		t.Fatalf("lookups returned username=%#v email=%#v", byUsername, byEmail)
 	}
 	if _, err := ss.User().GetByEmail(ctx, "missing@example.edu"); !store.IsNotFound(err) {
@@ -304,10 +304,10 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	activityAt := model.GetMillis() + 100
-	requireNoError(t, ss.User().UpdateLastLogin(ctx, updated.Id, activityAt))
+	requireNoError(t, ss.User().UpdateLastLogin(ctx, updated.ID.String(), activityAt))
 	auditedCandidate := *updated
 	auditedCandidate.DisplayName = "Audited User"
-	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.Id)
+	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
 	audited, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
 		User: &auditedCandidate, ExpectedRevision: updated.Revision,
 		AuditEventID: auditAttempt.Id, AuditAt: model.GetMillis(),
@@ -330,14 +330,14 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	}); err == nil {
 		t.Fatal("UpdateProfileWithAudit() succeeded without its audit attempt")
 	}
-	persisted, err := ss.User().Get(ctx, audited.Id)
+	persisted, err := ss.User().Get(ctx, audited.ID.String())
 	requireNoError(t, err)
 	if persisted.DisplayName != audited.DisplayName || persisted.Revision != audited.Revision ||
-		persisted.LastLoginAt != activityAt || persisted.LastActivityAt != activityAt || persisted.UpdateAt < activityAt {
+		persisted.LastLoginAt.Millis() != activityAt || persisted.LastActivityAt.Millis() != activityAt || model.MillisFromTime(persisted.UpdatedAt) < activityAt {
 		t.Fatalf("profile update survived audit rollback: %#v", persisted)
 	}
 
-	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.Id)
+	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
 	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
 		User: updated, ExpectedRevision: updated.Revision,
 		AuditEventID: staleAttempt.Id, AuditAt: model.GetMillis(),
@@ -345,7 +345,7 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 		t.Fatalf("stale UpdateProfileWithAudit() error = %v", err)
 	}
 	missing := *updated
-	missing.Id = model.NewId()
+	missing.ID = model.UserID(model.NewId())
 	if _, err := ss.User().Update(ctx, &missing); !store.IsNotFound(err) {
 		t.Fatalf("Update(missing) error = %v", err)
 	}
@@ -368,10 +368,10 @@ func testUserStoreUpdateLastLogin(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	revision := user.Revision
 	at := model.GetMillis() + 100
-	requireNoError(t, ss.User().UpdateLastLogin(ctx, user.Id, at))
-	got, err := ss.User().Get(ctx, user.Id)
+	requireNoError(t, ss.User().UpdateLastLogin(ctx, user.ID.String(), at))
+	got, err := ss.User().Get(ctx, user.ID.String())
 	requireNoError(t, err)
-	if got.LastLoginAt != at || got.LastActivityAt != at || got.UpdateAt < at || got.Revision != revision {
+	if got.LastLoginAt.Millis() != at || got.LastActivityAt.Millis() != at || model.MillisFromTime(got.UpdatedAt) < at || got.Revision != revision {
 		t.Fatalf("UpdateLastLogin() user = %#v", got)
 	}
 }

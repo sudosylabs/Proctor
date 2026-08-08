@@ -27,29 +27,6 @@ func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
 		model persistentModel
 	}{
 		{
-			name: "user",
-			model: &User{
-				Username:    "alex.morgan",
-				Email:       "alex.morgan@example.edu",
-				DisplayName: "Alex Morgan",
-			},
-		},
-		{
-			name: "external identity",
-			model: &ExternalIdentity{
-				UserId:   userID,
-				Provider: "oidc",
-				Subject:  "provider-sensitive-subject",
-			},
-		},
-		{
-			name: "password credential",
-			model: &PasswordCredential{
-				UserId:       userID,
-				PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA",
-			},
-		},
-		{
 			name: "role",
 			model: &Role{
 				Name:        "department_teacher",
@@ -96,16 +73,6 @@ func TestIdentityModelsImplementLifecycleContract(t *testing.T) {
 				ExpiresAt:   now + int64((24*time.Hour)/time.Millisecond),
 			},
 		},
-		{
-			name: "user token",
-			model: &UserToken{
-				UserId:    userID,
-				Purpose:   UserTokenEmailVerification,
-				TokenHash: tokenHash,
-				Target:    "student@example.edu",
-				ExpiresAt: now + int64(time.Hour/time.Millisecond),
-			},
-		},
 	}
 
 	for _, test := range tests {
@@ -139,9 +106,9 @@ func TestUserNormalizationAndContextualRelationships(t *testing.T) {
 		Email:       " ALEX.MORGAN@EXAMPLE.EDU ",
 		DisplayName: "Alex Morgan",
 	}
-	u.PreSave()
-	if appErr := u.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	u.PrepareCreate(NewUserID(), NowUTC())
+	if err := u.Validate(); err != nil {
+		t.Fatal(err)
 	}
 	if u.Username != "alex.morgan" || u.Email != "alex.morgan@example.edu" {
 		t.Fatalf("normalized user = %#v", u)
@@ -151,8 +118,8 @@ func TestUserNormalizationAndContextualRelationships(t *testing.T) {
 	}
 
 	at := NowUTC()
-	student := &Affiliation{UserID: UserID(u.Id), Kind: AffiliationStudent}
-	teacher := &Affiliation{UserID: UserID(u.Id), Kind: AffiliationTeacher}
+	student := &Affiliation{UserID: u.ID, Kind: AffiliationStudent}
+	teacher := &Affiliation{UserID: u.ID, Kind: AffiliationTeacher}
 	student.PrepareCreate(NewAffiliationID(), at)
 	teacher.PrepareCreate(NewAffiliationID(), at)
 	if err := student.Validate(); err != nil {
@@ -168,16 +135,16 @@ func TestExternalIdentityPreservesOpaqueSubject(t *testing.T) {
 
 	const subject = "CaseSensitive/Provider/Subject"
 	identity := &ExternalIdentity{
-		UserId:   NewId(),
+		UserID:   UserID(NewId()),
 		Provider: "OIDC",
 		Subject:  subject,
 	}
-	identity.PreSave()
+	identity.PrepareCreate(NewExternalIdentityID(), NowUTC())
 	if identity.Provider != "oidc" || identity.Subject != subject {
 		t.Fatalf("identity changed unexpectedly: %#v", identity)
 	}
-	if appErr := identity.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	if err := identity.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -372,6 +339,67 @@ func TestMembershipModelsTypedLifecycle(t *testing.T) {
 	}
 }
 
+func TestIdentityModelsTypedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	at := time.UnixMilli(1_700_000_000_000).UTC()
+	userID := NewUserID()
+
+	user := &User{
+		Username: "alex.morgan", Email: "alex.morgan@example.edu", DisplayName: "Alex",
+	}
+	user.PrepareCreate(userID, at)
+	if err := user.Validate(); err != nil {
+		t.Fatalf("User.Validate() = %v", err)
+	}
+	if !user.IsActive() || user.IsArchived() {
+		t.Fatal("new user should be active")
+	}
+
+	credential := &PasswordCredential{
+		UserID: userID, PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA",
+	}
+	credential.PrepareCreate(NewPasswordCredentialID(), at)
+	if err := credential.Validate(); err != nil {
+		t.Fatalf("PasswordCredential.Validate() = %v", err)
+	}
+
+	identity := &ExternalIdentity{
+		UserID: userID, Provider: "OIDC", Subject: "opaque-subject",
+		LastSeenAt: OptionalTimeFrom(at),
+	}
+	identity.PrepareCreate(NewExternalIdentityID(), at)
+	if identity.Provider != "oidc" {
+		t.Fatalf("provider = %q", identity.Provider)
+	}
+	if err := identity.Validate(); err != nil {
+		t.Fatalf("ExternalIdentity.Validate() = %v", err)
+	}
+
+	tokenHash := HashToken(NewCredentialToken())
+	token := &UserToken{
+		UserID: userID, Purpose: UserTokenEmailVerification,
+		TokenHash: tokenHash, Target: "alex.morgan@example.edu",
+		ExpiresAt: at.Add(time.Hour),
+	}
+	token.PrepareCreate(NewUserTokenID(), at)
+	if err := token.Validate(); err != nil {
+		t.Fatalf("UserToken.Validate() = %v", err)
+	}
+	if !token.IsActiveAt(at) || token.IsActiveAt(token.ExpiresAt) {
+		t.Fatal("token active window is wrong")
+	}
+
+	state := &ExternalLoginState{
+		Provider: "campus-cas", StateHash: tokenHash, BindingHash: tokenHash,
+		ReturnTo: "/", ClientType: SessionClientWeb, ExpiresAt: at.Add(time.Minute),
+	}
+	state.PrepareCreate(NewExternalLoginStateID(), at)
+	if err := state.Validate(); err != nil {
+		t.Fatalf("ExternalLoginState.Validate() = %v", err)
+	}
+}
+
 func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 	t.Parallel()
 
@@ -428,12 +456,12 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			name: "external subject with direction control",
 			err: func() error {
 				identity := &ExternalIdentity{
-					UserId:   NewId(),
+					UserID:   UserID(NewId()),
 					Provider: "oidc",
 					Subject:  "subject\u202E",
 				}
-				identity.PreSave()
-				return identity.IsValid()
+				identity.PrepareCreate(NewExternalIdentityID(), NowUTC())
+				return identity.Validate()
 			}(),
 			code: "model.external_identity.is_valid.subject.app_error",
 		},
@@ -470,7 +498,7 @@ func TestUserAuditOmitsProfilePII(t *testing.T) {
 		FirstName:   "Alex",
 		LastName:    "Morgan",
 	}
-	u.PreSave()
+	u.PrepareCreate(NewUserID(), NowUTC())
 	audit := u.Auditable()
 	for _, field := range []string{"email", "display_name", "first_name", "last_name"} {
 		if _, exposed := audit[field]; exposed {

@@ -110,8 +110,9 @@ func (m *ProfileMapper) Assertion(
 			FirstName:     assertion.FirstName,
 			LastName:      assertion.LastName,
 		}
-		candidate.PreSave()
-		if appErr := candidate.IsValid(); appErr != nil {
+		// Validate profile fields only; ID/timestamps are assigned at provision time.
+		candidate.PrepareCreate(model.NewUserID(), model.NowUTC())
+		if err := candidate.Validate(); err != nil {
 			return nil, InvalidResponse(
 				"map external identity",
 				fmt.Errorf("provider returned invalid provisioning claims"),

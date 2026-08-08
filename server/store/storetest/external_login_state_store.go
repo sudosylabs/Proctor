@@ -19,17 +19,17 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store) {
 	input := &model.ExternalLoginState{
 		Provider: "campus-cas", StateHash: model.HashToken(stateToken),
 		BindingHash: model.HashToken(bindingToken), ReturnTo: "/exams?active=true",
-		ClientType: model.SessionClientDesktop, DeviceId: "desktop-1",
-		DeviceName: "Desktop", ExpiresAt: now + 60_000,
+		ClientType: model.SessionClientDesktop, DeviceID: "desktop-1",
+		DeviceName: "Desktop", ExpiresAt: model.TimeFromMillis(now+60_000),
 	}
 	saved, err := ss.ExternalLoginState().Save(ctx, input)
 	requireNoError(t, err)
-	if !model.IsValidId(saved.Id) || input.Id != "" {
+	if !saved.ID.IsValid() || !input.ID.IsZero() {
 		t.Fatalf("Save() saved=%#v input=%#v", saved, input)
 	}
 	got, err := ss.ExternalLoginState().GetByStateHash(ctx, saved.StateHash)
 	requireNoError(t, err)
-	if got.Id != saved.Id || got.BindingHash != saved.BindingHash {
+	if got.ID != saved.ID || got.BindingHash != saved.BindingHash {
 		t.Fatalf("GetByStateHash() = %#v", got)
 	}
 	if _, err := ss.ExternalLoginState().Consume(
@@ -49,7 +49,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store) {
 		now+2,
 	)
 	requireNoError(t, err)
-	if consumed.ConsumedAt != now+2 {
+	if consumed.ConsumedAt.Millis() != now+2 {
 		t.Fatalf("Consume() = %#v", consumed)
 	}
 	if _, err := ss.ExternalLoginState().Consume(
@@ -67,7 +67,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store) {
 		StateHash:   model.HashToken(model.NewCredentialToken()),
 		BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo:    "/", ClientType: model.SessionClientWeb,
-		ExpiresAt: now + 120_000,
+		ExpiresAt: model.TimeFromMillis(now+120_000),
 	}
 	expired, err = ss.ExternalLoginState().Save(ctx, expired)
 	requireNoError(t, err)
@@ -76,7 +76,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store) {
 		expired.Provider,
 		expired.StateHash,
 		expired.BindingHash,
-		expired.ExpiresAt,
+		model.MillisFromTime(expired.ExpiresAt),
 	); !store.IsNotFound(err) {
 		t.Fatalf("Consume(expired) error = %v", err)
 	}

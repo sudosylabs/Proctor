@@ -11,13 +11,14 @@ import (
 
 func TestExternalLoginStateRowConversion(t *testing.T) {
 	state := &model.ExternalLoginState{
-		Id: model.NewId(), CreateAt: 1, UpdateAt: 2,
+		ID: model.ExternalLoginStateID(model.NewId()),
+		CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(2),
 		Provider:    "campus-cas",
 		StateHash:   model.HashToken(model.NewCredentialToken()),
 		BindingHash: model.HashToken(model.NewCredentialToken()),
 		ReturnTo:    "/exams", ClientType: model.SessionClientDesktop,
-		DeviceId: "device", DeviceName: "Desktop",
-		ExpiresAt: 3, ConsumedAt: 2,
+		DeviceID: "device", DeviceName: "Desktop",
+		ExpiresAt: model.TimeFromMillis(3), ConsumedAt: model.OptionalTimeFromMillis(2),
 	}
 	row := newExternalLoginStateRow(state)
 	if got := row.model(); *got != *state {

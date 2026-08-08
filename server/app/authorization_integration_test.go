@@ -64,7 +64,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
+		UserID: user.ID, RoleId: role.Id, ScopeType: model.RoleScopeInstitution,
 		ScopeId: institution.ID.String(), StartAt: model.GetMillis(),
 	}); err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	statuses := map[model.AuditStatus]bool{}
 	for _, event := range response.Events {
 		if event.Action == string(model.ActionAuditView) &&
-			event.ActorId == user.Id &&
+			event.ActorId == user.ID &&
 			event.Resource.Id == institution.ID.String() {
 			statuses[event.Status] = true
 		}
@@ -177,7 +177,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: root.ID,
-		UserID:         model.UserID(user.Id),
+		UserID:         user.ID,
 		StartsAt:       model.TimeFromMillis(model.GetMillis() - 1_000),
 	}); err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
-		UserId: user.Id, RoleId: role.Id, ScopeType: model.RoleScopeAcademicUnit,
+		UserID: user.ID, RoleId: role.Id, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeId: root.ID.String(), StartAt: model.GetMillis() - 1_000,
 	})
 	if err != nil {

@@ -23,14 +23,14 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	start := model.GetMillis() + 1000
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
 	requireNoError(t, err)
 
 	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
 		ClassID:          firstClass.ID,
 		AcademicPeriodID: model.NewAcademicPeriodID(),
-		UserID:           model.UserID(user.Id),
+		UserID: user.ID,
 		StartsAt:         model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
@@ -41,14 +41,14 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 		t.Fatalf("first enrollment revision = %d, want 1", first.Membership.Revision)
 	}
 	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
-		ClassID: firstClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start + 1),
+		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 1),
 	})
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) {
 		t.Fatalf("duplicate enrollment error = %v", err)
 	}
 	transfer, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
-		ClassID: secondClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start + 10),
+		ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10),
 	})
 	requireNoError(t, err)
 	if transfer.Previous == nil ||
@@ -57,12 +57,12 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 		transfer.Previous.Revision != first.Membership.Revision+1 {
 		t.Fatalf("transfer Enroll() = %#v", transfer)
 	}
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.Id, start+11)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID.String(), start+11)
 	requireNoError(t, err)
 	if len(active) != 1 || active[0].ID != transfer.Membership.ID {
 		t.Fatalf("ListActiveByUser() = %#v", active)
 	}
-	history, err := ss.ClassMember().ListByUser(ctx, user.Id)
+	history, err := ss.ClassMember().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
 	if len(history) != 2 {
 		t.Fatalf("ListByUser() = %#v", history)
@@ -76,7 +76,7 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 		t.Fatalf("stale End() error = %v", err)
 	}
 	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
-		ClassID: firstClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start + 5),
+		ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5),
 	})
 	if !errors.As(err, &conflict) {
 		t.Fatalf("backdated overlapping enrollment error = %v", err)
@@ -107,11 +107,11 @@ func testAuditedClassMemberLifecycle(
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
 	requireNoError(t, err)
 
-	first := &model.ClassMember{ClassID: firstClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start)}
+	first := &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)}
 	first.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	// Period is authoritative from the class row during enroll.
 	first.AcademicPeriodID = firstClass.AcademicPeriodID
@@ -122,7 +122,7 @@ func testAuditedClassMemberLifecycle(
 	requireNoError(t, err)
 	requireSuccessfulAudit(t, ctx, ss, createAttempt.Id)
 
-	rolledBackTransfer := &model.ClassMember{ClassID: secondClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start + 5)}
+	rolledBackTransfer := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5)}
 	rolledBackTransfer.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	rolledBackTransfer.AcademicPeriodID = secondClass.AcademicPeriodID
 	if _, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
@@ -136,7 +136,7 @@ func testAuditedClassMemberLifecycle(
 		t.Fatalf("prior enrollment close survived transfer audit rollback: %#v", unchanged)
 	}
 
-	second := &model.ClassMember{ClassID: secondClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start + 10)}
+	second := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 10)}
 	second.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	second.AcademicPeriodID = secondClass.AcademicPeriodID
 	transferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
@@ -150,7 +150,7 @@ func testAuditedClassMemberLifecycle(
 	}
 	requireSuccessfulAudit(t, ctx, ss, transferAttempt.Id)
 
-	history, err := ss.ClassMember().ListByUser(ctx, user.Id)
+	history, err := ss.ClassMember().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
 	if len(history) != 2 || history[1].ID != created.Membership.ID ||
 		history[1].EndsAt.Millis() != model.MillisFromTime(second.StartsAt) || history[1].Revision != 2 {
@@ -178,10 +178,10 @@ func testAuditedClassMemberLifecycle(
 
 	rollbackUser := saveUser(t, ctx, ss)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: model.UserID(rollbackUser.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: rollbackUser.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
 	requireNoError(t, err)
-	rolledBack := &model.ClassMember{ClassID: firstClass.ID, UserID: model.UserID(rollbackUser.Id), StartsAt: model.TimeFromMillis(start)}
+	rolledBack := &model.ClassMember{ClassID: firstClass.ID, UserID: rollbackUser.ID, StartsAt: model.TimeFromMillis(start)}
 	rolledBack.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	rolledBack.AcademicPeriodID = firstClass.AcademicPeriodID
 	if _, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
@@ -198,16 +198,16 @@ func testDistinctPeriodClassMemberEnrollment(t *testing.T, ss store.Store, first
 	t.Helper()
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1)})
+	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1)})
 	requireNoError(t, err)
-	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: firstClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start)})
+	first, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
 	requireNoError(t, err)
-	next, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: nextClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start)})
+	next, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: nextClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
 	requireNoError(t, err)
 	if next.Previous != nil {
 		t.Fatalf("distinct-period enrollment replaced prior membership: %#v", next)
 	}
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.Id, start+1)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID.String(), start+1)
 	requireNoError(t, err)
 	if len(active) != 2 || first.Membership.AcademicPeriodID == next.Membership.AcademicPeriodID {
 		t.Fatalf("distinct-period active enrollments = %#v", active)
@@ -219,11 +219,11 @@ func testFiniteAffiliationCannotBackOpenEnrollment(t *testing.T, ss store.Store,
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: model.UserID(user.Id), Kind: model.AffiliationStudent,
+		UserID: user.ID, Kind: model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(start - 1), EndsAt: model.OptionalTimeFromMillis(start + 100),
 	})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start)})
+	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)})
 	if !store.IsConflict(err) {
 		t.Fatalf("open enrollment with finite affiliation error = %v", err)
 	}
@@ -240,12 +240,12 @@ func testConcurrentClassMemberEnrollment(
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
-		UserID: model.UserID(user.Id), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(start - 1),
 	})
 	requireNoError(t, err)
 	members := []*model.ClassMember{
-		{ClassID: firstClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start)},
-		{ClassID: secondClass.ID, UserID: model.UserID(user.Id), StartsAt: model.TimeFromMillis(start)},
+		{ClassID: firstClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)},
+		{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start)},
 	}
 	attempts := make([]*model.AuditEvent, len(members))
 	for i, member := range members {
@@ -280,7 +280,7 @@ func testConcurrentClassMemberEnrollment(
 	if successes != 1 {
 		t.Fatalf("concurrent enrollment successes = %d, errors = %v", successes, errs)
 	}
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.Id, start+1)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID.String(), start+1)
 	requireNoError(t, err)
 	if len(active) != 1 {
 		t.Fatalf("active concurrent enrollments = %#v", active)

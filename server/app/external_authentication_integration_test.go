@@ -187,7 +187,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, err := persistence.User().Get(context.Background(), identity.UserId)
+	user, err := persistence.User().Get(context.Background(), identity.UserID)
 	if err != nil || user.Username != "external.student" ||
 		user.Email != "external.student@example.edu" ||
 		!user.EmailVerified {
@@ -195,7 +195,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
-		user.Id,
+		user.ID,
 		model.GetMillis(),
 	)
 	if err != nil || len(sessions) != 1 ||
@@ -206,7 +206,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	audits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{
-			ActorId: user.Id,
+			ActorId: user.ID.String(),
 			Limit:   10,
 		},
 	)

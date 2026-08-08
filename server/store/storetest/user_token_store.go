@@ -44,24 +44,24 @@ func testUserTokenIssueReplacesPriorToken(t *testing.T, ss store.Store) {
 	first, err := ss.UserToken().Issue(
 		ctx,
 		first,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
+		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	requireNoError(t, err)
 	second := newUserToken(user, model.UserTokenEmailVerification)
 	second, err = ss.UserToken().Issue(
 		ctx,
 		second,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
+		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	requireNoError(t, err)
 	gotFirst, err := ss.UserToken().GetByHash(ctx, first.TokenHash, first.Purpose)
 	requireNoError(t, err)
-	if gotFirst.DeleteAt == 0 {
+	if !gotFirst.ArchivedAt.Valid {
 		t.Fatalf("prior token remained active: %#v", gotFirst)
 	}
 	gotSecond, err := ss.UserToken().GetByHash(ctx, second.TokenHash, second.Purpose)
 	requireNoError(t, err)
-	if gotSecond.DeleteAt != 0 || gotSecond.Target != user.Email {
+	if gotSecond.ArchivedAt.Valid || gotSecond.Target != user.Email {
 		t.Fatalf("replacement token = %#v", gotSecond)
 	}
 }
@@ -74,10 +74,10 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
+		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	requireNoError(t, err)
-	now := token.CreateAt + 100
+	now := model.MillisFromTime(token.CreatedAt) + 100
 	result, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
@@ -85,7 +85,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
 	requireNoError(t, err)
-	if !result.User.EmailVerified || result.User.Revision != user.Revision+1 || result.Token.ConsumedAt != now {
+	if !result.User.EmailVerified || result.User.Revision != user.Revision+1 || result.Token.ConsumedAt.Millis() != now {
 		t.Fatalf("verification result = %#v", result)
 	}
 	if _, err := ss.UserToken().ConsumeEmailVerification(
@@ -104,7 +104,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		changedToken,
 		userTokenAudit(
 			"authentication.email_verification.request",
-			changedUser.Id,
+			changedUser.ID.String(),
 			institution.ID.String(),
 		),
 	)
@@ -126,15 +126,15 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	user, credential := saveLocalUser(t, ctx, ss)
-	session, _, raw := saveSession(t, ctx, ss, user.Id, 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	token := newUserToken(user, model.UserTokenPasswordReset)
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.password_reset.request", user.Id, institution.ID.String()),
+		userTokenAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String()),
 	)
 	requireNoError(t, err)
-	now := max(token.CreateAt, session.CreateAt) + 100
+	now := max(model.MillisFromTime(token.CreatedAt), session.CreateAt) + 100
 	result, err := ss.UserToken().ConsumePasswordReset(
 		ctx,
 		token.TokenHash,
@@ -144,9 +144,9 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 		userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String()),
 	)
 	requireNoError(t, err)
-	if result.PasswordCredential.Id != credential.Id ||
+	if result.PasswordCredential.ID != credential.ID ||
 		result.PasswordCredential.PasswordHash != "new-encoded-password-hash" ||
-		result.PasswordCredential.PasswordChangedAt != now ||
+		model.MillisFromTime(result.PasswordCredential.PasswordChangedAt) != now ||
 		len(result.RevokedSessions) != 1 ||
 		len(result.RevokedAccessHashes) != 2 {
 		t.Fatalf("password reset result = %#v", result)
@@ -166,7 +166,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	if len(audits) != 1 ||
-		audits[0].Resource.Id != user.Id ||
+		audits[0].Resource.Id != user.ID.String() ||
 		audits[0].Status != model.AuditStatusSuccess {
 		t.Fatalf("password reset audit = %#v", audits)
 	}
@@ -180,10 +180,10 @@ func testUserTokenConcurrentConsumption(t *testing.T, ss store.Store) {
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
+		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	requireNoError(t, err)
-	now := token.CreateAt + 100
+	now := model.MillisFromTime(token.CreatedAt) + 100
 	start := make(chan struct{})
 	errorsByAttempt := make(chan error, 2)
 	var wait sync.WaitGroup
@@ -246,10 +246,10 @@ func testUserTokenAuditFailureRollsBack(t *testing.T, ss store.Store) {
 	token, err := ss.UserToken().Issue(
 		ctx,
 		token,
-		userTokenAudit("authentication.email_verification.request", user.Id, institution.ID.String()),
+		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
 	)
 	requireNoError(t, err)
-	now := token.CreateAt + 100
+	now := model.MillisFromTime(token.CreatedAt) + 100
 	if _, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		token.TokenHash,
@@ -288,10 +288,10 @@ func newUserToken(
 	purpose model.UserTokenPurpose,
 ) *model.UserToken {
 	return &model.UserToken{
-		UserId: user.Id, Purpose: purpose,
+		UserID: user.ID, Purpose: purpose,
 		TokenHash: model.HashToken(model.NewCredentialToken()),
 		Target:    user.Email,
-		ExpiresAt: model.GetMillis() + int64(time.Hour/time.Millisecond),
+		ExpiresAt: model.TimeFromMillis(model.GetMillis() + int64(time.Hour/time.Millisecond)),
 	}
 }
 

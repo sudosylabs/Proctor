@@ -53,12 +53,12 @@ func (a *userProfileAuthorizerFake) AuthorizeManage(context.Context, Invocation,
 func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	current := &model.User{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 3, Username: "student", Email: "old@example.edu", EmailVerified: true, DisplayName: "Student", Locale: "en", Timezone: "UTC"}
+	current := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Email: "old@example.edu", EmailVerified: true, DisplayName: "Student", Locale: "en", Timezone: "UTC"}
 	persistence := &userProfileStoreFake{events: &events, current: current}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
 	email := "new@example.edu"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.Id, Email: &email})
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID.String(), Email: &email})
 	if err != nil {
 		t.Fatal(err)
 	}

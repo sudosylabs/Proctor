@@ -119,17 +119,17 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 	candidate := *current
 	expectedRevision := current.Revision
 	candidate.Patch(&model.UserPatch{Username: command.Username, Email: command.Email, EmailVerified: command.EmailVerified, DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName, Locale: command.Locale, Timezone: command.Timezone})
-	at := s.now().UnixMilli()
+	at := s.now()
 	candidate.PrepareUpdate(at)
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, domainInvalid("user.invalid", appErr)
+	if err := candidate.Validate(); err != nil {
+		return nil, domainInvalid("user.invalid", err)
 	}
 	resource := model.Resource{Type: model.ResourceUser, Id: id}
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserManage, resource, "update_profile", candidate.Auditable(), current.Auditable())
 	if err != nil {
 		return nil, err
 	}
-	updated, err := s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{User: &candidate, ExpectedRevision: expectedRevision, AuditEventID: auditID, AuditAt: at})
+	updated, err := s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{User: &candidate, ExpectedRevision: expectedRevision, AuditEventID: auditID, AuditAt: at.UnixMilli()})
 	if err != nil {
 		mapped := userProfileError(err)
 		failure, _ := As(mapped)

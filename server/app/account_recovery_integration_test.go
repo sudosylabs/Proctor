@@ -92,7 +92,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 			verificationComplete.Body.String(),
 		)
 	}
-	verified, err := persistence.User().Get(context.Background(), user.Id)
+	verified, err := persistence.User().Get(context.Background(), user.ID)
 	if err != nil || !verified.EmailVerified {
 		t.Fatalf("verified user = %#v, %v", verified, err)
 	}
@@ -203,7 +203,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 	})
 	if err != nil ||
 		len(audits) != 1 ||
-		audits[0].Resource.Id != user.Id ||
+		audits[0].Resource.Id != user.ID ||
 		audits[0].ScopeId != institution.ID.String() {
 		t.Fatalf("password reset audits = %#v, %v", audits, err)
 	}

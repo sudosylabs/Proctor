@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -107,41 +108,55 @@ func (c ExternalAuthenticationCallback) OptionalSingleValue(
 // ExternalLoginState binds one provider redirect to the browser that initiated
 // it. Only token hashes are durable. State is consumed exactly once before the
 // one-time provider credential is validated, closing concurrent replay races.
+//
+// StateHash and BindingHash are deliberately excluded from JSON.
 type ExternalLoginState struct {
-	Id          string            `json:"id"`
-	CreateAt    int64             `json:"create_at"`
-	UpdateAt    int64             `json:"update_at"`
-	Provider    string            `json:"provider"`
-	StateHash   string            `json:"-"`
-	BindingHash string            `json:"-"`
-	ReturnTo    string            `json:"return_to"`
-	ClientType  SessionClientType `json:"client_type"`
-	DeviceId    string            `json:"device_id,omitempty"`
-	DeviceName  string            `json:"device_name,omitempty"`
-	ExpiresAt   int64             `json:"expires_at"`
-	ConsumedAt  int64             `json:"consumed_at,omitempty"`
+	ID          ExternalLoginStateID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Provider    string
+	StateHash   string `json:"-"`
+	BindingHash string `json:"-"`
+	ReturnTo    string
+	ClientType  SessionClientType
+	DeviceID    string
+	DeviceName  string
+	ExpiresAt   time.Time
+	ConsumedAt  OptionalTime
 }
 
-func (s *ExternalLoginState) PreSave() {
-	preSave(&s.Id, &s.CreateAt, &s.UpdateAt)
+// PrepareCreate applies application-owned lifecycle fields before validation.
+func (s *ExternalLoginState) PrepareCreate(id ExternalLoginStateID, at time.Time) {
+	if s == nil {
+		return
+	}
+	s.ID = id
+	at = TimeUTC(at)
+	s.CreatedAt = at
+	s.UpdatedAt = at
 	s.Provider = strings.ToLower(SanitizeUnicode(s.Provider))
 	s.ReturnTo = strings.TrimSpace(SanitizeUnicode(s.ReturnTo))
-	s.DeviceId = SanitizeUnicode(s.DeviceId)
+	s.DeviceID = SanitizeUnicode(s.DeviceID)
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
+	s.ExpiresAt = TimeUTC(s.ExpiresAt)
 }
 
-func (s *ExternalLoginState) IsValid() error {
-	const where = "ExternalLoginState.IsValid"
-	if appErr := validatePersistentFields(
-		where,
-		"external_login_state",
-		s.Id,
-		s.CreateAt,
-		s.UpdateAt,
-	); appErr != nil {
-		return appErr
+// Validate checks rehydrated external-login-state state.
+func (s *ExternalLoginState) Validate() error {
+	const where = "ExternalLoginState.Validate"
+	if s == nil {
+		return invalidModelError(where, "external_login_state", "value", "is required", "")
 	}
-	details := "id=" + s.Id
+	if !s.ID.IsValid() {
+		return invalidModelError(where, "external_login_state", "id", "must be a valid identifier", "")
+	}
+	details := "id=" + s.ID.String()
+	if s.CreatedAt.IsZero() || s.UpdatedAt.IsZero() {
+		return invalidModelError(where, "external_login_state", "created_at", "must be set", details)
+	}
+	if s.UpdatedAt.Before(s.CreatedAt) {
+		return invalidModelError(where, "external_login_state", "updated_at", "must not precede created_at", details)
+	}
 	if len(s.Provider) == 0 ||
 		len(s.Provider) > IdentityProviderMaxLength ||
 		!validIdentityProvider.MatchString(s.Provider) {
@@ -180,7 +195,7 @@ func (s *ExternalLoginState) IsValid() error {
 			details,
 		)
 	}
-	if len(s.DeviceId) > SessionDeviceIdMaxLength ||
+	if len(s.DeviceID) > SessionDeviceIdMaxLength ||
 		utf8.RuneCountInString(s.DeviceName) > SessionDeviceNameMaxRunes {
 		return invalidModelError(
 			where,
@@ -190,7 +205,7 @@ func (s *ExternalLoginState) IsValid() error {
 			details,
 		)
 	}
-	if s.ExpiresAt <= s.CreateAt {
+	if s.ExpiresAt.IsZero() || !s.ExpiresAt.After(s.CreatedAt) {
 		return invalidModelError(
 			where,
 			"external_login_state",
@@ -199,8 +214,8 @@ func (s *ExternalLoginState) IsValid() error {
 			details,
 		)
 	}
-	if s.ConsumedAt != 0 &&
-		(s.ConsumedAt < s.CreateAt || s.ConsumedAt >= s.ExpiresAt) {
+	if s.ConsumedAt.Valid &&
+		(s.ConsumedAt.Time.Before(s.CreatedAt) || !s.ConsumedAt.Time.Before(s.ExpiresAt)) {
 		return invalidModelError(
 			where,
 			"external_login_state",
@@ -212,13 +227,21 @@ func (s *ExternalLoginState) IsValid() error {
 	return nil
 }
 
+// Auditable returns a deliberately safe audit projection. Hashes are never
+// included.
 func (s *ExternalLoginState) Auditable() map[string]any {
-	fields := auditFields(s.Id, s.CreateAt, s.UpdateAt, 0)
-	fields["provider"] = s.Provider
-	fields["client_type"] = s.ClientType
-	fields["expires_at"] = s.ExpiresAt
-	fields["consumed_at"] = s.ConsumedAt
-	return fields
+	if s == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"id":          s.ID.String(),
+		"created_at":  MillisFromTime(s.CreatedAt),
+		"updated_at":  MillisFromTime(s.UpdatedAt),
+		"provider":    s.Provider,
+		"client_type": s.ClientType,
+		"expires_at":  MillisFromTime(s.ExpiresAt),
+		"consumed_at": s.ConsumedAt.Millis(),
+	}
 }
 
 // IsSafeRelativeURL accepts a local absolute-path reference without authority,

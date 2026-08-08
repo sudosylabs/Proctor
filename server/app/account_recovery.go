@@ -83,16 +83,16 @@ func (a *App) RequestEmailVerification(
 	rawToken := model.NewCredentialToken()
 	now := a.authentication.now()
 	token := &model.UserToken{
-		UserId:    user.Id,
+		UserID:    user.ID,
 		Purpose:   model.UserTokenEmailVerification,
 		TokenHash: model.HashToken(rawToken),
 		Target:    user.Email,
-		ExpiresAt: now.Add(a.accountRecovery.EmailVerificationTTL).UnixMilli(),
+		ExpiresAt: now.Add(a.accountRecovery.EmailVerificationTTL),
 	}
 	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditEmailVerificationRequest,
-		model.Resource{Type: model.ResourceUser, Id: user.Id},
+		model.Resource{Type: model.ResourceUser, Id: user.ID.String()},
 		institution.ID.String(),
 		metadata,
 		a.nodeID,
@@ -156,7 +156,7 @@ func (a *App) RequestPasswordReset(
 	if !user.IsActive() {
 		return nil
 	}
-	if _, err := a.Store().PasswordCredential().GetByUser(ctx, user.Id); err != nil {
+	if _, err := a.Store().PasswordCredential().GetByUser(ctx, user.ID.String()); err != nil {
 		if !store.IsNotFound(err) {
 			a.logHiddenRecoveryFailure(ctx, "password credential lookup failed", err)
 		}
@@ -170,16 +170,16 @@ func (a *App) RequestPasswordReset(
 	rawToken := model.NewCredentialToken()
 	now := a.authentication.now()
 	token := &model.UserToken{
-		UserId:    user.Id,
+		UserID:    user.ID,
 		Purpose:   model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(rawToken),
 		Target:    user.Email,
-		ExpiresAt: now.Add(a.accountRecovery.PasswordResetTTL).UnixMilli(),
+		ExpiresAt: now.Add(a.accountRecovery.PasswordResetTTL),
 	}
 	metadata := invocation.RequestMetadata()
 	event := recoveryAuditEvent(
 		auditPasswordResetRequest,
-		model.Resource{Type: model.ResourceUser, Id: user.Id},
+		model.Resource{Type: model.ResourceUser, Id: user.ID.String()},
 		institution.ID.String(),
 		metadata,
 		a.nodeID,
@@ -316,7 +316,7 @@ func (a *App) CompletePasswordReset(
 	}
 	a.realtime.PropagateSessionRevocation(
 		ctx,
-		result.User.Id,
+		result.User.ID.String(),
 		sessionIds(result.RevokedSessions),
 		result.RevokedAccessHashes,
 	)

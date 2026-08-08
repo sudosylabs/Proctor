@@ -11,9 +11,11 @@ import (
 
 func TestExternalIdentityRowConversion(t *testing.T) {
 	identity := &model.ExternalIdentity{
-		Id: model.NewId(), CreateAt: 1, UpdateAt: 2, DeleteAt: 3,
-		UserId: model.NewId(), Provider: "campus-cas",
-		Subject: "opaque-subject", LastSeenAt: 4,
+		ID: model.ExternalIdentityID(model.NewId()),
+		CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(2),
+		ArchivedAt: model.OptionalTimeFromMillis(3),
+		UserID: model.UserID(model.NewId()), Provider: "campus-cas",
+		Subject: "opaque-subject", LastSeenAt: model.OptionalTimeFromMillis(4),
 	}
 	row := newExternalIdentityRow(identity)
 	if got := row.model(); *got != *identity {

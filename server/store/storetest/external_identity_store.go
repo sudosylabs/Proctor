@@ -17,11 +17,11 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)
 		identity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
-			UserId: user.Id, Provider: "campus-cas",
-			Subject: "Opaque-Subject/123", LastSeenAt: model.GetMillis(),
+			UserID: user.ID, Provider: "campus-cas",
+			Subject: "Opaque-Subject/123", LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 		})
 		requireNoError(t, err)
-		got, err := ss.ExternalIdentity().Get(ctx, identity.Id)
+		got, err := ss.ExternalIdentity().Get(ctx, identity.ID.String())
 		requireNoError(t, err)
 		if got.Subject != identity.Subject || got.Provider != "campus-cas" {
 			t.Fatalf("Get() = %#v", got)
@@ -32,17 +32,17 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			identity.Subject,
 		)
 		requireNoError(t, err)
-		if bySubject.Id != identity.Id {
+		if bySubject.ID != identity.ID {
 			t.Fatalf("GetByProviderSubject() = %#v", bySubject)
 		}
-		list, err := ss.ExternalIdentity().ListByUser(ctx, user.Id)
+		list, err := ss.ExternalIdentity().ListByUser(ctx, user.ID.String())
 		requireNoError(t, err)
-		if len(list) != 1 || list[0].Id != identity.Id {
+		if len(list) != 1 || list[0].ID != identity.ID {
 			t.Fatalf("ListByUser() = %#v", list)
 		}
 		_, err = ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
-			UserId: saveUser(t, ctx, ss).Id, Provider: "campus-cas",
-			Subject: identity.Subject, LastSeenAt: model.GetMillis(),
+			UserID: saveUser(t, ctx, ss).ID, Provider: "campus-cas",
+			Subject: identity.Subject, LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 		})
 		var conflict *store.ErrConflict
 		if !errors.As(err, &conflict) ||
@@ -60,7 +60,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx,
 			&model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "new-subject",
-				LastSeenAt: now,
+				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
 			candidate,
 			true,
@@ -73,8 +73,8 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		)
 		requireNoError(t, err)
 		if !resolved.Provisioned ||
-			resolved.Identity.UserId != resolved.User.Id ||
-			candidate.Id != "" {
+			resolved.Identity.UserID != resolved.User.ID ||
+			!candidate.ID.IsZero() {
 			t.Fatalf("ResolveOrProvision(new) = %#v", resolved)
 		}
 		audits, err := ss.Audit().List(ctx, store.AuditListOptions{
@@ -83,23 +83,23 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		})
 		requireNoError(t, err)
 		if len(audits) != 1 ||
-			audits[0].ActorId != resolved.User.Id ||
-			audits[0].Resource.Id != resolved.User.Id {
+			audits[0].ActorId != resolved.User.ID.String() ||
+			audits[0].Resource.Id != resolved.User.ID.String() {
 			t.Fatalf("provision audits = %#v", audits)
 		}
 		again, err := ss.ExternalIdentity().ResolveOrProvision(
 			ctx,
 			&model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "new-subject",
-				LastSeenAt: now + 100,
+				LastSeenAt: model.OptionalTimeFromMillis(now+100),
 			},
 			nil,
 			false,
 			nil,
 		)
 		requireNoError(t, err)
-		if again.Provisioned || again.User.Id != resolved.User.Id ||
-			again.Identity.LastSeenAt != now+100 {
+		if again.Provisioned || again.User.ID != resolved.User.ID ||
+			again.Identity.LastSeenAt.Millis() != now+100 {
 			t.Fatalf("ResolveOrProvision(existing) = %#v", again)
 		}
 	})
@@ -119,7 +119,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx,
 			&model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "different-subject",
-				LastSeenAt: model.GetMillis(),
+				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 			},
 			candidate,
 			true,
@@ -149,7 +149,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			context.Background(),
 			&model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "unlinked",
-				LastSeenAt: model.GetMillis(),
+				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 			},
 			nil,
 			false,

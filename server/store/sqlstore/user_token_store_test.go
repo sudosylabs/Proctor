@@ -11,10 +11,14 @@ import (
 
 func TestUserTokenRowConversion(t *testing.T) {
 	token := &model.UserToken{
-		Id: model.NewId(), CreateAt: 1, UpdateAt: 2, DeleteAt: 3,
-		UserId: model.NewId(), Purpose: model.UserTokenPasswordReset,
+		ID: model.UserTokenID(model.NewId()),
+		CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(2),
+		ArchivedAt: model.OptionalTimeFromMillis(3),
+		UserID: model.UserID(model.NewId()), Purpose: model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(model.NewCredentialToken()),
-		Target:    "student@example.edu", ExpiresAt: 4, ConsumedAt: 3,
+		Target:    "student@example.edu",
+		ExpiresAt:  model.TimeFromMillis(4),
+		ConsumedAt: model.OptionalTimeFromMillis(3),
 	}
 	row := newUserTokenRow(token)
 	if got := row.model(); *got != *token {

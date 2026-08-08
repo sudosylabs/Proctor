@@ -211,8 +211,8 @@ func (s *ExternalAuthenticationService) begin(
 	if _, err := stateStore.Save(ctx, &model.ExternalLoginState{
 		Provider: providerID, StateHash: model.HashToken(stateToken),
 		BindingHash: model.HashToken(bindingToken), ReturnTo: returnTo,
-		ClientType: clientType, DeviceId: deviceID, DeviceName: deviceName,
-		ExpiresAt: expiresAt,
+		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
+		ExpiresAt: model.TimeFromMillis(expiresAt),
 	}); err != nil {
 		return nil, authenticationUnavailable(err,
 		)
@@ -267,9 +267,10 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	stateHash := model.HashToken(stateToken)
 	state, err := stateStore.GetByStateHash(ctx, stateHash)
-	now := s.now().UnixMilli()
+	nowTime := s.now()
+	now := nowTime.UnixMilli()
 	if err != nil || state == nil || state.Provider != providerID ||
-		state.ConsumedAt != 0 || state.ExpiresAt <= now {
+		state.ConsumedAt.Valid || !state.ExpiresAt.After(nowTime) {
 		if err != nil && !store.IsNotFound(err) {
 			return nil, authenticationUnavailable(err,
 			)
@@ -363,7 +364,8 @@ func (s *ExternalAuthenticationService) complete(
 	resolution, err := identityStore.ResolveOrProvision(
 		ctx,
 		&model.ExternalIdentity{
-			Provider: providerID, Subject: assertion.Subject, LastSeenAt: now,
+			Provider: providerID, Subject: assertion.Subject,
+			LastSeenAt: model.OptionalTimeFromMillis(now),
 		},
 		userCandidate,
 		provider.AutoProvision(),
@@ -424,7 +426,7 @@ func (s *ExternalAuthenticationService) complete(
 
 	auditEvent, appErr := s.audit.BeginAuthentication(
 		ctx,
-		resolution.User.Id,
+		resolution.User.ID.String(),
 		method,
 		providerID,
 		state.ClientType,
@@ -442,7 +444,7 @@ func (s *ExternalAuthenticationService) complete(
 		ctx,
 		resolution.User,
 		state.ClientType,
-		state.DeviceId,
+		state.DeviceID,
 		state.DeviceName,
 		method,
 		assertion.AuthenticationStrength,

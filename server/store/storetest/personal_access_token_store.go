@@ -40,7 +40,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "engineering")
 	user, _ := saveLocalUser(t, ctx, ss)
 	raw := model.NewCredentialToken()
-	token := newPersonalAccessToken(user.Id, raw)
+	token := newPersonalAccessToken(user.ID.String(), raw)
 	token.AcademicUnitId = unit.ID.String()
 	token, err := ss.PersonalAccessToken().Save(ctx, token, 10)
 	requireNoError(t, err)
@@ -60,7 +60,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 		1000,
 	)
 	requireNoError(t, err)
-	if resolved.User.Id != user.Id ||
+	if resolved.User.ID.String() != user.ID.String() ||
 		resolved.Token.Id != token.Id ||
 		resolved.Token.LastUsedAt != now {
 		t.Fatalf("Resolve() = %#v", resolved)
@@ -78,7 +78,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	disabled, err := ss.PersonalAccessToken().SetDisabled(
 		ctx,
 		token.Id,
-		user.Id,
+		user.ID.String(),
 		true,
 		now+150,
 		10,
@@ -98,7 +98,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	enabled, err := ss.PersonalAccessToken().SetDisabled(
 		ctx,
 		token.Id,
-		user.Id,
+		user.ID.String(),
 		false,
 		now+175,
 		10,
@@ -111,7 +111,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	if _, err := ss.PersonalAccessToken().Revoke(
 		ctx,
 		token.Id,
-		other.Id,
+		other.ID.String(),
 		now+200,
 	); !store.IsNotFound(err) {
 		t.Fatalf("cross-user revoke error = %v, want not found", err)
@@ -119,7 +119,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	revoked, err := ss.PersonalAccessToken().Revoke(
 		ctx,
 		token.Id,
-		user.Id,
+		user.ID.String(),
 		now+200,
 	)
 	requireNoError(t, err)
@@ -134,7 +134,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	); !store.IsNotFound(err) {
 		t.Fatalf("revoked Resolve() error = %v, want not found", err)
 	}
-	list, err := ss.PersonalAccessToken().ListByUser(ctx, user.Id)
+	list, err := ss.PersonalAccessToken().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
 	if len(list) != 1 || list[0].RevokedAt == 0 {
 		t.Fatalf("ListByUser() = %#v", list)
@@ -147,32 +147,32 @@ func testPersonalAccessTokenReenableMaximum(t *testing.T, ss store.Store) {
 	user, _ := saveLocalUser(t, ctx, ss)
 	first, err := ss.PersonalAccessToken().Save(
 		ctx,
-		newPersonalAccessToken(user.Id, model.NewCredentialToken()),
+		newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()),
 		1,
 	)
 	requireNoError(t, err)
 	now := first.CreateAt + 10
 	_, err = ss.PersonalAccessToken().SetDisabled(
-		ctx, first.Id, user.Id, true, now, 1,
+		ctx, first.Id, user.ID.String(), true, now, 1,
 	)
 	requireNoError(t, err)
 	second, err := ss.PersonalAccessToken().Save(
 		ctx,
-		newPersonalAccessToken(user.Id, model.NewCredentialToken()),
+		newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()),
 		1,
 	)
 	requireNoError(t, err)
 	if _, err := ss.PersonalAccessToken().SetDisabled(
-		ctx, first.Id, user.Id, false, now+1, 1,
+		ctx, first.Id, user.ID.String(), false, now+1, 1,
 	); !store.IsConflict(err) {
 		t.Fatalf("reenable at active limit error = %v, want conflict", err)
 	}
 	_, err = ss.PersonalAccessToken().Revoke(
-		ctx, second.Id, user.Id, now+2,
+		ctx, second.Id, user.ID.String(), now+2,
 	)
 	requireNoError(t, err)
 	enabled, err := ss.PersonalAccessToken().SetDisabled(
-		ctx, first.Id, user.Id, false, now+3, 1,
+		ctx, first.Id, user.ID.String(), false, now+3, 1,
 	)
 	requireNoError(t, err)
 	if enabled.DisabledAt != 0 {
@@ -196,7 +196,7 @@ func testPersonalAccessTokenMaximumActive(t *testing.T, ss store.Store) {
 			raw := model.NewCredentialToken()
 			_, err := ss.PersonalAccessToken().Save(
 				ctx,
-				newPersonalAccessToken(user.Id, raw),
+				newPersonalAccessToken(user.ID.String(), raw),
 				1,
 			)
 			results <- err
@@ -225,7 +225,7 @@ func testPersonalAccessTokenRejectsUnknownScope(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
-	token := newPersonalAccessToken(user.Id, model.NewCredentialToken())
+	token := newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
 	token.Scopes = []string{"future.permission"}
 	if _, err := ss.PersonalAccessToken().Save(
 		ctx,

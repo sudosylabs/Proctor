@@ -42,18 +42,18 @@ func (e *accountStateEffectsFake) SessionsRevoked(context.Context, string, []*mo
 func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	user := &model.User{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
+	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
 	updated := *user
-	updated.DisabledAt = 500
+	updated.DisabledAt = model.OptionalTimeFromMillis(500)
 	updated.Revision++
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{{Id: model.NewId()}}, RevokedTokenHashes: []string{"hash"}}}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
-	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.Id, Enabled: false})
+	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.DisabledAt != 500 || persistence.input.ExpectedRevision != 3 || !persistence.input.Disabled || persistence.input.AuditEventID == "" {
+	if result.DisabledAt.Millis() != 500 || persistence.input.ExpectedRevision != 3 || !persistence.input.Disabled || persistence.input.AuditEventID == "" {
 		t.Fatalf("result/input = %#v / %#v", result, persistence.input)
 	}
 	want := []string{"authorize-manage", "get-user", "audit-begin", "store-set-disabled", "publish-revocation"}
@@ -65,10 +65,10 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	user := &model.User{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
+	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
 	persistence := &accountStateStoreFake{events: &events, user: user, err: store.NewErrConflict("user", "users_revision", errors.New("stale"))}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, time.Now)
-	_, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.Id, Enabled: false})
+	_, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
 	if !Is(err, "user.conflict") {
 		t.Fatalf("error = %v", err)
 	}
@@ -81,17 +81,17 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	user := &model.User{Id: model.NewId(), CreateAt: 100, UpdateAt: 100, Revision: 3, Username: "student", DisabledAt: 100, Locale: "en", Timezone: "UTC"}
+	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", DisabledAt: model.OptionalTimeFromMillis(100), Locale: "en", Timezone: "UTC"}
 	updated := *user
-	updated.DisabledAt = 0
+	updated.DisabledAt = model.OptionalTime{}
 	updated.Revision++
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
-	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.Id, Enabled: true})
+	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.DisabledAt != 0 || persistence.input.Disabled {
+	if result.DisabledAt.Valid || persistence.input.Disabled {
 		t.Fatalf("result/input = %#v / %#v", result, persistence.input)
 	}
 	want := []string{"authorize-manage", "get-user", "audit-begin", "store-set-disabled"}
