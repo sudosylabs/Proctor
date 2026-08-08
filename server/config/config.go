@@ -103,14 +103,28 @@ type ClusterRedis struct {
 	ReliableMaximum int      `json:"reliable_maximum"`
 }
 
+// ClusterMemberlist configures the built-in multi-node gossip transport.
+type ClusterMemberlist struct {
+	BindAddress        string   `json:"bind_address"`
+	AdvertiseAddress   string   `json:"advertise_address"`
+	EncryptionKey      string   `json:"encryption_key,omitempty"`
+	SeedAddresses      []string `json:"seed_addresses,omitempty"`
+	DiscoveryTTL       Duration `json:"discovery_ttl"`
+	DiscoveryHeartbeat Duration `json:"discovery_heartbeat"`
+	ProtocolMin        int      `json:"protocol_min"`
+	ProtocolMax        int      `json:"protocol_max"`
+	AllowPublicBind    bool     `json:"allow_public_bind"`
+}
+
 // Cluster selects the inter-node transport and gives this process its stable
-// runtime identity. "local" is the single-node degenerate transport. "redis"
-// uses Pub/Sub for best-effort messages and per-node Streams for reliable,
-// acknowledged messages.
+// runtime identity. "local" is the single-node degenerate transport.
+// "memberlist" is the built-in multi-node backend. "redis" remains a
+// transitional multi-node adapter.
 type Cluster struct {
-	Backend string       `json:"backend"`
-	NodeID  string       `json:"node_id"`
-	Redis   ClusterRedis `json:"redis"`
+	Backend    string            `json:"backend"`
+	NodeID     string            `json:"node_id"`
+	Redis      ClusterRedis      `json:"redis"`
+	Memberlist ClusterMemberlist `json:"memberlist"`
 }
 
 type MailSMTP struct {
@@ -271,6 +285,14 @@ func Default() Config {
 				Heartbeat:       Duration{Duration: 5 * time.Second},
 				ReliableMaximum: 10000,
 			},
+			Memberlist: ClusterMemberlist{
+				BindAddress:        "127.0.0.1:7946",
+				AdvertiseAddress:   "127.0.0.1:7946",
+				DiscoveryTTL:       Duration{Duration: 30 * time.Second},
+				DiscoveryHeartbeat: Duration{Duration: 10 * time.Second},
+				ProtocolMin:        1,
+				ProtocolMax:        1,
+			},
 		},
 		Mail: Mail{
 			Enabled:     false,
@@ -359,6 +381,10 @@ func (c Config) Clone() Config {
 	cloned.Log.Targets = append([]LogTarget(nil), c.Log.Targets...)
 	cloned.Cache.Redis.Addresses = append([]string(nil), c.Cache.Redis.Addresses...)
 	cloned.Cluster.Redis.Addresses = append([]string(nil), c.Cluster.Redis.Addresses...)
+	cloned.Cluster.Memberlist.SeedAddresses = append(
+		[]string(nil),
+		c.Cluster.Memberlist.SeedAddresses...,
+	)
 	cloned.Authentication.MFA.DecryptionKeys = append(
 		[]string(nil),
 		c.Authentication.MFA.DecryptionKeys...,
@@ -406,6 +432,7 @@ func (c Config) Redacted() Config {
 	}
 	redacted.Cache.Redis.Password = redactSecret(redacted.Cache.Redis.Password)
 	redacted.Cluster.Redis.Password = redactSecret(redacted.Cluster.Redis.Password)
+	redacted.Cluster.Memberlist.EncryptionKey = redactSecret(redacted.Cluster.Memberlist.EncryptionKey)
 	redacted.Mail.SMTP.Password = redactSecret(redacted.Mail.SMTP.Password)
 	redacted.VFS.S3.AccessKey = redactSecret(redacted.VFS.S3.AccessKey)
 	redacted.VFS.S3.SecretKey = redactSecret(redacted.VFS.S3.SecretKey)
@@ -500,9 +527,9 @@ func (c Config) Validate() error {
 	validateCluster(c.Cluster, add)
 	validateMail(c.Mail, add)
 	validateVFS(c.VFS, add)
-	if c.Cluster.Backend == "redis" {
+	if c.Cluster.Backend == "redis" || c.Cluster.Backend == "memberlist" {
 		if c.VFS.Backend == "local" {
-			add("vfs.backend", "must be shared when cluster.backend is redis")
+			add("vfs.backend", "must be shared when cluster.backend is multi-node")
 		}
 	}
 	validateAuthentication(c.Authentication, add)
@@ -588,8 +615,44 @@ func validateCluster(cluster Cluster, add func(string, string)) {
 			add("cluster.redis.reliable_maximum", "must be between 128 and 1000000")
 		}
 		validateNamespace("cluster.redis.namespace", cluster.Redis.Namespace, add)
+	case "memberlist":
+		if !validHostPort(cluster.Memberlist.BindAddress) {
+			add("cluster.memberlist.bind_address", "must be a host:port TCP address")
+		}
+		if !validHostPort(cluster.Memberlist.AdvertiseAddress) {
+			add("cluster.memberlist.advertise_address", "must be a host:port TCP address")
+		}
+		if strings.TrimSpace(cluster.Memberlist.EncryptionKey) == "" {
+			add("cluster.memberlist.encryption_key", "is required")
+		} else if _, err := decodeMemberlistKey(cluster.Memberlist.EncryptionKey); err != nil {
+			add("cluster.memberlist.encryption_key", err.Error())
+		}
+		if cluster.Memberlist.DiscoveryTTL.Duration < 3*time.Second {
+			add("cluster.memberlist.discovery_ttl", "must be at least 3s")
+		}
+		if cluster.Memberlist.DiscoveryHeartbeat.Duration <= 0 ||
+			cluster.Memberlist.DiscoveryHeartbeat.Duration*2 >= cluster.Memberlist.DiscoveryTTL.Duration {
+			add("cluster.memberlist.discovery_heartbeat", "must be greater than zero and less than half the discovery TTL")
+		}
+		if cluster.Memberlist.ProtocolMin <= 0 ||
+			cluster.Memberlist.ProtocolMax < cluster.Memberlist.ProtocolMin {
+			add("cluster.memberlist.protocol_min", "must form a valid inclusive protocol range with protocol_max")
+		}
+		for index, address := range cluster.Memberlist.SeedAddresses {
+			if !validHostPort(address) {
+				add(
+					fmt.Sprintf("cluster.memberlist.seed_addresses[%d]", index),
+					"must be a host:port TCP address",
+				)
+			}
+		}
+		if !cluster.Memberlist.AllowPublicBind {
+			if isPublicClusterBind(cluster.Memberlist.BindAddress) {
+				add("cluster.memberlist.bind_address", "public-interface binding is rejected by default")
+			}
+		}
 	default:
-		add("cluster.backend", "must be local or redis")
+		add("cluster.backend", "must be local, memberlist, or redis")
 	}
 	if len(cluster.NodeID) == 0 || len(cluster.NodeID) > 128 {
 		add("cluster.node_id", "must contain between 1 and 128 characters")
@@ -918,6 +981,32 @@ func validHostPort(address string) bool {
 	}
 	port, err := strconv.Atoi(portText)
 	return err == nil && port >= 1 && port <= 65535
+}
+
+func decodeMemberlistKey(encoded string) ([]byte, error) {
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	if err != nil {
+		return nil, errors.New("must be base64-encoded")
+	}
+	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
+		return nil, errors.New("must decode to 16, 24, or 32 bytes")
+	}
+	return key, nil
+}
+
+func isPublicClusterBind(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	if host == "0.0.0.0" || host == "::" || host == "[::]" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast())
 }
 
 func validMailbox(value string) bool {

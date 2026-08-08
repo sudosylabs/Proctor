@@ -17,6 +17,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/local"
+	clustermemberlist "github.com/sudosylabs/proctor/server/cluster/memberlist"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -257,7 +258,11 @@ func openRuntimeInfrastructure(
 	if overrides.Cluster != nil {
 		result.cluster = overrides.Cluster
 	} else {
-		cluster, err := newCluster(cfg.Cluster, result.logger)
+		var discovery store.ClusterDiscoveryStore
+		if result.persistence != nil {
+			discovery = result.persistence.ClusterDiscovery()
+		}
+		cluster, err := newCluster(cfg.Cluster, result.logger, discovery, app.Version)
 		if err != nil {
 			return result, fmt.Errorf("open cluster transport: %w", err)
 		}
@@ -358,7 +363,12 @@ func newVFS(settings config.VFS) (vfspkg.FileSystem, error) {
 	}
 }
 
-func newCluster(settings config.Cluster, logger *mlog.Logger) (cluster.Transport, error) {
+func newCluster(
+	settings config.Cluster,
+	logger *mlog.Logger,
+	discovery store.ClusterDiscoveryStore,
+	serverVersion string,
+) (cluster.Transport, error) {
 	switch settings.Backend {
 	case "local":
 		return local.New(settings.NodeID, mlogClusterLogger{log: logger.With(
@@ -367,9 +377,87 @@ func newCluster(settings config.Cluster, logger *mlog.Logger) (cluster.Transport
 		)})
 	case "redis":
 		return platform.NewRedisCluster(settings, logger)
+	case "memberlist":
+		if discovery == nil {
+			return nil, fmt.Errorf("cluster discovery store is required for memberlist")
+		}
+		key, err := clustermemberlist.DecodeEncryptionKey(settings.Memberlist.EncryptionKey)
+		if err != nil {
+			return nil, err
+		}
+		if serverVersion == "" {
+			serverVersion = app.Version
+		}
+		return clustermemberlist.New(clustermemberlist.Config{
+			NodeID:             settings.NodeID,
+			BindAddress:        settings.Memberlist.BindAddress,
+			AdvertiseAddress:   settings.Memberlist.AdvertiseAddress,
+			EncryptionKey:      key,
+			SeedAddresses:      append([]string(nil), settings.Memberlist.SeedAddresses...),
+			Discovery:          storeClusterDiscovery{store: discovery},
+			DiscoveryTTL:       settings.Memberlist.DiscoveryTTL.Duration,
+			DiscoveryHeartbeat: settings.Memberlist.DiscoveryHeartbeat.Duration,
+			ProtocolMin:        settings.Memberlist.ProtocolMin,
+			ProtocolMax:        settings.Memberlist.ProtocolMax,
+			ServerVersion:      serverVersion,
+			AllowPublicBind:    settings.Memberlist.AllowPublicBind,
+			Logger: mlogClusterLogger{log: logger.With(
+				mlog.String("component", "cluster"),
+				mlog.String("node_id", settings.NodeID),
+				mlog.String("backend", "memberlist"),
+			)},
+		})
 	default:
 		return nil, fmt.Errorf("unsupported cluster backend %q", settings.Backend)
 	}
+}
+
+// storeClusterDiscovery adapts store.ClusterDiscoveryStore to cluster.DiscoveryStore.
+type storeClusterDiscovery struct {
+	store store.ClusterDiscoveryStore
+}
+
+func (s storeClusterDiscovery) Upsert(ctx context.Context, node cluster.DiscoveryNode) error {
+	return s.store.Upsert(ctx, &store.ClusterDiscoveryNode{
+		NodeID:           node.NodeID,
+		AdvertiseAddress: node.AdvertiseAddress,
+		ServerVersion:    node.ServerVersion,
+		ProtocolMin:      node.ProtocolMin,
+		ProtocolMax:      node.ProtocolMax,
+		ExpiresAt:        node.ExpiresAt.UTC().UnixMilli(),
+		UpdatedAt:        node.UpdatedAt.UTC().UnixMilli(),
+	})
+}
+
+func (s storeClusterDiscovery) ListLive(ctx context.Context, now time.Time) ([]cluster.DiscoveryNode, error) {
+	rows, err := s.store.ListLive(ctx, now.UTC().UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	result := make([]cluster.DiscoveryNode, 0, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		result = append(result, cluster.DiscoveryNode{
+			NodeID:           row.NodeID,
+			AdvertiseAddress: row.AdvertiseAddress,
+			ServerVersion:    row.ServerVersion,
+			ProtocolMin:      row.ProtocolMin,
+			ProtocolMax:      row.ProtocolMax,
+			ExpiresAt:        time.UnixMilli(row.ExpiresAt).UTC(),
+			UpdatedAt:        time.UnixMilli(row.UpdatedAt).UTC(),
+		})
+	}
+	return result, nil
+}
+
+func (s storeClusterDiscovery) Delete(ctx context.Context, nodeID string) error {
+	return s.store.Delete(ctx, nodeID)
+}
+
+func (s storeClusterDiscovery) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
+	return s.store.DeleteExpired(ctx, now.UTC().UnixMilli())
 }
 
 // mlogClusterLogger adapts mlog to cluster.Logger at the composition root.

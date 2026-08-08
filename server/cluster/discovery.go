@@ -4,6 +4,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -67,6 +68,15 @@ func (n DiscoveryNode) Validate() error {
 // IsLive reports whether the advertisement is still valid at now.
 func (n DiscoveryNode) IsLive(now time.Time) bool {
 	return !now.IsZero() && n.ExpiresAt.After(now)
+}
+
+// DiscoveryStore persists short-lived bootstrap advertisements. Concrete
+// adapters live at the composition boundary; Memberlist never imports SQL.
+type DiscoveryStore interface {
+	Upsert(context.Context, DiscoveryNode) error
+	ListLive(context.Context, time.Time) ([]DiscoveryNode, error)
+	Delete(context.Context, string) error
+	DeleteExpired(context.Context, time.Time) (int64, error)
 }
 
 // DiscoveryLease computes UpdatedAt/ExpiresAt for a heartbeat at now.
