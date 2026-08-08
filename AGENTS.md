@@ -118,6 +118,10 @@ walking skeleton is operational and includes:
   variables, centralized typed request parameters, and route-matrix tests;
   replacing exported initializers with unexported `register<Area>Routes`
   functions is a documented convention migration;
+- a checked-in OpenAPI 3.1 contract covering every registered HTTP operation,
+  including its authentication alternatives, transport-owned request and
+  response DTOs, and stable errors, with schema and bidirectional runtime
+  agreement checks enforced by the ordinary server validation gate;
 - platform-owned cache, mail, and VFS adapters selected from typed deployment
   configuration, with memory/Redis cache, disabled/SMTP mail, local/S3 VFS,
   dependency checks, deterministic cleanup, and memory test implementations;

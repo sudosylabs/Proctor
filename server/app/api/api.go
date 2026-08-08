@@ -535,34 +535,8 @@ func New(options Options) (*API, error) {
 		api.webSocket = noopWebSocketTransport{}
 	}
 	api.initializeBaseRoutes(model.APIURLSuffix)
-	initializers := []func() error{
-		api.InitSystem,
-		api.InitAuthentication,
-		api.InitExternalAuthentication,
-		api.InitUsers,
-		api.InitSessions,
-		api.InitMFA,
-		api.InitPersonalAccessTokens,
-		api.InitAudits,
-		api.InitBootstrap,
-		api.InitRoles,
-		api.InitRoleBindings,
-		api.registerUserProfileRoutes,
-		api.registerInstitutionRoutes,
-		api.registerAcademicUnitRoutes,
-		api.registerProgrammeRoutes,
-		api.registerProgrammeLevelRoutes,
-		api.registerAcademicPeriodRoutes,
-		api.registerClassRoutes,
-		api.registerAffiliationRoutes,
-		api.registerAcademicUnitMemberRoutes,
-		api.registerClassMemberRoutes,
-		api.InitWebSocket,
-	}
-	for _, initialize := range initializers {
-		if err := initialize(); err != nil {
-			return nil, err
-		}
+	if err := api.registerRoutes(); err != nil {
+		return nil, err
 	}
 	sortRoutes(api.routes)
 	api.handler = withMiddleware(
@@ -571,6 +545,39 @@ func New(options Options) (*API, error) {
 		options.MaxBodyBytes,
 	)
 	return api, nil
+}
+
+func (a *API) registerRoutes() error {
+	initializers := []func() error{
+		a.InitSystem,
+		a.InitAuthentication,
+		a.InitExternalAuthentication,
+		a.InitUsers,
+		a.InitSessions,
+		a.InitMFA,
+		a.InitPersonalAccessTokens,
+		a.InitAudits,
+		a.InitBootstrap,
+		a.InitRoles,
+		a.InitRoleBindings,
+		a.registerUserProfileRoutes,
+		a.registerInstitutionRoutes,
+		a.registerAcademicUnitRoutes,
+		a.registerProgrammeRoutes,
+		a.registerProgrammeLevelRoutes,
+		a.registerAcademicPeriodRoutes,
+		a.registerClassRoutes,
+		a.registerAffiliationRoutes,
+		a.registerAcademicUnitMemberRoutes,
+		a.registerClassMemberRoutes,
+		a.InitWebSocket,
+	}
+	for _, initialize := range initializers {
+		if err := initialize(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *API) ServeHTTP(writer http.ResponseWriter, request *http.Request) {

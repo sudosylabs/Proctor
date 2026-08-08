@@ -54,6 +54,9 @@ func TestSessionAdministrationOpenAPIAgreesWithRuntime(t *testing.T) {
 		if !strings.Contains(path, "/sessions") || !strings.HasPrefix(path, model.APIURLSuffix+"/users/") {
 			continue
 		}
+		if strings.HasPrefix(path, model.APIURLSuffix+"/users/me/") {
+			continue
+		}
 		for method, raw := range item {
 			upper := strings.ToUpper(method)
 			if !isHTTPMethod(upper) {

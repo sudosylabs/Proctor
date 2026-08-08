@@ -5,6 +5,10 @@ package api
 
 import "net/http"
 
+type healthResponse struct {
+	Status string `json:"status"`
+}
+
 func (a *API) InitSystem() error {
 	if err := a.Register(
 		a.BaseRoutes.Health,
@@ -43,7 +47,7 @@ func (a *API) getLiveness(writer http.ResponseWriter, request *http.Request) {
 		})
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(writer, http.StatusOK, healthResponse{Status: "ok"})
 }
 
 func (a *API) getReadiness(writer http.ResponseWriter, request *http.Request) {
@@ -59,7 +63,7 @@ func (a *API) getReadiness(writer http.ResponseWriter, request *http.Request) {
 		})
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(writer, http.StatusOK, healthResponse{Status: "ok"})
 }
 
 func (a *API) getVersion(writer http.ResponseWriter, _ *http.Request) {

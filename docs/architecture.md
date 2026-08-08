@@ -396,12 +396,10 @@ The target intentionally differs from existing code:
 5. handlers still use permission preflights and decision receipts;
 6. `model` still contains `AppError`, request/client metadata, cluster, and WebSocket contracts;
 7. models still use `PreSave`, `PreUpdate`, `IsValid`, plain string IDs, and integer timestamps;
-8. some handlers serialize models directly;
-9. WebSocket transport still lives in `app/api`;
-10. clustering uses local and Memberlist backends only (Redis cluster retired);
-11. root-composed local-cache, timer, and safe retry layers are present;
-12. external-service tests are not consistently tagged `integration`;
-13. import-boundary and OpenAPI agreement tests are not yet present.
+8. WebSocket transport still lives in `app/api`;
+9. clustering uses local and Memberlist backends only (Redis cluster retired);
+10. root-composed local-cache, timer, and safe retry layers are present;
+11. external-service tests are not consistently tagged `integration`.
 
 Migration remains vertical and buildable:
 

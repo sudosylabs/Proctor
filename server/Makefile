@@ -7,15 +7,18 @@ PROCTOR_TEST_REDIS_ADDRESS ?= 127.0.0.1:$(PROCTOR_REDIS_PORT)
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT
 
-.PHONY: check architecture openapi-agreement test test-race vet build postgres-up postgres-down postgres-logs redis-up redis-logs integration-all integration-postgres integration-redis integration-providers integration-realtime conformance-postgres conformance-realtime
+.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build postgres-up postgres-down postgres-logs redis-up redis-logs integration-all integration-postgres integration-redis integration-providers integration-realtime conformance-postgres conformance-realtime
 
-check: test test-race vet
+check: architecture openapi-agreement test test-race vet
 
 architecture:
 	go test ./architecture
 
-openapi-agreement:
-	go test ./app/api -run 'OpenAPIAgreesWithRuntime$$'
+openapi-validate:
+	go test ./app/api -run 'OpenAPISchemaIsValid$$'
+
+openapi-agreement: openapi-validate
+	go test ./app/api -run 'OpenAPI'
 
 test:
 	go test ./...

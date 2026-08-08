@@ -10,6 +10,24 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
+type externalAuthenticationProviderResponse struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	Type        string `json:"type"`
+}
+
+func externalAuthenticationProviderResponses(
+	providers []model.ExternalAuthenticationProvider,
+) []externalAuthenticationProviderResponse {
+	responses := make([]externalAuthenticationProviderResponse, 0, len(providers))
+	for _, provider := range providers {
+		responses = append(responses, externalAuthenticationProviderResponse{
+			ID: provider.Id, DisplayName: provider.DisplayName, Type: provider.Type,
+		})
+	}
+	return responses
+}
+
 func (a *API) InitExternalAuthentication() error {
 	if err := a.Register(
 		a.BaseRoutes.IdentityProviders,
@@ -42,7 +60,7 @@ func (a *API) listExternalAuthenticationProviders(
 	writeJSON(
 		writer,
 		http.StatusOK,
-		a.application.ExternalAuthenticationProviders(),
+		externalAuthenticationProviderResponses(a.application.ExternalAuthenticationProviders()),
 	)
 }
 

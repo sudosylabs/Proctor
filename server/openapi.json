@@ -3,7 +3,7 @@
   "info": {
     "title": "Proctor Server API",
     "version": "1.0.0",
-    "description": "The reviewed public HTTP contract. Coverage currently includes Academic Unit, Institution, Programme, Programme Level, Academic Period, and Class capabilities and expands incrementally with each migrated capability."
+    "description": "The reviewed public HTTP contract for every currently registered Proctor HTTP route."
   },
   "servers": [
     {"url": "/"}
@@ -879,6 +879,7 @@
         "operationId": "getInstallationStatus", "summary": "Get installation bootstrap status",
         "x-proctor-auth": "public",
         "x-proctor-error-codes": ["installation.unavailable"],
+        "security": [],
         "responses": {
           "200": {"$ref": "#/components/responses/InstallationStatusOK"},
           "500": {"$ref": "#/components/responses/InternalError"}
@@ -888,6 +889,7 @@
         "operationId": "bootstrapInstallation", "summary": "Bootstrap the installation",
         "x-proctor-auth": "public",
         "x-proctor-error-codes": ["request.invalid", "installation.already_initialized", "installation.unavailable", "authentication.password.invalid", "authentication.rate_limited"],
+        "security": [],
         "requestBody": {"$ref": "#/components/requestBodies/BootstrapInstallation"},
         "responses": {
           "201": {"$ref": "#/components/responses/InstallationBootstrapCreated"},
@@ -931,6 +933,230 @@
           "500": {"$ref": "#/components/responses/InternalError"}
         }
       }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "getLiveness", "summary": "Check process liveness",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["not_live"], "security": [],
+        "responses": {"200": {"$ref": "#/components/responses/HealthOK"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "getReadiness", "summary": "Check service readiness",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["not_ready"], "security": [],
+        "responses": {"200": {"$ref": "#/components/responses/HealthOK"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/system/version": {
+      "get": {
+        "operationId": "getSystemVersion", "summary": "Get build and version information",
+        "x-proctor-auth": "public", "x-proctor-error-codes": [], "security": [],
+        "responses": {"200": {"$ref": "#/components/responses/BuildInfoOK"}}
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login", "summary": "Create an interactive session",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.unavailable", "authentication.sessions.maximum_reached", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal"],
+        "security": [], "requestBody": {"$ref": "#/components/requestBodies/Login"},
+        "responses": {"200": {"$ref": "#/components/responses/AuthenticationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "409": {"$ref": "#/components/responses/Conflict"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "refreshSession", "summary": "Rotate refresh credentials",
+        "x-proctor-auth": "refresh_credential_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.session.invalid", "authentication.internal"],
+        "security": [{"refreshBearerAuth": []}, {"refreshCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/AuthenticationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout", "summary": "Revoke the current session",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.internal"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/auth/email-verification/request": {
+      "post": {
+        "operationId": "requestEmailVerification", "summary": "Request an email-verification message",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.account_recovery.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"202": {"$ref": "#/components/responses/SensitiveAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/email-verification/complete": {
+      "post": {
+        "operationId": "completeEmailVerification", "summary": "Consume an email-verification credential",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.account_token.invalid", "authentication.account_recovery.unavailable"],
+        "security": [], "requestBody": {"$ref": "#/components/requestBodies/CompleteEmailVerification"},
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/password-reset/request": {
+      "post": {
+        "operationId": "requestPasswordReset", "summary": "Request a password-reset message",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.account_recovery.unavailable"],
+        "security": [], "requestBody": {"$ref": "#/components/requestBodies/RequestPasswordReset"},
+        "responses": {"202": {"$ref": "#/components/responses/SensitiveAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/password-reset/complete": {
+      "post": {
+        "operationId": "completePasswordReset", "summary": "Consume a password-reset credential",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.password.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.account_token.invalid", "authentication.account_recovery.unavailable"],
+        "security": [], "requestBody": {"$ref": "#/components/requestBodies/CompletePasswordReset"},
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/providers": {
+      "get": {
+        "operationId": "listAuthenticationProviders", "summary": "List configured external authentication providers",
+        "x-proctor-auth": "public", "x-proctor-error-codes": [], "security": [],
+        "responses": {"200": {"$ref": "#/components/responses/ExternalAuthenticationProviderListOK"}}
+      }
+    },
+    "/api/v1/auth/providers/{provider_id}/login": {
+      "parameters": [{"$ref": "#/components/parameters/ProviderID"}],
+      "get": {
+        "operationId": "beginExternalAuthentication", "summary": "Begin external authentication",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.rejected", "authentication.external.unavailable", "authentication.internal"],
+        "security": [], "parameters": [{"$ref": "#/components/parameters/ReturnTo"}, {"$ref": "#/components/parameters/ClientType"}, {"$ref": "#/components/parameters/DeviceID"}, {"$ref": "#/components/parameters/DeviceName"}],
+        "responses": {"303": {"$ref": "#/components/responses/ExternalAuthenticationRedirect"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "500": {"$ref": "#/components/responses/InternalError"}, "502": {"$ref": "#/components/responses/BadGateway"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/providers/{provider_id}/callback": {
+      "parameters": [{"$ref": "#/components/parameters/ProviderID"}],
+      "get": {
+        "operationId": "completeExternalAuthentication", "summary": "Complete external authentication",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.external.invalid", "authentication.external.provider_not_found", "authentication.external.rejected", "authentication.external.unavailable", "authentication.external.account_conflict", "authentication.external.account_not_linked", "authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable"],
+        "security": [],
+        "responses": {"303": {"$ref": "#/components/responses/ExternalAuthenticationRedirect"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "502": {"$ref": "#/components/responses/BadGateway"}}
+      }
+    },
+    "/api/v1/users/me/sessions": {
+      "get": {
+        "operationId": "listCurrentUserSessions", "summary": "List the current user's sessions",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.internal"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/SessionListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/users/me/sessions/revoke": {
+      "post": {
+        "operationId": "revokeCurrentUserSession", "summary": "Revoke one current-user session",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "request.invalid", "session.id.invalid", "session.not_found", "authentication.internal"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "requestBody": {"$ref": "#/components/requestBodies/RevokeSession"},
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/users/me/sessions/revoke-all": {
+      "post": {
+        "operationId": "revokeAllCurrentUserSessions", "summary": "Revoke all current-user sessions",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.internal"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/users/me/mfa": {
+      "get": {
+        "operationId": "getMFAStatus", "summary": "Get current-user MFA status",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.mfa.disabled", "authentication.mfa.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MFAStatusOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "501": {"$ref": "#/components/responses/NotImplemented"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/users/me/mfa/setup": {
+      "post": {
+        "operationId": "setupMFA", "summary": "Begin MFA setup",
+        "x-proctor-auth": "recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.reauthentication_required", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"201": {"$ref": "#/components/responses/MFASetupCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "501": {"$ref": "#/components/responses/NotImplemented"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/users/me/mfa/activate": {
+      "post": {
+        "operationId": "activateMFA", "summary": "Activate pending MFA setup",
+        "x-proctor-auth": "recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.reauthentication_required", "request.invalid", "authentication.mfa.invalid_code", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "requestBody": {"$ref": "#/components/requestBodies/MFACode"},
+        "responses": {"200": {"$ref": "#/components/responses/MFAActivationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "501": {"$ref": "#/components/responses/NotImplemented"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/users/me/mfa/challenge": {
+      "post": {
+        "operationId": "challengeMFA", "summary": "Upgrade the current session with MFA",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "request.invalid", "authentication.mfa.invalid_code", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "requestBody": {"$ref": "#/components/requestBodies/MFACode"},
+        "responses": {"200": {"$ref": "#/components/responses/SessionOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "501": {"$ref": "#/components/responses/NotImplemented"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/users/me/mfa/recovery-codes/regenerate": {
+      "post": {
+        "operationId": "regenerateMFARecoveryCodes", "summary": "Regenerate MFA recovery codes",
+        "x-proctor-auth": "strong_recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.strong_required", "authentication.reauthentication_required", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MFARecoveryCodesOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "501": {"$ref": "#/components/responses/NotImplemented"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/users/me/mfa/disable": {
+      "post": {
+        "operationId": "disableMFA", "summary": "Disable current-user MFA",
+        "x-proctor-auth": "strong_recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.strong_required", "authentication.reauthentication_required", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "501": {"$ref": "#/components/responses/NotImplemented"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/users/me/tokens": {
+      "get": {
+        "operationId": "listPersonalAccessTokens", "summary": "List current-user Personal Access Tokens",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "personal_access_token.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/PersonalAccessTokenListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "post": {
+        "operationId": "createPersonalAccessToken", "summary": "Create a Personal Access Token",
+        "x-proctor-auth": "recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "personal_access_token.invalid", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "requestBody": {"$ref": "#/components/requestBodies/CreatePersonalAccessToken"},
+        "responses": {"201": {"$ref": "#/components/responses/PersonalAccessTokenCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/users/me/tokens/{personal_access_token_id}/disable": {
+      "parameters": [{"$ref": "#/components/parameters/PersonalAccessTokenID"}],
+      "post": {
+        "operationId": "disablePersonalAccessToken", "summary": "Disable a Personal Access Token",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/PersonalAccessTokenOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/users/me/tokens/{personal_access_token_id}/enable": {
+      "parameters": [{"$ref": "#/components/parameters/PersonalAccessTokenID"}],
+      "post": {
+        "operationId": "enablePersonalAccessToken", "summary": "Enable a Personal Access Token",
+        "x-proctor-auth": "recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/PersonalAccessTokenOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/users/me/tokens/{personal_access_token_id}": {
+      "parameters": [{"$ref": "#/components/parameters/PersonalAccessTokenID"}],
+      "delete": {
+        "operationId": "revokePersonalAccessToken", "summary": "Revoke a Personal Access Token",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/websocket": {
+      "get": {
+        "operationId": "connectWebSocket", "summary": "Upgrade to the WebSocket protocol",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "connection_id", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/ID"}}, {"name": "sequence_number", "in": "query", "required": false, "schema": {"type": "integer", "format": "int64", "minimum": 0}}],
+        "responses": {"101": {"description": "Switching Protocols"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
+      }
     }
   },
   "components": {
@@ -951,6 +1177,17 @@
         "in": "header",
         "name": "X-Proctor-CSRF-Token",
         "description": "Required with the session cookie for state-changing requests."
+      },
+      "refreshBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A refresh credential accepted only by the refresh operation."
+      },
+      "refreshCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "PROCTOR_REFRESH",
+        "description": "The host-only HttpOnly browser refresh cookie."
       }
     },
     "parameters": {
@@ -998,6 +1235,10 @@
         "name": "role_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "RoleBindingID": {
+        "name": "role_binding_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "AffiliationID": {
         "name": "affiliation_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -1005,6 +1246,30 @@
       "AcademicUnitMemberID": {
         "name": "academic_unit_member_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "PersonalAccessTokenID": {
+        "name": "personal_access_token_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "ProviderID": {
+        "name": "provider_id", "in": "path", "required": true,
+        "schema": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"}
+      },
+      "ReturnTo": {
+        "name": "return_to", "in": "query", "required": false,
+        "schema": {"type": "string", "maxLength": 2048}
+      },
+      "ClientType": {
+        "name": "client_type", "in": "query", "required": false,
+        "schema": {"type": "string", "enum": ["desktop", "web"], "default": "desktop"}
+      },
+      "DeviceID": {
+        "name": "device_id", "in": "query", "required": false,
+        "schema": {"type": "string"}
+      },
+      "DeviceName": {
+        "name": "device_name", "in": "query", "required": false,
+        "schema": {"type": "string"}
       }
     },
     "requestBodies": {
@@ -1088,6 +1353,34 @@
       "BootstrapInstallation": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BootstrapInstallationRequest"}}}
+      },
+      "Login": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}}
+      },
+      "CompleteEmailVerification": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EmailVerificationCompletionRequest"}}}
+      },
+      "RequestPasswordReset": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PasswordResetRequest"}}}
+      },
+      "CompletePasswordReset": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PasswordResetCompletionRequest"}}}
+      },
+      "RevokeSession": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RevokeSessionRequest"}}}
+      },
+      "MFACode": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MFACodeRequest"}}}
+      },
+      "CreatePersonalAccessToken": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreatePersonalAccessTokenRequest"}}}
       }
     },
     "responses": {
@@ -1144,6 +1437,22 @@
       "AuditListOK": {"description": "Audit Event collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuditListResponse"}}}},
       "InstallationStatusOK": {"description": "Installation status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationStatusResponse"}}}},
       "InstallationBootstrapCreated": {"description": "Installation bootstrapped", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationBootstrapResult"}}}},
+      "HealthOK": {"description": "Health status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthResponse"}}}},
+      "BuildInfoOK": {"description": "Build information", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BuildInfoResponse"}}}},
+      "AuthenticationOK": {"description": "Authenticated session", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthenticationResponse"}}}},
+      "ExternalAuthenticationProviderListOK": {"description": "External authentication provider collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExternalAuthenticationProviderListResponse"}}}},
+      "ExternalAuthenticationRedirect": {"description": "Browser redirect", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}, "Location": {"description": "Validated redirect URI", "schema": {"type": "string", "format": "uri-reference"}}}},
+      "SessionOK": {"description": "Session", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionResponse"}}}},
+      "SessionListOK": {"description": "Current-user session collection", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionListResponse"}}}},
+      "MFAStatusOK": {"description": "MFA status", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MFAStatusResponse"}}}},
+      "MFASetupCreated": {"description": "Pending MFA setup", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MFASetupResponse"}}}},
+      "MFAActivationOK": {"description": "MFA activated", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MFAActivationResponse"}}}},
+      "MFARecoveryCodesOK": {"description": "New MFA recovery codes", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MFARecoveryCodesResponse"}}}},
+      "PersonalAccessTokenOK": {"description": "Personal Access Token", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PersonalAccessTokenResponse"}}}},
+      "PersonalAccessTokenCreated": {"description": "Personal Access Token with one-time credential", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PersonalAccessTokenCreationResponse"}}}},
+      "PersonalAccessTokenListOK": {"description": "Personal Access Token collection", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PersonalAccessTokenListResponse"}}}},
+      "SensitiveAccepted": {"description": "Accepted", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
+      "SensitiveNoContent": {"description": "Completed", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}},
       "BadRequest": {"description": "Invalid request", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Unauthorized": {"description": "Authentication required", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "Forbidden": {"description": "Access denied", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
@@ -1151,6 +1460,9 @@
       "Conflict": {"description": "Conflict", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "InternalError": {"description": "Internal server error", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}},
       "TooManyRequests": {"description": "Rate limited", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
+      ,"ServiceUnavailable": {"description": "Service unavailable", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
+      ,"BadGateway": {"description": "Upstream authentication provider failed", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
+      ,"NotImplemented": {"description": "Capability is not enabled", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
     },
     "headers": {
       "NoStore": {"description": "Prevents storage of sensitive responses.", "schema": {"type": "string", "const": "no-store"}}
@@ -1549,7 +1861,11 @@
           "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
           "update_at": {"type": "integer", "format": "int64"}, "actor_id": {"type": "string"},
           "session_id": {"type": "string"}, "action": {"type": "string"},
-          "resource": {"type": "object"}, "scope_type": {"type": "string"}, "scope_id": {"type": "string"},
+          "resource": {
+            "type": "object", "additionalProperties": false, "required": ["type", "id"],
+            "properties": {"type": {"type": "string"}, "id": {"$ref": "#/components/schemas/ID"}}
+          },
+          "scope_type": {"type": "string"}, "scope_id": {"type": "string"},
           "status": {"type": "string"}, "request_id": {"type": "string"}, "node_id": {"type": "string"},
           "client_type": {"type": "string"}, "authentication_method": {"type": "string"}, "ip_address": {"type": "string"}, "user_agent": {"type": "string"}, "error_code": {"type": "string"}
         }
@@ -1620,6 +1936,137 @@
           "locale": {"type": ["string", "null"]}, "timezone": {"type": ["string", "null"]}
         }
       },
+      "HealthResponse": {
+        "type": "object", "additionalProperties": false, "required": ["status"],
+        "properties": {"status": {"type": "string", "enum": ["ok"]}}
+      },
+      "BuildInfoResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["version", "commit", "build_time", "go_version"],
+        "properties": {
+          "version": {"type": "string"}, "commit": {"type": "string"},
+          "build_time": {"type": "string"}, "go_version": {"type": "string"}
+        }
+      },
+      "LoginRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["login_id", "password", "client_type"],
+        "properties": {
+          "login_id": {"type": "string"}, "password": {"type": "string"},
+          "client_type": {"type": "string", "enum": ["desktop", "cli", "web"]},
+          "device_id": {"type": "string"}, "device_name": {"type": "string"},
+          "mfa_code": {"type": "string"}
+        }
+      },
+      "PasswordResetRequest": {
+        "type": "object", "additionalProperties": false, "required": ["email"],
+        "properties": {"email": {"type": "string", "format": "email"}}
+      },
+      "PasswordResetCompletionRequest": {
+        "type": "object", "additionalProperties": false, "required": ["token", "password"],
+        "properties": {"token": {"type": "string"}, "password": {"type": "string"}}
+      },
+      "EmailVerificationCompletionRequest": {
+        "type": "object", "additionalProperties": false, "required": ["token"],
+        "properties": {"token": {"type": "string"}}
+      },
+      "AuthenticationResponse": {
+        "type": "object", "additionalProperties": false, "required": ["session"],
+        "properties": {
+          "user": {"$ref": "#/components/schemas/UserProfileResponse"},
+          "session": {"$ref": "#/components/schemas/SessionResponse"},
+          "tokens": {"$ref": "#/components/schemas/AuthenticationTokensResponse"}
+        }
+      },
+      "SessionResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "user_id", "client_type", "authentication_method", "authentication_strength", "authenticated_at", "last_activity_at", "idle_expires_at", "expires_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "client_type": {"type": "string", "enum": ["desktop", "cli", "web"]},
+          "device_id": {"type": "string"}, "device_name": {"type": "string"},
+          "authentication_method": {"type": "string"}, "authentication_strength": {"type": "string"},
+          "authenticated_at": {"type": "integer", "format": "int64"}, "mfa_completed_at": {"type": "integer", "format": "int64"},
+          "last_activity_at": {"type": "integer", "format": "int64"}, "idle_expires_at": {"type": "integer", "format": "int64"},
+          "expires_at": {"type": "integer", "format": "int64"}, "revoked_at": {"type": "integer", "format": "int64"},
+          "revocation_reason": {"type": "string"}
+        }
+      },
+      "SessionListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/SessionResponse"}},
+      "AuthenticationTokensResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["access_token", "refresh_token", "access_expires_at", "refresh_expires_at"],
+        "properties": {
+          "access_token": {"type": "string"}, "refresh_token": {"type": "string"},
+          "access_expires_at": {"type": "integer", "format": "int64"},
+          "refresh_expires_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "RevokeSessionRequest": {
+        "type": "object", "additionalProperties": false, "required": ["session_id"],
+        "properties": {"session_id": {"$ref": "#/components/schemas/ID"}}
+      },
+      "MFACodeRequest": {
+        "type": "object", "additionalProperties": false, "required": ["code"],
+        "properties": {"code": {"type": "string"}}
+      },
+      "MFARecoveryCodesResponse": {
+        "type": "object", "additionalProperties": false, "required": ["recovery_codes"],
+        "properties": {"recovery_codes": {"type": "array", "items": {"type": "string"}}}
+      },
+      "MFASetupResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["secret", "provisioning_uri", "expires_at"],
+        "properties": {
+          "secret": {"type": "string"}, "provisioning_uri": {"type": "string", "format": "uri"},
+          "expires_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "MFAActivationResponse": {
+        "type": "object", "additionalProperties": false, "required": ["recovery_codes"],
+        "properties": {"recovery_codes": {"type": "array", "items": {"type": "string"}}}
+      },
+      "MFAStatusResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["enabled", "pending", "recovery_codes_remaining"],
+        "properties": {
+          "enabled": {"type": "boolean"}, "pending": {"type": "boolean"},
+          "pending_expires_at": {"type": "integer", "format": "int64"},
+          "recovery_codes_remaining": {"type": "integer", "minimum": 0}
+        }
+      },
+      "CreatePersonalAccessTokenRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["description", "scopes", "expires_at"],
+        "properties": {
+          "description": {"type": "string"}, "scopes": {"type": "array", "items": {"type": "string"}},
+          "academic_unit_id": {"$ref": "#/components/schemas/ID"},
+          "expires_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "PersonalAccessTokenResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "create_at", "update_at", "delete_at", "user_id", "description", "scopes", "expires_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "description": {"type": "string"},
+          "scopes": {"type": "array", "items": {"type": "string"}}, "academic_unit_id": {"$ref": "#/components/schemas/ID"},
+          "expires_at": {"type": "integer", "format": "int64"}, "last_used_at": {"type": "integer", "format": "int64"},
+          "disabled_at": {"type": "integer", "format": "int64"}, "revoked_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "PersonalAccessTokenCreationResponse": {
+        "type": "object", "additionalProperties": false, "required": ["token", "credential"],
+        "properties": {"token": {"$ref": "#/components/schemas/PersonalAccessTokenResponse"}, "credential": {"type": "string"}}
+      },
+      "PersonalAccessTokenListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/PersonalAccessTokenResponse"}},
+      "ExternalAuthenticationProviderResponse": {
+        "type": "object", "additionalProperties": false, "required": ["id", "display_name", "type"],
+        "properties": {"id": {"type": "string"}, "display_name": {"type": "string"}, "type": {"type": "string"}}
+      },
+      "ExternalAuthenticationProviderListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/ExternalAuthenticationProviderResponse"}},
       "ProblemDetails": {
         "type": "object",
         "additionalProperties": false,
