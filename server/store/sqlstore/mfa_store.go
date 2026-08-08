@@ -12,6 +12,7 @@ package sqlstore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -43,20 +44,28 @@ func (s SqlMFAStore) SavePending(
 	ctx context.Context,
 	credential *model.MFACredential,
 ) (*model.MFACredential, error) {
-	if credential == nil || credential.Id != "" {
+	if credential == nil {
 		return nil, store.NewErrInvalidInput("mfa_credential", "value", nil)
 	}
+	if !credential.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("mfa_credential", "id", credential.ID.String())
+	}
 	candidate := *credential
-	candidate.PreSave()
-	if appErr := candidate.IsValid(); appErr != nil {
-		return nil, appErr
+	at := model.NowUTC()
+	if !candidate.CreatedAt.IsZero() {
+		at = model.TimeUTC(candidate.CreatedAt)
+	}
+	candidate.PrepareCreate(model.NewMFACredentialID(), at)
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin MFA setup: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := lockMFAUser(ctx, tx, candidate.UserId); err != nil {
+	userID := candidate.UserID.String()
+	if err := lockMFAUser(ctx, tx, userID); err != nil {
 		return nil, err
 	}
 	var active int
@@ -64,18 +73,19 @@ func (s SqlMFAStore) SavePending(
 		SELECT COUNT(*)
 		  FROM mfa_credentials
 		 WHERE user_id = ? AND delete_at = 0 AND state = 'active'`,
-		candidate.UserId,
+		userID,
 	); err != nil {
 		return nil, fmt.Errorf("count active MFA credentials: %w", err)
 	}
 	if active != 0 {
 		return nil, store.NewErrConflict("mfa_credential", "mfa_already_enabled", nil)
 	}
+	createMillis := model.MillisFromTime(candidate.CreatedAt)
 	if _, err := tx.Exec(ctx, `
 		UPDATE mfa_credentials
 		   SET update_at = GREATEST(update_at, ?), delete_at = ?
 		 WHERE user_id = ? AND delete_at = 0`,
-		candidate.CreateAt, candidate.CreateAt, candidate.UserId,
+		createMillis, createMillis, userID,
 	); err != nil {
 		return nil, fmt.Errorf("replace pending MFA credential: %w", err)
 	}
@@ -102,7 +112,11 @@ func (s SqlMFAStore) GetByUser(
 	); err != nil {
 		return nil, translateError("mfa_credential", userID, err)
 	}
-	return row.model(), nil
+	credential, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	return credential, nil
 }
 
 func (s SqlMFAStore) Activate(
@@ -119,7 +133,8 @@ func (s SqlMFAStore) Activate(
 		len(recoveryCodes) == 0 || len(recoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
-	prepared, err := prepareMFARecoveryCodes(userID, recoveryCodes)
+	at := model.TimeFromMillis(now)
+	prepared, err := prepareMFARecoveryCodes(userID, recoveryCodes, at)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +190,12 @@ func (s SqlMFAStore) Activate(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit MFA activation: %w", err)
 	}
+	credential, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	return &store.MFAActivationResult{
-		Credential:        row.model(),
+		Credential:        credential,
 		Session:           session,
 		AccessTokenHashes: hashes,
 	}, nil
@@ -287,7 +306,8 @@ func (s SqlMFAStore) ReplaceRecoveryCodes(
 		len(recoveryCodes) == 0 || len(recoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return store.NewErrInvalidInput("mfa_recovery_code", "replace", nil)
 	}
-	prepared, err := prepareMFARecoveryCodes(userID, recoveryCodes)
+	at := model.TimeFromMillis(now)
+	prepared, err := prepareMFARecoveryCodes(userID, recoveryCodes, at)
 	if err != nil {
 		return err
 	}
@@ -436,19 +456,20 @@ func insertMFACredential(
 	executor sqlxExecutor,
 	credential *model.MFACredential,
 ) error {
+	row := newMFACredentialRow(credential)
 	if _, err := executor.Exec(ctx, `
 		INSERT INTO mfa_credentials (
 			id, create_at, update_at, delete_at, user_id, state,
 			encrypted_secret, encryption_key_id, pending_expires_at,
 			enabled_at, last_used_time_step
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		credential.Id, credential.CreateAt, credential.UpdateAt,
-		credential.DeleteAt, credential.UserId, credential.State,
-		credential.EncryptedSecret, credential.EncryptionKeyId,
-		credential.PendingExpiresAt, credential.EnabledAt,
-		credential.LastUsedTimeStep,
+		row.ID, row.CreateAt, row.UpdateAt,
+		row.DeleteAt, row.UserID, row.State,
+		row.EncryptedSecret, row.EncryptionKeyID,
+		row.PendingExpiresAt, row.EnabledAt,
+		row.LastUsedTimeStep,
 	); err != nil {
-		return translateError("mfa_credential", credential.Id, err)
+		return translateError("mfa_credential", credential.ID.String(), err)
 	}
 	return nil
 }
@@ -456,18 +477,23 @@ func insertMFACredential(
 func prepareMFARecoveryCodes(
 	userID string,
 	codes []*model.MFARecoveryCode,
+	at time.Time,
 ) ([]*model.MFARecoveryCode, error) {
+	parsedUserID, err := model.ParseUserID(userID)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("mfa_recovery_code", "user_id", userID)
+	}
 	prepared := make([]*model.MFARecoveryCode, 0, len(codes))
 	seen := make(map[string]struct{}, len(codes))
 	for _, code := range codes {
-		if code == nil || code.Id != "" {
+		if code == nil || !code.ID.IsZero() {
 			return nil, store.NewErrInvalidInput("mfa_recovery_code", "value", nil)
 		}
 		candidate := *code
-		candidate.UserId = userID
-		candidate.PreSave()
-		if appErr := candidate.IsValid(); appErr != nil {
-			return nil, appErr
+		candidate.UserID = parsedUserID
+		candidate.PrepareCreate(model.NewMFARecoveryCodeID(), at)
+		if err := candidate.Validate(); err != nil {
+			return nil, err
 		}
 		if _, exists := seen[candidate.CodeHash]; exists {
 			return nil, store.NewErrInvalidInput("mfa_recovery_code", "code_hash", nil)
@@ -487,10 +513,15 @@ func insertMFARecoveryCode(
 		INSERT INTO mfa_recovery_codes (
 			id, create_at, update_at, delete_at, user_id, code_hash, used_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		code.Id, code.CreateAt, code.UpdateAt, code.DeleteAt,
-		code.UserId, code.CodeHash, code.UsedAt,
+		code.ID.String(),
+		model.MillisFromTime(code.CreatedAt),
+		model.MillisFromTime(code.UpdatedAt),
+		code.ArchivedAt.Millis(),
+		code.UserID.String(),
+		code.CodeHash,
+		code.ConsumedAt.Millis(),
 	); err != nil {
-		return translateError("mfa_recovery_code", code.Id, err)
+		return translateError("mfa_recovery_code", code.ID.String(), err)
 	}
 	return nil
 }
@@ -541,14 +572,40 @@ func selectActiveAccessTokenHashes(
 	return hashes, nil
 }
 
-func (row mfaCredentialRow) model() *model.MFACredential {
-	return &model.MFACredential{
-		Id: row.ID, CreateAt: row.CreateAt, UpdateAt: row.UpdateAt,
-		DeleteAt: row.DeleteAt, UserId: row.UserID, State: row.State,
-		EncryptedSecret: row.EncryptedSecret, EncryptionKeyId: row.EncryptionKeyID,
-		PendingExpiresAt: row.PendingExpiresAt, EnabledAt: row.EnabledAt,
+func newMFACredentialRow(credential *model.MFACredential) mfaCredentialRow {
+	return mfaCredentialRow{
+		ID:               credential.ID.String(),
+		CreateAt:         model.MillisFromTime(credential.CreatedAt),
+		UpdateAt:         model.MillisFromTime(credential.UpdatedAt),
+		DeleteAt:         credential.ArchivedAt.Millis(),
+		UserID:           credential.UserID.String(),
+		State:            credential.State,
+		EncryptedSecret:  credential.EncryptedSecret,
+		EncryptionKeyID:  credential.EncryptionKeyID,
+		PendingExpiresAt: model.MillisFromTime(credential.PendingExpiresAt),
+		EnabledAt:        credential.ActivatedAt.Millis(),
+		LastUsedTimeStep: credential.LastUsedTimeStep,
+	}
+}
+
+func (row mfaCredentialRow) model() (*model.MFACredential, error) {
+	credential := &model.MFACredential{
+		ID:               model.MFACredentialID(row.ID),
+		CreatedAt:        model.TimeFromMillis(row.CreateAt),
+		UpdatedAt:        model.TimeFromMillis(row.UpdateAt),
+		ArchivedAt:       model.OptionalTimeFromMillis(row.DeleteAt),
+		UserID:           model.UserID(row.UserID),
+		State:            row.State,
+		EncryptedSecret:  row.EncryptedSecret,
+		EncryptionKeyID:  row.EncryptionKeyID,
+		PendingExpiresAt: model.TimeFromMillis(row.PendingExpiresAt),
+		ActivatedAt:      model.OptionalTimeFromMillis(row.EnabledAt),
 		LastUsedTimeStep: row.LastUsedTimeStep,
 	}
+	if err := credential.Validate(); err != nil {
+		return nil, fmt.Errorf("rehydrate mfa_credential %s: %w", row.ID, err)
+	}
+	return credential, nil
 }
 
 var _ store.MFAStore = (*SqlMFAStore)(nil)

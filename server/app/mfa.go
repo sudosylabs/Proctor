@@ -117,7 +117,7 @@ func (a *App) GetMFAStatus(
 	if err := a.requireMFAEnabled(); err != nil {
 		return nil, err
 	}
-	now := a.mfa.now().UnixMilli()
+	now := a.mfa.now()
 	credential, err := a.Store().MFA().GetByUser(ctx, principal.UserId)
 	if store.IsNotFound(err) {
 		return &model.MFAStatus{}, nil
@@ -128,7 +128,7 @@ func (a *App) GetMFAStatus(
 	status := &model.MFAStatus{
 		Enabled:          credential.IsActive(),
 		Pending:          credential.IsPendingAt(now),
-		PendingExpiresAt: credential.PendingExpiresAt,
+		PendingExpiresAt: model.MillisFromTime(credential.PendingExpiresAt),
 	}
 	if status.Enabled {
 		status.RecoveryCodesRemaining, err = a.Store().MFA().
@@ -168,13 +168,18 @@ func (a *App) SetupMFA(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	now := a.mfa.now().UnixMilli()
+	now := a.mfa.now()
+	userID, err := model.ParseUserID(principal.UserId)
+	if err != nil {
+		return nil, authenticationUnavailable(err)
+	}
 	candidate := &model.MFACredential{
-		UserId:           principal.UserId,
+		UserID:           userID,
 		State:            model.MFAStatePending,
 		EncryptedSecret:  encrypted,
-		EncryptionKeyId:  a.mfa.primary,
-		PendingExpiresAt: now + a.mfa.settings.SetupTTL.Milliseconds(),
+		EncryptionKeyID:  a.mfa.primary,
+		PendingExpiresAt: now.Add(a.mfa.settings.SetupTTL),
+		CreatedAt:        now,
 	}
 	resource, err := a.mfaAuditResourceNeutral(ctx)
 	if err != nil {
@@ -202,7 +207,7 @@ func (a *App) SetupMFA(
 			accountName,
 			secret,
 		),
-		ExpiresAt: saved.PendingExpiresAt,
+		ExpiresAt: model.MillisFromTime(saved.PendingExpiresAt),
 	}, nil
 }
 
@@ -225,7 +230,7 @@ func (a *App) ActivateMFA(
 		return nil, mfaStoreFailure(err)
 	}
 	now := a.mfa.now()
-	if !credential.IsPendingAt(now.UnixMilli()) {
+	if !credential.IsPendingAt(now) {
 		return nil, mfaInvalidCodeError("ActivateMFA")
 	}
 	secret, err := a.mfa.decrypt(principal.UserId, credential)
@@ -256,7 +261,7 @@ func (a *App) ActivateMFA(
 	}
 	activated, err := a.Store().MFA().Activate(
 		ctx,
-		credential.Id,
+		credential.ID.String(),
 		principal.UserId,
 		timeStep,
 		recoveryCodes,
@@ -374,7 +379,7 @@ func (a *App) RegenerateMFARecoveryCodes(
 		a.mfa.settings.RecoveryCodeCount,
 	)
 	if err != nil {
-		return nil, authenticationUnavailable(err,)
+		return nil, authenticationUnavailable(err)
 	}
 	resource, appErr := a.mfaAuditResource(ctx)
 	if appErr != nil {
@@ -623,7 +628,7 @@ func (s *MFAService) decrypt(
 	userID string,
 	credential *model.MFACredential,
 ) (string, error) {
-	key, ok := s.keys[credential.EncryptionKeyId]
+	key, ok := s.keys[credential.EncryptionKeyID]
 	if !ok {
 		return "", errors.New("MFA decryption key is unavailable")
 	}
@@ -672,6 +677,10 @@ func generateMFARecoveryCodes(
 	userID string,
 	count int,
 ) ([]string, []*model.MFARecoveryCode, error) {
+	parsedUserID, err := model.ParseUserID(userID)
+	if err != nil {
+		return nil, nil, err
+	}
 	rawCodes := make([]string, 0, count)
 	models := make([]*model.MFARecoveryCode, 0, count)
 	seen := make(map[string]struct{}, count)
@@ -690,7 +699,7 @@ func generateMFARecoveryCodes(
 		seen[normalized] = struct{}{}
 		rawCodes = append(rawCodes, formatMFARecoveryCode(normalized))
 		models = append(models, &model.MFARecoveryCode{
-			UserId:   userID,
+			UserID:   parsedUserID,
 			CodeHash: model.HashToken(normalized),
 		})
 	}

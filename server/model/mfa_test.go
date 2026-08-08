@@ -7,55 +7,68 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMFACredentialValidationAndRedaction(t *testing.T) {
+	now := TimeFromMillis(1_700_000_000_000)
 	pending := &MFACredential{
-		UserId:           NewId(),
+		UserID:           NewUserID(),
 		State:            MFAStatePending,
 		EncryptedSecret:  "ciphertext",
-		EncryptionKeyId:  "0123456789abcdef",
-		PendingExpiresAt: GetMillis() + 60_000,
+		EncryptionKeyID:  "0123456789abcdef",
+		PendingExpiresAt: now.Add(time.Minute),
 	}
-	pending.PreSave()
-	if appErr := pending.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	pending.PrepareCreate(NewMFACredentialID(), now)
+	if err := pending.Validate(); err != nil {
+		t.Fatal(err)
 	}
 	encoded, err := json.Marshal(pending)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(encoded), pending.EncryptedSecret) ||
-		strings.Contains(string(encoded), pending.EncryptionKeyId) {
+		strings.Contains(string(encoded), pending.EncryptionKeyID) {
 		t.Fatalf("MFA credential exposed encryption material: %s", encoded)
 	}
 	auditable := pending.Auditable()
 	if _, exists := auditable["encrypted_secret"]; exists {
 		t.Fatal("MFA auditable projection exposed encrypted secret")
 	}
+	if _, exists := auditable["encryption_key_id"]; exists {
+		t.Fatal("MFA auditable projection exposed encryption key id")
+	}
+	if !pending.IsPendingAt(now) || pending.IsPendingAt(pending.PendingExpiresAt) {
+		t.Fatalf("IsPendingAt() inconsistent for %#v", pending)
+	}
 
 	active := *pending
 	active.State = MFAStateActive
-	active.PendingExpiresAt = 0
-	active.EnabledAt = active.CreateAt
+	active.PendingExpiresAt = time.Time{}
+	active.ActivatedAt = OptionalTimeFrom(active.CreatedAt)
 	active.LastUsedTimeStep = 1
-	if appErr := active.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	if err := active.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !active.IsActive() {
+		t.Fatal("IsActive() = false for valid active credential")
 	}
 	active.LastUsedTimeStep = 0
-	if appErr := active.IsValid(); appErr == nil {
+	if err := active.Validate(); err == nil {
 		t.Fatal("active MFA credential accepted missing replay state")
 	}
 }
 
 func TestMFARecoveryCodeValidationAndRedaction(t *testing.T) {
 	raw := NewCredentialToken()
+	now := TimeFromMillis(1_700_000_000_000)
 	code := &MFARecoveryCode{
-		UserId: NewId(), CodeHash: HashToken(raw),
+		UserID:   NewUserID(),
+		CodeHash: HashToken(raw),
 	}
-	code.PreSave()
-	if appErr := code.IsValid(); appErr != nil {
-		t.Fatal(appErr)
+	code.PrepareCreate(NewMFARecoveryCodeID(), now)
+	if err := code.Validate(); err != nil {
+		t.Fatal(err)
 	}
 	encoded, err := json.Marshal(code)
 	if err != nil {
@@ -66,5 +79,9 @@ func TestMFARecoveryCodeValidationAndRedaction(t *testing.T) {
 	}
 	if _, exists := code.Auditable()["code_hash"]; exists {
 		t.Fatal("MFA recovery-code audit exposed hash")
+	}
+	code.ConsumedAt = OptionalTimeFrom(now.Add(-time.Second))
+	if err := code.Validate(); err == nil {
+		t.Fatal("recovery code accepted consumed_at before created_at")
 	}
 }

@@ -35,13 +35,13 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	pending := savePendingMFA(t, ctx, ss, user.ID.String())
+	pending := savePendingMFA(t, ctx, ss, user.ID)
 	firstHash := model.HashToken(model.NewCredentialToken())
 	secondHash := model.HashToken(model.NewCredentialToken())
-	now := pending.CreateAt + 1
+	now := model.MillisFromTime(pending.CreatedAt) + 1
 	activated, err := ss.MFA().Activate(
 		ctx,
-		pending.Id,
+		pending.ID.String(),
 		user.ID.String(),
 		1_000,
 		[]*model.MFARecoveryCode{
@@ -122,15 +122,15 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 func testMFAPendingReplacement(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	first := savePendingMFA(t, ctx, ss, user.ID.String())
-	second := savePendingMFA(t, ctx, ss, user.ID.String())
-	if first.Id == second.Id {
+	first := savePendingMFA(t, ctx, ss, user.ID)
+	second := savePendingMFA(t, ctx, ss, user.ID)
+	if first.ID == second.ID {
 		t.Fatal("pending MFA setup was not replaced")
 	}
 	current, err := ss.MFA().GetByUser(ctx, user.ID.String())
 	requireNoError(t, err)
-	if current.Id != second.Id {
-		t.Fatalf("GetByUser() = %s, want %s", current.Id, second.Id)
+	if current.ID != second.ID {
+		t.Fatalf("GetByUser() = %s, want %s", current.ID, second.ID)
 	}
 }
 
@@ -138,16 +138,17 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
-	pending := savePendingMFA(t, ctx, ss, user.ID.String())
+	pending := savePendingMFA(t, ctx, ss, user.ID)
 	codeHash := model.HashToken(model.NewCredentialToken())
+	base := model.MillisFromTime(pending.CreatedAt)
 	_, err := ss.MFA().Activate(
 		ctx,
-		pending.Id,
+		pending.ID.String(),
 		user.ID.String(),
 		2_000,
 		[]*model.MFARecoveryCode{{CodeHash: codeHash}},
 		session.ID.String(),
-		pending.CreateAt+1,
+		base+1,
 	)
 	requireNoError(t, err)
 
@@ -165,7 +166,7 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 				user.ID.String(),
 				0,
 				codeHash,
-				pending.CreateAt+2+int64(offset),
+				base+2+int64(offset),
 			)
 		}(index)
 	}
@@ -192,15 +193,17 @@ func savePendingMFA(
 	t *testing.T,
 	ctx context.Context,
 	ss store.Store,
-	userID string,
+	userID model.UserID,
 ) *model.MFACredential {
 	t.Helper()
+	now := model.NowUTC()
 	credential, err := ss.MFA().SavePending(ctx, &model.MFACredential{
-		UserId:           userID,
+		UserID:           userID,
 		State:            model.MFAStatePending,
 		EncryptedSecret:  "encrypted-secret",
-		EncryptionKeyId:  "0123456789abcdef",
-		PendingExpiresAt: model.GetMillis() + (10 * time.Minute).Milliseconds(),
+		EncryptionKeyID:  "0123456789abcdef",
+		PendingExpiresAt: now.Add(10 * time.Minute),
+		CreatedAt:        now,
 	})
 	requireNoError(t, err)
 	return credential
