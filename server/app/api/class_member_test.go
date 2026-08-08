@@ -13,7 +13,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -43,11 +42,7 @@ func (a *classMemberHTTPApplication) EndClassMember(_ context.Context, _ applica
 
 func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	classID, userID := model.NewId(), model.NewId()
 	member := &model.ClassMember{

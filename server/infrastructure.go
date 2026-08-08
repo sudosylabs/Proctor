@@ -5,11 +5,19 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"time"
 
+	"github.com/redis/rueidis"
+
+	cachepkg "github.com/sudosylabs/proctor/packages/cache"
+	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
+	rediscache "github.com/sudosylabs/proctor/packages/cache/redis"
+	mailpkg "github.com/sudosylabs/proctor/packages/mail"
+	smtpmail "github.com/sudosylabs/proctor/packages/mail/smtp"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
 	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
@@ -141,7 +149,7 @@ func assembleRuntime(
 		)
 	}
 	httpAPI, err := api.New(api.Options{
-		Logger:                  applicationPlatform.Log(),
+		Logger:                  apiLogger{log: applicationPlatform.Log()},
 		Health:                  readiness,
 		Application:             application,
 		AcademicUnits:           application,
@@ -376,22 +384,120 @@ func (i *runtimeInfrastructure) close() error {
 func newCache(settings config.Cache) (platform.Cache, error) {
 	switch settings.Backend {
 	case "memory":
-		return platform.NewMemoryCache()
+		store, err := memorycache.New(cachepkg.BytesCodec())
+		if err != nil {
+			return nil, err
+		}
+		return platform.NewCacheAdapter(memoryCacheBackend{store: store}), nil
 	case "redis":
-		return platform.NewRedisCache(settings)
+		clientOption := rueidis.ClientOption{
+			InitAddress: append([]string(nil), settings.Redis.Addresses...),
+			Username:    settings.Redis.Username,
+			Password:    settings.Redis.Password,
+			SelectDB:    settings.Redis.Database,
+			ClientName:  "proctor",
+			Dialer: net.Dialer{
+				Timeout:   settings.Redis.ConnectTimeout.Duration,
+				KeepAlive: 30 * time.Second,
+			},
+		}
+		if settings.Redis.TLS {
+			clientOption.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		client, err := rueidis.NewClient(clientOption)
+		if err != nil {
+			return nil, fmt.Errorf("create Redis client: %w", err)
+		}
+		store, err := rediscache.New(
+			client,
+			cachepkg.BytesCodec(),
+			rediscache.Config{Namespace: settings.Namespace},
+		)
+		if err != nil {
+			client.Close()
+			return nil, err
+		}
+		return platform.NewCacheAdapter(redisCacheBackend{store: store, client: client}), nil
 	default:
 		return nil, fmt.Errorf("unsupported cache backend %q", settings.Backend)
 	}
 }
 
+type memoryCacheBackend struct {
+	store *memorycache.Store[[]byte]
+}
+
+func (b memoryCacheBackend) Get(ctx context.Context, key string) ([]byte, error) {
+	return b.store.Get(ctx, key)
+}
+
+func (b memoryCacheBackend) Set(ctx context.Context, key string, value []byte, options cachepkg.SetOptions) error {
+	return b.store.Set(ctx, key, value, options)
+}
+
+func (b memoryCacheBackend) Delete(ctx context.Context, key string) error {
+	return b.store.Delete(ctx, key)
+}
+
+func (b memoryCacheBackend) Add(ctx context.Context, key string, delta int64, options cachepkg.CounterOptions) (int64, error) {
+	return b.store.Add(ctx, key, delta, options)
+}
+
+type redisCacheBackend struct {
+	store  *rediscache.Store[[]byte]
+	client rueidis.Client
+}
+
+func (b redisCacheBackend) Get(ctx context.Context, key string) ([]byte, error) {
+	return b.store.Get(ctx, key)
+}
+
+func (b redisCacheBackend) Set(ctx context.Context, key string, value []byte, options cachepkg.SetOptions) error {
+	return b.store.Set(ctx, key, value, options)
+}
+
+func (b redisCacheBackend) Delete(ctx context.Context, key string) error {
+	return b.store.Delete(ctx, key)
+}
+
+func (b redisCacheBackend) Add(ctx context.Context, key string, delta int64, options cachepkg.CounterOptions) (int64, error) {
+	return b.store.Add(ctx, key, delta, options)
+}
+
+func (b redisCacheBackend) Ping(ctx context.Context) error {
+	return b.client.Do(ctx, b.client.B().Ping().Build()).Error()
+}
+
+func (b redisCacheBackend) Close() error {
+	b.client.Close()
+	return nil
+}
+
 func newMailer(settings config.Mail) (platform.Mailer, error) {
+	from := mailpkg.Address{Name: settings.FromName, Address: settings.FromAddress}
 	if !settings.Enabled {
-		return platform.NewDisabledMailer(settings), nil
+		return platform.NewDisabledMailer(from), nil
 	}
 	if settings.Backend != "smtp" {
 		return nil, fmt.Errorf("unsupported mail backend %q", settings.Backend)
 	}
-	return platform.NewSMTPMailer(settings)
+	sender, err := smtpmail.New(smtpmail.Config{
+		Address:         settings.SMTP.Address,
+		ServerName:      settings.SMTP.ServerName,
+		LocalName:       settings.SMTP.LocalName,
+		Security:        smtpmail.Security(settings.SMTP.Security),
+		Username:        settings.SMTP.Username,
+		Password:        settings.SMTP.Password,
+		Authentication:  smtpmail.Authentication(settings.SMTP.Authentication),
+		Timeout:         settings.SMTP.Timeout.Duration,
+		MessageIDDomain: settings.SMTP.MessageIDDomain,
+		MaxMessageBytes: settings.SMTP.MaxMessageBytes,
+		MaxRecipients:   settings.SMTP.MaxRecipients,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return platform.NewMailAdapter(true, from, sender), nil
 }
 
 func newVFS(settings config.VFS) (vfspkg.FileSystem, error) {

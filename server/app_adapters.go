@@ -10,6 +10,7 @@ import (
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -342,4 +343,33 @@ func (l websocketLogger) WarnContext(ctx context.Context, message string, err er
 		fields = append(fields, mlog.Err(err))
 	}
 	l.log.WarnContext(ctx, message, fields...)
+}
+
+
+// apiLogger adapts mlog to the narrow api.Logger port so the HTTP transport
+// package never imports mlog.
+type apiLogger struct {
+	log *mlog.Logger
+}
+
+func (l apiLogger) InfoContext(ctx context.Context, message string, fields ...api.LogField) {
+	if l.log == nil {
+		return
+	}
+	l.log.InfoContext(ctx, message, apiLogFields(fields)...)
+}
+
+func (l apiLogger) ErrorContext(ctx context.Context, message string, fields ...api.LogField) {
+	if l.log == nil {
+		return
+	}
+	l.log.ErrorContext(ctx, message, apiLogFields(fields)...)
+}
+
+func apiLogFields(fields []api.LogField) []mlog.Field {
+	out := make([]mlog.Field, 0, len(fields))
+	for _, field := range fields {
+		out = append(out, mlog.Any(field.Key, field.Value))
+	}
+	return out
 }

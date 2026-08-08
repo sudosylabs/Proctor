@@ -13,7 +13,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -63,11 +62,7 @@ func (a *institutionHTTPApplication) UpdateInstitution(
 func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	t.Parallel()
 
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	institution := &model.Institution{
 		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
 		Name: "northbridge", DisplayName: "Northbridge University",

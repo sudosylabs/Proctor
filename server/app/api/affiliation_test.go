@@ -13,7 +13,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -38,11 +37,7 @@ func (a *affiliationHTTPApplication) EndAffiliation(_ context.Context, _ applica
 
 func TestAffiliationHTTPUsesDTOAndRouteOwnedUser(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	userID := model.NewId()
 	created := &model.Affiliation{

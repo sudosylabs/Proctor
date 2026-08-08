@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -98,7 +97,7 @@ func requireAuthentication(
 	next http.Handler,
 	requirement AuthRequirement,
 	application Authenticator,
-	logger *mlog.Logger,
+	logger Logger,
 	cookies browserCookies,
 	recentAuthenticationTTL time.Duration,
 ) http.Handler {
@@ -179,7 +178,7 @@ func requireAuthentication(
 			logger.ErrorContext(
 				request.Context(),
 				"route has unsupported authentication requirement",
-				mlog.String("requirement", string(requirement)),
+				logString("requirement", string(requirement)),
 			)
 			WriteProblem(writer, internalProblem(request))
 		})

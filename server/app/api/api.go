@@ -24,7 +24,6 @@ import (
 
 	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -34,6 +33,27 @@ type BuildInfo struct {
 	BuildTime string `json:"build_time"`
 	GoVersion string `json:"go_version"`
 }
+
+// Logger is the narrow operational logging port owned by the HTTP transport.
+// Composition supplies an mlog-backed adapter; package api never imports mlog.
+type Logger interface {
+	InfoContext(ctx context.Context, message string, fields ...LogField)
+	ErrorContext(ctx context.Context, message string, fields ...LogField)
+}
+
+// LogField is one structured operational log attribute.
+type LogField struct {
+	Key   string
+	Value any
+}
+
+func logString(key, value string) LogField { return LogField{Key: key, Value: value} }
+func logInt(key string, value int) LogField  { return LogField{Key: key, Value: value} }
+func logInt64(key string, value int64) LogField {
+	return LogField{Key: key, Value: value}
+}
+func logAny(key string, value any) LogField { return LogField{Key: key, Value: value} }
+func logErr(err error) LogField             { return LogField{Key: "error", Value: err} }
 
 type Health interface {
 	Live() bool
@@ -107,7 +127,7 @@ type Routes struct {
 }
 
 type Options struct {
-	Logger                  *mlog.Logger
+	Logger                  Logger
 	Health                  Health
 	Application             Application
 	AcademicUnits           AcademicUnitApplication
@@ -418,7 +438,7 @@ type API struct {
 	roleBindings            RoleBindingApplication
 	auditListings           AuditListingApplication
 	bootstrap               BootstrapApplication
-	logger                  *mlog.Logger
+	logger                  Logger
 	health                  Health
 	buildInfo               BuildInfo
 	cookies                 browserCookies

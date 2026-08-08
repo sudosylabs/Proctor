@@ -72,14 +72,13 @@ type Helper struct {
 	Health      *app.Health
 	ConfigStore *config.Store
 	Logs        *mlog.Buffer
-	// Store is the default fake persistence capability. It is nil when the
-	// graph was constructed with WithStore; integration suites use their own
-	// real store handle instead.
-	Store   *Store
-	Cache   *Cache
-	Cluster platform.Cluster
-	Mailer  *Mailer
-	VFS     *memoryvfs.FS
+	// PersistenceClose tracks close of the default lifecycle-only persistence
+	// stub. It is nil when the graph was constructed with WithStore.
+	PersistenceClose *LifecycleStore
+	Cache            *Cache
+	Cluster          platform.Cluster
+	Mailer           *Mailer
+	VFS              *memoryvfs.FS
 }
 
 // Handler returns the HTTP transport of the assembled graph.
@@ -140,10 +139,10 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 	filesystem := memoryvfs.New()
 
 	persistenceOverride := settings.persistence
-	var persistence *Store
+	var lifecycle *LifecycleStore
 	if persistenceOverride == nil {
-		persistence = &Store{}
-		persistenceOverride = persistence
+		lifecycle = NewLifecycleStore()
+		persistenceOverride = lifecycle
 	}
 	runtime, err := server.NewForTesting(context.Background(), server.TestingOverrides{
 		Configuration: store,
@@ -166,7 +165,7 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		Health:      runtime.Health,
 		ConfigStore: store,
 		Logs:        logs,
-		Store:       persistence,
+		PersistenceClose: lifecycle,
 		Cache:       cache,
 		Cluster:     runtime.Platform.Cluster(),
 		Mailer:      mailer,
@@ -180,52 +179,70 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 	return helper
 }
 
-// Store is the persistence dependency used by ordinary unit tests. SQL store
-// tests use the real PostgreSQL adapter and its conformance suites.
-type Store struct {
+// LifecycleStore is the lifecycle-only persistence seam for ordinary unit
+// tests that never exercise durable model stores. Accessors return nil so
+// composition can construct the graph; capability tests must supply WithStore
+// or a focused consumer-owned fake.
+type LifecycleStore struct {
 	closed atomic.Bool
 }
 
-func (s *Store) Institution() store.InstitutionStore           { return nil }
-func (s *Store) AcademicUnit() store.AcademicUnitStore         { return nil }
-func (s *Store) Programme() store.ProgrammeStore               { return nil }
-func (s *Store) ProgrammeLevel() store.ProgrammeLevelStore     { return nil }
-func (s *Store) AcademicPeriod() store.AcademicPeriodStore     { return nil }
-func (s *Store) Class() store.ClassStore                       { return nil }
-func (s *Store) User() store.UserStore                         { return nil }
-func (s *Store) ExternalIdentity() store.ExternalIdentityStore { return nil }
-func (s *Store) ExternalLoginState() store.ExternalLoginStateStore {
+// NewLifecycleStore constructs the lifecycle-only persistence stub.
+func NewLifecycleStore() *LifecycleStore {
+	return &LifecycleStore{}
+}
+
+func (s *LifecycleStore) Institution() store.InstitutionStore { return nil }
+func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore { return nil }
+func (s *LifecycleStore) Programme() store.ProgrammeStore { return nil }
+func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
+func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
+func (s *LifecycleStore) Class() store.ClassStore { return nil }
+func (s *LifecycleStore) User() store.UserStore { return nil }
+func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore { return nil }
+func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore { return nil }
+func (s *LifecycleStore) UserToken() store.UserTokenStore { return nil }
+func (s *LifecycleStore) PersonalAccessToken() store.PersonalAccessTokenStore { return nil }
+func (s *LifecycleStore) MFA() store.MFAStore { return nil }
+func (s *LifecycleStore) Affiliation() store.AffiliationStore { return nil }
+func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
+func (s *LifecycleStore) ClassMember() store.ClassMemberStore { return nil }
+func (s *LifecycleStore) PasswordCredential() store.PasswordCredentialStore { return nil }
+func (s *LifecycleStore) Session() store.SessionStore { return nil }
+func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore { return nil }
+func (s *LifecycleStore) Role() store.RoleStore { return nil }
+func (s *LifecycleStore) RoleBinding() store.RoleBindingStore { return nil }
+func (s *LifecycleStore) Audit() store.AuditStore { return nil }
+func (s *LifecycleStore) Installation() store.InstallationStore { return nil }
+func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
+	// Composition always requests discovery while constructing the cluster
+	// transport. Local-mode unit tests only need a no-op implementation.
+	return noopClusterDiscovery{}
+}
+
+type noopClusterDiscovery struct{}
+
+func (noopClusterDiscovery) Upsert(context.Context, *store.ClusterDiscoveryNode) error {
 	return nil
 }
-func (s *Store) UserToken() store.UserTokenStore { return nil }
-func (s *Store) PersonalAccessToken() store.PersonalAccessTokenStore {
-	return nil
+func (noopClusterDiscovery) ListLive(context.Context, int64) ([]*store.ClusterDiscoveryNode, error) {
+	return nil, nil
 }
-func (s *Store) MFA() store.MFAStore                 { return nil }
-func (s *Store) Affiliation() store.AffiliationStore { return nil }
-func (s *Store) AcademicUnitMember() store.AcademicUnitMemberStore {
-	return nil
+func (noopClusterDiscovery) Delete(context.Context, string) error { return nil }
+func (noopClusterDiscovery) DeleteExpired(context.Context, int64) (int64, error) {
+	return 0, nil
 }
-func (s *Store) ClassMember() store.ClassMemberStore { return nil }
-func (s *Store) PasswordCredential() store.PasswordCredentialStore {
-	return nil
-}
-func (s *Store) Session() store.SessionStore                     { return nil }
-func (s *Store) SessionCredential() store.SessionCredentialStore { return nil }
-func (s *Store) Role() store.RoleStore                           { return nil }
-func (s *Store) RoleBinding() store.RoleBindingStore             { return nil }
-func (s *Store) Audit() store.AuditStore                         { return nil }
-func (s *Store) Installation() store.InstallationStore           { return nil }
-func (s *Store) ClusterDiscovery() store.ClusterDiscoveryStore   { return nil }
-func (s *Store) Ping(context.Context) error                      { return nil }
-func (s *Store) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
-func (s *Store) GetLocalSchemaVersion() (int, error)             { return 0, nil }
-func (s *Store) ValidateSchema(context.Context) error            { return nil }
-func (s *Store) Close() error {
+func (s *LifecycleStore) Ping(context.Context) error                      { return nil }
+func (s *LifecycleStore) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
+func (s *LifecycleStore) GetLocalSchemaVersion() (int, error)             { return 0, nil }
+func (s *LifecycleStore) ValidateSchema(context.Context) error            { return nil }
+func (s *LifecycleStore) Close() error {
 	s.closed.Store(true)
 	return nil
 }
 
 // Closed reports whether the assembled runtime closed the persistence
 // capability.
-func (s *Store) Closed() bool { return s.closed.Load() }
+func (s *LifecycleStore) Closed() bool { return s.closed.Load() }
+
+var _ store.Store = (*LifecycleStore)(nil)

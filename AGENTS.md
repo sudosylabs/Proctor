@@ -88,7 +88,8 @@ walking skeleton is operational and includes:
   and one logger; moving this graph to the module-root `server.New` composition
   package is a documented architecture migration;
 - a shared `testlib` that constructs the same application graph with memory
-  configuration and captured logs;
+  configuration, captured logs, and a lifecycle-only persistence stub for
+  unit tests that do not exercise durable stores;
 - bounded HTTP server timeouts, request body/header limits, request IDs,
   security headers, access logging, panic recovery, and graceful shutdown;
 - liveness, readiness, and version endpoints;
@@ -122,9 +123,11 @@ walking skeleton is operational and includes:
   including its authentication alternatives, transport-owned request and
   response DTOs, and stable errors, with schema and bidirectional runtime
   agreement checks enforced by the ordinary server validation gate;
-- platform-owned cache, mail, and VFS adapters selected from typed deployment
-  configuration, with memory/Redis cache, disabled/SMTP mail, local/S3 VFS,
-  dependency checks, deterministic cleanup, and memory test implementations;
+- platform-owned cache, mail, and VFS ports with root-selected concrete
+  adapters from typed deployment configuration (memory/Redis cache,
+  disabled/SMTP mail, local/S3 VFS), dependency checks, deterministic cleanup,
+  and memory test implementations; the architecture dependency debt list is
+  empty and forbidden production imports fail immediately;
 - a Mattermost-shaped cluster message contract and server-owned cluster port
   with typed handlers, best-effort-only delivery, stable node identity, bounded
   messages, startup/readiness/shutdown ownership, a loop-safe single-node

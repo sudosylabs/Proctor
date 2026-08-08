@@ -13,7 +13,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -158,11 +157,7 @@ func TestAcademicUnitCollectionMappingReturnsJSONArrayForNoResults(t *testing.T)
 func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	t.Parallel()
 
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	unit := &model.AcademicUnit{
 		ID: model.AcademicUnitID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(20),
 		InstitutionID: model.InstitutionID(model.NewId()), Name: "computing", DisplayName: "Computing",
@@ -224,11 +219,7 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 	t.Parallel()
 
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	unit := &model.AcademicUnit{ID: model.AcademicUnitID(model.NewId())}
 	fakeApplication := &academicUnitHTTPApplication{
 		principal: model.Principal{
@@ -301,11 +292,7 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			logger, err := mlog.New()
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = logger.Shutdown() })
+			logger, _ := newTestLogger(t)
 			created := &model.AcademicUnit{
 				ID: model.AcademicUnitID(model.NewId()), CreatedAt: model.TimeFromMillis(10), UpdatedAt: model.TimeFromMillis(10),
 				InstitutionID: model.InstitutionID(model.NewId()), ParentID: model.AcademicUnitID(tt.wantParentID),
@@ -396,11 +383,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 		},
 		unit: unit,
 	}
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	httpAPI, err := New(Options{
 		Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
 		AcademicUnits: fakeApplication, Institutions: fakeApplication,

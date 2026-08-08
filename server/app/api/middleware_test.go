@@ -8,27 +8,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/sudosylabs/proctor/server/mlog"
 )
 
 func TestPanicRecoveryReturnsSafeProblemAndRetainsDiagnostic(t *testing.T) {
 	t.Parallel()
 
-	var logs mlog.Buffer
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
-	if err := logger.Configure(mlog.Config{
-		MaxFieldBytes: 1024,
-		Targets: []mlog.Target{{
-			Name: "test", Type: "console", Level: "debug", Format: "json", Writer: &logs,
-		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	logger, logs := newTestLogger(t)
 	handler := withMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("secret panic detail")
 	}), logger, 1024)

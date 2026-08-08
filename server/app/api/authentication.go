@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -221,7 +220,7 @@ func (a *API) InitUsers() error {
 
 func loginHandler(
 	auth Authentication,
-	logger *mlog.Logger,
+	logger Logger,
 	cookies browserCookies,
 ) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -348,7 +347,7 @@ func (a *API) completePasswordReset(
 
 func refreshHandler(
 	auth Authentication,
-	logger *mlog.Logger,
+	logger Logger,
 	cookies browserCookies,
 ) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -381,7 +380,7 @@ func refreshHandler(
 
 func logoutHandler(
 	auth Authentication,
-	logger *mlog.Logger,
+	logger Logger,
 	cookies browserCookies,
 ) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -406,7 +405,7 @@ func logoutHandler(
 	})
 }
 
-func currentUserHandler(profiles UserProfileApplication, logger *mlog.Logger) http.Handler {
+func currentUserHandler(profiles UserProfileApplication, logger Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := Principal(request.Context())
 		if !ok {
@@ -539,16 +538,16 @@ func ambiguousCredentialError() error {
 func writeApplicationError(
 	writer http.ResponseWriter,
 	request *http.Request,
-	logger *mlog.Logger,
+	logger Logger,
 	appErr error,
 ) {
 	if applicationErrorRequiresLogging(appErr) {
 		logger.ErrorContext(
 			request.Context(),
 			"application request failed",
-			mlog.String("request_id", RequestID(request.Context())),
-			mlog.String("error_id", applicationErrorCode(appErr)),
-			mlog.Err(appErr),
+			logString("request_id", RequestID(request.Context())),
+			logString("error_id", applicationErrorCode(appErr)),
+			logErr(appErr),
 		)
 	}
 	WriteError(writer, request, appErr)

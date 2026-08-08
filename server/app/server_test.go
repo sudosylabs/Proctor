@@ -60,7 +60,7 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	if helper.Platform.Store() != helper.App.Store() {
 		t.Fatal("application and platform do not share the root-decorated persistence store")
 	}
-	if helper.App.Store() == helper.Store {
+	if helper.App.Store() == helper.PersistenceClose {
 		t.Fatal("application persistence bypassed the root store timing layer")
 	}
 	if helper.Platform.Cluster() != helper.Cluster {
@@ -171,7 +171,7 @@ func TestClosedServerCannotBeStarted(t *testing.T) {
 	if err := helper.Server.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if !helper.Store.Closed() {
+	if !helper.PersistenceClose.Closed() {
 		t.Fatal("server close did not close the platform store")
 	}
 	if err := helper.Server.Start(context.Background()); err == nil {

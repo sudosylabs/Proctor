@@ -5,21 +5,13 @@ package platform
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
-	"net"
 	"time"
 
-	"github.com/redis/rueidis"
-
 	cachepkg "github.com/sudosylabs/proctor/packages/cache"
-	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
-	rediscache "github.com/sudosylabs/proctor/packages/cache/redis"
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	smtpmail "github.com/sudosylabs/proctor/packages/mail/smtp"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
-	"github.com/sudosylabs/proctor/server/config"
 )
 
 var (
@@ -56,60 +48,31 @@ type Mailer interface {
 	Close() error
 }
 
+// ByteCache is the package-cache contract required by NewCacheAdapter.
+type ByteCache interface {
+	Get(context.Context, string) ([]byte, error)
+	Set(context.Context, string, []byte, cachepkg.SetOptions) error
+	Delete(context.Context, string) error
+}
+
+// CachePinger optionally reports cache backend health.
+type CachePinger interface {
+	Ping(context.Context) error
+}
+
+// CacheCloser optionally releases cache backend resources.
+type CacheCloser interface {
+	Close() error
+}
+
+// NewCacheAdapter wraps a reusable cache store as the platform Cache port.
+// Concrete backend construction belongs to the module-root composition package.
+func NewCacheAdapter(store ByteCache) Cache {
+	return &cacheAdapter{store: store}
+}
+
 type cacheAdapter struct {
-	store  cachepkg.Store[[]byte]
-	client rueidis.Client
-}
-
-// NewMemoryCache constructs the platform cache adapter backed by process-local
-// disposable memory. Backend selection remains the composition root's job.
-func NewMemoryCache() (Cache, error) {
-	return newMemoryCache()
-}
-
-func newMemoryCache() (*cacheAdapter, error) {
-	store, err := memorycache.New(cachepkg.BytesCodec())
-	if err != nil {
-		return nil, err
-	}
-	return &cacheAdapter{store: store}, nil
-}
-
-// NewRedisCache constructs the platform cache adapter backed by Redis.
-// Backend selection remains the composition root's job.
-func NewRedisCache(settings config.Cache) (Cache, error) {
-	return newRedisCache(settings)
-}
-
-func newRedisCache(settings config.Cache) (*cacheAdapter, error) {
-	clientOption := rueidis.ClientOption{
-		InitAddress: append([]string(nil), settings.Redis.Addresses...),
-		Username:    settings.Redis.Username,
-		Password:    settings.Redis.Password,
-		SelectDB:    settings.Redis.Database,
-		ClientName:  "proctor",
-		Dialer: net.Dialer{
-			Timeout:   settings.Redis.ConnectTimeout.Duration,
-			KeepAlive: 30 * time.Second,
-		},
-	}
-	if settings.Redis.TLS {
-		clientOption.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-	}
-	client, err := rueidis.NewClient(clientOption)
-	if err != nil {
-		return nil, fmt.Errorf("create Redis client: %w", err)
-	}
-	store, err := rediscache.New(
-		client,
-		cachepkg.BytesCodec(),
-		rediscache.Config{Namespace: settings.Namespace},
-	)
-	if err != nil {
-		client.Close()
-		return nil, err
-	}
-	return &cacheAdapter{store: store, client: client}, nil
+	store ByteCache
 }
 
 func (c *cacheAdapter) Get(ctx context.Context, key string) ([]byte, error) {
@@ -166,67 +129,34 @@ func (c *cacheAdapter) Add(
 }
 
 func (c *cacheAdapter) Ping(ctx context.Context) error {
-	if c.client == nil {
-		return ctx.Err()
+	if pinger, ok := c.store.(CachePinger); ok {
+		return pinger.Ping(ctx)
 	}
-	return c.client.Do(ctx, c.client.B().Ping().Build()).Error()
+	return ctx.Err()
 }
 
 func (c *cacheAdapter) Close() error {
-	if c.client != nil {
-		c.client.Close()
+	if closer, ok := c.store.(CacheCloser); ok {
+		return closer.Close()
 	}
 	return nil
+}
+
+// NewMailAdapter wraps a reusable mail sender as the platform Mailer port.
+// Concrete backend construction belongs to the module-root composition package.
+func NewMailAdapter(enabled bool, from mailpkg.Address, sender mailpkg.Sender) Mailer {
+	return &mailAdapter{enabled: enabled, from: from, sender: sender}
+}
+
+// NewDisabledMailer constructs an explicitly disabled mail capability.
+func NewDisabledMailer(from mailpkg.Address) Mailer {
+	return &mailAdapter{from: from}
 }
 
 type mailAdapter struct {
 	enabled bool
 	from    mailpkg.Address
 	sender  mailpkg.Sender
-}
-
-// NewDisabledMailer constructs an explicitly disabled mail capability.
-func NewDisabledMailer(settings config.Mail) Mailer {
-	return newDisabledMailer(settings)
-}
-
-func newDisabledMailer(settings config.Mail) *mailAdapter {
-	return &mailAdapter{
-		from: mailpkg.Address{Name: settings.FromName, Address: settings.FromAddress},
-	}
-}
-
-// NewSMTPMailer constructs the configured SMTP-backed mail capability.
-func NewSMTPMailer(settings config.Mail) (Mailer, error) {
-	return newSMTPMailer(settings)
-}
-
-func newSMTPMailer(settings config.Mail) (*mailAdapter, error) {
-	adapter := &mailAdapter{
-		enabled: true,
-		from: mailpkg.Address{
-			Name:    settings.FromName,
-			Address: settings.FromAddress,
-		},
-	}
-	sender, err := smtpmail.New(smtpmail.Config{
-		Address:         settings.SMTP.Address,
-		ServerName:      settings.SMTP.ServerName,
-		LocalName:       settings.SMTP.LocalName,
-		Security:        smtpmail.Security(settings.SMTP.Security),
-		Username:        settings.SMTP.Username,
-		Password:        settings.SMTP.Password,
-		Authentication:  smtpmail.Authentication(settings.SMTP.Authentication),
-		Timeout:         settings.SMTP.Timeout.Duration,
-		MessageIDDomain: settings.SMTP.MessageIDDomain,
-		MaxMessageBytes: settings.SMTP.MaxMessageBytes,
-		MaxRecipients:   settings.SMTP.MaxRecipients,
-	})
-	if err != nil {
-		return nil, err
-	}
-	adapter.sender = sender
-	return adapter, nil
 }
 
 func (m *mailAdapter) Enabled() bool {

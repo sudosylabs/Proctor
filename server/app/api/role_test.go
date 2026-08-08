@@ -11,17 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",

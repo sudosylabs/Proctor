@@ -12,11 +12,10 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func withMiddleware(next http.Handler, logger *mlog.Logger, maxBodyBytes int64) http.Handler {
+func withMiddleware(next http.Handler, logger Logger, maxBodyBytes int64) http.Handler {
 	handler := limitRequestBody(next, maxBodyBytes)
 	handler = recoverPanics(handler, logger)
 	handler = logRequests(handler, logger)
@@ -77,16 +76,16 @@ func limitRequestBody(next http.Handler, maxBodyBytes int64) http.Handler {
 	})
 }
 
-func recoverPanics(next http.Handler, logger *mlog.Logger) http.Handler {
+func recoverPanics(next http.Handler, logger Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				logger.ErrorContext(
 					request.Context(),
 					"panic recovered",
-					mlog.String("request_id", RequestID(request.Context())),
-					mlog.Any("panic", recovered),
-					mlog.String("stack", string(debug.Stack())),
+					logString("request_id", RequestID(request.Context())),
+					logAny("panic", recovered),
+					logString("stack", string(debug.Stack())),
 				)
 				WriteProblem(writer, internalProblem(request))
 			}
@@ -142,7 +141,7 @@ func (r *responseRecorder) Flush() {
 	}
 }
 
-func logRequests(next http.Handler, logger *mlog.Logger) http.Handler {
+func logRequests(next http.Handler, logger Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		started := time.Now()
 		recorder := &responseRecorder{ResponseWriter: writer}
@@ -153,12 +152,12 @@ func logRequests(next http.Handler, logger *mlog.Logger) http.Handler {
 		logger.InfoContext(
 			request.Context(),
 			"http request",
-			mlog.String("request_id", RequestID(request.Context())),
-			mlog.String("method", request.Method),
-			mlog.String("path", request.URL.Path),
-			mlog.Int("status", recorder.status),
-			mlog.Int("bytes", recorder.bytes),
-			mlog.Int64("duration_ms", time.Since(started).Milliseconds()),
+			logString("request_id", RequestID(request.Context())),
+			logString("method", request.Method),
+			logString("path", request.URL.Path),
+			logInt("status", recorder.status),
+			logInt("bytes", recorder.bytes),
+			logInt64("duration_ms", time.Since(started).Milliseconds()),
 		)
 	})
 }

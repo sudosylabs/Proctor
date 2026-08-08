@@ -13,7 +13,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -165,11 +164,7 @@ func (a *userProfileHTTPApplication) UpdateUserProfile(_ context.Context, _ appl
 
 func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	userID := model.NewId()
 	user := &model.User{ID: model.UserID(userID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 7, Username: "student", Email: "student@example.edu", DisplayName: "Student", Locale: "en", Timezone: "UTC"}
@@ -204,11 +199,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 
 func TestLoginResponseDoesNotExposeUserRevision(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	application := &loginRevisionHTTPApplication{user: &model.User{
 		ID: model.NewUserID(), Revision: 7, Username: "student",
 	}}
@@ -238,11 +229,7 @@ func TestLoginResponseDoesNotExposeUserRevision(t *testing.T) {
 
 func TestAccountDisableUsesApplicationCommandAndAllowlistedResponse(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	userID := model.NewId()
 	accounts := &accountStateHTTPApplication{result: &model.User{ID: model.UserID(userID), Revision: 4, Username: "student", DisabledAt: model.OptionalTimeFromMillis(500)}}

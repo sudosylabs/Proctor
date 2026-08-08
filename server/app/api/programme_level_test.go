@@ -13,7 +13,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -45,11 +44,7 @@ func (a *programmeLevelHTTPApplication) ArchiveProgrammeLevel(context.Context, a
 
 func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	programmeID := model.NewId()
 	levels := &programmeLevelHTTPApplication{err: application.NewError("resource.not_found").WithField("resource", "programme")}
@@ -82,11 +77,7 @@ func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 
 func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	t.Parallel()
-	logger, err := mlog.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
+	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	level := &model.ProgrammeLevel{ID: model.ProgrammeLevelID(model.NewId()), ProgrammeID: model.ProgrammeID(model.NewId()), Name: "year-1", DisplayName: "Year 1"}
 	levels := &programmeLevelHTTPApplication{result: level}

@@ -10,21 +10,42 @@ import (
 	"testing"
 	"time"
 
+	cachepkg "github.com/sudosylabs/proctor/packages/cache"
+	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
 	"github.com/sudosylabs/proctor/server/config"
 )
 
+type memoryByteCache struct {
+	store *memorycache.Store[[]byte]
+}
+
+func (c memoryByteCache) Get(ctx context.Context, key string) ([]byte, error) {
+	return c.store.Get(ctx, key)
+}
+
+func (c memoryByteCache) Set(ctx context.Context, key string, value []byte, options cachepkg.SetOptions) error {
+	return c.store.Set(ctx, key, value, options)
+}
+
+func (c memoryByteCache) Delete(ctx context.Context, key string) error {
+	return c.store.Delete(ctx, key)
+}
+
+func (c memoryByteCache) Add(ctx context.Context, key string, delta int64, options cachepkg.CounterOptions) (int64, error) {
+	return c.store.Add(ctx, key, delta, options)
+}
+
 func TestMemoryCacheAdapterPortableSemantics(t *testing.T) {
 	t.Parallel()
 
-	settings := config.Default().Cache
-	settings.Backend = "memory"
-	cache, err := NewMemoryCache()
+	store, err := memorycache.New(cachepkg.BytesCodec())
 	if err != nil {
 		t.Fatal(err)
 	}
+	cache := NewCacheAdapter(memoryByteCache{store: store})
 	t.Cleanup(func() {
 		if err := cache.Close(); err != nil {
 			t.Error(err)
@@ -70,7 +91,10 @@ func TestDisabledMailerIsExplicitlyUnavailable(t *testing.T) {
 
 	settings := config.Default().Mail
 	settings.Enabled = false
-	mailer := NewDisabledMailer(settings)
+	mailer := NewDisabledMailer(mailpkg.Address{
+		Name:    settings.FromName,
+		Address: settings.FromAddress,
+	})
 	if mailer.Enabled() {
 		t.Fatal("disabled mailer reported itself enabled")
 	}
