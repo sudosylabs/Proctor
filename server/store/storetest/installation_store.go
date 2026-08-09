@@ -18,6 +18,43 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if _, err := ss.Installation().Get(ctx); !store.IsNotFound(err) {
 		t.Fatalf("Get(pristine) error = %v", err)
 	}
+	mismatched := testInstallationBootstrap(97)
+	mismatched.DefaultProfilePictureJob.Command = defaultProfilePictureCommand(model.NewUserID())
+	if _, err := ss.Installation().Bootstrap(ctx, mismatched); err == nil {
+		t.Fatal("Bootstrap() accepted a default-picture Job targeting another User")
+	}
+	if _, err := ss.Installation().Get(ctx); !store.IsNotFound(err) {
+		t.Fatalf("bootstrap state survived mismatched Job rollback: %v", err)
+	}
+	if _, err := ss.User().GetByEmail(ctx, mismatched.Administrator.Email); !store.IsNotFound(err) {
+		t.Fatalf("bootstrap administrator survived mismatched Job rollback: %v", err)
+	}
+	if _, err := ss.Job().Get(ctx, mismatched.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
+		t.Fatalf("mismatched bootstrap Job was persisted: %v", err)
+	}
+	if events, err := ss.Audit().List(ctx, store.AuditListOptions{Action: "installation.bootstrap", Limit: 10}); err != nil || len(events) != 0 {
+		t.Fatalf("bootstrap audit survived mismatched Job rollback: events=%#v error=%v", events, err)
+	}
+	permanent := testInstallationBootstrap(98)
+	permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
+	if _, err := ss.Installation().Bootstrap(ctx, permanent); err == nil {
+		t.Fatal("Bootstrap() accepted a permanent-dedupe default-picture intent")
+	}
+	blocker := mustJob(t, "bootstrap-job-id-blocker", model.NowUTC())
+	if _, _, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: blocker}); err != nil {
+		t.Fatal(err)
+	}
+	rolledBack := testInstallationBootstrap(98)
+	rolledBack.DefaultProfilePictureJob.ID = blocker.ID
+	if _, err := ss.Installation().Bootstrap(ctx, rolledBack); err == nil {
+		t.Fatal("Bootstrap() succeeded when its default-picture Job insert failed")
+	}
+	if _, err := ss.Installation().Get(ctx); !store.IsNotFound(err) {
+		t.Fatalf("bootstrap state survived Job rollback: %v", err)
+	}
+	if _, err := ss.User().GetByEmail(ctx, rolledBack.Administrator.Email); !store.IsNotFound(err) {
+		t.Fatalf("bootstrap administrator survived Job rollback: %v", err)
+	}
 
 	const attempts = 4
 	type outcome struct {
@@ -84,6 +121,12 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if credential.PasswordHash == "" {
 		t.Fatal("bootstrap password hash was not persisted")
 	}
+	probe := testUserCreation(winner.Administrator, nil).DefaultProfilePictureJob
+	queued, inserted, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: probe})
+	requireNoError(t, err)
+	if inserted || queued.DedupeKey != winner.Administrator.ID.String() {
+		t.Fatalf("bootstrap default-picture job inserted=%t job=%#v", inserted, queued)
+	}
 	events, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "installation.bootstrap", Limit: 10,
 	})
@@ -105,22 +148,19 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 	institution := &model.Institution{
 		Name: "northbridge", DisplayName: "Northbridge University",
 	}
-	// Bootstrap prepareInstallationBootstrap clears identity/lifecycle fields
-	// and regenerates them; stale IDs/times here prove they are not trusted.
 	user := &model.User{
-		ID: model.UserID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
-		UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 		Username:      fmt.Sprintf("administrator-%d", index),
 		Email:         fmt.Sprintf("administrator-%d@example.test", index),
 		DisplayName:   "Administrator",
 		EmailVerified: true, DisabledAt: model.OptionalTimeFromMillis(1),
 	}
+	creation := testUserCreation(user, nil)
 	parameters, appErr := model.EncodeAuditData(map[string]any{"attempt": index})
 	if appErr != nil {
 		panic(appErr)
 	}
 	return &store.InstallationBootstrap{
-		Institution: institution, Administrator: user,
+		Institution: institution, Administrator: creation.User,
 		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$MTIzNDU2Nzg5MDEyMzQ1Ng$MTIzNDU2Nzg5MDEyMzQ1Ng",
 		Role: &model.Role{
 			ID: model.RoleID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
@@ -139,5 +179,6 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 			Action:    "installation.bootstrap", NodeID: "store-test",
 			Parameters: parameters,
 		},
+		DefaultProfilePictureJob: creation.DefaultProfilePictureJob,
 	}
 }

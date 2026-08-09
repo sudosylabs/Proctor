@@ -13,16 +13,45 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/HugoSmits86/nativewebp"
 	"golang.org/x/image/webp"
 
+	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+func TestFileContentAdapterPurgesBoundedRevisionPrefixIdempotentlyOnLocalVFS(t *testing.T) {
+	filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := fileContentAdapter{filesystem: filesystem}
+	revisionID := model.NewFileRevisionID()
+	firstID, secondID := model.NewFileRenditionID(), model.NewFileRenditionID()
+	for _, renditionID := range []model.FileRenditionID{firstID, secondID} {
+		body := []byte("partial")
+		size := int64(len(body))
+		if _, err = filesystem.Write(context.Background(), profilePictureRenditionPath(revisionID, renditionID), bytes.NewReader(body), vfspkg.WriteOptions{Size: &size, NoOverwrite: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = adapter.RemoveFileRevisionContent(context.Background(), revisionID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = adapter.RemoveFileRevisionContent(context.Background(), revisionID, []model.FileRenditionID{firstID, secondID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = filesystem.Stat(context.Background(), profilePictureRenditionPath(revisionID, firstID)); !errors.Is(err, vfspkg.ErrNotFound) {
+		t.Fatalf("Stat() error = %v", err)
+	}
+}
 
 func TestFileContentAdapterNormalizesWithoutUpscalingAndUsesPrivateIDKeys(t *testing.T) {
 	source := image.NewNRGBA(image.Rect(0, 0, 40, 20))

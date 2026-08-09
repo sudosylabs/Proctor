@@ -235,11 +235,13 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	s.httpMu.Unlock()
 
 	serveErrors := make(chan error, 1)
+	// The listener is bound and every mandatory runtime dependency is running.
+	// Publish readiness before Serve can notify test/runtime observers that it
+	// entered the accept loop; an immediate Serve failure clears it below.
+	s.components.readiness.SetReady(true)
 	go func() {
 		serveErrors <- httpServer.Serve(listener)
 	}()
-
-	s.components.readiness.SetReady(true)
 	s.components.platform.Log().InfoContext(
 		runCtx,
 		"server started",

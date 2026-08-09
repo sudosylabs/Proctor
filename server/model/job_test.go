@@ -62,6 +62,21 @@ func TestJobRejectsUnboundedOrUnsupportedIntent(t *testing.T) {
 	}
 }
 
+func TestJobRequiresAnExplicitKnownDedupePolicy(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 10, 12, 0, 0, 0, time.UTC)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{}`), "cleanup:2026-08-10", model.JobDedupePermanent, at, at, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DedupePolicy != model.JobDedupePermanent {
+		t.Fatalf("DedupePolicy = %q", job.DedupePolicy)
+	}
+	if _, err = model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{}`), "cleanup:2026-08-10", model.JobDedupePolicy("unknown"), at, at, 3); err == nil {
+		t.Fatal("NewJobWithDedupePolicy() accepted an unknown policy")
+	}
+}
+
 func TestJobAttemptTracksFencedExecutionOutcome(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
@@ -86,5 +101,43 @@ func TestJobAttemptTracksFencedExecutionOutcome(t *testing.T) {
 	}
 	if _, err = completed.Heartbeat(at.Add(30*time.Second), at.Add(90*time.Second)); err == nil {
 		t.Fatal("Heartbeat() revived a terminal attempt")
+	}
+}
+
+func TestJobCancellationAndExplicitRetryLifecycle(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	queued, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"user_id":"abc"}`), "cancel", at, at, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canceled, err := queued.RequestCancellation(at.Add(time.Second))
+	if err != nil || canceled.Status != model.JobStatusCanceled || !canceled.CompletedAt.Valid {
+		t.Fatalf("queued cancellation = %#v, %v", canceled, err)
+	}
+
+	running, err := queued.Start(at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested, err := running.RequestCancellation(at.Add(2 * time.Second))
+	if err != nil || requested.Status != model.JobStatusCancelRequested || requested.CompletedAt.Valid {
+		t.Fatalf("running cancellation = %#v, %v", requested, err)
+	}
+
+	failed, err := running.Fail("job.failed", at.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retried, err := failed.ExplicitRetry(at.Add(3 * time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.Status != model.JobStatusQueued || retried.CompletedAt.Valid ||
+		retried.AttemptCount != failed.AttemptCount || retried.MaximumAttempts != failed.AttemptCount+1 {
+		t.Fatalf("explicit retry = %#v", retried)
+	}
+	if _, err := queued.ExplicitRetry(at.Add(time.Second)); err == nil {
+		t.Fatal("non-terminal job accepted explicit retry")
 	}
 }

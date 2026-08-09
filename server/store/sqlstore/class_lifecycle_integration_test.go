@@ -41,10 +41,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID := model.NewId()
-	user, err := persistence.User().Save(ctx, &model.User{Username: "user-" + userID, Email: userID + "@example.edu", DisplayName: "User"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "user-" + userID, Email: userID + "@example.edu", DisplayName: "User"})
 	if _, err := persistence.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(1)}); err != nil {
 		t.Fatal(err)
 	}

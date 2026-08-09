@@ -109,18 +109,22 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 		return nil, NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
 	}
 	metadata := invocation.RequestMetadata()
+	administrator, defaultPictureJob, err := prepareUserDefaultProfilePictureJob(&model.User{
+		Username: command.AdministratorUsername, Email: command.AdministratorEmail,
+		DisplayName: command.AdministratorDisplayName, FirstName: command.AdministratorFirstName,
+		LastName: command.AdministratorLastName, Locale: command.AdministratorLocale,
+		Timezone: command.AdministratorTimezone,
+	}, s.now())
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "administrator").Wrap(err)
+	}
 	result, err := s.installations.Bootstrap(ctx, &store.InstallationBootstrap{
 		Institution: &model.Institution{
 			Name: command.InstitutionName, DisplayName: command.InstitutionDisplayName,
 			Description: command.InstitutionDescription,
 		},
-		Administrator: &model.User{
-			Username: command.AdministratorUsername, Email: command.AdministratorEmail,
-			DisplayName: command.AdministratorDisplayName, FirstName: command.AdministratorFirstName,
-			LastName: command.AdministratorLastName, Locale: command.AdministratorLocale,
-			Timezone: command.AdministratorTimezone,
-		},
-		PasswordHash: hash,
+		Administrator: administrator,
+		PasswordHash:  hash,
 		Role: &model.Role{
 			Name:        model.SystemAdministratorRoleName,
 			DisplayName: "System Administrator",
@@ -138,6 +142,7 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 			IPAddress:  metadata.IPAddress,
 			UserAgent:  metadata.UserAgent,
 		},
+		DefaultProfilePictureJob: defaultPictureJob,
 	})
 	if err != nil {
 		if store.IsConflict(err) {

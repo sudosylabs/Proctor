@@ -4,7 +4,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,9 +17,17 @@ import (
 )
 
 type JobExecution struct {
-	Job        *model.Job
-	Attempt    *model.JobAttempt
-	checkpoint func(context.Context, JobCheckpointValue) error
+	Job         *model.Job
+	Attempt     *model.JobAttempt
+	checkpoint  func(context.Context, JobCheckpointValue) error
+	reserveWork func(context.Context, int, int) (bool, error)
+}
+
+func (e JobExecution) ReserveWork(ctx context.Context, units, limit int) (bool, error) {
+	if e.reserveWork == nil {
+		return false, errors.New("job execution does not support work reservation")
+	}
+	return e.reserveWork(ctx, units, limit)
 }
 
 type JobCheckpointValue struct {
@@ -79,24 +86,25 @@ const (
 )
 
 type JobDescriptor struct {
-	Type               model.JobType
-	CommandVersions    []int
-	CheckpointVersions []int
-	ResultVersions     []int
-	ProgressStages     []string
-	PublicErrorCodes   []string
-	Timeout            time.Duration
-	Concurrency        int
-	MaximumAttempts    int
-	LeaseDuration      time.Duration
-	HeartbeatInterval  time.Duration
-	BaseRetryDelay     time.Duration
-	MaximumRetryDelay  time.Duration
-	Cancelable         bool
-	Visibility         JobVisibility
-	SuccessRetention   time.Duration
-	FailureRetention   time.Duration
-	Handler            JobHandler
+	Type                  model.JobType
+	CommandVersions       []int
+	CheckpointVersions    []int
+	ResultVersions        []int
+	ProgressStages        []string
+	PublicErrorCodes      []string
+	Timeout               time.Duration
+	Concurrency           int
+	MaximumAttempts       int
+	LeaseDuration         time.Duration
+	HeartbeatInterval     time.Duration
+	BaseRetryDelay        time.Duration
+	MaximumRetryDelay     time.Duration
+	Cancelable            bool
+	ExplicitRetryStatuses []model.JobStatus
+	Visibility            JobVisibility
+	SuccessRetention      time.Duration
+	FailureRetention      time.Duration
+	Handler               JobHandler
 }
 
 type JobRegistry struct {
@@ -137,6 +145,10 @@ func NewJobRegistry(values []JobDescriptor) (*JobRegistry, error) {
 		if versionsErr != nil {
 			return nil, fmt.Errorf("invalid public error codes for job type %q: %w", value.Type, versionsErr)
 		}
+		value.ExplicitRetryStatuses, versionsErr = normalizedTerminalJobStatuses(value.ExplicitRetryStatuses)
+		if versionsErr != nil {
+			return nil, fmt.Errorf("invalid explicit retry statuses for job type %q: %w", value.Type, versionsErr)
+		}
 		registry.descriptors[value.Type] = value
 		registry.types = append(registry.types, value.Type)
 	}
@@ -160,6 +172,7 @@ func (r *JobRegistry) Resolve(jobType model.JobType, commandVersion int) (JobDes
 	descriptor.ResultVersions = append([]int(nil), descriptor.ResultVersions...)
 	descriptor.ProgressStages = append([]string(nil), descriptor.ProgressStages...)
 	descriptor.PublicErrorCodes = append([]string(nil), descriptor.PublicErrorCodes...)
+	descriptor.ExplicitRetryStatuses = append([]model.JobStatus(nil), descriptor.ExplicitRetryStatuses...)
 	return descriptor, nil
 }
 
@@ -176,6 +189,7 @@ func (r *JobRegistry) Descriptor(jobType model.JobType) (JobDescriptor, error) {
 	descriptor.ResultVersions = append([]int(nil), descriptor.ResultVersions...)
 	descriptor.ProgressStages = append([]string(nil), descriptor.ProgressStages...)
 	descriptor.PublicErrorCodes = append([]string(nil), descriptor.PublicErrorCodes...)
+	descriptor.ExplicitRetryStatuses = append([]model.JobStatus(nil), descriptor.ExplicitRetryStatuses...)
 	return descriptor, nil
 }
 
@@ -198,11 +212,27 @@ func (d JobDescriptor) SupportsPublicErrorCode(code string) bool {
 	if code == "" {
 		return true
 	}
-	if slices.Contains([]string{"job.handler_panic", "job.timeout", "job.result.invalid", "job.outcome.invalid"}, code) {
+	if slices.Contains([]string{"job.canceled", "job.handler_panic", "job.timeout", "job.result.invalid", "job.outcome.invalid"}, code) {
 		return true
 	}
 	_, ok := slices.BinarySearch(d.PublicErrorCodes, code)
 	return ok
+}
+
+func (d JobDescriptor) SupportsExplicitRetry(status model.JobStatus) bool {
+	return slices.Contains(d.ExplicitRetryStatuses, status)
+}
+
+func normalizedTerminalJobStatuses(values []model.JobStatus) ([]model.JobStatus, error) {
+	statuses := append([]model.JobStatus(nil), values...)
+	slices.Sort(statuses)
+	for index, status := range statuses {
+		if (status != model.JobStatusFailed && status != model.JobStatusCanceled) ||
+			(index > 0 && statuses[index-1] == status) {
+			return nil, errors.New("statuses must be unique terminal retry states")
+		}
+	}
+	return statuses, nil
 }
 
 func normalizedJobVersions(values []int, optional bool) ([]int, error) {
@@ -251,9 +281,7 @@ func (r *JobRegistry) MaximumTimeout() time.Duration {
 	return maximum
 }
 
-type DefaultProfilePictureCommandV1 struct {
-	UserID model.UserID `json:"user_id"`
-}
+type DefaultProfilePictureCommandV1 = model.DefaultProfilePictureCommandV1
 
 type DefaultProfilePictureResultV1 struct {
 	FileEntryID model.FileEntryID `json:"file_entry_id"`
@@ -268,29 +296,11 @@ func DefaultProfilePictureJobSucceeded(fileEntryID model.FileEntryID) JobOutcome
 }
 
 func EncodeDefaultProfilePictureCommand(command DefaultProfilePictureCommandV1) (json.RawMessage, error) {
-	if !command.UserID.IsValid() {
-		return nil, errors.New("default profile-picture command has invalid user ID")
-	}
-	return json.Marshal(command)
+	return model.EncodeDefaultProfilePictureCommand(command)
 }
 
 func DecodeDefaultProfilePictureCommand(version int, document json.RawMessage) (DefaultProfilePictureCommandV1, error) {
-	var command DefaultProfilePictureCommandV1
-	if version != 1 {
-		return command, fmt.Errorf("unsupported default profile-picture command version %d", version)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&command); err != nil {
-		return command, fmt.Errorf("decode default profile-picture command: %w", err)
-	}
-	if err := ensureJSONEOF(decoder); err != nil {
-		return command, err
-	}
-	if !command.UserID.IsValid() {
-		return command, errors.New("default profile-picture command has invalid user ID")
-	}
-	return command, nil
+	return model.DecodeDefaultProfilePictureCommand(version, document)
 }
 
 func ensureJSONEOF(decoder *json.Decoder) error {

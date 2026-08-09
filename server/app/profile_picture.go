@@ -28,6 +28,7 @@ type FileContent interface {
 	RenderDefaultProfilePicture(context.Context, string, int) (*RenderedProfilePicture, error)
 	OpenProfilePictureRendition(context.Context, model.FileRevisionID, model.FileRenditionID) (io.ReadCloser, error)
 	RemoveProfilePictureRenditions(context.Context, model.FileRevisionID, []model.FileRendition) error
+	RemoveFileRevisionContent(context.Context, model.FileRevisionID, []model.FileRenditionID) error
 }
 
 type RenderedProfilePicture struct {
@@ -381,7 +382,7 @@ func (s *profilePictureService) EnsureDefaultProfilePicture(ctx context.Context,
 		return user.DefaultProfilePictureFileID, nil
 	}
 	at := model.TimeUTC(s.now())
-	entry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, at)
+	entry, err := model.NewFileEntryForPurpose(model.NewFileEntryID(), model.FilePurposeProfilePictureDefault, model.FileIndexingNone, at)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", errDefaultProfilePictureInvariant, err)
 	}
@@ -400,7 +401,15 @@ func (s *profilePictureService) EnsureDefaultProfilePicture(ctx context.Context,
 	if err != nil {
 		return "", err
 	}
-	published, err := s.files.PublishDefaultProfilePicture(ctx, &store.DefaultProfilePicturePublication{UserID: user.ID, ExpectedUserRevision: user.Revision, EntryID: entry.ID, RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions, AttachedAt: model.TimeUTC(s.now())})
+	if err = ctx.Err(); err != nil {
+		return "", err
+	}
+	// Publication is the non-cancelable atomic commit section. A cancellation
+	// observed before it prevents entry; once entered, the transaction reaches
+	// one authoritative outcome and is never partially interrupted.
+	commitCtx, cancelCommit := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancelCommit()
+	published, err := s.files.PublishDefaultProfilePicture(commitCtx, &store.DefaultProfilePicturePublication{UserID: user.ID, ExpectedUserRevision: user.Revision, EntryID: entry.ID, RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions, AttachedAt: model.TimeUTC(s.now())})
 	if err != nil {
 		if store.IsConflict(err) {
 			current, getErr := s.users.Get(ctx, userID.String())

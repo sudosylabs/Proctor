@@ -72,7 +72,10 @@ func TestUploadLeaseRenewsAndConsumesWithoutSentinels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewUploadLease() error = %v", err)
 	}
-	renewed, err := lease.Renew(at.Add(30*time.Minute), at.Add(90*time.Minute))
+	if _, err := model.NewUploadLease(model.NewUploadLeaseID(), model.NewFileRevisionID(), model.NewUserID(), at, at.Add(59*time.Minute)); err == nil {
+		t.Fatal("NewUploadLease() accepted a nonstandard initial lifetime")
+	}
+	renewed, err := lease.Renew(at.Add(30*time.Minute), at.Add(90*time.Minute), 1)
 	if err != nil {
 		t.Fatalf("Renew() error = %v", err)
 	}
@@ -86,10 +89,10 @@ func TestUploadLeaseRenewsAndConsumesWithoutSentinels(t *testing.T) {
 	if !consumed.ConsumedAt.IsSet() {
 		t.Fatal("ConsumedAt is not set")
 	}
-	if _, err := consumed.Renew(at.Add(32*time.Minute), at.Add(2*time.Hour)); err == nil {
+	if _, err := consumed.Renew(at.Add(32*time.Minute), at.Add(2*time.Hour), 2); err == nil {
 		t.Fatal("Renew() succeeded for consumed lease")
 	}
-	if _, err := lease.Renew(at.Add(30*time.Minute), at.Add(91*time.Minute)); err == nil {
+	if _, err := lease.Renew(at.Add(30*time.Minute), at.Add(91*time.Minute), 1); err == nil {
 		t.Fatal("Renew() accepted an expiry beyond the maximum renewal horizon")
 	}
 }

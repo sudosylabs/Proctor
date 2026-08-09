@@ -217,8 +217,23 @@ func New(deps Dependencies) (*App, error) {
 	)
 	var jobs *JobRunner
 	if deps.Store.Job() != nil {
+		defaultJobs := &defaultProfilePictureJobProposer{jobs: deps.Store.Job()}
 		defaultHandler := defaultProfilePictureHandler{generator: profilePictures}
-		jobRegistry, registryErr := NewJobRegistry([]JobDescriptor{defaultProfilePictureDescriptor(defaultHandler)})
+		reconciliationHandler := defaultProfilePictureReconciliationHandler{
+			users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
+		}
+		purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent)
+		descriptors := []JobDescriptor{
+			defaultProfilePictureDescriptor(defaultHandler),
+			defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
+			filePurgeExpiredContentDescriptor(purgeHandler),
+		}
+		retentionPolicies := jobRetentionPolicies(descriptors)
+		cleanupHandler := jobHistoryCleanupHandler{jobs: deps.Store.Job(), policies: append(retentionPolicies, store.JobRetentionPolicy{
+			Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour,
+		})}
+		descriptors = append(descriptors, jobHistoryCleanupDescriptor(cleanupHandler))
+		jobRegistry, registryErr := NewJobRegistry(descriptors)
 		if registryErr != nil {
 			return nil, registryErr
 		}
@@ -226,7 +241,17 @@ func New(deps Dependencies) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-		profilePictures.defaultJobs = defaultProfilePictureJobProposer{jobs: deps.Store.Job(), wake: jobs.Wake}
+		defaultJobs.wake = jobs.Wake
+		profilePictures.defaultJobs = defaultJobs
+		for name, proposer := range map[string]jobOccurrenceProposer{
+			"profile-picture-default-reconciliation": defaultProfilePictureReconciliationJobProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
+			"file-purge-expired-content":             filePurgeExpiredContentProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
+			"job-history-cleanup":                    jobHistoryCleanupProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
+		} {
+			if err = jobs.addDailyProposal(name, proposer); err != nil {
+				return nil, err
+			}
+		}
 	}
 	accountStates := newAccountStateService(
 		deps.Store.User(),
@@ -313,6 +338,16 @@ func New(deps Dependencies) (*App, error) {
 		recentAuthenticationTTL: deps.RecentAuthenticationTTL,
 		recoveryDiagnostics:     deps.RecoveryDiagnostics,
 	}, nil
+}
+
+func jobRetentionPolicies(descriptors []JobDescriptor) []store.JobRetentionPolicy {
+	policies := make([]store.JobRetentionPolicy, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		policies = append(policies, store.JobRetentionPolicy{
+			Type: descriptor.Type, SucceededCanceledAge: descriptor.SuccessRetention, FailedAge: descriptor.FailureRetention,
+		})
+	}
+	return policies
 }
 
 func (a *App) Can(

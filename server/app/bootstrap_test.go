@@ -101,6 +101,10 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	if persistence.input.AuditEvent.NodeID != "node-a" || persistence.input.Role.BuiltIn != true {
 		t.Fatalf("bootstrap input = %#v", persistence.input)
 	}
+	if persistence.input.DefaultProfilePictureJob == nil ||
+		persistence.input.DefaultProfilePictureJob.DedupeKey != persistence.input.Administrator.ID.String() {
+		t.Fatalf("bootstrap default-picture job = %#v", persistence.input.DefaultProfilePictureJob)
+	}
 	want := []string{"get-status", "rate-limit", "hash-password", "bootstrap"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)

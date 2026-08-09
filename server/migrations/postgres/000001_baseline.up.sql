@@ -141,13 +141,14 @@ CREATE TABLE jobs (
     result jsonb,
     public_error_code varchar(128) NOT NULL DEFAULT '',
     dedupe_key varchar(255) NOT NULL,
+    dedupe_policy varchar(16) NOT NULL DEFAULT 'active' CHECK (dedupe_policy IN ('active', 'permanent')),
     attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
     maximum_attempts integer NOT NULL CHECK (maximum_attempts > 0),
+    work_reserved integer NOT NULL DEFAULT 0 CHECK (work_reserved >= 0),
     progress_current bigint,
     progress_total bigint,
     progress_stage varchar(64),
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-    UNIQUE (type, dedupe_key),
     CONSTRAINT jobs_lifecycle_check CHECK (
         updated_at >= created_at AND attempt_count <= maximum_attempts AND
         ((status IN ('succeeded', 'failed', 'canceled')) = (completed_at IS NOT NULL)) AND
@@ -162,6 +163,21 @@ CREATE TABLE jobs (
 );
 
 CREATE INDEX jobs_claim_idx ON jobs (available_at, created_at, id) WHERE status = 'queued';
+CREATE UNIQUE INDEX jobs_active_type_dedupe_key_idx ON jobs (type, dedupe_key)
+    WHERE dedupe_policy = 'active' AND status IN ('queued', 'running', 'cancel_requested');
+CREATE UNIQUE INDEX jobs_permanent_type_dedupe_key_idx ON jobs (type, dedupe_key)
+    WHERE dedupe_policy = 'permanent';
+
+-- Permanent occurrence keys deliberately outlive retained Job history. The
+-- referenced Job ID is informational rather than a foreign key so cleanup can
+-- delete terminal execution detail without making an old date runnable again.
+CREATE TABLE job_permanent_occurrences (
+    type varchar(128) NOT NULL,
+    dedupe_key varchar(255) NOT NULL,
+    job_id varchar(26) NOT NULL,
+    created_at timestamptz NOT NULL,
+    PRIMARY KEY (type, dedupe_key)
+);
 
 CREATE TABLE job_attempts (
     id varchar(26) PRIMARY KEY,
@@ -196,6 +212,9 @@ CREATE TABLE file_entries (
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     current_revision_id varchar(26),
     indexing_policy varchar(16) NOT NULL CHECK (indexing_policy IN ('none', 'metadata', 'content')),
+    purpose varchar(32) NOT NULL CHECK (purpose IN ('profile_picture_custom', 'profile_picture_default', 'submission')),
+    purge_claimed boolean NOT NULL DEFAULT false,
+    UNIQUE (id, purge_claimed),
     CONSTRAINT file_entries_lifecycle_check CHECK (updated_at >= created_at)
 );
 
@@ -205,8 +224,14 @@ CREATE TABLE file_revisions (
     created_at timestamptz NOT NULL,
     availability varchar(16) NOT NULL CHECK (availability IN ('pending', 'available', 'quarantined', 'rejected')),
     indexing_state varchar(16) NOT NULL CHECK (indexing_state IN ('not_required', 'pending', 'ready', 'failed')),
+    purge_claim_id varchar(26),
+    purge_claimed_at timestamptz,
+    CONSTRAINT file_revisions_purge_claim_check CHECK ((purge_claim_id IS NULL) = (purge_claimed_at IS NULL)),
     UNIQUE (id, file_entry_id)
 );
+
+CREATE UNIQUE INDEX file_revisions_purge_claim_id_key
+    ON file_revisions (purge_claim_id) WHERE purge_claim_id IS NOT NULL;
 
 ALTER TABLE file_entries ADD CONSTRAINT file_entries_current_revision_fkey
     FOREIGN KEY (current_revision_id, id) REFERENCES file_revisions(id, file_entry_id);
@@ -260,7 +285,16 @@ CREATE TABLE upload_leases (
     expires_at timestamptz NOT NULL,
     consumed_at timestamptz,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+	bytes_received bigint NOT NULL DEFAULT 0 CHECK (bytes_received >= 0),
     CONSTRAINT upload_leases_lifecycle_check CHECK (updated_at >= created_at AND expires_at > created_at)
+);
+
+CREATE TABLE file_legal_holds (
+    file_entry_id varchar(26) PRIMARY KEY,
+    purge_claimed boolean NOT NULL DEFAULT false CHECK (NOT purge_claimed),
+    created_at timestamptz NOT NULL,
+    reason_code varchar(128) NOT NULL,
+    FOREIGN KEY (file_entry_id, purge_claimed) REFERENCES file_entries(id, purge_claimed)
 );
 
 CREATE TABLE external_identities (

@@ -274,13 +274,12 @@ func saveLocalUser(
 	ss store.Store,
 ) (*model.User, *model.PasswordCredential) {
 	t.Helper()
-	user, credential, err := ss.User().SaveWithPassword(
-		ctx,
+	result, err := ss.User().Create(ctx, testUserCreation(
 		newUser(),
 		&model.PasswordCredential{PasswordHash: "encoded-password-hash"},
-	)
+	))
 	requireNoError(t, err)
-	return user, credential
+	return result.User, result.PasswordCredential
 }
 
 func newUserToken(

@@ -56,26 +56,29 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		institution := saveInstitution(t, ctx, ss)
 		now := model.GetMillis()
 		candidate := newUser()
+		creation := testUserCreation(candidate, nil)
 		resolved, err := ss.ExternalIdentity().ResolveOrProvision(
-			ctx,
-			&model.ExternalIdentity{
+			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "new-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
-			candidate,
-			true,
-			&model.AuditEvent{
-				Action:    "authentication.external_provision",
-				ScopeType: model.RoleScopeInstitution,
-				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
-				NodeID: "test-node", AuthMethod: "cas",
-			},
+				User: creation.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+					Action:    "authentication.external_provision",
+					ScopeType: model.RoleScopeInstitution,
+					ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
+					NodeID: "test-node", AuthMethod: "cas",
+				}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob},
 		)
 		requireNoError(t, err)
 		if !resolved.Provisioned ||
 			resolved.Identity.UserID != resolved.User.ID ||
 			!candidate.ID.IsZero() {
 			t.Fatalf("ResolveOrProvision(new) = %#v", resolved)
+		}
+		queued, err := ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID)
+		requireNoError(t, err)
+		if queued.DedupeKey != resolved.User.ID.String() || queued.Status != model.JobStatusQueued {
+			t.Fatalf("provisioned default-picture job = %#v", queued)
 		}
 		audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 			Action: "authentication.external_provision",
@@ -88,14 +91,10 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			t.Fatalf("provision audits = %#v", audits)
 		}
 		again, err := ss.ExternalIdentity().ResolveOrProvision(
-			ctx,
-			&model.ExternalIdentity{
+			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "new-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(now + 100),
-			},
-			nil,
-			false,
-			nil,
+			}},
 		)
 		requireNoError(t, err)
 		if again.Provisioned || again.User.ID != resolved.User.ID ||
@@ -115,20 +114,17 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		existing := saveUser(t, ctx, ss)
 		candidate := newUser()
 		candidate.Email = existing.Email
+		creation := testUserCreation(candidate, nil)
 		_, err = ss.ExternalIdentity().ResolveOrProvision(
-			ctx,
-			&model.ExternalIdentity{
+			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "different-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			},
-			candidate,
-			true,
-			&model.AuditEvent{
+			}, User: creation.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
 				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
 				NodeID: "test-node", AuthMethod: "cas",
-			},
+			}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob},
 		)
 		var conflict *store.ErrConflict
 		if !errors.As(err, &conflict) ||
@@ -142,18 +138,75 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		); !store.IsNotFound(err) {
 			t.Fatalf("colliding identity was persisted: %v", err)
 		}
+		if _, err := ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
+			t.Fatalf("colliding provision default-picture job was persisted: %v", err)
+		}
+	})
+
+	t.Run("ProvisioningRejectsMismatchedDefaultJobTarget", func(t *testing.T) {
+		ctx := context.Background()
+		institution, err := ss.Institution().GetSingleton(ctx)
+		if store.IsNotFound(err) {
+			institution = saveInstitution(t, ctx, ss)
+			err = nil
+		}
+		requireNoError(t, err)
+		creation := testUserCreation(newUser(), nil)
+		creation.DefaultProfilePictureJob.Command = defaultProfilePictureCommand(model.NewUserID())
+		subject := "mismatched-job-" + model.NewId()
+		before, err := ss.Audit().List(ctx, store.AuditListOptions{
+			Action: "authentication.external_provision", Limit: 100,
+		})
+		requireNoError(t, err)
+		_, err = ss.ExternalIdentity().ResolveOrProvision(
+			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
+				Provider: "campus-cas", Subject: subject,
+				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
+			}, User: creation.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
+				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess,
+				NodeID: "test-node", AuthMethod: "cas",
+			}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob},
+		)
+		if err == nil {
+			t.Fatal("ResolveOrProvision() accepted a default-picture Job targeting another User")
+		}
+		if _, err = ss.User().Get(ctx, creation.User.ID.String()); !store.IsNotFound(err) {
+			t.Fatalf("provisioned User survived mismatched Job rollback: %v", err)
+		}
+		if _, err = ss.ExternalIdentity().GetByProviderSubject(ctx, "campus-cas", subject); !store.IsNotFound(err) {
+			t.Fatalf("external identity survived mismatched Job rollback: %v", err)
+		}
+		if _, err = ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
+			t.Fatalf("mismatched provision Job was persisted: %v", err)
+		}
+		after, err := ss.Audit().List(ctx, store.AuditListOptions{
+			Action: "authentication.external_provision", Limit: 100,
+		})
+		requireNoError(t, err)
+		if len(after) != len(before) {
+			t.Fatalf("provision audit survived mismatched Job rollback: before=%d after=%d", len(before), len(after))
+		}
+		permanent := testUserCreation(newUser(), nil)
+		permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
+		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
+			Identity: &model.ExternalIdentity{Provider: "campus-cas", Subject: "permanent-job-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
+			User:     permanent.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
+				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "test-node", AuthMethod: "cas",
+			}, DefaultProfilePictureJob: permanent.DefaultProfilePictureJob,
+		})
+		if err == nil {
+			t.Fatal("ResolveOrProvision() accepted a permanent-dedupe default-picture intent")
+		}
 	})
 
 	t.Run("ProvisioningDisabled", func(t *testing.T) {
 		_, err := ss.ExternalIdentity().ResolveOrProvision(
-			context.Background(),
-			&model.ExternalIdentity{
+			context.Background(), &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "unlinked",
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			},
-			nil,
-			false,
-			nil,
+			}},
 		)
 		if !store.IsNotFound(err) {
 			t.Fatalf("ResolveOrProvision(unlinked) error = %v", err)

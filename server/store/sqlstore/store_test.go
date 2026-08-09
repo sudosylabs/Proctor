@@ -11,12 +11,32 @@ package sqlstore
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
+
+func saveIntegrationUser(t *testing.T, ctx context.Context, persistence store.Store, user *model.User) *model.User {
+	t.Helper()
+	user.PrepareCreate(model.NewUserID(), model.NowUTC())
+	command, err := json.Marshal(map[string]string{"user_id": user.ID.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), user.CreatedAt, user.CreatedAt, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := persistence.User().Create(ctx, &store.UserCreation{User: user, DefaultProfilePictureJob: job})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result.User
+}
 
 func StoreTest(t *testing.T, test func(*testing.T, store.Store)) {
 	t.Helper()
@@ -60,7 +80,7 @@ func resetTestStore(t *testing.T, sqlStore *SQLStore) {
 	t.Helper()
 	_, err := sqlStore.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			job_attempts, jobs, external_login_states, installation_states, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, upload_leases, file_renditions,
+			job_attempts, job_permanent_occurrences, jobs, external_login_states, installation_states, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, file_legal_holds, upload_leases, file_renditions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users, file_revisions, file_entries,
 			classes, academic_periods, programme_levels, programmes,

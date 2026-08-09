@@ -24,12 +24,26 @@ type JobRunner struct {
 	poll            time.Duration
 	shutdownTimeout time.Duration
 	wake            chan struct{}
+	dailyProposals  []dailyJobProposal
 
 	mu      sync.Mutex
 	started bool
 	closed  bool
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+}
+
+func (r *JobRunner) addDailyProposal(name string, proposer jobOccurrenceProposer) error {
+	if name == "" || proposer == nil {
+		return errors.New("invalid daily job proposal")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.started || r.closed {
+		return errors.New("daily job proposals must be registered before start")
+	}
+	r.dailyProposals = append(r.dailyProposals, dailyJobProposal{name: name, proposer: proposer})
+	return nil
 }
 
 func newJobRunner(jobs store.JobStore, registry *JobRegistry, nodeID string, diagnostics recoveryDiagnostics, poll time.Duration) (*JobRunner, error) {
@@ -61,6 +75,13 @@ func (r *JobRunner) Start(ctx context.Context) error {
 			r.wg.Add(1)
 			go r.worker(runCtx, descriptor)
 		}
+	}
+	for _, proposal := range r.dailyProposals {
+		r.wg.Add(1)
+		go func(value dailyJobProposal) {
+			defer r.wg.Done()
+			runDailyJobProposal(runCtx, value, r.diagnostics, time.Now, time.Minute)
+		}(proposal)
 	}
 	return nil
 }
@@ -158,10 +179,33 @@ func (r *JobRunner) execute(parent context.Context, descriptor JobDescriptor, cl
 					cancelHandler()
 					return
 				}
+				if descriptor.Cancelable {
+					requested, err := r.jobs.CancellationRequested(handlerCtx, claim.Attempt.ID, claim.Attempt.ClaimToken)
+					if err != nil {
+						r.diagnostics.ErrorContext(parent, "observe durable job cancellation", err)
+						select {
+						case claimLost <- struct{}{}:
+						default:
+						}
+						cancelHandler()
+						return
+					}
+					if requested {
+						cancelHandler()
+						return
+					}
+				}
 			}
 		}
 	}()
 	execution := JobExecution{Job: claim.Job, Attempt: claim.Attempt}
+	execution.reserveWork = func(ctx context.Context, units, limit int) (bool, error) {
+		result, err := r.jobs.ReserveWork(ctx, &store.JobWorkReservation{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Units: units, Limit: limit})
+		if err != nil {
+			return false, err
+		}
+		return result.Reserved, nil
+	}
 	execution.checkpoint = func(ctx context.Context, value JobCheckpointValue) error {
 		if !descriptor.SupportsCheckpointVersion(value.Version) || len(value.Document) == 0 || len(value.Document) > model.JobMaximumDocumentBytes || !json.Valid(value.Document) {
 			return errors.New("job checkpoint version is not declared")

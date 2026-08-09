@@ -12,6 +12,14 @@ import (
 
 const UploadLeaseMaximumLifetime = time.Hour
 
+type FilePurpose string
+
+const (
+	FilePurposeProfilePictureCustom  FilePurpose = "profile_picture_custom"
+	FilePurposeProfilePictureDefault FilePurpose = "profile_picture_default"
+	FilePurposeSubmission            FilePurpose = "submission"
+)
+
 // FileIndexingPolicy controls which server-maintained search material may be derived.
 type FileIndexingPolicy string
 
@@ -50,10 +58,15 @@ type FileEntry struct {
 	Revision          int64
 	CurrentRevisionID FileRevisionID
 	IndexingPolicy    FileIndexingPolicy
+	Purpose           FilePurpose
 }
 
 func NewFileEntry(id FileEntryID, indexing FileIndexingPolicy, at time.Time) (*FileEntry, error) {
-	entry := &FileEntry{ID: id, CreatedAt: TimeUTC(at), UpdatedAt: TimeUTC(at), Revision: 1, IndexingPolicy: indexing}
+	return NewFileEntryForPurpose(id, FilePurposeProfilePictureCustom, indexing, at)
+}
+
+func NewFileEntryForPurpose(id FileEntryID, purpose FilePurpose, indexing FileIndexingPolicy, at time.Time) (*FileEntry, error) {
+	entry := &FileEntry{ID: id, CreatedAt: TimeUTC(at), UpdatedAt: TimeUTC(at), Revision: 1, IndexingPolicy: indexing, Purpose: purpose}
 	if err := entry.Validate(); err != nil {
 		return nil, err
 	}
@@ -61,13 +74,17 @@ func NewFileEntry(id FileEntryID, indexing FileIndexingPolicy, at time.Time) (*F
 }
 
 func (f *FileEntry) Validate() error {
-	if f == nil || !f.ID.IsValid() || f.CreatedAt.IsZero() || f.UpdatedAt.Before(f.CreatedAt) || f.Revision <= 0 || !validFileIndexingPolicy(f.IndexingPolicy) {
+	if f == nil || !f.ID.IsValid() || f.CreatedAt.IsZero() || f.UpdatedAt.Before(f.CreatedAt) || f.Revision <= 0 || !validFileIndexingPolicy(f.IndexingPolicy) || !validFilePurpose(f.Purpose) {
 		return fmt.Errorf("model: invalid file entry")
 	}
 	if !f.CurrentRevisionID.IsZero() && !f.CurrentRevisionID.IsValid() {
 		return fmt.Errorf("model: invalid file entry current revision")
 	}
 	return nil
+}
+
+func validFilePurpose(value FilePurpose) bool {
+	return value == FilePurposeProfilePictureCustom || value == FilePurposeProfilePictureDefault || value == FilePurposeSubmission
 }
 
 // FileRevision is an immutable content generation below a FileEntry.
@@ -161,9 +178,13 @@ type UploadLease struct {
 	ExpiresAt       time.Time
 	ConsumedAt      OptionalTime
 	Revision        int64
+	BytesReceived   int64
 }
 
 func NewUploadLease(id UploadLeaseID, revisionID FileRevisionID, createdBy UserID, at, expiresAt time.Time) (*UploadLease, error) {
+	if !TimeUTC(expiresAt).Equal(TimeUTC(at).Add(UploadLeaseMaximumLifetime)) {
+		return nil, fmt.Errorf("model: upload lease must initially expire after one hour")
+	}
 	lease := &UploadLease{ID: id, FileRevisionID: revisionID, CreatedByUserID: createdBy, CreatedAt: TimeUTC(at), UpdatedAt: TimeUTC(at), ExpiresAt: TimeUTC(expiresAt), Revision: 1}
 	if err := lease.Validate(); err != nil {
 		return nil, err
@@ -172,7 +193,7 @@ func NewUploadLease(id UploadLeaseID, revisionID FileRevisionID, createdBy UserI
 }
 
 func (u *UploadLease) Validate() error {
-	if u == nil || !u.ID.IsValid() || !u.FileRevisionID.IsValid() || !u.CreatedByUserID.IsValid() || u.CreatedAt.IsZero() || u.UpdatedAt.Before(u.CreatedAt) || !u.ExpiresAt.After(u.CreatedAt) || u.ExpiresAt.After(u.UpdatedAt.Add(UploadLeaseMaximumLifetime)) || u.Revision <= 0 {
+	if u == nil || !u.ID.IsValid() || !u.FileRevisionID.IsValid() || !u.CreatedByUserID.IsValid() || u.CreatedAt.IsZero() || u.UpdatedAt.Before(u.CreatedAt) || !u.ExpiresAt.After(u.CreatedAt) || u.ExpiresAt.After(u.UpdatedAt.Add(UploadLeaseMaximumLifetime)) || u.Revision <= 0 || u.BytesReceived < 0 {
 		return fmt.Errorf("model: invalid upload lease")
 	}
 	if u.ConsumedAt.Valid && u.ConsumedAt.Time.Before(u.CreatedAt) {
@@ -181,13 +202,14 @@ func (u *UploadLease) Validate() error {
 	return nil
 }
 
-func (u *UploadLease) Renew(now, expiresAt time.Time) (*UploadLease, error) {
-	if u == nil || u.ConsumedAt.Valid || !TimeUTC(now).Before(u.ExpiresAt) || !TimeUTC(expiresAt).After(TimeUTC(now)) || TimeUTC(expiresAt).After(TimeUTC(now).Add(UploadLeaseMaximumLifetime)) {
+func (u *UploadLease) Renew(now, expiresAt time.Time, bytesReceived int64) (*UploadLease, error) {
+	if u == nil || u.ConsumedAt.Valid || bytesReceived <= u.BytesReceived || !TimeUTC(now).Before(u.ExpiresAt) || !TimeUTC(expiresAt).After(TimeUTC(now)) || TimeUTC(expiresAt).After(TimeUTC(now).Add(UploadLeaseMaximumLifetime)) {
 		return nil, fmt.Errorf("model: upload lease cannot be renewed")
 	}
 	result := *u
 	result.UpdatedAt = TimeUTC(now)
 	result.ExpiresAt = TimeUTC(expiresAt)
+	result.BytesReceived = bytesReceived
 	result.Revision++
 	return &result, result.Validate()
 }

@@ -193,6 +193,19 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		!user.EmailVerified {
 		t.Fatalf("provisioned user = %#v, %v", user, err)
 	}
+	jobs, err := persistence.Job().List(context.Background(), store.JobListOptions{
+		Types: []model.JobType{model.JobTypeProfilePictureGenerateDefault}, Limit: 200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundDefaultIntent := false
+	for _, job := range jobs {
+		foundDefaultIntent = foundDefaultIntent || job.DedupeKey == user.ID.String()
+	}
+	if !foundDefaultIntent {
+		t.Fatalf("external provision did not commit default-picture intent for %s", user.ID)
+	}
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
 		user.ID.String(),

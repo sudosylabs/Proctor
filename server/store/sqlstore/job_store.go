@@ -37,8 +37,10 @@ type jobRow struct {
 	Result            jsonValue      `db:"result"`
 	PublicErrorCode   string         `db:"public_error_code"`
 	DedupeKey         string         `db:"dedupe_key"`
+	DedupePolicy      string         `db:"dedupe_policy"`
 	AttemptCount      int            `db:"attempt_count"`
 	MaximumAttempts   int            `db:"maximum_attempts"`
+	WorkReserved      int            `db:"work_reserved"`
 	ProgressCurrent   sql.NullInt64  `db:"progress_current"`
 	ProgressTotal     sql.NullInt64  `db:"progress_total"`
 	ProgressStage     sql.NullString `db:"progress_stage"`
@@ -59,7 +61,7 @@ type jobAttemptRow struct {
 	PublicErrorCode string       `db:"public_error_code"`
 }
 
-const jobColumns = `id, type, status, created_at, updated_at, available_at, started_at, completed_at, command_version, command, checkpoint_version, checkpoint, result_version, result, public_error_code, dedupe_key, attempt_count, maximum_attempts, progress_current, progress_total, progress_stage, revision`
+const jobColumns = `id, type, status, created_at, updated_at, available_at, started_at, completed_at, command_version, command, checkpoint_version, checkpoint, result_version, result, public_error_code, dedupe_key, dedupe_policy, attempt_count, maximum_attempts, work_reserved, progress_current, progress_total, progress_stage, revision`
 const jobAttemptColumns = `id, job_id, number, status, node_id, claim_token, started_at, heartbeat_at, lease_expires_at, completed_at, public_error_code`
 
 func newSQLJobStore(sqlStore *SQLStore) store.JobStore { return &SQLJobStore{SQLStore: sqlStore} }
@@ -71,7 +73,10 @@ func (s SQLJobStore) Enqueue(ctx context.Context, input *store.JobEnqueue) (*mod
 	if err := input.Job.Validate(); err != nil || input.Job.Status != model.JobStatusQueued || input.Job.AttemptCount != 0 {
 		return nil, false, store.NewErrInvalidInput("job", "enqueue", err)
 	}
-	result, err := s.GetMaster().Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL, NULL, NULL, '', ?, 0, ?, NULL, NULL, NULL, ?) ON CONFLICT (type, dedupe_key) DO NOTHING`, input.Job.ID.String(), string(input.Job.Type), string(input.Job.Status), input.Job.CreatedAt, input.Job.UpdatedAt, input.Job.AvailableAt, input.Job.CommandVersion, input.Job.Command, input.Job.DedupeKey, input.Job.MaximumAttempts, input.Job.Revision)
+	if input.Job.DedupePolicy == model.JobDedupePermanent {
+		return s.enqueuePermanent(ctx, input.Job)
+	}
+	result, err := insertQueuedJob(ctx, s.GetMaster(), input.Job, true)
 	if err != nil {
 		return nil, false, fmt.Errorf("enqueue job: %w", translateError("job", input.Job.ID.String(), err))
 	}
@@ -84,11 +89,67 @@ func (s SQLJobStore) Enqueue(ctx context.Context, input *store.JobEnqueue) (*mod
 		return &copy, true, nil
 	}
 	var row jobRow
-	if err = s.GetMaster().Get(ctx, &row, `SELECT `+jobColumns+` FROM jobs WHERE type = ? AND dedupe_key = ?`, string(input.Job.Type), input.Job.DedupeKey); err != nil {
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE type = ? AND dedupe_key = ? AND dedupe_policy = ?`
+	if input.Job.DedupePolicy == model.JobDedupeActive {
+		query += ` AND status IN ('queued', 'running', 'cancel_requested')`
+	}
+	if err = s.GetMaster().Get(ctx, &row, query, string(input.Job.Type), input.Job.DedupeKey, string(input.Job.DedupePolicy)); err != nil {
 		return nil, false, translateError("job", input.Job.DedupeKey, err)
 	}
 	job, err := row.model()
 	return job, false, err
+}
+
+func (s SQLJobStore) enqueuePermanent(ctx context.Context, proposed *model.Job) (*model.Job, bool, error) {
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("begin permanent job enqueue: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.Exec(ctx, `INSERT INTO job_permanent_occurrences (type, dedupe_key, job_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (type, dedupe_key) DO NOTHING`, string(proposed.Type), proposed.DedupeKey, proposed.ID.String(), proposed.CreatedAt)
+	if err != nil {
+		return nil, false, fmt.Errorf("reserve permanent job occurrence: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, false, fmt.Errorf("read permanent job occurrence rows: %w", err)
+	}
+	if affected == 1 {
+		if _, err = insertQueuedJob(ctx, tx, proposed, false); err != nil {
+			return nil, false, fmt.Errorf("enqueue permanent job: %w", translateError("job", proposed.ID.String(), err))
+		}
+		if err = tx.Commit(); err != nil {
+			return nil, false, fmt.Errorf("commit permanent job enqueue: %w", err)
+		}
+		copy := *proposed
+		return &copy, true, nil
+	}
+	var row jobRow
+	err = tx.Get(ctx, &row, `SELECT `+jobColumns+` FROM jobs WHERE id = (SELECT job_id FROM job_permanent_occurrences WHERE type = ? AND dedupe_key = ?)`, string(proposed.Type), proposed.DedupeKey)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, false, fmt.Errorf("read permanent job occurrence: %w", err)
+	}
+	if commitErr := tx.Commit(); commitErr != nil {
+		return nil, false, fmt.Errorf("commit deduplicated permanent job enqueue: %w", commitErr)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	job, err := row.model()
+	return job, false, err
+}
+
+func insertQueuedJob(ctx context.Context, executor sqlxExecutor, job *model.Job, deduplicate bool) (sql.Result, error) {
+	conflict := ""
+	if deduplicate {
+		switch job.DedupePolicy {
+		case model.JobDedupeActive:
+			conflict = " ON CONFLICT (type, dedupe_key) WHERE dedupe_policy = 'active' AND status IN ('queued', 'running', 'cancel_requested') DO NOTHING"
+		case model.JobDedupePermanent:
+			conflict = " ON CONFLICT (type, dedupe_key) WHERE dedupe_policy = 'permanent' DO NOTHING"
+		}
+	}
+	return executor.Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL, NULL, NULL, '', ?, ?, 0, ?, 0, NULL, NULL, NULL, ?)`+conflict, job.ID.String(), string(job.Type), string(job.Status), job.CreatedAt, job.UpdatedAt, job.AvailableAt, job.CommandVersion, job.Command, job.DedupeKey, string(job.DedupePolicy), job.MaximumAttempts, job.Revision)
 }
 
 func (s SQLJobStore) ClaimNext(ctx context.Context, request *store.JobClaimRequest) (*store.JobClaim, error) {
@@ -215,6 +276,38 @@ func (s SQLJobStore) Checkpoint(ctx context.Context, input *store.JobCheckpoint)
 	return updated, nil
 }
 
+func (s SQLJobStore) ReserveWork(ctx context.Context, input *store.JobWorkReservation) (*store.JobWorkReservationResult, error) {
+	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.Units <= 0 || input.Limit <= 0 || input.Units > input.Limit || input.Limit > 1_000_000 {
+		return nil, store.NewErrInvalidInput("job", "reserve_work", nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	attempt, err := getFencedAttempt(ctx, tx, input.AttemptID, input.ClaimToken, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	var consumed int
+	err = tx.Get(ctx, &consumed, `UPDATE jobs SET work_reserved = work_reserved + ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ? AND work_reserved + ? <= ? RETURNING work_reserved`, input.Units, databaseNow, attempt.JobID.String(), input.Units, input.Limit)
+	reserved := err == nil
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.Get(ctx, &consumed, `SELECT work_reserved FROM jobs WHERE id = ?`, attempt.JobID.String())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reserve job work: %w", translateError("job", attempt.JobID.String(), err))
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit job work reservation: %w", err)
+	}
+	return &store.JobWorkReservationResult{Reserved: reserved, Consumed: consumed}, nil
+}
+
 func (s SQLJobStore) Complete(ctx context.Context, input *store.JobCompletion) (*model.Job, error) {
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.RetryDelay < 0 || input.RetryDelay > 24*time.Hour {
 		return nil, store.NewErrInvalidInput("job", "completion", nil)
@@ -300,6 +393,216 @@ func (s SQLJobStore) ListAttempts(ctx context.Context, jobID model.JobID) ([]mod
 	return result, nil
 }
 
+func (s SQLJobStore) List(ctx context.Context, options store.JobListOptions) ([]*model.Job, error) {
+	if options.Limit < 1 || options.Limit > 200 || len(options.Types) == 0 ||
+		(!options.BeforeID.IsZero() && (!options.BeforeID.IsValid() || options.BeforeCreatedAt.IsZero())) {
+		return nil, store.NewErrInvalidInput("job", "list", nil)
+	}
+	types := make([]string, len(options.Types))
+	for index, jobType := range options.Types {
+		types[index] = string(jobType)
+	}
+	arguments := []any{pq.Array(types)}
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE type = ANY(?)`
+	if len(options.Statuses) > 0 {
+		statuses := make([]string, len(options.Statuses))
+		for index, status := range options.Statuses {
+			statuses[index] = string(status)
+		}
+		query += ` AND status = ANY(?)`
+		arguments = append(arguments, pq.Array(statuses))
+	}
+	if !options.BeforeID.IsZero() {
+		query += ` AND (created_at, id) < (?, ?)`
+		arguments = append(arguments, options.BeforeCreatedAt, options.BeforeID.String())
+	}
+	query += ` ORDER BY created_at DESC, id DESC LIMIT ?`
+	arguments = append(arguments, options.Limit)
+	var rows []jobRow
+	if err := s.GetMaster().Select(ctx, &rows, query, arguments...); err != nil {
+		return nil, fmt.Errorf("list jobs: %w", err)
+	}
+	result := make([]*model.Job, 0, len(rows))
+	for _, row := range rows {
+		job, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, job)
+	}
+	return result, nil
+}
+
+func (s SQLJobStore) ListAttemptsPage(ctx context.Context, options store.JobAttemptListOptions) ([]model.JobAttempt, error) {
+	if !options.JobID.IsValid() || options.BeforeNumber < 0 || options.Limit < 1 || options.Limit > 200 {
+		return nil, store.NewErrInvalidInput("job_attempt", "list", nil)
+	}
+	query := `SELECT ` + jobAttemptColumns + ` FROM job_attempts WHERE job_id = ?`
+	arguments := []any{options.JobID.String()}
+	if options.BeforeNumber > 0 {
+		query += ` AND number < ?`
+		arguments = append(arguments, options.BeforeNumber)
+	}
+	query += ` ORDER BY number DESC LIMIT ?`
+	arguments = append(arguments, options.Limit)
+	var rows []jobAttemptRow
+	if err := s.GetMaster().Select(ctx, &rows, query, arguments...); err != nil {
+		return nil, fmt.Errorf("list job attempts: %w", err)
+	}
+	result := make([]model.JobAttempt, 0, len(rows))
+	for _, row := range rows {
+		attempt, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *attempt)
+	}
+	return result, nil
+}
+
+func (s SQLJobStore) CancellationRequested(ctx context.Context, attemptID model.JobAttemptID, token model.JobClaimToken) (bool, error) {
+	if !attemptID.IsValid() || !token.IsValid() {
+		return false, store.NewErrInvalidInput("job_attempt", "observe_cancellation", nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	attempt, err := getFencedAttempt(ctx, tx, attemptID, token, now)
+	if err != nil {
+		return false, err
+	}
+	job, err := getJob(ctx, tx, attempt.JobID, false)
+	if err != nil {
+		return false, err
+	}
+	return job.Status == model.JobStatusCancelRequested, nil
+}
+
+func (s SQLJobStore) CancelWithAudit(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
+	return s.mutateOperatorJob(ctx, input, "cancel", func(job *model.Job, at time.Time) (*model.Job, error) { return job.RequestCancellation(at) })
+}
+
+func (s SQLJobStore) RetryWithAudit(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
+	return s.mutateOperatorJob(ctx, input, "retry", func(job *model.Job, at time.Time) (*model.Job, error) { return job.ExplicitRetry(at) })
+}
+
+func (s SQLJobStore) mutateOperatorJob(ctx context.Context, input *store.JobMutation, operation string, mutate func(*model.Job, time.Time) (*model.Job, error)) (*model.Job, error) {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("job", operation, nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	job, err := getJob(ctx, tx, input.ID, true)
+	if err != nil {
+		return nil, err
+	}
+	if job.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("job", "job_changed", nil)
+	}
+	updated, err := mutate(job, databaseNow)
+	if err != nil {
+		return nil, store.NewErrConflict("job", operation+"_unsupported", err)
+	}
+	if err = updateJob(ctx, tx, updated); err != nil {
+		return nil, err
+	}
+	result, err := model.EncodeAuditData(map[string]any{"job_id": updated.ID.String(), "type": string(updated.Type), "status": string(updated.Status)})
+	if err != nil {
+		return nil, err
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", result, input.AuditAt); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {
+	if input == nil || !input.ExcludeJobID.IsValid() || input.Limit < 1 || input.Limit > 200 || len(input.Policies) == 0 || (input.AfterCompletedAt.IsZero() != input.AfterJobID.IsZero()) || (!input.AfterJobID.IsZero() && !input.AfterJobID.IsValid()) {
+		return nil, store.NewErrInvalidInput("job", "history_cleanup", nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin job history cleanup: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	conditions := make([]string, 0, len(input.Policies))
+	arguments := []any{input.ExcludeJobID.String()}
+	if !input.AfterCompletedAt.IsZero() {
+		arguments = append(arguments, model.TimeUTC(input.AfterCompletedAt), model.TimeUTC(input.AfterCompletedAt), input.AfterJobID.String())
+	}
+	seenTypes := make(map[model.JobType]struct{}, len(input.Policies))
+	for _, policy := range input.Policies {
+		if _, exists := seenTypes[policy.Type]; exists || policy.SucceededCanceledAge <= 0 || policy.FailedAge < policy.SucceededCanceledAge {
+			return nil, store.NewErrInvalidInput("job", "retention_policy", nil)
+		}
+		seenTypes[policy.Type] = struct{}{}
+		conditions = append(conditions, `(type = ? AND ((status IN ('succeeded', 'canceled') AND completed_at <= ?) OR (status = 'failed' AND completed_at <= ?)))`)
+		arguments = append(arguments, string(policy.Type), databaseNow.Add(-policy.SucceededCanceledAge), databaseNow.Add(-policy.FailedAge))
+	}
+	query := `SELECT id, completed_at FROM jobs WHERE id <> ? AND status IN ('succeeded', 'failed', 'canceled') AND completed_at IS NOT NULL`
+	if !input.AfterCompletedAt.IsZero() {
+		query += ` AND (completed_at > ? OR (completed_at = ? AND id > ?))`
+	}
+	query += ` AND (` + strings.Join(conditions, ` OR `) + `) ORDER BY completed_at, id FOR UPDATE SKIP LOCKED LIMIT ?`
+	arguments = append(arguments, input.Limit)
+	var rows []struct {
+		ID          string    `db:"id"`
+		CompletedAt time.Time `db:"completed_at"`
+	}
+	if err = tx.Select(ctx, &rows, query, arguments...); err != nil {
+		return nil, fmt.Errorf("select job history cleanup page: %w", err)
+	}
+	result := &store.JobHistoryCleanupResult{Done: len(rows) < input.Limit}
+	if len(rows) == 0 {
+		if err = tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit empty job history cleanup: %w", err)
+		}
+		return result, nil
+	}
+	ids := make([]string, len(rows))
+	for index, row := range rows {
+		ids[index] = row.ID
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM job_attempts WHERE job_id = ANY(?)`, pq.Array(ids)); err != nil {
+		return nil, fmt.Errorf("delete retained job attempts: %w", err)
+	}
+	deleted, err := tx.Exec(ctx, `DELETE FROM jobs WHERE id = ANY(?) AND id <> ? AND status IN ('succeeded', 'failed', 'canceled')`, pq.Array(ids), input.ExcludeJobID.String())
+	if err != nil {
+		return nil, fmt.Errorf("delete retained jobs: %w", err)
+	}
+	result.Deleted, err = deleted.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("read deleted job count: %w", err)
+	}
+	last := rows[len(rows)-1]
+	result.LastCompletedAt = last.CompletedAt.UTC()
+	result.LastJobID = model.JobID(last.ID)
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit job history cleanup: %w", err)
+	}
+	return result, nil
+}
+
 func getFencedAttempt(ctx context.Context, tx *sqlxTxWrapper, id model.JobAttemptID, token model.JobClaimToken, at time.Time) (*model.JobAttempt, error) {
 	var row jobAttemptRow
 	if err := tx.Get(ctx, &row, `SELECT `+jobAttemptColumns+` FROM job_attempts WHERE id = ? FOR UPDATE`, id.String()); err != nil {
@@ -359,9 +662,9 @@ func updateJob(ctx context.Context, tx *sqlxTxWrapper, job *model.Job) error {
 	if job.Progress != nil {
 		progressCurrent, progressTotal, progressStage = job.Progress.Current, job.Progress.Total, job.Progress.Stage
 	}
-	result, err := tx.Exec(ctx, `UPDATE jobs SET status = ?, updated_at = ?, available_at = ?, started_at = ?, completed_at = ?, checkpoint_version = ?, checkpoint = ?, result_version = ?, result = ?, public_error_code = ?, attempt_count = ?, progress_current = ?, progress_total = ?, progress_stage = ?, revision = ? WHERE id = ? AND revision = ?`, string(job.Status), job.UpdatedAt, job.AvailableAt, startedAt, completedAt, checkpointVersion, nullableJSON(job.Checkpoint), resultVersion, nullableJSON(job.Result), job.PublicErrorCode, job.AttemptCount, progressCurrent, progressTotal, progressStage, job.Revision, job.ID.String(), job.Revision-1)
+	result, err := tx.Exec(ctx, `UPDATE jobs SET status = ?, updated_at = ?, available_at = ?, started_at = ?, completed_at = ?, checkpoint_version = ?, checkpoint = ?, result_version = ?, result = ?, public_error_code = ?, attempt_count = ?, maximum_attempts = ?, work_reserved = ?, progress_current = ?, progress_total = ?, progress_stage = ?, revision = ? WHERE id = ? AND revision = ?`, string(job.Status), job.UpdatedAt, job.AvailableAt, startedAt, completedAt, checkpointVersion, nullableJSON(job.Checkpoint), resultVersion, nullableJSON(job.Result), job.PublicErrorCode, job.AttemptCount, job.MaximumAttempts, job.WorkReserved, progressCurrent, progressTotal, progressStage, job.Revision, job.ID.String(), job.Revision-1)
 	if err != nil {
-		return fmt.Errorf("update job: %w", err)
+		return fmt.Errorf("update job: %w", translateError("job", job.ID.String(), err))
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
@@ -374,7 +677,7 @@ func updateJob(ctx context.Context, tx *sqlxTxWrapper, job *model.Job) error {
 }
 
 func (r jobRow) model() (*model.Job, error) {
-	job := &model.Job{ID: model.JobID(r.ID), Type: model.JobType(r.Type), Status: model.JobStatus(r.Status), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), AvailableAt: r.AvailableAt.UTC(), StartedAt: OptionalTimeFromNullTime(r.StartedAt), CompletedAt: OptionalTimeFromNullTime(r.CompletedAt), CommandVersion: r.CommandVersion, Command: append(json.RawMessage(nil), r.Command...), Checkpoint: append(json.RawMessage(nil), r.Checkpoint...), PublicErrorCode: r.PublicErrorCode, DedupeKey: r.DedupeKey, AttemptCount: r.AttemptCount, MaximumAttempts: r.MaximumAttempts, Revision: r.Revision}
+	job := &model.Job{ID: model.JobID(r.ID), Type: model.JobType(r.Type), Status: model.JobStatus(r.Status), CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), AvailableAt: r.AvailableAt.UTC(), StartedAt: OptionalTimeFromNullTime(r.StartedAt), CompletedAt: OptionalTimeFromNullTime(r.CompletedAt), CommandVersion: r.CommandVersion, Command: append(json.RawMessage(nil), r.Command...), Checkpoint: append(json.RawMessage(nil), r.Checkpoint...), PublicErrorCode: r.PublicErrorCode, DedupeKey: r.DedupeKey, DedupePolicy: model.JobDedupePolicy(r.DedupePolicy), AttemptCount: r.AttemptCount, MaximumAttempts: r.MaximumAttempts, WorkReserved: r.WorkReserved, Revision: r.Revision}
 	if r.CheckpointVersion.Valid {
 		job.CheckpointVersion = int(r.CheckpointVersion.Int64)
 	}

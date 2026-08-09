@@ -124,11 +124,12 @@ func (s SQLExternalIdentityStore) ListByUser(
 
 func (s SQLExternalIdentityStore) ResolveOrProvision(
 	ctx context.Context,
-	identity *model.ExternalIdentity,
-	user *model.User,
-	autoProvision bool,
-	provisionAudit *model.AuditEvent,
+	request *store.ExternalIdentityResolutionRequest,
 ) (*store.ExternalIdentityResolution, error) {
+	if request == nil {
+		return nil, store.NewErrInvalidInput("external_identity", "resolution", nil)
+	}
+	identity := request.Identity
 	if identity == nil || !identity.ID.IsZero() ||
 		identity.Provider == "" || identity.Subject == "" ||
 		!identity.LastSeenAt.Valid {
@@ -169,11 +170,11 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	if !store.IsNotFound(err) {
 		return nil, err
 	}
-	if !autoProvision {
+	if !request.AutoProvision {
 		return nil, store.NewErrNotFound("external_identity", provider)
 	}
-	if user == nil || !user.ID.IsZero() || provisionAudit == nil ||
-		!provisionAudit.ID.IsZero() {
+	if request.User == nil || request.ProvisionAudit == nil ||
+		!request.ProvisionAudit.ID.IsZero() || request.DefaultProfilePictureJob == nil {
 		return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
 	}
 
@@ -181,9 +182,11 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	if at.IsZero() {
 		at = model.NowUTC()
 	}
-	userCandidate := *user
-	userCandidate.PrepareCreate(model.NewUserID(), at)
+	userCandidate := *request.User
 	if err := userCandidate.Validate(); err != nil {
+		return nil, err
+	}
+	if err := validateUserDefaultProfilePictureJob(&userCandidate, request.DefaultProfilePictureJob); err != nil {
 		return nil, err
 	}
 	identityCandidate := *identity
@@ -199,7 +202,10 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	if err := insertExternalIdentity(ctx, tx, &identityCandidate); err != nil {
 		return nil, err
 	}
-	auditCandidate := provisionAudit.Clone()
+	if _, err := insertQueuedJob(ctx, tx, request.DefaultProfilePictureJob, false); err != nil {
+		return nil, fmt.Errorf("enqueue external user default profile picture generation: %w", translateError("job", request.DefaultProfilePictureJob.ID.String(), err))
+	}
+	auditCandidate := request.ProvisionAudit.Clone()
 	auditCandidate.ActorID = userCandidate.ID
 	auditCandidate.Resource = model.Resource{
 		Type: model.ResourceUser,

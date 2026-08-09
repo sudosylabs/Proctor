@@ -520,6 +520,12 @@ func (s *timedJobStore) Checkpoint(arg0 context.Context, arg1 *store.JobCheckpoi
 	})
 }
 
+func (s *timedJobStore) ReserveWork(arg0 context.Context, arg1 *store.JobWorkReservation) (*store.JobWorkReservationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodReserveWork), func() (*store.JobWorkReservationResult, error) {
+		return s.next.ReserveWork(arg0, arg1)
+	})
+}
+
 func (s *timedJobStore) Complete(arg0 context.Context, arg1 *store.JobCompletion) (*model.Job, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodComplete), func() (*model.Job, error) {
 		return s.next.Complete(arg0, arg1)
@@ -535,6 +541,42 @@ func (s *timedJobStore) Get(arg0 context.Context, arg1 model.JobID) (*model.Job,
 func (s *timedJobStore) ListAttempts(arg0 context.Context, arg1 model.JobID) ([]model.JobAttempt, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttempts), func() ([]model.JobAttempt, error) {
 		return s.next.ListAttempts(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) List(arg0 context.Context, arg1 store.JobListOptions) ([]*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodList), func() ([]*model.Job, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) ListAttemptsPage(arg0 context.Context, arg1 store.JobAttemptListOptions) ([]model.JobAttempt, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttemptsPage), func() ([]model.JobAttempt, error) {
+		return s.next.ListAttemptsPage(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) CancellationRequested(arg0 context.Context, arg1 model.JobAttemptID, arg2 model.JobClaimToken) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancellationRequested), func() (bool, error) {
+		return s.next.CancellationRequested(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedJobStore) CancelWithAudit(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCancelWithAudit), func() (*model.Job, error) {
+		return s.next.CancelWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) RetryWithAudit(arg0 context.Context, arg1 *store.JobMutation) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodRetryWithAudit), func() (*model.Job, error) {
+		return s.next.RetryWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) DeleteTerminalHistory(arg0 context.Context, arg1 *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodDeleteTerminalHistory), func() (*store.JobHistoryCleanupResult, error) {
+		return s.next.DeleteTerminalHistory(arg0, arg1)
 	})
 }
 
@@ -556,9 +598,9 @@ func (s *timedFileStore) DiscardProfilePictureUpload(arg0 context.Context, arg1 
 	})
 }
 
-func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.UploadLeaseID, arg2 model.UserID, arg3 int64, arg4 time.Time) (*model.UploadLease, error) {
+func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.UploadLeaseID, arg2 model.UserID, arg3 int64, arg4 int64, arg5 time.Time) (*model.UploadLease, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func() (*model.UploadLease, error) {
-		return s.next.RenewUploadLease(arg0, arg1, arg2, arg3, arg4)
+		return s.next.RenewUploadLease(arg0, arg1, arg2, arg3, arg4, arg5)
 	})
 }
 
@@ -589,6 +631,24 @@ func (s *timedFileStore) GetProfilePictureRendition(arg0 context.Context, arg1 m
 func (s *timedFileStore) RemoveProfilePictureWithAudit(arg0 context.Context, arg1 *store.ProfilePictureRemoval) (*model.User, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRemoveProfilePictureWithAudit), func() (*model.User, error) {
 		return s.next.RemoveProfilePictureWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) ListPurgeCandidates(arg0 context.Context, arg1 *store.FilePurgeCandidateRequest) (*store.FilePurgeCandidatePage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodListPurgeCandidates), func() (*store.FilePurgeCandidatePage, error) {
+		return s.next.ListPurgeCandidates(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) ClaimPurgeCandidate(arg0 context.Context, arg1 *store.FilePurgeCandidate) (*store.FilePurgeClaim, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodClaimPurgeCandidate), func() (*store.FilePurgeClaim, error) {
+		return s.next.ClaimPurgeCandidate(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) CompletePurge(arg0 context.Context, arg1 *store.FilePurgeClaim) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodCompletePurge), func() error {
+		return s.next.CompletePurge(arg0, arg1)
 	})
 }
 
@@ -940,15 +1000,9 @@ func (s *timedClassStore) Archive(arg0 context.Context, arg1 string, arg2 int64)
 	})
 }
 
-func (s *timedUserStore) Save(arg0 context.Context, arg1 *model.User) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodSave), func() (*model.User, error) {
-		return s.next.Save(arg0, arg1)
-	})
-}
-
-func (s *timedUserStore) SaveWithPassword(arg0 context.Context, arg1 *model.User, arg2 *model.PasswordCredential) (*model.User, *model.PasswordCredential, error) {
-	return timeStoreCall2(s.layer, storeOperation(aggregateUser, methodSaveWithPassword), func() (*model.User, *model.PasswordCredential, error) {
-		return s.next.SaveWithPassword(arg0, arg1, arg2)
+func (s *timedUserStore) Create(arg0 context.Context, arg1 *store.UserCreation) (*store.UserCreationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodCreate), func() (*store.UserCreationResult, error) {
+		return s.next.Create(arg0, arg1)
 	})
 }
 
@@ -1024,9 +1078,9 @@ func (s *timedExternalIdentityStore) ListByUser(arg0 context.Context, arg1 strin
 	})
 }
 
-func (s *timedExternalIdentityStore) ResolveOrProvision(arg0 context.Context, arg1 *model.ExternalIdentity, arg2 *model.User, arg3 bool, arg4 *model.AuditEvent) (*store.ExternalIdentityResolution, error) {
+func (s *timedExternalIdentityStore) ResolveOrProvision(arg0 context.Context, arg1 *store.ExternalIdentityResolutionRequest) (*store.ExternalIdentityResolution, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodResolveOrProvision), func() (*store.ExternalIdentityResolution, error) {
-		return s.next.ResolveOrProvision(arg0, arg1, arg2, arg3, arg4)
+		return s.next.ResolveOrProvision(arg0, arg1)
 	})
 }
 

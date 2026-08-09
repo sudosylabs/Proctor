@@ -5,6 +5,7 @@ package storetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -35,10 +36,15 @@ func TestFileStore(t *testing.T, ss store.Store) {
 		t.Fatalf("CreateUpload() = %#v", created)
 	}
 	renewedUntil := model.NowUTC().Add(30 * time.Minute)
-	renewed, err := ss.File().RenewUploadLease(ctx, lease.ID, user.ID, lease.Revision, renewedUntil)
-	requireNoError(t, err)
+	renewed, err := ss.File().RenewUploadLease(ctx, lease.ID, user.ID, lease.Revision, 1, renewedUntil)
+	if err != nil {
+		t.Fatalf("RenewUploadLease() error = %v (cause: %v)", err, errors.Unwrap(err))
+	}
 	if !renewed.ExpiresAt.Equal(renewedUntil) {
 		t.Fatalf("RenewUploadLease() = %#v", renewed)
+	}
+	if _, err = ss.File().RenewUploadLease(ctx, lease.ID, user.ID, renewed.Revision, 1, renewedUntil); !store.IsConflict(err) {
+		t.Fatalf("RenewUploadLease(without progress) error = %v", err)
 	}
 	renditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
@@ -161,11 +167,57 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	if got.ID != defaultRenditions[0].ID {
 		t.Fatalf("fallback rendition = %#v", got)
 	}
-	archivedRevision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, model.NowUTC())
+	archivedAt := model.NowUTC()
+	archivedRevision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, archivedAt)
 	requireNoError(t, err)
-	archivedLease, err := model.NewUploadLease(model.NewUploadLeaseID(), archivedRevision.ID, user.ID, model.NowUTC(), model.NowUTC().Add(time.Hour))
+	archivedLease, err := model.NewUploadLease(model.NewUploadLeaseID(), archivedRevision.ID, user.ID, archivedAt, archivedAt.Add(time.Hour))
 	requireNoError(t, err)
 	if _, err = ss.File().CreateRevisionUpload(ctx, &store.FileRevisionUploadCreation{EntryID: entry.ID, Revision: archivedRevision, Lease: archivedLease}); !store.IsNotFound(err) {
 		t.Fatalf("CreateRevisionUpload(archived) error = %v", err)
+	}
+	expiredAt := model.NowUTC().Add(-48 * time.Hour)
+	expiredEntry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, expiredAt.Add(-time.Hour))
+	requireNoError(t, err)
+	expiredRevision, err := model.NewFileRevision(model.NewFileRevisionID(), expiredEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, expiredAt.Add(-time.Hour))
+	requireNoError(t, err)
+	expiredLease, err := model.NewUploadLease(model.NewUploadLeaseID(), expiredRevision.ID, user.ID, expiredAt.Add(-time.Hour), expiredAt)
+	requireNoError(t, err)
+	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: expiredEntry, Revision: expiredRevision, Lease: expiredLease})
+	requireNoError(t, err)
+	expiredRenditions := make([]model.FileRendition, 0, 3)
+	for _, size := range []int{128, 256, 512} {
+		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), expiredRevision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 8, size, size, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", expiredAt)
+		requireNoError(t, renditionErr)
+		expiredRenditions = append(expiredRenditions, *rendition)
+	}
+	expiredAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID.String(), AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) {
+		t.Fatalf("PublishProfilePicture(expired lease) error = %v", err)
+	}
+	page, err := ss.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 10})
+	requireNoError(t, err)
+	var expiredCandidate *store.FilePurgeCandidate
+	for index := range page.Candidates {
+		if page.Candidates[index].LeaseID == expiredLease.ID {
+			expiredCandidate = &page.Candidates[index]
+		}
+	}
+	if expiredCandidate == nil {
+		t.Fatal("expired lease was not selected from authoritative metadata")
+	}
+	claim, err := ss.File().ClaimPurgeCandidate(ctx, expiredCandidate)
+	requireNoError(t, err)
+	if claim.ID == "" || claim.Candidate.RevisionID != expiredCandidate.RevisionID {
+		t.Fatalf("ClaimPurgeCandidate() = %#v", claim)
+	}
+	if _, err = ss.File().RenewUploadLease(ctx, expiredLease.ID, user.ID, expiredLease.Revision, 1, model.NowUTC().Add(time.Hour)); !store.IsConflict(err) && !store.IsNotFound(err) {
+		t.Fatalf("RenewUploadLease(claimed) error = %v", err)
+	}
+	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID.String(), AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) && !store.IsNotFound(err) {
+		t.Fatalf("PublishProfilePicture(claimed) error = %v", err)
+	}
+	requireNoError(t, ss.File().CompletePurge(ctx, claim))
+	if err = ss.File().CompletePurge(ctx, claim); !store.IsConflict(err) && !store.IsNotFound(err) {
+		t.Fatalf("CompletePurge(idempotent) error = %v", err)
 	}
 }

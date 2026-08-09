@@ -6,6 +6,7 @@
 
 DROP TABLE IF EXISTS cluster_discovery_nodes;
 DROP TABLE IF EXISTS job_attempts;
+DROP TABLE IF EXISTS job_permanent_occurrences;
 DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS installation_states;
 DROP TABLE IF EXISTS audit_events;
@@ -23,6 +24,7 @@ DROP TABLE IF EXISTS academic_unit_members;
 DROP TABLE IF EXISTS affiliations;
 DROP TABLE IF EXISTS password_credentials;
 DROP TABLE IF EXISTS external_identities;
+DROP TABLE IF EXISTS file_legal_holds;
 DROP TABLE IF EXISTS upload_leases;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS file_renditions;

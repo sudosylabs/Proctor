@@ -79,6 +79,18 @@ type JobCheckpoint struct {
 	Checkpoint        json.RawMessage
 }
 
+type JobWorkReservation struct {
+	AttemptID  model.JobAttemptID
+	ClaimToken model.JobClaimToken
+	Units      int
+	Limit      int
+}
+
+type JobWorkReservationResult struct {
+	Reserved bool
+	Consumed int
+}
+
 type JobCompletionKind string
 
 const (
@@ -98,10 +110,55 @@ type JobCompletion struct {
 	PublicErrorCode string
 }
 
+type JobListOptions struct {
+	Types           []model.JobType
+	Statuses        []model.JobStatus
+	BeforeCreatedAt time.Time
+	BeforeID        model.JobID
+	Limit           int
+}
+
+type JobAttemptListOptions struct {
+	JobID        model.JobID
+	BeforeNumber int
+	Limit        int
+}
+
+type JobMutation struct {
+	ID               model.JobID
+	ExpectedRevision int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
+type JobRetentionPolicy struct {
+	Type                 model.JobType
+	SucceededCanceledAge time.Duration
+	FailedAge            time.Duration
+}
+
+type JobHistoryCleanup struct {
+	ExcludeJobID     model.JobID
+	Policies         []JobRetentionPolicy
+	AfterCompletedAt time.Time
+	AfterJobID       model.JobID
+	Limit            int
+}
+
+type JobHistoryCleanupResult struct {
+	Deleted         int64
+	LastCompletedAt time.Time
+	LastJobID       model.JobID
+	Done            bool
+}
+
 // JobStore owns durable, at-least-once work claiming and its fencing rules.
 type JobStore interface {
-	// Enqueue atomically deduplicates one active logical occurrence by type and
-	// key. The returned boolean reports whether the supplied Job was inserted.
+	// Enqueue atomically deduplicates one logical occurrence by type, key, and
+	// the Job's persisted policy. Active dedupe admits a replacement after a
+	// terminal outcome; permanent dedupe reserves the key even after retention
+	// removes its Job history. The returned boolean reports whether the supplied
+	// Job was inserted; a retained winner is returned when one still exists.
 	Enqueue(context.Context, *JobEnqueue) (*model.Job, bool, error)
 	// ClaimNext expires lost attempts, requeues their Jobs, then atomically claims
 	// one eligible Job using SKIP LOCKED and creates its next append-only Attempt.
@@ -114,11 +171,29 @@ type JobStore interface {
 	// Checkpoint atomically updates bounded Job progress only for the live token
 	// before its database-clock lease expiry.
 	Checkpoint(context.Context, *JobCheckpoint) (*model.Job, error)
+	// ReserveWork atomically consumes an occurrence-wide unit budget for the
+	// live fenced Attempt. Reservations remain consumed across retries so a
+	// crashed worker can under-process, but can never repeat beyond the limit.
+	ReserveWork(context.Context, *JobWorkReservation) (*JobWorkReservationResult, error)
 	// Complete atomically closes the fenced Attempt and transitions its Job to a
 	// terminal state or a future queued retry. An expired token cannot complete.
 	Complete(context.Context, *JobCompletion) (*model.Job, error)
 	Get(context.Context, model.JobID) (*model.Job, error)
 	ListAttempts(context.Context, model.JobID) ([]model.JobAttempt, error)
+	List(context.Context, JobListOptions) ([]*model.Job, error)
+	ListAttemptsPage(context.Context, JobAttemptListOptions) ([]model.JobAttempt, error)
+	// CancellationRequested observes the durable cancellation bit only while the
+	// supplied Attempt still owns the live fence.
+	CancellationRequested(context.Context, model.JobAttemptID, model.JobClaimToken) (bool, error)
+	// CancelWithAudit and RetryWithAudit atomically mutate the Job and complete
+	// an already-durable operator audit attempt.
+	CancelWithAudit(context.Context, *JobMutation) (*model.Job, error)
+	RetryWithAudit(context.Context, *JobMutation) (*model.Job, error)
+	// DeleteTerminalHistory atomically selects and removes one bounded,
+	// oldest-first page of retention-eligible terminal Jobs and their Attempts.
+	// It revalidates per-type ages against the primary database clock, never
+	// selects active work, and always excludes the caller's cleanup Job.
+	DeleteTerminalHistory(context.Context, *JobHistoryCleanup) (*JobHistoryCleanupResult, error)
 }
 
 type FileUploadCreation struct {
@@ -196,6 +271,41 @@ type ProfilePictureRemoval struct {
 	AuditAt                   int64
 }
 
+type FilePurgeCandidateKind string
+
+const (
+	FilePurgeCandidateExpiredLease   FilePurgeCandidateKind = "expired_lease"
+	FilePurgeCandidateArchivedCustom FilePurgeCandidateKind = "archived_custom"
+)
+
+// FilePurgeCandidate is an authoritative metadata-derived unit of physical
+// cleanup. Cursor and IDs are safe operational values; storage paths never
+// cross this boundary.
+type FilePurgeCandidate struct {
+	Cursor       string
+	Kind         FilePurgeCandidateKind
+	LeaseID      model.UploadLeaseID
+	EntryID      model.FileEntryID
+	RevisionID   model.FileRevisionID
+	RenditionIDs []model.FileRenditionID
+}
+
+type FilePurgeCandidateRequest struct {
+	After string
+	Limit int
+}
+
+type FilePurgeCandidatePage struct {
+	Candidates []FilePurgeCandidate
+}
+
+// FilePurgeClaim is the durable tombstone created before physical content is
+// removed. Reusing a claim makes cleanup recoverable after a worker crash.
+type FilePurgeClaim struct {
+	ID        string
+	Candidate FilePurgeCandidate
+}
+
 // FileStore owns file metadata and the atomic publication of domain references.
 type FileStore interface {
 	// CreateUpload atomically creates a pristine entry, its first pending revision,
@@ -209,7 +319,7 @@ type FileStore interface {
 	// If the upload created a distinct pristine entry, that entry is removed too;
 	// the operation never changes the visible picture.
 	DiscardProfilePictureUpload(context.Context, *ProfilePictureUploadDiscard) error
-	RenewUploadLease(context.Context, model.UploadLeaseID, model.UserID, int64, time.Time) (*model.UploadLease, error)
+	RenewUploadLease(context.Context, model.UploadLeaseID, model.UserID, int64, int64, time.Time) (*model.UploadLease, error)
 	// PublishProfilePicture atomically consumes the actor-owned, unexpired lease,
 	// persists the complete rendition set, makes the revision current, updates the
 	// user's active custom entry under optimistic concurrency, and completes the
@@ -227,6 +337,16 @@ type FileStore interface {
 	// archives that entry, clears the custom relationship, advances the user, and
 	// completes the pre-existing audit attempt. Races fail with no partial change.
 	RemoveProfilePictureWithAudit(context.Context, *ProfilePictureRemoval) (*model.User, error)
+	// ListPurgeCandidates returns a stable bounded page derived from leases and
+	// semantic metadata using the database clock. It never discovers ownership
+	// by listing VFS objects.
+	ListPurgeCandidates(context.Context, *FilePurgeCandidateRequest) (*FilePurgeCandidatePage, error)
+	// ClaimPurgeCandidate atomically revalidates eligibility against the database
+	// clock and writes a durable tombstone before any physical content is removed.
+	ClaimPurgeCandidate(context.Context, *FilePurgeCandidate) (*FilePurgeClaim, error)
+	// CompletePurge deletes metadata only after the caller has idempotently
+	// removed the claimed physical content.
+	CompletePurge(context.Context, *FilePurgeClaim) error
 }
 
 // InstitutionStore persists the institution represented by this installation.
@@ -419,11 +539,12 @@ type ClassStore interface {
 }
 
 type UserListOptions struct {
-	Query           string
-	AfterUsername   string
-	AfterId         string
-	Limit           int
-	IncludeDisabled bool
+	Query                        string
+	AfterUsername                string
+	AfterId                      string
+	Limit                        int
+	IncludeDisabled              bool
+	MissingDefaultProfilePicture bool
 }
 
 type UserProfileUpdate struct {
@@ -455,14 +576,27 @@ type UserDisabledStateResult struct {
 	RevokedTokenHashes []string
 }
 
+// UserCreation is the named, import-safe transaction for creating one User.
+// DefaultProfilePictureJob must be the typed, deduplicated generation intent
+// prepared for User by the application. PasswordCredential is optional so
+// external/imported accounts do not need to invent a local credential.
+type UserCreation struct {
+	User                     *model.User
+	PasswordCredential       *model.PasswordCredential
+	DefaultProfilePictureJob *model.Job
+}
+
+type UserCreationResult struct {
+	User               *model.User
+	PasswordCredential *model.PasswordCredential
+}
+
 // UserStore persists login-capable accounts without their credentials.
 type UserStore interface {
-	Save(context.Context, *model.User) (*model.User, error)
-	SaveWithPassword(
-		context.Context,
-		*model.User,
-		*model.PasswordCredential,
-	) (*model.User, *model.PasswordCredential, error)
+	// Create atomically persists the prepared User, its optional password
+	// credential, and its matching active-deduplicated default-picture generation
+	// intent. All future import-oriented creation must use this operation.
+	Create(context.Context, *UserCreation) (*UserCreationResult, error)
 	Get(context.Context, string) (*model.User, error)
 	GetByUsername(context.Context, string) (*model.User, error)
 	GetByEmail(context.Context, string) (*model.User, error)
@@ -479,6 +613,14 @@ type ExternalIdentityResolution struct {
 	Provisioned bool
 }
 
+type ExternalIdentityResolutionRequest struct {
+	Identity                 *model.ExternalIdentity
+	User                     *model.User
+	AutoProvision            bool
+	ProvisionAudit           *model.AuditEvent
+	DefaultProfilePictureJob *model.Job
+}
+
 // ExternalIdentityStore persists provider-subject links and owns the
 // transaction that either resolves an existing link or provisions a new user
 // and link without email-based account merging.
@@ -487,13 +629,7 @@ type ExternalIdentityStore interface {
 	Get(context.Context, string) (*model.ExternalIdentity, error)
 	GetByProviderSubject(context.Context, string, string) (*model.ExternalIdentity, error)
 	ListByUser(context.Context, string) ([]*model.ExternalIdentity, error)
-	ResolveOrProvision(
-		context.Context,
-		*model.ExternalIdentity,
-		*model.User,
-		bool,
-		*model.AuditEvent,
-	) (*ExternalIdentityResolution, error)
+	ResolveOrProvision(context.Context, *ExternalIdentityResolutionRequest) (*ExternalIdentityResolution, error)
 }
 
 // ExternalLoginStateStore persists hashed, browser-bound, one-use login
@@ -870,12 +1006,13 @@ type AuditStore interface {
 // installation bootstrap transaction. PasswordHash is already encoded by the
 // application password hasher and must never be logged or audited.
 type InstallationBootstrap struct {
-	Institution   *model.Institution
-	Administrator *model.User
-	PasswordHash  string
-	Role          *model.Role
-	RoleBinding   *model.RoleBinding
-	AuditEvent    *model.AuditEvent
+	Institution              *model.Institution
+	Administrator            *model.User
+	PasswordHash             string
+	Role                     *model.Role
+	RoleBinding              *model.RoleBinding
+	AuditEvent               *model.AuditEvent
+	DefaultProfilePictureJob *model.Job
 }
 
 // InstallationStore owns the cross-model transaction that makes a pristine

@@ -83,65 +83,65 @@ func newSQLUserStore(sqlStore *SQLStore) store.UserStore {
 	return s
 }
 
-func (s SQLUserStore) Save(ctx context.Context, user *model.User) (*model.User, error) {
-	if user == nil {
-		return nil, store.NewErrInvalidInput("user", "value", nil)
+func (s SQLUserStore) Create(ctx context.Context, input *store.UserCreation) (*store.UserCreationResult, error) {
+	if input == nil || input.User == nil || input.DefaultProfilePictureJob == nil {
+		return nil, store.NewErrInvalidInput("user", "creation", nil)
 	}
-	if !user.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("user", "id", user.ID.String())
-	}
-
-	candidate := *user
-	candidate.PrepareCreate(model.NewUserID(), model.NowUTC())
-	if err := candidate.Validate(); err != nil {
+	user := *input.User
+	job := *input.DefaultProfilePictureJob
+	if err := user.Validate(); err != nil {
 		return nil, err
 	}
-
-	if err := insertUser(ctx, s.GetMaster(), &candidate); err != nil {
+	if err := validateUserDefaultProfilePictureJob(&user, &job); err != nil {
 		return nil, err
 	}
-	return &candidate, nil
-}
-
-func (s SQLUserStore) SaveWithPassword(
-	ctx context.Context,
-	user *model.User,
-	credential *model.PasswordCredential,
-) (*model.User, *model.PasswordCredential, error) {
-	if user == nil || credential == nil {
-		return nil, nil, store.NewErrInvalidInput("user", "local_account", nil)
-	}
-	if !user.ID.IsZero() || !credential.ID.IsZero() {
-		return nil, nil, store.NewErrInvalidInput("user", "id", "must_be_empty")
-	}
-	at := model.NowUTC()
-	userCandidate := *user
-	userCandidate.PrepareCreate(model.NewUserID(), at)
-	if err := userCandidate.Validate(); err != nil {
-		return nil, nil, err
-	}
-	credentialCandidate := *credential
-	credentialCandidate.UserID = userCandidate.ID
-	credentialCandidate.PrepareCreate(model.NewPasswordCredentialID(), at)
-	if err := credentialCandidate.Validate(); err != nil {
-		return nil, nil, err
+	var credential *model.PasswordCredential
+	if input.PasswordCredential != nil {
+		candidate := *input.PasswordCredential
+		if candidate.UserID != user.ID {
+			return nil, store.NewErrInvalidInput("user", "password_credential_user_id", candidate.UserID.String())
+		}
+		if err := candidate.Validate(); err != nil {
+			return nil, err
+		}
+		credential = &candidate
 	}
 
 	tx, err := s.GetMaster().Begin(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("begin local user save: %w", err)
+		return nil, fmt.Errorf("begin user creation: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := insertUser(ctx, tx, &userCandidate); err != nil {
-		return nil, nil, err
+	if err := insertUser(ctx, tx, &user); err != nil {
+		return nil, err
 	}
-	if err := insertPasswordCredential(ctx, tx, &credentialCandidate); err != nil {
-		return nil, nil, err
+	if credential != nil {
+		if err := insertPasswordCredential(ctx, tx, credential); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := insertQueuedJob(ctx, tx, &job, false); err != nil {
+		return nil, fmt.Errorf("enqueue default profile picture generation: %w", translateError("job", job.ID.String(), err))
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("commit local user save: %w", err)
+		return nil, fmt.Errorf("commit user creation: %w", err)
 	}
-	return &userCandidate, &credentialCandidate, nil
+	return &store.UserCreationResult{User: &user, PasswordCredential: credential}, nil
+}
+
+func validateUserDefaultProfilePictureJob(user *model.User, job *model.Job) error {
+	if user == nil || job == nil {
+		return store.NewErrInvalidInput("user", "default_profile_picture_job", nil)
+	}
+	command, commandErr := model.DecodeDefaultProfilePictureCommand(job.CommandVersion, job.Command)
+	if job.Validate() != nil ||
+		job.Type != model.JobTypeProfilePictureGenerateDefault ||
+		job.Status != model.JobStatusQueued || job.AttemptCount != 0 ||
+		job.DedupePolicy != model.JobDedupeActive ||
+		job.DedupeKey != user.ID.String() || commandErr != nil || command.UserID != user.ID {
+		return store.NewErrInvalidInput("user", "default_profile_picture_job", nil)
+	}
+	return nil
 }
 
 func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) error {
@@ -199,6 +199,9 @@ func (s SQLUserStore) List(
 	query := s.usersQuery.Where(sq.Eq{"users.archived_at": nil})
 	if !options.IncludeDisabled {
 		query = query.Where(sq.Eq{"users.disabled_at": nil})
+	}
+	if options.MissingDefaultProfilePicture {
+		query = query.Where(sq.Eq{"users.default_profile_picture_file_id": nil})
 	}
 	term := strings.TrimSpace(options.Query)
 	if term != "" {

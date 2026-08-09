@@ -15,11 +15,31 @@ import (
 )
 
 type jobRunnerStoreFake struct {
-	mu          sync.Mutex
-	heartbeats  int
-	checkpoints int
-	checkpoint  *store.JobCheckpoint
-	completion  *store.JobCompletion
+	mu              sync.Mutex
+	heartbeats      int
+	checkpoints     int
+	checkpoint      *store.JobCheckpoint
+	completion      *store.JobCompletion
+	cancelRequested bool
+	reservation     *store.JobWorkReservation
+}
+
+func allowJobWorkReservation() func(context.Context, int, int) (bool, error) {
+	consumed := 0
+	return func(_ context.Context, units, limit int) (bool, error) {
+		if consumed+units > limit {
+			return false, nil
+		}
+		consumed += units
+		return true, nil
+	}
+}
+func (s *jobRunnerStoreFake) ReserveWork(_ context.Context, reservation *store.JobWorkReservation) (*store.JobWorkReservationResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	copy := *reservation
+	s.reservation = &copy
+	return &store.JobWorkReservationResult{Reserved: true, Consumed: reservation.Units}, nil
 }
 
 func (*jobRunnerStoreFake) Enqueue(context.Context, *store.JobEnqueue) (*model.Job, bool, error) {
@@ -53,6 +73,26 @@ func (*jobRunnerStoreFake) Get(context.Context, model.JobID) (*model.Job, error)
 func (*jobRunnerStoreFake) ListAttempts(context.Context, model.JobID) ([]model.JobAttempt, error) {
 	return nil, nil
 }
+func (*jobRunnerStoreFake) List(context.Context, store.JobListOptions) ([]*model.Job, error) {
+	return nil, nil
+}
+func (*jobRunnerStoreFake) ListAttemptsPage(context.Context, store.JobAttemptListOptions) ([]model.JobAttempt, error) {
+	return nil, nil
+}
+func (s *jobRunnerStoreFake) CancellationRequested(context.Context, model.JobAttemptID, model.JobClaimToken) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cancelRequested, nil
+}
+func (*jobRunnerStoreFake) CancelWithAudit(context.Context, *store.JobMutation) (*model.Job, error) {
+	return nil, nil
+}
+func (*jobRunnerStoreFake) RetryWithAudit(context.Context, *store.JobMutation) (*model.Job, error) {
+	return nil, nil
+}
+func (*jobRunnerStoreFake) DeleteTerminalHistory(context.Context, *store.JobHistoryCleanup) (*store.JobHistoryCleanupResult, error) {
+	return nil, nil
+}
 
 type jobDiagnosticsFake struct{ errors []error }
 
@@ -81,6 +121,33 @@ func TestJobRunnerContainsPanicsAsRetryableOutcomes(t *testing.T) {
 	}
 }
 
+func TestJobRunnerFencesOccurrenceWorkReservations(t *testing.T) {
+	t.Parallel()
+	claim := jobRunnerClaim(t)
+	var reserved bool
+	descriptor := testJobDescriptor(jobHandlerFunc(func(ctx context.Context, execution JobExecution) JobOutcome {
+		var err error
+		reserved, err = execution.ReserveWork(ctx, 2, 5)
+		if err != nil {
+			return JobRetryableFailure("dependency.unavailable", err)
+		}
+		return DefaultProfilePictureJobSucceeded(model.NewFileEntryID())
+	}))
+	registry, err := NewJobRegistry([]JobDescriptor{descriptor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &jobRunnerStoreFake{}
+	runner, err := newJobRunner(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.execute(context.Background(), descriptor, claim)
+	if !reserved || persistence.reservation == nil || persistence.reservation.AttemptID != claim.Attempt.ID || persistence.reservation.ClaimToken != claim.Attempt.ClaimToken || persistence.reservation.Units != 2 || persistence.reservation.Limit != 5 {
+		t.Fatalf("reservation = %#v, reserved = %v", persistence.reservation, reserved)
+	}
+}
+
 func TestJobRunnerHeartbeatsLongWorkAndCompletesWithItsFence(t *testing.T) {
 	t.Parallel()
 	claim := jobRunnerClaim(t)
@@ -106,6 +173,32 @@ func TestJobRunnerHeartbeatsLongWorkAndCompletesWithItsFence(t *testing.T) {
 	defer persistence.mu.Unlock()
 	if persistence.heartbeats == 0 || persistence.completion == nil || persistence.completion.Kind != store.JobCompletionSucceeded || persistence.completion.ClaimToken != claim.Attempt.ClaimToken {
 		t.Fatalf("execution: heartbeats=%d completion=%#v", persistence.heartbeats, persistence.completion)
+	}
+}
+
+func TestJobRunnerObservesDurableCancellationCooperatively(t *testing.T) {
+	t.Parallel()
+	claim := jobRunnerClaim(t)
+	descriptor := testJobDescriptor(jobHandlerFunc(func(ctx context.Context, _ JobExecution) JobOutcome {
+		<-ctx.Done()
+		return JobCanceled("job.canceled")
+	}))
+	descriptor.HeartbeatInterval = 5 * time.Millisecond
+	descriptor.Cancelable = true
+	persistence := &jobRunnerStoreFake{cancelRequested: true}
+	registry, err := NewJobRegistry([]JobDescriptor{descriptor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := newJobRunner(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.execute(context.Background(), descriptor, claim)
+	persistence.mu.Lock()
+	defer persistence.mu.Unlock()
+	if persistence.completion == nil || persistence.completion.Kind != store.JobCompletionCanceled {
+		t.Fatalf("cancellation completion = %#v", persistence.completion)
 	}
 }
 

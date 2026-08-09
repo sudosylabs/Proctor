@@ -232,6 +232,10 @@ func (s *pictureContentFake) RemoveProfilePictureRenditions(context.Context, mod
 	return nil
 }
 
+func (s *pictureContentFake) RemoveFileRevisionContent(context.Context, model.FileRevisionID, []model.FileRenditionID) error {
+	return nil
+}
+
 func TestUploadProfilePictureNormalizesPrivateRenditionsBeforePublishing(t *testing.T) {
 	at := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
 	user := &model.User{Username: "student", Email: "student@example.test"}

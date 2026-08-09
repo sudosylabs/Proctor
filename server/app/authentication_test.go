@@ -79,6 +79,7 @@ type authenticationStoreFake struct {
 	sessionByCredential map[string]*model.Session
 	saveErr             error
 	maximumPerUser      int
+	createdJob          *model.Job
 }
 
 func (s *authenticationStoreFake) File() store.FileStore { return nil }
@@ -134,29 +135,19 @@ func (s *authenticationStoreFake) Close() error                                 
 
 type authenticationUserStore struct{ root *authenticationStoreFake }
 
-func (s authenticationUserStore) SaveWithPassword(
+func (s authenticationUserStore) Create(
 	_ context.Context,
-	user *model.User,
-	credential *model.PasswordCredential,
-) (*model.User, *model.PasswordCredential, error) {
-	cloned := *user
-	if cloned.ID.IsZero() {
-		cloned.ID = model.NewUserID()
-	}
-	now := time.Now().UnixMilli()
-	cloned.CreatedAt = model.TimeFromMillis(now)
-	cloned.UpdatedAt = model.TimeFromMillis(now)
+	input *store.UserCreation,
+) (*store.UserCreationResult, error) {
+	cloned := *input.User
 	s.root.users[cloned.ID.String()] = &cloned
 	s.root.usersByUsername[strings.ToLower(cloned.Username)] = &cloned
 	s.root.usersByEmail[strings.ToLower(cloned.Email)] = &cloned
-	pass := *credential
-	pass.ID = model.NewPasswordCredentialID()
-	pass.UserID = cloned.ID
-	pass.CreatedAt = model.TimeFromMillis(now)
-	pass.UpdatedAt = model.TimeFromMillis(now)
-	pass.PasswordChangedAt = model.TimeFromMillis(now)
+	pass := *input.PasswordCredential
 	s.root.passwords[cloned.ID.String()] = &pass
-	return &cloned, &pass, nil
+	job := *input.DefaultProfilePictureJob
+	s.root.createdJob = &job
+	return &store.UserCreationResult{User: &cloned, PasswordCredential: &pass}, nil
 }
 
 func (s authenticationUserStore) Get(_ context.Context, id string) (*model.User, error) {
@@ -187,9 +178,6 @@ func (s authenticationUserStore) GetByEmail(_ context.Context, email string) (*m
 }
 
 // Remaining UserStore methods are unused by the focused authentication paths.
-func (authenticationUserStore) Save(context.Context, *model.User) (*model.User, error) {
-	return nil, errors.New("unused")
-}
 func (authenticationUserStore) Update(context.Context, *model.User) (*model.User, error) {
 	return nil, errors.New("unused")
 }
@@ -446,6 +434,10 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if persistence.createdJob == nil || persistence.createdJob.DedupeKey != user.ID.String() ||
+		persistence.createdJob.Type != model.JobTypeProfilePictureGenerateDefault {
+		t.Fatalf("local user default-picture job = %#v", persistence.createdJob)
 	}
 
 	result, err := service.login(context.Background(), LoginCommand{

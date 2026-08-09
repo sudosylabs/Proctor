@@ -251,9 +251,53 @@ func (a fileContentAdapter) RemoveProfilePictureRenditions(ctx context.Context, 
 	return joined
 }
 
+func (a fileContentAdapter) RemoveFileRevisionContent(ctx context.Context, revisionID model.FileRevisionID, renditionIDs []model.FileRenditionID) error {
+	if !revisionID.IsValid() {
+		return fmt.Errorf("invalid file revision ID")
+	}
+	remove := func(path string) error {
+		err := a.filesystem.Remove(ctx, path, vfspkg.RemoveOptions{})
+		if errors.Is(err, vfspkg.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if len(renditionIDs) > 0 {
+		for _, renditionID := range renditionIDs {
+			if !renditionID.IsValid() {
+				return fmt.Errorf("invalid file rendition ID")
+			}
+			if err := remove(profilePictureRenditionPath(revisionID, renditionID)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	prefix := fileRevisionRenditionPrefix(revisionID)
+	page, err := a.filesystem.List(ctx, vfspkg.ListOptions{Prefix: prefix, Limit: 100})
+	if err != nil {
+		return err
+	}
+	if page.NextCursor != "" {
+		return fmt.Errorf("file revision exceeds bounded rendition limit")
+	}
+	for _, entry := range page.Entries {
+		if !entry.IsDir {
+			if err = remove(entry.Path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func profilePictureRenditionPath(revisionID model.FileRevisionID, renditionID model.FileRenditionID) string {
-	id := renditionID.String()
-	return fmt.Sprintf("files/%s/%s/revisions/%s/renditions/%s.webp", id[:2], id[2:4], revisionID.String(), id)
+	return fileRevisionRenditionPrefix(revisionID) + renditionID.String() + ".webp"
+}
+
+func fileRevisionRenditionPrefix(revisionID model.FileRevisionID) string {
+	id := revisionID.String()
+	return fmt.Sprintf("files/%s/%s/revisions/%s/renditions/", id[:2], id[2:4], id)
 }
 
 // platformAuthenticationCache adapts platform.Cache to app.authenticationCache.

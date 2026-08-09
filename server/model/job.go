@@ -21,6 +21,7 @@ type JobClaimToken string
 type JobType string
 type JobStatus string
 type JobAttemptStatus string
+type JobDedupePolicy string
 
 const (
 	JobTypeProfilePictureGenerateDefault JobType = "profile_picture.generate_default"
@@ -40,6 +41,11 @@ const (
 	JobAttemptStatusFailed       JobAttemptStatus = "failed"
 	JobAttemptStatusCanceled     JobAttemptStatus = "canceled"
 	JobAttemptStatusLeaseExpired JobAttemptStatus = "lease_expired"
+
+	// JobDedupeActive permits a new logical occurrence after the prior Job is
+	// terminal. JobDedupePermanent reserves the key across every lifecycle state.
+	JobDedupeActive    JobDedupePolicy = "active"
+	JobDedupePermanent JobDedupePolicy = "permanent"
 )
 
 type JobProgress struct {
@@ -65,8 +71,10 @@ type Job struct {
 	Result            json.RawMessage
 	PublicErrorCode   string
 	DedupeKey         string
+	DedupePolicy      JobDedupePolicy
 	AttemptCount      int
 	MaximumAttempts   int
+	WorkReserved      int
 	Progress          *JobProgress
 	Revision          int64
 }
@@ -86,7 +94,11 @@ type JobAttempt struct {
 }
 
 func NewJob(id JobID, jobType JobType, commandVersion int, command json.RawMessage, dedupeKey string, createdAt, availableAt time.Time, maximumAttempts int) (*Job, error) {
-	job := &Job{ID: id, Type: jobType, Status: JobStatusQueued, CreatedAt: TimeUTC(createdAt), UpdatedAt: TimeUTC(createdAt), AvailableAt: TimeUTC(availableAt), CommandVersion: commandVersion, Command: cloneJSON(command), DedupeKey: strings.TrimSpace(dedupeKey), MaximumAttempts: maximumAttempts, Revision: 1}
+	return NewJobWithDedupePolicy(id, jobType, commandVersion, command, dedupeKey, JobDedupeActive, createdAt, availableAt, maximumAttempts)
+}
+
+func NewJobWithDedupePolicy(id JobID, jobType JobType, commandVersion int, command json.RawMessage, dedupeKey string, dedupePolicy JobDedupePolicy, createdAt, availableAt time.Time, maximumAttempts int) (*Job, error) {
+	job := &Job{ID: id, Type: jobType, Status: JobStatusQueued, CreatedAt: TimeUTC(createdAt), UpdatedAt: TimeUTC(createdAt), AvailableAt: TimeUTC(availableAt), CommandVersion: commandVersion, Command: cloneJSON(command), DedupeKey: strings.TrimSpace(dedupeKey), DedupePolicy: dedupePolicy, MaximumAttempts: maximumAttempts, Revision: 1}
 	if err := job.Validate(); err != nil {
 		return nil, err
 	}
@@ -94,7 +106,7 @@ func NewJob(id JobID, jobType JobType, commandVersion int, command json.RawMessa
 }
 
 func (j *Job) Validate() error {
-	if j == nil || !j.ID.IsValid() || !validJobType(j.Type) || !validJobStatus(j.Status) || j.CreatedAt.IsZero() || j.UpdatedAt.Before(j.CreatedAt) || j.AvailableAt.IsZero() || j.CommandVersion <= 0 || !validJobDocument(j.Command, false) || len(j.DedupeKey) == 0 || len(j.DedupeKey) > 255 || j.AttemptCount < 0 || j.MaximumAttempts <= 0 || j.AttemptCount > j.MaximumAttempts || j.Revision <= 0 {
+	if j == nil || !j.ID.IsValid() || !validJobType(j.Type) || !validJobStatus(j.Status) || j.CreatedAt.IsZero() || j.UpdatedAt.Before(j.CreatedAt) || j.AvailableAt.IsZero() || j.CommandVersion <= 0 || !validJobDocument(j.Command, false) || len(j.DedupeKey) == 0 || len(j.DedupeKey) > 255 || !validJobDedupePolicy(j.DedupePolicy) || j.AttemptCount < 0 || j.MaximumAttempts <= 0 || j.AttemptCount > j.MaximumAttempts || j.WorkReserved < 0 || j.Revision <= 0 {
 		return fmt.Errorf("model: invalid job")
 	}
 	if !validJobDocument(j.Checkpoint, true) || (len(j.Checkpoint) > 0 && j.CheckpointVersion <= 0) || (len(j.Checkpoint) == 0 && j.CheckpointVersion != 0) || !validJobDocument(j.Result, true) || (len(j.Result) > 0 && j.ResultVersion <= 0) || (len(j.Result) == 0 && j.ResultVersion != 0) || !validPublicJobCode(j.PublicErrorCode) || !validJobProgress(j.Progress) {
@@ -105,6 +117,10 @@ func (j *Job) Validate() error {
 		return fmt.Errorf("model: invalid job lifecycle")
 	}
 	return nil
+}
+
+func validJobDedupePolicy(policy JobDedupePolicy) bool {
+	return policy == JobDedupeActive || policy == JobDedupePermanent
 }
 
 func (j *Job) Start(at time.Time) (*Job, error) {
@@ -190,6 +206,38 @@ func (j *Job) Cancel(publicErrorCode string, at time.Time) (*Job, error) {
 	result.UpdatedAt = TimeUTC(at)
 	result.CompletedAt = OptionalTimeFrom(at)
 	result.PublicErrorCode = strings.TrimSpace(publicErrorCode)
+	result.Revision++
+	return &result, result.Validate()
+}
+
+// RequestCancellation immediately cancels queued work and durably marks
+// running work for cooperative cancellation by its fenced worker.
+func (j *Job) RequestCancellation(at time.Time) (*Job, error) {
+	if j == nil || (j.Status != JobStatusQueued && j.Status != JobStatusRunning) || TimeUTC(at).Before(j.UpdatedAt) {
+		return nil, fmt.Errorf("model: job cancellation cannot be requested")
+	}
+	if j.Status == JobStatusQueued {
+		return j.Cancel("job.canceled", at)
+	}
+	result := *j
+	result.Status = JobStatusCancelRequested
+	result.UpdatedAt = TimeUTC(at)
+	result.Revision++
+	return &result, result.Validate()
+}
+
+// ExplicitRetry requeues a failed Job without altering its prior Attempts. One
+// additional claim is admitted; policy decides which terminal Jobs may call it.
+func (j *Job) ExplicitRetry(at time.Time) (*Job, error) {
+	if j == nil || (j.Status != JobStatusFailed && j.Status != JobStatusCanceled) || TimeUTC(at).Before(j.UpdatedAt) {
+		return nil, fmt.Errorf("model: job cannot be explicitly retried")
+	}
+	result := *j
+	result.Status = JobStatusQueued
+	result.AvailableAt = TimeUTC(at)
+	result.UpdatedAt = TimeUTC(at)
+	result.CompletedAt = OptionalTime{}
+	result.MaximumAttempts = result.AttemptCount + 1
 	result.Revision++
 	return &result, result.Validate()
 }

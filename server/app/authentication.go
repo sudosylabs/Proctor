@@ -164,8 +164,14 @@ func (s *AuthenticationService) createLocalUser(
 			WithField("field", "password").
 			Wrap(err)
 	}
-	saved, _, err := s.store.User().SaveWithPassword(ctx, command.User, &model.PasswordCredential{
-		PasswordHash: hash,
+	user, job, err := prepareUserDefaultProfilePictureJob(command.User, s.now())
+	if err != nil {
+		return nil, NewError("authentication.user.invalid").Wrap(err)
+	}
+	credential := &model.PasswordCredential{UserID: user.ID, PasswordHash: hash}
+	credential.PrepareCreate(model.NewPasswordCredentialID(), user.CreatedAt)
+	result, err := s.store.User().Create(ctx, &store.UserCreation{
+		User: user, PasswordCredential: credential, DefaultProfilePictureJob: job,
 	})
 	if err != nil {
 		var conflict *store.ErrConflict
@@ -174,7 +180,7 @@ func (s *AuthenticationService) createLocalUser(
 		}
 		return nil, authenticationUnavailable(err)
 	}
-	return saved, nil
+	return result.User, nil
 }
 
 func (a *App) Login(

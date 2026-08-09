@@ -8,6 +8,7 @@ package storetest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -17,7 +18,8 @@ import (
 )
 
 func TestUserStore(t *testing.T, ss store.Store) {
-	t.Run("SaveAndGet", func(t *testing.T) { testUserStoreSaveAndGet(t, ss) })
+	t.Run("CreateAndGet", func(t *testing.T) { testUserStoreCreateAndGet(t, ss) })
+	t.Run("CreationAndDefaultJobAreAtomic", func(t *testing.T) { testUserCreationAndDefaultJobAreAtomic(t, ss) })
 	t.Run("NormalizedLookups", func(t *testing.T) { testUserStoreNormalizedLookups(t, ss) })
 	t.Run("Update", func(t *testing.T) { testUserStoreUpdate(t, ss) })
 	t.Run("UpdateLastLogin", func(t *testing.T) { testUserStoreUpdateLastLogin(t, ss) })
@@ -29,6 +31,51 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	t.Run("ProtectLastAdministrator", func(t *testing.T) {
 		testUserStoreProtectLastAdministrator(t, ss)
 	})
+}
+
+func testUserCreationAndDefaultJobAreAtomic(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	mismatched := testUserCreation(newUser(), &model.PasswordCredential{PasswordHash: "encoded-password"})
+	mismatched.DefaultProfilePictureJob.Command = defaultProfilePictureCommand(model.NewUserID())
+	if _, err := ss.User().Create(ctx, mismatched); err == nil {
+		t.Fatal("Create() accepted a default-picture Job targeting another User")
+	}
+	if _, err := ss.User().Get(ctx, mismatched.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("user survived mismatched Job rollback: %v", err)
+	}
+	if _, err := ss.PasswordCredential().GetByUser(ctx, mismatched.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("credential survived mismatched Job rollback: %v", err)
+	}
+	if _, err := ss.Job().Get(ctx, mismatched.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
+		t.Fatalf("mismatched Job was persisted: %v", err)
+	}
+	permanent := testUserCreation(newUser(), nil)
+	permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
+	if _, err := ss.User().Create(ctx, permanent); err == nil {
+		t.Fatal("Create() accepted a permanent-dedupe default-picture intent")
+	}
+
+	first := testUserCreation(newUser(), &model.PasswordCredential{PasswordHash: "encoded-password"})
+	result, err := ss.User().Create(ctx, first)
+	requireNoError(t, err)
+	queued, err := ss.Job().Get(ctx, first.DefaultProfilePictureJob.ID)
+	requireNoError(t, err)
+	if queued.Status != model.JobStatusQueued || queued.DedupeKey != result.User.ID.String() ||
+		result.PasswordCredential == nil || result.PasswordCredential.UserID != result.User.ID {
+		t.Fatalf("Create() result/job = %#v / %#v", result, queued)
+	}
+
+	second := testUserCreation(newUser(), &model.PasswordCredential{PasswordHash: "encoded-password"})
+	second.DefaultProfilePictureJob.ID = first.DefaultProfilePictureJob.ID
+	if _, err = ss.User().Create(ctx, second); err == nil {
+		t.Fatal("Create() succeeded when its Job insert failed")
+	}
+	if _, err = ss.User().Get(ctx, second.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("user survived Job rollback: %v", err)
+	}
+	if _, err = ss.PasswordCredential().GetByUser(ctx, second.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("credential survived Job rollback: %v", err)
+	}
 }
 
 func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
@@ -86,11 +133,11 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	first := newUser()
 	first.Username = "aaa-" + model.NewId()
 	first.DisplayName = "Searchable Alpha"
-	first, err := ss.User().Save(ctx, first)
+	first, err := createUser(t, ctx, ss, first)
 	requireNoError(t, err)
 	second := newUser()
 	second.Username = "bbb-" + model.NewId()
-	second, err = ss.User().Save(ctx, second)
+	second, err = createUser(t, ctx, ss, second)
 	requireNoError(t, err)
 
 	found, err := ss.User().List(ctx, store.UserListOptions{
@@ -248,13 +295,13 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	}
 }
 
-func testUserStoreSaveAndGet(t *testing.T, ss store.Store) {
+func testUserStoreCreateAndGet(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	input := newUser()
-	saved, err := ss.User().Save(ctx, input)
+	saved, err := createUser(t, ctx, ss, input)
 	requireNoError(t, err)
 	if !saved.ID.IsValid() || saved.Revision != 1 || !input.ID.IsZero() {
-		t.Fatalf("Save() saved=%#v input=%#v", saved, input)
+		t.Fatalf("Create() saved=%#v input=%#v", saved, input)
 	}
 	got, err := ss.User().Get(ctx, saved.ID.String())
 	requireNoError(t, err)
@@ -264,10 +311,10 @@ func testUserStoreSaveAndGet(t *testing.T, ss store.Store) {
 	if _, err := ss.User().Get(ctx, model.NewId()); !store.IsNotFound(err) {
 		t.Fatalf("Get(missing) error = %v, want not found", err)
 	}
-	_, err = ss.User().Save(ctx, saved)
-	var invalid *store.ErrInvalidInput
-	if !errors.As(err, &invalid) {
-		t.Fatalf("second Save(saved) error = %v, want invalid input", err)
+	_, err = ss.User().Create(ctx, testUserCreation(saved, nil))
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) {
+		t.Fatalf("second Create(saved) error = %v, want conflict", err)
 	}
 }
 
@@ -381,14 +428,14 @@ func testUserStoreUniqueness(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	duplicateUsername := newUser()
 	duplicateUsername.Username = user.Username
-	_, err := ss.User().Save(ctx, duplicateUsername)
+	_, err := createUser(t, ctx, ss, duplicateUsername)
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) || conflict.Constraint != "users_username_key" {
 		t.Fatalf("duplicate username error = %v", err)
 	}
 	duplicateEmail := newUser()
 	duplicateEmail.Email = user.Email
-	_, err = ss.User().Save(ctx, duplicateEmail)
+	_, err = createUser(t, ctx, ss, duplicateEmail)
 	if !errors.As(err, &conflict) || conflict.Constraint != "users_email_key" {
 		t.Fatalf("duplicate email error = %v", err)
 	}
@@ -405,7 +452,42 @@ func newUser() *model.User {
 
 func saveUser(t *testing.T, ctx context.Context, ss store.Store) *model.User {
 	t.Helper()
-	user, err := ss.User().Save(ctx, newUser())
+	user, err := createUser(t, ctx, ss, newUser())
 	requireNoError(t, err)
 	return user
+}
+
+func createUser(t *testing.T, ctx context.Context, ss store.Store, input *model.User) (*model.User, error) {
+	t.Helper()
+	result, err := ss.User().Create(ctx, testUserCreation(input, nil))
+	if err != nil {
+		return nil, err
+	}
+	return result.User, nil
+}
+
+func testUserCreation(input *model.User, credential *model.PasswordCredential) *store.UserCreation {
+	user := *input
+	if user.ID.IsZero() {
+		user.PrepareCreate(model.NewUserID(), model.NowUTC())
+	}
+	if credential != nil {
+		copy := *credential
+		if copy.ID.IsZero() {
+			copy.UserID = user.ID
+			copy.PrepareCreate(model.NewPasswordCredentialID(), user.CreatedAt)
+		}
+		credential = &copy
+	}
+	command := defaultProfilePictureCommand(user.ID)
+	job, _ := model.NewJob(
+		model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
+		command, user.ID.String(), user.CreatedAt, user.CreatedAt, 8,
+	)
+	return &store.UserCreation{User: &user, PasswordCredential: credential, DefaultProfilePictureJob: job}
+}
+
+func defaultProfilePictureCommand(userID model.UserID) json.RawMessage {
+	document, _ := json.Marshal(map[string]string{"user_id": userID.String()})
+	return document
 }

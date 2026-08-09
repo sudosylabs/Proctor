@@ -350,23 +350,30 @@ func (s *ExternalAuthenticationService) complete(
 	if identityStore == nil {
 		return nil, authenticationUnavailable(errors.New("external identity store is unavailable"))
 	}
+	var defaultPictureJob *model.Job
+	if provider.AutoProvision() {
+		userCandidate, defaultPictureJob, err = prepareUserDefaultProfilePictureJob(userCandidate, nowTime)
+		if err != nil {
+			return nil, authenticationUnavailable(err)
+		}
+	}
 	resolution, err := identityStore.ResolveOrProvision(
-		ctx,
-		&model.ExternalIdentity{
-			Provider: providerID, Subject: assertion.Subject,
-			LastSeenAt: model.OptionalTimeFromMillis(now),
-		},
-		userCandidate,
-		provider.AutoProvision(),
-		&model.AuditEvent{
-			Action:    "authentication.external_provision",
-			ScopeType: model.RoleScopeInstitution,
-			ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
-			RequestID:  metadata.RequestID,
-			NodeID:     s.policy.NodeID,
-			ClientType: string(state.ClientType), AuthMethod: method,
-			IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
-			Parameters: provisionParameters,
+		ctx, &store.ExternalIdentityResolutionRequest{
+			Identity: &model.ExternalIdentity{
+				Provider: providerID, Subject: assertion.Subject,
+				LastSeenAt: model.OptionalTimeFromMillis(now),
+			},
+			User: userCandidate, AutoProvision: provider.AutoProvision(),
+			ProvisionAudit: &model.AuditEvent{
+				Action:    "authentication.external_provision",
+				ScopeType: model.RoleScopeInstitution,
+				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
+				RequestID:  metadata.RequestID,
+				NodeID:     s.policy.NodeID,
+				ClientType: string(state.ClientType), AuthMethod: method,
+				IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
+				Parameters: provisionParameters,
+			}, DefaultProfilePictureJob: defaultPictureJob,
 		},
 	)
 	if err != nil {

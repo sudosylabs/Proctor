@@ -82,6 +82,9 @@ func (s SQLInstallationStore) Bootstrap(
 	if err := insertPasswordCredential(ctx, tx, prepared.credential); err != nil {
 		return nil, err
 	}
+	if _, err := insertQueuedJob(ctx, tx, prepared.DefaultProfilePictureJob, false); err != nil {
+		return nil, fmt.Errorf("enqueue bootstrap default profile picture generation: %w", translateError("job", prepared.DefaultProfilePictureJob.ID.String(), err))
+	}
 	if err := insertInstallationRole(ctx, tx, prepared.Role); err != nil {
 		return nil, err
 	}
@@ -112,8 +115,9 @@ func (s SQLInstallationStore) Bootstrap(
 
 type preparedInstallationBootstrap struct {
 	*model.InstallationBootstrapResult
-	credential *model.PasswordCredential
-	auditEvent *model.AuditEvent
+	credential               *model.PasswordCredential
+	auditEvent               *model.AuditEvent
+	DefaultProfilePictureJob *model.Job
 }
 
 func prepareInstallationBootstrap(
@@ -121,7 +125,7 @@ func prepareInstallationBootstrap(
 ) (*preparedInstallationBootstrap, error) {
 	if input == nil || input.Institution == nil || input.Administrator == nil ||
 		input.Role == nil || input.RoleBinding == nil || input.AuditEvent == nil ||
-		input.PasswordHash == "" {
+		input.DefaultProfilePictureJob == nil || input.PasswordHash == "" {
 		return nil, store.NewErrInvalidInput("installation", "bootstrap", nil)
 	}
 	institutionID, err := model.ParseInstitutionID(model.NewId())
@@ -139,19 +143,17 @@ func prepareInstallationBootstrap(
 		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
 	administrator := *input.Administrator
-	administrator.ID = ""
-	administrator.CreatedAt = time.Time{}
-	administrator.UpdatedAt = time.Time{}
-	administrator.ArchivedAt = model.OptionalTime{}
 	administrator.EmailVerified = false
 	administrator.LastLoginAt = model.OptionalTime{}
 	administrator.LastActivityAt = model.OptionalTime{}
 	administrator.DisabledAt = model.OptionalTime{}
-	at := model.NowUTC()
-	administrator.PrepareCreate(model.NewUserID(), at)
 	if err := administrator.Validate(); err != nil {
 		return nil, err
 	}
+	if err := validateUserDefaultProfilePictureJob(&administrator, input.DefaultProfilePictureJob); err != nil {
+		return nil, err
+	}
+	at := administrator.CreatedAt
 	credential := &model.PasswordCredential{
 		UserID: administrator.ID, PasswordHash: input.PasswordHash,
 	}
@@ -221,8 +223,9 @@ func prepareInstallationBootstrap(
 			State: state, Institution: institution, Administrator: &administrator,
 			Role: role, RoleBinding: &binding,
 		},
-		credential: credential,
-		auditEvent: event,
+		credential:               credential,
+		auditEvent:               event,
+		DefaultProfilePictureJob: input.DefaultProfilePictureJob,
 	}, nil
 }
 
