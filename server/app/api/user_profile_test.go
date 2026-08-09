@@ -23,6 +23,7 @@ type userProfileHTTPApplication struct {
 	searchQuery    application.SearchUsersQuery
 	updateCommand  application.UpdateUserProfileCommand
 	uploadCommand  application.UploadProfilePictureCommand
+	removeCommand  application.RemoveProfilePictureCommand
 	pictureQuery   application.GetProfilePictureQuery
 	pictureContent *application.ProfilePictureContent
 }
@@ -169,6 +170,10 @@ func (a *userProfileHTTPApplication) UploadProfilePicture(_ context.Context, _ a
 	a.uploadCommand = command
 	return a.result, nil
 }
+func (a *userProfileHTTPApplication) RemoveProfilePicture(_ context.Context, _ application.Invocation, command application.RemoveProfilePictureCommand) (*model.User, error) {
+	a.removeCommand = command
+	return a.result, nil
+}
 func (a *userProfileHTTPApplication) GetProfilePicture(_ context.Context, _ application.Invocation, query application.GetProfilePictureQuery) (*application.ProfilePictureContent, error) {
 	a.pictureQuery = query
 	return a.pictureContent, nil
@@ -179,7 +184,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	userID := model.NewId()
-	user := &model.User{ID: model.UserID(userID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 7, Username: "student", Email: "student@example.edu", DisplayName: "Student", Locale: "en", Timezone: "UTC"}
+	user := &model.User{ID: model.UserID(userID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 7, Username: "student", Email: "student@example.edu", DisplayName: "Student", Locale: "en", Timezone: "UTC", ProfilePictureChangedAt: model.OptionalTimeFromMillis(500)}
 	profiles := &userProfileHTTPApplication{result: user}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: profiles, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
@@ -207,9 +212,18 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 			t.Fatalf("sensitive field %q exposed: %#v", forbidden, body)
 		}
 	}
+	if body["profile_picture_url"] != "/api/v1/users/"+userID+"/profile-picture?v=7" {
+		t.Fatalf("profile picture URL = %#v", body["profile_picture_url"])
+	}
+	newer := *user
+	newer.Revision++
+	if first, second := userProfileResponseFromModel(user).ProfilePictureURL, userProfileResponseFromModel(&newer).ProfilePictureURL; first == second {
+		t.Fatalf("successive visible revisions reused cache URL %q", first)
+	}
 	uploadRequest := httptest.NewRequest(http.MethodPut, "/api/v1/users/"+userID+"/profile-picture", strings.NewReader("image"))
 	uploadRequest.Header.Set("Authorization", "Bearer credential")
 	uploadRequest.Header.Set("Content-Type", "image/png")
+	uploadRequest.Header.Set("If-Match", `"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`)
 	uploadResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(uploadResponse, uploadRequest)
 	if uploadResponse.Code != http.StatusOK {
@@ -219,8 +233,16 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if profiles.uploadCommand.UserID != userID || profiles.uploadCommand.Size != 5 || string(uploaded) != "image" {
+	if profiles.uploadCommand.UserID != userID || profiles.uploadCommand.Size != 5 || profiles.uploadCommand.ExpectedSHA256 != strings.Repeat("a", 64) || string(uploaded) != "image" {
 		t.Fatalf("upload command = %#v body = %q", profiles.uploadCommand, uploaded)
+	}
+	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/users/"+userID+"/profile-picture", nil)
+	deleteRequest.Header.Set("Authorization", "Bearer credential")
+	deleteRequest.Header.Set("If-Match", `"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"`)
+	deleteResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusOK || profiles.removeCommand.UserID != userID || profiles.removeCommand.ExpectedSHA256 != strings.Repeat("b", 64) {
+		t.Fatalf("delete response/command = %d / %#v", deleteResponse.Code, profiles.removeCommand)
 	}
 	profiles.pictureContent = &application.ProfilePictureContent{Body: io.NopCloser(strings.NewReader("webp")), MediaType: "image/webp", Size: 4, ETag: `"checksum"`}
 	pictureRequest := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+userID+"/profile-picture?size=128", nil)
@@ -230,6 +252,33 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	httpAPI.ServeHTTP(pictureResponse, pictureRequest)
 	if pictureResponse.Code != http.StatusNotModified || profiles.pictureQuery.UserID != userID || profiles.pictureQuery.Size != 128 || pictureResponse.Header().Get("Cache-Control") != "private, max-age=86400" {
 		t.Fatalf("profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
+	}
+}
+
+func TestProfilePictureIfMatchRequiresOneCanonicalStrongETag(t *testing.T) {
+	checksum := strings.Repeat("a", 64)
+	for _, test := range []struct {
+		name     string
+		header   string
+		required bool
+		want     string
+		wantErr  bool
+	}{
+		{name: "strong", header: `"` + checksum + `"`, required: true, want: checksum},
+		{name: "optional omitted"},
+		{name: "required omitted", required: true, wantErr: true},
+		{name: "weak", header: `W/"` + checksum + `"`, required: true, wantErr: true},
+		{name: "wildcard", header: "*", required: true, wantErr: true},
+		{name: "list", header: `"` + checksum + `", "` + checksum + `"`, required: true, wantErr: true},
+		{name: "unquoted", header: checksum, required: true, wantErr: true},
+		{name: "noncanonical", header: `"` + strings.Repeat("A", 64) + `"`, required: true, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := profilePictureIfMatch(test.header, test.required)
+			if (err != nil) != test.wantErr || got != test.want {
+				t.Fatalf("profilePictureIfMatch() = %q, %v", got, err)
+			}
+		})
 	}
 }
 

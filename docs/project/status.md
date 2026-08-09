@@ -33,7 +33,10 @@ the code and component contracts for that detail.
 - The first server-owned file-management slice supports authorized custom
   profile-picture upload and retrieval, immutable file revisions and
   renditions, bounded upload leases, PostgreSQL-owned metadata, private
-  ID-derived VFS keys, and normalized 128/256/512 WebP representations.
+  ID-derived VFS keys, normalized 128/256/512 WebP representations,
+  revision-preserving replacement, ETag-conditional removal, atomic mutation
+  audit, archived custom-file retention eligibility, and bounded post-commit
+  change events.
 
 ## Architecture migration acceptance
 

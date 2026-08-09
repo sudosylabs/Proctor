@@ -32,8 +32,8 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 
 	helper := testlib.Setup(t)
 	routes := helper.API.Routes()
-	if len(routes) != 89 {
-		t.Fatalf("route count = %d, want 89", len(routes))
+	if len(routes) != 90 {
+		t.Fatalf("route count = %d, want 90", len(routes))
 	}
 	expected := map[string]api.AuthRequirement{
 		http.MethodGet + " /health/live":                                                                                       api.AuthPublic,

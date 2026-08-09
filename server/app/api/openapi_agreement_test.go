@@ -39,8 +39,9 @@ type openAPIOperation struct {
 }
 
 type openAPIParameter struct {
-	Name string `json:"name"`
-	In   string `json:"in"`
+	Name     string `json:"name"`
+	In       string `json:"in"`
+	Required bool   `json:"required"`
 }
 
 type openAPIReference struct {

@@ -38,8 +38,8 @@ var baselineTables = []string{
 	"roles",
 	"session_credentials",
 	"sessions",
-	"user_tokens",
 	"upload_leases",
+	"user_tokens",
 	"users",
 }
 

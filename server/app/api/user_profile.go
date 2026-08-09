@@ -4,6 +4,8 @@
 package api
 
 import (
+	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -55,6 +57,7 @@ func (a *API) registerUserProfileRoutes() error {
 		{a.BaseRoutes.User, "", http.MethodGet, a.getUserProfile},
 		{a.BaseRoutes.User, "", http.MethodPatch, a.updateUserProfile},
 		{a.BaseRoutes.User, "/profile-picture", http.MethodPut, a.uploadProfilePicture},
+		{a.BaseRoutes.User, "/profile-picture", http.MethodDelete, a.removeProfilePicture},
 		{a.BaseRoutes.User, "/profile-picture", http.MethodGet, a.getProfilePicture},
 	}
 	for _, route := range routes {
@@ -70,12 +73,53 @@ func (a *API) uploadProfilePicture(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	user, err := a.userProfiles.UploadProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UploadProfilePictureCommand{UserID: userID, Body: r.Body, Size: r.ContentLength})
+	expectedSHA256, err := profilePictureIfMatch(r.Header.Get("If-Match"), false)
+	if err != nil {
+		WriteError(w, r, invalidRequestError("If-Match", err))
+		return
+	}
+	user, err := a.userProfiles.UploadProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: r.Body, Size: r.ContentLength})
 	if err != nil {
 		writeApplicationError(w, r, a.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
+}
+
+func (a *API) removeProfilePicture(w http.ResponseWriter, r *http.Request) {
+	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
+	if !ok {
+		return
+	}
+	expectedSHA256, err := profilePictureIfMatch(r.Header.Get("If-Match"), true)
+	if err != nil {
+		WriteError(w, r, invalidRequestError("If-Match", err))
+		return
+	}
+	user, appErr := a.userProfiles.RemoveProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
+	if appErr != nil {
+		writeApplicationError(w, r, a.logger, appErr)
+		return
+	}
+	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
+}
+
+func profilePictureIfMatch(header string, required bool) (string, error) {
+	header = strings.TrimSpace(header)
+	if header == "" && !required {
+		return "", nil
+	}
+	if len(header) != 66 || header[0] != '"' || header[len(header)-1] != '"' {
+		return "", fmt.Errorf("a single strong profile-picture ETag is required")
+	}
+	checksum := header[1 : len(header)-1]
+	if strings.ToLower(checksum) != checksum {
+		return "", fmt.Errorf("profile-picture ETag is not canonical")
+	}
+	if _, err := hex.DecodeString(checksum); err != nil {
+		return "", fmt.Errorf("profile-picture ETag is invalid: %w", err)
+	}
+	return checksum, nil
 }
 
 func (a *API) getProfilePicture(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +217,10 @@ func userProfileResponseFromModel(user *model.User) userProfileResponse {
 	if user == nil {
 		return userProfileResponse{}
 	}
+	pictureURL := "/api/v1/users/" + user.ID.String() + "/profile-picture"
+	if user.ProfilePictureChangedAt.Valid {
+		pictureURL += "?v=" + strconv.FormatInt(user.Revision, 10)
+	}
 	return userProfileResponse{
 		ID:                      user.ID.String(),
 		CreateAt:                model.MillisFromTime(user.CreatedAt),
@@ -189,7 +237,7 @@ func userProfileResponseFromModel(user *model.User) userProfileResponse {
 		LastLoginAt:             user.LastLoginAt.Millis(),
 		LastActivityAt:          user.LastActivityAt.Millis(),
 		DisabledAt:              user.DisabledAt.Millis(),
-		ProfilePictureURL:       "/api/v1/users/" + user.ID.String() + "/profile-picture",
+		ProfilePictureURL:       pictureURL,
 		ProfilePictureChangedAt: user.ProfilePictureChangedAt.Millis(),
 	}
 }

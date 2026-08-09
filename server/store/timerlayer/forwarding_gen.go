@@ -485,6 +485,18 @@ func (s *timedFileStore) CreateUpload(arg0 context.Context, arg1 *store.FileUplo
 	})
 }
 
+func (s *timedFileStore) CreateRevisionUpload(arg0 context.Context, arg1 *store.FileRevisionUploadCreation) (*store.FileUpload, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateRevisionUpload), func() (*store.FileUpload, error) {
+		return s.next.CreateRevisionUpload(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) DiscardProfilePictureUpload(arg0 context.Context, arg1 *store.ProfilePictureUploadDiscard) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateFile, methodDiscardProfilePictureUpload), func() error {
+		return s.next.DiscardProfilePictureUpload(arg0, arg1)
+	})
+}
+
 func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.UploadLeaseID, arg2 model.UserID, arg3 int64, arg4 time.Time) (*model.UploadLease, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func() (*model.UploadLease, error) {
 		return s.next.RenewUploadLease(arg0, arg1, arg2, arg3, arg4)
@@ -497,9 +509,21 @@ func (s *timedFileStore) PublishProfilePicture(arg0 context.Context, arg1 *store
 	})
 }
 
+func (s *timedFileStore) GetProfilePictureState(arg0 context.Context, arg1 model.UserID) (*store.ProfilePictureState, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureState), func() (*store.ProfilePictureState, error) {
+		return s.next.GetProfilePictureState(arg0, arg1)
+	})
+}
+
 func (s *timedFileStore) GetProfilePictureRendition(arg0 context.Context, arg1 model.UserID, arg2 string) (*model.FileRendition, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureRendition), func() (*model.FileRendition, error) {
 		return s.next.GetProfilePictureRendition(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedFileStore) RemoveProfilePictureWithAudit(arg0 context.Context, arg1 *store.ProfilePictureRemoval) (*model.User, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRemoveProfilePictureWithAudit), func() (*model.User, error) {
+		return s.next.RemoveProfilePictureWithAudit(arg0, arg1)
 	})
 }
 

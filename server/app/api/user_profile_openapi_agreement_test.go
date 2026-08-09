@@ -37,14 +37,15 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 		runtimeOperations[route.Method+" "+path] = route.Auth
 	}
 	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/users":                           {successStatus: "200", successRef: "#/components/responses/UserProfileListOK", successSchema: "UserProfileListResponse", errorCodes: principalContractCodes("request.invalid", "user.invalid", "administration.unavailable")},
-		"GET /api/v1/users/me":                        {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
-		"GET /api/v1/users/{user_id}":                 {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"PATCH /api/v1/users/{user_id}":               {requestBodyRef: "#/components/requestBodies/UpdateUserProfile", requestSchema: "UpdateUserProfileRequest", successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "administration.unavailable")},
-		"GET /api/v1/users/{user_id}/profile-picture": {successStatus: "200", successRef: "#/components/responses/ProfilePictureOK", successSchema: "binary", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable")},
-		"PUT /api/v1/users/{user_id}/profile-picture": {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("authentication.csrf.invalid", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict")},
-		"POST /api/v1/users/{user_id}/disable":        {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
-		"POST /api/v1/users/{user_id}/enable":         {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
+		"GET /api/v1/users":                              {successStatus: "200", successRef: "#/components/responses/UserProfileListOK", successSchema: "UserProfileListResponse", errorCodes: principalContractCodes("request.invalid", "user.invalid", "administration.unavailable")},
+		"GET /api/v1/users/me":                           {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
+		"GET /api/v1/users/{user_id}":                    {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"PATCH /api/v1/users/{user_id}":                  {requestBodyRef: "#/components/requestBodies/UpdateUserProfile", requestSchema: "UpdateUserProfileRequest", successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "administration.unavailable")},
+		"GET /api/v1/users/{user_id}/profile-picture":    {successStatus: "200", successRef: "#/components/responses/ProfilePictureOK", successSchema: "binary", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable")},
+		"PUT /api/v1/users/{user_id}/profile-picture":    {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict")},
+		"DELETE /api/v1/users/{user_id}/profile-picture": {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict")},
+		"POST /api/v1/users/{user_id}/disable":           {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
+		"POST /api/v1/users/{user_id}/enable":            {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
 	}
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
@@ -98,6 +99,21 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 					if shape.Type != "string" || shape.Format != "binary" {
 						t.Errorf("%s request %s = %#v", key, mediaType, shape)
 					}
+				}
+			}
+			if key == "PUT /api/v1/users/{user_id}/profile-picture" || key == "DELETE /api/v1/users/{user_id}/profile-picture" {
+				hasIfMatch := false
+				for _, parameter := range operation.Parameters {
+					if parameter.Name == "If-Match" && parameter.In == "header" {
+						hasIfMatch = true
+						wantRequired := key == "DELETE /api/v1/users/{user_id}/profile-picture"
+						if parameter.Required != wantRequired {
+							t.Errorf("%s If-Match required = %v, want %v", key, parameter.Required, wantRequired)
+						}
+					}
+				}
+				if !hasIfMatch {
+					t.Errorf("%s does not document If-Match", key)
 				}
 			}
 			got, want := append([]string(nil), operation.ErrorCodes...), append([]string(nil), contract.errorCodes...)

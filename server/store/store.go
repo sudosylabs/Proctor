@@ -59,6 +59,12 @@ type FileUpload struct {
 	Lease    *model.UploadLease
 }
 
+type FileRevisionUploadCreation struct {
+	EntryID  model.FileEntryID
+	Revision *model.FileRevision
+	Lease    *model.UploadLease
+}
+
 type ProfilePicturePublication struct {
 	ActorID              model.UserID
 	UserID               model.UserID
@@ -68,6 +74,8 @@ type ProfilePicturePublication struct {
 	LeaseID              model.UploadLeaseID
 	Renditions           []model.FileRendition
 	ChangedAt            time.Time
+	AuditEventID         string
+	AuditAt              int64
 }
 
 type ProfilePicturePublicationResult struct {
@@ -75,12 +83,61 @@ type ProfilePicturePublicationResult struct {
 	Revision *model.FileRevision
 }
 
+type ProfilePictureState struct {
+	EntryID    model.FileEntryID
+	RevisionID model.FileRevisionID
+	Renditions []model.FileRendition
+}
+
+type ProfilePictureUploadDiscard struct {
+	ActorID                   model.UserID
+	UserID                    model.UserID
+	ExpectedUserRevision      int64
+	ExpectedActiveEntryID     model.FileEntryID
+	ExpectedCurrentRevisionID model.FileRevisionID
+	UploadEntryID             model.FileEntryID
+	RevisionID                model.FileRevisionID
+	LeaseID                   model.UploadLeaseID
+}
+
+type ProfilePictureRemoval struct {
+	ActorID                   model.UserID
+	UserID                    model.UserID
+	ExpectedUserRevision      int64
+	EntryID                   model.FileEntryID
+	ExpectedCurrentRevisionID model.FileRevisionID
+	ExpectedSHA256            string
+	ChangedAt                 time.Time
+	AuditEventID              string
+	AuditAt                   int64
+}
+
 // FileStore owns file metadata and the atomic publication of domain references.
 type FileStore interface {
+	// CreateUpload atomically creates a pristine entry, its first pending revision,
+	// and an active bounded lease owned by the named actor.
 	CreateUpload(context.Context, *FileUploadCreation) (*FileUpload, error)
+	// CreateRevisionUpload atomically appends a pending revision and active lease
+	// to an existing, unarchived entry without changing its current revision.
+	CreateRevisionUpload(context.Context, *FileRevisionUploadCreation) (*FileUpload, error)
+	// DiscardProfilePictureUpload removes only the named pending revision and lease
+	// when the actor, user revision, active entry, and current revision still match.
+	// If the upload created a distinct pristine entry, that entry is removed too;
+	// the operation never changes the visible picture.
+	DiscardProfilePictureUpload(context.Context, *ProfilePictureUploadDiscard) error
 	RenewUploadLease(context.Context, model.UploadLeaseID, model.UserID, int64, time.Time) (*model.UploadLease, error)
+	// PublishProfilePicture atomically consumes the actor-owned, unexpired lease,
+	// persists the complete rendition set, makes the revision current, updates the
+	// user's active custom entry under optimistic concurrency, and completes the
+	// pre-existing audit attempt. Any failed precondition rolls back every change.
 	PublishProfilePicture(context.Context, *ProfilePicturePublication) (*ProfilePicturePublicationResult, error)
+	GetProfilePictureState(context.Context, model.UserID) (*ProfilePictureState, error)
 	GetProfilePictureRendition(context.Context, model.UserID, string) (*model.FileRendition, error)
+	// RemoveProfilePictureWithAudit atomically verifies the user's revision, active
+	// custom entry, current file revision, and expected normalized checksum; it then
+	// archives that entry, clears the custom relationship, advances the user, and
+	// completes the pre-existing audit attempt. Races fail with no partial change.
+	RemoveProfilePictureWithAudit(context.Context, *ProfilePictureRemoval) (*model.User, error)
 }
 
 // InstitutionStore persists the institution represented by this installation.

@@ -241,6 +241,7 @@ type UserProfileApplication interface {
 	GetUserProfile(context.Context, application.Invocation, application.GetUserProfileQuery) (*model.User, error)
 	UpdateUserProfile(context.Context, application.Invocation, application.UpdateUserProfileCommand) (*model.User, error)
 	UploadProfilePicture(context.Context, application.Invocation, application.UploadProfilePictureCommand) (*model.User, error)
+	RemoveProfilePicture(context.Context, application.Invocation, application.RemoveProfilePictureCommand) (*model.User, error)
 	GetProfilePicture(context.Context, application.Invocation, application.GetProfilePictureQuery) (*application.ProfilePictureContent, error)
 }
 

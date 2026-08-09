@@ -6,6 +6,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -23,9 +24,15 @@ type pictureStoreFake struct {
 	user        *model.User
 	publication *store.ProfilePicturePublication
 	rendition   *model.FileRendition
+	state       *store.ProfilePictureState
 	events      *[]string
 	created     bool
 	lookupName  string
+	discarded   bool
+	removal     *store.ProfilePictureRemoval
+	publishErr  error
+	removeErr   error
+	stateErr    error
 }
 
 func (s *pictureStoreFake) Get(context.Context, string) (*model.User, error) {
@@ -39,10 +46,20 @@ func (s *pictureStoreFake) CreateUpload(_ context.Context, input *store.FileUplo
 	}
 	return &store.FileUpload{Entry: input.Entry, Revision: input.Revision, Lease: input.Lease}, nil
 }
+func (s *pictureStoreFake) CreateRevisionUpload(_ context.Context, input *store.FileRevisionUploadCreation) (*store.FileUpload, error) {
+	s.created = true
+	if s.events != nil {
+		*s.events = append(*s.events, "create-revision-upload")
+	}
+	return &store.FileUpload{Revision: input.Revision, Lease: input.Lease}, nil
+}
 func (s *pictureStoreFake) PublishProfilePicture(_ context.Context, input *store.ProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
 	s.publication = input
 	if s.events != nil {
 		*s.events = append(*s.events, "publish")
+	}
+	if s.publishErr != nil {
+		return nil, s.publishErr
 	}
 	copy := *s.user
 	copy.CustomProfilePictureFileID = input.EntryID
@@ -57,12 +74,92 @@ func (s *pictureStoreFake) GetProfilePictureRendition(_ context.Context, _ model
 	}
 	return s.rendition, nil
 }
+func (s *pictureStoreFake) GetProfilePictureState(context.Context, model.UserID) (*store.ProfilePictureState, error) {
+	if s.stateErr != nil {
+		return nil, s.stateErr
+	}
+	if s.state == nil {
+		return nil, store.NewErrNotFound("profile_picture", s.user.ID.String())
+	}
+	return s.state, nil
+}
+func (s *pictureStoreFake) DiscardProfilePictureUpload(context.Context, *store.ProfilePictureUploadDiscard) error {
+	s.discarded = true
+	if s.events != nil {
+		*s.events = append(*s.events, "discard-upload")
+	}
+	return nil
+}
+func (s *pictureStoreFake) RemoveProfilePictureWithAudit(_ context.Context, input *store.ProfilePictureRemoval) (*model.User, error) {
+	s.removal = input
+	if s.events != nil {
+		*s.events = append(*s.events, "remove-with-audit")
+	}
+	if s.removeErr != nil {
+		return nil, s.removeErr
+	}
+	updated := *s.user
+	updated.CustomProfilePictureFileID = ""
+	updated.ProfilePictureChangedAt = model.OptionalTimeFrom(input.ChangedAt)
+	updated.Revision++
+	return &updated, nil
+}
 
 type pictureContentFake struct {
 	normalized      bool
 	events          *[]string
 	openedRevision  model.FileRevisionID
 	openedRendition model.FileRenditionID
+	removed         bool
+}
+
+type profilePictureAuditorFake struct {
+	events    *[]string
+	beginID   string
+	failCode  string
+	beginErr  error
+	action    model.Action
+	resource  model.Resource
+	operation string
+	value     map[string]any
+	prior     map[string]any
+}
+
+func (a *profilePictureAuditorFake) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, operation string, value map[string]any, prior map[string]any) (string, error) {
+	a.action, a.resource, a.operation, a.value, a.prior = action, resource, operation, value, prior
+	if a.events != nil {
+		*a.events = append(*a.events, "audit-begin")
+	}
+	return a.beginID, a.beginErr
+}
+func (a *profilePictureAuditorFake) Fail(_ context.Context, _ string, code string) error {
+	a.failCode = code
+	if a.events != nil {
+		*a.events = append(*a.events, "audit-fail")
+	}
+	return nil
+}
+
+type profilePictureEffectsFake struct {
+	events *[]string
+	change profilePictureChanged
+	err    error
+}
+
+func (e *profilePictureEffectsFake) Changed(_ context.Context, change profilePictureChanged) error {
+	e.change = change
+	if e.events != nil {
+		*e.events = append(*e.events, "effect")
+	}
+	return e.err
+}
+
+type profilePictureEffectFailuresFake struct{ events *[]string }
+
+func (r *profilePictureEffectFailuresFake) Report(context.Context, string, error) {
+	if r.events != nil {
+		*r.events = append(*r.events, "effect-report")
+	}
 }
 
 func (s *pictureContentFake) NormalizeAndStoreProfilePicture(_ context.Context, revisionID model.FileRevisionID, _ io.Reader, _ int64, at time.Time) ([]model.FileRendition, error) {
@@ -89,6 +186,10 @@ func (s *pictureContentFake) OpenProfilePictureRendition(_ context.Context, revi
 	return io.NopCloser(strings.NewReader("webp")), nil
 }
 func (s *pictureContentFake) RemoveProfilePictureRenditions(context.Context, model.FileRevisionID, []model.FileRendition) error {
+	s.removed = true
+	if s.events != nil {
+		*s.events = append(*s.events, "remove-staged")
+	}
 	return nil
 }
 
@@ -100,7 +201,7 @@ func TestUploadProfilePictureNormalizesPrivateRenditionsBeforePublishing(t *test
 	persistence := &pictureStoreFake{user: user, events: &events}
 	content := &pictureContentFake{events: &events}
 	nowCalls := 0
-	service := newProfilePictureService(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, func() time.Time {
+	service := newProfilePictureService(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{events: &events, beginID: model.NewId()}, &profilePictureEffectsFake{events: &events}, &profilePictureEffectFailuresFake{events: &events}, func() time.Time {
 		nowCalls++
 		return at.Add(time.Duration(nowCalls-1) * time.Minute)
 	})
@@ -125,7 +226,7 @@ func TestUploadProfilePictureNormalizesPrivateRenditionsBeforePublishing(t *test
 	if !updated.ProfilePictureChangedAt.Time.Equal(at.Add(time.Minute)) {
 		t.Fatalf("picture changed at = %v", updated.ProfilePictureChangedAt.Time)
 	}
-	wantEvents := []string{"authorize-profile-picture-write", "create-upload", "normalize", "publish"}
+	wantEvents := []string{"authorize-profile-picture-write", "create-upload", "normalize", "audit-begin", "publish", "effect"}
 	if fmt.Sprint(events) != fmt.Sprint(wantEvents) {
 		t.Fatalf("events = %v, want %v", events, wantEvents)
 	}
@@ -136,6 +237,236 @@ func TestUploadProfilePictureNormalizesPrivateRenditionsBeforePublishing(t *test
 	}
 }
 
+func TestReplaceProfilePictureKeepsTheActiveFileEntry(t *testing.T) {
+	at := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
+	user.CustomProfilePictureFileID = model.NewFileEntryID()
+	events := []string{}
+	persistence := &pictureStoreFake{user: user, state: profilePictureState(user.CustomProfilePictureFileID, strings.Repeat("b", 64)), events: &events}
+	content := &pictureContentFake{events: &events}
+	auditor := &profilePictureAuditorFake{events: &events, beginID: model.NewId()}
+	effects := &profilePictureEffectsFake{events: &events}
+	service := newProfilePictureService(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, func() time.Time { return at })
+
+	updated, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), ExpectedRevision: user.Revision, ExpectedSHA256: strings.Repeat("b", 64), Body: strings.NewReader("image"), Size: 5})
+	if err != nil {
+		t.Fatalf("Upload() replacement error = %v", err)
+	}
+	if updated.CustomProfilePictureFileID != user.CustomProfilePictureFileID || persistence.publication.EntryID != user.CustomProfilePictureFileID {
+		t.Fatalf("replacement changed file entry: user=%s publication=%s", updated.CustomProfilePictureFileID, persistence.publication.EntryID)
+	}
+	wantEvents := []string{"authorize-profile-picture-write", "create-revision-upload", "normalize", "audit-begin", "publish", "effect"}
+	if fmt.Sprint(events) != fmt.Sprint(wantEvents) || effects.change.UserID != user.ID || effects.change.ActiveFileEntryID != user.CustomProfilePictureFileID {
+		t.Fatalf("replacement events/change = %v / %#v", events, effects.change)
+	}
+	auditData, err := json.Marshal([]map[string]any{auditor.value, auditor.prior})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auditor.action != model.ActionUserProfilePictureManage || auditor.resource.Type != model.ResourceUser || auditor.resource.ID != user.ID.String() || strings.Contains(string(auditData), strings.Repeat("b", 64)) || strings.Contains(string(auditData), "storage") {
+		t.Fatalf("unsafe or incorrect audit projection: action=%s resource=%#v data=%s", auditor.action, auditor.resource, auditData)
+	}
+}
+
+func TestReplaceProfilePictureRequiresCurrentETag(t *testing.T) {
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), time.Now())
+	user.CustomProfilePictureFileID = model.NewFileEntryID()
+	persistence := &pictureStoreFake{user: user, state: profilePictureState(user.DefaultProfilePictureFileID, strings.Repeat("d", 64))}
+	events := []string{}
+	service := newProfilePictureService(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, time.Now)
+
+	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
+	if !Is(err, "request.invalid") {
+		t.Fatalf("Upload() error = %v, want request.invalid", err)
+	}
+	if persistence.created {
+		t.Fatal("replacement created durable upload state without If-Match")
+	}
+}
+
+func TestReplaceProfilePictureRejectsAStaleETagBeforeCreatingUploadState(t *testing.T) {
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), time.Now())
+	user.CustomProfilePictureFileID = model.NewFileEntryID()
+	persistence := &pictureStoreFake{user: user, state: profilePictureState(user.CustomProfilePictureFileID, strings.Repeat("a", 64))}
+	events := []string{}
+	service := newProfilePictureService(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, time.Now)
+
+	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), ExpectedSHA256: strings.Repeat("b", 64), Body: strings.NewReader("image"), Size: 5})
+	if !Is(err, "user.conflict") {
+		t.Fatalf("Upload() error = %v, want user.conflict", err)
+	}
+	if persistence.created {
+		t.Fatal("stale replacement created durable upload state")
+	}
+}
+
+func TestReplaceProfilePictureWithIdenticalNormalizedContentIsANoOp(t *testing.T) {
+	at := time.Now()
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
+	user.CustomProfilePictureFileID = model.NewFileEntryID()
+	events := []string{}
+	state := profilePictureState(user.CustomProfilePictureFileID, strings.Repeat("a", 64))
+	persistence := &pictureStoreFake{user: user, state: state, events: &events}
+	content := &pictureContentFake{events: &events}
+	effects := &profilePictureEffectsFake{events: &events}
+	service := newProfilePictureService(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{events: &events, beginID: model.NewId()}, effects, &profilePictureEffectFailuresFake{events: &events}, func() time.Time { return at })
+
+	result, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("image"), Size: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ID != user.ID || result.Revision != user.Revision || !persistence.discarded || !content.removed || persistence.publication != nil || !effects.change.UserID.IsZero() {
+		t.Fatalf("identical replacement changed state: result=%#v store=%#v effects=%#v", result, persistence, effects.change)
+	}
+	want := []string{"authorize-profile-picture-write", "create-revision-upload", "normalize", "remove-staged", "discard-upload"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestUploadIdenticalToGeneratedDefaultIsANoOp(t *testing.T) {
+	at := time.Now()
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
+	user.DefaultProfilePictureFileID = model.NewFileEntryID()
+	events := []string{}
+	persistence := &pictureStoreFake{user: user, state: profilePictureState(user.DefaultProfilePictureFileID, strings.Repeat("a", 64)), events: &events}
+	content := &pictureContentFake{events: &events}
+	effects := &profilePictureEffectsFake{events: &events}
+	service := newProfilePictureService(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{events: &events, beginID: model.NewId()}, effects, &profilePictureEffectFailuresFake{events: &events}, func() time.Time { return at })
+
+	result, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("image"), Size: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Revision != user.Revision || !persistence.discarded || persistence.publication != nil || !effects.change.UserID.IsZero() {
+		t.Fatalf("default-identical upload changed visible state: result=%#v store=%#v effect=%#v", result, persistence, effects.change)
+	}
+	want := []string{"authorize-profile-picture-write", "create-upload", "normalize", "remove-staged", "discard-upload"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRemoveProfilePictureArchivesCustomAndPublishesDefaultAfterCommit(t *testing.T) {
+	at := time.Date(2026, time.August, 9, 15, 0, 0, 0, time.UTC)
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
+	user.CustomProfilePictureFileID = model.NewFileEntryID()
+	user.DefaultProfilePictureFileID = model.NewFileEntryID()
+	events := []string{}
+	state := profilePictureState(user.CustomProfilePictureFileID, strings.Repeat("a", 64))
+	persistence := &pictureStoreFake{user: user, state: state, events: &events}
+	effects := &profilePictureEffectsFake{events: &events}
+	service := newProfilePictureService(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{events: &events, beginID: model.NewId()}, effects, &profilePictureEffectFailuresFake{events: &events}, func() time.Time { return at })
+
+	updated, err := service.Remove(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), RemoveProfilePictureCommand{UserID: user.ID.String(), ExpectedSHA256: strings.Repeat("a", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.CustomProfilePictureFileID.IsZero() || updated.DefaultProfilePictureFileID != user.DefaultProfilePictureFileID || persistence.removal.EntryID != user.CustomProfilePictureFileID || effects.change.ActiveFileEntryID != user.DefaultProfilePictureFileID {
+		t.Fatalf("removal result/input/effect = %#v / %#v / %#v", updated, persistence.removal, effects.change)
+	}
+	want := []string{"authorize-profile-picture-write", "audit-begin", "remove-with-audit", "effect"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestUploadAfterRemovalCreatesANewCustomFileEntry(t *testing.T) {
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), time.Now())
+	user.DefaultProfilePictureFileID = model.NewFileEntryID()
+	events := []string{}
+	persistence := &pictureStoreFake{user: user, state: profilePictureState(user.DefaultProfilePictureFileID, strings.Repeat("d", 64))}
+	service := newProfilePictureService(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{beginID: model.NewId()}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, time.Now)
+
+	updated, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), ExpectedSHA256: strings.Repeat("d", 64), Body: strings.NewReader("image"), Size: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.CustomProfilePictureFileID.IsZero() || updated.CustomProfilePictureFileID == user.DefaultProfilePictureFileID || persistence.publication.EntryID == user.DefaultProfilePictureFileID {
+		t.Fatalf("upload reused the retained default entry: %#v / %#v", updated, persistence.publication)
+	}
+}
+
+func TestProfilePictureAuditFailurePreventsVisibleMutationAndEvent(t *testing.T) {
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), time.Now())
+	events := []string{}
+	persistence := &pictureStoreFake{user: user, events: &events}
+	effects := &profilePictureEffectsFake{events: &events}
+	auditor := &profilePictureAuditorFake{events: &events, beginErr: NewError("audit.unavailable")}
+	service := newProfilePictureService(persistence, persistence, &pictureContentFake{events: &events}, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, time.Now)
+
+	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
+	if !Is(err, "audit.unavailable") || persistence.publication != nil || !effects.change.UserID.IsZero() {
+		t.Fatalf("audit failure result: err=%v publication=%#v effect=%#v", err, persistence.publication, effects.change)
+	}
+	want := []string{"authorize-profile-picture-write", "create-upload", "normalize", "audit-begin"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestProfilePictureCommitFailureFailsAuditAndPublishesNoEvent(t *testing.T) {
+	user := &model.User{Username: "student", Email: "student@example.test"}
+	user.PrepareCreate(model.NewUserID(), time.Now())
+	events := []string{}
+	persistence := &pictureStoreFake{user: user, events: &events, publishErr: store.NewErrConflict("profile_picture", "changed", nil)}
+	auditor := &profilePictureAuditorFake{events: &events, beginID: model.NewId()}
+	effects := &profilePictureEffectsFake{events: &events}
+	service := newProfilePictureService(persistence, persistence, &pictureContentFake{events: &events}, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, time.Now)
+
+	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
+	if !Is(err, "user.conflict") || auditor.failCode != "user.conflict" || !effects.change.UserID.IsZero() {
+		t.Fatalf("commit failure result: err=%v audit=%#v effect=%#v", err, auditor, effects.change)
+	}
+	want := []string{"authorize-profile-picture-write", "create-upload", "normalize", "audit-begin", "publish", "audit-fail"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestProfilePictureRealtimeEffectContainsOnlySafeChangeMetadata(t *testing.T) {
+	sink := &recordingRealtimeSink{}
+	cluster := &recordingRealtimeCluster{}
+	realtime := newRealtimeService(nil, nil)
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(cluster); err != nil {
+		t.Fatal(err)
+	}
+	change := profilePictureChanged{UserID: model.NewUserID(), ActiveFileEntryID: model.NewFileEntryID(), Revision: 4, ChangedAt: time.UnixMilli(500)}
+	if err := (profilePictureRealtimeEffects{realtime: realtime}).Changed(context.Background(), change); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.events) != 1 || sink.events[0].Name != "user_profile_picture_changed" || sink.events[0].UserID != change.UserID.String() {
+		t.Fatalf("events = %#v", sink.events)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(sink.events[0].Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 3 || data["active_file_entry_id"] != change.ActiveFileEntryID.String() || data["revision"] != float64(4) || data["changed_at"] != float64(500) {
+		t.Fatalf("event data = %#v", data)
+	}
+}
+
+func profilePictureState(entryID model.FileEntryID, checksum string) *store.ProfilePictureState {
+	revisionID := model.NewFileRevisionID()
+	renditions := make([]model.FileRendition, 0, 3)
+	for _, size := range []int{128, 256, 512} {
+		renditions = append(renditions, model.FileRendition{RevisionID: revisionID, Name: fmt.Sprintf("profile_%d", size), SHA256: checksum})
+	}
+	return &store.ProfilePictureState{EntryID: entryID, RevisionID: revisionID, Renditions: renditions}
+}
+
 func TestUploadProfilePictureAuthorizationDenialHasNoSideEffects(t *testing.T) {
 	at := time.Now()
 	user := &model.User{Username: "student", Email: "student@example.test"}
@@ -143,7 +474,7 @@ func TestUploadProfilePictureAuthorizationDenialHasNoSideEffects(t *testing.T) {
 	events := []string{}
 	persistence := &pictureStoreFake{user: user, events: &events}
 	content := &pictureContentFake{events: &events}
-	service := newProfilePictureService(persistence, persistence, content, &userProfileAuthorizerFake{events: &events, writeErr: NewError("authorization.denied")}, func() time.Time { return at })
+	service := newProfilePictureService(persistence, persistence, content, &userProfileAuthorizerFake{events: &events, writeErr: NewError("authorization.denied")}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, func() time.Time { return at })
 
 	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
 	if !Is(err, "authorization.denied") {
@@ -165,7 +496,7 @@ func TestGetProfilePictureAuthorizesAndMapsRendition(t *testing.T) {
 	events := []string{}
 	persistence := &pictureStoreFake{rendition: rendition, events: &events}
 	contentAdapter := &pictureContentFake{events: &events}
-	service := newProfilePictureService(persistence, persistence, contentAdapter, &userProfileAuthorizerFake{events: &events}, func() time.Time { return at })
+	service := newProfilePictureService(persistence, persistence, contentAdapter, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, func() time.Time { return at })
 
 	content, err := service.Get(context.Background(), NewInvocation(model.Principal{UserID: userID}, model.RequestMetadata{}), GetProfilePictureQuery{UserID: userID.String(), Size: 256})
 	if err != nil {

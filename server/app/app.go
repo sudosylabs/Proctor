@@ -201,6 +201,7 @@ func New(deps Dependencies) (*App, error) {
 			classMembers:  deps.Store.ClassMember(),
 			now:           time.Now,
 		},
+		mutationAuditAdapter{audit: audit}, profilePictureRealtimeEffects{realtime: realtime}, profilePictureEffectReporter{realtime: realtime},
 		time.Now,
 	)
 	accountStates := newAccountStateService(
