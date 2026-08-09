@@ -641,6 +641,25 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/profile-picture": {
+      "parameters": [{"$ref": "#/components/parameters/UserID"}],
+      "get": {
+        "operationId": "getUserProfilePicture", "summary": "Get an authorized normalized profile-picture rendition",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "profile_picture.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "size", "in": "query", "required": false, "schema": {"type": "integer", "enum": [128, 256, 512], "default": 256}}, {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}}],
+        "responses": {"200": {"$ref": "#/components/responses/ProfilePictureOK"}, "304": {"description": "Rendition has not changed"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "put": {
+        "operationId": "uploadUserProfilePicture", "summary": "Upload and normalize a custom profile picture",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"required": true, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}, "image/jpeg": {"schema": {"type": "string", "format": "binary"}}, "image/webp": {"schema": {"type": "string", "format": "binary"}}}},
+        "responses": {"200": {"$ref": "#/components/responses/UserProfileOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/users/{user_id}/disable": {
       "parameters": [{"$ref": "#/components/parameters/UserID"}],
       "post": {
@@ -1425,6 +1444,7 @@
       "ClassMemberEnded": {"description": "Class Member ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassMemberResponse"}}}},
       "UserProfileOK": {"description": "User profile", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserProfileResponse"}}}},
       "UserProfileListOK": {"description": "User profile collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserProfileListResponse"}}}},
+      "ProfilePictureOK": {"description": "Normalized private profile-picture rendition", "headers": {"ETag": {"schema": {"type": "string"}}, "Cache-Control": {"schema": {"type": "string"}}}, "content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}}},
       "SessionAdministrationListOK": {"description": "Administrative session list", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionAdministrationListResponse"}}}},
       "SessionAdministrationRevoked": {"description": "Session(s) revoked"},
       "RoleListOK": {"description": "Role collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleListResponse"}}}},
@@ -1779,7 +1799,7 @@
       },
       "UserProfileResponse": {
         "type": "object", "additionalProperties": false,
-        "required": ["id", "create_at", "update_at", "delete_at", "username", "email", "email_verified", "display_name", "first_name", "last_name", "locale", "timezone"],
+        "required": ["id", "create_at", "update_at", "delete_at", "username", "email", "email_verified", "display_name", "first_name", "last_name", "locale", "timezone", "profile_picture_url"],
         "properties": {
           "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
           "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
@@ -1787,7 +1807,8 @@
           "display_name": {"type": "string"}, "first_name": {"type": "string"}, "last_name": {"type": "string"},
           "locale": {"type": "string"}, "timezone": {"type": "string"},
           "last_login_at": {"type": "integer", "format": "int64"}, "last_activity_at": {"type": "integer", "format": "int64"},
-          "disabled_at": {"type": "integer", "format": "int64"}
+          "disabled_at": {"type": "integer", "format": "int64"},
+          "profile_picture_url": {"type": "string"}, "profile_picture_changed_at": {"type": "integer", "format": "int64"}
         }
       },
       "UserProfileListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/UserProfileResponse"}},

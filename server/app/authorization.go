@@ -80,6 +80,10 @@ func (s *AuthorizationService) evaluate(
 		!personalAccessTokenAllows(principal, action, resource, resolved) {
 		return false, resolved, nil
 	}
+	if action == model.ActionUserProfilePictureManage &&
+		principal.UserID.String() == resource.ID {
+		return true, resolved, nil
+	}
 	bindings, err := s.store.RoleBinding().ListActiveByUser(
 		ctx, principal.UserID.String(), s.now().UnixMilli(),
 	)

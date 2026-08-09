@@ -34,6 +34,7 @@ type App struct {
 	academicUnitMembers    *academicUnitMemberService
 	classMembers           *classMemberService
 	userProfiles           *userProfileService
+	profilePictures        *profilePictureService
 	accountStates          *accountStateService
 	sessionAdministrations *sessionAdministrationService
 	roles                  *roleService
@@ -69,6 +70,9 @@ func New(deps Dependencies) (*App, error) {
 	}
 	if deps.Registry == nil {
 		return nil, errors.New("external provider registry is required")
+	}
+	if deps.FileContent == nil {
+		return nil, errors.New("file content is required")
 	}
 	if deps.NodeID == "" {
 		return nil, errors.New("node ID is required")
@@ -189,6 +193,16 @@ func New(deps Dependencies) (*App, error) {
 		},
 		mutationAuditAdapter{audit: audit}, time.Now,
 	)
+	profilePictures := newProfilePictureService(
+		deps.Store.User(), deps.Store.File(), deps.FileContent,
+		userProfileAuthorization{
+			authorization: authorization,
+			institutions:  deps.Store.Institution(),
+			classMembers:  deps.Store.ClassMember(),
+			now:           time.Now,
+		},
+		time.Now,
+	)
 	accountStates := newAccountStateService(
 		deps.Store.User(),
 		userProfileAuthorization{
@@ -255,6 +269,7 @@ func New(deps Dependencies) (*App, error) {
 		academicUnitMembers:     academicUnitMembers,
 		classMembers:            classMembers,
 		userProfiles:            userProfiles,
+		profilePictures:         profilePictures,
 		accountStates:           accountStates,
 		sessionAdministrations:  sessionAdministrations,
 		roles:                   roles,

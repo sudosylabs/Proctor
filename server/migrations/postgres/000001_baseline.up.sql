@@ -124,6 +124,42 @@ CREATE INDEX classes_academic_period_id_idx
 -- Identity domain
 -- ---------------------------------------------------------------------------
 
+CREATE TABLE file_entries (
+    id varchar(26) PRIMARY KEY,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    archived_at timestamptz,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    current_revision_id varchar(26),
+    indexing_policy varchar(16) NOT NULL CHECK (indexing_policy IN ('none', 'metadata', 'content')),
+    CONSTRAINT file_entries_lifecycle_check CHECK (updated_at >= created_at)
+);
+
+CREATE TABLE file_revisions (
+    id varchar(26) PRIMARY KEY,
+    file_entry_id varchar(26) NOT NULL REFERENCES file_entries(id),
+    created_at timestamptz NOT NULL,
+    availability varchar(16) NOT NULL CHECK (availability IN ('pending', 'available', 'quarantined', 'rejected')),
+    indexing_state varchar(16) NOT NULL CHECK (indexing_state IN ('not_required', 'pending', 'ready', 'failed')),
+    UNIQUE (id, file_entry_id)
+);
+
+ALTER TABLE file_entries ADD CONSTRAINT file_entries_current_revision_fkey
+    FOREIGN KEY (current_revision_id, id) REFERENCES file_revisions(id, file_entry_id);
+
+CREATE TABLE file_renditions (
+    id varchar(26) PRIMARY KEY,
+    file_revision_id varchar(26) NOT NULL REFERENCES file_revisions(id),
+    created_at timestamptz NOT NULL,
+    name varchar(64) NOT NULL,
+    media_type varchar(255) NOT NULL,
+    size_bytes bigint NOT NULL CHECK (size_bytes >= 0),
+    width integer NOT NULL CHECK (width > 0),
+    height integer NOT NULL CHECK (height > 0),
+    sha256 char(64) NOT NULL,
+    UNIQUE (file_revision_id, name)
+);
+
 CREATE TABLE users (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -141,11 +177,27 @@ CREATE TABLE users (
     last_login_at timestamptz,
     last_activity_at timestamptz,
     disabled_at timestamptz,
+    default_profile_picture_seed char(64) NOT NULL,
+    default_profile_picture_file_id varchar(26) REFERENCES file_entries(id),
+    custom_profile_picture_file_id varchar(26) REFERENCES file_entries(id),
+    profile_picture_changed_at timestamptz,
     CONSTRAINT users_lifecycle_check CHECK (updated_at >= created_at)
 );
 
 CREATE UNIQUE INDEX users_username_key ON users (username) WHERE archived_at IS NULL;
 CREATE UNIQUE INDEX users_email_key ON users (email) WHERE archived_at IS NULL;
+
+CREATE TABLE upload_leases (
+    id varchar(26) PRIMARY KEY,
+    file_revision_id varchar(26) NOT NULL UNIQUE REFERENCES file_revisions(id),
+    created_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    CONSTRAINT upload_leases_lifecycle_check CHECK (updated_at >= created_at AND expires_at > created_at)
+);
 
 CREATE TABLE external_identities (
     id varchar(26) PRIMARY KEY,

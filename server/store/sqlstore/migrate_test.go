@@ -23,6 +23,9 @@ var baselineTables = []string{
 	"cluster_discovery_nodes",
 	"external_identities",
 	"external_login_states",
+	"file_entries",
+	"file_renditions",
+	"file_revisions",
 	"installation_states",
 	"institutions",
 	"mfa_credentials",
@@ -36,6 +39,7 @@ var baselineTables = []string{
 	"session_credentials",
 	"sessions",
 	"user_tokens",
+	"upload_leases",
 	"users",
 }
 
@@ -163,6 +167,9 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 		{table: "mfa_credentials", name: "pending_expires_at"},
 		{table: "mfa_recovery_codes", name: "consumed_at"},
 		{table: "external_login_states", name: "consumed_at"},
+		{table: "file_entries", name: "archived_at"},
+		{table: "users", name: "profile_picture_changed_at"},
+		{table: "upload_leases", name: "consumed_at"},
 	} {
 		var nullable string
 		if err := migrator.store.GetMaster().Get(ctx, &nullable, `
@@ -204,7 +211,8 @@ func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrato
 			audit_events, mfa_recovery_codes, mfa_credentials, user_tokens,
 			personal_access_tokens, session_credentials, sessions, role_bindings,
 			roles, class_members, academic_unit_members, affiliations,
-			password_credentials, external_identities, users, classes,
+			password_credentials, external_identities, upload_leases, users,
+			file_renditions, file_revisions, file_entries, classes,
 			academic_periods, programme_levels, programmes, academic_units,
 			institutions CASCADE
 	`); err != nil {

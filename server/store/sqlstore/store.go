@@ -79,6 +79,7 @@ type SQLStoreStores struct {
 	academicPeriod      store.AcademicPeriodStore
 	class               store.ClassStore
 	user                store.UserStore
+	file                store.FileStore
 	externalIdentity    store.ExternalIdentityStore
 	externalLoginState  store.ExternalLoginStateStore
 	userToken           store.UserTokenStore
@@ -138,6 +139,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.academicPeriod = newSQLAcademicPeriodStore(sqlStore)
 	sqlStore.stores.class = newSQLClassStore(sqlStore)
 	sqlStore.stores.user = newSQLUserStore(sqlStore)
+	sqlStore.stores.file = newSQLFileStore(sqlStore)
 	sqlStore.stores.externalIdentity = newSQLExternalIdentityStore(sqlStore)
 	sqlStore.stores.externalLoginState = newSQLExternalLoginStateStore(sqlStore)
 	sqlStore.stores.userToken = newSQLUserTokenStore(sqlStore)
@@ -199,6 +201,8 @@ func (ss *SQLStore) Class() store.ClassStore {
 func (ss *SQLStore) User() store.UserStore {
 	return ss.stores.user
 }
+
+func (ss *SQLStore) File() store.FileStore { return ss.stores.file }
 
 func (ss *SQLStore) ExternalIdentity() store.ExternalIdentityStore {
 	return ss.stores.externalIdentity

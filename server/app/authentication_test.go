@@ -81,6 +81,8 @@ type authenticationStoreFake struct {
 	maximumPerUser      int
 }
 
+func (s *authenticationStoreFake) File() store.FileStore { return nil }
+
 func newAuthenticationStoreFake() *authenticationStoreFake {
 	return &authenticationStoreFake{
 		users:               make(map[string]*model.User),

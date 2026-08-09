@@ -28,6 +28,8 @@ type testStore struct{}
 type testCache struct{}
 type testMailer struct{}
 
+func (testStore) File() store.FileStore { return nil }
+
 type trackedStore struct {
 	testStore
 	closed atomic.Bool

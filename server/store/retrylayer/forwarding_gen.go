@@ -14,6 +14,8 @@ import (
 type retryStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	file                    store.FileStore
+	fileOnce                sync.Once
 	institution             store.InstitutionStore
 	institutionOnce         sync.Once
 	academicUnit            store.AcademicUnitStore
@@ -62,6 +64,11 @@ type retryStores struct {
 
 type clusterDiscoveryStore struct {
 	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type fileStore struct {
+	store.FileStore
 	layer *Layer
 }
 
@@ -245,6 +252,16 @@ func (l *Layer) User() store.UserStore {
 	return l.stores.user
 }
 
+func (l *Layer) File() store.FileStore {
+	l.stores.fileOnce.Do(func() {
+		next := l.Store.File()
+		if next != nil {
+			l.stores.file = &fileStore{FileStore: next, layer: l}
+		}
+	})
+	return l.stores.file
+}
+
 func (l *Layer) ExternalIdentity() store.ExternalIdentityStore {
 	l.stores.externalIdentityOnce.Do(func() {
 		next := l.Store.ExternalIdentity()
@@ -408,6 +425,7 @@ func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*clusterDiscoveryStore)(nil)
+	_ store.FileStore                = (*fileStore)(nil)
 	_ store.InstitutionStore         = (*institutionStore)(nil)
 	_ store.AcademicUnitStore        = (*academicUnitStore)(nil)
 	_ store.ProgrammeStore           = (*programmeStore)(nil)

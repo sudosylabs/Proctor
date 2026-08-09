@@ -359,6 +359,8 @@ func lockTokenUser(
 		SELECT id, created_at, updated_at, archived_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
+		       , default_profile_picture_seed, default_profile_picture_file_id,
+		       custom_profile_picture_file_id, profile_picture_changed_at
 		  FROM users
 		 WHERE id = ? AND email = ? AND archived_at IS NULL AND disabled_at IS NULL
 		 FOR UPDATE`,

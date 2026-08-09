@@ -29,23 +29,27 @@ type SQLUserStore struct {
 }
 
 type userRow struct {
-	ID               string       `db:"id"`
-	CreatedAt        time.Time    `db:"created_at"`
-	UpdatedAt        time.Time    `db:"updated_at"`
-	ArchivedAt       sql.NullTime `db:"archived_at"`
-	Revision         int64        `db:"revision"`
-	Username         string       `db:"username"`
-	Email            string       `db:"email"`
-	EmailVerified    bool         `db:"email_verified"`
-	DisplayName      string       `db:"display_name"`
-	FirstName        string       `db:"first_name"`
-	LastName         string       `db:"last_name"`
-	Locale           string       `db:"locale"`
-	Timezone         string       `db:"timezone"`
-	LastLoginAt      sql.NullTime `db:"last_login_at"`
-	LastActivityAt   sql.NullTime `db:"last_activity_at"`
-	DisabledAt       sql.NullTime `db:"disabled_at"`
-	ExpectedRevision int64        `db:"expected_revision"`
+	ID                          string         `db:"id"`
+	CreatedAt                   time.Time      `db:"created_at"`
+	UpdatedAt                   time.Time      `db:"updated_at"`
+	ArchivedAt                  sql.NullTime   `db:"archived_at"`
+	Revision                    int64          `db:"revision"`
+	Username                    string         `db:"username"`
+	Email                       string         `db:"email"`
+	EmailVerified               bool           `db:"email_verified"`
+	DisplayName                 string         `db:"display_name"`
+	FirstName                   string         `db:"first_name"`
+	LastName                    string         `db:"last_name"`
+	Locale                      string         `db:"locale"`
+	Timezone                    string         `db:"timezone"`
+	LastLoginAt                 sql.NullTime   `db:"last_login_at"`
+	LastActivityAt              sql.NullTime   `db:"last_activity_at"`
+	DisabledAt                  sql.NullTime   `db:"disabled_at"`
+	DefaultProfilePictureSeed   string         `db:"default_profile_picture_seed"`
+	DefaultProfilePictureFileID sql.NullString `db:"default_profile_picture_file_id"`
+	CustomProfilePictureFileID  sql.NullString `db:"custom_profile_picture_file_id"`
+	ProfilePictureChangedAt     sql.NullTime   `db:"profile_picture_changed_at"`
+	ExpectedRevision            int64          `db:"expected_revision"`
 }
 
 func userSliceColumns() []string {
@@ -66,6 +70,10 @@ func userSliceColumns() []string {
 		"users.last_login_at",
 		"users.last_activity_at",
 		"users.disabled_at",
+		"users.default_profile_picture_seed",
+		"users.default_profile_picture_file_id",
+		"users.custom_profile_picture_file_id",
+		"users.profile_picture_changed_at",
 	}
 }
 
@@ -142,11 +150,15 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 		INSERT INTO users (
 			id, created_at, updated_at, archived_at, revision, username, email,
 			email_verified, display_name, first_name, last_name, locale,
-			timezone, last_login_at, last_activity_at, disabled_at
+			timezone, last_login_at, last_activity_at, disabled_at,
+			default_profile_picture_seed, default_profile_picture_file_id,
+			custom_profile_picture_file_id, profile_picture_changed_at
 		) VALUES (
 			:id, :created_at, :updated_at, :archived_at, :revision, :username, :email,
 			:email_verified, :display_name, :first_name, :last_name, :locale,
-			:timezone, :last_login_at, :last_activity_at, :disabled_at
+			:timezone, :last_login_at, :last_activity_at, :disabled_at,
+			:default_profile_picture_seed, :default_profile_picture_file_id,
+			:custom_profile_picture_file_id, :profile_picture_changed_at
 		)`, &row); err != nil {
 		return fmt.Errorf("save user: %w", translateError("user", user.ID.String(), err))
 	}
@@ -303,6 +315,8 @@ func getUserByID(ctx context.Context, executor sqlxExecutor, id string) (*model.
 		SELECT id, created_at, updated_at, archived_at, revision, username, email,
 		       email_verified, display_name, first_name, last_name, locale,
 		       timezone, last_login_at, last_activity_at, disabled_at
+		       , default_profile_picture_seed, default_profile_picture_file_id,
+		       custom_profile_picture_file_id, profile_picture_changed_at
 		  FROM users
 		 WHERE id = ? AND archived_at IS NULL`, id); err != nil {
 		return nil, translateError("user", id, err)
@@ -548,44 +562,56 @@ func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) 
 
 func newUserRow(user *model.User) userRow {
 	return userRow{
-		ID:             user.ID.String(),
-		CreatedAt:      UTCTime(user.CreatedAt),
-		UpdatedAt:      UTCTime(user.UpdatedAt),
-		ArchivedAt:     NullTimeFromOptional(user.ArchivedAt),
-		Revision:       user.Revision,
-		Username:       user.Username,
-		Email:          user.Email,
-		EmailVerified:  user.EmailVerified,
-		DisplayName:    user.DisplayName,
-		FirstName:      user.FirstName,
-		LastName:       user.LastName,
-		Locale:         user.Locale,
-		Timezone:       user.Timezone,
-		LastLoginAt:    NullTimeFromOptional(user.LastLoginAt),
-		LastActivityAt: NullTimeFromOptional(user.LastActivityAt),
-		DisabledAt:     NullTimeFromOptional(user.DisabledAt),
+		ID:                          user.ID.String(),
+		CreatedAt:                   UTCTime(user.CreatedAt),
+		UpdatedAt:                   UTCTime(user.UpdatedAt),
+		ArchivedAt:                  NullTimeFromOptional(user.ArchivedAt),
+		Revision:                    user.Revision,
+		Username:                    user.Username,
+		Email:                       user.Email,
+		EmailVerified:               user.EmailVerified,
+		DisplayName:                 user.DisplayName,
+		FirstName:                   user.FirstName,
+		LastName:                    user.LastName,
+		Locale:                      user.Locale,
+		Timezone:                    user.Timezone,
+		LastLoginAt:                 NullTimeFromOptional(user.LastLoginAt),
+		LastActivityAt:              NullTimeFromOptional(user.LastActivityAt),
+		DisabledAt:                  NullTimeFromOptional(user.DisabledAt),
+		DefaultProfilePictureSeed:   user.DefaultProfilePictureSeed,
+		DefaultProfilePictureFileID: nullableID(user.DefaultProfilePictureFileID.String()),
+		CustomProfilePictureFileID:  nullableID(user.CustomProfilePictureFileID.String()),
+		ProfilePictureChangedAt:     NullTimeFromOptional(user.ProfilePictureChangedAt),
 	}
 }
 
 func (row userRow) model() *model.User {
 	return &model.User{
-		ID:             model.UserID(row.ID),
-		CreatedAt:      row.CreatedAt.UTC(),
-		UpdatedAt:      row.UpdatedAt.UTC(),
-		ArchivedAt:     OptionalTimeFromNullTime(row.ArchivedAt),
-		Revision:       row.Revision,
-		Username:       row.Username,
-		Email:          row.Email,
-		EmailVerified:  row.EmailVerified,
-		DisplayName:    row.DisplayName,
-		FirstName:      row.FirstName,
-		LastName:       row.LastName,
-		Locale:         row.Locale,
-		Timezone:       row.Timezone,
-		LastLoginAt:    OptionalTimeFromNullTime(row.LastLoginAt),
-		LastActivityAt: OptionalTimeFromNullTime(row.LastActivityAt),
-		DisabledAt:     OptionalTimeFromNullTime(row.DisabledAt),
+		ID:                          model.UserID(row.ID),
+		CreatedAt:                   row.CreatedAt.UTC(),
+		UpdatedAt:                   row.UpdatedAt.UTC(),
+		ArchivedAt:                  OptionalTimeFromNullTime(row.ArchivedAt),
+		Revision:                    row.Revision,
+		Username:                    row.Username,
+		Email:                       row.Email,
+		EmailVerified:               row.EmailVerified,
+		DisplayName:                 row.DisplayName,
+		FirstName:                   row.FirstName,
+		LastName:                    row.LastName,
+		Locale:                      row.Locale,
+		Timezone:                    row.Timezone,
+		LastLoginAt:                 OptionalTimeFromNullTime(row.LastLoginAt),
+		LastActivityAt:              OptionalTimeFromNullTime(row.LastActivityAt),
+		DisabledAt:                  OptionalTimeFromNullTime(row.DisabledAt),
+		DefaultProfilePictureSeed:   row.DefaultProfilePictureSeed,
+		DefaultProfilePictureFileID: model.FileEntryID(row.DefaultProfilePictureFileID.String),
+		CustomProfilePictureFileID:  model.FileEntryID(row.CustomProfilePictureFileID.String),
+		ProfilePictureChangedAt:     OptionalTimeFromNullTime(row.ProfilePictureChangedAt),
 	}
+}
+
+func nullableID(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
 }
 
 var _ store.UserStore = (*SQLUserStore)(nil)

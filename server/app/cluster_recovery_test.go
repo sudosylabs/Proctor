@@ -327,6 +327,8 @@ type recoveryAuthorizationStore struct {
 	bindings    map[string]*model.RoleBinding
 }
 
+func (s *recoveryAuthorizationStore) File() store.FileStore { return nil }
+
 func (s *recoveryAuthorizationStore) Institution() store.InstitutionStore {
 	return recoveryInstitutionStore{root: s}
 }

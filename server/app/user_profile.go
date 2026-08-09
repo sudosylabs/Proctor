@@ -208,3 +208,11 @@ func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation 
 func (a userProfileAuthorization) AuthorizeManage(ctx context.Context, invocation Invocation, userID string) error {
 	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: userID}, invocation.RequestMetadata())
 }
+
+func (a userProfileAuthorization) AuthorizeProfilePictureWrite(ctx context.Context, invocation Invocation, userID string) error {
+	action := model.ActionUserManage
+	if invocation.Principal().UserID.String() == userID {
+		action = model.ActionUserProfilePictureManage
+	}
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, model.Resource{Type: model.ResourceUser, ID: userID}, invocation.RequestMetadata())
+}

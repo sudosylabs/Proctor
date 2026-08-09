@@ -118,6 +118,10 @@ func TestUserStore(t *testing.T) {
 	StoreTest(t, storetest.TestUserStore)
 }
 
+func TestFileStore(t *testing.T) {
+	StoreTest(t, storetest.TestFileStore)
+}
+
 func TestExternalIdentityStore(t *testing.T) {
 	StoreTest(t, storetest.TestExternalIdentityStore)
 }

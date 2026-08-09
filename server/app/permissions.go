@@ -183,7 +183,7 @@ func (a *App) PrincipalHasPermissionToUserForRequest(
 	action model.Action,
 	metadata model.RequestMetadata,
 ) (context.Context, bool, error) {
-	if action == model.ActionUserView && principal.UserID.String() == userID {
+	if (action == model.ActionUserView || action == model.ActionUserProfilePictureManage) && principal.UserID.String() == userID {
 		return ctx, true, nil
 	}
 	if action == model.ActionUserView {
@@ -427,7 +427,7 @@ func (a *App) PrincipalHasPermissionToUser(
 	if !model.IsValidId(userID) {
 		return false, nil
 	}
-	if action == model.ActionUserView && principal.UserID.String() == userID {
+	if (action == model.ActionUserView || action == model.ActionUserProfilePictureManage) && principal.UserID.String() == userID {
 		return true, nil
 	}
 	if action == model.ActionUserView {

@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,10 +18,13 @@ import (
 )
 
 type userProfileHTTPApplication struct {
-	result        *model.User
-	values        []*model.User
-	searchQuery   application.SearchUsersQuery
-	updateCommand application.UpdateUserProfileCommand
+	result         *model.User
+	values         []*model.User
+	searchQuery    application.SearchUsersQuery
+	updateCommand  application.UpdateUserProfileCommand
+	uploadCommand  application.UploadProfilePictureCommand
+	pictureQuery   application.GetProfilePictureQuery
+	pictureContent *application.ProfilePictureContent
 }
 
 type accountStateHTTPApplication struct {
@@ -161,6 +165,14 @@ func (a *userProfileHTTPApplication) UpdateUserProfile(_ context.Context, _ appl
 	a.updateCommand = command
 	return a.result, nil
 }
+func (a *userProfileHTTPApplication) UploadProfilePicture(_ context.Context, _ application.Invocation, command application.UploadProfilePictureCommand) (*model.User, error) {
+	a.uploadCommand = command
+	return a.result, nil
+}
+func (a *userProfileHTTPApplication) GetProfilePicture(_ context.Context, _ application.Invocation, query application.GetProfilePictureQuery) (*application.ProfilePictureContent, error) {
+	a.pictureQuery = query
+	return a.pictureContent, nil
+}
 
 func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	t.Parallel()
@@ -194,6 +206,30 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 		if _, exposed := body[forbidden]; exposed {
 			t.Fatalf("sensitive field %q exposed: %#v", forbidden, body)
 		}
+	}
+	uploadRequest := httptest.NewRequest(http.MethodPut, "/api/v1/users/"+userID+"/profile-picture", strings.NewReader("image"))
+	uploadRequest.Header.Set("Authorization", "Bearer credential")
+	uploadRequest.Header.Set("Content-Type", "image/png")
+	uploadResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(uploadResponse, uploadRequest)
+	if uploadResponse.Code != http.StatusOK {
+		t.Fatalf("upload status = %d: %s", uploadResponse.Code, uploadResponse.Body.String())
+	}
+	uploaded, err := io.ReadAll(profiles.uploadCommand.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profiles.uploadCommand.UserID != userID || profiles.uploadCommand.Size != 5 || string(uploaded) != "image" {
+		t.Fatalf("upload command = %#v body = %q", profiles.uploadCommand, uploaded)
+	}
+	profiles.pictureContent = &application.ProfilePictureContent{Body: io.NopCloser(strings.NewReader("webp")), MediaType: "image/webp", Size: 4, ETag: `"checksum"`}
+	pictureRequest := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+userID+"/profile-picture?size=128", nil)
+	pictureRequest.Header.Set("Authorization", "Bearer credential")
+	pictureRequest.Header.Set("If-None-Match", `"different", W/"checksum"`)
+	pictureResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(pictureResponse, pictureRequest)
+	if pictureResponse.Code != http.StatusNotModified || profiles.pictureQuery.UserID != userID || profiles.pictureQuery.Size != 128 || pictureResponse.Header().Get("Cache-Control") != "private, max-age=86400" {
+		t.Fatalf("profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
 	}
 }
 

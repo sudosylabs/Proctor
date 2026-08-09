@@ -303,6 +303,16 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	if permErr != nil || allowed {
 		t.Fatalf("self management without permission = %v, %v", allowed, permErr)
 	}
+	if authErr := helper.App.AuthorizePrincipalToUser(
+		ctx, *principal, viewer.ID.String(), model.ActionUserProfilePictureManage, metadata,
+	); authErr != nil {
+		t.Fatalf("self profile-picture authorization = %v", authErr)
+	}
+	if authErr := helper.App.AuthorizePrincipalToUser(
+		ctx, *principal, target.ID.String(), model.ActionUserProfilePictureManage, metadata,
+	); !application.Is(authErr, "authorization.denied") {
+		t.Fatalf("cross-user profile-picture authorization = %v", authErr)
+	}
 	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.ID.String())
 	if permErr != nil || allowed {
 		t.Fatalf("unbound cross-user visibility = %v, %v", allowed, permErr)

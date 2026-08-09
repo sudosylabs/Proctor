@@ -4,8 +4,10 @@
 package api
 
 import (
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
@@ -13,21 +15,23 @@ import (
 )
 
 type userProfileResponse struct {
-	ID             string `json:"id"`
-	CreateAt       int64  `json:"create_at"`
-	UpdateAt       int64  `json:"update_at"`
-	DeleteAt       int64  `json:"delete_at"`
-	Username       string `json:"username"`
-	Email          string `json:"email"`
-	EmailVerified  bool   `json:"email_verified"`
-	DisplayName    string `json:"display_name"`
-	FirstName      string `json:"first_name"`
-	LastName       string `json:"last_name"`
-	Locale         string `json:"locale"`
-	Timezone       string `json:"timezone"`
-	LastLoginAt    int64  `json:"last_login_at,omitempty"`
-	LastActivityAt int64  `json:"last_activity_at,omitempty"`
-	DisabledAt     int64  `json:"disabled_at,omitempty"`
+	ID                      string `json:"id"`
+	CreateAt                int64  `json:"create_at"`
+	UpdateAt                int64  `json:"update_at"`
+	DeleteAt                int64  `json:"delete_at"`
+	Username                string `json:"username"`
+	Email                   string `json:"email"`
+	EmailVerified           bool   `json:"email_verified"`
+	DisplayName             string `json:"display_name"`
+	FirstName               string `json:"first_name"`
+	LastName                string `json:"last_name"`
+	Locale                  string `json:"locale"`
+	Timezone                string `json:"timezone"`
+	LastLoginAt             int64  `json:"last_login_at,omitempty"`
+	LastActivityAt          int64  `json:"last_activity_at,omitempty"`
+	DisabledAt              int64  `json:"disabled_at,omitempty"`
+	ProfilePictureURL       string `json:"profile_picture_url"`
+	ProfilePictureChangedAt int64  `json:"profile_picture_changed_at,omitempty"`
 }
 
 type updateUserProfileRequest struct {
@@ -50,6 +54,8 @@ func (a *API) registerUserProfileRoutes() error {
 		{a.BaseRoutes.Users, "", http.MethodGet, a.searchUsers},
 		{a.BaseRoutes.User, "", http.MethodGet, a.getUserProfile},
 		{a.BaseRoutes.User, "", http.MethodPatch, a.updateUserProfile},
+		{a.BaseRoutes.User, "/profile-picture", http.MethodPut, a.uploadProfilePicture},
+		{a.BaseRoutes.User, "/profile-picture", http.MethodGet, a.getProfilePicture},
 	}
 	for _, route := range routes {
 		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
@@ -57,6 +63,58 @@ func (a *API) registerUserProfileRoutes() error {
 		}
 	}
 	return nil
+}
+
+func (a *API) uploadProfilePicture(w http.ResponseWriter, r *http.Request) {
+	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
+	if !ok {
+		return
+	}
+	user, err := a.userProfiles.UploadProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UploadProfilePictureCommand{UserID: userID, Body: r.Body, Size: r.ContentLength})
+	if err != nil {
+		writeApplicationError(w, r, a.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
+}
+
+func (a *API) getProfilePicture(w http.ResponseWriter, r *http.Request) {
+	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
+	if !ok {
+		return
+	}
+	size, err := strconv.Atoi(defaultQuery(r, "size", "256"))
+	if err != nil {
+		WriteError(w, r, invalidRequestError("size", err))
+		return
+	}
+	content, appErr := a.userProfiles.GetProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetProfilePictureQuery{UserID: userID, Size: size})
+	if appErr != nil {
+		writeApplicationError(w, r, a.logger, appErr)
+		return
+	}
+	defer content.Body.Close()
+	w.Header().Set("ETag", content.ETag)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Content-Type", content.MediaType)
+	w.Header().Set("Content-Length", strconv.FormatInt(content.Size, 10))
+	if etagMatches(r.Header.Get("If-None-Match"), content.ETag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, content.Body)
+}
+
+func etagMatches(header, current string) bool {
+	current = strings.TrimPrefix(strings.TrimSpace(current), "W/")
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" || strings.TrimPrefix(candidate, "W/") == current {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *API) searchUsers(w http.ResponseWriter, r *http.Request) {
@@ -116,21 +174,23 @@ func userProfileResponseFromModel(user *model.User) userProfileResponse {
 		return userProfileResponse{}
 	}
 	return userProfileResponse{
-		ID:             user.ID.String(),
-		CreateAt:       model.MillisFromTime(user.CreatedAt),
-		UpdateAt:       model.MillisFromTime(user.UpdatedAt),
-		DeleteAt:       user.ArchivedAt.Millis(),
-		Username:       user.Username,
-		Email:          user.Email,
-		EmailVerified:  user.EmailVerified,
-		DisplayName:    user.DisplayName,
-		FirstName:      user.FirstName,
-		LastName:       user.LastName,
-		Locale:         user.Locale,
-		Timezone:       user.Timezone,
-		LastLoginAt:    user.LastLoginAt.Millis(),
-		LastActivityAt: user.LastActivityAt.Millis(),
-		DisabledAt:     user.DisabledAt.Millis(),
+		ID:                      user.ID.String(),
+		CreateAt:                model.MillisFromTime(user.CreatedAt),
+		UpdateAt:                model.MillisFromTime(user.UpdatedAt),
+		DeleteAt:                user.ArchivedAt.Millis(),
+		Username:                user.Username,
+		Email:                   user.Email,
+		EmailVerified:           user.EmailVerified,
+		DisplayName:             user.DisplayName,
+		FirstName:               user.FirstName,
+		LastName:                user.LastName,
+		Locale:                  user.Locale,
+		Timezone:                user.Timezone,
+		LastLoginAt:             user.LastLoginAt.Millis(),
+		LastActivityAt:          user.LastActivityAt.Millis(),
+		DisabledAt:              user.DisabledAt.Millis(),
+		ProfilePictureURL:       "/api/v1/users/" + user.ID.String() + "/profile-picture",
+		ProfilePictureChangedAt: user.ProfilePictureChangedAt.Millis(),
 	}
 }
 

@@ -35,7 +35,11 @@ func (s *userProfileStoreFake) UpdateProfileWithAudit(_ context.Context, input *
 	return &updated, nil
 }
 
-type userProfileAuthorizerFake struct{ events *[]string }
+type userProfileAuthorizerFake struct {
+	events   *[]string
+	readErr  error
+	writeErr error
+}
 
 func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation) error {
 	*a.events = append(*a.events, "authorize-search")
@@ -43,11 +47,15 @@ func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation)
 }
 func (a *userProfileAuthorizerFake) AuthorizeRead(context.Context, Invocation, string) error {
 	*a.events = append(*a.events, "authorize-read")
-	return nil
+	return a.readErr
 }
 func (a *userProfileAuthorizerFake) AuthorizeManage(context.Context, Invocation, string) error {
 	*a.events = append(*a.events, "authorize-manage")
 	return nil
+}
+func (a *userProfileAuthorizerFake) AuthorizeProfilePictureWrite(context.Context, Invocation, string) error {
+	*a.events = append(*a.events, "authorize-profile-picture-write")
+	return a.writeErr
 }
 
 func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {

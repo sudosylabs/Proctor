@@ -6,6 +6,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -21,6 +22,7 @@ type Store interface {
 	AcademicPeriod() AcademicPeriodStore
 	Class() ClassStore
 	User() UserStore
+	File() FileStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
 	UserToken() UserTokenStore
@@ -43,6 +45,42 @@ type Store interface {
 	GetLocalSchemaVersion() (int, error)
 	ValidateSchema(context.Context) error
 	Close() error
+}
+
+type FileUploadCreation struct {
+	Entry    *model.FileEntry
+	Revision *model.FileRevision
+	Lease    *model.UploadLease
+}
+
+type FileUpload struct {
+	Entry    *model.FileEntry
+	Revision *model.FileRevision
+	Lease    *model.UploadLease
+}
+
+type ProfilePicturePublication struct {
+	ActorID              model.UserID
+	UserID               model.UserID
+	ExpectedUserRevision int64
+	EntryID              model.FileEntryID
+	RevisionID           model.FileRevisionID
+	LeaseID              model.UploadLeaseID
+	Renditions           []model.FileRendition
+	ChangedAt            time.Time
+}
+
+type ProfilePicturePublicationResult struct {
+	User     *model.User
+	Revision *model.FileRevision
+}
+
+// FileStore owns file metadata and the atomic publication of domain references.
+type FileStore interface {
+	CreateUpload(context.Context, *FileUploadCreation) (*FileUpload, error)
+	RenewUploadLease(context.Context, model.UploadLeaseID, model.UserID, int64, time.Time) (*model.UploadLease, error)
+	PublishProfilePicture(context.Context, *ProfilePicturePublication) (*ProfilePicturePublicationResult, error)
+	GetProfilePictureRendition(context.Context, model.UserID, string) (*model.FileRendition, error)
 }
 
 // InstitutionStore persists the institution represented by this installation.

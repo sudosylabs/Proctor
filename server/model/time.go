@@ -53,6 +53,9 @@ type OptionalTime struct {
 	Valid bool
 }
 
+// IsSet reports whether the optional instant is present.
+func (o OptionalTime) IsSet() bool { return o.Valid }
+
 // OptionalTimeFrom wraps a concrete time as present. Zero times are still
 // treated as present when callers need to distinguish from omission; prefer
 // OptionalTime{} for absence.

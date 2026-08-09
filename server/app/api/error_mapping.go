@@ -110,6 +110,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"user.invalid":                                         {status: http.StatusBadRequest},
 	"user.conflict":                                        {status: http.StatusConflict},
 	"user.last_system_admin":                               {status: http.StatusConflict},
+	"profile_picture.invalid":                              {status: http.StatusBadRequest},
+	"profile_picture.unavailable":                          {status: http.StatusInternalServerError},
 	"websocket.internal":                                   {status: http.StatusInternalServerError},
 	"websocket.unavailable":                                {status: http.StatusServiceUnavailable},
 	"websocket.request.invalid":                            {status: http.StatusBadRequest},

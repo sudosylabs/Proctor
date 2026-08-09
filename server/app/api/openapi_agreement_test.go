@@ -33,8 +33,14 @@ type openAPIOperation struct {
 	Auth        AuthRequirement             `json:"x-proctor-auth"`
 	ErrorCodes  []string                    `json:"x-proctor-error-codes"`
 	Security    []map[string][]string       `json:"security"`
-	RequestBody openAPIReference            `json:"requestBody"`
+	Parameters  []openAPIParameter          `json:"parameters"`
+	RequestBody openAPIRequestBody          `json:"requestBody"`
 	Responses   map[string]openAPIReference `json:"responses"`
+}
+
+type openAPIParameter struct {
+	Name string `json:"name"`
+	In   string `json:"in"`
 }
 
 type openAPIReference struct {
@@ -62,13 +68,14 @@ type openAPISchemaShape struct {
 type openAPIResponse struct {
 	Headers map[string]openAPIReference `json:"headers"`
 	Content map[string]struct {
-		Schema openAPIReference `json:"schema"`
+		Schema openAPISchemaShape `json:"schema"`
 	} `json:"content"`
 }
 
 type openAPIRequestBody struct {
+	Ref     string `json:"$ref"`
 	Content map[string]struct {
-		Schema openAPIReference `json:"schema"`
+		Schema openAPISchemaShape `json:"schema"`
 	} `json:"content"`
 }
 

@@ -8,6 +8,8 @@
 package model
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -22,6 +24,7 @@ const (
 	UserPersonalNameMaxRunes = 64
 	UserLocaleMaxLength      = 35
 	UserTimezoneMaxLength    = 64
+	ProfilePictureSeedLength = 64
 
 	DefaultLocale   = "en"
 	DefaultTimezone = "UTC"
@@ -50,22 +53,26 @@ var restrictedUsernames = map[string]struct{}{
 // Soft archive uses ArchivedAt. Revision supports optimistic
 // concurrency on profile updates.
 type User struct {
-	ID             UserID
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ArchivedAt     OptionalTime
-	Revision       int64
-	Username       string
-	Email          string
-	EmailVerified  bool
-	DisplayName    string
-	FirstName      string
-	LastName       string
-	Locale         string
-	Timezone       string
-	LastLoginAt    OptionalTime
-	LastActivityAt OptionalTime
-	DisabledAt     OptionalTime
+	ID                          UserID
+	CreatedAt                   time.Time
+	UpdatedAt                   time.Time
+	ArchivedAt                  OptionalTime
+	Revision                    int64
+	Username                    string
+	Email                       string
+	EmailVerified               bool
+	DisplayName                 string
+	FirstName                   string
+	LastName                    string
+	Locale                      string
+	Timezone                    string
+	LastLoginAt                 OptionalTime
+	LastActivityAt              OptionalTime
+	DisabledAt                  OptionalTime
+	DefaultProfilePictureSeed   string
+	DefaultProfilePictureFileID FileEntryID
+	CustomProfilePictureFileID  FileEntryID
+	ProfilePictureChangedAt     OptionalTime
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -91,6 +98,9 @@ func (u *User) PrepareCreate(id UserID, at time.Time) {
 	if u.Timezone == "" {
 		u.Timezone = DefaultTimezone
 	}
+	if u.DefaultProfilePictureSeed == "" {
+		u.DefaultProfilePictureSeed = newProfilePictureSeed()
+	}
 }
 
 // PrepareUpdate applies the application-selected transition time and normalizes
@@ -102,6 +112,9 @@ func (u *User) PrepareUpdate(at time.Time) {
 	}
 	u.UpdatedAt = TimeUTC(at)
 	u.normalize()
+	if u.DefaultProfilePictureSeed == "" {
+		u.DefaultProfilePictureSeed = newProfilePictureSeed()
+	}
 }
 
 // UserPatch carries optional profile field updates.
@@ -217,7 +230,30 @@ func (u *User) Validate() error {
 	if u.LastActivityAt.Valid && u.LastActivityAt.Time.Before(u.CreatedAt) {
 		return invalidModelError(where, "user", "last_activity_at", "must not precede created_at", details)
 	}
+	if len(u.DefaultProfilePictureSeed) != ProfilePictureSeedLength {
+		return invalidModelError(where, "user", "default_profile_picture_seed", "must be a 256-bit hexadecimal seed", details)
+	}
+	if _, err := hex.DecodeString(u.DefaultProfilePictureSeed); err != nil {
+		return invalidModelError(where, "user", "default_profile_picture_seed", "must be a 256-bit hexadecimal seed", details)
+	}
+	if !u.DefaultProfilePictureFileID.IsZero() && !u.DefaultProfilePictureFileID.IsValid() {
+		return invalidModelError(where, "user", "default_profile_picture_file_id", "must be a valid identifier when set", details)
+	}
+	if !u.CustomProfilePictureFileID.IsZero() && !u.CustomProfilePictureFileID.IsValid() {
+		return invalidModelError(where, "user", "custom_profile_picture_file_id", "must be a valid identifier when set", details)
+	}
+	if u.ProfilePictureChangedAt.Valid && u.ProfilePictureChangedAt.Time.Before(u.CreatedAt) {
+		return invalidModelError(where, "user", "profile_picture_changed_at", "must not precede created_at", details)
+	}
 	return nil
+}
+
+func newProfilePictureSeed() string {
+	value := make([]byte, ProfilePictureSeedLength/2)
+	if _, err := rand.Read(value); err != nil {
+		panic("model: operating system random source failed: " + err.Error())
+	}
+	return hex.EncodeToString(value)
 }
 
 // IsActive reports whether the account is not archived and not disabled.

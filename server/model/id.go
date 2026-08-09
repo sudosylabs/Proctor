@@ -79,6 +79,18 @@ type AuditEventID string
 // ExternalLoginStateID identifies a one-use external login transaction.
 type ExternalLoginStateID string
 
+// FileEntryID identifies the stable logical identity of a managed file.
+type FileEntryID string
+
+// FileRevisionID identifies one immutable version of a managed file.
+type FileRevisionID string
+
+// FileRenditionID identifies one immutable representation of a file revision.
+type FileRenditionID string
+
+// UploadLeaseID identifies a bounded reservation for publishing a file revision.
+type UploadLeaseID string
+
 // idLike is implemented by every entity-specific ID for shared validation.
 type idLike interface {
 	~string
@@ -150,6 +162,18 @@ func NewAuditEventID() AuditEventID { return AuditEventID(NewId()) }
 // NewExternalLoginStateID returns a freshly generated external-login-state identifier.
 func NewExternalLoginStateID() ExternalLoginStateID { return ExternalLoginStateID(NewId()) }
 
+// NewFileEntryID returns a freshly generated file-entry identifier.
+func NewFileEntryID() FileEntryID { return FileEntryID(NewId()) }
+
+// NewFileRevisionID returns a freshly generated file-revision identifier.
+func NewFileRevisionID() FileRevisionID { return FileRevisionID(NewId()) }
+
+// NewFileRenditionID returns a freshly generated file-rendition identifier.
+func NewFileRenditionID() FileRenditionID { return FileRenditionID(NewId()) }
+
+// NewUploadLeaseID returns a freshly generated upload-lease identifier.
+func NewUploadLeaseID() UploadLeaseID { return UploadLeaseID(NewId()) }
+
 // Parse helpers validate the shared wire/database representation.
 
 func ParseInstitutionID(value string) (InstitutionID, error) {
@@ -218,6 +242,18 @@ func ParseAuditEventID(value string) (AuditEventID, error) {
 func ParseExternalLoginStateID(value string) (ExternalLoginStateID, error) {
 	return parseID[ExternalLoginStateID](value, "external_login_state_id")
 }
+func ParseFileEntryID(value string) (FileEntryID, error) {
+	return parseID[FileEntryID](value, "file_entry_id")
+}
+func ParseFileRevisionID(value string) (FileRevisionID, error) {
+	return parseID[FileRevisionID](value, "file_revision_id")
+}
+func ParseFileRenditionID(value string) (FileRenditionID, error) {
+	return parseID[FileRenditionID](value, "file_rendition_id")
+}
+func ParseUploadLeaseID(value string) (UploadLeaseID, error) {
+	return parseID[UploadLeaseID](value, "upload_lease_id")
+}
 
 func parseID[T idLike](value, field string) (T, error) {
 	var zero T
@@ -250,6 +286,10 @@ func (id MFACredentialID) IsZero() bool       { return id == "" }
 func (id MFARecoveryCodeID) IsZero() bool     { return id == "" }
 func (id AuditEventID) IsZero() bool          { return id == "" }
 func (id ExternalLoginStateID) IsZero() bool  { return id == "" }
+func (id FileEntryID) IsZero() bool           { return id == "" }
+func (id FileRevisionID) IsZero() bool        { return id == "" }
+func (id FileRenditionID) IsZero() bool       { return id == "" }
+func (id UploadLeaseID) IsZero() bool         { return id == "" }
 
 // IsValid reports whether the identifier is a canonical non-zero ID.
 func (id InstitutionID) IsValid() bool         { return IsValidId(string(id)) }
@@ -274,6 +314,10 @@ func (id MFACredentialID) IsValid() bool       { return IsValidId(string(id)) }
 func (id MFARecoveryCodeID) IsValid() bool     { return IsValidId(string(id)) }
 func (id AuditEventID) IsValid() bool          { return IsValidId(string(id)) }
 func (id ExternalLoginStateID) IsValid() bool  { return IsValidId(string(id)) }
+func (id FileEntryID) IsValid() bool           { return IsValidId(string(id)) }
+func (id FileRevisionID) IsValid() bool        { return IsValidId(string(id)) }
+func (id FileRenditionID) IsValid() bool       { return IsValidId(string(id)) }
+func (id UploadLeaseID) IsValid() bool         { return IsValidId(string(id)) }
 
 // String returns the wire/database representation.
 func (id InstitutionID) String() string         { return string(id) }
@@ -298,6 +342,10 @@ func (id MFACredentialID) String() string       { return string(id) }
 func (id MFARecoveryCodeID) String() string     { return string(id) }
 func (id AuditEventID) String() string          { return string(id) }
 func (id ExternalLoginStateID) String() string  { return string(id) }
+func (id FileEntryID) String() string           { return string(id) }
+func (id FileRevisionID) String() string        { return string(id) }
+func (id FileRenditionID) String() string       { return string(id) }
+func (id UploadLeaseID) String() string         { return string(id) }
 
 // MarshalText encodes the ID for JSON/text codecs as its canonical string.
 func (id InstitutionID) MarshalText() ([]byte, error)         { return marshalID(id) }
@@ -322,6 +370,10 @@ func (id MFACredentialID) MarshalText() ([]byte, error)       { return marshalID
 func (id MFARecoveryCodeID) MarshalText() ([]byte, error)     { return marshalID(id) }
 func (id AuditEventID) MarshalText() ([]byte, error)          { return marshalID(id) }
 func (id ExternalLoginStateID) MarshalText() ([]byte, error)  { return marshalID(id) }
+func (id FileEntryID) MarshalText() ([]byte, error)           { return marshalID(id) }
+func (id FileRevisionID) MarshalText() ([]byte, error)        { return marshalID(id) }
+func (id FileRenditionID) MarshalText() ([]byte, error)       { return marshalID(id) }
+func (id UploadLeaseID) MarshalText() ([]byte, error)         { return marshalID(id) }
 
 func marshalID[T idLike](id T) ([]byte, error) {
 	value := string(id)
@@ -398,6 +450,18 @@ func (id *AuditEventID) UnmarshalText(data []byte) error {
 func (id *ExternalLoginStateID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExternalLoginStateID)
 }
+func (id *FileEntryID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseFileEntryID)
+}
+func (id *FileRevisionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseFileRevisionID)
+}
+func (id *FileRenditionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseFileRenditionID)
+}
+func (id *UploadLeaseID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseUploadLeaseID)
+}
 
 func unmarshalID[T idLike](target *T, data []byte, parse func(string) (T, error)) error {
 	if target == nil {
@@ -444,6 +508,10 @@ func (id MFACredentialID) MarshalJSON() ([]byte, error)       { return marshalID
 func (id MFARecoveryCodeID) MarshalJSON() ([]byte, error)     { return marshalIDJSON(id) }
 func (id AuditEventID) MarshalJSON() ([]byte, error)          { return marshalIDJSON(id) }
 func (id ExternalLoginStateID) MarshalJSON() ([]byte, error)  { return marshalIDJSON(id) }
+func (id FileEntryID) MarshalJSON() ([]byte, error)           { return marshalIDJSON(id) }
+func (id FileRevisionID) MarshalJSON() ([]byte, error)        { return marshalIDJSON(id) }
+func (id FileRenditionID) MarshalJSON() ([]byte, error)       { return marshalIDJSON(id) }
+func (id UploadLeaseID) MarshalJSON() ([]byte, error)         { return marshalIDJSON(id) }
 
 func marshalIDJSON[T idLike](id T) ([]byte, error) {
 	value := string(id)
@@ -518,6 +586,18 @@ func (id *AuditEventID) UnmarshalJSON(data []byte) error {
 }
 func (id *ExternalLoginStateID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExternalLoginStateID)
+}
+func (id *FileEntryID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseFileEntryID)
+}
+func (id *FileRevisionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseFileRevisionID)
+}
+func (id *FileRenditionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseFileRenditionID)
+}
+func (id *UploadLeaseID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseUploadLeaseID)
 }
 
 func unmarshalIDJSON[T idLike](target *T, data []byte, parse func(string) (T, error)) error {

@@ -8,6 +8,7 @@ package timerlayer
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -16,6 +17,8 @@ import (
 type timedStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	file                    store.FileStore
+	fileOnce                sync.Once
 	institution             store.InstitutionStore
 	institutionOnce         sync.Once
 	academicUnit            store.AcademicUnitStore
@@ -65,6 +68,11 @@ type timedStores struct {
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedFileStore struct {
+	layer *Layer
+	next  store.FileStore
 }
 
 type timedInstitutionStore struct {
@@ -245,6 +253,16 @@ func (l *Layer) User() store.UserStore {
 		}
 	})
 	return l.stores.user
+}
+
+func (l *Layer) File() store.FileStore {
+	l.stores.fileOnce.Do(func() {
+		next := l.next.File()
+		if next != nil {
+			l.stores.file = &timedFileStore{layer: l, next: next}
+		}
+	})
+	return l.stores.file
 }
 
 func (l *Layer) ExternalIdentity() store.ExternalIdentityStore {
@@ -458,6 +476,30 @@ func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) e
 func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
 		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) CreateUpload(arg0 context.Context, arg1 *store.FileUploadCreation) (*store.FileUpload, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateUpload), func() (*store.FileUpload, error) {
+		return s.next.CreateUpload(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.UploadLeaseID, arg2 model.UserID, arg3 int64, arg4 time.Time) (*model.UploadLease, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodRenewUploadLease), func() (*model.UploadLease, error) {
+		return s.next.RenewUploadLease(arg0, arg1, arg2, arg3, arg4)
+	})
+}
+
+func (s *timedFileStore) PublishProfilePicture(arg0 context.Context, arg1 *store.ProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
+		return s.next.PublishProfilePicture(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) GetProfilePictureRendition(arg0 context.Context, arg1 model.UserID, arg2 string) (*model.FileRendition, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodGetProfilePictureRendition), func() (*model.FileRendition, error) {
+		return s.next.GetProfilePictureRendition(arg0, arg1, arg2)
 	})
 }
 
@@ -1394,6 +1436,7 @@ func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.Ins
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*timedClusterDiscoveryStore)(nil)
+	_ store.FileStore                = (*timedFileStore)(nil)
 	_ store.InstitutionStore         = (*timedInstitutionStore)(nil)
 	_ store.AcademicUnitStore        = (*timedAcademicUnitStore)(nil)
 	_ store.ProgrammeStore           = (*timedProgrammeStore)(nil)

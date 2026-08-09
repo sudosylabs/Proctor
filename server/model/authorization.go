@@ -15,13 +15,14 @@ import "sort"
 type Action string
 
 const (
-	ActionInstitutionManage Action = "institution.manage"
-	ActionRoleManage        Action = "role.manage"
-	ActionAuditView         Action = "audit.view"
-	ActionUserView          Action = "user.view"
-	ActionUserManage        Action = "user.manage"
-	ActionSessionView       Action = "session.view"
-	ActionSessionManage     Action = "session.manage"
+	ActionInstitutionManage        Action = "institution.manage"
+	ActionRoleManage               Action = "role.manage"
+	ActionAuditView                Action = "audit.view"
+	ActionUserView                 Action = "user.view"
+	ActionUserManage               Action = "user.manage"
+	ActionUserProfilePictureManage Action = "user.profile_picture.manage"
+	ActionSessionView              Action = "session.view"
+	ActionSessionManage            Action = "session.manage"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -77,6 +78,10 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionUserManage: {
 		Action: ActionUserManage, ResourceType: ResourceUser,
+		InheritInstitutionScope: true,
+	},
+	ActionUserProfilePictureManage: {
+		Action: ActionUserProfilePictureManage, ResourceType: ResourceUser,
 		InheritInstitutionScope: true,
 	},
 	ActionSessionView: {

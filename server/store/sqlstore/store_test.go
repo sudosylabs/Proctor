@@ -60,9 +60,9 @@ func resetTestStore(t *testing.T, sqlStore *SQLStore) {
 	t.Helper()
 	_, err := sqlStore.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			external_login_states, installation_states, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions,
+			external_login_states, installation_states, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, upload_leases, file_renditions,
 			role_bindings, roles, class_members, academic_unit_members,
-			affiliations, password_credentials, external_identities, users,
+			affiliations, password_credentials, external_identities, users, file_revisions, file_entries,
 			classes, academic_periods, programme_levels, programmes,
 			academic_units, institutions CASCADE`)
 	if err != nil {

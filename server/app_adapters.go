@@ -4,11 +4,22 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
+	"image"
+	"io"
+	"net/http"
 	"time"
 
+	"github.com/HugoSmits86/nativewebp"
+	"github.com/disintegration/imaging"
+	_ "golang.org/x/image/webp"
+
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
+	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/mlog"
@@ -31,12 +42,13 @@ func applicationDependencies(
 	cache := platformAuthenticationCache{cache: applicationPlatform.Cache()}
 	log := applicationPlatform.Log()
 	return app.Dependencies{
-		Store:    applicationPlatform.Store(),
-		Cache:    cache,
-		Mailer:   accountMailerAdapter{mailer: applicationPlatform.Mailer()},
-		Registry: externalProviderRegistryAdapter{registry: applicationPlatform},
-		NodeID:   applicationPlatform.Cluster().NodeID(),
-		PublicURL: cfg.Server.PublicURL,
+		Store:       applicationPlatform.Store(),
+		Cache:       cache,
+		Mailer:      accountMailerAdapter{mailer: applicationPlatform.Mailer()},
+		Registry:    externalProviderRegistryAdapter{registry: applicationPlatform},
+		FileContent: fileContentAdapter{filesystem: applicationPlatform.VFS()},
+		NodeID:      applicationPlatform.Cluster().NodeID(),
+		PublicURL:   cfg.Server.PublicURL,
 		Password: app.PasswordPolicy{
 			MinimumLength:    auth.Password.MinimumLength,
 			MaximumLength:    auth.Password.MaximumLength,
@@ -60,8 +72,8 @@ func applicationDependencies(
 			MaximumSourceAttempts: auth.LoginRateLimit.MaximumSourceAttempts,
 		},
 		PersonalAccessToken: app.PersonalAccessTokenPolicy{
-			MinimumLifetime:         auth.PersonalAccessTokens.MinimumLifetime.Duration,
-			MaximumLifetime:         auth.PersonalAccessTokens.MaximumLifetime.Duration,
+			MinimumLifetime:        auth.PersonalAccessTokens.MinimumLifetime.Duration,
+			MaximumLifetime:        auth.PersonalAccessTokens.MaximumLifetime.Duration,
 			LastUsedUpdateInterval: auth.PersonalAccessTokens.LastUsedUpdateInterval.Duration,
 			MaximumPerUser:         auth.PersonalAccessTokens.MaximumPerUser,
 		},
@@ -92,11 +104,84 @@ func applicationDependencies(
 			},
 			NodeID: applicationPlatform.Cluster().NodeID(),
 		},
-		RecentAuthenticationTTL:       auth.RecentAuthenticationTTL.Duration,
-		AuthenticationDiagnostics:     mlogAuthenticationDiagnostics{log: log},
-		RealtimeDiagnostics:           mlogRealtimeDiagnostics{log: log},
-		RecoveryDiagnostics:           mlogRecoveryDiagnostics{log: log},
+		RecentAuthenticationTTL:   auth.RecentAuthenticationTTL.Duration,
+		AuthenticationDiagnostics: mlogAuthenticationDiagnostics{log: log},
+		RealtimeDiagnostics:       mlogRealtimeDiagnostics{log: log},
+		RecoveryDiagnostics:       mlogRecoveryDiagnostics{log: log},
 	}, nil
+}
+
+type fileContentAdapter struct{ filesystem vfspkg.FileSystem }
+
+func (a fileContentAdapter) NormalizeAndStoreProfilePicture(ctx context.Context, revisionID model.FileRevisionID, body io.Reader, size int64, at time.Time) ([]model.FileRendition, error) {
+	const maximumPixels = 25_000_000
+	const maximumBytes int64 = 5 << 20
+	raw, err := io.ReadAll(io.LimitReader(body, maximumBytes+1))
+	if err != nil || int64(len(raw)) > maximumBytes || (size >= 0 && int64(len(raw)) != size) {
+		return nil, app.ErrInvalidProfilePicture
+	}
+	mediaType := http.DetectContentType(raw)
+	if mediaType != "image/png" && mediaType != "image/jpeg" && mediaType != "image/webp" {
+		return nil, app.ErrInvalidProfilePicture
+	}
+	configuration, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || configuration.Width <= 0 || configuration.Height <= 0 || configuration.Width > 4096 || configuration.Height > 4096 {
+		return nil, app.ErrInvalidProfilePicture
+	}
+	imageValue, err := imaging.Decode(bytes.NewReader(raw), imaging.AutoOrientation(true))
+	if err != nil || imageValue.Bounds().Dx() <= 0 || imageValue.Bounds().Dy() <= 0 || imageValue.Bounds().Dx() > maximumPixels/imageValue.Bounds().Dy() {
+		return nil, app.ErrInvalidProfilePicture
+	}
+	squareSize := min(imageValue.Bounds().Dx(), imageValue.Bounds().Dy())
+	square := imaging.CropCenter(imageValue, squareSize, squareSize)
+	renditions := make([]model.FileRendition, 0, 3)
+	for _, target := range []int{128, 256, 512} {
+		dimension := min(target, squareSize)
+		normalized := square
+		if dimension < squareSize {
+			normalized = imaging.Resize(square, dimension, dimension, imaging.Lanczos)
+		}
+		var encoded bytes.Buffer
+		if err = nativewebp.Encode(&encoded, normalized, &nativewebp.Options{CompressionLevel: nativewebp.DefaultCompression}); err != nil {
+			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
+			return nil, err
+		}
+		checksum := fmt.Sprintf("%x", sha256.Sum256(encoded.Bytes()))
+		rendition, modelErr := model.NewFileRendition(model.NewFileRenditionID(), revisionID, fmt.Sprintf("profile_%d", target), "image/webp", int64(encoded.Len()), dimension, dimension, checksum, at)
+		if modelErr != nil {
+			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
+			return nil, modelErr
+		}
+		path := profilePictureRenditionPath(revisionID, rendition.ID)
+		encodedSize := int64(encoded.Len())
+		if _, err = a.filesystem.Write(ctx, path, bytes.NewReader(encoded.Bytes()), vfspkg.WriteOptions{Size: &encodedSize, NoOverwrite: true}); err != nil {
+			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
+			return nil, err
+		}
+		renditions = append(renditions, *rendition)
+	}
+	return renditions, nil
+}
+
+func (a fileContentAdapter) OpenProfilePictureRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) (io.ReadCloser, error) {
+	file, err := a.filesystem.Open(ctx, profilePictureRenditionPath(revisionID, renditionID), vfspkg.OpenOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return file.Body, nil
+}
+
+func (a fileContentAdapter) RemoveProfilePictureRenditions(ctx context.Context, revisionID model.FileRevisionID, renditions []model.FileRendition) error {
+	var joined error
+	for _, rendition := range renditions {
+		joined = errors.Join(joined, a.filesystem.Remove(ctx, profilePictureRenditionPath(revisionID, rendition.ID), vfspkg.RemoveOptions{}))
+	}
+	return joined
+}
+
+func profilePictureRenditionPath(revisionID model.FileRevisionID, renditionID model.FileRenditionID) string {
+	id := renditionID.String()
+	return fmt.Sprintf("files/%s/%s/revisions/%s/renditions/%s.webp", id[:2], id[2:4], revisionID.String(), id)
 }
 
 // platformAuthenticationCache adapts platform.Cache to app.authenticationCache.
@@ -344,7 +429,6 @@ func (l websocketLogger) WarnContext(ctx context.Context, message string, err er
 	}
 	l.log.WarnContext(ctx, message, fields...)
 }
-
 
 // apiLogger adapts mlog to the narrow api.Logger port so the HTTP transport
 // package never imports mlog.

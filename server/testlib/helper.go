@@ -158,18 +158,18 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		tb.Fatalf("create test server: %v", err)
 	}
 	helper := &Helper{
-		Server:      runtime.Server,
-		App:         runtime.Application,
-		Platform:    runtime.Platform,
-		API:         runtime.API,
-		Health:      runtime.Health,
-		ConfigStore: store,
-		Logs:        logs,
+		Server:           runtime.Server,
+		App:              runtime.Application,
+		Platform:         runtime.Platform,
+		API:              runtime.API,
+		Health:           runtime.Health,
+		ConfigStore:      store,
+		Logs:             logs,
 		PersistenceClose: lifecycle,
-		Cache:       cache,
-		Cluster:     runtime.Platform.Cluster(),
-		Mailer:      mailer,
-		VFS:         filesystem,
+		Cache:            cache,
+		Cluster:          runtime.Platform.Cluster(),
+		Mailer:           mailer,
+		VFS:              filesystem,
 	}
 	tb.Cleanup(func() {
 		if err := runtime.Server.Close(); err != nil {
@@ -192,28 +192,29 @@ func NewLifecycleStore() *LifecycleStore {
 	return &LifecycleStore{}
 }
 
-func (s *LifecycleStore) Institution() store.InstitutionStore { return nil }
-func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore { return nil }
-func (s *LifecycleStore) Programme() store.ProgrammeStore { return nil }
-func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
-func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
-func (s *LifecycleStore) Class() store.ClassStore { return nil }
-func (s *LifecycleStore) User() store.UserStore { return nil }
-func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore { return nil }
-func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore { return nil }
-func (s *LifecycleStore) UserToken() store.UserTokenStore { return nil }
+func (s *LifecycleStore) Institution() store.InstitutionStore                 { return nil }
+func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore               { return nil }
+func (s *LifecycleStore) Programme() store.ProgrammeStore                     { return nil }
+func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore           { return nil }
+func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore           { return nil }
+func (s *LifecycleStore) Class() store.ClassStore                             { return nil }
+func (s *LifecycleStore) User() store.UserStore                               { return nil }
+func (s *LifecycleStore) File() store.FileStore                               { return nil }
+func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore       { return nil }
+func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore   { return nil }
+func (s *LifecycleStore) UserToken() store.UserTokenStore                     { return nil }
 func (s *LifecycleStore) PersonalAccessToken() store.PersonalAccessTokenStore { return nil }
-func (s *LifecycleStore) MFA() store.MFAStore { return nil }
-func (s *LifecycleStore) Affiliation() store.AffiliationStore { return nil }
-func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
-func (s *LifecycleStore) ClassMember() store.ClassMemberStore { return nil }
-func (s *LifecycleStore) PasswordCredential() store.PasswordCredentialStore { return nil }
-func (s *LifecycleStore) Session() store.SessionStore { return nil }
-func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore { return nil }
-func (s *LifecycleStore) Role() store.RoleStore { return nil }
-func (s *LifecycleStore) RoleBinding() store.RoleBindingStore { return nil }
-func (s *LifecycleStore) Audit() store.AuditStore { return nil }
-func (s *LifecycleStore) Installation() store.InstallationStore { return nil }
+func (s *LifecycleStore) MFA() store.MFAStore                                 { return nil }
+func (s *LifecycleStore) Affiliation() store.AffiliationStore                 { return nil }
+func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore   { return nil }
+func (s *LifecycleStore) ClassMember() store.ClassMemberStore                 { return nil }
+func (s *LifecycleStore) PasswordCredential() store.PasswordCredentialStore   { return nil }
+func (s *LifecycleStore) Session() store.SessionStore                         { return nil }
+func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore     { return nil }
+func (s *LifecycleStore) Role() store.RoleStore                               { return nil }
+func (s *LifecycleStore) RoleBinding() store.RoleBindingStore                 { return nil }
+func (s *LifecycleStore) Audit() store.AuditStore                             { return nil }
+func (s *LifecycleStore) Installation() store.InstallationStore               { return nil }
 func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	// Composition always requests discovery while constructing the cluster
 	// transport. Local-mode unit tests only need a no-op implementation.

@@ -47,8 +47,8 @@ type LogField struct {
 	Value any
 }
 
-func logString(key, value string) LogField { return LogField{Key: key, Value: value} }
-func logInt(key string, value int) LogField  { return LogField{Key: key, Value: value} }
+func logString(key, value string) LogField  { return LogField{Key: key, Value: value} }
+func logInt(key string, value int) LogField { return LogField{Key: key, Value: value} }
 func logInt64(key string, value int64) LogField {
 	return LogField{Key: key, Value: value}
 }
@@ -240,6 +240,8 @@ type UserProfileApplication interface {
 	SearchUsers(context.Context, application.Invocation, application.SearchUsersQuery) ([]*model.User, error)
 	GetUserProfile(context.Context, application.Invocation, application.GetUserProfileQuery) (*model.User, error)
 	UpdateUserProfile(context.Context, application.Invocation, application.UpdateUserProfileCommand) (*model.User, error)
+	UploadProfilePicture(context.Context, application.Invocation, application.UploadProfilePictureCommand) (*model.User, error)
+	GetProfilePicture(context.Context, application.Invocation, application.GetProfilePictureQuery) (*application.ProfilePictureContent, error)
 }
 
 type AcademicUnitApplication interface {

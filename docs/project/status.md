@@ -30,6 +30,10 @@ the code and component contracts for that detail.
 - Realtime behavior includes authenticated WebSockets, authorized
   subscriptions, bounded local replay, explicit resynchronization, local and
   Memberlist cluster transports, and best-effort cross-node fan-out.
+- The first server-owned file-management slice supports authorized custom
+  profile-picture upload and retrieval, immutable file revisions and
+  renditions, bounded upload leases, PostgreSQL-owned metadata, private
+  ID-derived VFS keys, and normalized 128/256/512 WebP representations.
 
 ## Architecture migration acceptance
 
@@ -59,10 +63,9 @@ uncompleted architecture migration.
 
 ## Planned product work
 
-- Build the server-owned file-management boundary incrementally through
-  generated and custom profile pictures, validated IDE preferences, searchable
-  exam resources, and finally revisioned attempt workspaces with
-  execution-environment sync.
+- Extend the server-owned file-management boundary through generated default
+  profile pictures, validated IDE preferences, searchable exam resources, and
+  finally revisioned attempt workspaces with execution-environment sync.
 - Introduce the durable Job foundation with fenced PostgreSQL claims and
   attempt history as part of the profile-picture slice; its first consumers are
   default generation/reconciliation, expired-upload cleanup, and bounded Job
