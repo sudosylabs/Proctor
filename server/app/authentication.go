@@ -32,7 +32,7 @@ const (
 
 // SessionPolicy is the immutable session-lifetime policy consumed by
 // authentication. Composition translates deployment configuration into this
-// value so authentication does not depend on config.Config (ADR-0017).
+// value so authentication does not depend on config.Config.
 type SessionPolicy struct {
 	AccessTTL              time.Duration
 	RefreshTTL             time.Duration

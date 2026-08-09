@@ -8,6 +8,5 @@
 //
 // It deliberately does not own HTTP route registration, application
 // authorization policy, or durable domain models. Composition mounts the hub
-// on the HTTP API and attaches it as the application realtime sink
-// (ADR-0025).
+// on the HTTP API and attaches it as the application realtime sink.
 package websocket

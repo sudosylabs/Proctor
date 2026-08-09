@@ -12,7 +12,7 @@ import (
 
 // Dependencies are the explicit capabilities package app needs. The module-root
 // composition package builds these from deployment configuration and concrete
-// adapters; App never holds platform.Service (ADR-0004, ticket #41).
+// adapters; App never holds platform.Service.
 type Dependencies struct {
 	Store    store.Store
 	Cache    authenticationCache

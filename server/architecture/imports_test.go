@@ -27,9 +27,8 @@ const (
 	serverModule     = repositoryModule + "/server"
 )
 
-// initialDependencyDebt is the immutable ceiling established by migration
-// ticket 03. The active debt file may remove these entries but may not add or
-// replace them.
+// initialDependencyDebt is the immutable pre-migration ceiling. The active
+// debt file may remove these entries but may not add or replace them.
 const initialDependencyDebt = `app/academic_administration.go	net/http
 app/account_recovery.go	github.com/sudosylabs/proctor/packages/mail
 app/account_recovery.go	github.com/sudosylabs/proctor/server/mlog

@@ -19,7 +19,7 @@ import (
 
 // applicationDependencies projects platform capabilities and deployment
 // configuration into the explicit app.Dependencies bundle so package app never
-// imports platform (ticket #41).
+// imports platform.
 func applicationDependencies(
 	applicationPlatform *platform.Service,
 ) (app.Dependencies, error) {

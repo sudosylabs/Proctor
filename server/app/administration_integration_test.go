@@ -235,7 +235,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	)
 	malformedResponse := httptest.NewRecorder()
 	handler.ServeHTTP(malformedResponse, malformedRequest)
-	// Role routes authorize in the application use case (ADR-0015), not via
+	// Role routes authorize in the application use case, not via
 	// handler permission preflights. Malformed bodies are rejected at the
 	// transport decode boundary before the use case runs.
 	if malformedResponse.Code != http.StatusBadRequest {

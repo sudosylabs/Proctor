@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Time helpers normalize domain and application instants to UTC (ADR-0020).
+// Time helpers normalize domain and application instants to UTC.
 // Millisecond conversions exist only for compatibility at explicit transport
 // boundaries; durable domain and SQL contracts use native temporal types.
 

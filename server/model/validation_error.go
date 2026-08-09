@@ -10,7 +10,7 @@ import (
 
 // ValidationError is a transport-neutral domain validation failure. It carries
 // a stable machine code and an explicitly safe field name, but no HTTP status,
-// localization state, or request correlation (ADR-0005, ADR-0011).
+// localization state, or request correlation.
 type ValidationError struct {
 	Code    string
 	Field   string

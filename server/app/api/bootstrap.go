@@ -46,7 +46,7 @@ type installationStateResponse struct {
 // installationBootstrapResponse is the transport-owned success body for the
 // one-time bootstrap command. Field names match the historical v1 envelope so
 // existing clients and integration tests keep working while domain models no
-// longer serialize directly (ADR-0013).
+// longer serialize directly.
 type installationBootstrapResponse struct {
 	State         *installationStateResponse `json:"state"`
 	Institution   *institutionResponse       `json:"institution"`

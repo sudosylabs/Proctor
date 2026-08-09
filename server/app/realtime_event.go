@@ -17,8 +17,7 @@ import (
 //
 // JSON field names match the existing cluster publication payload so multi-node
 // peers remain wire-compatible while ownership of wire DTOs moves outward.
-// Cluster fan-out is always best-effort (ADR-0026); there is no durable
-// delivery class.
+// Cluster fan-out is always best-effort; there is no durable delivery class.
 type RealtimeEvent struct {
 	ID       string
 	Name     string

@@ -61,7 +61,7 @@ type emailVerificationCompletion struct {
 
 // authenticationResponse is the transport-owned login/refresh success body.
 // Field names match the historical v1 envelope so cookie and bearer clients
-// keep working while domain models no longer serialize directly (ADR-0013).
+// keep working while domain models no longer serialize directly.
 type authenticationResponse struct {
 	User    *userProfileResponse          `json:"user,omitempty"`
 	Session *sessionResponse              `json:"session"`

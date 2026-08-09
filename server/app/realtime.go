@@ -34,7 +34,7 @@ type RealtimeSink interface {
 // RealtimeClusterFanout is the composition-owned inter-node publication port.
 // Application code supplies opaque event names and payloads; the adapter owns
 // cluster wire envelopes and handler registration. Delivery is always
-// best-effort (ADR-0026).
+// best-effort.
 type RealtimeClusterFanout interface {
 	RegisterHandler(event string, handler func(context.Context, []byte) error) error
 	Broadcast(ctx context.Context, event string, data []byte) error

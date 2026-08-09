@@ -49,3 +49,11 @@ yarn-error.log*
 .DS_Store
 *.pem
 .vscode/
+tmp/
+
+# Local planning and decision-working material. Durable outcomes belong in
+# tracked documentation under docs/.
+.scratch/
+.plans/
+docs/adr/
+docs/adrs/

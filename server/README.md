@@ -29,135 +29,24 @@ logging, configuration, and external-authentication capabilities. It owns
 their shared health and lifecycle, but does not select their implementations.
 The root translates deployment configuration into those concrete choices.
 
-Transport construction currently starts bounded WebSocket replay maintenance.
-A successfully constructed node must therefore always be closed, even if it is
-never started. Moving that background lifecycle into explicit transport start
-and stop methods is part of the subsequent migration.
+The facade intentionally exposes construction, start, close, readiness, and
+the narrow operator-command capabilities used by the CLI. The CLI remains a
+thin caller of this API, and `testlib` constructs the same graph through typed
+test overrides.
 
-The facade intentionally exposes only construction, start, close, and
-readiness, plus the narrow operator-command capabilities behind the CLI
-(`ValidateConfig`, `MigrateUp`, `MigrateStatus`, and `CurrentBuildInfo`). The
-CLI is a thin caller of this root API, and the shared `testlib` constructs the
-same root graph through the typed `server.NewForTesting` capability overrides.
-The obsolete `app.NewServer` composition path was removed after the CLI and
-`testlib` moved to the root graph. Platform construction now requires every
-concrete capability to be selected explicitly by the module-root composition
-package. Application services are narrowed away from the platform locator
-capability-by-capability; ticket #41 removes the locator after those seams are
-available.
+Durable architecture and capability inventories are maintained outside this
+module README:
 
-The flat `model` package now establishes the durable model contract:
+- [`docs/architecture/`](../docs/architecture/) defines boundaries and their
+  rationale;
+- [`docs/project/status.md`](../docs/project/status.md) records implemented
+  capability areas and unresolved decisions;
+- [`app/api/CONTRACT.md`](app/api/CONTRACT.md) defines the HTTP contract; and
+- [`cluster/GUARANTEES.md`](cluster/GUARANTEES.md) defines cluster delivery and
+  recovery behavior.
 
-- entity-specific, Mattermost-inspired 26-character IDs;
-- native UTC `time.Time` values, explicit optional times, constructors,
-  named transitions, and shape validation;
-- safe `Auditable` representations;
-- translation-ID-based `AppError` values mapped to HTTP Problem Details;
-- institution, hierarchical academic unit, programme, programme level,
-  academic period, and class models;
-- user profiles separated from external identities and local password
-  credentials;
-- time-bounded affiliations, academic-unit memberships, and class memberships;
-- roles and scoped role bindings;
-- sessions separated from hashed access/refresh credentials, plus scoped
-  expiring personal access tokens;
-- hashed, expiring, single-use password-reset and email-verification tokens;
-- encrypted TOTP MFA credentials and independently hashed, single-use recovery
-  codes;
-- provider-neutral external identities and durable, hashed, browser-bound,
-  one-use external login transactions.
-
-The server also includes:
-
-- transport-neutral Academic Unit get/list/search queries using immutable
-  application invocations, a focused query service, application-owned
-  authorization, and HTTP-owned response DTOs;
-- transport-neutral root/child Academic Unit creation with typed commands,
-  application-owned authorization and validation, atomic success auditing,
-  and post-commit best-effort realtime publication;
-- PostgreSQL connection and schema management with explicit migrations;
-- Mattermost-shaped per-model stores for the complete structural academic
-  hierarchy and the first identity/session slice;
-- platform-owned memory/Redis cache, disabled/SMTP mail, and local/S3 VFS
-  adapters with startup dependency checks and deterministic shutdown;
-- a typed, bounded cluster message contract and server-owned transport port,
-  with a loop-safe `local` backend and a built-in Memberlist multi-node
-  backend using PostgreSQL discovery leases, encrypted gossip, and best-effort
-  peer messaging (no Redis service required for clustering);
-- authenticated WebSocket sessions with exact-origin cookie upgrades,
-  CPU-sharded connection ownership, resource/action-authorized subscriptions,
-  bounded send and replay queues, per-connection sequences, ping/pong
-  liveness, backpressure handling, and local reconnection replay;
-- local-first application event publication with loop-free cluster fan-out,
-  best-effort session revocation, cache invalidation, and permission-change
-  propagation across nodes;
-- bounded Argon2id local-password authentication;
-- revocable server-side sessions with separately hashed opaque access and
-  rotating refresh credentials, replay detection, activity debouncing, and
-  concurrent-session limits;
-- Electron/web cookie delivery using host-only HttpOnly access/refresh
-  cookies, rotating CSRF cookies and header verification, while retaining
-  bearer credentials for the CLI and rejecting mixed credential sources;
-- login throttling through the configured shared cache;
-- an immutable request principal and typed Mattermost-style authentication
-  wrapper on every route, including composable strong and recent
-  authentication requirements;
-- active-session listing and self-service individual or account-wide
-  revocation, with serialized refresh/login races and complete access-cache
-  invalidation;
-- current-state scoped authorization with institution and ancestor
-  academic-unit inheritance, exact class scope, additive roles, and default
-  denial;
-- reusable principal/resource permission helpers and contextual user
-  visibility: institution-wide `user.view` or inherited
-  `class.members.view` over a student's current enrollment;
-- dedicated role and role-binding stores with overlap-safe effective periods;
-- durable PostgreSQL security audits with fail-closed decision recording,
-  bounded prior/result data, request/node correlation, and keyset pagination.
-- Mattermost-style per-domain `Init*` API registration using typed
-  `APIHandler`/`APISessionRequired` wrappers and a route-matrix test, with a
-  single versioned `BaseRoutes.APIRoot`, regex-constrained resource IDs, and
-  centrally populated typed request parameters;
-- atomic one-time installation bootstrap with a protected built-in
-  system-administrator role and durable success audit;
-- audited custom-role and scoped role-binding administration, including
-  immediate permission changes and last-administrator protection;
-- fail-fast permission checks visible in privileged API handlers, connected to
-  authoritative application authorization by a sealed, request-bound,
-  one-use receipt so the same decision is not queried or audited twice. Each
-  privileged handler calls its scoped `PrincipalHasPermissionTo*` method
-  directly rather than hiding the check behind a generic preflight helper;
-- audited structural administration for the institution, academic-unit tree,
-  programmes, levels, periods, and classes;
-- effective-dated affiliations and academic-unit membership, plus serialized
-  student enrollment and transfer with retained history;
-- user search/profile administration, enable/disable, affiliation and
-  membership management, and administrative session revocation;
-- target-bound, hashed, expiring, single-use email-verification and
-  password-reset credentials with shared-cache throttling, generic public
-  reset responses, SMTP delivery, transactional audits, and account-wide
-  session revocation after password reset;
-- finite personal access tokens with explicit known-action scopes, optional
-  academic-unit subtree constraints, hashed storage, one-time credential
-  display, recent-session creation, durable audits, debounced last-used
-  metadata, reversible disable/enable, and immediate self-service revocation.
-- TOTP MFA with AES-256-GCM encrypted secrets, expiring pending setup,
-  transactionally replay-protected codes, hashed one-time recovery codes,
-  local-password login-time enforcement, assurance upgrades, and account-wide
-  downgrade on disable;
-- dedicated `session.view` and `session.manage` authorization for
-  administrator listing, individual revocation, and revoke-all, with visible
-  handler preflights, durable mutation audits, and immediate cache
-  invalidation;
-- an instance-scoped external-provider registry with independent direct CAS 3
-  and generic OIDC adapters, strict CAS back-channel XML validation, OIDC
-  discovery and Authorization Code with S256 PKCE, exact callback binding,
-  institution/home-organization allowlists, explicit MFA-assurance mapping,
-  collision-safe auto-provisioning, ordinary Proctor session creation, and
-  durable provisioning/login audits.
-
-Service accounts, account-linking administration, exams, cross-node WebSocket
-replay handoff, and SAML remain future vertical slices.
+This README focuses on running, configuring, and verifying the server so those
+authorities do not drift through duplicated implementation inventories.
 
 ## Run locally
 
@@ -469,12 +358,11 @@ make -C server check
 make -C server architecture
 ```
 
-Current migration exceptions are exact file/import pairs in
-`server/architecture/dependency_debt.txt`. Remove the corresponding entry in
-the same change that removes a forbidden import, and never expand this reviewed
-baseline. The gate rejects unlisted forbidden imports, stale entries,
-duplicates, and unsorted debt. An immutable initial ceiling in the architecture
-test prevents a new violation from being legalized by adding it to the ledger.
+The dependency-debt ledger at
+`server/architecture/dependency_debt.txt` is currently empty and may never
+grow. The gate rejects forbidden imports, stale entries, duplicates, and
+unsorted debt; its immutable initial ceiling prevents a new violation from
+being legalized by editing the ledger.
 
 The default `test`, `test-race`, and `check` targets are hermetic: they do not
 require PostgreSQL, Redis, SMTP, S3, or another external service. Tests backed

@@ -2,15 +2,16 @@
 
 This document records what Proctor’s cluster transports promise and what they
 deliberately do not. It is normative for tests under `cluster/` and for
-application security recovery expectations. ADR-0026 and `AGENTS.md` remain the
-architecture authorities; this file is the transport-facing summary used by
-recovery tests.
+application security recovery expectations. The
+[runtime architecture](../../docs/architecture/runtime.md#cluster-transport)
+owns the cross-component rationale; this file is the transport-facing contract
+used by recovery tests.
 
 ## Guarantees
 
 1. **Best-effort only.** Messages may be delayed, reordered, duplicated, or
    dropped. Transports never claim durable or at-least-once application
-   processing (ADR-0026).
+   processing.
 2. **Peer-only broadcast.** `Broadcast` must not invoke the sender’s local
    handlers, preventing rebroadcast loops.
 3. **Self-targeted delivery.** `SendToNode` to the current node may invoke local

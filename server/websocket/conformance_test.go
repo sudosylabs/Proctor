@@ -9,7 +9,7 @@ import (
 	"github.com/sudosylabs/proctor/server/websocket"
 )
 
-// Conformance ownership map for ticket #43.
+// Conformance ownership map for WebSocket lifecycle and protocol behavior.
 //
 // Covered in this package (unit):
 //   - construction is inert; Start/Close ownership (lifecycle_test.go)

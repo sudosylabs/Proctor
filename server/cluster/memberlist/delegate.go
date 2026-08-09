@@ -55,7 +55,7 @@ func (d *delegate) NotifyMsg(message []byte) {
 		return
 	}
 	// Best-effort dispatch: handler failures are logged and not retried by the
-	// transport (ADR-0026).
+	// transport.
 	_ = d.transport.dispatchLocal(context.Background(), envelope.Message.Clone())
 }
 

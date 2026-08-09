@@ -1,0 +1,64 @@
+# Dependencies
+
+## Dependency direction
+
+~~~text
+model
+  ↑
+store
+  ↑
+app
+  ↑          ↑
+app/api   websocket
+   ↖        ↗
+      server
+        ↑
+   cmd/proctor
+~~~
+
+Infrastructure adapters sit to the side and point inward at their contracts. The root `server` package imports the components needed to assemble the graph.
+
+| Package | Allowed production dependencies | Forbidden examples |
+| --- | --- | --- |
+| `model` | Standard library and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
+| `store` | `model` | `sqlstore`, HTTP, application services |
+| `app` | `model`, `store`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
+| `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
+| `websocket` | `app`, `model`, WebSocket libraries | SQL and platform service location |
+| concrete adapters | Their inward contracts and implementation libraries | Application policy |
+| `server` | Construction dependencies | Business rules |
+| `cmd/proctor` | Module-root `server` | Independent infrastructure construction |
+
+Tests and `testlib` may cross production boundaries for verification. An architecture test enforces the production allowlist.
+
+## Reusable capability boundaries
+
+The reusable modules own portable infrastructure behavior; the server owns
+product meaning and policy:
+
+- `packages/vfs` owns backend-neutral file operations. The server owns semantic
+  paths, metadata, authorization, retention, and content policy. Local VFS is
+  for development or genuinely shared single-node storage; clustered
+  production uses shared storage.
+- `packages/cache` owns memory/Redis semantics, codecs, TTLs, conditional
+  writes, and counters. The server owns namespaces, cache eligibility,
+  invalidation, and security staleness. Cache is never durable state, an
+  implicit message bus, or an unconstrained lock.
+- `packages/mail` owns transport-neutral messages, MIME composition,
+  validation, SMTP, and sender conformance. The server owns templates,
+  localization, recipients, rate limits, retries, and durable delivery policy.
+  Mail is not sent synchronously inside a durable business transaction.
+
+Identity, authorization, examinations, WebSockets, clustering, MFA, and a
+future coderunner remain server concerns until they have coherent
+Proctor-independent contracts, plausible external consumers, and their own
+compatibility policies.
+
+## Rationale
+
+- Conceptual transport/application/domain/persistence boundaries preserve
+  cohesive packages without imposing a mechanical layer tree.
+- Consumer-owned interfaces make each dependency narrow; the bounded
+  `store.Store` family is grouped deliberately for shared conformance testing.
+- Import tests make inward dependency direction enforceable instead of relying
+  on prose or review memory.

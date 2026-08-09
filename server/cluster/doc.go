@@ -6,8 +6,7 @@
 //
 // Delivery is transient and non-durable. Handlers must be idempotent; security
 // and business correctness recover from PostgreSQL, cache TTLs, and client
-// resynchronization rather than assuming every peer receives every message
-// (ADR-0026).
+// resynchronization rather than assuming every peer receives every message.
 //
 // Concrete transports live in sibling packages such as cluster/local. This
 // package imports only the Go standard library so the contract stays free of

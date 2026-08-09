@@ -9,8 +9,8 @@ import (
 )
 
 // Entity-specific identifier types share the opaque 26-character z-base-32
-// representation (ADR-0021) but are not freely assignable to each other
-// (ADR-0022). Zero values are invalid; transport and persistence adapters
+// representation but are not freely assignable to each other. Zero values are
+// invalid; transport and persistence adapters
 // perform textual conversion at their boundaries.
 
 // InstitutionID identifies the singleton installation institution.

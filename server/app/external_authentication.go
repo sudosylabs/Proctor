@@ -58,7 +58,7 @@ type ExternalIdentityProvider interface {
 
 // externalProviderSource is the protocol-neutral registry surface consumed by
 // application external-login orchestration. Concrete CAS/OIDC adapters remain
-// outside package app (ADR-0010, ticket #35).
+// outside package app.
 type externalProviderSource interface {
 	Descriptors() []model.ExternalAuthenticationProvider
 	Provider(id string) (ExternalIdentityProvider, bool)

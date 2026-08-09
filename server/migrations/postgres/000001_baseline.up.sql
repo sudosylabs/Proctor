@@ -1,7 +1,7 @@
 -- Copyright 2026 SudoSylabs
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- Pre-release schema baseline (ADR-0028). Existing development databases must
+-- Pre-release schema baseline. Existing development databases must
 -- be recreated; there is no upgrade path from earlier bigint-millisecond
 -- migrations. Temporal columns use timestamptz. Soft archive uses nullable
 -- archived_at. Open-ended intervals and optional lifecycle instants use NULL

@@ -15,7 +15,7 @@ import (
 
 // App is the long-lived application facade. Construction receives only the
 // explicit Dependencies bundle; infrastructure getters and platform location
-// are not part of the public surface (ADR-0004).
+// are not part of the public surface.
 type App struct {
 	store store.Store
 
@@ -285,7 +285,7 @@ func (a *App) Can(
 
 // Store returns the root persistence contract. Focused services receive narrow
 // store ports; App-method facades that still share this root should migrate
-// onto explicit ports in later tickets.
+// onto explicit ports when their stable dependency seams are available.
 func (a *App) Store() store.Store {
 	return a.store
 }
