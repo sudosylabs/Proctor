@@ -43,6 +43,7 @@ type App struct {
 	bootstrap              *bootstrapService
 	audit                  *AuditService
 	realtime               *RealtimeService
+	jobs                   *JobRunner
 
 	// Cross-cutting policy and ports still used by App-method facades that
 	// have not yet been extracted into focused services.
@@ -54,6 +55,15 @@ type App struct {
 	personalAccessTokens    PersonalAccessTokenPolicy
 	recentAuthenticationTTL time.Duration
 	recoveryDiagnostics     recoveryDiagnostics
+}
+
+// Jobs returns the root-owned durable Job runtime, or nil for lifecycle-only
+// test graphs that intentionally provide no Job store.
+func (a *App) Jobs() *JobRunner {
+	if a == nil {
+		return nil
+	}
+	return a.jobs
 }
 
 // New constructs the application graph from explicit dependencies. Only the
@@ -202,8 +212,22 @@ func New(deps Dependencies) (*App, error) {
 			now:           time.Now,
 		},
 		mutationAuditAdapter{audit: audit}, profilePictureRealtimeEffects{realtime: realtime}, profilePictureEffectReporter{realtime: realtime},
+		nil,
 		time.Now,
 	)
+	var jobs *JobRunner
+	if deps.Store.Job() != nil {
+		defaultHandler := defaultProfilePictureHandler{generator: profilePictures}
+		jobRegistry, registryErr := NewJobRegistry([]JobDescriptor{defaultProfilePictureDescriptor(defaultHandler)})
+		if registryErr != nil {
+			return nil, registryErr
+		}
+		jobs, err = newJobRunner(deps.Store.Job(), jobRegistry, deps.NodeID, deps.RecoveryDiagnostics, 500*time.Millisecond)
+		if err != nil {
+			return nil, err
+		}
+		profilePictures.defaultJobs = defaultProfilePictureJobProposer{jobs: deps.Store.Job(), wake: jobs.Wake}
+	}
 	accountStates := newAccountStateService(
 		deps.Store.User(),
 		userProfileAuthorization{
@@ -279,6 +303,7 @@ func New(deps Dependencies) (*App, error) {
 		bootstrap:               bootstrap,
 		audit:                   audit,
 		realtime:                realtime,
+		jobs:                    jobs,
 		mailer:                  deps.Mailer,
 		cache:                   deps.Cache,
 		nodeID:                  deps.NodeID,

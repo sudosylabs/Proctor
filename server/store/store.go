@@ -6,6 +6,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -23,6 +24,7 @@ type Store interface {
 	Class() ClassStore
 	User() UserStore
 	File() FileStore
+	Job() JobStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
 	UserToken() UserTokenStore
@@ -45,6 +47,78 @@ type Store interface {
 	GetLocalSchemaVersion() (int, error)
 	ValidateSchema(context.Context) error
 	Close() error
+}
+
+type JobEnqueue struct {
+	Job *model.Job
+}
+
+type JobClaimRequest struct {
+	Types         []model.JobType
+	NodeID        string
+	ClaimToken    model.JobClaimToken
+	LeaseDuration time.Duration
+}
+
+type JobClaim struct {
+	Job     *model.Job
+	Attempt *model.JobAttempt
+}
+
+type JobHeartbeat struct {
+	AttemptID     model.JobAttemptID
+	ClaimToken    model.JobClaimToken
+	LeaseDuration time.Duration
+}
+
+type JobCheckpoint struct {
+	AttemptID         model.JobAttemptID
+	ClaimToken        model.JobClaimToken
+	Progress          *model.JobProgress
+	CheckpointVersion int
+	Checkpoint        json.RawMessage
+}
+
+type JobCompletionKind string
+
+const (
+	JobCompletionSucceeded        JobCompletionKind = "succeeded"
+	JobCompletionRetryableFailure JobCompletionKind = "retryable_failure"
+	JobCompletionPermanentFailure JobCompletionKind = "permanent_failure"
+	JobCompletionCanceled         JobCompletionKind = "canceled"
+)
+
+type JobCompletion struct {
+	AttemptID       model.JobAttemptID
+	ClaimToken      model.JobClaimToken
+	Kind            JobCompletionKind
+	RetryDelay      time.Duration
+	ResultVersion   int
+	Result          json.RawMessage
+	PublicErrorCode string
+}
+
+// JobStore owns durable, at-least-once work claiming and its fencing rules.
+type JobStore interface {
+	// Enqueue atomically deduplicates one active logical occurrence by type and
+	// key. The returned boolean reports whether the supplied Job was inserted.
+	Enqueue(context.Context, *JobEnqueue) (*model.Job, bool, error)
+	// ClaimNext expires lost attempts, requeues their Jobs, then atomically claims
+	// one eligible Job using SKIP LOCKED and creates its next append-only Attempt.
+	// Availability, expiry, and lease timestamps use the primary database clock;
+	// an exhausted expired attempt atomically fails its Job instead of stranding it.
+	ClaimNext(context.Context, *JobClaimRequest) (*JobClaim, error)
+	// Heartbeat extends only the live Attempt owning the exact claim token, with
+	// both fence validation and the new expiry based on the database clock.
+	Heartbeat(context.Context, *JobHeartbeat) (*model.JobAttempt, error)
+	// Checkpoint atomically updates bounded Job progress only for the live token
+	// before its database-clock lease expiry.
+	Checkpoint(context.Context, *JobCheckpoint) (*model.Job, error)
+	// Complete atomically closes the fenced Attempt and transitions its Job to a
+	// terminal state or a future queued retry. An expired token cannot complete.
+	Complete(context.Context, *JobCompletion) (*model.Job, error)
+	Get(context.Context, model.JobID) (*model.Job, error)
+	ListAttempts(context.Context, model.JobID) ([]model.JobAttempt, error)
 }
 
 type FileUploadCreation struct {
@@ -81,6 +155,16 @@ type ProfilePicturePublication struct {
 type ProfilePicturePublicationResult struct {
 	User     *model.User
 	Revision *model.FileRevision
+}
+
+type DefaultProfilePicturePublication struct {
+	UserID               model.UserID
+	ExpectedUserRevision int64
+	EntryID              model.FileEntryID
+	RevisionID           model.FileRevisionID
+	LeaseID              model.UploadLeaseID
+	Renditions           []model.FileRendition
+	AttachedAt           time.Time
 }
 
 type ProfilePictureState struct {
@@ -131,6 +215,11 @@ type FileStore interface {
 	// user's active custom entry under optimistic concurrency, and completes the
 	// pre-existing audit attempt. Any failed precondition rolls back every change.
 	PublishProfilePicture(context.Context, *ProfilePicturePublication) (*ProfilePicturePublicationResult, error)
+	// PublishDefaultProfilePicture atomically consumes the target-user-owned,
+	// unexpired upload lease, publishes the complete rendition set, and attaches
+	// the entry only while that User still has no default and its revision matches.
+	// It advances User revision without changing visible-picture time.
+	PublishDefaultProfilePicture(context.Context, *DefaultProfilePicturePublication) (*ProfilePicturePublicationResult, error)
 	GetProfilePictureState(context.Context, model.UserID) (*ProfilePictureState, error)
 	GetProfilePictureRendition(context.Context, model.UserID, string) (*model.FileRendition, error)
 	// RemoveProfilePictureWithAudit atomically verifies the user's revision, active

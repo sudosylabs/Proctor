@@ -14,6 +14,8 @@ import (
 type localCacheStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	job                     store.JobStore
+	jobOnce                 sync.Once
 	file                    store.FileStore
 	fileOnce                sync.Once
 	institution             store.InstitutionStore
@@ -64,6 +66,11 @@ type localCacheStores struct {
 
 type clusterDiscoveryStore struct {
 	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type jobStore struct {
+	store.JobStore
 	layer *Layer
 }
 
@@ -262,6 +269,16 @@ func (l *Layer) File() store.FileStore {
 	return l.stores.file
 }
 
+func (l *Layer) Job() store.JobStore {
+	l.stores.jobOnce.Do(func() {
+		next := l.Store.Job()
+		if next != nil {
+			l.stores.job = &jobStore{JobStore: next, layer: l}
+		}
+	})
+	return l.stores.job
+}
+
 func (l *Layer) ExternalIdentity() store.ExternalIdentityStore {
 	l.stores.externalIdentityOnce.Do(func() {
 		next := l.Store.ExternalIdentity()
@@ -425,6 +442,7 @@ func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*clusterDiscoveryStore)(nil)
+	_ store.JobStore                 = (*jobStore)(nil)
 	_ store.FileStore                = (*fileStore)(nil)
 	_ store.InstitutionStore         = (*institutionStore)(nil)
 	_ store.AcademicUnitStore        = (*academicUnitStore)(nil)

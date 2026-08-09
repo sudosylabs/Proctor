@@ -12,6 +12,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"testing"
 	"time"
 
@@ -59,6 +60,45 @@ func TestFileContentAdapterNormalizesWithoutUpscalingAndUsesPrivateIDKeys(t *tes
 		path := profilePictureRenditionPath(revisionID, rendition.ID)
 		if bytes.Contains([]byte(path), []byte("student")) || bytes.Contains([]byte(path), []byte("profile_")) {
 			t.Fatalf("path exposes domain/user naming: %q", path)
+		}
+	}
+}
+
+func TestDefaultProfilePictureRenderingIsDeterministicAndMatchesStoredRenditions(t *testing.T) {
+	adapter := fileContentAdapter{filesystem: memoryvfs.New()}
+	seed := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	first, err := adapter.RenderDefaultProfilePicture(context.Background(), seed, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstBytes, err := io.ReadAll(first.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = first.Body.Close()
+	second, err := adapter.RenderDefaultProfilePicture(context.Background(), seed, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBytes, err := io.ReadAll(second.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = second.Body.Close()
+	if !bytes.Equal(firstBytes, secondBytes) || first.SHA256 != second.SHA256 {
+		t.Fatal("same seed did not render the same fallback")
+	}
+	revisionID := model.NewFileRevisionID()
+	renditions, err := adapter.GenerateAndStoreDefaultProfilePicture(context.Background(), revisionID, seed, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rendition := range renditions {
+		if rendition.Name != "profile_256" {
+			continue
+		}
+		if rendition.SHA256 != first.SHA256 || rendition.Width != 256 || rendition.Height != 256 {
+			t.Fatalf("stored rendition does not match fallback: %#v", rendition)
 		}
 	}
 }

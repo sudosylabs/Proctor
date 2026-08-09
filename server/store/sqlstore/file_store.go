@@ -197,33 +197,11 @@ func (s SQLFileStore) PublishProfilePicture(ctx context.Context, input *store.Pr
 		return nil, fmt.Errorf("begin profile picture publication: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var leaseActive bool
-	if err = tx.Get(ctx, &leaseActive, `SELECT expires_at > CURRENT_TIMESTAMP FROM upload_leases WHERE id = ? AND file_revision_id = ? AND created_by_user_id = ? AND consumed_at IS NULL FOR UPDATE`, input.LeaseID.String(), input.RevisionID.String(), input.ActorID.String()); err != nil {
-		return nil, translateError("upload_lease", input.LeaseID.String(), err)
-	}
-	if !leaseActive {
-		return nil, store.NewErrConflict("upload_lease", "expired", nil)
-	}
-	for index := range input.Renditions {
-		r := &input.Renditions[index]
-		if _, err = tx.Exec(ctx, `INSERT INTO file_renditions (id, file_revision_id, created_at, name, media_type, size_bytes, width, height, sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.ID.String(), r.RevisionID.String(), r.CreatedAt, r.Name, r.MediaType, r.Size, r.Width, r.Height, r.SHA256); err != nil {
-			return nil, fmt.Errorf("insert file rendition: %w", translateError("file_rendition", r.ID.String(), err))
-		}
-	}
-	result, err := tx.Exec(ctx, `UPDATE file_revisions SET availability = 'available' WHERE id = ? AND file_entry_id = ? AND availability = 'pending'`, input.RevisionID.String(), input.EntryID.String())
+	revision, err := publishProfilePictureRevision(ctx, tx, input.ActorID, input.EntryID, input.RevisionID, input.LeaseID, input.Renditions, input.ChangedAt)
 	if err != nil {
-		return nil, fmt.Errorf("publish file revision: %w", err)
-	}
-	if err = requireAffected(result, "file_revision", input.RevisionID.String()); err != nil {
 		return nil, err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ?`, input.RevisionID.String(), input.ChangedAt, input.EntryID.String()); err != nil {
-		return nil, fmt.Errorf("publish file entry: %w", err)
-	}
-	if _, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ?`, input.ChangedAt, input.ChangedAt, input.LeaseID.String()); err != nil {
-		return nil, fmt.Errorf("consume upload lease: %w", err)
-	}
-	result, err = tx.Exec(ctx, `UPDATE users SET custom_profile_picture_file_id = ?, profile_picture_changed_at = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND (custom_profile_picture_file_id IS NULL OR custom_profile_picture_file_id = ?) AND revision = ?`, input.EntryID.String(), input.ChangedAt, input.ChangedAt, input.UserID.String(), input.EntryID.String(), input.ExpectedUserRevision)
+	result, err := tx.Exec(ctx, `UPDATE users SET custom_profile_picture_file_id = ?, profile_picture_changed_at = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND (custom_profile_picture_file_id IS NULL OR custom_profile_picture_file_id = ?) AND revision = ?`, input.EntryID.String(), input.ChangedAt, input.ChangedAt, input.UserID.String(), input.EntryID.String(), input.ExpectedUserRevision)
 	if err != nil {
 		return nil, fmt.Errorf("attach profile picture: %w", err)
 	}
@@ -244,8 +222,67 @@ func (s SQLFileStore) PublishProfilePicture(ctx context.Context, input *store.Pr
 	if err = tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit profile picture publication: %w", err)
 	}
-	revision := &model.FileRevision{ID: input.RevisionID, FileEntryID: input.EntryID, CreatedAt: input.Renditions[0].CreatedAt, Availability: model.FileAvailabilityAvailable, IndexingState: model.FileIndexingNotRequired, Renditions: append([]model.FileRendition(nil), input.Renditions...)}
 	return &store.ProfilePicturePublicationResult{User: user, Revision: revision}, nil
+}
+
+func (s SQLFileStore) PublishDefaultProfilePicture(ctx context.Context, input *store.DefaultProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
+	if input == nil || !input.UserID.IsValid() || input.ExpectedUserRevision <= 0 || !input.EntryID.IsValid() || !input.RevisionID.IsValid() || !input.LeaseID.IsValid() || input.AttachedAt.IsZero() || !validProfilePictureRenditions(input.RevisionID, input.Renditions) {
+		return nil, store.NewErrInvalidInput("file", "default_profile_picture_publication", nil)
+	}
+	tx, err := s.GetMaster().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin default profile picture publication: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	revision, err := publishProfilePictureRevision(ctx, tx, input.UserID, input.EntryID, input.RevisionID, input.LeaseID, input.Renditions, input.AttachedAt)
+	if err != nil {
+		return nil, err
+	}
+	result, err := tx.Exec(ctx, `UPDATE users SET default_profile_picture_file_id = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND default_profile_picture_file_id IS NULL AND revision = ?`, input.EntryID.String(), input.AttachedAt, input.UserID.String(), input.ExpectedUserRevision)
+	if err != nil {
+		return nil, fmt.Errorf("attach default profile picture: %w", err)
+	}
+	if err = requireUserRevisionAffected(ctx, tx, result, input.UserID.String()); err != nil {
+		return nil, err
+	}
+	user, err := getUserByID(ctx, tx, input.UserID.String())
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit default profile picture publication: %w", err)
+	}
+	return &store.ProfilePicturePublicationResult{User: user, Revision: revision}, nil
+}
+
+func publishProfilePictureRevision(ctx context.Context, tx *sqlxTxWrapper, actorID model.UserID, entryID model.FileEntryID, revisionID model.FileRevisionID, leaseID model.UploadLeaseID, renditions []model.FileRendition, at time.Time) (*model.FileRevision, error) {
+	var leaseActive bool
+	if err := tx.Get(ctx, &leaseActive, `SELECT expires_at > CURRENT_TIMESTAMP FROM upload_leases WHERE id = ? AND file_revision_id = ? AND created_by_user_id = ? AND consumed_at IS NULL FOR UPDATE`, leaseID.String(), revisionID.String(), actorID.String()); err != nil {
+		return nil, translateError("upload_lease", leaseID.String(), err)
+	}
+	if !leaseActive {
+		return nil, store.NewErrConflict("upload_lease", "expired", nil)
+	}
+	for index := range renditions {
+		r := &renditions[index]
+		if _, err := tx.Exec(ctx, `INSERT INTO file_renditions (id, file_revision_id, created_at, name, media_type, size_bytes, width, height, sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.ID.String(), r.RevisionID.String(), r.CreatedAt, r.Name, r.MediaType, r.Size, r.Width, r.Height, r.SHA256); err != nil {
+			return nil, fmt.Errorf("insert file rendition: %w", translateError("file_rendition", r.ID.String(), err))
+		}
+	}
+	result, err := tx.Exec(ctx, `UPDATE file_revisions SET availability = 'available' WHERE id = ? AND file_entry_id = ? AND availability = 'pending'`, revisionID.String(), entryID.String())
+	if err != nil {
+		return nil, fmt.Errorf("publish file revision: %w", err)
+	}
+	if err = requireAffected(result, "file_revision", revisionID.String()); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ?`, revisionID.String(), at, entryID.String()); err != nil {
+		return nil, fmt.Errorf("publish file entry: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ?`, at, at, leaseID.String()); err != nil {
+		return nil, fmt.Errorf("consume upload lease: %w", err)
+	}
+	return &model.FileRevision{ID: revisionID, FileEntryID: entryID, CreatedAt: renditions[0].CreatedAt, Availability: model.FileAvailabilityAvailable, IndexingState: model.FileIndexingNotRequired, Renditions: append([]model.FileRendition(nil), renditions...)}, nil
 }
 
 func (s SQLFileStore) GetProfilePictureRendition(ctx context.Context, userID model.UserID, name string) (*model.FileRendition, error) {

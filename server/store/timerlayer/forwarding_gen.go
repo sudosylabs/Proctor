@@ -17,6 +17,8 @@ import (
 type timedStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	job                     store.JobStore
+	jobOnce                 sync.Once
 	file                    store.FileStore
 	fileOnce                sync.Once
 	institution             store.InstitutionStore
@@ -68,6 +70,11 @@ type timedStores struct {
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedJobStore struct {
+	layer *Layer
+	next  store.JobStore
 }
 
 type timedFileStore struct {
@@ -263,6 +270,16 @@ func (l *Layer) File() store.FileStore {
 		}
 	})
 	return l.stores.file
+}
+
+func (l *Layer) Job() store.JobStore {
+	l.stores.jobOnce.Do(func() {
+		next := l.next.Job()
+		if next != nil {
+			l.stores.job = &timedJobStore{layer: l, next: next}
+		}
+	})
+	return l.stores.job
 }
 
 func (l *Layer) ExternalIdentity() store.ExternalIdentityStore {
@@ -479,6 +496,48 @@ func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 in
 	})
 }
 
+func (s *timedJobStore) Enqueue(arg0 context.Context, arg1 *store.JobEnqueue) (*model.Job, bool, error) {
+	return timeStoreCall2(s.layer, storeOperation(aggregateJob, methodEnqueue), func() (*model.Job, bool, error) {
+		return s.next.Enqueue(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) ClaimNext(arg0 context.Context, arg1 *store.JobClaimRequest) (*store.JobClaim, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodClaimNext), func() (*store.JobClaim, error) {
+		return s.next.ClaimNext(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Heartbeat(arg0 context.Context, arg1 *store.JobHeartbeat) (*model.JobAttempt, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodHeartbeat), func() (*model.JobAttempt, error) {
+		return s.next.Heartbeat(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Checkpoint(arg0 context.Context, arg1 *store.JobCheckpoint) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodCheckpoint), func() (*model.Job, error) {
+		return s.next.Checkpoint(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Complete(arg0 context.Context, arg1 *store.JobCompletion) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodComplete), func() (*model.Job, error) {
+		return s.next.Complete(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) Get(arg0 context.Context, arg1 model.JobID) (*model.Job, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodGet), func() (*model.Job, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedJobStore) ListAttempts(arg0 context.Context, arg1 model.JobID) ([]model.JobAttempt, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateJob, methodListAttempts), func() ([]model.JobAttempt, error) {
+		return s.next.ListAttempts(arg0, arg1)
+	})
+}
+
 func (s *timedFileStore) CreateUpload(arg0 context.Context, arg1 *store.FileUploadCreation) (*store.FileUpload, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodCreateUpload), func() (*store.FileUpload, error) {
 		return s.next.CreateUpload(arg0, arg1)
@@ -506,6 +565,12 @@ func (s *timedFileStore) RenewUploadLease(arg0 context.Context, arg1 model.Uploa
 func (s *timedFileStore) PublishProfilePicture(arg0 context.Context, arg1 *store.ProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
 		return s.next.PublishProfilePicture(arg0, arg1)
+	})
+}
+
+func (s *timedFileStore) PublishDefaultProfilePicture(arg0 context.Context, arg1 *store.DefaultProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateFile, methodPublishDefaultProfilePicture), func() (*store.ProfilePicturePublicationResult, error) {
+		return s.next.PublishDefaultProfilePicture(arg0, arg1)
 	})
 }
 
@@ -1460,6 +1525,7 @@ func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.Ins
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*timedClusterDiscoveryStore)(nil)
+	_ store.JobStore                 = (*timedJobStore)(nil)
 	_ store.FileStore                = (*timedFileStore)(nil)
 	_ store.InstitutionStore         = (*timedInstitutionStore)(nil)
 	_ store.AcademicUnitStore        = (*timedAcademicUnitStore)(nil)

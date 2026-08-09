@@ -54,6 +54,21 @@ type lifecycleWebSocket struct {
 	events   *[]string
 }
 
+type lifecycleJobs struct {
+	startErr error
+	events   *[]string
+}
+
+func (j *lifecycleJobs) Start(context.Context) error {
+	*j.events = append(*j.events, "jobs-start")
+	return j.startErr
+}
+
+func (j *lifecycleJobs) Close() error {
+	*j.events = append(*j.events, "jobs-close")
+	return nil
+}
+
 func (w *lifecycleWebSocket) Start(context.Context) error {
 	*w.events = append(*w.events, "websocket-start")
 	return w.startErr
@@ -144,6 +159,25 @@ func TestServerStartupFailureCleansUpConstructedRuntime(t *testing.T) {
 	assertLifecycleEvents(t, events, "platform-start", "transport-close", "platform-close")
 }
 
+func TestServerJobStartupFailureClosesWorkersBeforeInfrastructure(t *testing.T) {
+	t.Parallel()
+
+	startErr := errors.New("job registry unavailable")
+	events := []string{}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform:  &lifecyclePlatform{events: &events},
+		jobs:      &lifecycleJobs{startErr: startErr, events: &events},
+		transport: &lifecycleTransport{events: &events},
+		readiness: &lifecycleReadiness{},
+	})
+
+	err := node.Start(context.Background())
+	if !errors.Is(err, startErr) {
+		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+	}
+	assertLifecycleEvents(t, events, "platform-start", "jobs-start", "jobs-close", "transport-close", "platform-close")
+}
+
 func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {
 	t.Parallel()
 
@@ -152,6 +186,7 @@ func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {
 	readiness := &lifecycleReadiness{}
 	node := newLifecycleTestServer(t, runtimeComponents{
 		platform:  &lifecyclePlatform{events: &events},
+		jobs:      &lifecycleJobs{events: &events},
 		transport: &lifecycleTransport{events: &events},
 		websocket: &lifecycleWebSocket{events: &events},
 		readiness: readiness,
@@ -171,7 +206,9 @@ func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {
 		t,
 		events,
 		"platform-start",
+		"jobs-start",
 		"websocket-start",
+		"jobs-close",
 		"websocket-close",
 		"transport-close",
 		"platform-close",
@@ -190,6 +227,7 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	}
 	node := newLifecycleTestServer(t, runtimeComponents{
 		platform:  &lifecyclePlatform{events: &events},
+		jobs:      &lifecycleJobs{events: &events},
 		transport: &lifecycleTransport{events: &events},
 		websocket: &lifecycleWebSocket{events: &events},
 		readiness: readiness,
@@ -228,8 +266,10 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 		t,
 		events,
 		"platform-start",
+		"jobs-start",
 		"websocket-start",
 		"http-shutdown",
+		"jobs-close",
 		"websocket-close",
 		"transport-close",
 		"platform-close",
@@ -241,8 +281,10 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 		t,
 		events,
 		"platform-start",
+		"jobs-start",
 		"websocket-start",
 		"http-shutdown",
+		"jobs-close",
 		"websocket-close",
 		"transport-close",
 		"platform-close",
@@ -264,6 +306,7 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	}
 	node := newLifecycleTestServer(t, runtimeComponents{
 		platform:  &lifecyclePlatform{events: &events},
+		jobs:      &lifecycleJobs{events: &events},
 		transport: &lifecycleTransport{events: &events},
 		websocket: &lifecycleWebSocket{events: &events},
 		readiness: readiness,
@@ -297,8 +340,10 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 		t,
 		events,
 		"platform-start",
+		"jobs-start",
 		"websocket-start",
 		"http-shutdown",
+		"jobs-close",
 		"websocket-close",
 		"transport-close",
 		"platform-close",

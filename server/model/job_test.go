@@ -1,0 +1,90 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package model_test
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+)
+
+func TestJobLifecyclePreservesTypedIntentAndBoundedProgress(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"user_id":"abc"}`), "user:abc", at, at, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != model.JobStatusQueued || job.AttemptCount != 0 || job.CommandVersion != 1 {
+		t.Fatalf("new job = %#v", job)
+	}
+	running, err := job.Start(at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	progressed, err := running.UpdateProgress(&model.JobProgress{Current: 2, Total: 3, Stage: "rendering"}, 1, json.RawMessage(`{"completed":2}`), at.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progressed.Progress.Current != 2 || progressed.AttemptCount != 1 || progressed.CheckpointVersion != 1 || string(progressed.Checkpoint) != `{"completed":2}` {
+		t.Fatalf("progressed job = %#v", progressed)
+	}
+	if _, err = progressed.UpdateProgress(&model.JobProgress{Current: 4, Total: 3, Stage: "rendering"}, 0, nil, at); err == nil {
+		t.Fatal("UpdateProgress() accepted current greater than total")
+	}
+	finished, err := progressed.Succeed(1, json.RawMessage(`{"file_entry_id":"entry"}`), at.Add(3*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finished.Status != model.JobStatusSucceeded || !finished.CompletedAt.Valid || finished.ResultVersion != 1 {
+		t.Fatalf("finished job = %#v", finished)
+	}
+	if _, err = finished.Start(at.Add(4 * time.Second)); err == nil {
+		t.Fatal("Start() restarted a terminal job")
+	}
+}
+
+func TestJobRejectsUnboundedOrUnsupportedIntent(t *testing.T) {
+	t.Parallel()
+	at := time.Now()
+	if _, err := model.NewJob(model.NewJobID(), model.JobType("arbitrary"), 1, json.RawMessage(`{}`), "key", at, at, 1); err == nil {
+		t.Fatal("NewJob() accepted an unknown type")
+	}
+	if _, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 0, json.RawMessage(`{}`), "key", at, at, 1); err == nil {
+		t.Fatal("NewJob() accepted an unversioned command")
+	}
+	if _, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"secret":"`+strings.Repeat("x", model.JobMaximumDocumentBytes)+`"}`), "key", at, at, 1); err == nil {
+		t.Fatal("NewJob() accepted an unbounded command")
+	}
+}
+
+func TestJobAttemptTracksFencedExecutionOutcome(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	token, err := model.NewJobClaimToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := model.NewJobAttempt(model.NewJobAttemptID(), model.NewJobID(), 2, "node-a", token, at, at.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	heartbeat, err := attempt.Heartbeat(at.Add(15*time.Second), at.Add(75*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := heartbeat.Complete(model.JobAttemptStatusFailed, "dependency.unavailable", at.Add(20*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Status != model.JobAttemptStatusFailed || completed.PublicErrorCode != "dependency.unavailable" || !completed.CompletedAt.Valid {
+		t.Fatalf("completed attempt = %#v", completed)
+	}
+	if _, err = completed.Heartbeat(at.Add(30*time.Second), at.Add(90*time.Second)); err == nil {
+		t.Fatal("Heartbeat() revived a terminal attempt")
+	}
+}

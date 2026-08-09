@@ -69,6 +69,14 @@ type runtimeWebSocket interface {
 	Close() error
 }
 
+// runtimeJobs owns finite durable work execution. It starts only after the
+// authoritative store is ready and drains before transports and infrastructure
+// close, so handlers never outlive their VFS or persistence dependencies.
+type runtimeJobs interface {
+	Start(context.Context) error
+	Close() error
+}
+
 type runtimeReadiness interface {
 	Ready() bool
 	SetReady(bool)
@@ -92,6 +100,7 @@ type httpServerSettings struct {
 
 type runtimeComponents struct {
 	platform  runtimePlatform
+	jobs      runtimeJobs
 	transport runtimeTransport
 	websocket runtimeWebSocket
 	readiness runtimeReadiness
@@ -188,6 +197,14 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 			return nil
 		}
 		return fmt.Errorf("start platform: %w", err)
+	}
+	if s.components.jobs != nil {
+		if err := s.components.jobs.Start(runCtx); err != nil {
+			if errors.Is(err, context.Canceled) && errors.Is(runCtx.Err(), context.Canceled) {
+				return nil
+			}
+			return fmt.Errorf("start durable jobs: %w", err)
+		}
 	}
 	if s.components.websocket != nil {
 		if err := s.components.websocket.Start(runCtx); err != nil {
@@ -312,14 +329,18 @@ func (s *Server) shutdownHTTP(timeout time.Duration) error {
 
 func (s *Server) closeRuntime() error {
 	s.closeOnce.Do(func() {
-		// Drain WebSocket connections before shared infrastructure so no
-		// socket remains attached to a node that can no longer receive
-		// revocation or authorization invalidations.
+		// Stop durable handlers before transports and shared infrastructure so
+		// no worker outlives its persistence or VFS dependencies.
+		var jobsErr error
+		if s.components.jobs != nil {
+			jobsErr = s.components.jobs.Close()
+		}
 		var websocketErr error
 		if s.components.websocket != nil {
 			websocketErr = s.components.websocket.Close()
 		}
 		s.closeErr = errors.Join(
+			jobsErr,
 			websocketErr,
 			s.components.transport.Close(),
 			s.components.platform.Close(),

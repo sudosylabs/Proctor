@@ -36,7 +36,13 @@ the code and component contracts for that detail.
   ID-derived VFS keys, normalized 128/256/512 WebP representations,
   revision-preserving replacement, ETag-conditional removal, atomic mutation
   audit, archived custom-file retention eligibility, and bounded post-commit
-  change events.
+  change events. Missing default pictures render deterministically without
+  profile data and are persisted asynchronously as the same complete rendition
+  set without changing the visible-picture timestamp.
+- Durable Jobs have versioned typed contracts, append-preserving Attempt
+  history, database-clock PostgreSQL claims, token-fenced heartbeats and
+  completion, expired-lease recovery, bounded runner lifecycle, and an
+  idempotent default-profile-picture generator as the first handler.
 
 ## Architecture migration acceptance
 
@@ -66,13 +72,12 @@ uncompleted architecture migration.
 
 ## Planned product work
 
-- Extend the server-owned file-management boundary through generated default
-  profile pictures, validated IDE preferences, searchable exam resources, and
-  finally revisioned attempt workspaces with execution-environment sync.
-- Introduce the durable Job foundation with fenced PostgreSQL claims and
-  attempt history as part of the profile-picture slice; its first consumers are
-  default generation/reconciliation, expired-upload cleanup, and bounded Job
-  retention cleanup.
+- Extend the server-owned file-management boundary through validated IDE
+  preferences, searchable exam resources, and finally revisioned attempt
+  workspaces with execution-environment sync.
+- Enqueue default generation atomically from every user-creation path, then add
+  reconciliation, expired-upload cleanup, operator inspection/control, and
+  bounded Job-retention cleanup on the durable Job foundation.
 
 ## Optional engineering follow-ups
 

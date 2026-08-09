@@ -5,6 +5,8 @@
 -- normally be dropped and recreated rather than rolled back.
 
 DROP TABLE IF EXISTS cluster_discovery_nodes;
+DROP TABLE IF EXISTS job_attempts;
+DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS installation_states;
 DROP TABLE IF EXISTS audit_events;
 DROP TABLE IF EXISTS external_login_states;

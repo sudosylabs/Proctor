@@ -28,6 +28,8 @@ var baselineTables = []string{
 	"file_revisions",
 	"installation_states",
 	"institutions",
+	"job_attempts",
+	"jobs",
 	"mfa_credentials",
 	"mfa_recovery_codes",
 	"password_credentials",
@@ -207,7 +209,7 @@ func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrato
 
 	if _, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
-			cluster_discovery_nodes, external_login_states, installation_states,
+			cluster_discovery_nodes, job_attempts, jobs, external_login_states, installation_states,
 			audit_events, mfa_recovery_codes, mfa_credentials, user_tokens,
 			personal_access_tokens, session_credentials, sessions, role_bindings,
 			roles, class_members, academic_unit_members, affiliations,

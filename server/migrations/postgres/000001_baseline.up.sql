@@ -121,6 +121,70 @@ CREATE INDEX classes_academic_period_id_idx
     ON classes (academic_period_id) WHERE archived_at IS NULL;
 
 -- ---------------------------------------------------------------------------
+-- Durable finite background work
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE jobs (
+    id varchar(26) PRIMARY KEY,
+    type varchar(64) NOT NULL,
+    status varchar(24) NOT NULL CHECK (status IN ('queued', 'running', 'cancel_requested', 'succeeded', 'failed', 'canceled')),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    available_at timestamptz NOT NULL,
+    started_at timestamptz,
+    completed_at timestamptz,
+    command_version integer NOT NULL CHECK (command_version > 0),
+    command jsonb NOT NULL,
+    checkpoint_version integer,
+    checkpoint jsonb,
+    result_version integer,
+    result jsonb,
+    public_error_code varchar(128) NOT NULL DEFAULT '',
+    dedupe_key varchar(255) NOT NULL,
+    attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    maximum_attempts integer NOT NULL CHECK (maximum_attempts > 0),
+    progress_current bigint,
+    progress_total bigint,
+    progress_stage varchar(64),
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    UNIQUE (type, dedupe_key),
+    CONSTRAINT jobs_lifecycle_check CHECK (
+        updated_at >= created_at AND attempt_count <= maximum_attempts AND
+        ((status IN ('succeeded', 'failed', 'canceled')) = (completed_at IS NOT NULL)) AND
+        ((checkpoint IS NULL AND checkpoint_version IS NULL) OR (checkpoint IS NOT NULL AND checkpoint_version > 0)) AND
+        ((result IS NULL AND result_version IS NULL) OR (result IS NOT NULL AND result_version > 0)) AND
+        ((progress_current IS NULL AND progress_total IS NULL AND progress_stage IS NULL) OR
+         (progress_current >= 0 AND progress_total > 0 AND progress_current <= progress_total AND progress_stage <> '')) AND
+        octet_length(command::text) <= 65536 AND
+        (checkpoint IS NULL OR octet_length(checkpoint::text) <= 65536) AND
+        (result IS NULL OR octet_length(result::text) <= 65536)
+    )
+);
+
+CREATE INDEX jobs_claim_idx ON jobs (available_at, created_at, id) WHERE status = 'queued';
+
+CREATE TABLE job_attempts (
+    id varchar(26) PRIMARY KEY,
+    job_id varchar(26) NOT NULL REFERENCES jobs(id),
+    number integer NOT NULL CHECK (number > 0),
+    status varchar(24) NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'canceled', 'lease_expired')),
+    node_id varchar(255) NOT NULL,
+    claim_token char(64) NOT NULL UNIQUE,
+    started_at timestamptz NOT NULL,
+    heartbeat_at timestamptz NOT NULL,
+    lease_expires_at timestamptz NOT NULL,
+    completed_at timestamptz,
+    public_error_code varchar(128) NOT NULL DEFAULT '',
+    UNIQUE (job_id, number),
+    CONSTRAINT job_attempts_lifecycle_check CHECK (
+        heartbeat_at >= started_at AND lease_expires_at > heartbeat_at AND
+        ((status = 'running') <> (completed_at IS NOT NULL))
+    )
+);
+
+CREATE INDEX job_attempts_expired_idx ON job_attempts (lease_expires_at, id) WHERE status = 'running';
+
+-- ---------------------------------------------------------------------------
 -- Identity domain
 -- ---------------------------------------------------------------------------
 

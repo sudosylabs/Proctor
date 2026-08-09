@@ -328,6 +328,7 @@ type recoveryAuthorizationStore struct {
 }
 
 func (s *recoveryAuthorizationStore) File() store.FileStore { return nil }
+func (s *recoveryAuthorizationStore) Job() store.JobStore   { return nil }
 
 func (s *recoveryAuthorizationStore) Institution() store.InstitutionStore {
 	return recoveryInstitutionStore{root: s}

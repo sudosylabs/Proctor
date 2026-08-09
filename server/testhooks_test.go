@@ -46,6 +46,7 @@ func (s *hookStore) Class() store.ClassStore                           { return 
 func (s *hookStore) Affiliation() store.AffiliationStore               { return nil }
 func (s *hookStore) User() store.UserStore                             { return nil }
 func (s *hookStore) File() store.FileStore                             { return nil }
+func (s *hookStore) Job() store.JobStore                               { return nil }
 func (s *hookStore) Session() store.SessionStore                       { return nil }
 func (s *hookStore) Role() store.RoleStore                             { return nil }
 func (s *hookStore) RoleBinding() store.RoleBindingStore               { return nil }

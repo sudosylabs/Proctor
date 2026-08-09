@@ -182,9 +182,14 @@ func assembleRuntime(
 			applicationPlatform.Close(),
 		)
 	}
+	var jobRuntime runtimeJobs
+	if runner := application.Jobs(); runner != nil {
+		jobRuntime = runner
+	}
 	return &assembledRuntime{
 		components: runtimeComponents{
 			platform:  applicationPlatform,
+			jobs:      jobRuntime,
 			transport: httpAPI,
 			websocket: webSocketHub,
 			readiness: readiness,

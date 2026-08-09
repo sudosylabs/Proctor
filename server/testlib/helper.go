@@ -200,6 +200,7 @@ func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore           { 
 func (s *LifecycleStore) Class() store.ClassStore                             { return nil }
 func (s *LifecycleStore) User() store.UserStore                               { return nil }
 func (s *LifecycleStore) File() store.FileStore                               { return nil }
+func (s *LifecycleStore) Job() store.JobStore                                 { return nil }
 func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore       { return nil }
 func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore   { return nil }
 func (s *LifecycleStore) UserToken() store.UserTokenStore                     { return nil }

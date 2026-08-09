@@ -29,6 +29,7 @@ type testCache struct{}
 type testMailer struct{}
 
 func (testStore) File() store.FileStore { return nil }
+func (testStore) Job() store.JobStore   { return nil }
 
 type trackedStore struct {
 	testStore

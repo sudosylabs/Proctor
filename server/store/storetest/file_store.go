@@ -21,7 +21,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	revision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, at)
 	requireNoError(t, err)
-	lease, err := model.NewUploadLease(model.NewUploadLeaseID(), revision.ID, user.ID, at, at.Add(10*time.Minute))
+	lease, err := model.NewUploadLease(model.NewUploadLeaseID(), revision.ID, user.ID, at, at.Add(time.Hour))
 	requireNoError(t, err)
 
 	nonPristineEntry := *entry
@@ -135,6 +135,31 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if !removed.CustomProfilePictureFileID.IsZero() || removed.Revision != replaced.User.Revision+1 {
 		t.Fatalf("removal = %#v", removed)
+	}
+	defaultAt := model.NowUTC()
+	defaultEntry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, defaultAt)
+	requireNoError(t, err)
+	defaultRevision, err := model.NewFileRevision(model.NewFileRevisionID(), defaultEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, defaultAt)
+	requireNoError(t, err)
+	defaultLease, err := model.NewUploadLease(model.NewUploadLeaseID(), defaultRevision.ID, user.ID, defaultAt, defaultAt.Add(time.Hour))
+	requireNoError(t, err)
+	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: defaultEntry, Revision: defaultRevision, Lease: defaultLease})
+	requireNoError(t, err)
+	defaultRenditions := make([]model.FileRendition, 0, 3)
+	for _, size := range []int{128, 256, 512} {
+		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), defaultRevision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 11, size, size, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", defaultAt)
+		requireNoError(t, renditionErr)
+		defaultRenditions = append(defaultRenditions, *rendition)
+	}
+	withDefault, err := ss.File().PublishDefaultProfilePicture(ctx, &store.DefaultProfilePicturePublication{UserID: user.ID, ExpectedUserRevision: removed.Revision, EntryID: defaultEntry.ID, RevisionID: defaultRevision.ID, LeaseID: defaultLease.ID, Renditions: defaultRenditions, AttachedAt: defaultAt})
+	requireNoError(t, err)
+	if withDefault.User.DefaultProfilePictureFileID != defaultEntry.ID || withDefault.User.Revision != removed.Revision+1 || !withDefault.User.ProfilePictureChangedAt.Time.Equal(removed.ProfilePictureChangedAt.Time) {
+		t.Fatalf("default publication = %#v", withDefault)
+	}
+	got, err = ss.File().GetProfilePictureRendition(ctx, user.ID, "profile_128")
+	requireNoError(t, err)
+	if got.ID != defaultRenditions[0].ID {
+		t.Fatalf("fallback rendition = %#v", got)
 	}
 	archivedRevision, err := model.NewFileRevision(model.NewFileRevisionID(), entry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, model.NowUTC())
 	requireNoError(t, err)

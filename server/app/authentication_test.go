@@ -82,6 +82,7 @@ type authenticationStoreFake struct {
 }
 
 func (s *authenticationStoreFake) File() store.FileStore { return nil }
+func (s *authenticationStoreFake) Job() store.JobStore   { return nil }
 
 func newAuthenticationStoreFake() *authenticationStoreFake {
 	return &authenticationStoreFake{
