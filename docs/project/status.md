@@ -48,14 +48,25 @@ uncompleted architecture migration.
   provider-driven deprovisioning.
 - Decide whether roles may bind directly to programme and programme-level
   scopes.
-- Define exam ownership and targeting, lifecycle and concurrency rules,
-  proctor assignment, and violation review.
+- Define live sitting amendments, sitting eligibility, proctor assignment,
+  integrity evidence and appeals, accommodations, and exact retention periods.
 - Decide whether cross-node WebSocket reconnection transfers bounded replay
   queues or always performs authoritative HTTP resynchronization.
 - Decide whether generated client SDKs belong in this monorepo and which
   desktop languages are required.
 - Define the coderunner threat model, isolation boundary, resource limits,
   supported languages, artifact model, and deployment topology.
+
+## Planned product work
+
+- Build the server-owned file-management boundary incrementally through
+  generated and custom profile pictures, validated IDE preferences, searchable
+  exam resources, and finally revisioned attempt workspaces with
+  execution-environment sync.
+- Introduce the durable Job foundation with fenced PostgreSQL claims and
+  attempt history as part of the profile-picture slice; its first consumers are
+  default generation/reconciliation, expired-upload cleanup, and bounded Job
+  retention cleanup.
 
 ## Optional engineering follow-ups
 

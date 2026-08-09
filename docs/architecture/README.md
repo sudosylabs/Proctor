@@ -23,6 +23,10 @@ change:
 - [Transport](./transport.md) — HTTP, WebSocket, errors, compatibility, and
   validation
 - [Persistence](./persistence.md) — stores, layers, schema, and migrations
+- [File management](./files.md) — application metadata, VFS content, search,
+  and live workspaces
+- [Durable jobs](./jobs.md) — finite background work, claiming, retries,
+  cancellation, and traceability
 - [Runtime and operations](./runtime.md) — effects, clustering, observability,
   naming, testing, and migration acceptance
 - [Security and privacy](./security.md) — data handling and operational

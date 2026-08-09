@@ -48,6 +48,87 @@ A durable record of a user's organizational membership in an academic unit;
 membership alone grants no permission.
 _Avoid_: Academic role, unit permission
 
+## Examinations
+
+**Exam**:
+A reusable authored assessment containing the material and configuration that
+may be delivered through one or more exam sittings.
+_Avoid_: Exam sitting, exam session
+
+**Exam Revision**:
+An immutable published generation of an exam's authored content and delivery
+configuration.
+_Avoid_: Exam sitting, draft edit
+
+**Exam Sitting**:
+A scheduled delivery of an exam to a defined eligible population.
+_Avoid_: Exam version, exam session
+
+**Sitting Amendment**:
+An auditable correction to student-visible material for a specific sitting
+after its exam revision can no longer be changed.
+_Avoid_: Silent edit, exam revision
+
+**Exam Attempt**:
+One student's private, durable body of work while participating in an exam;
+its acknowledged work survives interruption and submission.
+_Avoid_: Exam session, exam member
+
+**Exam Instructions**:
+The authored problem statement and directions presented to students for an
+exam.
+_Avoid_: Subject
+
+**Exam Resource**:
+A file deliberately made available to students to support understanding or
+completion of an exam.
+_Avoid_: Subject file, attachment when its exam meaning matters
+
+**Attempt Workspace**:
+The isolated collection of working files belonging to one exam attempt.
+_Avoid_: Shared workspace, exam folder
+
+**Integrity Flag**:
+A recorded indication of suspected examination-rule violation; it is evidence
+for review, not a finding of guilt.
+_Avoid_: Cheating verdict, automatic violation
+
+**Submission**:
+A sealed manifest of the exact attempt-workspace revisions presented for
+grading at one submission point.
+_Avoid_: Attempt, copied workspace
+
+**Exam Manager**:
+The exam creator or a teacher explicitly granted equal authority to manage one
+exam; system-administrator override is not membership in this set.
+_Avoid_: Proctor, grader
+
+## File content
+
+**File Entry**:
+A stable, application-visible file identity with one owner and purpose across
+changes to its content.
+_Avoid_: FileInfo, blob
+
+**File Revision**:
+One immutable generation of a file entry's content and bounded descriptive
+metadata.
+_Avoid_: File version when referring to an exam version
+
+**File Rendition**:
+One stored representation of a file revision, such as a normalized image size;
+several renditions do not represent separate content changes.
+_Avoid_: File revision, copy
+
+**Workspace Path**:
+The location at which a file entry appears within one attempt workspace.
+_Avoid_: VFS path, storage key
+
+**Default Profile Picture**:
+The system-generated, permanently retained fallback image belonging to one
+user when no custom profile picture is active.
+_Avoid_: Placeholder URL, shared avatar
+
 ## Identity and access
 
 **User**:

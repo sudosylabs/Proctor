@@ -30,8 +30,52 @@ The durable invariants are:
 - teachers may hold different role bindings in several academic units; and
 - affiliation and membership grant no permission by themselves.
 
-Exam ownership and targeting remain open product decisions. The canonical
-terms and their avoided synonyms live only in [`CONTEXT.md`](../../CONTEXT.md).
+## Examination structure
+
+An `Exam` is reusable authored content and configuration. An `Exam Sitting`
+binds that assessment to a schedule and eligible population; an `Exam Attempt`
+is one student's private participation. Class assignment and start time belong
+to the sitting rather than being mislabeled exam versions.
+
+Copying an exam creates an independent draft. It copies the title,
+description, instructions, student resources, starter workspace, future
+execution-environment specification, and future grading structure. It resets
+ownership and manager access, targeting, schedule, proctors, accommodations,
+student exceptions, attempts, integrity flags, submissions, grades, audit
+history, and lifecycle state. The copying manager becomes the new creator, and
+later changes to the source do not propagate. This explicit copy operation
+avoids a template aggregate until centrally maintained reusable templates are
+a demonstrated requirement.
+
+The exact publication boundary, sitting eligibility rules, integrity policy,
+and grading lifecycle remain open product decisions. Canonical terms and their
+avoided synonyms live only in [`CONTEXT.md`](../../CONTEXT.md).
+
+After a sitting opens, student-visible description, instructions, and resources
+may be corrected only through a sitting amendment. The amendment preserves the
+before and after values, reason, author, and effective time and notifies every
+affected active student. Starter workspaces, execution configuration, grading
+structure, and eligibility cannot be changed through this mechanism. This
+permits urgent corrections without rewriting the exam revision or unrelated
+sittings.
+
+The creator is immutable provenance and the first exam manager. Every exam
+manager initially has equal authority, including copying and granting or
+removing managers. System administrators have exceptional access without
+becoming managers. A copied exam records the copier as its creator and sole
+initial manager.
+
+An attempt remains the lifecycle aggregate when submitted. Each submission is
+an immutable manifest of the exact sealed file revisions, not a duplicate copy
+of the workspace. Reopening preserves prior submissions; a later submission
+becomes the current grading target while earlier submissions remain history.
+
+Integrity detection, access control, review, and academic consequences are
+separate decisions. Approved detector rules may atomically create an integrity
+flag and suspend an attempt. Review records `Dismissed`, `Confirmed`, or
+`Inconclusive`; sanctions and grading consequences require their own
+authorized decisions. Reopening an attempt and resolving its flag remain
+distinct recorded transitions even when one UI action requests both.
 
 ## Model ownership
 

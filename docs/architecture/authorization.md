@@ -41,6 +41,16 @@ cross-user access needs `user.view`/`user.manage` at institution scope or the
 implemented teacher-to-student class relationship. Audit records keep the
 target user and the academic authorization scope distinct.
 
+Profile-picture mutation uses the narrow `user.profile_picture.manage` action.
+Users have intrinsic access to that action on themselves, subject to their
+credential ceiling; `user.manage` authorizes administrative mutation of
+another user's picture. This self-service exception grants no authority over
+other User fields.
+
+Durable Job inspection uses institution-scoped `job.view`; cancellation and
+explicit retry use `job.manage`. These operator actions do not authorize a
+generic create operation or expose unfiltered payloads.
+
 ## Audit
 
 Operational logs and audit records are separate. PostgreSQL audit events are
