@@ -417,6 +417,7 @@ type Application interface {
 	PersonalAccessTokens
 	MFA
 	InstitutionApplication
+	JobOperationsApplication
 	Realtime
 }
 
@@ -583,6 +584,7 @@ func (a *API) registerRoutes() error {
 		a.InitBootstrap,
 		a.InitRoles,
 		a.InitRoleBindings,
+		func() error { return a.InitJobs() },
 		a.registerUserProfileRoutes,
 		a.registerInstitutionRoutes,
 		a.registerAcademicUnitRoutes,

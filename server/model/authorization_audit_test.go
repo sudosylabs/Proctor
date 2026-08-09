@@ -35,6 +35,19 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	}
 }
 
+func TestJobActionsAreInstitutionScopedAndKnown(t *testing.T) {
+	for _, action := range []Action{ActionJobView, ActionJobManage} {
+		definition, ok := DefinitionForAction(action)
+		if !ok || definition.ResourceType != ResourceInstitution ||
+			!definition.InheritInstitutionScope || definition.InheritAcademicUnitScopes {
+			t.Fatalf("job action %q definition = %#v, %v", action, definition, ok)
+		}
+		if !IsKnownAction(string(action)) {
+			t.Fatalf("job action %q is not known", action)
+		}
+	}
+}
+
 func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 	event := &AuditEvent{
 		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionUserView),

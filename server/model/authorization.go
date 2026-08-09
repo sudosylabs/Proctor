@@ -23,6 +23,8 @@ const (
 	ActionUserProfilePictureManage Action = "user.profile_picture.manage"
 	ActionSessionView              Action = "session.view"
 	ActionSessionManage            Action = "session.manage"
+	ActionJobView                  Action = "job.view"
+	ActionJobManage                Action = "job.manage"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -90,6 +92,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionSessionManage: {
 		Action: ActionSessionManage, ResourceType: ResourceUser,
+		InheritInstitutionScope: true,
+	},
+	ActionJobView: {
+		Action: ActionJobView, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true,
+	},
+	ActionJobManage: {
+		Action: ActionJobManage, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true,
 	},
 	ActionAcademicUnitView: {
