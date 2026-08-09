@@ -42,7 +42,13 @@ the code and component contracts for that detail.
 - Durable Jobs have versioned typed contracts, append-preserving Attempt
   history, database-clock PostgreSQL claims, token-fenced heartbeats and
   completion, expired-lease recovery, bounded runner lifecycle, and an
-  idempotent default-profile-picture generator as the first handler.
+  idempotent default-profile-picture generator. Every user-creation transaction
+  now records that generation intent atomically. Daily occurrence-keyed work
+  reconciles missed defaults, purges metadata-selected expired file content,
+  and applies bounded per-type Job-history retention without leader election.
+  Institution operators can inspect safe Job and Attempt projections, request
+  cooperative cancellation, and explicitly retry descriptor-approved failures
+  through audited, cursor-paginated HTTP operations.
 
 ## Architecture migration acceptance
 
@@ -75,9 +81,6 @@ uncompleted architecture migration.
 - Extend the server-owned file-management boundary through validated IDE
   preferences, searchable exam resources, and finally revisioned attempt
   workspaces with execution-environment sync.
-- Enqueue default generation atomically from every user-creation path, then add
-  reconciliation, expired-upload cleanup, operator inspection/control, and
-  bounded Job-retention cleanup on the durable Job foundation.
 
 ## Optional engineering follow-ups
 

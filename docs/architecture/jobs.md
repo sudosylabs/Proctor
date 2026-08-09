@@ -36,6 +36,15 @@ database unique constraint make one logical occurrence win even when every
 node proposes it; scheduling does not require cluster leadership. Priority is
 omitted until real workloads require explicit preemption.
 
+Deduplication policy is persisted with each Job rather than inferred from its
+type. Per-resource repair work uses `active` deduplication, so a new Job may be
+created after the prior one reaches a terminal state. Date-keyed maintenance
+uses `permanent` deduplication, so a terminal outcome cannot cause another node
+or process restart to repeat that day's occurrence. This distinction preserves
+repairability without weakening the scheduler's one-occurrence invariant. A
+small occurrence ledger retains permanent keys after expired execution history
+is removed; it contains no command, checkpoint, result, or error payload.
+
 ## State and retry
 
 Jobs use `Queued`, `Running`, `CancelRequested`, `Succeeded`, `Failed`, and
