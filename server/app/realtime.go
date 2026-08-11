@@ -51,11 +51,11 @@ type RealtimeDiagnostics interface {
 // security invalidation fan-out. It does not import platform, WebSocket wire,
 // or cluster wire contracts.
 type RealtimeService struct {
-	authentication *AuthenticationService
-	diagnostics    RealtimeDiagnostics
-	mu             sync.RWMutex
-	sink           RealtimeSink
-	cluster        RealtimeClusterFanout
+	authenticationInvalidator authenticationInvalidator
+	diagnostics               RealtimeDiagnostics
+	mu                        sync.RWMutex
+	sink                      RealtimeSink
+	cluster                   RealtimeClusterFanout
 }
 
 type realtimePublication struct {
@@ -113,13 +113,19 @@ type authorizationInvalidationMessage struct {
 }
 
 func newRealtimeService(
-	authentication *AuthenticationService,
+	authenticationInvalidator authenticationInvalidator,
 	diagnostics RealtimeDiagnostics,
-) *RealtimeService {
-	return &RealtimeService{
-		authentication: authentication,
-		diagnostics:    diagnostics,
+) (*RealtimeService, error) {
+	if authenticationInvalidator == nil {
+		return nil, errors.New("authentication invalidator is required")
 	}
+	if diagnostics == nil {
+		return nil, errors.New("realtime diagnostics are required")
+	}
+	return &RealtimeService{
+		authenticationInvalidator: authenticationInvalidator,
+		diagnostics:               diagnostics,
+	}, nil
 }
 
 // SetClusterFanout attaches the composition adapter and registers peer
@@ -207,7 +213,7 @@ func (s *RealtimeService) reportTransientFailure(
 	s.diagnostics.ErrorContextWithEvent(ctx, "transient realtime publication failed", event, err)
 }
 
-func (s *RealtimeService) PropagateSessionRevocation(
+func (s *RealtimeService) SessionsRevoked(
 	ctx context.Context,
 	userID string,
 	sessionIDs []string,
@@ -227,7 +233,7 @@ func (s *RealtimeService) PropagateSessionRevocation(
 	s.broadcastSecurityInvalidation(ctx, realtimeClusterEventSessionRevoked, message)
 }
 
-func (s *RealtimeService) PropagateAuthenticationCacheInvalidation(
+func (s *RealtimeService) AuthenticationCacheInvalidated(
 	ctx context.Context,
 	userID string,
 	accessTokenHashes []string,
@@ -328,10 +334,8 @@ func (s *RealtimeService) applySessionRevocation(
 	ctx context.Context,
 	revocation sessionRevocationMessage,
 ) {
-	s.authentication.deleteAuthenticationCache(ctx, revocation.AccessTokenHashes)
-	for _, sessionID := range revocation.SessionIds {
-		s.authentication.deleteActivityCache(ctx, sessionID)
-	}
+	s.authenticationInvalidator.InvalidateAccessCredentials(ctx, revocation.AccessTokenHashes)
+	s.authenticationInvalidator.InvalidateSessionActivity(ctx, revocation.SessionIds)
 	if !revocation.CloseConnections {
 		return
 	}
@@ -349,6 +353,8 @@ func (s *RealtimeService) applySessionRevocation(
 		sink.CloseSession(sessionID, ConnectionCloseSessionRevoked)
 	}
 }
+
+var _ authenticationSecurityEffects = (*RealtimeService)(nil)
 
 func (s *RealtimeService) handlePeerAuthorizationInvalidation(_ context.Context, data []byte) error {
 	var invalidation authorizationInvalidationMessage

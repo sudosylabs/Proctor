@@ -349,17 +349,26 @@ func (authenticationSessionCredentialStore) RotateRefresh(
 }
 
 func newTestAuthenticationService(t *testing.T, persistence *authenticationStoreFake) *AuthenticationService {
+	return newTestAuthenticationServiceWithCache(t, persistence, newAuthenticationCacheFake())
+}
+
+func newTestAuthenticationServiceWithCache(
+	t *testing.T,
+	persistence *authenticationStoreFake,
+	cache authenticationCache,
+) *AuthenticationService {
 	t.Helper()
 	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newAuthenticationService(
+	service, err := newAuthenticationService(
 		persistence,
-		newAuthenticationCacheFake(),
+		cache,
+		discardAuthenticationSecurityEffects{},
 		hasher,
-		nil,
+		mustTestMFAService(t),
 		SessionPolicy{
 			AccessTTL:              time.Hour,
 			RefreshTTL:             24 * time.Hour,
@@ -374,9 +383,22 @@ func newTestAuthenticationService(t *testing.T, persistence *authenticationStore
 			MaximumSourceAttempts: 100,
 		},
 		PersonalAccessTokenPolicy{LastUsedUpdateInterval: time.Hour},
-		nil,
+		&securityEffectsDiagnosticsFake{},
 		time.Now,
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
+}
+
+func mustTestMFAService(t *testing.T) *MFAService {
+	t.Helper()
+	service, err := newMFAService(MFAPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
 }
 
 func TestLoginReturnsTransportNeutralInvalidCredentials(t *testing.T) {

@@ -208,11 +208,11 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 }
 
 type roleBindingRealtimeEffects struct {
-	realtime *RealtimeService
+	effects authorizationInvalidationEffects
 }
 
 func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Context, userID string) {
-	e.realtime.InvalidateAuthorization(ctx, userID)
+	e.effects.InvalidateAuthorization(ctx, userID)
 }
 
 func (s *roleBindingService) failMutation(ctx context.Context, auditID string, err error) error {

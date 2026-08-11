@@ -286,8 +286,7 @@ func (a *App) ActivateMFA(
 	if err != nil {
 		return nil, a.failMFAMutationNeutral(ctx, attempt.ID.String(), err)
 	}
-	a.authentication.deleteAuthenticationCache(ctx, activated.AccessTokenHashes)
-	a.realtime.PropagateSessionRevocation(
+	a.authenticationEffects.SessionsRevoked(
 		ctx,
 		principal.UserID.String(),
 		[]string{principal.SessionID.String()},
@@ -357,8 +356,7 @@ func (a *App) ChallengeMFA(
 	if err != nil {
 		return nil, a.failMFAMutation(ctx, attempt.ID.String(), "ChallengeMFA.upgrade", err)
 	}
-	a.authentication.deleteAuthenticationCache(ctx, hashes)
-	a.realtime.PropagateSessionRevocation(
+	a.authenticationEffects.SessionsRevoked(
 		ctx,
 		principal.UserID.String(),
 		[]string{principal.SessionID.String()},
@@ -460,8 +458,7 @@ func (a *App) DisableMFA(
 	if err != nil {
 		return a.failMFAMutation(ctx, attempt.ID.String(), "DisableMFA.disable", err)
 	}
-	a.authentication.deleteAuthenticationCache(ctx, result.AccessTokenHashes)
-	a.realtime.PropagateSessionRevocation(
+	a.authenticationEffects.SessionsRevoked(
 		ctx,
 		principal.UserID.String(),
 		nil,

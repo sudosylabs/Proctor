@@ -534,7 +534,7 @@ func TestProfilePictureCommitFailureFailsAuditAndPublishesNoEvent(t *testing.T) 
 func TestProfilePictureRealtimeEffectContainsOnlySafeChangeMetadata(t *testing.T) {
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
-	realtime := newRealtimeService(nil, nil)
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	if err := realtime.SetSink(sink); err != nil {
 		t.Fatal(err)
 	}

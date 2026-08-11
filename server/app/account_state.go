@@ -100,11 +100,11 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 }
 
 type accountStateRealtimeEffects struct {
-	realtime *RealtimeService
+	effects authenticationSecurityEffects
 }
 
 func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID string, sessions []*model.Session, hashes []string) {
-	e.realtime.PropagateSessionRevocation(ctx, userID, sessionIds(sessions), hashes)
+	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
 }
 
 func accountStateError(err error) error {

@@ -64,7 +64,7 @@ func TestRealtimePublishIsLocalFirstAndLoopFree(t *testing.T) {
 
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
-	service := newRealtimeService(nil, nil)
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	if err := service.SetClusterFanout(cluster); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestRealtimePublishIsLocalFirstAndLoopFree(t *testing.T) {
 func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
 	t.Parallel()
 
-	service := newRealtimeService(nil, nil)
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	_ = service.SetSink(&recordingRealtimeSink{})
 	err := service.Publish(context.Background(), RealtimeEvent{
 		Name:   "user.notification",
@@ -141,8 +141,7 @@ func TestRealtimeSessionRevocationClosesLocalSessions(t *testing.T) {
 
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
-	auth := &AuthenticationService{cache: noopAuthenticationCache{}}
-	service := newRealtimeService(auth, nil)
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	if err := service.SetClusterFanout(cluster); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +151,7 @@ func TestRealtimeSessionRevocationClosesLocalSessions(t *testing.T) {
 
 	userID := model.NewId()
 	sessionID := model.NewId()
-	service.PropagateSessionRevocation(context.Background(), userID, []string{sessionID}, nil)
+	service.SessionsRevoked(context.Background(), userID, []string{sessionID}, nil)
 	if len(sink.sessionCloses) != 1 || sink.sessionCloses[0].id != sessionID {
 		t.Fatalf("session closes = %#v", sink.sessionCloses)
 	}
@@ -179,6 +178,19 @@ func (noopAuthenticationCache) SetIfAbsent(context.Context, string, []byte, time
 func (noopAuthenticationCache) Delete(context.Context, string) error { return nil }
 func (noopAuthenticationCache) Add(context.Context, string, int64, time.Duration) (int64, error) {
 	return 0, nil
+}
+
+func newTestRealtimeService(t *testing.T, cache authenticationCache) *RealtimeService {
+	t.Helper()
+	invalidator, err := newAuthenticationCacheInvalidator(cache, &securityEffectsDiagnosticsFake{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := newRealtimeService(invalidator, &securityEffectsRealtimeDiagnosticsFake{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
 }
 
 type recordingRealtimeSink struct {

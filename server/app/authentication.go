@@ -97,17 +97,16 @@ type authenticationDiagnostics interface {
 // AuthenticationService owns access-credential resolution, local login, session
 // issuance, refresh, and logout orchestration behind explicit ports.
 type AuthenticationService struct {
-	store                                    store.Store
-	cache                                    authenticationCache
-	hasher                                   *passwordHasher
-	mfa                                      *MFAService
-	sessions                                 SessionPolicy
-	loginRateLimit                           LoginRateLimitPolicy
-	personalAccessTokens                     PersonalAccessTokenPolicy
-	diagnostics                              authenticationDiagnostics
-	now                                      func() time.Time
-	propagateAuthenticationCacheInvalidation func(context.Context, string, []string)
-	propagateSessionRevocation               func(context.Context, string, []string, []string)
+	store                store.Store
+	cache                authenticationCache
+	securityEffects      authenticationSecurityEffects
+	hasher               *passwordHasher
+	mfa                  *MFAService
+	sessions             SessionPolicy
+	loginRateLimit       LoginRateLimitPolicy
+	personalAccessTokens PersonalAccessTokenPolicy
+	diagnostics          authenticationDiagnostics
+	now                  func() time.Time
 }
 
 type cachedAuthentication struct {
@@ -119,6 +118,7 @@ type cachedAuthentication struct {
 func newAuthenticationService(
 	persistence store.Store,
 	cache authenticationCache,
+	securityEffects authenticationSecurityEffects,
 	hasher *passwordHasher,
 	mfa *MFAService,
 	sessions SessionPolicy,
@@ -126,13 +126,32 @@ func newAuthenticationService(
 	personalAccessTokens PersonalAccessTokenPolicy,
 	diagnostics authenticationDiagnostics,
 	now func() time.Time,
-) *AuthenticationService {
+) (*AuthenticationService, error) {
+	if persistence == nil {
+		return nil, errors.New("authentication store is required")
+	}
+	if cache == nil {
+		return nil, errors.New("authentication cache is required")
+	}
+	if securityEffects == nil {
+		return nil, errors.New("authentication security effects are required")
+	}
+	if hasher == nil {
+		return nil, errors.New("password hasher is required")
+	}
+	if mfa == nil {
+		return nil, errors.New("MFA service is required")
+	}
+	if diagnostics == nil {
+		return nil, errors.New("authentication diagnostics are required")
+	}
 	if now == nil {
 		now = time.Now
 	}
 	return &AuthenticationService{
 		store:                persistence,
 		cache:                cache,
+		securityEffects:      securityEffects,
 		hasher:               hasher,
 		mfa:                  mfa,
 		sessions:             sessions,
@@ -140,7 +159,7 @@ func newAuthenticationService(
 		personalAccessTokens: personalAccessTokens,
 		diagnostics:          diagnostics,
 		now:                  now,
-	}
+	}, nil
 }
 
 func (a *App) CreateLocalUser(
@@ -667,16 +686,15 @@ func (s *AuthenticationService) refresh(
 		}
 		return nil, nil, authenticationUnavailable(err)
 	}
-	s.deleteAuthenticationCache(ctx, rotation.RevokedAccessHashes)
-	if rotation.ReplayDetected && s.propagateSessionRevocation != nil {
-		s.propagateSessionRevocation(
+	if rotation.ReplayDetected {
+		s.sessionsRevoked(
 			ctx,
 			rotation.Session.UserID.String(),
 			[]string{rotation.Session.ID.String()},
 			rotation.RevokedAccessHashes,
 		)
-	} else if s.propagateAuthenticationCacheInvalidation != nil {
-		s.propagateAuthenticationCacheInvalidation(
+	} else {
+		s.authenticationCacheInvalidated(
 			ctx,
 			rotation.Session.UserID.String(),
 			rotation.RevokedAccessHashes,
@@ -697,16 +715,12 @@ func (s *AuthenticationService) refresh(
 				"inactive user",
 			)
 			if err == nil {
-				s.deleteAuthenticationCache(ctx, revokedAccessHashes)
-				s.deleteActivityCache(ctx, rotation.Session.ID.String())
-				if s.propagateSessionRevocation != nil {
-					s.propagateSessionRevocation(
-						ctx,
-						rotation.Session.UserID.String(),
-						[]string{rotation.Session.ID.String()},
-						revokedAccessHashes,
-					)
-				}
+				s.sessionsRevoked(
+					ctx,
+					rotation.Session.UserID.String(),
+					[]string{rotation.Session.ID.String()},
+					revokedAccessHashes,
+				)
 			}
 		}
 		return nil, nil, invalidTokenAppError()
@@ -743,9 +757,7 @@ func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand
 		}
 		return authenticationUnavailable(err)
 	}
-	a.authentication.deleteAuthenticationCache(ctx, hashes)
-	a.authentication.deleteActivityCache(ctx, principal.SessionID.String())
-	a.realtime.PropagateSessionRevocation(
+	a.authenticationEffects.SessionsRevoked(
 		ctx,
 		principal.UserID.String(),
 		[]string{principal.SessionID.String()},
@@ -817,18 +829,21 @@ func (s *AuthenticationService) cacheAuthentication(
 	}
 }
 
-func (s *AuthenticationService) deleteAuthenticationCache(ctx context.Context, hashes []string) {
-	for _, hash := range hashes {
-		if err := s.cache.Delete(ctx, authenticationCachePrefix+hash); err != nil {
-			s.warn(ctx, "authentication cache delete failed", err)
-		}
-	}
+func (s *AuthenticationService) authenticationCacheInvalidated(
+	ctx context.Context,
+	userID string,
+	hashes []string,
+) {
+	s.securityEffects.AuthenticationCacheInvalidated(ctx, userID, hashes)
 }
 
-func (s *AuthenticationService) deleteActivityCache(ctx context.Context, sessionID string) {
-	if err := s.cache.Delete(ctx, activityCachePrefix+sessionID); err != nil {
-		s.warn(ctx, "session activity cache delete failed", err)
-	}
+func (s *AuthenticationService) sessionsRevoked(
+	ctx context.Context,
+	userID string,
+	sessionIDs []string,
+	hashes []string,
+) {
+	s.securityEffects.SessionsRevoked(ctx, userID, sessionIDs, hashes)
 }
 
 func (s *AuthenticationService) warn(ctx context.Context, message string, err error) {

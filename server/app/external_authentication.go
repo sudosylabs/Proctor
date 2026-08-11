@@ -77,6 +77,7 @@ type ExternalAuthenticationService struct {
 	store          store.Store
 	cache          authenticationCache
 	authentication *AuthenticationService
+	invalidator    authenticationInvalidator
 	audit          *AuditService
 	policy         ExternalAuthenticationPolicy
 	diagnostics    authenticationDiagnostics
@@ -88,19 +89,41 @@ func newExternalAuthenticationService(
 	persistence store.Store,
 	cache authenticationCache,
 	authentication *AuthenticationService,
+	invalidator authenticationInvalidator,
 	audit *AuditService,
 	policy ExternalAuthenticationPolicy,
 	diagnostics authenticationDiagnostics,
 	now func() time.Time,
-) *ExternalAuthenticationService {
+) (*ExternalAuthenticationService, error) {
+	if registry == nil {
+		return nil, errors.New("external authentication provider registry is required")
+	}
+	if persistence == nil {
+		return nil, errors.New("external authentication store is required")
+	}
+	if cache == nil {
+		return nil, errors.New("external authentication cache is required")
+	}
+	if authentication == nil {
+		return nil, errors.New("authentication service is required")
+	}
+	if invalidator == nil {
+		return nil, errors.New("authentication invalidator is required")
+	}
+	if audit == nil {
+		return nil, errors.New("audit service is required")
+	}
+	if diagnostics == nil {
+		return nil, errors.New("external authentication diagnostics are required")
+	}
 	if now == nil {
 		now = time.Now
 	}
 	return &ExternalAuthenticationService{
 		registry: registry, store: persistence, cache: cache,
-		authentication: authentication, audit: audit, policy: policy,
+		authentication: authentication, invalidator: invalidator, audit: audit, policy: policy,
 		diagnostics: diagnostics, now: now,
-	}
+	}, nil
 }
 
 func (a *App) ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider {
@@ -520,7 +543,7 @@ func (s *ExternalAuthenticationService) revokeUnreportedSession(
 		}
 		return
 	}
-	s.authentication.deleteAuthenticationCache(ctx, hashes)
+	s.invalidator.InvalidateAccessCredentials(ctx, hashes)
 }
 
 func externalUserCandidate(

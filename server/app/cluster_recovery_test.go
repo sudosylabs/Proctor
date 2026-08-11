@@ -27,10 +27,8 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 	storeFake := newAuthenticationStoreFake()
 	cacheA := newAuthenticationCacheFake()
 	cacheB := newAuthenticationCacheFake()
-	serviceA := newTestAuthenticationService(t, storeFake)
-	serviceA.cache = cacheA
-	serviceB := newTestAuthenticationService(t, storeFake)
-	serviceB.cache = cacheB
+	serviceA := newTestAuthenticationServiceWithCache(t, storeFake, cacheA)
+	serviceB := newTestAuthenticationServiceWithCache(t, storeFake, cacheB)
 
 	user, rawAccess := seedAuthenticatedSession(t, serviceA)
 	ctx := context.Background()
@@ -58,7 +56,11 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	serviceA.deleteAuthenticationCache(ctx, hashes)
+	invalidator, err := newAuthenticationCacheInvalidator(cacheA, &securityEffectsDiagnosticsFake{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidator.InvalidateAccessCredentials(ctx, hashes)
 
 	// Stale cache on B may still accept until miss/TTL — that is the bounded
 	// non-guarantee of best-effort invalidation.
@@ -80,10 +82,9 @@ func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	cache := newAuthenticationCacheFake()
-	auth := &AuthenticationService{cache: cache}
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
-	realtime := newRealtimeService(auth, nil)
+	realtime := newTestRealtimeService(t, cache)
 	if err := realtime.SetClusterFanout(cluster); err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +101,8 @@ func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	realtime.PropagateSessionRevocation(ctx, userID, []string{sessionID}, []string{hash})
-	realtime.PropagateSessionRevocation(ctx, userID, []string{sessionID}, []string{hash})
+	realtime.SessionsRevoked(ctx, userID, []string{sessionID}, []string{hash})
+	realtime.SessionsRevoked(ctx, userID, []string{sessionID}, []string{hash})
 
 	if len(sink.sessionCloses) < 2 {
 		t.Fatalf("session closes = %#v, want duplicate local closes", sink.sessionCloses)
@@ -192,8 +193,7 @@ func TestStaleAuthenticationCacheBoundedBySessionExpiry(t *testing.T) {
 	// absolute/idle expiry encoded in the cache value.
 	storeFake := newAuthenticationStoreFake()
 	cache := newAuthenticationCacheFake()
-	service := newTestAuthenticationService(t, storeFake)
-	service.cache = cache
+	service := newTestAuthenticationServiceWithCache(t, storeFake, cache)
 	service.sessions.AccessTTL = time.Hour
 	service.sessions.IdleTTL = time.Hour
 	service.sessions.AbsoluteTTL = time.Hour
@@ -246,7 +246,7 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 	// and must not invent durable security state. Peers only apply locally.
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
-	service := newRealtimeService(nil, nil)
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	if err := service.SetClusterFanout(cluster); err != nil {
 		t.Fatal(err)
 	}

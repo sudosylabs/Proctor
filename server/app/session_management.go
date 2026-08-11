@@ -94,9 +94,7 @@ func (a *App) RevokeSession(
 		}
 		return authenticationUnavailable(err)
 	}
-	a.authentication.deleteAuthenticationCache(ctx, hashes)
-	a.authentication.deleteActivityCache(ctx, session.ID.String())
-	a.realtime.PropagateSessionRevocation(
+	a.authenticationEffects.SessionsRevoked(
 		ctx,
 		principal.UserID.String(),
 		[]string{session.ID.String()},
@@ -123,11 +121,7 @@ func (a *App) RevokeAllSessions(
 	if err != nil {
 		return authenticationUnavailable(err)
 	}
-	a.authentication.deleteAuthenticationCache(ctx, hashes)
-	for _, session := range sessions {
-		a.authentication.deleteActivityCache(ctx, session.ID.String())
-	}
-	a.realtime.PropagateSessionRevocation(
+	a.authenticationEffects.SessionsRevoked(
 		ctx,
 		principal.UserID.String(),
 		sessionIds(sessions),

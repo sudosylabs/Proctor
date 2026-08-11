@@ -253,11 +253,11 @@ func (a roleAuthorization) AuthorizeManage(ctx context.Context, invocation Invoc
 }
 
 type roleRealtimeEffects struct {
-	realtime *RealtimeService
+	effects authorizationInvalidationEffects
 }
 
 func (e roleRealtimeEffects) AuthorizationChanged(ctx context.Context) {
-	e.realtime.InvalidateAuthorization(ctx, "")
+	e.effects.InvalidateAuthorization(ctx, "")
 }
 
 func (s *roleService) failMutation(ctx context.Context, auditID string, err error) error {

@@ -44,6 +44,7 @@ type App struct {
 	bootstrap              *bootstrapService
 	audit                  *AuditService
 	realtime               *RealtimeService
+	authenticationEffects  authenticationSecurityEffects
 	jobs                   *jobengine.Engine
 
 	// Cross-cutting policy and ports still used by App-method facades that
@@ -106,12 +107,27 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	authenticationInvalidator, err := newAuthenticationCacheInvalidator(
+		deps.Cache,
+		deps.AuthenticationDiagnostics,
+	)
+	if err != nil {
+		return nil, err
+	}
+	realtime, err := newRealtimeService(
+		authenticationInvalidator,
+		deps.RealtimeDiagnostics,
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	// Expand PAT policy used both at bearer resolution and administration.
 	patPolicy := deps.PersonalAccessToken
-	authentication := newAuthenticationService(
+	authentication, err := newAuthenticationService(
 		deps.Store,
 		deps.Cache,
+		realtime,
 		hasher,
 		mfa,
 		deps.Sessions,
@@ -120,6 +136,9 @@ func New(deps Dependencies) (*App, error) {
 		deps.AuthenticationDiagnostics,
 		time.Now,
 	)
+	if err != nil {
+		return nil, err
+	}
 	audit := newAuditService(deps.Store, deps.NodeID)
 	externalPolicy := deps.ExternalAuth
 	if externalPolicy.PublicURL == "" {
@@ -131,16 +150,20 @@ func New(deps Dependencies) (*App, error) {
 	if externalPolicy.LoginRateLimit == (LoginRateLimitPolicy{}) {
 		externalPolicy.LoginRateLimit = deps.LoginRateLimit
 	}
-	externalAuthentication := newExternalAuthenticationService(
+	externalAuthentication, err := newExternalAuthenticationService(
 		deps.Registry,
 		deps.Store,
 		deps.Cache,
 		authentication,
+		authenticationInvalidator,
 		audit,
 		externalPolicy,
 		deps.AuthenticationDiagnostics,
 		time.Now,
 	)
+	if err != nil {
+		return nil, err
+	}
 	authorization := newAuthorizationService(deps.Store, audit)
 	academicAuthorization := academicUnitAuthorization{
 		authorization: authorization,
@@ -149,11 +172,6 @@ func New(deps Dependencies) (*App, error) {
 	academicUnits := newAcademicUnitQueryService(
 		deps.Store.AcademicUnit(), academicAuthorization,
 	)
-	realtime := newRealtimeService(authentication, deps.RealtimeDiagnostics)
-	authentication.propagateAuthenticationCacheInvalidation =
-		realtime.PropagateAuthenticationCacheInvalidation
-	authentication.propagateSessionRevocation =
-		realtime.PropagateSessionRevocation
 	academicUnitCommands := newAcademicUnitCommandService(
 		deps.Store.AcademicUnit(), academicAuthorization,
 		mutationAuditAdapter{audit: audit},
@@ -260,21 +278,21 @@ func New(deps Dependencies) (*App, error) {
 			now:           time.Now,
 		},
 		mutationAuditAdapter{audit: audit},
-		accountStateRealtimeEffects{realtime: realtime},
+		accountStateRealtimeEffects{effects: realtime},
 		time.Now,
 	)
 	sessionAdministrations := newSessionAdministrationService(
 		deps.Store.Session(),
 		sessionAdministrationAuthorization{authorization: authorization},
 		mutationAuditAdapter{audit: audit},
-		sessionAdministrationRealtimeEffects{realtime: realtime},
+		sessionAdministrationRealtimeEffects{effects: realtime},
 		time.Now,
 	)
 	roles := newRoleService(
 		deps.Store.Role(),
 		roleAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
 		mutationAuditAdapter{audit: audit},
-		roleRealtimeEffects{realtime: realtime},
+		roleRealtimeEffects{effects: realtime},
 		time.Now,
 	)
 	roleBindings := newRoleBindingService(
@@ -282,7 +300,7 @@ func New(deps Dependencies) (*App, error) {
 		deps.Store.Role(),
 		roleAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
 		mutationAuditAdapter{audit: audit},
-		roleBindingRealtimeEffects{realtime: realtime},
+		roleBindingRealtimeEffects{effects: realtime},
 		time.Now,
 	)
 	auditListings := newAuditListingService(
@@ -326,6 +344,7 @@ func New(deps Dependencies) (*App, error) {
 		bootstrap:               bootstrap,
 		audit:                   audit,
 		realtime:                realtime,
+		authenticationEffects:   realtime,
 		jobs:                    jobs,
 		mailer:                  deps.Mailer,
 		cache:                   deps.Cache,
