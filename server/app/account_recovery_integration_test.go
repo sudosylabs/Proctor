@@ -7,6 +7,7 @@ package app_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"regexp"
@@ -206,6 +207,15 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		audits[0].Resource.ID != user.ID.String() ||
 		audits[0].ScopeID != institution.ID.String() {
 		t.Fatalf("password reset audits = %#v, %v", audits, err)
+	}
+	encodedAudits, err := json.Marshal(audits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, password := range []string{oldPassword, newPassword} {
+		if strings.Contains(string(encodedAudits), password) {
+			t.Fatal("password appeared in password-reset audit")
+		}
 	}
 }
 

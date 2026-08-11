@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,13 +17,81 @@ import (
 	"testing"
 	"time"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
+
+type failingBroadcastCluster struct{}
+
+func (*failingBroadcastCluster) NodeID() string              { return "failing-broadcast-node" }
+func (*failingBroadcastCluster) Start(context.Context) error { return nil }
+func (*failingBroadcastCluster) Stop(context.Context) error  { return nil }
+func (*failingBroadcastCluster) Ping(context.Context) error  { return nil }
+func (*failingBroadcastCluster) RegisterHandler(cluster.Event, cluster.Handler) error {
+	return nil
+}
+func (*failingBroadcastCluster) Broadcast(context.Context, *cluster.Message) error {
+	return errors.New("cluster broadcast unavailable")
+}
+func (*failingBroadcastCluster) SendToNode(context.Context, string, *cluster.Message) error {
+	return nil
+}
+
+func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
+	dataSource := requireAuthenticationDatabase(t)
+	persistence := openAuthenticationStore(t, dataSource)
+	helper := testlib.Setup(
+		t,
+		testlib.WithStore(persistence),
+		testlib.WithCluster(&failingBroadcastCluster{}),
+	)
+	ctx := context.Background()
+	const password = "correct horse battery staple"
+	user, err := helper.App.CreateLocalUser(ctx, &model.User{
+		Username: "fanout-failure-user",
+		Email:    "fanout-failure-user@example.edu",
+	}, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+		LoginID:    user.Username,
+		Password:   password,
+		ClientType: model.SessionClientCLI,
+		Source:     "127.0.0.1:1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := helper.App.Logout(
+		ctx,
+		application.NewInvocation(*principal, model.RequestMetadata{}),
+		application.LogoutCommand{},
+	); err != nil {
+		t.Fatalf("Logout() error = %v, want committed success", err)
+	}
+	if _, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken); !application.Is(err, "authentication.invalid_token") {
+		t.Fatalf("AuthenticateAccess() after logout error = %v, want invalid token", err)
+	}
+	if !strings.Contains(helper.Logs.String(), "security invalidation broadcast failed") {
+		t.Fatal("failed best-effort security fan-out was not diagnosed")
+	}
+	for _, secret := range []string{password, login.Tokens.AccessToken, login.Tokens.RefreshToken} {
+		if strings.Contains(helper.Logs.String(), secret) {
+			t.Fatal("authentication secret appeared in fan-out diagnostics")
+		}
+	}
+}
 
 func TestPersonalAccessTokenIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
@@ -339,6 +408,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if wrong.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong-password status = %d: %s", wrong.Code, wrong.Body.String())
 	}
+	assertProblemCode(t, wrong, "authentication.invalid_credentials")
 
 	login := performJSONRequest(
 		helper.Handler(),
@@ -399,6 +469,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if oldAccess.Code != http.StatusUnauthorized {
 		t.Fatalf("old access status = %d", oldAccess.Code)
 	}
+	assertProblemCode(t, oldAccess, "authentication.invalid_token")
 
 	replay := performJSONRequest(
 		helper.Handler(),
@@ -410,6 +481,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if replay.Code != http.StatusUnauthorized {
 		t.Fatalf("refresh replay status = %d: %s", replay.Code, replay.Body.String())
 	}
+	assertProblemCode(t, replay, "authentication.invalid_token")
 	revokedByReplay := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -420,6 +492,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if revokedByReplay.Code != http.StatusUnauthorized {
 		t.Fatalf("replay-family access status = %d", revokedByReplay.Code)
 	}
+	assertProblemCode(t, revokedByReplay, "authentication.invalid_token")
 
 	loginAgain := performJSONRequest(
 		helper.Handler(),
@@ -455,6 +528,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if afterLogout.Code != http.StatusUnauthorized {
 		t.Fatalf("post-logout access status = %d", afterLogout.Code)
 	}
+	assertProblemCode(t, afterLogout, "authentication.invalid_token")
 
 	loginBeforeDisable := performJSONRequest(
 		helper.Handler(),
@@ -503,6 +577,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if refreshAfterDisable.Code != http.StatusUnauthorized {
 		t.Fatalf("disabled-user refresh status = %d", refreshAfterDisable.Code)
 	}
+	assertProblemCode(t, refreshAfterDisable, "authentication.invalid_token")
 	for attempt := 1; attempt <= 3; attempt++ {
 		rateLimited := performJSONRequest(
 			helper.Handler(),
@@ -528,10 +603,18 @@ func TestAuthenticationIntegration(t *testing.T) {
 				rateLimited.Body.String(),
 			)
 		}
+		wantCode := "authentication.invalid_credentials"
+		if attempt == 3 {
+			wantCode = "authentication.rate_limited"
+		}
+		assertProblemCode(t, rateLimited, wantCode)
 	}
 
 	logs := helper.Logs.String()
-	for _, token := range []string{
+	for _, secret := range []string{
+		password,
+		"wrong password",
+		"irrelevant password",
 		first.Tokens.AccessToken,
 		first.Tokens.RefreshToken,
 		second.Tokens.AccessToken,
@@ -541,8 +624,8 @@ func TestAuthenticationIntegration(t *testing.T) {
 		fourth.Tokens.AccessToken,
 		fourth.Tokens.RefreshToken,
 	} {
-		if strings.Contains(logs, token) {
-			t.Fatal("raw authentication credential appeared in logs")
+		if strings.Contains(logs, secret) {
+			t.Fatal("authentication secret appeared in logs")
 		}
 	}
 }
@@ -807,6 +890,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	if invalidID.Code != http.StatusBadRequest {
 		t.Fatalf("invalid session id status = %d", invalidID.Code)
 	}
+	assertProblemCode(t, invalidID, "session.id.invalid")
 
 	otherUser, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
 		Username:    "other-session-user",
@@ -838,6 +922,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 			crossUserRevoke.Body.String(),
 		)
 	}
+	assertProblemCode(t, crossUserRevoke, "session.not_found")
 	otherStillActive := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,

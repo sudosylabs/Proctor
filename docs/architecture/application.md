@@ -43,3 +43,22 @@ Persistence is the exception: the bounded root `store.Store` and complete per-mo
 Do not prefix interfaces with `I`. Add compile-time assertions where an adapter intentionally implements an important cross-package contract. Every substantive package has a package comment explaining what it owns, excludes, and may depend on.
 
 Migrations are by vertical slice. A package or capability is introduced only when working code has a stable responsibility to inhabit it; bulk moves are prohibited.
+
+`app.App` is the public application facade, not a persistence locator. Focused
+services receive exact Store contracts during composition and App methods
+delegate to them. Migration of the remaining Identity, Access Control, and
+academic-administration facades removes the root Store field and accessor;
+production application code must not regain an `App.Store()` traversal.
+
+Readable ordered construction and selective child modules are useful
+structural patterns, but another project's platform-service taxonomy is not a
+package template. A child package is introduced only after the responsibility
+is stable, can obey inward dependencies without a parent-package cycle, and
+passes the deletion test. Concrete focused implementations remain unexported
+unless a real cross-package consumer requires their type.
+
+Internal interfaces are sized around one cohesive consumer need or an existing
+atomic contract, not mechanically around every method and not as broad getter
+aggregates. Test fakes remain beside their consuming focused service; Store
+conformance and the real composition graph provide shared persistence and
+wiring evidence.

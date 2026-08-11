@@ -1,9 +1,11 @@
 # Identity and authentication
 
-Identity is a Proctor server domain. It owns accounts and affiliations, local
+Identity is a Proctor server domain. It owns accounts and account state, local
 credentials, external identity links, login policy, sessions, refresh
 credentials, personal access tokens, purpose-specific account tokens, MFA, and
-security-related audit events.
+security-related audit events. Academic administration owns affiliation
+lifecycle; identity and access policy may consult those relationships through
+narrow application or persistence contracts.
 
 ## Identity model
 
@@ -22,6 +24,69 @@ security-related audit events.
 - `PersonalAccessToken` is finite, hashed, revocable, explicitly action-scoped,
   and optionally constrained to an academic-unit subtree.
 - `UserToken` is purpose-specific, hashed, expiring, and single-use.
+
+## Application ownership
+
+Identity follows the focused-service and public-surface rules in
+[Application](./application.md#interfaces-and-public-surface). Its application
+policy is organized around authentication and session issuance, external
+authentication, MFA, account recovery and verification, Personal Access
+Tokens, self-service session management, and account-state administration
+rather than one large Identity service.
+
+Each service receives the exact existing per-model or named aggregate store
+contracts it needs. Identity does not introduce a generic repository, retain
+the root `store.Store`, or decompose atomic user creation, credential rotation,
+token consumption, MFA, or revocation operations into application-managed CRUD
+sequences. Clocks, secure generators, hashing, mail, rate limiting, provider
+registries, and diagnostics remain narrow explicit dependencies rather than a
+utility or environment object.
+
+Durable audit remains a cross-cutting application capability exposed through
+narrow consumer-owned ports. Critical success audit stays inside the named
+atomic store operation where required. Cache invalidation, realtime
+publication, and cluster fan-out occur only after durable commit through
+service-specific effect ports. A separately constructed authentication-cache
+invalidation capability is shared with Realtime so neither Authentication nor
+Realtime requires mutable callback wiring or ownership of the other service.
+Application composition constructs that invalidator and Realtime as sibling
+capabilities before projecting only the required effects into each Identity
+service.
+
+Focused services collaborate through consumer-owned behavioral capabilities,
+such as session issuance, MFA verification, Personal Access Token bearer
+resolution, user provisioning, password transition, and session revocation.
+They do not retain sibling implementations or a service aggregate. Observable
+authentication behavior, error precedence, audit ordering, credential
+ceilings, and post-commit effects remain characterization-locked during this
+structural migration; an intentional correction is reviewed separately.
+
+An unexported composition helper may return the fixed set of focused Identity
+services so `app.New` can present their construction order clearly. That value
+exists only during construction: runtime services neither receive nor query it.
+Authentication owns credential validation, principal establishment, ordinary
+session issuance, refresh rotation, and logout. External authentication uses a
+narrow session-issuer capability; Personal Access Token resolution and MFA
+verification remain separately owned capabilities. Account verification and
+password recovery share a focused purpose-specific token service while
+retaining distinct named use cases and atomic terminal transitions. MFA
+cryptographic mechanics remain separate from MFA enrollment, challenge,
+recovery-code, and assurance-transition policy.
+
+Focused service constructors validate all required contracts and remain inert.
+Post-commit cache or Realtime failure does not rewrite a successfully committed
+durable result into a transaction failure; it produces bounded diagnostics and
+relies on authoritative reconstruction or revalidation. Internal errors retain
+only the detail needed for policy and safe diagnostics, while facade errors
+preserve enumeration resistance and exclude credentials, tokens, provider
+assertions, recovery secrets, and unnecessary personal data from logs and
+audit.
+
+Self-service session management and administrative control of another user's
+sessions remain separate authorization policies even when they share session
+transition contracts. Personal Access Token ownership likewise exposes a
+narrow bearer resolver to authentication separately from its administration
+use cases.
 
 ## Installation bootstrap
 

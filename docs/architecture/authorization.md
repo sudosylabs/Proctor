@@ -36,6 +36,47 @@ Authorization results are not cached. Each decision resolves active bindings
 and non-deleted roles from authoritative state. Adding such a cache requires a
 separate bounded-staleness, invalidation, and recovery design.
 
+## Application ownership
+
+Access Control is a cooperating application boundary rather than part of one
+large Identity service. It owns authorization evaluation, non-audited
+predicates, authoritative audited decisions, action/resource compatibility,
+scope inheritance, credential ceilings, and authorization-specific visibility
+interpretation. Role administration and Role Binding administration remain
+focused mutation services grouped beside—but not merged into—the evaluator.
+
+The evaluator receives exact Role, Role Binding, and resource-resolution
+contracts rather than the root `store.Store`. One focused scope resolver owns
+the repeated interpretation from a typed Resource to its authoritative
+institution, academic-unit, class, or relationship context. It may read
+academic relationships but does not own their lifecycle or expose general
+academic lookup operations.
+
+The resolver validates the action/resource combination before resolving
+current authoritative state. Missing, inactive, incompatible, or out-of-scope
+relationships deny access without a cached or inferred fallback. Persistence
+or other resolution failures fail the authorization operation closed. The
+owning use case decides whether its safe public response is forbidden or
+not-found without disclosing unauthorized resource existence.
+
+Durable decision audit, general mutation audit, audit listing, and realtime
+fan-out remain sibling capabilities exposed through narrow ports. Role and
+binding changes commit before best-effort invalidation; authorization
+correctness never depends on those effects or on an authorization-result
+cache.
+
+Transport permission preflight, decision receipts, and request-shaped
+permission helpers are not compatibility surfaces. HTTP and WebSocket provide
+authentication context only; real application use cases call the generic or
+focused Access Control boundary themselves.
+
+The retained entry points are non-audited generic evaluation for policy
+composition, authoritative audited authorization, and focused authorizers for
+specific use cases. List and search use cases derive authorized scope
+constraints before querying; purpose-specific Store operations apply those
+constraints with bounded keyset pagination rather than filtering unauthorized
+rows in application memory.
+
 User visibility is contextual: self-view does not imply self-management;
 cross-user access needs `user.view`/`user.manage` at institution scope or the
 implemented teacher-to-student class relationship. Audit records keep the
