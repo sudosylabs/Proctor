@@ -50,101 +50,70 @@ func roleBindingResponsesFromModels(bindings []*model.RoleBinding) []roleBinding
 	return result
 }
 
-func (a *API) InitRoleBindings() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.RoleBindings,
-		"",
-		http.MethodGet,
-		a.APIPrincipalRequired(http.HandlerFunc(a.listRoleBindings)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.RoleBindings,
-		"",
-		http.MethodPost,
-		a.APIPrincipalRequired(http.HandlerFunc(a.createRoleBinding)),
-	); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(
-		a.BaseRoutes.RoleBinding,
-		"",
-		http.MethodDelete,
-		a.APIPrincipalRequired(http.HandlerFunc(a.endRoleBinding)),
+type roleBindingResourceModule struct {
+	bindings RoleBindingApplication
+}
+
+func roleBindingResource(bindings RoleBindingApplication) resource {
+	module := roleBindingResourceModule{bindings: bindings}
+	return newResource(
+		"role-bindings",
+		principalRoute(http.MethodGet, apiPath(literal("role-bindings")),
+			operatorReadErrorCodes("request.invalid", "administration.unavailable"), module.list),
+		principalRoute(http.MethodPost, apiPath(literal("role-bindings")),
+			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_requires_institution_scope", "administration.unavailable"), module.create),
+		principalRoute(http.MethodDelete, apiPath(literal("role-bindings"), canonicalID("role_binding_id")),
+			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"), module.end),
 	)
 }
 
-func (a *API) listRoleBindings(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
-	values := request.URL.Query()
-	bindings, err := a.roleBindings.ListRoleBindings(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func (module roleBindingResourceModule) list(request operationRequest) (operationResult, error) {
+	values := request.request.URL.Query()
+	bindings, err := module.bindings.ListRoleBindings(
+		request.context,
+		request.invocation(),
 		application.ListRoleBindingsQuery{
 			UserID: values.Get("user_id"), ScopeType: model.RoleScopeType(values.Get("scope_type")),
 			ScopeID: values.Get("scope_id"),
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, roleBindingResponsesFromModels(bindings))
+	return jsonResult(http.StatusOK, roleBindingResponsesFromModels(bindings)), nil
 }
 
-func (a *API) createRoleBinding(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
+func (module roleBindingResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createRoleBindingRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
-		return
+	if err := request.decodeJSON(&input, "createRoleBinding"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.roleBindings.CreateRoleBinding(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	saved, err := module.bindings.CreateRoleBinding(
+		request.context,
+		request.invocation(),
 		application.CreateRoleBindingCommand{
 			UserID: input.UserID, RoleID: input.RoleId, ScopeType: input.ScopeType,
 			ScopeID: input.ScopeId, StartAt: input.StartAt, EndAt: input.EndAt,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusCreated, roleBindingResponseFromModel(saved))
+	return jsonResult(http.StatusCreated, roleBindingResponseFromModel(saved)), nil
 }
 
-func (a *API) endRoleBinding(writer http.ResponseWriter, request *http.Request) {
-	principal, bindingID, ok := principalAndRoleBindingId(writer, request)
-	if !ok {
-		return
+func (module roleBindingResourceModule) end(request operationRequest) (operationResult, error) {
+	bindingID, err := request.params.RequireRoleBindingId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	ended, err := a.roleBindings.EndRoleBinding(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	ended, err := module.bindings.EndRoleBinding(
+		request.context,
+		request.invocation(),
 		application.EndRoleBindingCommand{ID: bindingID},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, roleBindingResponseFromModel(ended))
-}
-
-func principalAndRoleBindingId(
-	writer http.ResponseWriter,
-	request *http.Request,
-) (model.Principal, string, bool) {
-	return principalAndRequiredId(writer, request, func(params Params) (string, error) {
-		return params.RequireRoleBindingId()
-	})
+	return jsonResult(http.StatusOK, roleBindingResponseFromModel(ended)), nil
 }

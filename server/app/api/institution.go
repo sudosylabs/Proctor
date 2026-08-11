@@ -27,52 +27,89 @@ type updateInstitutionRequest struct {
 	Description Optional[string] `json:"description"`
 }
 
-func (a *API) registerInstitutionRoutes() error {
-	if err := a.registerLegacyRoute(a.BaseRoutes.Institution, "", http.MethodGet,
-		a.APIPrincipalRequired(http.HandlerFunc(a.getInstitution))); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(a.BaseRoutes.Institution, "", http.MethodPatch,
-		a.APIPrincipalRequired(http.HandlerFunc(a.patchInstitution)))
+type institutionResourceModule struct {
+	institutions InstitutionApplication
 }
 
-func (a *API) getInstitution(w http.ResponseWriter, r *http.Request) {
-	principal, ok := requiredPrincipal(w, r)
-	if !ok {
-		return
+func institutionResource(institutions InstitutionApplication) resource {
+	module := institutionResourceModule{institutions: institutions}
+	return newResource(
+		"institution",
+		principalRoute(
+			http.MethodGet,
+			apiPath(literal("institution")),
+			academicReadErrorCodes("resource.not_found"),
+			module.get,
+		),
+		principalRoute(
+			http.MethodPatch,
+			apiPath(literal("institution")),
+			academicMutationErrorCodes(
+				"request.invalid", "resource.not_found", "institution.invalid",
+				"institution.conflict",
+			),
+			module.patch,
+		),
+	)
+}
+
+func academicReadErrorCodes(specific ...string) []string {
+	codes := []string{
+		"authentication.required",
+		"authentication.invalid_token",
+		"authentication.credential_ambiguous",
+		"authorization.denied",
+		"authorization.request.invalid",
+		"authorization.unavailable",
 	}
-	institution, err := a.institutions.GetInstitution(
-		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+	codes = append(codes, specific...)
+	return append(codes, "administration.unavailable")
+}
+
+func academicMutationErrorCodes(specific ...string) []string {
+	codes := []string{
+		"authentication.required",
+		"authentication.invalid_token",
+		"authentication.credential_ambiguous",
+		"authentication.csrf.invalid",
+		"authorization.denied",
+		"authorization.request.invalid",
+		"authorization.unavailable",
+		"audit.unavailable",
+	}
+	codes = append(codes, specific...)
+	return append(codes, "administration.unavailable")
+}
+
+func (module institutionResourceModule) get(request operationRequest) (operationResult, error) {
+	institution, err := module.institutions.GetInstitution(
+		request.context,
+		request.invocation(),
 		application.GetInstitutionQuery{},
 	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, institutionResponseFromModel(institution))
+	return jsonResult(http.StatusOK, institutionResponseFromModel(institution)), nil
 }
 
-func (a *API) patchInstitution(w http.ResponseWriter, r *http.Request) {
-	principal, ok := requiredPrincipal(w, r)
-	if !ok {
-		return
-	}
+func (module institutionResourceModule) patch(request operationRequest) (operationResult, error) {
 	var body updateInstitutionRequest
-	if !decodeJSON(w, r, &body, "patchInstitution") {
-		return
+	if err := request.decodeJSON(&body, "patchInstitution"); err != nil {
+		return operationResult{}, err
 	}
-	institution, err := a.institutions.UpdateInstitution(
-		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+	institution, err := module.institutions.UpdateInstitution(
+		request.context,
+		request.invocation(),
 		application.UpdateInstitutionCommand{
 			Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(),
 			Description: body.Description.ValuePointer(),
 		},
 	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, institutionResponseFromModel(institution))
+	return jsonResult(http.StatusOK, institutionResponseFromModel(institution)), nil
 }
 
 func institutionResponseFromModel(institution *model.Institution) institutionResponse {
@@ -90,6 +127,8 @@ func institutionResponseFromModel(institution *model.Institution) institutionRes
 	}
 }
 
+// Legacy handlers use these helpers until their resource modules migrate to
+// operationRequest. Academic structure resources do not depend on them.
 func queryLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
 	value := r.URL.Query().Get("limit")
 	if value == "" {
@@ -123,21 +162,4 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any, where string
 		return false
 	}
 	return true
-}
-
-func writeResult(w http.ResponseWriter, r *http.Request, a *API, status int, result any, appErr error) {
-	if appErr != nil {
-		writeApplicationError(w, r, a.logger, appErr)
-		return
-	}
-	writeJSON(w, status, result)
-}
-
-func writeNoContent(w http.ResponseWriter, r *http.Request, a *API, appErr error) {
-	if appErr != nil {
-		writeApplicationError(w, r, a.logger, appErr)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
 }

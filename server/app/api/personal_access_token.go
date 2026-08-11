@@ -74,169 +74,113 @@ func personalAccessTokenResponsesFromModels(tokens []*model.PersonalAccessToken)
 	return result
 }
 
-func (a *API) InitPersonalAccessTokens() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.PersonalAccessTokens,
-		"",
-		http.MethodPost,
-		a.APIRecentSessionRequired(http.HandlerFunc(a.createPersonalAccessToken)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.PersonalAccessTokens,
-		"",
-		http.MethodGet,
-		a.APISessionRequired(http.HandlerFunc(a.listPersonalAccessTokens)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.PersonalAccessToken,
-		"/disable",
-		http.MethodPost,
-		a.APISessionRequired(http.HandlerFunc(a.disablePersonalAccessToken)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.PersonalAccessToken,
-		"/enable",
-		http.MethodPost,
-		a.APIRecentSessionRequired(http.HandlerFunc(a.enablePersonalAccessToken)),
-	); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(
-		a.BaseRoutes.PersonalAccessToken,
-		"",
-		http.MethodDelete,
-		a.APISessionRequired(http.HandlerFunc(a.revokePersonalAccessToken)),
+type personalAccessTokenResourceModule struct {
+	tokens PersonalAccessTokens
+}
+
+func personalAccessTokenResource(tokens PersonalAccessTokens) resource {
+	module := personalAccessTokenResourceModule{tokens: tokens}
+	collection := apiPath(literal("users"), literal("me"), literal("tokens"))
+	item := apiPath(literal("users"), literal("me"), literal("tokens"), canonicalID("personal_access_token_id"))
+	return newResource(
+		"personal-access-tokens",
+		recentSessionRoute(http.MethodPost, collection, personalAccessTokenRecentMutationCodes("request.invalid", "resource.not_found", "personal_access_token.invalid", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable"), module.create),
+		sessionRoute(http.MethodGet, collection, personalAccessTokenSessionCodes("personal_access_token.unavailable"), module.list),
+		sessionRoute(http.MethodPost, appendRoutePath(item, literal("disable")), personalAccessTokenSessionMutationCodes("request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable"), module.disable),
+		recentSessionRoute(http.MethodPost, appendRoutePath(item, literal("enable")), personalAccessTokenRecentMutationCodes("request.invalid", "resource.not_found", "personal_access_token.maximum_reached", "personal_access_token.unavailable", "audit.unavailable"), module.enable),
+		sessionRoute(http.MethodDelete, item, personalAccessTokenSessionMutationCodes("request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable"), module.revoke),
 	)
 }
 
-func (a *API) disablePersonalAccessToken(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	a.setPersonalAccessTokenDisabled(writer, request, true)
+func appendRoutePath(path routePath, parts ...pathPart) routePath {
+	combined := append([]pathPart(nil), path.parts...)
+	return apiPath(append(combined, parts...)...)
 }
 
-func (a *API) enablePersonalAccessToken(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	a.setPersonalAccessTokenDisabled(writer, request, false)
+func personalAccessTokenSessionCodes(extra ...string) []string {
+	return append([]string{"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous"}, extra...)
 }
 
-func (a *API) setPersonalAccessTokenDisabled(
-	writer http.ResponseWriter,
-	request *http.Request,
-	disabled bool,
-) {
-	principal, tokenID, ok := principalAndRequiredId(
-		writer,
-		request,
-		func(params Params) (string, error) {
-			return params.RequirePersonalAccessTokenId()
-		},
-	)
-	if !ok {
-		return
+func personalAccessTokenSessionMutationCodes(extra ...string) []string {
+	return personalAccessTokenSessionCodes(append([]string{"authentication.csrf.invalid"}, extra...)...)
+}
+
+func personalAccessTokenRecentMutationCodes(extra ...string) []string {
+	return personalAccessTokenSessionMutationCodes(append([]string{"authentication.reauthentication_required"}, extra...)...)
+}
+
+func (module personalAccessTokenResourceModule) disable(request operationRequest) (operationResult, error) {
+	return module.setDisabled(request, true)
+}
+
+func (module personalAccessTokenResourceModule) enable(request operationRequest) (operationResult, error) {
+	return module.setDisabled(request, false)
+}
+
+func (module personalAccessTokenResourceModule) setDisabled(request operationRequest, disabled bool) (operationResult, error) {
+	tokenID, err := request.params.RequirePersonalAccessTokenId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	updated, err := a.application.SetPersonalAccessTokenDisabled(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	updated, err := module.tokens.SetPersonalAccessTokenDisabled(
+		request.context,
+		request.invocation(),
 		application.SetPersonalAccessTokenDisabledCommand{TokenID: tokenID, Disabled: disabled},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, personalAccessTokenResponseFromModel(updated))
+	return jsonResult(http.StatusOK, personalAccessTokenResponseFromModel(updated)).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) createPersonalAccessToken(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
+func (module personalAccessTokenResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createPersonalAccessTokenRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(
-			writer,
-			request,
-			invalidRequestError("createPersonalAccessToken", err),
-		)
-		return
+	if err := request.decodeJSON(&input, "createPersonalAccessToken"); err != nil {
+		return operationResult{}, err
 	}
-	created, err := a.application.CreatePersonalAccessToken(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	created, err := module.tokens.CreatePersonalAccessToken(
+		request.context,
+		request.invocation(),
 		application.CreatePersonalAccessTokenCommand{
 			Description: input.Description, Scopes: input.Scopes,
 			AcademicUnitID: input.AcademicUnitID, ExpiresAt: input.ExpiresAt,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusCreated, personalAccessTokenCreationResponse{
+	return jsonResult(http.StatusCreated, personalAccessTokenCreationResponse{
 		Token: personalAccessTokenResponseFromModel(created.Token), Credential: created.Credential,
-	})
+	}).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) listPersonalAccessTokens(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
-	tokens, err := a.application.ListPersonalAccessTokens(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func (module personalAccessTokenResourceModule) list(request operationRequest) (operationResult, error) {
+	tokens, err := module.tokens.ListPersonalAccessTokens(
+		request.context,
+		request.invocation(),
 		application.ListPersonalAccessTokensQuery{},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, personalAccessTokenResponsesFromModels(tokens))
+	return jsonResult(http.StatusOK, personalAccessTokenResponsesFromModels(tokens)).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) revokePersonalAccessToken(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	principal, tokenID, ok := principalAndRequiredId(
-		writer,
-		request,
-		func(params Params) (string, error) {
-			return params.RequirePersonalAccessTokenId()
-		},
-	)
-	if !ok {
-		return
+func (module personalAccessTokenResourceModule) revoke(request operationRequest) (operationResult, error) {
+	tokenID, err := request.params.RequirePersonalAccessTokenId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	if _, err := a.application.RevokePersonalAccessToken(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	if _, err := module.tokens.RevokePersonalAccessToken(
+		request.context,
+		request.invocation(),
 		application.RevokePersonalAccessTokenCommand{TokenID: tokenID},
 	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusNoContent)
+	return noContentResult(), nil
+}
+
+func noStoreHeaders() http.Header {
+	return http.Header{"Cache-Control": []string{"no-store"}}
 }

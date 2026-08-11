@@ -19,7 +19,7 @@ func TestProgrammeOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerProgrammeRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, programmeResource(nil)); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

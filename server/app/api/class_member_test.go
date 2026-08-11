@@ -51,12 +51,7 @@ func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 		UserID: model.UserID(userID), StartsAt: model.TimeFromMillis(100),
 	}
 	classMembers := &classMemberHTTPApplication{result: &model.ClassEnrollment{Membership: member}}
-	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: classMembers, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = httpAPI.Close() })
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, classMemberResource(classMembers))
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/classes/"+classID+"/members", strings.NewReader(`{"id":"ignored","class_id":"ignored","academic_period_id":"ignored","user_id":"`+userID+`","start_at":100}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
@@ -75,6 +70,32 @@ func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 	membership := body["membership"].(map[string]any)
 	if _, exposed := membership["revision"]; exposed {
 		t.Fatalf("persistence revision leaked into DTO: %#v", membership)
+	}
+}
+
+func TestClassMemberResourceForwardsHistoryAndEndsMembership(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	classID := model.NewId()
+	member := &model.ClassMember{ID: model.NewClassMemberID(), ClassID: model.ClassID(classID), AcademicPeriodID: model.NewAcademicPeriodID(), UserID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), StartsAt: model.TimeFromMillis(100)}
+	members := &classMemberHTTPApplication{ended: member}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, classMemberResource(members))
+
+	list := httptest.NewRequest(http.MethodGet, "/api/v1/classes/"+classID+"/members?history=true", nil)
+	list.Header.Set("Authorization", "Bearer credential")
+	listed := httptest.NewRecorder()
+	httpAPI.ServeHTTP(listed, list)
+	if listed.Code != http.StatusOK || members.listQuery.ClassID != classID || members.listQuery.ActiveAt != 0 {
+		t.Fatalf("list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
+	}
+
+	end := httptest.NewRequest(http.MethodDelete, "/api/v1/class-members/"+member.ID.String(), nil)
+	end.Header.Set("Authorization", "Bearer credential")
+	ended := httptest.NewRecorder()
+	httpAPI.ServeHTTP(ended, end)
+	if ended.Code != http.StatusOK || members.endCommand.ID != member.ID.String() || ended.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("end status/command/cache = %d/%#v/%q: %s", ended.Code, members.endCommand, ended.Header().Get("Cache-Control"), ended.Body.String())
 	}
 }
 

@@ -230,6 +230,14 @@ func TestIdentityAndSystemOpenAPIOperationDTOsAgreeWithRuntime(t *testing.T) {
 	t.Parallel()
 
 	document := readOpenAPIDocument(t)
+	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
+	if err := runtimeAPI.registerRoutes(); err != nil {
+		t.Fatal(err)
+	}
+	runtimeRoutes := make(map[string]Route)
+	for _, route := range runtimeAPI.Routes() {
+		runtimeRoutes[route.Method+" "+normalizeRuntimeRoutePath(route.Path)] = route
+	}
 	contracts := map[string]openAPIOperationContract{
 		"GET /health/live":                                                {successStatus: "200", successRef: "#/components/responses/HealthOK", successSchema: "HealthResponse"},
 		"GET /health/ready":                                               {successStatus: "200", successRef: "#/components/responses/HealthOK", successSchema: "HealthResponse"},
@@ -283,6 +291,16 @@ func TestIdentityAndSystemOpenAPIOperationDTOsAgreeWithRuntime(t *testing.T) {
 		sort.Strings(wantErrors)
 		if !reflect.DeepEqual(gotErrors, wantErrors) {
 			t.Errorf("%s error codes = %v, want %v", key, gotErrors, wantErrors)
+		}
+		runtimeRoute, exists := runtimeRoutes[key]
+		if !exists {
+			t.Errorf("%s is missing from the runtime catalog", key)
+		} else {
+			runtimeErrors := append([]string(nil), runtimeRoute.ErrorCodes...)
+			sort.Strings(runtimeErrors)
+			if !reflect.DeepEqual(runtimeErrors, wantErrors) {
+				t.Errorf("%s runtime error codes = %v, want %v", key, runtimeErrors, wantErrors)
+			}
 		}
 		assertOpenAPIRequestBody(t, document, key, contract)
 		assertOpenAPISuccessResponse(t, document, key, contract)
@@ -473,7 +491,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 	}
 
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerAcademicUnitRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, academicUnitResource(nil)); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -40,70 +39,77 @@ type classEnrollmentResponse struct {
 	Previous   *classMemberResponse `json:"previous,omitempty"`
 }
 
-func (a *API) registerClassMemberRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.Class, "/members", http.MethodGet, a.listClassMembers},
-		{a.BaseRoutes.Class, "/members", http.MethodPost, a.enrollClassMember},
-		{a.BaseRoutes.ClassMember, "", http.MethodDelete, a.endClassMember},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type classMemberResourceModule struct {
+	members ClassMemberApplication
 }
 
-func (a *API) listClassMembers(w http.ResponseWriter, r *http.Request) {
-	principal, classID, ok := requiredResourceID(w, r, Params.RequireClassId)
-	if !ok {
-		return
-	}
-	activeAt, ok := queryActiveAt(w, r)
-	if !ok {
-		return
-	}
-	members, err := a.classMembers.ListClassMembers(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListClassMembersQuery{ClassID: classID, ActiveAt: activeAt})
+func classMemberResource(members ClassMemberApplication) resource {
+	module := classMemberResourceModule{members: members}
+	return newResource(
+		"class-members",
+		principalRoute(
+			http.MethodGet,
+			apiPath(literal("classes"), canonicalID("class_id"), literal("members")),
+			academicRelationshipReadErrorCodes(),
+			module.list,
+		),
+		principalRoute(
+			http.MethodPost,
+			apiPath(literal("classes"), canonicalID("class_id"), literal("members")),
+			academicRelationshipMutationErrorCodes("class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict"),
+			module.enroll,
+		),
+		principalRoute(
+			http.MethodDelete,
+			apiPath(literal("class-members"), canonicalID("class_member_id")),
+			academicRelationshipMutationErrorCodes("class.enrollment_conflict"),
+			module.end,
+		),
+	)
+}
+
+func (module classMemberResourceModule) list(request operationRequest) (operationResult, error) {
+	classID, err := request.params.RequireClassId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, classMemberResponses(members))
+	activeAt, err := parseActiveAt(request.request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	members, err := module.members.ListClassMembers(request.context, request.invocation(), application.ListClassMembersQuery{ClassID: classID, ActiveAt: activeAt})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, classMemberResponses(members)), nil
 }
 
-func (a *API) enrollClassMember(w http.ResponseWriter, r *http.Request) {
-	principal, classID, ok := requiredResourceID(w, r, Params.RequireClassId)
-	if !ok {
-		return
+func (module classMemberResourceModule) enroll(request operationRequest) (operationResult, error) {
+	classID, err := request.params.RequireClassId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body enrollClassMemberRequest
-	if !decodeJSON(w, r, &body, "enrollClassMember") {
-		return
+	if err := request.decodeJSON(&body, "enrollClassMember"); err != nil {
+		return operationResult{}, err
 	}
-	enrollment, err := a.classMembers.EnrollClassMember(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: body.StartAt, EndAt: body.EndAt})
+	enrollment, err := module.members.EnrollClassMember(request.context, request.invocation(), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: body.StartAt, EndAt: body.EndAt})
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusCreated, classEnrollmentResponseFromModel(enrollment))
+	return jsonResult(http.StatusCreated, classEnrollmentResponseFromModel(enrollment)), nil
 }
 
-func (a *API) endClassMember(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireClassMemberId)
-	if !ok {
-		return
-	}
-	ended, err := a.classMembers.EndClassMember(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.EndClassMemberCommand{ID: id})
+func (module classMemberResourceModule) end(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireClassMemberId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, classMemberResponseFromModel(ended))
+	ended, err := module.members.EndClassMember(request.context, request.invocation(), application.EndClassMemberCommand{ID: id})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, classMemberResponseFromModel(ended)), nil
 }
 
 func classMemberResponseFromModel(member *model.ClassMember) classMemberResponse {

@@ -52,22 +52,9 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId()), Name: "computer-science", DisplayName: "Computer Science"}
 	programmes := &programmeHTTPApplication{result: programme}
-	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
-		AcademicUnits: transport, Institutions: transport, Programmes: programmes,
-		ProgrammeLevels:     &programmeLevelHTTPApplication{},
-		AcademicPeriods:     &academicPeriodHTTPApplication{},
-		Classes:             &classHTTPApplication{},
-		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{},
-		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
-		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = httpAPI.Close() })
+	httpAPI := newFocusedResourceAPI(
+		t, logger, classRouteAuthenticator{principal: principal}, programmeResource(programmes),
+	)
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/academic-units/"+programme.AcademicUnitID.String()+"/programmes", strings.NewReader(`{"id":"ignored","academic_unit_id":"ignored","name":"computer-science","display_name":"Computer Science"}`))
 	request.Header.Set("Authorization", "Bearer credential")
@@ -86,6 +73,43 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	}
 	if body.ID != programme.ID.String() || body.AcademicUnitID != programme.AcademicUnitID.String() {
 		t.Fatalf("response = %#v", body)
+	}
+}
+
+func TestProgrammeResourceRejectsInvalidQueryLimit(t *testing.T) {
+	t.Parallel()
+
+	logger, _ := newTestLogger(t)
+	principal := model.Principal{
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialType:         model.CredentialSessionAccess,
+		AuthenticationMethod:   "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType:             model.SessionClientCLI,
+		AuthenticatedAt:        time.Now(),
+	}
+	programmes := &programmeHTTPApplication{}
+	httpAPI := newFocusedResourceAPI(
+		t, logger, classRouteAuthenticator{principal: principal}, programmeResource(programmes),
+	)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/academic-units/"+model.NewId()+"/programmes?limit=invalid",
+		nil,
+	)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	var problem Problem
+	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Code != "request.invalid" {
+		t.Fatalf("problem code = %q, want request.invalid", problem.Code)
 	}
 }
 

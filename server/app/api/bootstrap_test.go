@@ -10,38 +10,87 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
+type systemHTTPHealth struct {
+	live  bool
+	ready bool
+}
+
+func (health systemHTTPHealth) Live() bool  { return health.live }
+func (health systemHTTPHealth) Ready() bool { return health.ready }
+
+func TestSystemResourceReturnsTypedUnhealthyProblemThroughKernel(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, systemResource(systemHTTPHealth{}, BuildInfo{Version: "test"}))
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/live", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("liveness status = %d: %s", response.Code, response.Body.String())
+	}
+	var problem Problem
+	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Code != "not_live" || problem.Detail != "The process is not healthy." {
+		t.Fatalf("liveness problem = %#v", problem)
+	}
+}
+
+func TestSystemResourceReturnsHealthyStatusAndVersionThroughKernel(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	httpAPI := newFocusedResourceAPI(
+		t,
+		logger,
+		classRouteAuthenticator{},
+		systemResource(systemHTTPHealth{live: true, ready: true}, BuildInfo{Version: "test-version"}),
+	)
+	for path, body := range map[string]string{
+		"/health/live":           `"status":"ok"`,
+		"/health/ready":          `"status":"ok"`,
+		"/api/v1/system/version": `"version":"test-version"`,
+	} {
+		response := httptest.NewRecorder()
+		httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(body)) {
+			t.Fatalf("%s response = %d %s", path, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestBootstrapResourceStrictDecodeAndDeclaredFailureThroughKernel(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	bootstrap := &recordingBootstrap{bootstrapErr: application.NewError("installation.unavailable")}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(bootstrap))
+
+	invalid := httptest.NewRecorder()
+	httpAPI.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"unknown":true}`)))
+	if invalid.Code != http.StatusBadRequest || !bytes.Contains(invalid.Body.Bytes(), []byte(`"code":"request.invalid"`)) {
+		t.Fatalf("strict bootstrap decode = %d %s", invalid.Code, invalid.Body.String())
+	}
+
+	failure := httptest.NewRecorder()
+	httpAPI.ServeHTTP(failure, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"institution":{"name":"northbridge","display_name":"Northbridge"},"administrator":{"username":"admin","email":"admin@example.edu"},"password":"secret"}`)))
+	if failure.Code != http.StatusInternalServerError || !bytes.Contains(failure.Body.Bytes(), []byte(`"code":"installation.unavailable"`)) {
+		t.Fatalf("bootstrap failure = %d %s", failure.Code, failure.Body.String())
+	}
+}
+
 func TestBootstrapStatusExposesOnlyInitializedFlag(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	transport := &academicUnitHTTPApplication{principal: model.Principal{
-		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
-		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
-		AuthenticationStrength: model.AuthenticationSingleFactor,
-		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
-	}}
-	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
-		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{},
-		ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{},
-		Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
-		UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{},
-		SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{},
-		RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{},
-		Bootstrap: &bootstrapHTTPApplication{status: &model.InstallationStatus{Initialized: true}},
-		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
-		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = httpAPI.Close() })
+	httpAPI := newFocusedResourceAPI(
+		t,
+		logger,
+		classRouteAuthenticator{},
+		bootstrapResource(&bootstrapHTTPApplication{status: &model.InstallationStatus{Initialized: true}}),
+	)
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/bootstrap", nil))
 	if response.Code != http.StatusOK {
@@ -116,29 +165,7 @@ func TestBootstrapUsesApplicationCommand(t *testing.T) {
 			},
 		},
 	}
-	transport := &academicUnitHTTPApplication{principal: model.Principal{
-		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
-		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
-		AuthenticationStrength: model.AuthenticationSingleFactor,
-		ClientType:             model.SessionClientCLI, AuthenticatedAt: time.Now(),
-	}}
-	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
-		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{},
-		ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{},
-		Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
-		UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{},
-		SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{},
-		RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{},
-		Bootstrap: rec,
-		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
-		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = httpAPI.Close() })
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(rec))
 	body, _ := json.Marshal(map[string]any{
 		"institution":   map[string]any{"name": "northbridge", "display_name": "Northbridge"},
 		"administrator": map[string]any{"username": "admin", "email": "admin@example.com"},
@@ -159,8 +186,9 @@ func TestBootstrapUsesApplicationCommand(t *testing.T) {
 }
 
 type recordingBootstrap struct {
-	command application.BootstrapInstallationCommand
-	result  *model.InstallationBootstrapResult
+	command      application.BootstrapInstallationCommand
+	result       *model.InstallationBootstrapResult
+	bootstrapErr error
 }
 
 func (r *recordingBootstrap) GetInstallationStatus(context.Context, application.GetInstallationStatusQuery) (*model.InstallationStatus, error) {
@@ -169,5 +197,5 @@ func (r *recordingBootstrap) GetInstallationStatus(context.Context, application.
 
 func (r *recordingBootstrap) BootstrapInstallation(_ context.Context, _ application.Invocation, command application.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	r.command = command
-	return r.result, nil
+	return r.result, r.bootstrapErr
 }

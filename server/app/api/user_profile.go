@@ -6,12 +6,10 @@ package api
 import (
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -47,61 +45,81 @@ type updateUserProfileRequest struct {
 	Timezone      *string `json:"timezone,omitempty"`
 }
 
-func (a *API) registerUserProfileRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.Users, "", http.MethodGet, a.searchUsers},
-		{a.BaseRoutes.User, "", http.MethodGet, a.getUserProfile},
-		{a.BaseRoutes.User, "", http.MethodPatch, a.updateUserProfile},
-		{a.BaseRoutes.User, "/profile-picture", http.MethodPut, a.uploadProfilePicture},
-		{a.BaseRoutes.User, "/profile-picture", http.MethodDelete, a.removeProfilePicture},
-		{a.BaseRoutes.User, "/profile-picture", http.MethodGet, a.getProfilePicture},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type userProfileResourceModule struct {
+	profiles UserProfileApplication
 }
 
-func (a *API) uploadProfilePicture(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
-	}
-	expectedSHA256, err := profilePictureIfMatch(r.Header.Get("If-Match"), false)
-	if err != nil {
-		WriteError(w, r, invalidRequestError("If-Match", err))
-		return
-	}
-	user, err := a.userProfiles.UploadProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: r.Body, Size: r.ContentLength})
-	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
+func userProfileResource(profiles UserProfileApplication) resource {
+	module := userProfileResourceModule{profiles: profiles}
+	user := apiPath(literal("users"), canonicalID("user_id"))
+	picture := appendRoutePath(user, literal("profile-picture"))
+	return newResource(
+		"user-profiles",
+		principalRoute(http.MethodGet, apiPath(literal("users")), userProfileReadCodes("request.invalid", "user.invalid"), module.search),
+		principalRoute(http.MethodGet, apiPath(literal("users"), literal("me")), userProfileReadCodes("resource.not_found"), module.current),
+		principalRoute(http.MethodGet, user, userProfileReadCodes("request.invalid", "resource.not_found"), module.get),
+		principalRoute(http.MethodPatch, user, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict"), module.update),
+		protocolRoute("profile-picture-download", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, picture, userProfilePrincipalCodes("request.invalid", "resource.not_found", "profile_picture.unavailable"), module.downloadPicture),
+		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"), module.uploadPicture),
+		principalRoute(http.MethodDelete, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"), module.removePicture),
+	)
 }
 
-func (a *API) removeProfilePicture(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
+func userProfileReadCodes(extra ...string) []string {
+	return append(userProfilePrincipalCodes(extra...), "administration.unavailable")
+}
+
+func userProfilePrincipalCodes(extra ...string) []string {
+	codes := []string{
+		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authorization.denied", "authorization.request.invalid", "authorization.unavailable",
 	}
-	expectedSHA256, err := profilePictureIfMatch(r.Header.Get("If-Match"), true)
+	return append(codes, extra...)
+}
+
+func userProfileMutationCodes(extra ...string) []string {
+	return append(userProfilePrincipalMutationCodes(extra...), "administration.unavailable")
+}
+
+func userProfilePrincipalMutationCodes(extra ...string) []string {
+	codes := []string{
+		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid",
+		"authorization.unavailable", "audit.unavailable",
+	}
+	return append(codes, extra...)
+}
+
+func (module userProfileResourceModule) uploadPicture(request operationRequest) (protocolResult, error) {
+	userID, err := request.params.RequireUserId()
 	if err != nil {
-		WriteError(w, r, invalidRequestError("If-Match", err))
-		return
+		return protocolResult{}, err
 	}
-	user, appErr := a.userProfiles.RemoveProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
+	expectedSHA256, err := profilePictureIfMatch(request.request.Header.Get("If-Match"), false)
+	if err != nil {
+		return protocolResult{}, invalidRequestError("If-Match", err)
+	}
+	user, err := module.profiles.UploadProfilePicture(request.context, request.invocation(), application.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: request.request.Body, Size: request.request.ContentLength})
+	if err != nil {
+		return protocolResult{}, err
+	}
+	return streamingUploadProtocolResult(http.StatusOK, userProfileResponseFromModel(user)), nil
+}
+
+func (module userProfileResourceModule) removePicture(request operationRequest) (operationResult, error) {
+	userID, err := request.params.RequireUserId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	expectedSHA256, err := profilePictureIfMatch(request.request.Header.Get("If-Match"), true)
+	if err != nil {
+		return operationResult{}, invalidRequestError("If-Match", err)
+	}
+	user, appErr := module.profiles.RemoveProfilePicture(request.context, request.invocation(), application.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
 	if appErr != nil {
-		writeApplicationError(w, r, a.logger, appErr)
-		return
+		return operationResult{}, appErr
 	}
-	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
+	return jsonResult(http.StatusOK, userProfileResponseFromModel(user)), nil
 }
 
 func profilePictureIfMatch(header string, required bool) (string, error) {
@@ -122,32 +140,29 @@ func profilePictureIfMatch(header string, required bool) (string, error) {
 	return checksum, nil
 }
 
-func (a *API) getProfilePicture(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
-	}
-	size, err := strconv.Atoi(defaultQuery(r, "size", "256"))
+func (module userProfileResourceModule) downloadPicture(request operationRequest) (protocolResult, error) {
+	userID, err := request.params.RequireUserId()
 	if err != nil {
-		WriteError(w, r, invalidRequestError("size", err))
-		return
+		return protocolResult{}, err
 	}
-	content, appErr := a.userProfiles.GetProfilePicture(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetProfilePictureQuery{UserID: userID, Size: size})
+	size, err := strconv.Atoi(defaultQuery(request.request, "size", "256"))
+	if err != nil {
+		return protocolResult{}, invalidRequestError("size", err)
+	}
+	content, appErr := module.profiles.GetProfilePicture(request.context, request.invocation(), application.GetProfilePictureQuery{UserID: userID, Size: size})
 	if appErr != nil {
-		writeApplicationError(w, r, a.logger, appErr)
-		return
+		return protocolResult{}, appErr
 	}
-	defer content.Body.Close()
-	w.Header().Set("ETag", content.ETag)
-	w.Header().Set("Cache-Control", "private, max-age=86400")
-	w.Header().Set("Content-Type", content.MediaType)
-	w.Header().Set("Content-Length", strconv.FormatInt(content.Size, 10))
-	if etagMatches(r.Header.Get("If-None-Match"), content.ETag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
+	headers := http.Header{
+		"ETag":          []string{content.ETag},
+		"Cache-Control": []string{"private, max-age=86400"},
+		"Content-Type":  []string{content.MediaType},
 	}
-	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, content.Body)
+	if etagMatches(request.request.Header.Get("If-None-Match"), content.ETag) {
+		_ = content.Body.Close()
+		return notModifiedProtocolResult(content.Size).withHeaders(headers), nil
+	}
+	return binaryDownloadProtocolResult(content.Body, content.Size).withHeaders(headers), nil
 }
 
 func etagMatches(header, current string) bool {
@@ -161,56 +176,56 @@ func etagMatches(header, current string) bool {
 	return false
 }
 
-func (a *API) searchUsers(w http.ResponseWriter, r *http.Request) {
-	principal, ok := requiredPrincipal(w, r)
-	if !ok {
-		return
-	}
-	limit, ok := queryLimit(w, r)
-	if !ok {
-		return
-	}
-	includeDisabled, err := strconv.ParseBool(defaultQuery(r, "include_disabled", "false"))
+func (module userProfileResourceModule) search(request operationRequest) (operationResult, error) {
+	limit, err := request.queryLimit()
 	if err != nil {
-		WriteError(w, r, invalidRequestError("include_disabled", err))
-		return
+		return operationResult{}, err
 	}
-	users, err := a.userProfiles.SearchUsers(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.SearchUsersQuery{Query: r.URL.Query().Get("q"), AfterUsername: r.URL.Query().Get("after_username"), AfterID: r.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
+	includeDisabled, err := strconv.ParseBool(defaultQuery(request.request, "include_disabled", "false"))
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, invalidRequestError("include_disabled", err)
 	}
-	writeJSON(w, http.StatusOK, userProfileResponses(users))
+	users, err := module.profiles.SearchUsers(request.context, request.invocation(), application.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), AfterUsername: request.request.URL.Query().Get("after_username"), AfterID: request.request.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, userProfileResponses(users)), nil
 }
 
-func (a *API) getUserProfile(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
-	}
-	user, err := a.userProfiles.GetUserProfile(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetUserProfileQuery{ID: userID})
+func (module userProfileResourceModule) current(request operationRequest) (operationResult, error) {
+	user, err := module.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: request.principal.UserID.String()})
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
+	return jsonResult(http.StatusOK, userProfileResponseFromModel(user)), nil
 }
 
-func (a *API) updateUserProfile(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
+func (module userProfileResourceModule) get(request operationRequest) (operationResult, error) {
+	userID, err := request.params.RequireUserId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	user, err := module.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: userID})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, userProfileResponseFromModel(user)), nil
+}
+
+func (module userProfileResourceModule) update(request operationRequest) (operationResult, error) {
+	userID, err := request.params.RequireUserId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body updateUserProfileRequest
-	if !decodeJSON(w, r, &body, "updateUserProfile") {
-		return
+	if err := request.decodeJSON(&body, "updateUserProfile"); err != nil {
+		return operationResult{}, err
 	}
-	user, err := a.userProfiles.UpdateUserProfile(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, Email: body.Email, EmailVerified: body.EmailVerified, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
+	user, err := module.profiles.UpdateUserProfile(request.context, request.invocation(), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, Email: body.Email, EmailVerified: body.EmailVerified, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, userProfileResponseFromModel(user))
+	return jsonResult(http.StatusOK, userProfileResponseFromModel(user)), nil
 }
 
 func userProfileResponseFromModel(user *model.User) userProfileResponse {

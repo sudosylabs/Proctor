@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -33,66 +32,104 @@ type createAffiliationRequest struct {
 	EndAt    int64                 `json:"end_at"`
 }
 
-func (a *API) registerAffiliationRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.User, "/affiliations", http.MethodGet, a.listAffiliations},
-		{a.BaseRoutes.User, "/affiliations", http.MethodPost, a.createAffiliation},
-		{a.BaseRoutes.Affiliation, "", http.MethodDelete, a.endAffiliation},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type affiliationResourceModule struct {
+	affiliations AffiliationApplication
 }
 
-func (a *API) listAffiliations(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
+func affiliationResource(affiliations AffiliationApplication) resource {
+	module := affiliationResourceModule{affiliations: affiliations}
+	return newResource(
+		"affiliations",
+		principalRoute(
+			http.MethodGet,
+			apiPath(literal("users"), canonicalID("user_id"), literal("affiliations")),
+			academicRelationshipReadErrorCodes(),
+			module.list,
+		),
+		principalRoute(
+			http.MethodPost,
+			apiPath(literal("users"), canonicalID("user_id"), literal("affiliations")),
+			academicRelationshipMutationErrorCodes("affiliation.invalid", "affiliation.conflict"),
+			module.create,
+		),
+		principalRoute(
+			http.MethodDelete,
+			apiPath(literal("affiliations"), canonicalID("affiliation_id")),
+			academicRelationshipMutationErrorCodes("affiliation.student_has_active_enrollment", "affiliation.conflict"),
+			module.end,
+		),
+	)
+}
+
+func academicRelationshipReadErrorCodes() []string {
+	return []string{
+		"authentication.required",
+		"authentication.invalid_token",
+		"authentication.credential_ambiguous",
+		"authorization.denied",
+		"authorization.request.invalid",
+		"authorization.unavailable",
+		"request.invalid",
+		"resource.not_found",
+		"administration.unavailable",
 	}
-	values, err := a.affiliations.ListAffiliations(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListAffiliationsQuery{UserID: userID})
+}
+
+func academicRelationshipMutationErrorCodes(specific ...string) []string {
+	codes := []string{
+		"authentication.required",
+		"authentication.invalid_token",
+		"authentication.credential_ambiguous",
+		"authentication.csrf.invalid",
+		"authorization.denied",
+		"authorization.request.invalid",
+		"authorization.unavailable",
+		"audit.unavailable",
+		"request.invalid",
+		"resource.not_found",
+	}
+	codes = append(codes, specific...)
+	return append(codes, "administration.unavailable")
+}
+
+func (module affiliationResourceModule) list(request operationRequest) (operationResult, error) {
+	userID, err := request.params.RequireUserId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, affiliationResponses(values))
+	values, err := module.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: userID})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, affiliationResponses(values)), nil
 }
 
-func (a *API) createAffiliation(w http.ResponseWriter, r *http.Request) {
-	principal, userID, ok := requiredResourceID(w, r, Params.RequireUserId)
-	if !ok {
-		return
+func (module affiliationResourceModule) create(request operationRequest) (operationResult, error) {
+	userID, err := request.params.RequireUserId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body createAffiliationRequest
-	if !decodeJSON(w, r, &body, "createAffiliation") {
-		return
+	if err := request.decodeJSON(&body, "createAffiliation"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.affiliations.CreateAffiliation(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})
+	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusCreated, affiliationResponseFromModel(saved))
+	return jsonResult(http.StatusCreated, affiliationResponseFromModel(saved)), nil
 }
 
-func (a *API) endAffiliation(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireAffiliationId)
-	if !ok {
-		return
-	}
-	ended, err := a.affiliations.EndAffiliation(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.EndAffiliationCommand{ID: id})
+func (module affiliationResourceModule) end(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAffiliationId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, affiliationResponseFromModel(ended))
+	ended, err := module.affiliations.EndAffiliation(request.context, request.invocation(), application.EndAffiliationCommand{ID: id})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, affiliationResponseFromModel(ended)), nil
 }
 
 func affiliationResponseFromModel(value *model.Affiliation) affiliationResponse {

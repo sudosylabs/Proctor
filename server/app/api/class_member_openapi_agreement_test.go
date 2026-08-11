@@ -18,20 +18,31 @@ import (
 func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
+	expected := map[string]openAPIOperationContract{
+		"GET /api/v1/classes/{class_id}/members":         {successStatus: "200", successRef: "#/components/responses/ClassMemberListOK", successSchema: "ClassMemberListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"POST /api/v1/classes/{class_id}/members":        {requestBodyRef: "#/components/requestBodies/EnrollClassMember", requestSchema: "EnrollClassMemberRequest", successStatus: "201", successRef: "#/components/responses/ClassMemberEnrolled", successSchema: "ClassEnrollmentResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "administration.unavailable")},
+		"DELETE /api/v1/class-members/{class_member_id}": {successStatus: "200", successRef: "#/components/responses/ClassMemberEnded", successSchema: "ClassMemberResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.enrollment_conflict", "administration.unavailable")},
+	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerClassMemberRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, classMemberResource(&classMemberHTTPApplication{})); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)
 	for _, route := range runtimeAPI.Routes() {
 		path := strings.ReplaceAll(route.Path, "{class_id:"+canonicalIDRoutePattern()+"}", "{class_id}")
 		path = strings.ReplaceAll(path, "{class_member_id:"+canonicalIDRoutePattern()+"}", "{class_member_id}")
-		runtimeOperations[route.Method+" "+path] = route.Auth
-	}
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/classes/{class_id}/members":         {successStatus: "200", successRef: "#/components/responses/ClassMemberListOK", successSchema: "ClassMemberListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"POST /api/v1/classes/{class_id}/members":        {requestBodyRef: "#/components/requestBodies/EnrollClassMember", requestSchema: "EnrollClassMemberRequest", successStatus: "201", successRef: "#/components/responses/ClassMemberEnrolled", successSchema: "ClassEnrollmentResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "administration.unavailable")},
-		"DELETE /api/v1/class-members/{class_member_id}": {successStatus: "200", successRef: "#/components/responses/ClassMemberEnded", successSchema: "ClassMemberResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.enrollment_conflict", "administration.unavailable")},
+		key := route.Method + " " + path
+		runtimeOperations[key] = route.Auth
+		contract, exists := expected[key]
+		if !exists {
+			t.Fatalf("unexpected runtime operation %s", key)
+		}
+		got, want := append([]string(nil), route.ErrorCodes...), append([]string(nil), contract.errorCodes...)
+		sort.Strings(got)
+		sort.Strings(want)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s runtime error codes = %v, want %v", key, got, want)
+		}
 	}
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest

@@ -62,6 +62,8 @@ type Health interface {
 
 type AuthRequirement string
 
+type RouteProtocolKind string
+
 const (
 	AuthPublic                      AuthRequirement = "public"
 	AuthPrincipalRequired           AuthRequirement = "principal_required"
@@ -72,11 +74,19 @@ const (
 	AuthRefreshCredentialRequired   AuthRequirement = "refresh_credential_required"
 )
 
+const (
+	RouteProtocolRedirect        RouteProtocolKind = "redirect"
+	RouteProtocolBinaryDownload  RouteProtocolKind = "binary_download"
+	RouteProtocolStreamingUpload RouteProtocolKind = "streaming_upload"
+)
+
 type Route struct {
-	Method     string
-	Path       string
-	Auth       AuthRequirement
-	ErrorCodes []string
+	Method       string
+	Path         string
+	Auth         AuthRequirement
+	ErrorCodes   []string
+	ProtocolName string
+	ProtocolKind RouteProtocolKind
 }
 
 type routeMatcher struct {
@@ -570,30 +580,33 @@ func New(options Options) (*API, error) {
 
 func (a *API) registerRoutes() error {
 	initializers := []func() error{
-		a.InitSystem,
-		a.InitAuthentication,
-		a.InitExternalAuthentication,
-		a.InitUsers,
-		a.InitSessions,
-		a.InitMFA,
-		a.InitPersonalAccessTokens,
-		a.InitAudits,
-		a.InitBootstrap,
-		a.InitRoles,
-		a.InitRoleBindings,
-		func() error { return a.InitJobs() },
-		a.registerUserProfileRoutes,
-		a.registerInstitutionRoutes,
-		a.registerAcademicUnitRoutes,
-		a.registerProgrammeRoutes,
-		a.registerProgrammeLevelRoutes,
-		a.registerAcademicPeriodRoutes,
 		func() error {
-			return a.collectResources(model.APIURLSuffix, classResource(a.classes))
+			return a.collectResources(
+				model.APIURLSuffix,
+				systemResource(a.health, a.buildInfo),
+				bootstrapResource(a.bootstrap),
+				authenticationResource(a.application, a.cookies),
+				externalAuthenticationResource(a.application, a.cookies),
+				userProfileResource(a.userProfiles),
+				userAdministrationResource(a.accountStates, a.sessionAdministrations),
+				sessionResource(a.application, a.cookies),
+				mfaResource(a.application),
+				personalAccessTokenResource(a.application),
+				institutionResource(a.institutions),
+				academicUnitResource(a.academicUnits),
+				programmeResource(a.programmes),
+				programmeLevelResource(a.programmeLevels),
+				academicPeriodResource(a.academicPeriods),
+				classResource(a.classes),
+				affiliationResource(a.affiliations),
+				academicUnitMemberResource(a.academicUnitMembers),
+				classMemberResource(a.classMembers),
+				roleResource(a.roles),
+				roleBindingResource(a.roleBindings),
+				auditResource(a.auditListings),
+				jobResource(a.application),
+			)
 		},
-		a.registerAffiliationRoutes,
-		a.registerAcademicUnitMemberRoutes,
-		a.registerClassMemberRoutes,
 		a.InitWebSocket,
 	}
 	for _, initialize := range initializers {

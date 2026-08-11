@@ -172,23 +172,7 @@ func TestAcademicUnitHTTPReadMapsDTOWithoutPermissionPreflight(t *testing.T) {
 		},
 		unit: unit,
 	}
-	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: application,
-		AcademicUnits:       application,
-		Institutions:        application,
-		Programmes:          &programmeHTTPApplication{},
-		ProgrammeLevels:     &programmeLevelHTTPApplication{},
-		AcademicPeriods:     &academicPeriodHTTPApplication{},
-		Classes:             &classHTTPApplication{},
-		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{},
-		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
-		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = httpAPI.Close() })
+	httpAPI := newFocusedResourceAPI(t, logger, application, academicUnitResource(application))
 
 	request := httptest.NewRequest(
 		http.MethodGet, "/api/v1/academic-units/"+unit.ID.String(), nil,
@@ -234,23 +218,7 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 		getErr: application.NewError("resource.not_found").
 			WithField("resource", "academic_unit"),
 	}
-	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
-		AcademicUnits: fakeApplication, Institutions: fakeApplication,
-		Programmes:          &programmeHTTPApplication{},
-		ProgrammeLevels:     &programmeLevelHTTPApplication{},
-		AcademicPeriods:     &academicPeriodHTTPApplication{},
-		Classes:             &classHTTPApplication{},
-		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{},
-		BuildInfo: BuildInfo{Version: "test"},
-		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
-		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = httpAPI.Close() })
+	httpAPI := newFocusedResourceAPI(t, logger, fakeApplication, academicUnitResource(fakeApplication))
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/academic-units/"+unit.ID.String(), nil)
 	request.Header.Set("Authorization", "Bearer test-credential")

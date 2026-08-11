@@ -32,93 +32,65 @@ func sessionResponsesFromModels(sessions []*model.Session) []sessionResponse {
 	return items
 }
 
-func (a *API) InitSessions() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.CurrentUser,
-		"/sessions",
-		http.MethodGet,
-		a.APISessionRequired(http.HandlerFunc(a.getSessions)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.CurrentUser,
-		"/sessions/revoke",
-		http.MethodPost,
-		a.APISessionRequired(http.HandlerFunc(a.revokeSession)),
-	); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(
-		a.BaseRoutes.CurrentUser,
-		"/sessions/revoke-all",
-		http.MethodPost,
-		a.APISessionRequired(http.HandlerFunc(a.revokeAllSessions)),
+type sessionResourceModule struct {
+	sessions Sessions
+	cookies  browserCookies
+}
+
+func sessionResource(sessions Sessions, cookies browserCookies) resource {
+	module := sessionResourceModule{sessions: sessions, cookies: cookies}
+	base := apiPath(literal("users"), literal("me"), literal("sessions"))
+	return newResource(
+		"sessions",
+		sessionRoute(http.MethodGet, base, personalAccessTokenSessionCodes("authentication.internal"), module.list),
+		sessionRoute(http.MethodPost, appendRoutePath(base, literal("revoke")), personalAccessTokenSessionMutationCodes("request.invalid", "session.id.invalid", "session.not_found", "authentication.internal"), module.revoke),
+		sessionRoute(http.MethodPost, appendRoutePath(base, literal("revoke-all")), personalAccessTokenSessionMutationCodes("authentication.internal"), module.revokeAll),
 	)
 }
 
-func (a *API) getSessions(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
-	sessions, err := a.application.ListSessions(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func (module sessionResourceModule) list(request operationRequest) (operationResult, error) {
+	sessions, err := module.sessions.ListSessions(
+		request.context,
+		request.invocation(),
 		application.ListSessionsQuery{},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, sessionResponsesFromModels(sessions))
+	return jsonResult(http.StatusOK, sessionResponsesFromModels(sessions)), nil
 }
 
-func (a *API) revokeSession(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
+func (module sessionResourceModule) revoke(request operationRequest) (operationResult, error) {
 	var input revokeSessionRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError("revokeSession", err))
-		return
+	if err := request.decodeJSON(&input, "revokeSession"); err != nil {
+		return operationResult{}, err
 	}
-	if err := a.application.RevokeSession(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	if err := module.sessions.RevokeSession(
+		request.context,
+		request.invocation(),
 		application.RevokeSessionCommand{SessionID: input.SessionID},
 	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	if input.SessionID == principal.SessionID.String() &&
-		credentialSourceFromContext(request.Context()) == credentialSourceCookie {
-		a.cookies.clear(writer)
+	result := noContentResult()
+	if input.SessionID == request.principal.SessionID.String() &&
+		credentialSourceFromContext(request.context) == credentialSourceCookie {
+		result = result.withHeaders(captureResponseHeaders(module.cookies.clear))
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusNoContent)
+	return result, nil
 }
 
-func (a *API) revokeAllSessions(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
-	if err := a.application.RevokeAllSessions(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func (module sessionResourceModule) revokeAll(request operationRequest) (operationResult, error) {
+	if err := module.sessions.RevokeAllSessions(
+		request.context,
+		request.invocation(),
 		application.RevokeAllSessionsCommand{},
 	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	if credentialSourceFromContext(request.Context()) == credentialSourceCookie {
-		a.cookies.clear(writer)
+	result := noContentResult()
+	if credentialSourceFromContext(request.context) == credentialSourceCookie {
+		result = result.withHeaders(captureResponseHeaders(module.cookies.clear))
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusNoContent)
+	return result, nil
 }

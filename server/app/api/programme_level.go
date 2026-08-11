@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -39,106 +38,154 @@ type updateProgrammeLevelRequest struct {
 	Description Optional[string] `json:"description"`
 }
 
-func (a *API) registerProgrammeLevelRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.Programme, "/levels", http.MethodGet, a.listProgrammeLevels},
-		{a.BaseRoutes.Programme, "/levels", http.MethodPost, a.createProgrammeLevel},
-		{a.BaseRoutes.ProgrammeLevel, "", http.MethodGet, a.getProgrammeLevel},
-		{a.BaseRoutes.ProgrammeLevel, "", http.MethodPatch, a.patchProgrammeLevel},
-		{a.BaseRoutes.ProgrammeLevel, "", http.MethodDelete, a.archiveProgrammeLevel},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type programmeLevelResourceModule struct {
+	programmeLevels ProgrammeLevelApplication
 }
 
-func (a *API) listProgrammeLevels(w http.ResponseWriter, r *http.Request) {
-	principal, programmeID, ok := requiredResourceID(w, r, Params.RequireProgrammeId)
-	if !ok {
-		return
-	}
-	limit, ok := queryLimit(w, r)
-	if !ok {
-		return
-	}
-	levels, err := a.programmeLevels.ListProgrammeLevels(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListProgrammeLevelsQuery{ProgrammeID: programmeID, Query: r.URL.Query().Get("q"), Limit: limit})
+func programmeLevelResource(programmeLevels ProgrammeLevelApplication) resource {
+	module := programmeLevelResourceModule{programmeLevels: programmeLevels}
+	collection := apiPath(literal("programmes"), canonicalID("programme_id"), literal("levels"))
+	member := apiPath(literal("programme-levels"), canonicalID("programme_level_id"))
+	return newResource(
+		"programme-levels",
+		principalRoute(
+			http.MethodGet, collection,
+			academicReadErrorCodes("request.invalid", "resource.not_found"), module.list,
+		),
+		principalRoute(
+			http.MethodPost, collection,
+			academicMutationErrorCodes(
+				"request.invalid", "resource.not_found", "programme_level.invalid",
+				"programme_level.conflict",
+			),
+			module.create,
+		),
+		principalRoute(
+			http.MethodGet, member,
+			academicReadErrorCodes("request.invalid", "resource.not_found"), module.get,
+		),
+		principalRoute(
+			http.MethodPatch, member,
+			academicMutationErrorCodes(
+				"request.invalid", "resource.not_found", "programme_level.invalid",
+				"programme_level.conflict",
+			),
+			module.patch,
+		),
+		principalRoute(
+			http.MethodDelete, member,
+			academicMutationErrorCodes(
+				"request.invalid", "resource.not_found", "programme_level.conflict",
+			),
+			module.archive,
+		),
+	)
+}
+
+func (module programmeLevelResourceModule) list(request operationRequest) (operationResult, error) {
+	programmeID, err := request.params.RequireProgrammeId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
+	}
+	limit, err := request.queryLimit()
+	if err != nil {
+		return operationResult{}, err
+	}
+	levels, err := module.programmeLevels.ListProgrammeLevels(
+		request.context,
+		request.invocation(),
+		application.ListProgrammeLevelsQuery{
+			ProgrammeID: programmeID,
+			Query:       request.request.URL.Query().Get("q"),
+			Limit:       limit,
+		},
+	)
+	if err != nil {
+		return operationResult{}, err
 	}
 	responses := make([]programmeLevelResponse, 0, len(levels))
 	for _, level := range levels {
 		responses = append(responses, programmeLevelResponseFromModel(level))
 	}
-	writeJSON(w, http.StatusOK, responses)
+	return jsonResult(http.StatusOK, responses), nil
 }
 
-func (a *API) createProgrammeLevel(w http.ResponseWriter, r *http.Request) {
-	principal, programmeID, ok := requiredResourceID(w, r, Params.RequireProgrammeId)
-	if !ok {
-		return
+func (module programmeLevelResourceModule) create(request operationRequest) (operationResult, error) {
+	programmeID, err := request.params.RequireProgrammeId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body createProgrammeLevelRequest
-	if !decodeJSON(w, r, &body, "createProgrammeLevel") {
-		return
+	if err := request.decodeJSON(&body, "createProgrammeLevel"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.programmeLevels.CreateProgrammeLevel(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.CreateProgrammeLevelCommand{ProgrammeID: programmeID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description})
+	saved, err := module.programmeLevels.CreateProgrammeLevel(
+		request.context,
+		request.invocation(),
+		application.CreateProgrammeLevelCommand{
+			ProgrammeID: programmeID,
+			Name:        body.Name,
+			DisplayName: body.DisplayName,
+			Description: body.Description,
+		},
+	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusCreated, programmeLevelResponseFromModel(saved))
+	return jsonResult(http.StatusCreated, programmeLevelResponseFromModel(saved)), nil
 }
 
-func (a *API) getProgrammeLevel(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireProgrammeLevelId)
-	if !ok {
-		return
-	}
-	level, err := a.programmeLevels.GetProgrammeLevel(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetProgrammeLevelQuery{ID: id})
+func (module programmeLevelResourceModule) get(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireProgrammeLevelId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, programmeLevelResponseFromModel(level))
+	level, err := module.programmeLevels.GetProgrammeLevel(
+		request.context, request.invocation(), application.GetProgrammeLevelQuery{ID: id},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, programmeLevelResponseFromModel(level)), nil
 }
 
-func (a *API) patchProgrammeLevel(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireProgrammeLevelId)
-	if !ok {
-		return
+func (module programmeLevelResourceModule) patch(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireProgrammeLevelId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body updateProgrammeLevelRequest
-	if !decodeJSON(w, r, &body, "patchProgrammeLevel") {
-		return
+	if err := request.decodeJSON(&body, "patchProgrammeLevel"); err != nil {
+		return operationResult{}, err
 	}
-	level, err := a.programmeLevels.UpdateProgrammeLevel(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UpdateProgrammeLevelCommand{ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()})
+	level, err := module.programmeLevels.UpdateProgrammeLevel(
+		request.context,
+		request.invocation(),
+		application.UpdateProgrammeLevelCommand{
+			ID:          id,
+			Name:        body.Name.ValuePointer(),
+			DisplayName: body.DisplayName.ValuePointer(),
+			Description: body.Description.ValuePointer(),
+		},
+	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, programmeLevelResponseFromModel(level))
+	return jsonResult(http.StatusOK, programmeLevelResponseFromModel(level)), nil
 }
 
-func (a *API) archiveProgrammeLevel(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireProgrammeLevelId)
-	if !ok {
-		return
-	}
-	err := a.programmeLevels.ArchiveProgrammeLevel(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ArchiveProgrammeLevelCommand{ID: id})
+func (module programmeLevelResourceModule) archive(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireProgrammeLevelId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
+	err = module.programmeLevels.ArchiveProgrammeLevel(
+		request.context, request.invocation(), application.ArchiveProgrammeLevelCommand{ID: id},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return noContentResult(), nil
 }
 
 func programmeLevelResponseFromModel(level *model.ProgrammeLevel) programmeLevelResponse {

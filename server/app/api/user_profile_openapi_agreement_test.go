@@ -19,13 +19,11 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerUserProfileRoutes(); err != nil {
-		t.Fatal(err)
-	}
-	if err := runtimeAPI.initUserAdministration(); err != nil {
-		t.Fatal(err)
-	}
-	if err := runtimeAPI.registerLegacyRoute(runtimeAPI.BaseRoutes.CurrentUser, "", http.MethodGet, runtimeAPI.APIPrincipalRequired(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))); err != nil {
+	if err := runtimeAPI.collectResources(
+		model.APIURLSuffix,
+		userProfileResource(nil),
+		userAdministrationResource(nil, nil),
+	); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

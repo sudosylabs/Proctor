@@ -9,63 +9,51 @@ type healthResponse struct {
 	Status string `json:"status"`
 }
 
-func (a *API) InitSystem() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.Health,
-		"/live",
-		http.MethodGet,
-		a.APIHandler(http.HandlerFunc(a.getLiveness)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.Health,
-		"/ready",
-		http.MethodGet,
-		a.APIHandler(http.HandlerFunc(a.getReadiness)),
-	); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(
-		a.BaseRoutes.System,
-		"/version",
-		http.MethodGet,
-		a.APIHandler(http.HandlerFunc(a.getVersion)),
+type systemResourceModule struct {
+	health    Health
+	buildInfo BuildInfo
+}
+
+func systemResource(health Health, buildInfo BuildInfo) resource {
+	module := systemResourceModule{health: health, buildInfo: buildInfo}
+	return newResource(
+		"system",
+		publicRoute(http.MethodGet, rootPath(literal("health"), literal("live")), []string{"not_live"}, module.liveness),
+		publicRoute(http.MethodGet, rootPath(literal("health"), literal("ready")), []string{"not_ready"}, module.readiness),
+		publicRoute(http.MethodGet, apiPath(literal("system"), literal("version")), nil, module.version),
 	)
 }
 
-func (a *API) getLiveness(writer http.ResponseWriter, request *http.Request) {
-	if !a.health.Live() {
-		WriteProblem(writer, Problem{
+func (module systemResourceModule) liveness(request operationRequest) (operationResult, error) {
+	if !module.health.Live() {
+		return problemResult(Problem{
 			Type:      "https://proctor.sudosylabs.com/problems/not-live",
 			Title:     "Service unavailable",
 			Status:    http.StatusServiceUnavailable,
 			Detail:    "The process is not healthy.",
-			Instance:  request.URL.Path,
+			Instance:  request.request.URL.Path,
 			Code:      "not_live",
-			RequestID: RequestID(request.Context()),
-		})
-		return
+			RequestID: RequestID(request.context),
+		}), nil
 	}
-	writeJSON(writer, http.StatusOK, healthResponse{Status: "ok"})
+	return jsonResult(http.StatusOK, healthResponse{Status: "ok"}), nil
 }
 
-func (a *API) getReadiness(writer http.ResponseWriter, request *http.Request) {
-	if !a.health.Ready() {
-		WriteProblem(writer, Problem{
+func (module systemResourceModule) readiness(request operationRequest) (operationResult, error) {
+	if !module.health.Ready() {
+		return problemResult(Problem{
 			Type:      "https://proctor.sudosylabs.com/problems/not-ready",
 			Title:     "Service unavailable",
 			Status:    http.StatusServiceUnavailable,
 			Detail:    "The service is not ready to accept requests.",
-			Instance:  request.URL.Path,
+			Instance:  request.request.URL.Path,
 			Code:      "not_ready",
-			RequestID: RequestID(request.Context()),
-		})
-		return
+			RequestID: RequestID(request.context),
+		}), nil
 	}
-	writeJSON(writer, http.StatusOK, healthResponse{Status: "ok"})
+	return jsonResult(http.StatusOK, healthResponse{Status: "ok"}), nil
 }
 
-func (a *API) getVersion(writer http.ResponseWriter, _ *http.Request) {
-	writeJSON(writer, http.StatusOK, a.buildInfo)
+func (module systemResourceModule) version(operationRequest) (operationResult, error) {
+	return jsonResult(http.StatusOK, module.buildInfo), nil
 }

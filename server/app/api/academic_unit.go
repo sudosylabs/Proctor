@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -44,201 +43,162 @@ type updateAcademicUnitRequest struct {
 	Description *string `json:"description"`
 }
 
-func (a *API) registerAcademicUnitRoutes() error {
-	routes := []struct {
-		base    *mux.Router
-		path    string
-		method  string
-		handler http.HandlerFunc
-	}{
-		{a.BaseRoutes.AcademicUnits, "", http.MethodGet, a.listRootAcademicUnits},
-		{a.BaseRoutes.AcademicUnits, "", http.MethodPost, a.createRootAcademicUnit},
-		{a.BaseRoutes.AcademicUnit, "", http.MethodGet, a.getAcademicUnit},
-		{a.BaseRoutes.AcademicUnit, "", http.MethodPatch, a.patchAcademicUnit},
-		{a.BaseRoutes.AcademicUnit, "", http.MethodDelete, a.archiveAcademicUnit},
-		{a.BaseRoutes.AcademicUnit, "/children", http.MethodGet, a.listAcademicUnitChildren},
-		{a.BaseRoutes.AcademicUnit, "/children", http.MethodPost, a.createAcademicUnitChild},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(
-			route.base, route.path, route.method,
-			a.APIPrincipalRequired(route.handler),
-		); err != nil {
-			return err
-		}
-	}
-	return nil
+type academicUnitResourceModule struct {
+	academicUnits AcademicUnitApplication
 }
 
-func (a *API) listRootAcademicUnits(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return
-	}
-	invocation := application.NewInvocation(principal, RequestMetadata(request.Context()))
+func academicUnitResource(academicUnits AcademicUnitApplication) resource {
+	module := academicUnitResourceModule{academicUnits: academicUnits}
+	collection := apiPath(literal("academic-units"))
+	member := apiPath(literal("academic-units"), canonicalID("academic_unit_id"))
+	children := apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("children"))
+	return newResource(
+		"academic-units",
+		principalRoute(http.MethodGet, collection, academicReadErrorCodes("request.invalid"), module.listRoot),
+		principalRoute(http.MethodPost, collection, academicMutationErrorCodes("request.invalid", "academic_unit.invalid", "academic_unit.conflict"), module.createRoot),
+		principalRoute(http.MethodGet, member, academicReadErrorCodes("resource.not_found"), module.get),
+		principalRoute(http.MethodPatch, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict"), module.patch),
+		principalRoute(http.MethodDelete, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.conflict"), module.archive),
+		principalRoute(http.MethodGet, children, academicReadErrorCodes("resource.not_found"), module.listChildren),
+		principalRoute(http.MethodPost, children, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict"), module.createChild),
+	)
+}
+
+func (module academicUnitResourceModule) listRoot(request operationRequest) (operationResult, error) {
 	var units []*model.AcademicUnit
 	var err error
-	if query := request.URL.Query().Get("q"); query != "" {
-		limit, valid := queryLimit(writer, request)
-		if !valid {
-			return
+	if query := request.request.URL.Query().Get("q"); query != "" {
+		limit, limitErr := request.queryLimit()
+		if limitErr != nil {
+			return operationResult{}, limitErr
 		}
-		units, err = a.academicUnits.SearchAcademicUnits(
-			request.Context(),
-			invocation,
+		units, err = module.academicUnits.SearchAcademicUnits(
+			request.context,
+			request.invocation(),
 			application.SearchAcademicUnitsQuery{Query: query, Limit: limit},
 		)
 	} else {
-		units, err = a.academicUnits.ListAcademicUnits(
-			request.Context(), invocation, application.ListAcademicUnitsQuery{},
+		units, err = module.academicUnits.ListAcademicUnits(
+			request.context, request.invocation(), application.ListAcademicUnitsQuery{},
 		)
 	}
-	writeAcademicUnitResult(writer, request, a, http.StatusOK, units, err)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, academicUnitResponsesFromModels(units)), nil
 }
 
-func (a *API) createRootAcademicUnit(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return
-	}
+func (module academicUnitResourceModule) createRoot(request operationRequest) (operationResult, error) {
 	var body createAcademicUnitRequest
-	if !decodeJSON(writer, request, &body, "createRootAcademicUnit") {
-		return
+	if err := request.decodeJSON(&body, "createRootAcademicUnit"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.academicUnits.CreateAcademicUnit(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	saved, err := module.academicUnits.CreateAcademicUnit(
+		request.context,
+		request.invocation(),
 		application.CreateAcademicUnitCommand{
 			Name: body.Name, DisplayName: body.DisplayName,
 			Description: body.Description,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusCreated, academicUnitResponseFromModel(saved))
+	return jsonResult(http.StatusCreated, academicUnitResponseFromModel(saved)), nil
 }
 
-func (a *API) getAcademicUnit(writer http.ResponseWriter, request *http.Request) {
-	principal, id, ok := requiredResourceID(
-		writer, request, Params.RequireAcademicUnitId,
-	)
-	if !ok {
-		return
+func (module academicUnitResourceModule) get(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	unit, err := a.academicUnits.GetAcademicUnit(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	unit, err := module.academicUnits.GetAcademicUnit(
+		request.context,
+		request.invocation(),
 		application.GetAcademicUnitQuery{ID: id},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, academicUnitResponseFromModel(unit))
+	return jsonResult(http.StatusOK, academicUnitResponseFromModel(unit)), nil
 }
 
-func (a *API) patchAcademicUnit(writer http.ResponseWriter, request *http.Request) {
-	principal, id, ok := requiredResourceID(
-		writer, request, Params.RequireAcademicUnitId,
-	)
-	if !ok {
-		return
+func (module academicUnitResourceModule) patch(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body updateAcademicUnitRequest
-	if !decodeJSON(writer, request, &body, "patchAcademicUnit") {
-		return
+	if err := request.decodeJSON(&body, "patchAcademicUnit"); err != nil {
+		return operationResult{}, err
 	}
-	unit, err := a.academicUnits.UpdateAcademicUnit(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	unit, err := module.academicUnits.UpdateAcademicUnit(
+		request.context,
+		request.invocation(),
 		application.UpdateAcademicUnitCommand{
 			ID: id, ParentID: body.ParentID, Name: body.Name,
 			DisplayName: body.DisplayName, Description: body.Description,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, academicUnitResponseFromModel(unit))
+	return jsonResult(http.StatusOK, academicUnitResponseFromModel(unit)), nil
 }
 
-func (a *API) archiveAcademicUnit(writer http.ResponseWriter, request *http.Request) {
-	principal, id, ok := requiredResourceID(
-		writer, request, Params.RequireAcademicUnitId,
-	)
-	if !ok {
-		return
+func (module academicUnitResourceModule) archive(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	err := a.academicUnits.ArchiveAcademicUnit(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	err = module.academicUnits.ArchiveAcademicUnit(
+		request.context,
+		request.invocation(),
 		application.ArchiveAcademicUnitCommand{ID: id},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusNoContent)
+	return noContentResult(), nil
 }
 
-func (a *API) listAcademicUnitChildren(writer http.ResponseWriter, request *http.Request) {
-	principal, id, ok := requiredResourceID(
-		writer, request, Params.RequireAcademicUnitId,
-	)
-	if !ok {
-		return
+func (module academicUnitResourceModule) listChildren(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	units, err := a.academicUnits.ListAcademicUnits(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	units, err := module.academicUnits.ListAcademicUnits(
+		request.context,
+		request.invocation(),
 		application.ListAcademicUnitsQuery{ParentID: id},
 	)
-	writeAcademicUnitResult(writer, request, a, http.StatusOK, units, err)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, academicUnitResponsesFromModels(units)), nil
 }
 
-func (a *API) createAcademicUnitChild(writer http.ResponseWriter, request *http.Request) {
-	principal, id, ok := requiredResourceID(
-		writer, request, Params.RequireAcademicUnitId,
-	)
-	if !ok {
-		return
+func (module academicUnitResourceModule) createChild(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body createAcademicUnitRequest
-	if !decodeJSON(writer, request, &body, "createAcademicUnitChild") {
-		return
+	if err := request.decodeJSON(&body, "createAcademicUnitChild"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.academicUnits.CreateAcademicUnit(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	saved, err := module.academicUnits.CreateAcademicUnit(
+		request.context,
+		request.invocation(),
 		application.CreateAcademicUnitCommand{
 			ParentID: id, Name: body.Name, DisplayName: body.DisplayName,
 			Description: body.Description,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusCreated, academicUnitResponseFromModel(saved))
-}
-
-func writeAcademicUnitResult(
-	writer http.ResponseWriter,
-	request *http.Request,
-	a *API,
-	status int,
-	units []*model.AcademicUnit,
-	err error,
-) {
-	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
-	}
-	writeJSON(writer, status, academicUnitResponsesFromModels(units))
+	return jsonResult(http.StatusCreated, academicUnitResponseFromModel(saved)), nil
 }
 
 func academicUnitResponseFromModel(unit *model.AcademicUnit) academicUnitResponse {

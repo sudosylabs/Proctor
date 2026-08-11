@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -28,138 +29,132 @@ func externalAuthenticationProviderResponses(
 	return responses
 }
 
-func (a *API) InitExternalAuthentication() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.IdentityProviders,
-		"",
-		http.MethodGet,
-		a.APIHandler(http.HandlerFunc(a.listExternalAuthenticationProviders)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.IdentityProvider,
-		"/login",
-		http.MethodGet,
-		a.APIHandler(http.HandlerFunc(a.beginExternalAuthentication)),
-	); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(
-		a.BaseRoutes.IdentityProvider,
-		"/callback",
-		http.MethodGet,
-		a.APIHandler(http.HandlerFunc(a.completeExternalAuthentication)),
+type externalAuthenticationEntryApplication interface {
+	ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
+	BeginExternalAuthentication(context.Context, application.Invocation, application.BeginExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
+	CompleteExternalAuthentication(context.Context, application.Invocation, application.CompleteExternalAuthenticationCommand) (*model.ExternalAuthenticationCompletion, error)
+}
+
+type externalAuthenticationResourceModule struct {
+	authentication externalAuthenticationEntryApplication
+	cookies        browserCookies
+}
+
+func externalAuthenticationResource(
+	authentication externalAuthenticationEntryApplication,
+	cookies browserCookies,
+) resource {
+	module := externalAuthenticationResourceModule{authentication: authentication, cookies: cookies}
+	return newResource(
+		"external-authentication",
+		publicRoute(
+			http.MethodGet,
+			apiPath(literal("auth"), literal("providers")),
+			nil,
+			module.listProviders,
+		),
+		protocolRoute(
+			"external-authentication-login-redirect",
+			RouteProtocolRedirect,
+			AuthPublic,
+			http.MethodGet,
+			apiPath(literal("auth"), literal("providers"), providerID("provider_id"), literal("login")),
+			[]string{
+				"request.invalid", "authentication.external.request.invalid",
+				"authentication.external.provider_not_found", "authentication.rate_limited",
+				"authentication.rate_limit_unavailable", "authentication.external.unavailable",
+				"authentication.external.rejected", "authentication.internal",
+			},
+			module.begin,
+		),
+		protocolRoute(
+			"external-authentication-callback-redirect",
+			RouteProtocolRedirect,
+			AuthPublic,
+			http.MethodGet,
+			apiPath(literal("auth"), literal("providers"), providerID("provider_id"), literal("callback")),
+			[]string{
+				"request.invalid", "authentication.external.invalid", "authentication.external.provider_not_found",
+				"authentication.external.rejected", "authentication.external.unavailable",
+				"authentication.external.account_conflict", "authentication.external.account_not_linked",
+				"authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable",
+			},
+			module.complete,
+		),
 	)
 }
 
-func (a *API) listExternalAuthenticationProviders(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	writeJSON(
-		writer,
+func (module externalAuthenticationResourceModule) listProviders(operationRequest) (operationResult, error) {
+	return jsonResult(
 		http.StatusOK,
-		externalAuthenticationProviderResponses(a.application.ExternalAuthenticationProviders()),
-	)
+		externalAuthenticationProviderResponses(module.authentication.ExternalAuthenticationProviders()),
+	), nil
 }
 
-func (a *API) beginExternalAuthentication(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	params, ok := RequestParams(request.Context())
-	if !ok {
-		WriteError(writer, request, invalidRequestError("route_params", nil))
-		return
-	}
-	providerID, appErr := params.RequireProviderId()
+func (module externalAuthenticationResourceModule) begin(
+	request operationRequest,
+) (protocolResult, error) {
+	providerID, appErr := request.params.RequireProviderId()
 	if appErr != nil {
-		WriteError(writer, request, appErr)
-		return
+		return protocolResult{}, appErr
 	}
 	clientType := model.SessionClientDesktop
-	if params.ClientType != "" {
-		clientType = model.SessionClientType(params.ClientType)
+	if request.params.ClientType != "" {
+		clientType = model.SessionClientType(request.params.ClientType)
 	}
-	start, err := a.application.BeginExternalAuthentication(
-		request.Context(),
-		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+	start, err := module.authentication.BeginExternalAuthentication(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
 		application.BeginExternalAuthenticationCommand{
-			ProviderID: providerID, ReturnTo: params.ReturnTo, ClientType: clientType,
-			DeviceID: params.DeviceId, DeviceName: params.DeviceName, Source: request.RemoteAddr,
+			ProviderID: providerID, ReturnTo: request.params.ReturnTo, ClientType: clientType,
+			DeviceID: request.params.DeviceId, DeviceName: request.params.DeviceName, Source: request.request.RemoteAddr,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return protocolResult{}, err
 	}
-	a.cookies.attachExternalLoginBinding(
-		writer,
-		start.Binding,
-		start.ExpiresAt,
-	)
-	writer.Header().Set("Cache-Control", "no-store")
-	http.Redirect(
-		writer,
-		request,
-		start.RedirectURL,
-		http.StatusSeeOther,
-	)
+	headers := captureResponseHeaders(func(writer http.ResponseWriter) {
+		module.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
+	})
+	headers.Set("Cache-Control", "no-store")
+	return redirectProtocolResult(start.RedirectURL).withHeaders(headers), nil
 }
 
-func (a *API) completeExternalAuthentication(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	a.cookies.clearExternalLoginBinding(writer)
-	params, ok := RequestParams(request.Context())
-	if !ok {
-		WriteError(writer, request, invalidRequestError("route_params", nil))
-		return
-	}
-	providerID, appErr := params.RequireProviderId()
+func (module externalAuthenticationResourceModule) complete(
+	request operationRequest,
+) (protocolResult, error) {
+	clearBinding := captureResponseHeaders(module.cookies.clearExternalLoginBinding)
+	providerID, appErr := request.params.RequireProviderId()
 	if appErr != nil {
-		WriteError(writer, request, appErr)
-		return
+		return protocolResult{}, errorWithHeaders(appErr, clearBinding)
 	}
 	binding, cookieErr := singleCookieValue(
-		request,
+		request.request,
 		BrowserExternalLoginCookieName,
 	)
 	if cookieErr != nil || binding == "" {
-		WriteError(
-			writer,
-			request,
-			invalidExternalCallbackError(),
-		)
-		return
+		return protocolResult{}, errorWithHeaders(invalidExternalCallbackError(), clearBinding)
 	}
-	callback, appErr := externalAuthenticationCallbackFromRequest(request)
+	callback, appErr := externalAuthenticationCallbackFromRequest(request.request)
 	if appErr != nil {
-		WriteError(writer, request, appErr)
-		return
+		return protocolResult{}, errorWithHeaders(appErr, clearBinding)
 	}
-	completion, err := a.application.CompleteExternalAuthentication(
-		request.Context(),
-		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+	completion, err := module.authentication.CompleteExternalAuthentication(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
 		application.CompleteExternalAuthenticationCommand{
 			ProviderID: providerID, Binding: binding, Callback: callback,
-			Source: request.RemoteAddr,
+			Source: request.request.RemoteAddr,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return protocolResult{}, errorWithHeaders(err, clearBinding)
 	}
-	a.cookies.attach(writer, completion.Tokens)
-	writer.Header().Set("Cache-Control", "no-store")
-	http.Redirect(
-		writer,
-		request,
-		completion.ReturnTo,
-		http.StatusSeeOther,
-	)
+	headers := combineResponseHeaders(clearBinding, captureResponseHeaders(func(writer http.ResponseWriter) {
+		module.cookies.attach(writer, completion.Tokens)
+	}))
+	headers.Set("Cache-Control", "no-store")
+	return redirectProtocolResult(completion.ReturnTo).withHeaders(headers), nil
 }
 
 func externalAuthenticationCallbackFromRequest(

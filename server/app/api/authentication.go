@@ -158,267 +158,223 @@ func authenticationResponseFromRefresh(
 	}
 }
 
-func (a *API) InitAuthentication() error {
-	routes := []struct {
-		path    string
-		handler *Handler
-	}{
-		{"/login", a.APIHandler(loginHandler(a.application, a.logger, a.cookies))},
-		{
-			"/refresh",
-			a.APIRefreshCredentialRequired(
-				refreshHandler(a.application, a.logger, a.cookies),
-			),
-		},
-		{
-			"/logout",
-			a.APISessionRequired(
-				logoutHandler(a.application, a.logger, a.cookies),
-			),
-		},
-		{
-			"/email-verification/request",
-			a.APISessionRequired(http.HandlerFunc(a.requestEmailVerification)),
-		},
-		{
-			"/email-verification/complete",
-			a.APIHandler(http.HandlerFunc(a.completeEmailVerification)),
-		},
-		{
-			"/password-reset/request",
-			a.APIHandler(http.HandlerFunc(a.requestPasswordReset)),
-		},
-		{
-			"/password-reset/complete",
-			a.APIHandler(http.HandlerFunc(a.completePasswordReset)),
-		},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(
-			a.BaseRoutes.Authentication,
-			route.path,
+type authenticationEntryApplication interface {
+	Login(context.Context, application.Invocation, application.LoginCommand) (*application.LoginResult, error)
+	RefreshSession(context.Context, application.Invocation, application.RefreshSessionCommand) (*model.Session, *model.AuthenticationTokens, error)
+	Logout(context.Context, application.Invocation, application.LogoutCommand) error
+	RequestEmailVerification(context.Context, application.Invocation, application.RequestEmailVerificationCommand) error
+	CompleteEmailVerification(context.Context, application.Invocation, application.CompleteEmailVerificationCommand) (*model.User, error)
+	RequestPasswordReset(context.Context, application.Invocation, application.RequestPasswordResetCommand) error
+	CompletePasswordReset(context.Context, application.Invocation, application.CompletePasswordResetCommand) (*model.User, error)
+}
+
+type authenticationResourceModule struct {
+	authentication authenticationEntryApplication
+	cookies        browserCookies
+}
+
+func authenticationResource(authentication authenticationEntryApplication, cookies browserCookies) resource {
+	module := authenticationResourceModule{authentication: authentication, cookies: cookies}
+	return newResource(
+		"authentication",
+		publicRoute(http.MethodPost, apiPath(literal("auth"), literal("login")), authenticationLoginErrorCodes(), module.login),
+		refreshCredentialRoute(http.MethodPost, apiPath(literal("auth"), literal("refresh")), authenticationRefreshErrorCodes(), module.refresh),
+		sessionRoute(http.MethodPost, apiPath(literal("auth"), literal("logout")), sessionAuthenticationMutationErrorCodes("authentication.internal"), module.logout),
+		sessionRoute(
 			http.MethodPost,
-			route.handler,
-		); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (a *API) InitUsers() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.CurrentUser,
-		"",
-		http.MethodGet,
-		a.APIPrincipalRequired(currentUserHandler(a.userProfiles, a.logger)),
-	); err != nil {
-		return err
-	}
-	return a.initUserAdministration()
-}
-
-func loginHandler(
-	auth Authentication,
-	logger Logger,
-	cookies browserCookies,
-) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		var input loginRequest
-		if err := decodeRequestJSON(request, &input); err != nil {
-			WriteError(writer, request, invalidRequestError("login", err))
-			return
-		}
-		result, err := auth.Login(
-			request.Context(),
-			application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
-			application.LoginCommand{
-				LoginID:    input.LoginID,
-				Password:   input.Password,
-				ClientType: input.ClientType,
-				DeviceID:   input.DeviceID,
-				DeviceName: input.DeviceName,
-				MFACode:    input.MFACode,
-				Source:     request.RemoteAddr,
+			apiPath(literal("auth"), literal("email-verification"), literal("request")),
+			sessionAuthenticationMutationErrorCodes(
+				"authentication.rate_limited", "authentication.rate_limit_unavailable",
+				"authentication.account_recovery.unavailable",
+			),
+			module.requestEmailVerification,
+		),
+		publicRoute(
+			http.MethodPost,
+			apiPath(literal("auth"), literal("email-verification"), literal("complete")),
+			[]string{
+				"request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable",
+				"authentication.account_token.invalid", "authentication.account_recovery.unavailable",
 			},
-		)
-		if err != nil {
-			writeApplicationError(writer, request, logger, err)
-			return
-		}
-		writer.Header().Set("Cache-Control", "no-store")
-		response := authenticationResponseFromLogin(result)
-		if usesBrowserCookieTransport(input.ClientType) {
+			module.completeEmailVerification,
+		),
+		publicRoute(
+			http.MethodPost,
+			apiPath(literal("auth"), literal("password-reset"), literal("request")),
+			[]string{
+				"request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable",
+				"authentication.account_recovery.unavailable",
+			},
+			module.requestPasswordReset,
+		),
+		publicRoute(
+			http.MethodPost,
+			apiPath(literal("auth"), literal("password-reset"), literal("complete")),
+			[]string{
+				"request.invalid", "authentication.password.invalid", "authentication.rate_limited",
+				"authentication.rate_limit_unavailable", "authentication.account_token.invalid",
+				"authentication.account_recovery.unavailable",
+			},
+			module.completePasswordReset,
+		),
+	)
+}
+
+func authenticationLoginErrorCodes() []string {
+	return []string{
+		"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid",
+		"authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.unavailable",
+		"authentication.sessions.maximum_reached", "authentication.rate_limited",
+		"authentication.rate_limit_unavailable", "authentication.internal",
+	}
+}
+
+func authenticationRefreshErrorCodes() []string {
+	return []string{
+		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.csrf.invalid", "authentication.session.invalid", "authentication.internal",
+	}
+}
+
+func sessionAuthenticationMutationErrorCodes(extra ...string) []string {
+	codes := []string{
+		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.csrf.invalid",
+	}
+	return append(codes, extra...)
+}
+
+func (module authenticationResourceModule) login(request operationRequest) (operationResult, error) {
+	var input loginRequest
+	if err := request.decodeJSON(&input, "login"); err != nil {
+		return operationResult{}, err
+	}
+	result, err := module.authentication.Login(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
+		application.LoginCommand{
+			LoginID: input.LoginID, Password: input.Password, ClientType: input.ClientType,
+			DeviceID: input.DeviceID, DeviceName: input.DeviceName, MFACode: input.MFACode,
+			Source: request.request.RemoteAddr,
+		},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := authenticationResponseFromLogin(result)
+	headers := http.Header{"Cache-Control": {"no-store"}}
+	if usesBrowserCookieTransport(input.ClientType) {
+		headers = combineResponseHeaders(headers, captureResponseHeaders(func(writer http.ResponseWriter) {
 			if result != nil {
-				cookies.attach(writer, result.Tokens)
+				module.cookies.attach(writer, result.Tokens)
 			}
-			response.Tokens = nil
+		}))
+		response.Tokens = nil
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(headers), nil
+}
+
+func (module authenticationResourceModule) refresh(request operationRequest) (operationResult, error) {
+	credential, ok := credentialFromContext(request.context)
+	if !ok {
+		return operationResult{}, authenticationRequiredError()
+	}
+	session, tokens, err := module.authentication.RefreshSession(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
+		application.RefreshSessionCommand{RefreshToken: credential.token},
+	)
+	if err != nil {
+		if credential.source == credentialSourceCookie {
+			return operationResult{}, errorWithHeaders(err, captureResponseHeaders(module.cookies.clear))
 		}
-		writeJSON(writer, http.StatusOK, response)
-	})
+		return operationResult{}, err
+	}
+	response := authenticationResponseFromRefresh(session, tokens)
+	headers := http.Header{"Cache-Control": {"no-store"}}
+	if credential.source == credentialSourceCookie {
+		response.Tokens = nil
+		headers = combineResponseHeaders(headers, captureResponseHeaders(func(writer http.ResponseWriter) {
+			module.cookies.attach(writer, tokens)
+		}))
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(headers), nil
+}
+
+func (module authenticationResourceModule) logout(request operationRequest) (operationResult, error) {
+	if err := module.authentication.Logout(request.context, request.invocation(), application.LogoutCommand{}); err != nil {
+		return operationResult{}, err
+	}
+	result := noContentResult().withHeaders(http.Header{"Cache-Control": {"no-store"}})
+	if credentialSourceFromContext(request.context) == credentialSourceCookie {
+		result = result.withHeaders(combineResponseHeaders(result.headers, captureResponseHeaders(module.cookies.clear)))
+	}
+	return result, nil
+}
+
+func (module authenticationResourceModule) requestEmailVerification(request operationRequest) (operationResult, error) {
+	err := module.authentication.RequestEmailVerification(
+		request.context, request.invocation(),
+		application.RequestEmailVerificationCommand{Source: request.request.RemoteAddr},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return statusResult(http.StatusAccepted), nil
+}
+
+func (module authenticationResourceModule) completeEmailVerification(request operationRequest) (operationResult, error) {
+	var input emailVerificationCompletion
+	if err := request.decodeJSON(&input, "complete_email_verification"); err != nil {
+		return operationResult{}, err
+	}
+	_, err := module.authentication.CompleteEmailVerification(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
+		application.CompleteEmailVerificationCommand{Token: input.Token, Source: request.request.RemoteAddr},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return noContentResult(), nil
+}
+
+func (module authenticationResourceModule) requestPasswordReset(request operationRequest) (operationResult, error) {
+	var input passwordResetRequest
+	if err := request.decodeJSON(&input, "request_password_reset"); err != nil {
+		return operationResult{}, err
+	}
+	if err := module.authentication.RequestPasswordReset(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
+		application.RequestPasswordResetCommand{Email: input.Email, Source: request.request.RemoteAddr},
+	); err != nil {
+		return operationResult{}, err
+	}
+	return statusResult(http.StatusAccepted), nil
+}
+
+func (module authenticationResourceModule) completePasswordReset(request operationRequest) (operationResult, error) {
+	var input passwordResetCompletion
+	if err := request.decodeJSON(&input, "complete_password_reset"); err != nil {
+		return operationResult{}, err
+	}
+	_, err := module.authentication.CompletePasswordReset(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
+		application.CompletePasswordResetCommand{
+			Token: input.Token, Password: input.Password, Source: request.request.RemoteAddr,
+		},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return noContentResult().withHeaders(captureResponseHeaders(module.cookies.clear)), nil
 }
 
 func usesBrowserCookieTransport(clientType model.SessionClientType) bool {
 	return clientType == model.SessionClientDesktop ||
 		clientType == model.SessionClientWeb
-}
-
-func (a *API) requestEmailVerification(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return
-	}
-	if err := a.application.RequestEmailVerification(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
-		application.RequestEmailVerificationCommand{Source: request.RemoteAddr},
-	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
-	}
-	writer.WriteHeader(http.StatusAccepted)
-}
-
-func (a *API) completeEmailVerification(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	var input emailVerificationCompletion
-	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError("complete_email_verification", err))
-		return
-	}
-	if _, err := a.application.CompleteEmailVerification(
-		request.Context(),
-		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
-		application.CompleteEmailVerificationCommand{Token: input.Token, Source: request.RemoteAddr},
-	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
-	}
-	writer.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) requestPasswordReset(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	var input passwordResetRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError("request_password_reset", err))
-		return
-	}
-	if err := a.application.RequestPasswordReset(
-		request.Context(),
-		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
-		application.RequestPasswordResetCommand{Email: input.Email, Source: request.RemoteAddr},
-	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
-	}
-	writer.WriteHeader(http.StatusAccepted)
-}
-
-func (a *API) completePasswordReset(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	var input passwordResetCompletion
-	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError("complete_password_reset", err))
-		return
-	}
-	if _, err := a.application.CompletePasswordReset(
-		request.Context(),
-		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
-		application.CompletePasswordResetCommand{
-			Token: input.Token, Password: input.Password, Source: request.RemoteAddr,
-		},
-	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
-	}
-	a.cookies.clear(writer)
-	writer.WriteHeader(http.StatusNoContent)
-}
-
-func refreshHandler(
-	auth Authentication,
-	logger Logger,
-	cookies browserCookies,
-) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		credential, ok := credentialFromContext(request.Context())
-		if !ok {
-			WriteError(writer, request, authenticationRequiredError())
-			return
-		}
-		session, tokens, err := auth.RefreshSession(
-			request.Context(),
-			application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
-			application.RefreshSessionCommand{RefreshToken: credential.token},
-		)
-		if err != nil {
-			if credential.source == credentialSourceCookie {
-				cookies.clear(writer)
-			}
-			writeApplicationError(writer, request, logger, err)
-			return
-		}
-		writer.Header().Set("Cache-Control", "no-store")
-		response := authenticationResponseFromRefresh(session, tokens)
-		if credential.source == credentialSourceCookie {
-			cookies.attach(writer, tokens)
-			response.Tokens = nil
-		}
-		writeJSON(writer, http.StatusOK, response)
-	})
-}
-
-func logoutHandler(
-	auth Authentication,
-	logger Logger,
-	cookies browserCookies,
-) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		principal, ok := Principal(request.Context())
-		if !ok {
-			WriteError(writer, request, authenticationRequiredError())
-			return
-		}
-		if err := auth.Logout(
-			request.Context(),
-			application.NewInvocation(principal, RequestMetadata(request.Context())),
-			application.LogoutCommand{},
-		); err != nil {
-			writeApplicationError(writer, request, logger, err)
-			return
-		}
-		if credentialSourceFromContext(request.Context()) == credentialSourceCookie {
-			cookies.clear(writer)
-		}
-		writer.Header().Set("Cache-Control", "no-store")
-		writer.WriteHeader(http.StatusNoContent)
-	})
-}
-
-func currentUserHandler(profiles UserProfileApplication, logger Logger) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		principal, ok := Principal(request.Context())
-		if !ok {
-			WriteError(writer, request, authenticationRequiredError())
-			return
-		}
-		user, err := profiles.GetUserProfile(request.Context(), application.NewInvocation(principal, RequestMetadata(request.Context())), application.GetUserProfileQuery{ID: principal.UserID.String()})
-		if err != nil {
-			writeApplicationError(writer, request, logger, err)
-			return
-		}
-		writeJSON(writer, http.StatusOK, userProfileResponseFromModel(user))
-	})
 }
 
 func requestAccessCredential(request *http.Request) (requestCredential, error) {

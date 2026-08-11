@@ -41,194 +41,132 @@ type mfaStatusResponse struct {
 	RecoveryCodesRemaining int   `json:"recovery_codes_remaining"`
 }
 
-func (a *API) InitMFA() error {
-	routes := []struct {
-		path    string
-		method  string
-		handler *Handler
-	}{
-		{
-			"",
-			http.MethodGet,
-			a.APISessionRequired(http.HandlerFunc(a.getMFAStatus)),
-		},
-		{
-			"/setup",
-			http.MethodPost,
-			a.APIRecentSessionRequired(http.HandlerFunc(a.setupMFA)),
-		},
-		{
-			"/activate",
-			http.MethodPost,
-			a.APIRecentSessionRequired(http.HandlerFunc(a.activateMFA)),
-		},
-		{
-			"/challenge",
-			http.MethodPost,
-			a.APISessionRequired(http.HandlerFunc(a.challengeMFA)),
-		},
-		{
-			"/recovery-codes/regenerate",
-			http.MethodPost,
-			a.APIStrongRecentSessionRequired(
-				http.HandlerFunc(a.regenerateMFARecoveryCodes),
-			),
-		},
-		{
-			"/disable",
-			http.MethodPost,
-			a.APIStrongRecentSessionRequired(http.HandlerFunc(a.disableMFA)),
-		},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(
-			a.BaseRoutes.MFA,
-			route.path,
-			route.method,
-			route.handler,
-		); err != nil {
-			return err
-		}
-	}
-	return nil
+type mfaResourceModule struct {
+	mfa MFA
 }
 
-func (a *API) getMFAStatus(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return
-	}
-	status, err := a.application.GetMFAStatus(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func mfaResource(mfa MFA) resource {
+	module := mfaResourceModule{mfa: mfa}
+	base := apiPath(literal("users"), literal("me"), literal("mfa"))
+	return newResource(
+		"multi-factor-authentication",
+		sessionRoute(http.MethodGet, base, personalAccessTokenSessionCodes("authentication.mfa.disabled", "authentication.mfa.unavailable"), module.status),
+		recentSessionRoute(http.MethodPost, appendRoutePath(base, literal("setup")), mfaRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.setup),
+		recentSessionRoute(http.MethodPost, appendRoutePath(base, literal("activate")), mfaRecentMutationCodes("request.invalid", "authentication.mfa.invalid_code", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.activate),
+		sessionRoute(http.MethodPost, appendRoutePath(base, literal("challenge")), mfaSessionMutationCodes("request.invalid", "authentication.mfa.invalid_code", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.challenge),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("recovery-codes"), literal("regenerate")), mfaStrongRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.regenerateRecoveryCodes),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("disable")), mfaStrongRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "audit.unavailable"), module.disable),
+	)
+}
+
+func mfaSessionMutationCodes(extra ...string) []string {
+	return personalAccessTokenSessionMutationCodes(extra...)
+}
+
+func mfaRecentMutationCodes(extra ...string) []string {
+	return personalAccessTokenRecentMutationCodes(extra...)
+}
+
+func mfaStrongRecentMutationCodes(extra ...string) []string {
+	return mfaRecentMutationCodes(append([]string{"authentication.strong_required"}, extra...)...)
+}
+
+func (module mfaResourceModule) status(request operationRequest) (operationResult, error) {
+	status, err := module.mfa.GetMFAStatus(
+		request.context,
+		request.invocation(),
 		application.GetMFAStatusQuery{},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, mfaStatusResponse{
+	return jsonResult(http.StatusOK, mfaStatusResponse{
 		Enabled:                status.Enabled,
 		Pending:                status.Pending,
 		PendingExpiresAt:       status.PendingExpiresAt.Millis(),
 		RecoveryCodesRemaining: status.RecoveryCodesRemaining,
-	})
+	}).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) setupMFA(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return
-	}
-	setup, err := a.application.SetupMFA(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func (module mfaResourceModule) setup(request operationRequest) (operationResult, error) {
+	setup, err := module.mfa.SetupMFA(
+		request.context,
+		request.invocation(),
 		application.SetupMFACommand{},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusCreated, mfaSetupResponse{
+	return jsonResult(http.StatusCreated, mfaSetupResponse{
 		Secret:          setup.Secret,
 		ProvisioningURI: setup.ProvisioningURI,
 		ExpiresAt:       model.MillisFromTime(setup.ExpiresAt),
-	})
+	}).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) activateMFA(writer http.ResponseWriter, request *http.Request) {
-	principal, code, ok := a.mfaCode(writer, request, "activateMFA")
-	if !ok {
-		return
+func (module mfaResourceModule) activate(request operationRequest) (operationResult, error) {
+	code, err := mfaCode(request, "activateMFA")
+	if err != nil {
+		return operationResult{}, err
 	}
-	activation, err := a.application.ActivateMFA(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	activation, err := module.mfa.ActivateMFA(
+		request.context,
+		request.invocation(),
 		application.ActivateMFACommand{Code: code},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, mfaActivationResponse{
+	return jsonResult(http.StatusOK, mfaActivationResponse{
 		RecoveryCodes: activation.RecoveryCodes,
-	})
+	}).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) challengeMFA(writer http.ResponseWriter, request *http.Request) {
-	principal, code, ok := a.mfaCode(writer, request, "challengeMFA")
-	if !ok {
-		return
+func (module mfaResourceModule) challenge(request operationRequest) (operationResult, error) {
+	code, err := mfaCode(request, "challengeMFA")
+	if err != nil {
+		return operationResult{}, err
 	}
-	session, err := a.application.ChallengeMFA(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	session, err := module.mfa.ChallengeMFA(
+		request.context,
+		request.invocation(),
 		application.ChallengeMFACommand{Code: code},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, sessionResponseFromModel(session))
+	return jsonResult(http.StatusOK, sessionResponseFromModel(session)).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) regenerateMFARecoveryCodes(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return
-	}
-	codes, err := a.application.RegenerateMFARecoveryCodes(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func (module mfaResourceModule) regenerateRecoveryCodes(request operationRequest) (operationResult, error) {
+	codes, err := module.mfa.RegenerateMFARecoveryCodes(
+		request.context,
+		request.invocation(),
 		application.RegenerateMFARecoveryCodesCommand{},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, mfaRecoveryCodesResponse{
+	return jsonResult(http.StatusOK, mfaRecoveryCodesResponse{
 		RecoveryCodes: codes,
-	})
+	}).withHeaders(noStoreHeaders()), nil
 }
 
-func (a *API) disableMFA(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return
-	}
-	if err := a.application.DisableMFA(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+func (module mfaResourceModule) disable(request operationRequest) (operationResult, error) {
+	if err := module.mfa.DisableMFA(
+		request.context,
+		request.invocation(),
 		application.DisableMFACommand{},
 	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusNoContent)
+	return noContentResult(), nil
 }
 
-func (a *API) mfaCode(
-	writer http.ResponseWriter,
-	request *http.Request,
-	where string,
-) (model.Principal, string, bool) {
-	principal, ok := requiredPrincipal(writer, request)
-	if !ok {
-		return model.Principal{}, "", false
-	}
+func mfaCode(request operationRequest, where string) (string, error) {
 	var input mfaCodeRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		WriteError(writer, request, invalidRequestError(where, err))
-		return model.Principal{}, "", false
+	if err := request.decodeJSON(&input, where); err != nil {
+		return "", err
 	}
-	return principal, input.Code, true
+	return input.Code, nil
 }

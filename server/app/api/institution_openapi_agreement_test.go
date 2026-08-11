@@ -20,7 +20,7 @@ func TestInstitutionOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerInstitutionRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, institutionResource(nil)); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

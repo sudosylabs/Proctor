@@ -69,34 +69,31 @@ func auditEventResponseFromModel(event *model.AuditEvent) auditEventResponse {
 	}
 }
 
-func (a *API) InitAudits() error {
-	return a.registerLegacyRoute(
-		a.BaseRoutes.Audits,
-		"",
-		http.MethodGet,
-		a.APIPrincipalRequired(http.HandlerFunc(a.listAuditEvents)),
+type auditResourceModule struct {
+	audits AuditListingApplication
+}
+
+func auditResource(audits AuditListingApplication) resource {
+	module := auditResourceModule{audits: audits}
+	return newResource(
+		"audits",
+		principalRoute(http.MethodGet, apiPath(literal("audits")),
+			operatorReadErrorCodes("audit.query.invalid", "audit.unavailable"), module.list),
 	)
 }
 
-func (a *API) listAuditEvents(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
-	query, err := auditQueryFromRequest(request)
+func (module auditResourceModule) list(request operationRequest) (operationResult, error) {
+	query, err := auditQueryFromRequest(request.request)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, application.NewError("audit.query.invalid"))
-		return
+		return operationResult{}, application.NewError("audit.query.invalid")
 	}
-	events, listErr := a.auditListings.ListAuditEvents(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	events, listErr := module.audits.ListAuditEvents(
+		request.context,
+		request.invocation(),
 		query,
 	)
 	if listErr != nil {
-		writeApplicationError(writer, request, a.logger, listErr)
-		return
+		return operationResult{}, listErr
 	}
 	response := auditListResponse{Events: make([]auditEventResponse, 0, len(events))}
 	for _, event := range events {
@@ -109,7 +106,7 @@ func (a *API) listAuditEvents(writer http.ResponseWriter, request *http.Request)
 			Id:       last.ID.String(),
 		})
 	}
-	writeJSON(writer, http.StatusOK, response)
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func auditQueryFromRequest(request *http.Request) (application.ListAuditEventsQuery, error) {

@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -39,122 +38,113 @@ type updateProgrammeRequest struct {
 	Description Optional[string] `json:"description"`
 }
 
-func (a *API) registerProgrammeRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.AcademicUnit, "/programmes", http.MethodGet, a.listProgrammes},
-		{a.BaseRoutes.AcademicUnit, "/programmes", http.MethodPost, a.createProgramme},
-		{a.BaseRoutes.Programme, "", http.MethodGet, a.getProgramme},
-		{a.BaseRoutes.Programme, "", http.MethodPatch, a.patchProgramme},
-		{a.BaseRoutes.Programme, "", http.MethodDelete, a.archiveProgramme},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(route.base, route.path, route.method,
-			a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type programmeResourceModule struct {
+	programmes ProgrammeApplication
 }
 
-func (a *API) listProgrammes(w http.ResponseWriter, r *http.Request) {
-	principal, unitID, ok := requiredResourceID(w, r, Params.RequireAcademicUnitId)
-	if !ok {
-		return
+func programmeResource(programmes ProgrammeApplication) resource {
+	module := programmeResourceModule{programmes: programmes}
+	collection := apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("programmes"))
+	member := apiPath(literal("programmes"), canonicalID("programme_id"))
+	return newResource(
+		"programmes",
+		principalRoute(http.MethodGet, collection, academicReadErrorCodes("request.invalid", "resource.not_found"), module.list),
+		principalRoute(http.MethodPost, collection, academicMutationErrorCodes("request.invalid", "resource.not_found", "programme.invalid", "programme.conflict"), module.create),
+		principalRoute(http.MethodGet, member, academicReadErrorCodes("request.invalid", "resource.not_found"), module.get),
+		principalRoute(http.MethodPatch, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "programme.invalid", "programme.conflict"), module.patch),
+		principalRoute(http.MethodDelete, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "programme.conflict"), module.archive),
+	)
+}
+
+func (module programmeResourceModule) list(request operationRequest) (operationResult, error) {
+	unitID, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	limit, ok := queryLimit(w, r)
-	if !ok {
-		return
+	limit, err := request.queryLimit()
+	if err != nil {
+		return operationResult{}, err
 	}
-	programmes, err := a.programmes.ListProgrammes(
-		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
-		application.ListProgrammesQuery{AcademicUnitID: unitID, Query: r.URL.Query().Get("q"), Limit: limit},
+	programmes, err := module.programmes.ListProgrammes(
+		request.context, request.invocation(),
+		application.ListProgrammesQuery{AcademicUnitID: unitID, Query: request.request.URL.Query().Get("q"), Limit: limit},
 	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
 	responses := make([]programmeResponse, 0, len(programmes))
 	for _, programme := range programmes {
 		responses = append(responses, programmeResponseFromModel(programme))
 	}
-	writeJSON(w, http.StatusOK, responses)
+	return jsonResult(http.StatusOK, responses), nil
 }
 
-func (a *API) createProgramme(w http.ResponseWriter, r *http.Request) {
-	principal, unitID, ok := requiredResourceID(w, r, Params.RequireAcademicUnitId)
-	if !ok {
-		return
+func (module programmeResourceModule) create(request operationRequest) (operationResult, error) {
+	unitID, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body createProgrammeRequest
-	if !decodeJSON(w, r, &body, "createProgramme") {
-		return
+	if err := request.decodeJSON(&body, "createProgramme"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.programmes.CreateProgramme(
-		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+	saved, err := module.programmes.CreateProgramme(
+		request.context, request.invocation(),
 		application.CreateProgrammeCommand{AcademicUnitID: unitID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description},
 	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusCreated, programmeResponseFromModel(saved))
+	return jsonResult(http.StatusCreated, programmeResponseFromModel(saved)), nil
 }
 
-func (a *API) getProgramme(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireProgrammeId)
-	if !ok {
-		return
+func (module programmeResourceModule) get(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireProgrammeId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	programme, err := a.programmes.GetProgramme(
-		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+	programme, err := module.programmes.GetProgramme(
+		request.context, request.invocation(),
 		application.GetProgrammeQuery{ID: id},
 	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, programmeResponseFromModel(programme))
+	return jsonResult(http.StatusOK, programmeResponseFromModel(programme)), nil
 }
 
-func (a *API) patchProgramme(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireProgrammeId)
-	if !ok {
-		return
+func (module programmeResourceModule) patch(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireProgrammeId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body updateProgrammeRequest
-	if !decodeJSON(w, r, &body, "patchProgramme") {
-		return
+	if err := request.decodeJSON(&body, "patchProgramme"); err != nil {
+		return operationResult{}, err
 	}
-	programme, err := a.programmes.UpdateProgramme(
-		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+	programme, err := module.programmes.UpdateProgramme(
+		request.context, request.invocation(),
 		application.UpdateProgrammeCommand{ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()},
 	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, programmeResponseFromModel(programme))
+	return jsonResult(http.StatusOK, programmeResponseFromModel(programme)), nil
 }
 
-func (a *API) archiveProgramme(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireProgrammeId)
-	if !ok {
-		return
+func (module programmeResourceModule) archive(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireProgrammeId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	err := a.programmes.ArchiveProgramme(
-		r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())),
+	err = module.programmes.ArchiveProgramme(
+		request.context, request.invocation(),
 		application.ArchiveProgrammeCommand{ID: id},
 	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
+	return noContentResult(), nil
 }
 
 func programmeResponseFromModel(programme *model.Programme) programmeResponse {

@@ -19,7 +19,7 @@ func TestAcademicPeriodOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerAcademicPeriodRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, academicPeriodResource(nil)); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

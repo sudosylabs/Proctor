@@ -18,20 +18,31 @@ import (
 func TestAcademicUnitMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
+	expected := map[string]openAPIOperationContract{
+		"GET /api/v1/academic-units/{academic_unit_id}/members":          {successStatus: "200", successRef: "#/components/responses/AcademicUnitMemberListOK", successSchema: "AcademicUnitMemberListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"POST /api/v1/academic-units/{academic_unit_id}/members":         {requestBodyRef: "#/components/requestBodies/CreateAcademicUnitMember", requestSchema: "CreateAcademicUnitMemberRequest", successStatus: "201", successRef: "#/components/responses/AcademicUnitMemberCreated", successSchema: "AcademicUnitMemberResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit_member.invalid", "academic_unit_member.conflict", "administration.unavailable")},
+		"DELETE /api/v1/academic-unit-members/{academic_unit_member_id}": {successStatus: "200", successRef: "#/components/responses/AcademicUnitMemberEnded", successSchema: "AcademicUnitMemberResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit_member.conflict", "administration.unavailable")},
+	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerAcademicUnitMemberRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, academicUnitMemberResource(&academicUnitMemberHTTPApplication{})); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)
 	for _, route := range runtimeAPI.Routes() {
 		path := strings.ReplaceAll(route.Path, "{academic_unit_id:"+canonicalIDRoutePattern()+"}", "{academic_unit_id}")
 		path = strings.ReplaceAll(path, "{academic_unit_member_id:"+canonicalIDRoutePattern()+"}", "{academic_unit_member_id}")
-		runtimeOperations[route.Method+" "+path] = route.Auth
-	}
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/academic-units/{academic_unit_id}/members":          {successStatus: "200", successRef: "#/components/responses/AcademicUnitMemberListOK", successSchema: "AcademicUnitMemberListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"POST /api/v1/academic-units/{academic_unit_id}/members":         {requestBodyRef: "#/components/requestBodies/CreateAcademicUnitMember", requestSchema: "CreateAcademicUnitMemberRequest", successStatus: "201", successRef: "#/components/responses/AcademicUnitMemberCreated", successSchema: "AcademicUnitMemberResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit_member.invalid", "academic_unit_member.conflict", "administration.unavailable")},
-		"DELETE /api/v1/academic-unit-members/{academic_unit_member_id}": {successStatus: "200", successRef: "#/components/responses/AcademicUnitMemberEnded", successSchema: "AcademicUnitMemberResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_unit_member.conflict", "administration.unavailable")},
+		key := route.Method + " " + path
+		runtimeOperations[key] = route.Auth
+		contract, exists := expected[key]
+		if !exists {
+			t.Fatalf("unexpected runtime operation %s", key)
+		}
+		got, want := append([]string(nil), route.ErrorCodes...), append([]string(nil), contract.errorCodes...)
+		sort.Strings(got)
+		sort.Strings(want)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s runtime error codes = %v, want %v", key, got, want)
+		}
 	}
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest

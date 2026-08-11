@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -72,47 +71,35 @@ type jobAttemptCursor struct {
 	Number int `json:"number"`
 }
 
-func (a *API) InitJobs(provided ...JobOperationsApplication) error {
-	var operations JobOperationsApplication
-	if len(provided) == 1 {
-		operations = provided[0]
-	} else if len(provided) == 0 {
-		operations, _ = a.application.(JobOperationsApplication)
-	}
-	if operations == nil && a.application != nil {
-		return errors.New("job operations application is required")
-	}
-	jobs := a.subrouter(a.BaseRoutes.APIRoot, "/jobs")
-	job := a.subrouter(jobs, "/{job_id:"+canonicalIDRoutePattern()+"}")
-	if err := a.registerLegacyRoute(jobs, "", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.listJobs(w, r, operations) }))); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(job, "", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.getJob(w, r, operations) }))); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(job, "/attempts", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.listJobAttempts(w, r, operations) }))); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(job, "/cancel", http.MethodPost, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.cancelJob(w, r, operations) }))); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(job, "/retry", http.MethodPost, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.retryJob(w, r, operations) })))
+type jobResourceModule struct {
+	jobs JobOperationsApplication
 }
 
-func (a *API) listJobs(w http.ResponseWriter, r *http.Request, operations JobOperationsApplication) {
-	invocation, ok := jobInvocation(w, r)
-	if !ok {
-		return
-	}
-	query, err := listJobsQuery(r)
+func jobResource(jobs JobOperationsApplication) resource {
+	module := jobResourceModule{jobs: jobs}
+	return newResource(
+		"jobs",
+		principalRoute(http.MethodGet, apiPath(literal("jobs")),
+			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "job.unavailable"), module.list),
+		principalRoute(http.MethodGet, apiPath(literal("jobs"), canonicalID("job_id")),
+			operatorReadErrorCodes("audit.unavailable", "resource.not_found", "job.unavailable"), module.get),
+		principalRoute(http.MethodGet, apiPath(literal("jobs"), canonicalID("job_id"), literal("attempts")),
+			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "resource.not_found", "job.unavailable"), module.listAttempts),
+		principalRoute(http.MethodPost, apiPath(literal("jobs"), canonicalID("job_id"), literal("cancel")),
+			operatorMutationErrorCodes("resource.not_found", "job.cancel.unsupported", "job.conflict", "job.unavailable"), module.cancel),
+		principalRoute(http.MethodPost, apiPath(literal("jobs"), canonicalID("job_id"), literal("retry")),
+			operatorMutationErrorCodes("resource.not_found", "job.retry.unsupported", "job.conflict", "job.unavailable"), module.retry),
+	)
+}
+
+func (module jobResourceModule) list(request operationRequest) (operationResult, error) {
+	query, err := listJobsQuery(request.request)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, application.NewError("job.query.invalid"))
-		return
+		return operationResult{}, application.NewError("job.query.invalid")
 	}
-	page, appErr := operations.ListJobs(r.Context(), invocation, query)
+	page, appErr := module.jobs.ListJobs(request.context, request.invocation(), query)
 	if appErr != nil {
-		writeApplicationError(w, r, a.logger, appErr)
-		return
+		return operationResult{}, appErr
 	}
 	response := jobListResponse{Items: make([]jobResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
@@ -122,34 +109,31 @@ func (a *API) listJobs(w http.ResponseWriter, r *http.Request, operations JobOpe
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor = encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(last.CreatedAt), ID: last.ID.String()})
 	}
-	writeJSON(w, http.StatusOK, response)
+	return jsonResult(http.StatusOK, response), nil
 }
-func (a *API) getJob(w http.ResponseWriter, r *http.Request, operations JobOperationsApplication) {
-	invocation, ok := jobInvocation(w, r)
-	if !ok {
-		return
-	}
-	view, err := operations.GetJob(r.Context(), invocation, application.GetJobQuery{ID: model.JobID(mux.Vars(r)["job_id"])})
+func (module jobResourceModule) get(request operationRequest) (operationResult, error) {
+	jobID, err := request.params.RequireJobId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, jobResponseFromApplication(view))
+	view, err := module.jobs.GetJob(request.context, request.invocation(), application.GetJobQuery{ID: model.JobID(jobID)})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
-func (a *API) listJobAttempts(w http.ResponseWriter, r *http.Request, operations JobOperationsApplication) {
-	invocation, ok := jobInvocation(w, r)
-	if !ok {
-		return
-	}
-	limit, before, err := attemptPagination(r)
+func (module jobResourceModule) listAttempts(request operationRequest) (operationResult, error) {
+	jobID, err := request.params.RequireJobId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, application.NewError("job.query.invalid"))
-		return
+		return operationResult{}, err
 	}
-	page, appErr := operations.ListJobAttempts(r.Context(), invocation, application.ListJobAttemptsQuery{JobID: model.JobID(mux.Vars(r)["job_id"]), BeforeNumber: before, Limit: limit})
+	limit, before, err := attemptPagination(request.request)
+	if err != nil {
+		return operationResult{}, application.NewError("job.query.invalid")
+	}
+	page, appErr := module.jobs.ListJobAttempts(request.context, request.invocation(), application.ListJobAttemptsQuery{JobID: model.JobID(jobID), BeforeNumber: before, Limit: limit})
 	if appErr != nil {
-		writeApplicationError(w, r, a.logger, appErr)
-		return
+		return operationResult{}, appErr
 	}
 	response := jobAttemptListResponse{Items: make([]jobAttemptResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
@@ -158,40 +142,29 @@ func (a *API) listJobAttempts(w http.ResponseWriter, r *http.Request, operations
 	if len(page.Items) == limit {
 		response.NextCursor = encodeJobAttemptCursor(page.Items[len(page.Items)-1].Number)
 	}
-	writeJSON(w, http.StatusOK, response)
+	return jsonResult(http.StatusOK, response), nil
 }
-func (a *API) cancelJob(w http.ResponseWriter, r *http.Request, operations JobOperationsApplication) {
-	invocation, ok := jobInvocation(w, r)
-	if !ok {
-		return
-	}
-	view, err := operations.CancelJob(r.Context(), invocation, application.CancelJobCommand{ID: model.JobID(mux.Vars(r)["job_id"])})
+func (module jobResourceModule) cancel(request operationRequest) (operationResult, error) {
+	jobID, err := request.params.RequireJobId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, jobResponseFromApplication(view))
-}
-func (a *API) retryJob(w http.ResponseWriter, r *http.Request, operations JobOperationsApplication) {
-	invocation, ok := jobInvocation(w, r)
-	if !ok {
-		return
-	}
-	view, err := operations.RetryJob(r.Context(), invocation, application.RetryJobCommand{ID: model.JobID(mux.Vars(r)["job_id"])})
+	view, err := module.jobs.CancelJob(request.context, request.invocation(), application.CancelJobCommand{ID: model.JobID(jobID)})
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, jobResponseFromApplication(view))
+	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
-
-func jobInvocation(w http.ResponseWriter, r *http.Request) (application.Invocation, bool) {
-	principal, ok := Principal(r.Context())
-	if !ok {
-		WriteError(w, r, authenticationRequiredError())
-		return application.Invocation{}, false
+func (module jobResourceModule) retry(request operationRequest) (operationResult, error) {
+	jobID, err := request.params.RequireJobId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	return application.NewInvocation(principal, RequestMetadata(r.Context())), true
+	view, err := module.jobs.RetryJob(request.context, request.invocation(), application.RetryJobCommand{ID: model.JobID(jobID)})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
 func listJobsQuery(r *http.Request) (application.ListJobsQuery, error) {
 	limit := defaultJobPageSize

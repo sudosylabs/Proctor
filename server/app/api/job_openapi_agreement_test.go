@@ -38,7 +38,7 @@ func (jobOperationsAPIFake) RetryJob(context.Context, application.Invocation, ap
 func TestJobOperationsOpenAPIAgreesWithRuntime(t *testing.T) {
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.InitJobs(jobOperationsAPIFake{}); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, jobResource(jobOperationsAPIFake{})); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := map[string]AuthRequirement{}

@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -33,70 +32,77 @@ type createAcademicUnitMemberRequest struct {
 	EndAt          int64  `json:"end_at"`
 }
 
-func (a *API) registerAcademicUnitMemberRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.AcademicUnit, "/members", http.MethodGet, a.listAcademicUnitMembers},
-		{a.BaseRoutes.AcademicUnit, "/members", http.MethodPost, a.createAcademicUnitMember},
-		{a.BaseRoutes.AcademicUnitMember, "", http.MethodDelete, a.endAcademicUnitMember},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type academicUnitMemberResourceModule struct {
+	members AcademicUnitMemberApplication
 }
 
-func (a *API) listAcademicUnitMembers(w http.ResponseWriter, r *http.Request) {
-	principal, unitID, ok := requiredResourceID(w, r, Params.RequireAcademicUnitId)
-	if !ok {
-		return
-	}
-	activeAt, ok := queryActiveAt(w, r)
-	if !ok {
-		return
-	}
-	members, err := a.academicUnitMembers.ListAcademicUnitMembers(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListAcademicUnitMembersQuery{AcademicUnitID: unitID, ActiveAt: activeAt})
+func academicUnitMemberResource(members AcademicUnitMemberApplication) resource {
+	module := academicUnitMemberResourceModule{members: members}
+	return newResource(
+		"academic-unit-members",
+		principalRoute(
+			http.MethodGet,
+			apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("members")),
+			academicRelationshipReadErrorCodes(),
+			module.list,
+		),
+		principalRoute(
+			http.MethodPost,
+			apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("members")),
+			academicRelationshipMutationErrorCodes("academic_unit_member.invalid", "academic_unit_member.conflict"),
+			module.create,
+		),
+		principalRoute(
+			http.MethodDelete,
+			apiPath(literal("academic-unit-members"), canonicalID("academic_unit_member_id")),
+			academicRelationshipMutationErrorCodes("academic_unit_member.conflict"),
+			module.end,
+		),
+	)
+}
+
+func (module academicUnitMemberResourceModule) list(request operationRequest) (operationResult, error) {
+	unitID, err := request.params.RequireAcademicUnitId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, academicUnitMemberResponses(members))
+	activeAt, err := parseActiveAt(request.request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	members, err := module.members.ListAcademicUnitMembers(request.context, request.invocation(), application.ListAcademicUnitMembersQuery{AcademicUnitID: unitID, ActiveAt: activeAt})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, academicUnitMemberResponses(members)), nil
 }
 
-func (a *API) createAcademicUnitMember(w http.ResponseWriter, r *http.Request) {
-	principal, unitID, ok := requiredResourceID(w, r, Params.RequireAcademicUnitId)
-	if !ok {
-		return
+func (module academicUnitMemberResourceModule) create(request operationRequest) (operationResult, error) {
+	unitID, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body createAcademicUnitMemberRequest
-	if !decodeJSON(w, r, &body, "createAcademicUnitMember") {
-		return
+	if err := request.decodeJSON(&body, "createAcademicUnitMember"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.academicUnitMembers.CreateAcademicUnitMember(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: body.StartAt})
+	saved, err := module.members.CreateAcademicUnitMember(request.context, request.invocation(), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: body.StartAt})
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusCreated, academicUnitMemberResponseFromModel(saved))
+	return jsonResult(http.StatusCreated, academicUnitMemberResponseFromModel(saved)), nil
 }
 
-func (a *API) endAcademicUnitMember(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireAcademicUnitMemberId)
-	if !ok {
-		return
-	}
-	ended, err := a.academicUnitMembers.EndAcademicUnitMember(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.EndAcademicUnitMemberCommand{ID: id})
+func (module academicUnitMemberResourceModule) end(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicUnitMemberId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, academicUnitMemberResponseFromModel(ended))
+	ended, err := module.members.EndAcademicUnitMember(request.context, request.invocation(), application.EndAcademicUnitMemberCommand{ID: id})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, academicUnitMemberResponseFromModel(ended)), nil
 }
 
 func academicUnitMemberResponseFromModel(member *model.AcademicUnitMember) academicUnitMemberResponse {

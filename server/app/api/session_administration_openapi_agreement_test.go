@@ -19,7 +19,10 @@ func TestSessionAdministrationOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.initUserAdministration(); err != nil {
+	if err := runtimeAPI.collectResources(
+		model.APIURLSuffix,
+		userAdministrationResource(nil, nil),
+	); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

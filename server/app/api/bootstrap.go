@@ -99,45 +99,51 @@ func installationBootstrapResponseFromModel(result *model.InstallationBootstrapR
 	}
 }
 
-func (a *API) InitBootstrap() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.Bootstrap,
-		"",
-		http.MethodGet,
-		a.APIHandler(http.HandlerFunc(a.getBootstrapStatus)),
-	); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(
-		a.BaseRoutes.Bootstrap,
-		"",
-		http.MethodPost,
-		a.APIHandler(http.HandlerFunc(a.bootstrapInstallation)),
+type bootstrapResourceModule struct {
+	bootstrap BootstrapApplication
+}
+
+func bootstrapResource(bootstrap BootstrapApplication) resource {
+	module := bootstrapResourceModule{bootstrap: bootstrap}
+	return newResource(
+		"bootstrap",
+		publicRoute(
+			http.MethodGet,
+			apiPath(literal("bootstrap")),
+			[]string{"installation.unavailable"},
+			module.status,
+		),
+		publicRoute(
+			http.MethodPost,
+			apiPath(literal("bootstrap")),
+			[]string{
+				"request.invalid", "installation.already_initialized", "installation.unavailable",
+				"authentication.password.invalid", "authentication.rate_limited",
+			},
+			module.install,
+		),
 	)
 }
 
-func (a *API) getBootstrapStatus(writer http.ResponseWriter, request *http.Request) {
-	status, err := a.bootstrap.GetInstallationStatus(request.Context(), application.GetInstallationStatusQuery{})
+func (module bootstrapResourceModule) status(request operationRequest) (operationResult, error) {
+	status, err := module.bootstrap.GetInstallationStatus(request.context, application.GetInstallationStatusQuery{})
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, installationStatusResponse{Initialized: status.Initialized})
+	return jsonResult(http.StatusOK, installationStatusResponse{Initialized: status.Initialized}), nil
 }
 
-func (a *API) bootstrapInstallation(writer http.ResponseWriter, request *http.Request) {
+func (module bootstrapResourceModule) install(request operationRequest) (operationResult, error) {
 	var input bootstrapRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
-		return
+	if err := request.decodeJSON(&input, "body"); err != nil {
+		return operationResult{}, application.NewError("request.invalid").WithField("field", "body").Wrap(err)
 	}
 	if input.Institution == nil || input.Administrator == nil {
-		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "bootstrap"))
-		return
+		return operationResult{}, application.NewError("request.invalid").WithField("field", "bootstrap")
 	}
-	result, err := a.bootstrap.BootstrapInstallation(
-		request.Context(),
-		application.NewInvocation(model.Principal{}, RequestMetadata(request.Context())),
+	result, err := module.bootstrap.BootstrapInstallation(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
 		application.BootstrapInstallationCommand{
 			InstitutionName:          input.Institution.Name,
 			InstitutionDisplayName:   input.Institution.DisplayName,
@@ -150,12 +156,11 @@ func (a *API) bootstrapInstallation(writer http.ResponseWriter, request *http.Re
 			AdministratorLocale:      input.Administrator.Locale,
 			AdministratorTimezone:    input.Administrator.Timezone,
 			Password:                 input.Password,
-			Source:                   request.RemoteAddr,
+			Source:                   request.request.RemoteAddr,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusCreated, installationBootstrapResponseFromModel(result))
+	return jsonResult(http.StatusCreated, installationBootstrapResponseFromModel(result)), nil
 }

@@ -18,20 +18,31 @@ import (
 func TestAffiliationOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
+	expected := map[string]openAPIOperationContract{
+		"GET /api/v1/users/{user_id}/affiliations":     {successStatus: "200", successRef: "#/components/responses/AffiliationListOK", successSchema: "AffiliationListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"POST /api/v1/users/{user_id}/affiliations":    {requestBodyRef: "#/components/requestBodies/CreateAffiliation", requestSchema: "CreateAffiliationRequest", successStatus: "201", successRef: "#/components/responses/AffiliationCreated", successSchema: "AffiliationResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "affiliation.invalid", "affiliation.conflict", "administration.unavailable")},
+		"DELETE /api/v1/affiliations/{affiliation_id}": {successStatus: "200", successRef: "#/components/responses/AffiliationEnded", successSchema: "AffiliationResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "affiliation.student_has_active_enrollment", "affiliation.conflict", "administration.unavailable")},
+	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerAffiliationRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, affiliationResource(&affiliationHTTPApplication{})); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)
 	for _, route := range runtimeAPI.Routes() {
 		path := strings.ReplaceAll(route.Path, "{user_id:"+canonicalIDRoutePattern()+"}", "{user_id}")
 		path = strings.ReplaceAll(path, "{affiliation_id:"+canonicalIDRoutePattern()+"}", "{affiliation_id}")
-		runtimeOperations[route.Method+" "+path] = route.Auth
-	}
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/users/{user_id}/affiliations":     {successStatus: "200", successRef: "#/components/responses/AffiliationListOK", successSchema: "AffiliationListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"POST /api/v1/users/{user_id}/affiliations":    {requestBodyRef: "#/components/requestBodies/CreateAffiliation", requestSchema: "CreateAffiliationRequest", successStatus: "201", successRef: "#/components/responses/AffiliationCreated", successSchema: "AffiliationResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "affiliation.invalid", "affiliation.conflict", "administration.unavailable")},
-		"DELETE /api/v1/affiliations/{affiliation_id}": {successStatus: "200", successRef: "#/components/responses/AffiliationEnded", successSchema: "AffiliationResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "affiliation.student_has_active_enrollment", "affiliation.conflict", "administration.unavailable")},
+		key := route.Method + " " + path
+		runtimeOperations[key] = route.Auth
+		contract, exists := expected[key]
+		if !exists {
+			t.Fatalf("unexpected runtime operation %s", key)
+		}
+		got, want := append([]string(nil), route.ErrorCodes...), append([]string(nil), contract.errorCodes...)
+		sort.Strings(got)
+		sort.Strings(want)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s runtime error codes = %v, want %v", key, got, want)
+		}
 	}
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest

@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -45,105 +44,141 @@ type updateAcademicPeriodRequest struct {
 	EndAt       Optional[int64]  `json:"end_at"`
 }
 
-func (a *API) registerAcademicPeriodRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.AcademicPeriods, "", http.MethodGet, a.listAcademicPeriods},
-		{a.BaseRoutes.AcademicPeriods, "", http.MethodPost, a.createAcademicPeriod},
-		{a.BaseRoutes.AcademicPeriod, "", http.MethodGet, a.getAcademicPeriod},
-		{a.BaseRoutes.AcademicPeriod, "", http.MethodPatch, a.patchAcademicPeriod},
-		{a.BaseRoutes.AcademicPeriod, "", http.MethodDelete, a.archiveAcademicPeriod},
-	}
-	for _, route := range routes {
-		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type academicPeriodResourceModule struct {
+	academicPeriods AcademicPeriodApplication
 }
 
-func (a *API) listAcademicPeriods(w http.ResponseWriter, r *http.Request) {
-	principal, ok := requiredPrincipal(w, r)
-	if !ok {
-		return
-	}
-	limit, ok := queryLimit(w, r)
-	if !ok {
-		return
-	}
-	periods, err := a.academicPeriods.ListAcademicPeriods(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListAcademicPeriodsQuery{Query: r.URL.Query().Get("q"), Limit: limit})
+func academicPeriodResource(academicPeriods AcademicPeriodApplication) resource {
+	module := academicPeriodResourceModule{academicPeriods: academicPeriods}
+	collection := apiPath(literal("academic-periods"))
+	member := apiPath(literal("academic-periods"), canonicalID("academic_period_id"))
+	return newResource(
+		"academic-periods",
+		principalRoute(
+			http.MethodGet, collection,
+			academicReadErrorCodes("request.invalid", "resource.not_found"), module.list,
+		),
+		principalRoute(
+			http.MethodPost, collection,
+			academicMutationErrorCodes(
+				"request.invalid", "resource.not_found", "academic_period.invalid",
+				"academic_period.conflict",
+			),
+			module.create,
+		),
+		principalRoute(
+			http.MethodGet, member,
+			academicReadErrorCodes("request.invalid", "resource.not_found"), module.get,
+		),
+		principalRoute(
+			http.MethodPatch, member,
+			academicMutationErrorCodes(
+				"request.invalid", "resource.not_found", "academic_period.invalid",
+				"academic_period.conflict",
+			),
+			module.patch,
+		),
+		principalRoute(
+			http.MethodDelete, member,
+			academicMutationErrorCodes(
+				"request.invalid", "resource.not_found", "academic_period.conflict",
+			),
+			module.archive,
+		),
+	)
+}
+
+func (module academicPeriodResourceModule) list(request operationRequest) (operationResult, error) {
+	limit, err := request.queryLimit()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
+	}
+	periods, err := module.academicPeriods.ListAcademicPeriods(
+		request.context,
+		request.invocation(),
+		application.ListAcademicPeriodsQuery{
+			Query: request.request.URL.Query().Get("q"), Limit: limit,
+		},
+	)
+	if err != nil {
+		return operationResult{}, err
 	}
 	responses := make([]academicPeriodResponse, 0, len(periods))
 	for _, period := range periods {
 		responses = append(responses, academicPeriodResponseFromModel(period))
 	}
-	writeJSON(w, http.StatusOK, responses)
+	return jsonResult(http.StatusOK, responses), nil
 }
 
-func (a *API) createAcademicPeriod(w http.ResponseWriter, r *http.Request) {
-	principal, ok := requiredPrincipal(w, r)
-	if !ok {
-		return
-	}
+func (module academicPeriodResourceModule) create(request operationRequest) (operationResult, error) {
 	var body createAcademicPeriodRequest
-	if !decodeJSON(w, r, &body, "createAcademicPeriod") {
-		return
+	if err := request.decodeJSON(&body, "createAcademicPeriod"); err != nil {
+		return operationResult{}, err
 	}
-	period, err := a.academicPeriods.CreateAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.CreateAcademicPeriodCommand{Name: body.Name, DisplayName: body.DisplayName, Description: body.Description, StartAt: body.StartAt, EndAt: body.EndAt})
+	period, err := module.academicPeriods.CreateAcademicPeriod(
+		request.context,
+		request.invocation(),
+		application.CreateAcademicPeriodCommand{
+			Name: body.Name, DisplayName: body.DisplayName,
+			Description: body.Description, StartAt: body.StartAt, EndAt: body.EndAt,
+		},
+	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusCreated, academicPeriodResponseFromModel(period))
+	return jsonResult(http.StatusCreated, academicPeriodResponseFromModel(period)), nil
 }
 
-func (a *API) getAcademicPeriod(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireAcademicPeriodId)
-	if !ok {
-		return
-	}
-	period, err := a.academicPeriods.GetAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetAcademicPeriodQuery{ID: id})
+func (module academicPeriodResourceModule) get(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicPeriodId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, academicPeriodResponseFromModel(period))
+	period, err := module.academicPeriods.GetAcademicPeriod(
+		request.context, request.invocation(), application.GetAcademicPeriodQuery{ID: id},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, academicPeriodResponseFromModel(period)), nil
 }
 
-func (a *API) patchAcademicPeriod(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireAcademicPeriodId)
-	if !ok {
-		return
+func (module academicPeriodResourceModule) patch(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicPeriodId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body updateAcademicPeriodRequest
-	if !decodeJSON(w, r, &body, "patchAcademicPeriod") {
-		return
+	if err := request.decodeJSON(&body, "patchAcademicPeriod"); err != nil {
+		return operationResult{}, err
 	}
-	period, err := a.academicPeriods.UpdateAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UpdateAcademicPeriodCommand{ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer(), StartAt: body.StartAt.ValuePointer(), EndAt: body.EndAt.ValuePointer()})
+	period, err := module.academicPeriods.UpdateAcademicPeriod(
+		request.context,
+		request.invocation(),
+		application.UpdateAcademicPeriodCommand{
+			ID: id, Name: body.Name.ValuePointer(),
+			DisplayName: body.DisplayName.ValuePointer(),
+			Description: body.Description.ValuePointer(),
+			StartAt:     body.StartAt.ValuePointer(), EndAt: body.EndAt.ValuePointer(),
+		},
+	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, academicPeriodResponseFromModel(period))
+	return jsonResult(http.StatusOK, academicPeriodResponseFromModel(period)), nil
 }
 
-func (a *API) archiveAcademicPeriod(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireAcademicPeriodId)
-	if !ok {
-		return
+func (module academicPeriodResourceModule) archive(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireAcademicPeriodId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	if err := a.academicPeriods.ArchiveAcademicPeriod(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ArchiveAcademicPeriodCommand{ID: id}); err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+	if err := module.academicPeriods.ArchiveAcademicPeriod(
+		request.context, request.invocation(), application.ArchiveAcademicPeriodCommand{ID: id},
+	); err != nil {
+		return operationResult{}, err
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
+	return noContentResult(), nil
 }
 
 func academicPeriodResponseFromModel(period *model.AcademicPeriod) academicPeriodResponse {

@@ -62,155 +62,125 @@ func roleResponsesFromModels(roles []*model.Role) []roleResponse {
 	return result
 }
 
-func (a *API) InitRoles() error {
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.Roles,
-		"",
-		http.MethodGet,
-		a.APIPrincipalRequired(http.HandlerFunc(a.listRoles)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.Roles,
-		"",
-		http.MethodPost,
-		a.APIPrincipalRequired(http.HandlerFunc(a.createRole)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.Role,
-		"",
-		http.MethodGet,
-		a.APIPrincipalRequired(http.HandlerFunc(a.getRole)),
-	); err != nil {
-		return err
-	}
-	if err := a.registerLegacyRoute(
-		a.BaseRoutes.Role,
-		"",
-		http.MethodPatch,
-		a.APIPrincipalRequired(http.HandlerFunc(a.patchRole)),
-	); err != nil {
-		return err
-	}
-	return a.registerLegacyRoute(
-		a.BaseRoutes.Role,
-		"",
-		http.MethodDelete,
-		a.APIPrincipalRequired(http.HandlerFunc(a.archiveRole)),
+type roleResourceModule struct {
+	roles RoleApplication
+}
+
+func roleResource(roles RoleApplication) resource {
+	module := roleResourceModule{roles: roles}
+	return newResource(
+		"roles",
+		principalRoute(http.MethodGet, apiPath(literal("roles")),
+			operatorReadErrorCodes("administration.unavailable"), module.list),
+		principalRoute(http.MethodPost, apiPath(literal("roles")),
+			operatorMutationErrorCodes("request.invalid", "role.invalid", "role.conflict", "role.permission.unknown", "administration.unavailable"), module.create),
+		principalRoute(http.MethodGet, apiPath(literal("roles"), canonicalID("role_id")),
+			operatorReadErrorCodes("request.invalid", "resource.not_found", "administration.unavailable"), module.get),
+		principalRoute(http.MethodPatch, apiPath(literal("roles"), canonicalID("role_id")),
+			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role.invalid", "role.conflict", "role.built_in.protected", "role.permission.unknown", "administration.unavailable"), module.patch),
+		principalRoute(http.MethodDelete, apiPath(literal("roles"), canonicalID("role_id")),
+			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role.built_in.protected", "role.conflict", "administration.unavailable"), module.archive),
 	)
 }
 
-func (a *API) listRoles(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
+func operatorReadErrorCodes(specific ...string) []string {
+	codes := []string{
+		"authentication.required",
+		"authentication.invalid_token",
+		"authentication.credential_ambiguous",
+		"authorization.denied",
+		"authorization.request.invalid",
+		"authorization.unavailable",
 	}
-	roles, err := a.roles.ListRoles(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	return append(codes, specific...)
+}
+
+func operatorMutationErrorCodes(specific ...string) []string {
+	codes := operatorReadErrorCodes("authentication.csrf.invalid", "audit.unavailable")
+	return append(codes, specific...)
+}
+
+func (module roleResourceModule) list(request operationRequest) (operationResult, error) {
+	roles, err := module.roles.ListRoles(
+		request.context,
+		request.invocation(),
 		application.ListRolesQuery{},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, roleResponsesFromModels(roles))
+	return jsonResult(http.StatusOK, roleResponsesFromModels(roles)), nil
 }
 
-func (a *API) getRole(writer http.ResponseWriter, request *http.Request) {
-	principal, roleID, ok := principalAndRoleId(writer, request)
-	if !ok {
-		return
+func (module roleResourceModule) get(request operationRequest) (operationResult, error) {
+	roleID, err := request.params.RequireRoleId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	role, err := a.roles.GetRole(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	role, err := module.roles.GetRole(
+		request.context,
+		request.invocation(),
 		application.GetRoleQuery{ID: roleID},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, roleResponseFromModel(role))
+	return jsonResult(http.StatusOK, roleResponseFromModel(role)), nil
 }
 
-func (a *API) createRole(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
+func (module roleResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createRoleRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
-		return
+	if err := request.decodeJSON(&input, "createRole"); err != nil {
+		return operationResult{}, err
 	}
-	saved, err := a.roles.CreateRole(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	saved, err := module.roles.CreateRole(
+		request.context,
+		request.invocation(),
 		application.CreateRoleCommand{
 			Name: input.Name, DisplayName: input.DisplayName,
 			Description: input.Description, Permissions: input.Permissions,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusCreated, roleResponseFromModel(saved))
+	return jsonResult(http.StatusCreated, roleResponseFromModel(saved)), nil
 }
 
-func (a *API) patchRole(writer http.ResponseWriter, request *http.Request) {
-	principal, roleID, ok := principalAndRoleId(writer, request)
-	if !ok {
-		return
+func (module roleResourceModule) patch(request operationRequest) (operationResult, error) {
+	roleID, err := request.params.RequireRoleId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var input updateRoleRequest
-	if err := decodeRequestJSON(request, &input); err != nil {
-		writeApplicationError(writer, request, a.logger, application.NewError("request.invalid").WithField("field", "body"))
-		return
+	if err := request.decodeJSON(&input, "patchRole"); err != nil {
+		return operationResult{}, err
 	}
-	updated, err := a.roles.UpdateRole(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	updated, err := module.roles.UpdateRole(
+		request.context,
+		request.invocation(),
 		application.UpdateRoleCommand{
 			ID: roleID, DisplayName: input.DisplayName,
 			Description: input.Description, Permissions: input.Permissions,
 		},
 	)
 	if err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(writer, http.StatusOK, roleResponseFromModel(updated))
+	return jsonResult(http.StatusOK, roleResponseFromModel(updated)), nil
 }
 
-func (a *API) archiveRole(writer http.ResponseWriter, request *http.Request) {
-	principal, roleID, ok := principalAndRoleId(writer, request)
-	if !ok {
-		return
+func (module roleResourceModule) archive(request operationRequest) (operationResult, error) {
+	roleID, err := request.params.RequireRoleId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	if err := a.roles.ArchiveRole(
-		request.Context(),
-		application.NewInvocation(principal, RequestMetadata(request.Context())),
+	if err := module.roles.ArchiveRole(
+		request.context,
+		request.invocation(),
 		application.ArchiveRoleCommand{ID: roleID},
 	); err != nil {
-		writeApplicationError(writer, request, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusNoContent)
-}
-
-func principalAndRoleId(
-	writer http.ResponseWriter,
-	request *http.Request,
-) (model.Principal, string, bool) {
-	return principalAndRequiredId(writer, request, func(params Params) (string, error) {
-		return params.RequireRoleId()
-	})
+	return noContentResult(), nil
 }

@@ -19,7 +19,7 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.InitRoleBindings(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, roleBindingResource(nil)); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

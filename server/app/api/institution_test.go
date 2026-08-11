@@ -77,24 +77,7 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 		},
 		result: institution,
 	}
-	transportApplication := &academicUnitHTTPApplication{principal: fakeApplication.principal}
-	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transportApplication,
-		AcademicUnits: transportApplication, Institutions: fakeApplication,
-		Programmes:          &programmeHTTPApplication{},
-		ProgrammeLevels:     &programmeLevelHTTPApplication{},
-		AcademicPeriods:     &academicPeriodHTTPApplication{},
-		Classes:             &classHTTPApplication{},
-		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{},
-		BuildInfo: BuildInfo{Version: "test"},
-		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
-		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = httpAPI.Close() })
+	httpAPI := newFocusedResourceAPI(t, logger, fakeApplication, institutionResource(fakeApplication))
 
 	getRequest := httptest.NewRequest(http.MethodGet, "/api/v1/institution", nil)
 	getRequest.Header.Set("Authorization", "Bearer test-credential")
@@ -125,6 +108,44 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	if fakeApplication.command.DisplayName == nil ||
 		*fakeApplication.command.DisplayName != "Northbridge" {
 		t.Fatalf("update command = %#v", fakeApplication.command)
+	}
+}
+
+func TestInstitutionResourceRejectsUnknownPatchFields(t *testing.T) {
+	t.Parallel()
+
+	logger, _ := newTestLogger(t)
+	fakeApplication := &institutionHTTPApplication{
+		principal: model.Principal{
+			UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+			CredentialID:           model.PrincipalCredentialID(model.NewId()),
+			CredentialType:         model.CredentialSessionAccess,
+			AuthenticationMethod:   "password",
+			AuthenticationStrength: model.AuthenticationSingleFactor,
+			ClientType:             model.SessionClientCLI,
+			AuthenticatedAt:        time.Now(),
+		},
+	}
+	httpAPI := newFocusedResourceAPI(
+		t, logger, fakeApplication, institutionResource(fakeApplication),
+	)
+	request := httptest.NewRequest(
+		http.MethodPatch, "/api/v1/institution",
+		strings.NewReader(`{"display_name":"Northbridge","unknown":true}`),
+	)
+	request.Header.Set("Authorization", "Bearer test-credential")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	var problem Problem
+	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Code != "request.invalid" {
+		t.Fatalf("problem code = %q, want request.invalid", problem.Code)
 	}
 }
 
