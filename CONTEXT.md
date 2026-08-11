@@ -129,6 +129,18 @@ The system-generated, permanently retained fallback image belonging to one
 user when no custom profile picture is active.
 _Avoid_: Placeholder URL, shared avatar
 
+## Durable work
+
+**Job**:
+A finite body of background work whose progress and outcome are retained and
+which may continue through interruption or retry.
+_Avoid_: Runtime loop, goroutine, recurring service
+
+**Job Attempt**:
+One recorded try to complete a job; several job attempts may belong to the
+same job. It is distinct from an exam attempt.
+_Avoid_: Exam Attempt, Job
+
 ## Identity and access
 
 **User**:
