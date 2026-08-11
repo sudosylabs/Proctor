@@ -25,6 +25,7 @@ type jobRunnerStoreFake struct {
 	reservation     *store.JobWorkReservation
 	claim           *store.JobClaim
 	claimed         bool
+	claimRequests   chan struct{}
 }
 
 func allowJobWorkReservation() func(context.Context, int, int) (bool, error) {
@@ -51,6 +52,12 @@ func (*jobRunnerStoreFake) Enqueue(context.Context, *store.JobEnqueue) (*model.J
 func (s *jobRunnerStoreFake) ClaimNext(context.Context, *store.JobClaimRequest) (*store.JobClaim, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.claimRequests != nil {
+		select {
+		case s.claimRequests <- struct{}{}:
+		default:
+		}
+	}
 	if s.claim == nil || s.claimed {
 		return nil, store.NewErrNotFound("job", "claimable")
 	}
@@ -113,29 +120,28 @@ type noOpProposer struct{}
 
 func (noOpProposer) Propose(context.Context, time.Time) error { return nil }
 
-func TestEngineClosesRegistrationBeforeStart(t *testing.T) {
+func TestEngineValidatesRecurrencesAtConstruction(t *testing.T) {
 	t.Parallel()
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
-	engine, err := New(Config{
+	config := Config{
 		Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Policy: Policy{PollInterval: time.Second},
-	})
-	if err != nil {
-		t.Fatal(err)
+		Recurrences: []Recurrence{{Name: "daily", Proposer: noOpProposer{}}, {Name: "daily", Proposer: noOpProposer{}}},
 	}
-	if err = engine.AddDailyProposal("before-start", noOpProposer{}); err != nil {
-		t.Fatalf("AddDailyProposal() before Start = %v", err)
+	if _, err := New(config); err == nil {
+		t.Fatal("New() accepted duplicate recurrence names")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	if err = engine.Start(ctx); err != nil {
-		t.Fatal(err)
+	config.Recurrences = []Recurrence{{Name: "", Proposer: noOpProposer{}}}
+	if _, err := New(config); err == nil {
+		t.Fatal("New() accepted an unnamed recurrence")
 	}
-	if err = engine.AddDailyProposal("late", noOpProposer{}); err == nil {
-		t.Fatal("AddDailyProposal() accepted runtime registration")
+	config.Recurrences = []Recurrence{{Name: "unsafe\nname", Proposer: noOpProposer{}}}
+	if _, err := New(config); err == nil {
+		t.Fatal("New() accepted an unsafe recurrence name")
 	}
-	if err = engine.Close(); err != nil {
-		t.Fatal(err)
+	config.Recurrences = []Recurrence{{Name: "daily"}}
+	if _, err := New(config); err == nil {
+		t.Fatal("New() accepted a recurrence without a proposer")
 	}
 }
 

@@ -24,28 +24,15 @@ type Engine struct {
 	poll               time.Duration
 	shutdownTimeout    time.Duration
 	wake               chan struct{}
-	dailyProposals     []dailyProposal
+	recurrences        []Recurrence
 	proposalRetryDelay time.Duration
-	clock              func() time.Time
+	clock              Clock
 
 	mu      sync.Mutex
 	started bool
 	closed  bool
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
-}
-
-func (r *Engine) AddDailyProposal(name string, proposer OccurrenceProposer) error {
-	if name == "" || proposer == nil {
-		return errors.New("invalid daily job proposal")
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.started || r.closed {
-		return errors.New("daily job proposals must be registered before start")
-	}
-	r.dailyProposals = append(r.dailyProposals, dailyProposal{name: name, proposer: proposer})
-	return nil
 }
 
 type Diagnostics interface {
@@ -64,7 +51,8 @@ type Config struct {
 	NodeID      string
 	Diagnostics Diagnostics
 	Policy      Policy
-	Clock       func() time.Time
+	Clock       Clock
+	Recurrences []Recurrence
 }
 
 func New(config Config) (*Engine, error) {
@@ -75,6 +63,10 @@ func New(config Config) (*Engine, error) {
 	if config.Store == nil || config.NodeID == "" || config.Diagnostics == nil || config.Policy.PollInterval <= 0 {
 		return nil, errors.New("invalid job engine dependencies")
 	}
+	recurrences, err := cloneRecurrences(config.Recurrences)
+	if err != nil {
+		return nil, err
+	}
 	if config.Policy.ShutdownTimeout <= 0 {
 		config.Policy.ShutdownTimeout = registry.MaximumTimeout()
 	}
@@ -82,9 +74,9 @@ func New(config Config) (*Engine, error) {
 		config.Policy.ProposalRetryDelay = time.Minute
 	}
 	if config.Clock == nil {
-		config.Clock = time.Now
+		config.Clock = systemClock{}
 	}
-	return &Engine{jobs: config.Store, registry: registry, nodeID: config.NodeID, diagnostics: config.Diagnostics, poll: config.Policy.PollInterval, shutdownTimeout: config.Policy.ShutdownTimeout, proposalRetryDelay: config.Policy.ProposalRetryDelay, clock: config.Clock, wake: make(chan struct{}, 1)}, nil
+	return &Engine{jobs: config.Store, registry: registry, nodeID: config.NodeID, diagnostics: config.Diagnostics, poll: config.Policy.PollInterval, shutdownTimeout: config.Policy.ShutdownTimeout, recurrences: recurrences, proposalRetryDelay: config.Policy.ProposalRetryDelay, clock: config.Clock, wake: make(chan struct{}, 1)}, nil
 }
 
 // Descriptor returns the immutable execution contract for a registered type.
@@ -128,12 +120,12 @@ func (r *Engine) Start(ctx context.Context) error {
 			go r.worker(runCtx, descriptor)
 		}
 	}
-	for _, proposal := range r.dailyProposals {
+	for _, recurrence := range r.recurrences {
 		r.wg.Add(1)
-		go func(value dailyProposal) {
+		go func(value Recurrence) {
 			defer r.wg.Done()
-			runDailyProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay)
-		}(proposal)
+			runDailyProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay, r.Wake)
+		}(recurrence)
 	}
 	return nil
 }

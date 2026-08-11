@@ -163,7 +163,6 @@ func defaultProfilePictureReconciliationSucceeded(checkpoint DefaultProfilePictu
 
 type defaultProfilePictureReconciliationJobProposer struct {
 	jobs jobEnqueuer
-	wake func()
 	now  func() time.Time
 }
 
@@ -179,9 +178,6 @@ func (p defaultProfilePictureReconciliationJobProposer) Propose(ctx context.Cont
 		return err
 	}
 	_, _, err = p.jobs.Enqueue(ctx, &store.JobEnqueue{Job: job})
-	if err == nil && p.wake != nil {
-		p.wake()
-	}
 	return err
 }
 

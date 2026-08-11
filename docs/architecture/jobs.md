@@ -12,10 +12,10 @@ reapers do not become Jobs merely because they run in the background.
 `model.JobAttempt` records every execution claim and outcome so retries do not
 erase evidence. `store.JobStore` owns atomic enqueue, claim, fencing,
 checkpoint, terminal, and retention contracts. Application use cases own job
-creation, authorization, cancellation, progress, and handler orchestration. A
-root-owned runner invokes those application capabilities and type-specific
-handlers; handlers call application use cases rather than manipulating
-unrelated stores.
+creation, authorization, cancellation, progress meaning, and type-specific
+handlers. A root-owned `app/job` engine invokes those handlers and owns generic
+execution mechanics; handlers call application use cases rather than
+manipulating unrelated stores.
 
 ## Delivery and claiming
 
@@ -93,6 +93,14 @@ per-node concurrency, retry/backoff, cancelability, retention, and handler.
 Startup rejects duplicate types and missing handlers; there is no process-global
 mutable registration.
 
+Daily recurrence definitions are immutable constructor input to the same
+engine. Application slices own each recurrence name, typed command, stable
+date-keyed identity, deduplication policy, and bounded work definition. The
+engine owns UTC timing, bounded retry of transient proposal failures, the
+post-proposal local wake, and recurrence shutdown. Every node may propose; the
+permanent PostgreSQL occurrence ledger, not process memory or leadership,
+decides whether the logical occurrence is new.
+
 The institution-scoped `job.view` action protects safe list, get, and attempt
 history. `job.manage` protects cancellation and explicitly supported retry.
 Neither permits arbitrary Job creation. The built-in system-administrator role
@@ -115,9 +123,9 @@ The first registered types are:
   running, or its own active work.
 
 User-creation transactions enqueue individual generation atomically;
-reconciliation remains the safety net. The runner starts after its mandatory
+reconciliation remains the safety net. The engine starts after its mandatory
 platform dependencies and drains before the store and VFS close. Readiness
-requires those dependencies and a functioning runner, not an empty queue.
+requires those dependencies and a functioning engine, not an empty queue.
 Shutdown stops new claims, cancels or drains work under a deadline, and leaves
 unfinished leases to expire for another node.
 

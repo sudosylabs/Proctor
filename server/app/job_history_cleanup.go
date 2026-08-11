@@ -137,7 +137,6 @@ func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution JobExecutio
 
 type jobHistoryCleanupProposer struct {
 	jobs jobEnqueuer
-	wake func()
 	now  func() time.Time
 }
 
@@ -153,9 +152,6 @@ func (p jobHistoryCleanupProposer) Propose(ctx context.Context, occurrence time.
 		return err
 	}
 	_, _, err = p.jobs.Enqueue(ctx, &store.JobEnqueue{Job: job})
-	if err == nil && p.wake != nil {
-		p.wake()
-	}
 	return err
 }
 

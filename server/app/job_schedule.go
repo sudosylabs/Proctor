@@ -17,13 +17,8 @@ type jobEnqueuer interface {
 	Enqueue(context.Context, *store.JobEnqueue) (*model.Job, bool, error)
 }
 
-type jobOccurrenceProposer interface {
-	Propose(context.Context, time.Time) error
-}
-
 type filePurgeExpiredContentProposer struct {
 	jobs jobEnqueuer
-	wake func()
 	now  func() time.Time
 }
 
@@ -42,8 +37,5 @@ func (p filePurgeExpiredContentProposer) Propose(ctx context.Context, occurrence
 		return err
 	}
 	_, _, err = p.jobs.Enqueue(ctx, &store.JobEnqueue{Job: job})
-	if err == nil && p.wake != nil {
-		p.wake()
-	}
 	return err
 }

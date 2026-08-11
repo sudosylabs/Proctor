@@ -13,9 +13,57 @@ type OccurrenceProposer interface {
 	Propose(context.Context, time.Time) error
 }
 
-type dailyProposal struct {
-	name     string
-	proposer OccurrenceProposer
+// Recurrence defines application-owned work proposed once per UTC day.
+type Recurrence struct {
+	Name     string
+	Proposer OccurrenceProposer
+}
+
+// Clock controls recurrence time and waiting. Now must be safe for concurrent
+// use. NewTimer returns a fresh one-shot Timer for each positive duration.
+// Production uses the system clock; tests can advance occurrences without
+// sleeping.
+type Clock interface {
+	Now() time.Time
+	NewTimer(time.Duration) Timer
+}
+
+// Timer is the bounded waiting capability used by recurrence workers. C
+// delivers at most one expiration value. Stop prevents a future delivery when
+// it returns true and is safe to call while the engine is shutting down.
+type Timer interface {
+	C() <-chan time.Time
+	Stop() bool
+}
+
+type systemClock struct{}
+
+func (systemClock) Now() time.Time { return time.Now() }
+
+func (systemClock) NewTimer(delay time.Duration) Timer {
+	return systemTimer{timer: time.NewTimer(delay)}
+}
+
+type systemTimer struct {
+	timer *time.Timer
+}
+
+func (t systemTimer) C() <-chan time.Time { return t.timer.C }
+func (t systemTimer) Stop() bool          { return t.timer.Stop() }
+
+func cloneRecurrences(values []Recurrence) ([]Recurrence, error) {
+	cloned := append([]Recurrence(nil), values...)
+	names := make(map[string]struct{}, len(cloned))
+	for _, recurrence := range cloned {
+		if !jobContractCode.MatchString(recurrence.Name) || recurrence.Proposer == nil {
+			return nil, errors.New("invalid daily job recurrence")
+		}
+		if _, exists := names[recurrence.Name]; exists {
+			return nil, errors.New("duplicate daily job recurrence")
+		}
+		names[recurrence.Name] = struct{}{}
+	}
+	return cloned, nil
 }
 
 func nextDailyOccurrence(now time.Time) time.Time {
@@ -23,34 +71,40 @@ func nextDailyOccurrence(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
 }
 
-func runDailyProposal(ctx context.Context, proposal dailyProposal, diagnostics Diagnostics, now func() time.Time, retryDelay time.Duration) {
-	if proposal.name == "" || proposal.proposer == nil || diagnostics == nil || now == nil || retryDelay <= 0 {
+func runDailyProposal(ctx context.Context, recurrence Recurrence, diagnostics Diagnostics, clock Clock, retryDelay time.Duration, wake func()) {
+	if recurrence.Name == "" || recurrence.Proposer == nil || diagnostics == nil || clock == nil || retryDelay <= 0 {
 		return
 	}
-	occurrence := now().UTC()
+	occurrence := clock.Now().UTC()
 	for {
-		err := proposal.proposer.Propose(ctx, occurrence)
+		err := recurrence.Proposer.Propose(ctx, occurrence)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			diagnostics.ErrorContext(ctx, "propose daily durable job "+proposal.name, err)
+			diagnostics.ErrorContext(ctx, "propose daily durable job "+recurrence.Name, err)
 		}
 		delay := retryDelay
 		if err == nil {
-			delay = nextDailyOccurrence(occurrence).Sub(now().UTC())
+			if wake != nil {
+				wake()
+			}
+			delay = nextDailyOccurrence(occurrence).Sub(clock.Now().UTC())
 		}
 		if delay <= 0 {
-			occurrence = now().UTC()
+			occurrence = clock.Now().UTC()
 			continue
 		}
-		timer := time.NewTimer(delay)
+		timer := clock.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			if !timer.Stop() {
-				<-timer.C
+				select {
+				case <-timer.C():
+				default:
+				}
 			}
 			return
-		case <-timer.C:
+		case <-timer.C():
 			if err == nil {
-				occurrence = now().UTC()
+				occurrence = clock.Now().UTC()
 			}
 		}
 	}

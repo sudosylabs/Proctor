@@ -234,26 +234,22 @@ func New(deps Dependencies) (*App, error) {
 			Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour,
 		})}
 		descriptors = append(descriptors, jobHistoryCleanupDescriptor(cleanupHandler))
+		recurrences := []jobengine.Recurrence{
+			{Name: "profile-picture-default-reconciliation", Proposer: defaultProfilePictureReconciliationJobProposer{jobs: deps.Store.Job(), now: time.Now}},
+			{Name: "file-purge-expired-content", Proposer: filePurgeExpiredContentProposer{jobs: deps.Store.Job(), now: time.Now}},
+			{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
+		}
 		jobs, err = jobengine.New(jobengine.Config{
 			Store: deps.Store.Job(), Descriptors: descriptors, NodeID: deps.NodeID,
 			Diagnostics: deps.RecoveryDiagnostics,
 			Policy:      jobengine.Policy{PollInterval: 500 * time.Millisecond},
-			Clock:       time.Now,
+			Recurrences: recurrences,
 		})
 		if err != nil {
 			return nil, err
 		}
 		defaultJobs.wake = jobs.Wake
 		profilePictures.defaultJobs = defaultJobs
-		for name, proposer := range map[string]jobOccurrenceProposer{
-			"profile-picture-default-reconciliation": defaultProfilePictureReconciliationJobProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
-			"file-purge-expired-content":             filePurgeExpiredContentProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
-			"job-history-cleanup":                    jobHistoryCleanupProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
-		} {
-			if err = jobs.AddDailyProposal(name, proposer); err != nil {
-				return nil, err
-			}
-		}
 	}
 	accountStates := newAccountStateService(
 		deps.Store.User(),

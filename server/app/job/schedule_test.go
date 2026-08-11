@@ -6,54 +6,203 @@ package job
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 )
 
-type occurrenceProposerFake struct{ proposed chan time.Time }
-
-func (f occurrenceProposerFake) Propose(_ context.Context, at time.Time) error {
-	f.proposed <- at
-	return nil
-}
-
-type retryingOccurrenceProposerFake struct {
+type occurrenceProposerFake struct {
 	calls chan time.Time
-	count int
+	mu    sync.Mutex
+	fail  int
 }
 
-func (f *retryingOccurrenceProposerFake) Propose(_ context.Context, at time.Time) error {
-	f.count++
+func (f *occurrenceProposerFake) Propose(_ context.Context, at time.Time) error {
 	f.calls <- at
-	if f.count == 1 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.fail > 0 {
+		f.fail--
 		return errors.New("database unavailable")
 	}
 	return nil
 }
 
-func TestDailyProposalRunsWithoutBlockingReadinessAndStopsWithEngine(t *testing.T) {
+type manualClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	timers chan *manualTimer
+}
+
+func newManualClock(at time.Time) *manualClock {
+	return &manualClock{now: at, timers: make(chan *manualTimer, 8)}
+}
+
+func (c *manualClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *manualClock) NewTimer(delay time.Duration) Timer {
+	timer := &manualTimer{delay: delay, ch: make(chan time.Time, 1)}
+	c.timers <- timer
+	return timer
+}
+
+func (c *manualClock) advance(timer *manualTimer, at time.Time) {
+	c.mu.Lock()
+	c.now = at
+	c.mu.Unlock()
+	timer.ch <- at
+}
+
+type manualTimer struct {
+	delay time.Duration
+	ch    chan time.Time
+}
+
+func (t *manualTimer) C() <-chan time.Time { return t.ch }
+func (*manualTimer) Stop() bool            { return true }
+
+func TestEngineRetriesSameOccurrenceWakesLocallyAndStopsRecurrence(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 10, 9, 30, 0, 0, time.UTC)
-	ctx, cancel := context.WithCancel(context.Background())
-	proposed := make(chan time.Time, 1)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		runDailyProposal(ctx, dailyProposal{name: "test", proposer: occurrenceProposerFake{proposed: proposed}}, &jobDiagnosticsFake{}, func() time.Time { return at }, time.Millisecond)
-	}()
-	select {
-	case got := <-proposed:
-		if !got.Equal(at) {
-			t.Fatalf("proposal time = %v", got)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("daily proposal blocked startup")
+	clock := newManualClock(at)
+	proposer := &occurrenceProposerFake{calls: make(chan time.Time, 3), fail: 1}
+	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
+	persistence := &jobRunnerStoreFake{claimRequests: make(chan struct{}, 8)}
+	engine, err := New(Config{
+		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a", Diagnostics: &jobDiagnosticsFake{},
+		Policy: Policy{PollInterval: time.Hour, ProposalRetryDelay: 10 * time.Second}, Clock: clock,
+		Recurrences: []Recurrence{{Name: "daily", Proposer: proposer}},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	cancel()
+	if err = engine.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	first := <-proposer.calls
+	retryTimer := <-clock.timers
+	if !first.Equal(at) || retryTimer.delay != 10*time.Second {
+		t.Fatalf("first occurrence=%v retry delay=%v", first, retryTimer.delay)
+	}
+	// The worker polls once on startup. A failed proposal must not add a wake.
 	select {
-	case <-done:
+	case <-persistence.claimRequests:
 	case <-time.After(time.Second):
-		t.Fatal("daily proposal did not stop with its owner")
+		t.Fatal("worker did not perform its initial claim")
+	}
+	select {
+	case <-persistence.claimRequests:
+		t.Fatal("failed proposal woke the local worker")
+	default:
+	}
+	clock.advance(retryTimer, at.Add(10*time.Second))
+	if second := <-proposer.calls; !second.Equal(at) {
+		t.Fatalf("retry occurrence=%v, want %v", second, at)
+	}
+	select {
+	case <-persistence.claimRequests:
+	case <-time.After(time.Second):
+		t.Fatal("successful proposal did not wake the local worker")
+	}
+	dailyTimer := <-clock.timers
+	if dailyTimer.delay != 14*time.Hour+29*time.Minute+50*time.Second {
+		t.Fatalf("next daily delay=%v", dailyTimer.delay)
+	}
+	if err = engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+	clock.advance(dailyTimer, nextDailyOccurrence(at))
+	select {
+	case occurrence := <-proposer.calls:
+		t.Fatalf("proposal ran after engine shutdown: %v", occurrence)
+	default:
+	}
+}
+
+func TestEngineCopiesRecurrenceDefinitionsAtConstruction(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 10, 9, 30, 0, 0, time.UTC)
+	clock := newManualClock(at)
+	original := &occurrenceProposerFake{calls: make(chan time.Time, 1)}
+	replacement := &occurrenceProposerFake{calls: make(chan time.Time, 1)}
+	recurrences := []Recurrence{{Name: "daily", Proposer: original}}
+	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
+	engine, err := New(Config{
+		Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: "node-a", Diagnostics: &jobDiagnosticsFake{},
+		Policy: Policy{PollInterval: time.Hour}, Clock: clock, Recurrences: recurrences,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recurrences[0] = Recurrence{Name: "replacement", Proposer: replacement}
+	if err = engine.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-original.calls:
+	case <-time.After(time.Second):
+		t.Fatal("constructed recurrence did not run")
+	}
+	select {
+	case <-replacement.calls:
+		t.Fatal("engine retained caller-owned recurrence slice")
+	default:
+	}
+	if err = engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConcurrentEnginesAndRestartProposeTheSameOccurrence(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 10, 9, 30, 0, 0, time.UTC)
+	proposer := &occurrenceProposerFake{calls: make(chan time.Time, 3)}
+	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
+	newEngine := func(nodeID string) *Engine {
+		t.Helper()
+		engine, err := New(Config{
+			Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: nodeID, Diagnostics: &jobDiagnosticsFake{},
+			Policy: Policy{PollInterval: time.Hour}, Clock: newManualClock(at),
+			Recurrences: []Recurrence{{Name: "daily", Proposer: proposer}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return engine
+	}
+
+	first, second := newEngine("node-a"), newEngine("node-b")
+	if err := first.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if occurrence := <-proposer.calls; !occurrence.Equal(at) {
+			t.Fatalf("concurrent occurrence=%v, want %v", occurrence, at)
+		}
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := newEngine("node-a-restarted")
+	if err := restarted.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if occurrence := <-proposer.calls; !occurrence.Equal(at) {
+		t.Fatalf("restart occurrence=%v, want %v", occurrence, at)
+	}
+	if err := restarted.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -63,29 +212,5 @@ func TestNextDailyOccurrenceUsesUTCDayBoundary(t *testing.T) {
 	want := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
 	if got := nextDailyOccurrence(now); !got.Equal(want) {
 		t.Fatalf("next occurrence = %v, want %v", got, want)
-	}
-}
-
-func TestDailyProposalRetriesTheSameOccurrenceAfterTransientFailure(t *testing.T) {
-	t.Parallel()
-	at := time.Date(2026, time.August, 10, 9, 30, 0, 0, time.UTC)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	calls := make(chan time.Time, 2)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		runDailyProposal(ctx, dailyProposal{name: "test", proposer: &retryingOccurrenceProposerFake{calls: calls}}, &jobDiagnosticsFake{}, func() time.Time { return at }, time.Millisecond)
-	}()
-	first := <-calls
-	second := <-calls
-	if !first.Equal(at) || !second.Equal(at) {
-		t.Fatalf("retry occurrences = %v, %v", first, second)
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("retrying proposal did not stop")
 	}
 }
