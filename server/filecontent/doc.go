@@ -14,11 +14,11 @@
 // an owning application use case remains the only visibility boundary; a VFS
 // write alone never makes content discoverable.
 //
-// The storage core depends only on server/model and the reusable VFS contract.
-// A purpose-specific codec becomes an allowed dependency only in the same
-// change that moves its working pipeline here and narrows the architecture
-// allowlist to that codec. Concrete VFS backends, persistence, transports,
-// platform service location, configuration, and Jobs remain outside it.
+// The package depends on server/model, the consumer-owned application content
+// contracts, the reusable VFS contract, and only the image codecs used by its
+// working profile-picture pipeline. Concrete VFS backends, persistence,
+// transports, platform service location, configuration, and Jobs remain
+// outside it.
 //
 // Content is stateless and safe for concurrent use. It starts no goroutines
 // and never closes its VFS dependency. Small purpose-specific pipelines may

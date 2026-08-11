@@ -264,16 +264,22 @@ func sameNormalizedProfilePicture(state *store.ProfilePictureState, renditions [
 	if state == nil || len(state.Renditions) != len(renditions) {
 		return false
 	}
-	checksums := make(map[string]string, len(state.Renditions))
+	currentByName := make(map[string]model.FileRendition, len(state.Renditions))
 	for _, rendition := range state.Renditions {
-		checksums[rendition.Name] = rendition.SHA256
-	}
-	for _, rendition := range renditions {
-		if checksums[rendition.Name] != rendition.SHA256 {
+		if _, duplicate := currentByName[rendition.Name]; duplicate {
 			return false
 		}
+		currentByName[rendition.Name] = rendition
 	}
-	return true
+	for _, rendition := range renditions {
+		current, found := currentByName[rendition.Name]
+		if !found || current.MediaType != rendition.MediaType || current.Size != rendition.Size ||
+			current.Width != rendition.Width || current.Height != rendition.Height || current.SHA256 != rendition.SHA256 {
+			return false
+		}
+		delete(currentByName, rendition.Name)
+	}
+	return len(currentByName) == 0
 }
 
 func (a *App) GetProfilePicture(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {

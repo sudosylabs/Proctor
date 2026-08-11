@@ -38,6 +38,26 @@ type pictureStoreFake struct {
 	stateErr            error
 }
 
+func TestNormalizedProfilePictureEqualityRequiresTheCompleteCanonicalManifest(t *testing.T) {
+	t.Parallel()
+
+	current := model.FileRendition{Name: "profile_128", MediaType: "image/webp", Size: 42, Width: 128, Height: 128, SHA256: strings.Repeat("a", 64)}
+	state := &store.ProfilePictureState{Renditions: []model.FileRendition{current}}
+	if !sameNormalizedProfilePicture(state, []model.FileRendition{current}) {
+		t.Fatal("identical canonical manifest was not a no-op")
+	}
+	for _, changed := range []model.FileRendition{
+		{Name: current.Name, MediaType: "image/png", Size: current.Size, Width: current.Width, Height: current.Height, SHA256: current.SHA256},
+		{Name: current.Name, MediaType: current.MediaType, Size: current.Size + 1, Width: current.Width, Height: current.Height, SHA256: current.SHA256},
+		{Name: current.Name, MediaType: current.MediaType, Size: current.Size, Width: current.Width + 1, Height: current.Height, SHA256: current.SHA256},
+		{Name: current.Name, MediaType: current.MediaType, Size: current.Size, Width: current.Width, Height: current.Height + 1, SHA256: current.SHA256},
+	} {
+		if sameNormalizedProfilePicture(state, []model.FileRendition{changed}) {
+			t.Fatalf("noncanonical manifest treated as no-op: %#v", changed)
+		}
+	}
+}
+
 func (s *pictureStoreFake) Get(context.Context, string) (*model.User, error) {
 	copy := *s.user
 	return &copy, nil
@@ -506,7 +526,7 @@ func profilePictureState(entryID model.FileEntryID, checksum string) *store.Prof
 	revisionID := model.NewFileRevisionID()
 	renditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
-		renditions = append(renditions, model.FileRendition{RevisionID: revisionID, Name: fmt.Sprintf("profile_%d", size), SHA256: checksum})
+		renditions = append(renditions, model.FileRendition{RevisionID: revisionID, Name: fmt.Sprintf("profile_%d", size), MediaType: "image/webp", Size: 10, Width: 20, Height: 20, SHA256: checksum})
 	}
 	return &store.ProfilePictureState{EntryID: entryID, RevisionID: revisionID, Renditions: renditions}
 }

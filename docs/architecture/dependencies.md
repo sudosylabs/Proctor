@@ -6,6 +6,7 @@
 model ← store ← app/job ← app ← {app/api, websocket}
 model ← filecontent
 packages/vfs ← filecontent
+app ← filecontent
 {app, app/api, websocket, filecontent} ← server ← cmd/proctor
 ~~~
 
@@ -17,7 +18,7 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `store` | `model` | `sqlstore`, HTTP, application services |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, transports, concrete adapters |
 | `app` | `model`, `store`, `app/job`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
-| `filecontent` | `model`, `packages/vfs` | application services, persistence, transports, platform service location, Jobs, configuration, third-party codecs, concrete VFS backends |
+| `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `websocket` | `app`, `model`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |

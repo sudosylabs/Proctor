@@ -4,21 +4,10 @@
 package server
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"fmt"
-	"image"
-	"image/color"
 	"io"
-	"net/http"
 	"time"
-
-	"github.com/HugoSmits86/nativewebp"
-	"github.com/disintegration/imaging"
-	_ "golang.org/x/image/webp"
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -129,121 +118,15 @@ func newFileContentAdapter(filesystem vfspkg.FileSystem) (fileContentAdapter, er
 }
 
 func (a fileContentAdapter) NormalizeAndStoreProfilePicture(ctx context.Context, revisionID model.FileRevisionID, body io.Reader, size int64, at time.Time) ([]model.FileRendition, error) {
-	const maximumPixels = 25_000_000
-	const maximumBytes int64 = 5 << 20
-	raw, err := io.ReadAll(io.LimitReader(body, maximumBytes+1))
-	if err != nil || int64(len(raw)) > maximumBytes || (size >= 0 && int64(len(raw)) != size) {
-		return nil, app.ErrInvalidProfilePicture
-	}
-	mediaType := http.DetectContentType(raw)
-	if mediaType != "image/png" && mediaType != "image/jpeg" && mediaType != "image/webp" {
-		return nil, app.ErrInvalidProfilePicture
-	}
-	configuration, _, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil || configuration.Width <= 0 || configuration.Height <= 0 || configuration.Width > 4096 || configuration.Height > 4096 {
-		return nil, app.ErrInvalidProfilePicture
-	}
-	imageValue, err := imaging.Decode(bytes.NewReader(raw), imaging.AutoOrientation(true))
-	if err != nil || imageValue.Bounds().Dx() <= 0 || imageValue.Bounds().Dy() <= 0 || imageValue.Bounds().Dx() > maximumPixels/imageValue.Bounds().Dy() {
-		return nil, app.ErrInvalidProfilePicture
-	}
-	squareSize := min(imageValue.Bounds().Dx(), imageValue.Bounds().Dy())
-	square := imaging.CropCenter(imageValue, squareSize, squareSize)
-	renditions := make([]model.FileRendition, 0, 3)
-	for _, target := range []int{128, 256, 512} {
-		dimension := min(target, squareSize)
-		normalized := square
-		if dimension < squareSize {
-			normalized = imaging.Resize(square, dimension, dimension, imaging.Lanczos)
-		}
-		var encoded bytes.Buffer
-		if err = nativewebp.Encode(&encoded, normalized, &nativewebp.Options{CompressionLevel: nativewebp.DefaultCompression}); err != nil {
-			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
-			return nil, err
-		}
-		checksum := fmt.Sprintf("%x", sha256.Sum256(encoded.Bytes()))
-		rendition, modelErr := model.NewFileRendition(model.NewFileRenditionID(), revisionID, fmt.Sprintf("profile_%d", target), "image/webp", int64(encoded.Len()), dimension, dimension, checksum, at)
-		if modelErr != nil {
-			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
-			return nil, modelErr
-		}
-		encodedSize := int64(encoded.Len())
-		if err = a.content.StageProfilePictureRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded.Bytes()), encodedSize); err != nil {
-			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
-			return nil, err
-		}
-		renditions = append(renditions, *rendition)
-	}
-	return renditions, nil
+	return a.content.NormalizeAndStoreProfilePicture(ctx, revisionID, body, size, at)
 }
 
 func (a fileContentAdapter) GenerateAndStoreDefaultProfilePicture(ctx context.Context, revisionID model.FileRevisionID, seed string, at time.Time) ([]model.FileRendition, error) {
-	renditions := make([]model.FileRendition, 0, 3)
-	for _, target := range []int{128, 256, 512} {
-		encoded, checksum, err := renderDefaultProfilePicture(seed, target)
-		if err != nil {
-			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
-			return nil, err
-		}
-		rendition, err := model.NewFileRendition(model.NewFileRenditionID(), revisionID, fmt.Sprintf("profile_%d", target), "image/webp", int64(len(encoded)), target, target, checksum, at)
-		if err != nil {
-			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
-			return nil, err
-		}
-		encodedSize := int64(len(encoded))
-		if err = a.content.StageProfilePictureRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded), encodedSize); err != nil {
-			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
-			return nil, err
-		}
-		renditions = append(renditions, *rendition)
-	}
-	return renditions, nil
+	return a.content.GenerateAndStoreDefaultProfilePicture(ctx, revisionID, seed, at)
 }
 
-func (a fileContentAdapter) RenderDefaultProfilePicture(_ context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
-	encoded, checksum, err := renderDefaultProfilePicture(seed, size)
-	if err != nil {
-		return nil, err
-	}
-	return &app.RenderedProfilePicture{Body: io.NopCloser(bytes.NewReader(encoded)), MediaType: "image/webp", Size: int64(len(encoded)), SHA256: checksum}, nil
-}
-
-func renderDefaultProfilePicture(seed string, size int) ([]byte, string, error) {
-	if size != 128 && size != 256 && size != 512 {
-		return nil, "", fmt.Errorf("unsupported default profile-picture size %d", size)
-	}
-	seedBytes, err := hex.DecodeString(seed)
-	if err != nil || len(seedBytes) != model.ProfilePictureSeedLength/2 {
-		return nil, "", fmt.Errorf("invalid default profile-picture seed")
-	}
-	palette := sha256.Sum256(seedBytes)
-	canvas := image.NewNRGBA(image.Rect(0, 0, size, size))
-	background := color.NRGBA{R: 48 + palette[0]%128, G: 48 + palette[1]%128, B: 48 + palette[2]%128, A: 255}
-	foreground := color.NRGBA{R: 96 + palette[3]%160, G: 96 + palette[4]%160, B: 96 + palette[5]%160, A: 220}
-	accent := color.NRGBA{R: 64 + palette[6]%192, G: 64 + palette[7]%192, B: 64 + palette[8]%192, A: 210}
-	centerX := size/3 + int(palette[9])*(size/3)/255
-	centerY := size/3 + int(palette[10])*(size/3)/255
-	radius := size/5 + int(palette[11])*(size/8)/255
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			pixel := background
-			dx, dy := x-centerX, y-centerY
-			if dx*dx+dy*dy <= radius*radius {
-				pixel = foreground
-			}
-			if (x+y+int(palette[12]))%(max(2, size/5)) < max(1, size/18) {
-				pixel = accent
-			}
-			canvas.SetNRGBA(x, y, pixel)
-		}
-	}
-	var output bytes.Buffer
-	if err = nativewebp.Encode(&output, canvas, &nativewebp.Options{CompressionLevel: nativewebp.DefaultCompression}); err != nil {
-		return nil, "", err
-	}
-	encoded := output.Bytes()
-	checksum := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	return append([]byte(nil), encoded...), checksum, nil
+func (a fileContentAdapter) RenderDefaultProfilePicture(ctx context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
+	return a.content.RenderDefaultProfilePicture(ctx, seed, size)
 }
 
 func (a fileContentAdapter) OpenProfilePictureRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) (io.ReadCloser, error) {
@@ -251,11 +134,7 @@ func (a fileContentAdapter) OpenProfilePictureRendition(ctx context.Context, rev
 }
 
 func (a fileContentAdapter) RemoveProfilePictureRenditions(ctx context.Context, revisionID model.FileRevisionID, renditions []model.FileRendition) error {
-	ids := make([]model.FileRenditionID, 0, len(renditions))
-	for _, rendition := range renditions {
-		ids = append(ids, rendition.ID)
-	}
-	return a.content.RemoveRenditions(ctx, revisionID, ids)
+	return a.content.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 }
 
 func (a fileContentAdapter) RemoveFileRevisionContent(ctx context.Context, revisionID model.FileRevisionID, renditionIDs []model.FileRenditionID) error {

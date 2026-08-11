@@ -151,7 +151,11 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},
 		{name: "Job engine may import store contracts", from: serverModule + "/app/job", imported: serverModule + "/store"},
 		{name: "File Content may import domain models", from: serverModule + "/filecontent", imported: serverModule + "/model"},
+		{name: "File Content may import application content contracts", from: serverModule + "/filecontent", imported: serverModule + "/app"},
 		{name: "File Content may import VFS contracts", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs"},
+		{name: "File Content may import the canonical encoder", from: serverModule + "/filecontent", imported: "github.com/HugoSmits86/nativewebp"},
+		{name: "File Content may import bounded image transforms", from: serverModule + "/filecontent", imported: "github.com/disintegration/imaging"},
+		{name: "File Content may register supported image decoders", from: serverModule + "/filecontent", imported: "golang.org/x/image/webp"},
 		{name: "HTTP may import application", from: serverModule + "/app/api", imported: serverModule + "/app"},
 		{name: "HTTP may import router library", from: serverModule + "/app/api", imported: "github.com/gorilla/mux"},
 		{name: "SQL adapter may import store contracts", from: serverModule + "/store/sqlstore", imported: serverModule + "/store"},
@@ -254,9 +258,11 @@ func forbiddenImport(from, imported string) bool {
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
 	case packageOrBelow(from, serverModule+"/filecontent"):
-		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+		return standardInfrastructureImport(imported) ||
+			(thirdPartyImport(imported) && !fileContentCodecImport(imported)) ||
 			forbiddenProjectImportExcept(
 				imported,
+				serverModule+"/app",
 				serverModule+"/model",
 				repositoryModule+"/packages/vfs",
 			)
@@ -294,6 +300,12 @@ func forbiddenImport(from, imported string) bool {
 	default:
 		return true
 	}
+}
+
+func fileContentCodecImport(importPath string) bool {
+	return importPath == "github.com/HugoSmits86/nativewebp" ||
+		importPath == "github.com/disintegration/imaging" ||
+		importPath == "golang.org/x/image/webp"
 }
 
 func standardInfrastructureImport(importPath string) bool {

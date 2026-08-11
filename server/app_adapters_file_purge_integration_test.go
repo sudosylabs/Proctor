@@ -6,9 +6,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +22,7 @@ import (
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
+	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -56,7 +62,11 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	t.Helper()
 	ctx := context.Background()
 	persistence := openFilePurgeStorageIntegrationStore(t)
-	adapter := mustFileContentAdapter(t, filesystem)
+	adapter, err := newFileContentAdapter(filesystem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proveCustomProfilePicturePipelineMatchesMemory(t, adapter)
 	now := model.NowUTC()
 	user := &model.User{
 		Username: "purge-storage-" + model.NewId(),
@@ -183,6 +193,75 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	}
 	if remainingMetadata != 0 {
 		t.Fatalf("purged revision metadata count = %d, want 0", remainingMetadata)
+	}
+}
+
+func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual fileContentAdapter) {
+	t.Helper()
+	source := image.NewNRGBA(image.Rect(0, 0, 40, 20))
+	for y := 0; y < 20; y++ {
+		for x := 0; x < 40; x++ {
+			source.Set(x, y, color.NRGBA{R: 200, G: 10, B: 20, A: 255})
+		}
+	}
+	var input bytes.Buffer
+	if err := png.Encode(&input, source); err != nil {
+		t.Fatal(err)
+	}
+	reference, err := newFileContentAdapter(memoryvfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
+	referenceRevisionID, actualRevisionID := model.NewFileRevisionID(), model.NewFileRevisionID()
+	want, err := reference.NormalizeAndStoreProfilePicture(context.Background(), referenceRevisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := actual.NormalizeAndStoreProfilePicture(context.Background(), actualRevisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("custom rendition count = %d, want %d", len(got), len(want))
+	}
+	wantByName := make(map[string]model.FileRendition, len(want))
+	for _, rendition := range want {
+		wantByName[rendition.Name] = rendition
+	}
+	for _, rendition := range got {
+		expected, found := wantByName[rendition.Name]
+		if !found || rendition.MediaType != expected.MediaType || rendition.Size != expected.Size || rendition.Width != expected.Width || rendition.Height != expected.Height || rendition.SHA256 != expected.SHA256 {
+			t.Fatalf("backend rendition differs from memory: got=%#v want=%#v", rendition, expected)
+		}
+		actualBody, openErr := actual.OpenProfilePictureRendition(context.Background(), actualRevisionID, rendition.ID)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		actualBytes, readErr := io.ReadAll(actualBody)
+		_ = actualBody.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		referenceBody, openErr := reference.OpenProfilePictureRendition(context.Background(), referenceRevisionID, expected.ID)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		referenceBytes, readErr := io.ReadAll(referenceBody)
+		_ = referenceBody.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if !bytes.Equal(actualBytes, referenceBytes) {
+			t.Fatalf("backend bytes differ for %s", rendition.Name)
+		}
+	}
+	ids := make([]model.FileRenditionID, 0, len(got))
+	for _, rendition := range got {
+		ids = append(ids, rendition.ID)
+	}
+	if err = actual.RemoveFileRevisionContent(context.Background(), actualRevisionID, ids); err != nil {
+		t.Fatalf("remove custom integration content: %v", err)
 	}
 }
 
