@@ -10,6 +10,11 @@ into one undifferentiated function or creating a second composition root.
 
 `platform.Service` owns shared infrastructure health, reconfiguration, startup, and shutdown. It is retained by `server.Server`, never passed into `app`, and never used as a service locator.
 
+After the root has selected VFS and transferred its lifecycle to
+`platform.Service`, it explicitly constructs the stateless File Content module
+over that VFS and projects only the application's bounded content capabilities.
+File Content neither selects a backend nor participates in lifecycle shutdown.
+
 Constructors are inert. They validate required dependencies but do not normally start listeners or goroutines. Explicit `Start` methods begin work; `Close` or `Shutdown` is idempotent and bounded. Partial failure unwinds resources already acquired.
 
 Dependency injection is manual. Reflection containers, generated DI containers, global registries, and global mutable state are prohibited.

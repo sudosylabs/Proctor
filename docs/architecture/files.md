@@ -14,7 +14,10 @@ creation, checksums, private key derivation, exact reads, and idempotent
 physical deletion. It is stateless and owns no infrastructure lifecycle. The
 application retains authorization, semantic availability, publication,
 retention decisions, audit, indexing eligibility, and domain events; the sole
-composition root selects and supplies the concrete VFS backend.
+composition root selects the concrete VFS backend, constructs File Content
+over that one dependency, and passes its bounded capabilities into the
+application. File Content starts no goroutines and never closes VFS; the
+platform and composition root retain infrastructure lifecycle ownership.
 
 An acknowledged file change must survive loss of an application node or
 execution environment. Shared VFS stores the bytes in clustered production,
@@ -222,6 +225,11 @@ journal supports bidirectional synchronization and reconnect recovery. Losing
 or disconnecting the execution environment must not discard an acknowledged
 change.
 
+Workspace Synchronization is a separate future responsibility from File
+Content. It will own ordered live projection, conflict handling, and reconnect
+recovery; it may consume File Content capabilities, but private storage layout
+and VFS access do not become its synchronization protocol.
+
 Application clients initially stream uploads and downloads through the server.
 They see opaque file-entry IDs and purpose-specific routes, never storage keys
 or VFS paths. Future short-lived direct-transfer grants require a separate
@@ -233,10 +241,12 @@ another revision. Checksums prove integrity rather than cross-owner identity;
 avoiding cross-domain deduplication keeps deletion, retention, and access
 analysis explicit.
 
-The VFS adapter derives a private sharded storage key from each preallocated
-file-rendition ID. Domain models and store contracts never carry the resulting
-path. This keeps backend layout replaceable while making incomplete uploads
-recoverable from their leases.
+File Content derives the existing private revision-sharded storage key from
+each preallocated file-rendition ID. The extraction intentionally preserves
+that key format so local and S3 objects written before the module boundary
+remain readable and purgeable. Domain models and store contracts never carry
+the resulting path. This keeps backend layout replaceable while making
+incomplete uploads recoverable from their leases.
 
 Replacement requires the expected domain revision. PostgreSQL selects the one
 application-visible winner, while VFS conditions provide defense in depth.

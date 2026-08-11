@@ -33,10 +33,7 @@ func New(filesystem vfspkg.FileSystem) (*Content, error) {
 	return &Content{filesystem: filesystem}, nil
 }
 
-// StageProfilePictureRendition is the temporary compatibility operation used
-// while the profile-picture pipeline moves into this package. The complete
-// pipeline replaces it before the extraction is contracted.
-func (c *Content) StageProfilePictureRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, body io.Reader, size int64) error {
+func (c *Content) storeRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, body io.Reader, size int64) error {
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() || body == nil || size < 0 {
 		return errors.New("invalid profile-picture rendition")
 	}
@@ -47,8 +44,9 @@ func (c *Content) StageProfilePictureRendition(ctx context.Context, revisionID m
 	return sanitize("stage rendition", err)
 }
 
-// OpenRendition opens one exact rendition selected by authoritative metadata.
-func (c *Content) OpenRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) (io.ReadCloser, error) {
+// OpenProfilePictureRendition opens one exact rendition selected by
+// authoritative profile-picture metadata.
+func (c *Content) OpenProfilePictureRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) (io.ReadCloser, error) {
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() {
 		return nil, errors.New("invalid file rendition identity")
 	}
@@ -59,9 +57,7 @@ func (c *Content) OpenRendition(ctx context.Context, revisionID model.FileRevisi
 	return file.Body, nil
 }
 
-// RemoveRenditions idempotently removes an exact, bounded manifest without
-// discovering any sibling content through VFS listing.
-func (c *Content) RemoveRenditions(ctx context.Context, revisionID model.FileRevisionID, renditionIDs []model.FileRenditionID) error {
+func (c *Content) removeRenditions(ctx context.Context, revisionID model.FileRevisionID, renditionIDs []model.FileRenditionID) error {
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() {
 		return errors.New("invalid file revision identity")
 	}
@@ -81,9 +77,19 @@ func (c *Content) RemoveRenditions(ctx context.Context, revisionID model.FileRev
 	return joined
 }
 
-// PurgeAbandonedRevision idempotently removes every object beneath one private
-// revision prefix when the bounded prefix fits in a single VFS page.
-func (c *Content) PurgeAbandonedRevision(ctx context.Context, revisionID model.FileRevisionID) error {
+// RemoveFileRevisionRenditions idempotently removes an exact authoritative
+// rendition manifest without discovering sibling content.
+func (c *Content) RemoveFileRevisionRenditions(ctx context.Context, revisionID model.FileRevisionID, renditionIDs []model.FileRenditionID) error {
+	return c.removeRenditions(ctx, revisionID, renditionIDs)
+}
+
+// PurgeAbandonedFileRevision bounds discovery and deletion to one revision
+// prefix whose expired upload lease has been durably claimed.
+func (c *Content) PurgeAbandonedFileRevision(ctx context.Context, revisionID model.FileRevisionID) error {
+	return c.purgeAbandonedRevision(ctx, revisionID)
+}
+
+func (c *Content) purgeAbandonedRevision(ctx context.Context, revisionID model.FileRevisionID) error {
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() {
 		return errors.New("invalid file revision identity")
 	}

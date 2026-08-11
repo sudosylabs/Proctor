@@ -205,7 +205,7 @@ func New(deps Dependencies) (*App, error) {
 		mutationAuditAdapter{audit: audit}, time.Now,
 	)
 	profilePictures := newProfilePictureService(
-		deps.Store.User(), deps.Store.File(), deps.FileContent,
+		deps.Store.User(), deps.Store.File(), deps.FileContent, deps.FileContent, deps.FileContent, deps.FileContent,
 		userProfileAuthorization{
 			authorization: authorization,
 			institutions:  deps.Store.Institution(),
@@ -249,7 +249,7 @@ func New(deps Dependencies) (*App, error) {
 			return nil, err
 		}
 		defaultJobs.wake = jobs.Wake
-		profilePictures.defaultJobs = defaultJobs
+		profilePictures.reads.defaultJobs = defaultJobs
 	}
 	accountStates := newAccountStateService(
 		deps.Store.User(),

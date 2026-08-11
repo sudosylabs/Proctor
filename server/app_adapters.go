@@ -6,14 +6,11 @@ package server
 import (
 	"context"
 	"errors"
-	"io"
 	"time"
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
-	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
-	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -25,6 +22,7 @@ import (
 // imports platform.
 func applicationDependencies(
 	applicationPlatform *platform.Service,
+	content app.FileContent,
 ) (app.Dependencies, error) {
 	if applicationPlatform == nil {
 		return app.Dependencies{}, errors.New("platform service is nil")
@@ -33,9 +31,8 @@ func applicationDependencies(
 	auth := cfg.Authentication
 	cache := platformAuthenticationCache{cache: applicationPlatform.Cache()}
 	log := applicationPlatform.Log()
-	content, err := newFileContentAdapter(applicationPlatform.VFS())
-	if err != nil {
-		return app.Dependencies{}, err
+	if content == nil {
+		return app.Dependencies{}, errors.New("file content is nil")
 	}
 	return app.Dependencies{
 		Store:       applicationPlatform.Store(),
@@ -105,43 +102,6 @@ func applicationDependencies(
 		RealtimeDiagnostics:       mlogRealtimeDiagnostics{log: log},
 		RecoveryDiagnostics:       mlogRecoveryDiagnostics{log: log},
 	}, nil
-}
-
-type fileContentAdapter struct{ content *filecontent.Content }
-
-func newFileContentAdapter(filesystem vfspkg.FileSystem) (fileContentAdapter, error) {
-	content, err := filecontent.New(filesystem)
-	if err != nil {
-		return fileContentAdapter{}, err
-	}
-	return fileContentAdapter{content: content}, nil
-}
-
-func (a fileContentAdapter) NormalizeAndStoreProfilePicture(ctx context.Context, revisionID model.FileRevisionID, body io.Reader, size int64, at time.Time) ([]model.FileRendition, error) {
-	return a.content.NormalizeAndStoreProfilePicture(ctx, revisionID, body, size, at)
-}
-
-func (a fileContentAdapter) GenerateAndStoreDefaultProfilePicture(ctx context.Context, revisionID model.FileRevisionID, seed string, at time.Time) ([]model.FileRendition, error) {
-	return a.content.GenerateAndStoreDefaultProfilePicture(ctx, revisionID, seed, at)
-}
-
-func (a fileContentAdapter) RenderDefaultProfilePicture(ctx context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
-	return a.content.RenderDefaultProfilePicture(ctx, seed, size)
-}
-
-func (a fileContentAdapter) OpenProfilePictureRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) (io.ReadCloser, error) {
-	return a.content.OpenRendition(ctx, revisionID, renditionID)
-}
-
-func (a fileContentAdapter) RemoveProfilePictureRenditions(ctx context.Context, revisionID model.FileRevisionID, renditions []model.FileRendition) error {
-	return a.content.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
-}
-
-func (a fileContentAdapter) RemoveFileRevisionContent(ctx context.Context, revisionID model.FileRevisionID, renditionIDs []model.FileRenditionID) error {
-	if len(renditionIDs) > 0 {
-		return a.content.RemoveRenditions(ctx, revisionID, renditionIDs)
-	}
-	return a.content.PurgeAbandonedRevision(ctx, revisionID)
 }
 
 // platformAuthenticationCache adapts platform.Cache to app.authenticationCache.

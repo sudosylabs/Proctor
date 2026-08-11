@@ -51,9 +51,10 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				publishEntered:          publishEntered,
 				continuePublish:         continuePublish,
 			}
-			pictures := &profilePictureService{
-				users: persistence.User(), files: files, content: &pictureContentFake{}, now: time.Now,
-			}
+			pictures := newProfilePictureServiceForTest(
+				persistence.User(), files, &pictureContentFake{},
+				nil, nil, nil, nil, nil, time.Now,
+			)
 			realHandler := defaultProfilePictureHandler{generator: pictures}
 			entered := make(chan struct{})
 			canceled := make(chan struct{})

@@ -79,16 +79,28 @@ func (f *purgeStoreFake) CompletePurge(_ context.Context, claim *store.FilePurge
 }
 
 type purgeContentFake struct {
-	removed []model.FileRevisionID
-	failAt  int
+	removed   []model.FileRevisionID
+	abandoned []model.FileRevisionID
+	manifests []model.FileRevisionID
+	failAt    int
 }
 
-func (f *purgeContentFake) RemoveFileRevisionContent(_ context.Context, revisionID model.FileRevisionID, _ []model.FileRenditionID) error {
+func (f *purgeContentFake) remove(revisionID model.FileRevisionID) error {
 	f.removed = append(f.removed, revisionID)
 	if f.failAt > 0 && len(f.removed) == f.failAt {
 		return errors.New("backend unavailable")
 	}
 	return nil
+}
+
+func (f *purgeContentFake) PurgeAbandonedFileRevision(_ context.Context, revisionID model.FileRevisionID) error {
+	f.abandoned = append(f.abandoned, revisionID)
+	return f.remove(revisionID)
+}
+
+func (f *purgeContentFake) RemoveFileRevisionRenditions(_ context.Context, revisionID model.FileRevisionID, _ []model.FileRenditionID) error {
+	f.manifests = append(f.manifests, revisionID)
+	return f.remove(revisionID)
 }
 
 func TestFilePurgeHandlerCheckpointsOnlyAfterContentAndMetadataArePurged(t *testing.T) {
@@ -127,6 +139,23 @@ func TestFilePurgeHandlerCheckpointsOnlyAfterContentAndMetadataArePurged(t *test
 	}
 	if checkpoints[0].Progress == nil || checkpoints[0].Progress.Current != 1 || checkpoints[0].Progress.Total != 2 {
 		t.Fatalf("progress = %#v", checkpoints[0].Progress)
+	}
+}
+
+func TestFilePurgeHandlerSelectsDeletionByAuthoritativeCandidateKind(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	expired := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
+	archived := store.FilePurgeCandidate{Cursor: "archived:" + model.NewId(), Kind: store.FilePurgeCandidateArchivedCustom, EntryID: model.NewFileEntryID(), RevisionID: model.NewFileRevisionID(), RenditionIDs: []model.FileRenditionID{model.NewFileRenditionID()}}
+	persistence := &purgeStoreFake{candidates: []store.FilePurgeCandidate{archived, expired}}
+	content := &purgeContentFake{}
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 2), "daily", at, at, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome := newFilePurgeExpiredContentHandler(persistence, content).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(content.abandoned) != 1 || len(content.manifests) != 1 {
+		t.Fatalf("outcome=%#v err=%v abandoned=%#v manifests=%#v", outcome, outcome.Err, content.abandoned, content.manifests)
 	}
 }
 

@@ -67,7 +67,7 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 			_ = c.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, modelErr
 		}
-		if err = c.StageProfilePictureRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded.Bytes()), int64(encoded.Len())); err != nil {
+		if err = c.storeRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded.Bytes()), int64(encoded.Len())); err != nil {
 			_ = c.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
@@ -91,7 +91,7 @@ func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, rev
 			_ = c.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
-		if err = c.StageProfilePictureRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded), int64(len(encoded))); err != nil {
+		if err = c.storeRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded), int64(len(encoded))); err != nil {
 			_ = c.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
@@ -116,7 +116,7 @@ func (c *Content) RemoveProfilePictureRenditions(ctx context.Context, revisionID
 	for _, rendition := range renditions {
 		ids = append(ids, rendition.ID)
 	}
-	return c.RemoveRenditions(ctx, revisionID, ids)
+	return c.removeRenditions(ctx, revisionID, ids)
 }
 
 func renderDefaultProfilePictureV1(seed string, size int) ([]byte, string, error) {

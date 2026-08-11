@@ -15,6 +15,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"golang.org/x/image/webp"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/filecontent"
@@ -47,7 +49,7 @@ func TestContentStoresCanonicalProfilePictureRenditionsWithoutUpscaling(t *testi
 	if err := png.Encode(&input, source); err != nil {
 		t.Fatal(err)
 	}
-	for _, backend := range contentTestBackends() {
+	for _, backend := range profileContentBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			content, err := filecontent.New(backend.open(t))
 			if err != nil {
@@ -65,7 +67,7 @@ func TestContentStoresCanonicalProfilePictureRenditionsWithoutUpscaling(t *testi
 				if rendition.Width != 20 || rendition.Height != 20 || rendition.MediaType != "image/webp" {
 					t.Fatalf("noncanonical rendition: %#v", rendition)
 				}
-				body, openErr := content.OpenRendition(context.Background(), revisionID, rendition.ID)
+				body, openErr := content.OpenProfilePictureRendition(context.Background(), revisionID, rendition.ID)
 				if openErr != nil {
 					t.Fatal(openErr)
 				}
@@ -79,6 +81,25 @@ func TestContentStoresCanonicalProfilePictureRenditionsWithoutUpscaling(t *testi
 				}
 			}
 		})
+	}
+}
+
+func profileContentBackends() []struct {
+	name string
+	open func(*testing.T) vfspkg.FileSystem
+} {
+	return []struct {
+		name string
+		open func(*testing.T) vfspkg.FileSystem
+	}{
+		{name: "memory", open: func(*testing.T) vfspkg.FileSystem { return memoryvfs.New() }},
+		{name: "local", open: func(t *testing.T) vfspkg.FileSystem {
+			filesystem, err := localvfs.New(filepath.Join(t.TempDir(), "vfs"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return filesystem
+		}},
 	}
 }
 
@@ -106,7 +127,7 @@ func TestContentLeavesAnUncertainProfilePictureWriteForBoundedRecovery(t *testin
 	if len(page.Entries) != 1 {
 		t.Fatalf("uncertain invisible objects = %d, want 1", len(page.Entries))
 	}
-	if err = content.PurgeAbandonedRevision(context.Background(), revisionID); err != nil {
+	if err = content.PurgeAbandonedFileRevision(context.Background(), revisionID); err != nil {
 		t.Fatalf("purge uncertain revision: %v", err)
 	}
 	page, err = backend.FileSystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
@@ -208,7 +229,7 @@ func TestContentAppliesEXIFOrientationBeforeProfilePictureCropping(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := content.OpenRendition(context.Background(), revisionID, renditions[0].ID)
+	body, err := content.OpenProfilePictureRendition(context.Background(), revisionID, renditions[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +310,7 @@ func TestDefaultProfilePictureVersionOneMatchesGoldenAndStoredBytes(t *testing.T
 		if !found {
 			t.Fatalf("profile_%d rendition missing", golden.size)
 		}
-		stored, openErr := content.OpenRendition(context.Background(), revisionID, rendition.ID)
+		stored, openErr := content.OpenProfilePictureRendition(context.Background(), revisionID, rendition.ID)
 		if openErr != nil {
 			t.Fatal(openErr)
 		}

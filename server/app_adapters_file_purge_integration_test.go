@@ -25,6 +25,7 @@ import (
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -62,11 +63,11 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	t.Helper()
 	ctx := context.Background()
 	persistence := openFilePurgeStorageIntegrationStore(t)
-	adapter, err := newFileContentAdapter(filesystem)
+	content, err := filecontent.New(filesystem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	proveCustomProfilePicturePipelineMatchesMemory(t, adapter)
+	proveCustomProfilePicturePipelineMatchesMemory(t, content)
 	now := model.NowUTC()
 	user := &model.User{
 		Username: "purge-storage-" + model.NewId(),
@@ -101,7 +102,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	if _, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: referencedEntry, Revision: referencedRevision, Lease: referencedLease}); err != nil {
 		t.Fatal(err)
 	}
-	referencedRenditions, err := adapter.GenerateAndStoreDefaultProfilePicture(ctx, referencedRevision.ID, user.DefaultProfilePictureSeed, now)
+	referencedRenditions, err := content.GenerateAndStoreDefaultProfilePicture(ctx, referencedRevision.ID, user.DefaultProfilePictureSeed, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	if _, err = persistence.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: purgeEntry, Revision: purgeRevision, Lease: purgeLease}); err != nil {
 		t.Fatal(err)
 	}
-	purgeRenditions, err := adapter.GenerateAndStoreDefaultProfilePicture(ctx, purgeRevision.ID, user.DefaultProfilePictureSeed, staleAt)
+	purgeRenditions, err := content.GenerateAndStoreDefaultProfilePicture(ctx, purgeRevision.ID, user.DefaultProfilePictureSeed, staleAt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = adapter.RemoveFileRevisionContent(ctx, claim.Candidate.RevisionID, claim.Candidate.RenditionIDs); err != nil {
+	if err = content.PurgeAbandonedFileRevision(ctx, claim.Candidate.RevisionID); err != nil {
 		t.Fatal(err)
 	}
 	if err = persistence.File().CompletePurge(ctx, claim); err != nil {
@@ -173,13 +174,13 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	if err != nil {
 		t.Fatalf("referenced metadata disappeared: %v", err)
 	}
-	body, err := adapter.OpenProfilePictureRendition(ctx, visible.RevisionID, visible.ID)
+	body, err := content.OpenProfilePictureRendition(ctx, visible.RevisionID, visible.ID)
 	if err != nil {
 		t.Fatalf("referenced VFS rendition was deleted: %v", err)
 	}
 	_ = body.Close()
 	for _, rendition := range purgeRenditions {
-		body, openErr := adapter.OpenProfilePictureRendition(ctx, purgeRevision.ID, rendition.ID)
+		body, openErr := content.OpenProfilePictureRendition(ctx, purgeRevision.ID, rendition.ID)
 		if body != nil {
 			_ = body.Close()
 		}
@@ -196,7 +197,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	}
 }
 
-func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual fileContentAdapter) {
+func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual *filecontent.Content) {
 	t.Helper()
 	source := image.NewNRGBA(image.Rect(0, 0, 40, 20))
 	for y := 0; y < 20; y++ {
@@ -208,7 +209,7 @@ func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual fileCon
 	if err := png.Encode(&input, source); err != nil {
 		t.Fatal(err)
 	}
-	reference, err := newFileContentAdapter(memoryvfs.New())
+	reference, err := filecontent.New(memoryvfs.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +261,7 @@ func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual fileCon
 	for _, rendition := range got {
 		ids = append(ids, rendition.ID)
 	}
-	if err = actual.RemoveFileRevisionContent(context.Background(), actualRevisionID, ids); err != nil {
+	if err = actual.RemoveFileRevisionRenditions(context.Background(), actualRevisionID, ids); err != nil {
 		t.Fatalf("remove custom integration content: %v", err)
 	}
 }

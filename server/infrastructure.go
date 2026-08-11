@@ -27,6 +27,7 @@ import (
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	clustermemberlist "github.com/sudosylabs/proctor/server/cluster/memberlist"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
@@ -92,7 +93,17 @@ func assembleRuntime(
 	if err != nil {
 		return nil, err
 	}
-	applicationDeps, err := applicationDependencies(applicationPlatform)
+	// Construct stateless domain-aware content mechanics over the VFS selected
+	// by the sole composition root. platform.Service retains VFS lifecycle
+	// ownership; File Content neither starts nor closes infrastructure.
+	content, err := filecontent.New(applicationPlatform.VFS())
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("construct file content: %w", err),
+			applicationPlatform.Close(),
+		)
+	}
+	applicationDeps, err := applicationDependencies(applicationPlatform, content)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("project application dependencies: %w", err),

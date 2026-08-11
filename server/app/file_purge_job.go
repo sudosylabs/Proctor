@@ -99,15 +99,19 @@ type filePurgeStore interface {
 	ClaimPurgeCandidate(context.Context, *store.FilePurgeCandidate) (*store.FilePurgeClaim, error)
 	CompletePurge(context.Context, *store.FilePurgeClaim) error
 }
-type filePurgeContent interface {
-	RemoveFileRevisionContent(context.Context, model.FileRevisionID, []model.FileRenditionID) error
+
+// FileRevisionContentPurger is the physical-content capability used after the
+// file store has durably fenced a purge candidate.
+type FileRevisionContentPurger interface {
+	PurgeAbandonedFileRevision(context.Context, model.FileRevisionID) error
+	RemoveFileRevisionRenditions(context.Context, model.FileRevisionID, []model.FileRenditionID) error
 }
 type filePurgeExpiredContentHandler struct {
 	files   filePurgeStore
-	content filePurgeContent
+	content FileRevisionContentPurger
 }
 
-func newFilePurgeExpiredContentHandler(files filePurgeStore, content filePurgeContent) jobengine.Handler {
+func newFilePurgeExpiredContentHandler(files filePurgeStore, content FileRevisionContentPurger) jobengine.Handler {
 	return filePurgeExpiredContentHandler{files: files, content: content}
 }
 
@@ -160,7 +164,15 @@ func (h filePurgeExpiredContentHandler) Run(ctx context.Context, execution joben
 			}
 			continue
 		}
-		if err = h.content.RemoveFileRevisionContent(ctx, claim.Candidate.RevisionID, claim.Candidate.RenditionIDs); err != nil {
+		switch claim.Candidate.Kind {
+		case store.FilePurgeCandidateExpiredLease:
+			err = h.content.PurgeAbandonedFileRevision(ctx, claim.Candidate.RevisionID)
+		case store.FilePurgeCandidateArchivedCustom:
+			err = h.content.RemoveFileRevisionRenditions(ctx, claim.Candidate.RevisionID, claim.Candidate.RenditionIDs)
+		default:
+			return jobengine.PermanentFailure("job.command.invalid", errors.New("unknown file purge candidate kind"))
+		}
+		if err != nil {
 			return jobengine.RetryableFailure("file.backend_unavailable", err)
 		}
 		if err = h.files.CompletePurge(ctx, claim); err != nil {
