@@ -81,7 +81,7 @@ func (a *API) InitMFA() error {
 		},
 	}
 	for _, route := range routes {
-		if err := a.Register(
+		if err := a.registerLegacyRoute(
 			a.BaseRoutes.MFA,
 			route.path,
 			route.method,

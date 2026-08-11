@@ -58,7 +58,7 @@ func (a *API) registerAcademicPeriodRoutes() error {
 		{a.BaseRoutes.AcademicPeriod, "", http.MethodDelete, a.archiveAcademicPeriod},
 	}
 	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
+		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}
 	}

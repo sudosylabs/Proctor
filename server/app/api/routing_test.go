@@ -31,12 +31,15 @@ func TestBaseRoutesCentralizeAPIVersionRegexAndParams(t *testing.T) {
 		}
 		writer.WriteHeader(http.StatusNoContent)
 	})
-	if err := httpAPI.Register(
+	if err := httpAPI.registerLegacyRoute(
 		httpAPI.BaseRoutes.Role,
 		"",
 		http.MethodGet,
 		httpAPI.APIHandler(handler),
 	); err != nil {
+		t.Fatal(err)
+	}
+	if err := httpAPI.sealRouteCatalog(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -80,7 +83,7 @@ func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T
 		httpAPI.BaseRoutes.APIRoot,
 		"/resources/{other:[a-z]+}",
 	)
-	if err := httpAPI.Register(
+	if err := httpAPI.registerLegacyRoute(
 		first,
 		"",
 		http.MethodGet,
@@ -88,7 +91,7 @@ func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := httpAPI.Register(
+	if err := httpAPI.registerLegacyRoute(
 		second,
 		"",
 		http.MethodGet,
@@ -96,7 +99,15 @@ func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T
 	); err == nil {
 		t.Fatal("duplicate route shape was accepted")
 	}
-	if err := httpAPI.Register(
+	if err := httpAPI.registerLegacyRoute(
+		httpAPI.BaseRoutes.APIRoot,
+		"/resources",
+		"BREW",
+		httpAPI.APIHandler(handler),
+	); err == nil {
+		t.Fatal("unknown HTTP method was accepted")
+	}
+	if err := httpAPI.registerLegacyRoute(
 		httpAPI.BaseRoutes.APIRoot,
 		"/resources",
 		http.MethodPost,
@@ -104,7 +115,7 @@ func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T
 	); err == nil {
 		t.Fatal("route without authentication policy was accepted")
 	}
-	if err := httpAPI.Register(
+	if err := httpAPI.registerLegacyRoute(
 		mux.NewRouter(),
 		"/resources",
 		http.MethodGet,
@@ -118,7 +129,7 @@ func TestRouteMetadataRetainsVersionAndRegexContract(t *testing.T) {
 	t.Parallel()
 
 	httpAPI := newRoutingTestAPI("/api/testing")
-	if err := httpAPI.Register(
+	if err := httpAPI.registerLegacyRoute(
 		httpAPI.BaseRoutes.Role,
 		"",
 		http.MethodDelete,
@@ -180,8 +191,7 @@ func TestPrincipalAssuranceRequirements(t *testing.T) {
 
 func newRoutingTestAPI(apiURLSuffix string) *API {
 	httpAPI := &API{
-		routeKeys:               make(map[string]struct{}),
-		prefixes:                make(map[*mux.Router]string),
+		catalog:                 newRouteCatalogBuilder(),
 		recentAuthenticationTTL: 15 * time.Minute,
 	}
 	httpAPI.initializeBaseRoutes(apiURLSuffix)

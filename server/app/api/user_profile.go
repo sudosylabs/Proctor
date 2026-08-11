@@ -61,7 +61,7 @@ func (a *API) registerUserProfileRoutes() error {
 		{a.BaseRoutes.User, "/profile-picture", http.MethodGet, a.getProfilePicture},
 	}
 	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
+		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}
 	}

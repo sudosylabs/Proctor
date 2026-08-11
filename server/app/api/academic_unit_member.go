@@ -44,7 +44,7 @@ func (a *API) registerAcademicUnitMemberRoutes() error {
 		{a.BaseRoutes.AcademicUnitMember, "", http.MethodDelete, a.endAcademicUnitMember},
 	}
 	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
+		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}
 	}

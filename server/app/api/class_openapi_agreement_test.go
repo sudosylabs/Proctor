@@ -18,25 +18,33 @@ import (
 func TestClassOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	document := readOpenAPIDocument(t)
-	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerClassRoutes(); err != nil {
-		t.Fatal(err)
-	}
+	logger, _ := newTestLogger(t)
+	runtimeAPI := newFocusedResourceAPI(
+		t,
+		logger,
+		classRouteAuthenticator{principal: model.Principal{}},
+		classResource(&classHTTPApplication{}),
+	)
 	runtimeOperations := make(map[string]AuthRequirement)
 	for _, route := range runtimeAPI.Routes() {
 		path := strings.ReplaceAll(route.Path, "{academic_unit_id:"+canonicalIDRoutePattern()+"}", "{academic_unit_id}")
 		path = strings.ReplaceAll(path, "{programme_level_id:"+canonicalIDRoutePattern()+"}", "{programme_level_id}")
 		path = strings.ReplaceAll(path, "{class_id:"+canonicalIDRoutePattern()+"}", "{class_id}")
-		runtimeOperations[route.Method+" "+path] = route.Auth
+		key := route.Method + " " + path
+		runtimeOperations[key] = route.Auth
+		contract, exists := expectedClassOperationContracts()[key]
+		if !exists {
+			t.Fatalf("unexpected runtime operation %s", key)
+		}
+		got, want := append([]string(nil), route.ErrorCodes...), append([]string(nil), contract.errorCodes...)
+		sort.Strings(got)
+		sort.Strings(want)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s runtime error codes = %v, want %v", key, got, want)
+		}
 	}
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/academic-units/{academic_unit_id}/classes":      {successStatus: "200", successRef: "#/components/responses/ClassListOK", successSchema: "ClassListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"GET /api/v1/programme-levels/{programme_level_id}/classes":  {successStatus: "200", successRef: "#/components/responses/ClassListOK", successSchema: "ClassListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"POST /api/v1/programme-levels/{programme_level_id}/classes": {requestBodyRef: "#/components/requestBodies/CreateClass", requestSchema: "CreateClassRequest", successStatus: "201", successRef: "#/components/responses/ClassCreated", successSchema: "ClassResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.invalid", "class.conflict", "administration.unavailable")},
-		"GET /api/v1/classes/{class_id}":                             {successStatus: "200", successRef: "#/components/responses/ClassOK", successSchema: "ClassResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"PATCH /api/v1/classes/{class_id}":                           {requestBodyRef: "#/components/requestBodies/UpdateClass", requestSchema: "UpdateClassRequest", successStatus: "200", successRef: "#/components/responses/ClassOK", successSchema: "ClassResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.invalid", "class.conflict", "administration.unavailable")},
-		"DELETE /api/v1/classes/{class_id}":                          {successStatus: "204", successRef: "#/components/responses/ClassArchived", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.conflict", "administration.unavailable")},
-	}
+	expected := expectedClassOperationContracts()
+
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
 	statuses["authentication.csrf.invalid"] = http.StatusForbidden
@@ -100,5 +108,16 @@ func TestClassOpenAPIAgreesWithRuntime(t *testing.T) {
 	list := document.Components.Schemas["ClassListResponse"]
 	if list.Type != "array" || list.Items.Ref != "#/components/schemas/ClassResponse" {
 		t.Fatalf("ClassListResponse = %#v", list)
+	}
+}
+
+func expectedClassOperationContracts() map[string]openAPIOperationContract {
+	return map[string]openAPIOperationContract{
+		"GET /api/v1/academic-units/{academic_unit_id}/classes":      {successStatus: "200", successRef: "#/components/responses/ClassListOK", successSchema: "ClassListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"GET /api/v1/programme-levels/{programme_level_id}/classes":  {successStatus: "200", successRef: "#/components/responses/ClassListOK", successSchema: "ClassListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"POST /api/v1/programme-levels/{programme_level_id}/classes": {requestBodyRef: "#/components/requestBodies/CreateClass", requestSchema: "CreateClassRequest", successStatus: "201", successRef: "#/components/responses/ClassCreated", successSchema: "ClassResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.invalid", "class.conflict", "administration.unavailable")},
+		"GET /api/v1/classes/{class_id}":                             {successStatus: "200", successRef: "#/components/responses/ClassOK", successSchema: "ClassResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+		"PATCH /api/v1/classes/{class_id}":                           {requestBodyRef: "#/components/requestBodies/UpdateClass", requestSchema: "UpdateClassRequest", successStatus: "200", successRef: "#/components/responses/ClassOK", successSchema: "ClassResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.invalid", "class.conflict", "administration.unavailable")},
+		"DELETE /api/v1/classes/{class_id}":                          {successStatus: "204", successRef: "#/components/responses/ClassArchived", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.conflict", "administration.unavailable")},
 	}
 }

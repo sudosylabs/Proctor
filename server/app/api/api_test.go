@@ -100,6 +100,16 @@ func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
 	if helper.API.Routes()[0].Path == "/mutated" {
 		t.Fatal("Routes exposed mutable internal state")
 	}
+	for index := range routes {
+		if len(routes[index].ErrorCodes) == 0 {
+			continue
+		}
+		routes[index].ErrorCodes[0] = "mutated"
+		if helper.API.Routes()[index].ErrorCodes[0] == "mutated" {
+			t.Fatal("Routes exposed mutable error metadata")
+		}
+		break
+	}
 }
 
 func TestHealthVersionAndCommonHeaders(t *testing.T) {

@@ -6,7 +6,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -41,110 +40,206 @@ type updateClassRequest struct {
 	Description      Optional[string] `json:"description"`
 }
 
-func (a *API) registerClassRoutes() error {
-	routes := []struct {
-		base         *mux.Router
-		path, method string
-		handler      http.HandlerFunc
-	}{
-		{a.BaseRoutes.AcademicUnit, "/classes", http.MethodGet, a.searchClasses},
-		{a.BaseRoutes.ProgrammeLevel, "/classes", http.MethodGet, a.listClasses},
-		{a.BaseRoutes.ProgrammeLevel, "/classes", http.MethodPost, a.createClass},
-		{a.BaseRoutes.Class, "", http.MethodGet, a.getClass},
-		{a.BaseRoutes.Class, "", http.MethodPatch, a.patchClass},
-		{a.BaseRoutes.Class, "", http.MethodDelete, a.archiveClass},
-	}
-	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
-			return err
-		}
-	}
-	return nil
+type classResourceModule struct {
+	classes ClassApplication
 }
 
-func (a *API) searchClasses(w http.ResponseWriter, r *http.Request) {
-	principal, unitID, ok := requiredResourceID(w, r, Params.RequireAcademicUnitId)
-	if !ok {
-		return
-	}
-	limit, ok := queryLimit(w, r)
-	if !ok {
-		return
-	}
-	classes, err := a.classes.SearchClasses(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.SearchClassesQuery{AcademicUnitID: unitID, Query: r.URL.Query().Get("q"), Limit: limit})
-	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, classResponses(classes))
+func classResource(classes ClassApplication) resource {
+	module := classResourceModule{classes: classes}
+	return newResource(
+		"classes",
+		principalRoute(
+			http.MethodGet,
+			apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("classes")),
+			classReadErrorCodes(),
+			module.search,
+		),
+		principalRoute(
+			http.MethodGet,
+			apiPath(literal("programme-levels"), canonicalID("programme_level_id"), literal("classes")),
+			classReadErrorCodes(),
+			module.list,
+		),
+		principalRoute(
+			http.MethodPost,
+			apiPath(literal("programme-levels"), canonicalID("programme_level_id"), literal("classes")),
+			classMutationErrorCodes("class.invalid", "class.conflict"),
+			module.create,
+		),
+		principalRoute(
+			http.MethodGet,
+			apiPath(literal("classes"), canonicalID("class_id")),
+			classReadErrorCodes(),
+			module.get,
+		),
+		principalRoute(
+			http.MethodPatch,
+			apiPath(literal("classes"), canonicalID("class_id")),
+			classMutationErrorCodes("class.invalid", "class.conflict"),
+			module.patch,
+		),
+		principalRoute(
+			http.MethodDelete,
+			apiPath(literal("classes"), canonicalID("class_id")),
+			classMutationErrorCodes("class.conflict"),
+			module.archive,
+		),
+	)
 }
-func (a *API) listClasses(w http.ResponseWriter, r *http.Request) {
-	principal, levelID, ok := requiredResourceID(w, r, Params.RequireProgrammeLevelId)
-	if !ok {
-		return
+
+func classReadErrorCodes() []string {
+	return []string{
+		"authentication.required",
+		"authentication.invalid_token",
+		"authentication.credential_ambiguous",
+		"authorization.denied",
+		"authorization.request.invalid",
+		"authorization.unavailable",
+		"request.invalid",
+		"resource.not_found",
+		"administration.unavailable",
 	}
-	classes, err := a.classes.ListClasses(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ListClassesQuery{ProgrammeLevelID: levelID})
-	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, classResponses(classes))
 }
-func (a *API) createClass(w http.ResponseWriter, r *http.Request) {
-	principal, levelID, ok := requiredResourceID(w, r, Params.RequireProgrammeLevelId)
-	if !ok {
-		return
+
+func classMutationErrorCodes(specific ...string) []string {
+	codes := []string{
+		"authentication.required",
+		"authentication.invalid_token",
+		"authentication.credential_ambiguous",
+		"authentication.csrf.invalid",
+		"authorization.denied",
+		"authorization.request.invalid",
+		"authorization.unavailable",
+		"audit.unavailable",
+		"request.invalid",
+		"resource.not_found",
+	}
+	codes = append(codes, specific...)
+	return append(codes, "administration.unavailable")
+}
+
+func (module classResourceModule) search(request operationRequest) (operationResult, error) {
+	academicUnitID, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	limit, err := request.queryLimit()
+	if err != nil {
+		return operationResult{}, err
+	}
+	classes, err := module.classes.SearchClasses(
+		request.context,
+		request.invocation(),
+		application.SearchClassesQuery{
+			AcademicUnitID: academicUnitID,
+			Query:          request.request.URL.Query().Get("q"),
+			Limit:          limit,
+		},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, classResponses(classes)), nil
+}
+
+func (module classResourceModule) list(request operationRequest) (operationResult, error) {
+	programmeLevelID, err := request.params.RequireProgrammeLevelId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	classes, err := module.classes.ListClasses(
+		request.context,
+		request.invocation(),
+		application.ListClassesQuery{ProgrammeLevelID: programmeLevelID},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, classResponses(classes)), nil
+}
+
+func (module classResourceModule) create(request operationRequest) (operationResult, error) {
+	programmeLevelID, err := request.params.RequireProgrammeLevelId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body createClassRequest
-	if !decodeJSON(w, r, &body, "createClass") {
-		return
+	if err := request.decodeJSON(&body, "createClass"); err != nil {
+		return operationResult{}, err
 	}
-	class, err := a.classes.CreateClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: body.AcademicPeriodID, Name: body.Name, DisplayName: body.DisplayName, Description: body.Description})
+	class, err := module.classes.CreateClass(
+		request.context,
+		request.invocation(),
+		application.CreateClassCommand{
+			ProgrammeLevelID: programmeLevelID,
+			AcademicPeriodID: body.AcademicPeriodID,
+			Name:             body.Name,
+			DisplayName:      body.DisplayName,
+			Description:      body.Description,
+		},
+	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusCreated, classResponseFromModel(class))
+	return jsonResult(http.StatusCreated, classResponseFromModel(class)), nil
 }
-func (a *API) getClass(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireClassId)
-	if !ok {
-		return
-	}
-	class, err := a.classes.GetClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.GetClassQuery{ID: id})
+
+func (module classResourceModule) get(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireClassId()
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, classResponseFromModel(class))
+	class, err := module.classes.GetClass(
+		request.context,
+		request.invocation(),
+		application.GetClassQuery{ID: id},
+	)
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, classResponseFromModel(class)), nil
 }
-func (a *API) patchClass(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireClassId)
-	if !ok {
-		return
+
+func (module classResourceModule) patch(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireClassId()
+	if err != nil {
+		return operationResult{}, err
 	}
 	var body updateClassRequest
-	if !decodeJSON(w, r, &body, "patchClass") {
-		return
+	if err := request.decodeJSON(&body, "patchClass"); err != nil {
+		return operationResult{}, err
 	}
-	class, err := a.classes.UpdateClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.UpdateClassCommand{ID: id, ProgrammeLevelID: body.ProgrammeLevelID.ValuePointer(), AcademicPeriodID: body.AcademicPeriodID.ValuePointer(), Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()})
+	class, err := module.classes.UpdateClass(
+		request.context,
+		request.invocation(),
+		application.UpdateClassCommand{
+			ID:               id,
+			ProgrammeLevelID: body.ProgrammeLevelID.ValuePointer(),
+			AcademicPeriodID: body.AcademicPeriodID.ValuePointer(),
+			Name:             body.Name.ValuePointer(),
+			DisplayName:      body.DisplayName.ValuePointer(),
+			Description:      body.Description.ValuePointer(),
+		},
+	)
 	if err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+		return operationResult{}, err
 	}
-	writeJSON(w, http.StatusOK, classResponseFromModel(class))
+	return jsonResult(http.StatusOK, classResponseFromModel(class)), nil
 }
-func (a *API) archiveClass(w http.ResponseWriter, r *http.Request) {
-	principal, id, ok := requiredResourceID(w, r, Params.RequireClassId)
-	if !ok {
-		return
+
+func (module classResourceModule) archive(request operationRequest) (operationResult, error) {
+	id, err := request.params.RequireClassId()
+	if err != nil {
+		return operationResult{}, err
 	}
-	if err := a.classes.ArchiveClass(r.Context(), application.NewInvocation(principal, RequestMetadata(r.Context())), application.ArchiveClassCommand{ID: id}); err != nil {
-		writeApplicationError(w, r, a.logger, err)
-		return
+	if err := module.classes.ArchiveClass(
+		request.context,
+		request.invocation(),
+		application.ArchiveClassCommand{ID: id},
+	); err != nil {
+		return operationResult{}, err
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
+	return noContentResult(), nil
 }
 
 func classResponseFromModel(class *model.Class) classResponse {

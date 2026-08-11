@@ -51,7 +51,7 @@ func roleBindingResponsesFromModels(bindings []*model.RoleBinding) []roleBinding
 }
 
 func (a *API) InitRoleBindings() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.RoleBindings,
 		"",
 		http.MethodGet,
@@ -59,7 +59,7 @@ func (a *API) InitRoleBindings() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.RoleBindings,
 		"",
 		http.MethodPost,
@@ -67,7 +67,7 @@ func (a *API) InitRoleBindings() error {
 	); err != nil {
 		return err
 	}
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.RoleBinding,
 		"",
 		http.MethodDelete,

@@ -75,7 +75,7 @@ func personalAccessTokenResponsesFromModels(tokens []*model.PersonalAccessToken)
 }
 
 func (a *API) InitPersonalAccessTokens() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.PersonalAccessTokens,
 		"",
 		http.MethodPost,
@@ -83,7 +83,7 @@ func (a *API) InitPersonalAccessTokens() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.PersonalAccessTokens,
 		"",
 		http.MethodGet,
@@ -91,7 +91,7 @@ func (a *API) InitPersonalAccessTokens() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.PersonalAccessToken,
 		"/disable",
 		http.MethodPost,
@@ -99,7 +99,7 @@ func (a *API) InitPersonalAccessTokens() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.PersonalAccessToken,
 		"/enable",
 		http.MethodPost,
@@ -107,7 +107,7 @@ func (a *API) InitPersonalAccessTokens() error {
 	); err != nil {
 		return err
 	}
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.PersonalAccessToken,
 		"",
 		http.MethodDelete,

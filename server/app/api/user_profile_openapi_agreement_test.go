@@ -25,7 +25,7 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	if err := runtimeAPI.initUserAdministration(); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtimeAPI.Register(runtimeAPI.BaseRoutes.CurrentUser, "", http.MethodGet, runtimeAPI.APIPrincipalRequired(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))); err != nil {
+	if err := runtimeAPI.registerLegacyRoute(runtimeAPI.BaseRoutes.CurrentUser, "", http.MethodGet, runtimeAPI.APIPrincipalRequired(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))); err != nil {
 		t.Fatal(err)
 	}
 	runtimeOperations := make(map[string]AuthRequirement)

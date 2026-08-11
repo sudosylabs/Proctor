@@ -73,9 +73,10 @@ const (
 )
 
 type Route struct {
-	Method string
-	Path   string
-	Auth   AuthRequirement
+	Method     string
+	Path       string
+	Auth       AuthRequirement
+	ErrorCodes []string
 }
 
 type routeMatcher struct {
@@ -426,6 +427,7 @@ type API struct {
 	router                  *mux.Router
 	BaseRoutes              *Routes
 	application             Application
+	authenticator           Authenticator
 	academicUnits           AcademicUnitApplication
 	institutions            InstitutionApplication
 	programmes              ProgrammeApplication
@@ -449,8 +451,7 @@ type API struct {
 	recentAuthenticationTTL time.Duration
 	routes                  []Route
 	routeMatchers           []routeMatcher
-	routeKeys               map[string]struct{}
-	prefixes                map[*mux.Router]string
+	catalog                 *routeCatalogBuilder
 	webSocket               WebSocketTransport
 }
 
@@ -528,6 +529,7 @@ func New(options Options) (*API, error) {
 
 	api := &API{
 		application:             options.Application,
+		authenticator:           options.Application,
 		academicUnits:           options.AcademicUnits,
 		institutions:            options.Institutions,
 		programmes:              options.Programmes,
@@ -549,8 +551,6 @@ func New(options Options) (*API, error) {
 		buildInfo:               options.BuildInfo,
 		cookies:                 cookies,
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
-		routeKeys:               make(map[string]struct{}),
-		prefixes:                make(map[*mux.Router]string),
 		webSocket:               options.WebSocket,
 	}
 	if api.webSocket == nil {
@@ -558,16 +558,13 @@ func New(options Options) (*API, error) {
 		// Production composition always supplies the sibling websocket.Hub.
 		api.webSocket = noopWebSocketTransport{}
 	}
-	api.initializeBaseRoutes(model.APIURLSuffix)
-	if err := api.registerRoutes(); err != nil {
+	if err := api.buildRoutingKernel(
+		model.APIURLSuffix,
+		options.MaxBodyBytes,
+		api.registerRoutes,
+	); err != nil {
 		return nil, err
 	}
-	sortRoutes(api.routes)
-	api.handler = withMiddleware(
-		http.HandlerFunc(api.serveRoutes),
-		options.Logger,
-		options.MaxBodyBytes,
-	)
 	return api, nil
 }
 
@@ -591,7 +588,9 @@ func (a *API) registerRoutes() error {
 		a.registerProgrammeRoutes,
 		a.registerProgrammeLevelRoutes,
 		a.registerAcademicPeriodRoutes,
-		a.registerClassRoutes,
+		func() error {
+			return a.collectResources(model.APIURLSuffix, classResource(a.classes))
+		},
 		a.registerAffiliationRoutes,
 		a.registerAcademicUnitMemberRoutes,
 		a.registerClassMemberRoutes,
@@ -610,7 +609,16 @@ func (a *API) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (a *API) Routes() []Route {
-	return append([]Route(nil), a.routes...)
+	source := a.routes
+	if a.catalog != nil {
+		source = a.catalog.routes
+	}
+	routes := make([]Route, len(source))
+	for index, route := range source {
+		routes[index] = route
+		routes[index].ErrorCodes = append([]string(nil), route.ErrorCodes...)
+	}
+	return routes
 }
 
 func (a *API) serveRoutes(writer http.ResponseWriter, request *http.Request) {
@@ -627,9 +635,12 @@ func (a *API) serveRoutes(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (a *API) initializeBaseRoutes(apiURLSuffix string) {
+	if a.catalog == nil {
+		panic("initialize base routes without a catalog builder")
+	}
 	root := mux.NewRouter()
 	a.router = root
-	a.prefixes[root] = ""
+	a.catalog.prefixes[root] = ""
 
 	a.BaseRoutes = &Routes{Root: root}
 	a.BaseRoutes.APIRoot = a.subrouter(root, apiURLSuffix)
@@ -749,20 +760,26 @@ func providerIDRoutePattern() string {
 }
 
 func (a *API) subrouter(parent *mux.Router, pathPrefix string) *mux.Router {
+	if a.catalog == nil {
+		panic("create subrouter without a catalog builder")
+	}
 	router := parent.PathPrefix(pathPrefix).Subrouter()
-	a.prefixes[router] = a.prefixes[parent] + pathPrefix
+	a.catalog.prefixes[router] = a.catalog.prefixes[parent] + pathPrefix
 	return router
 }
 
-// Register binds one explicitly classified endpoint beneath a stable base
-// route. path is relative to base and is empty when the resource root itself is
-// the endpoint.
-func (a *API) Register(
+// registerLegacyRoute is the private bridge for resources not yet migrated to
+// typed definitions. It is sealed when New returns and must not be used for new
+// endpoints. path is relative to base and is empty at the resource root.
+func (a *API) registerLegacyRoute(
 	base *mux.Router,
 	path string,
 	method string,
 	handler *Handler,
 ) error {
+	if a.catalog == nil {
+		return fmt.Errorf("register %s %s: route catalog is sealed", method, path)
+	}
 	if handler == nil || handler.handler == nil {
 		return fmt.Errorf("register %s %s: handler is nil", method, path)
 	}
@@ -778,11 +795,11 @@ func (a *API) Register(
 	default:
 		return fmt.Errorf("register %s %s: authentication policy is invalid", method, path)
 	}
-	prefix, exists := a.prefixes[base]
+	prefix, exists := a.catalog.prefixes[base]
 	if !exists {
 		return fmt.Errorf("register %s %s: base route is not owned by this API", method, path)
 	}
-	if method == "" || strings.ToUpper(method) != method {
+	if !isHTTPMethod(method) || strings.ToUpper(method) != method {
 		return fmt.Errorf("register %s %s: HTTP method is invalid", method, path)
 	}
 	if path != "" && (!strings.HasPrefix(path, "/") || strings.HasSuffix(path, "/")) {
@@ -802,19 +819,17 @@ func (a *API) Register(
 		return fmt.Errorf("register %s %s: compile route regexp: %w", method, fullPath, err)
 	}
 	key := method + " " + pathRegexp
-	if _, exists := a.routeKeys[key]; exists {
+	if _, exists := a.catalog.routeKeys[key]; exists {
 		return fmt.Errorf("register %s %s: duplicate route", method, fullPath)
 	}
 
-	registered := base.Handle(path, handler).Methods(method)
-	if err := registered.GetError(); err != nil {
-		return fmt.Errorf("register %s %s: %w", method, fullPath, err)
-	}
-
-	a.routeKeys[key] = struct{}{}
+	a.catalog.pendingRoutes = append(a.catalog.pendingRoutes, pendingCatalogRoute{
+		method: method, path: fullPath, handler: handler,
+	})
+	a.catalog.routeKeys[key] = struct{}{}
 	route := Route{Method: method, Path: fullPath, Auth: auth}
-	a.routes = append(a.routes, route)
-	a.routeMatchers = append(a.routeMatchers, routeMatcher{
+	a.catalog.routes = append(a.catalog.routes, route)
+	a.catalog.routeMatchers = append(a.catalog.routeMatchers, routeMatcher{
 		route:      route,
 		pathRegexp: compiledPathRegexp,
 	})

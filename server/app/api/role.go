@@ -63,7 +63,7 @@ func roleResponsesFromModels(roles []*model.Role) []roleResponse {
 }
 
 func (a *API) InitRoles() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.Roles,
 		"",
 		http.MethodGet,
@@ -71,7 +71,7 @@ func (a *API) InitRoles() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.Roles,
 		"",
 		http.MethodPost,
@@ -79,7 +79,7 @@ func (a *API) InitRoles() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.Role,
 		"",
 		http.MethodGet,
@@ -87,7 +87,7 @@ func (a *API) InitRoles() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.Role,
 		"",
 		http.MethodPatch,
@@ -95,7 +95,7 @@ func (a *API) InitRoles() error {
 	); err != nil {
 		return err
 	}
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.Role,
 		"",
 		http.MethodDelete,

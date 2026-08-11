@@ -19,6 +19,16 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
 - preserve characterized v1 behavior. Contract changes are additive unless a
   new API version and migration path are introduced.
 
+The HTTP Routing Kernel is the construction and execution boundary for newly
+migrated resources. The Class resource is the first complete kernel-backed
+slice: it declares only recognized path parameters, a narrow application
+capability, typed operations, explicit authentication, and an allowlist of
+public application errors. The kernel compiles the complete route catalog
+before serving, owns ordinary response and Problem Details writing, and fails
+closed when an operation returns an undeclared error. Existing resources use a
+temporary compatibility bridge into the same sealed catalog until their
+vertical migrations are complete; new endpoints must not use that bridge.
+
 Two Academic Unit shapes are frozen compatibility exceptions, not target
 patterns:
 

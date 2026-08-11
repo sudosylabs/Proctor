@@ -10,7 +10,7 @@ type healthResponse struct {
 }
 
 func (a *API) InitSystem() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.Health,
 		"/live",
 		http.MethodGet,
@@ -18,7 +18,7 @@ func (a *API) InitSystem() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.Health,
 		"/ready",
 		http.MethodGet,
@@ -26,7 +26,7 @@ func (a *API) InitSystem() error {
 	); err != nil {
 		return err
 	}
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.System,
 		"/version",
 		http.MethodGet,

@@ -77,17 +77,30 @@ func (a *API) newHandler(
 	handler http.Handler,
 	requirement AuthRequirement,
 ) *Handler {
+	return a.newHandlerWithErrorPolicy(handler, requirement, nil)
+}
+
+func (a *API) newHandlerWithErrorPolicy(
+	handler http.Handler,
+	requirement AuthRequirement,
+	errorPolicy routeErrorPolicy,
+) *Handler {
 	if handler == nil {
 		return &Handler{authentication: requirement}
+	}
+	authenticator := a.authenticator
+	if authenticator == nil {
+		authenticator = a.application
 	}
 	return &Handler{
 		handler: withRequestParams(requireAuthentication(
 			handler,
 			requirement,
-			a.application,
+			authenticator,
 			a.logger,
 			a.cookies,
 			a.recentAuthenticationTTL,
+			errorPolicy,
 		)),
 		authentication: requirement,
 	}
@@ -100,6 +113,7 @@ func requireAuthentication(
 	logger Logger,
 	cookies browserCookies,
 	recentAuthenticationTTL time.Duration,
+	errorPolicy routeErrorPolicy,
 ) http.Handler {
 	switch requirement {
 	case AuthPublic:
@@ -108,12 +122,12 @@ func requireAuthentication(
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			credential, appErr := requestRefreshCredential(request)
 			if appErr != nil {
-				WriteError(writer, request, appErr)
+				writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
 				return
 			}
 			if credential.source == credentialSourceCookie {
 				if appErr := cookies.verifyCSRF(request); appErr != nil {
-					WriteError(writer, request, appErr)
+					writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
 					return
 				}
 			}
@@ -129,13 +143,13 @@ func requireAuthentication(
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			credential, appErr := requestAccessCredential(request)
 			if appErr != nil {
-				WriteError(writer, request, appErr)
+				writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
 				return
 			}
 			if credential.source == credentialSourceCookie &&
 				requiresCSRF(request.Method) {
 				if appErr := cookies.verifyCSRF(request); appErr != nil {
-					WriteError(writer, request, appErr)
+					writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
 					return
 				}
 			}
@@ -157,7 +171,7 @@ func requireAuthentication(
 				if credential.source == credentialSourceCookie {
 					cookies.clear(writer)
 				}
-				writeApplicationError(writer, request, logger, authErr)
+				writeRouteApplicationError(writer, request, logger, errorPolicy, authErr)
 				return
 			}
 			if appErr := requirePrincipalAssurance(
@@ -166,7 +180,7 @@ func requireAuthentication(
 				time.Now(),
 				recentAuthenticationTTL,
 			); appErr != nil {
-				WriteError(writer, request, appErr)
+				writeRouteApplicationError(writer, request, logger, errorPolicy, appErr)
 				return
 			}
 			ctx := context.WithValue(request.Context(), principalContextKey{}, *principal)

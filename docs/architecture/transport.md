@@ -4,9 +4,11 @@
 
 `app/api` owns routing, request/response DTOs, strict decoding, authentication/assurance wrappers, Problem Details, and OpenAPI agreement.
 
-`api.New` calls unexported registration functions such as `registerAcademicUnitRoutes`. Each area owns its routes, DTOs, handlers, and mappings and registers through one central registrar. Every route has an explicit authentication classification.
+`api.New` compiles and seals one immutable route catalog before exposing the HTTP handler. Cohesive resource modules declare typed paths, operations, authentication requirements, DTO mappings, and allowed public errors without receiving mutable router types. During the incremental migration, the Class resource uses this kernel and older resources enter the same catalog through a private compatibility bridge; the bridge is not an extension seam and must disappear after all resources migrate. Every route has an explicit authentication classification.
 
 Ordinary handlers return a typed status/body result and `error`. Central code writes JSON, headers, and Problem Details. Streaming, downloads, and upgrades are explicit exceptions.
+
+Resource paths use kernel-owned literal and parameter constructors. Canonical IDs and provider IDs are closed parameter kinds; resource modules do not supply arbitrary regular expressions. The catalog rejects invalid authentication requirements, unmapped or duplicate public errors, and duplicate normalized method/path shapes before serving.
 
 Mutable domain entities never double as wire DTOs. Command decoding:
 

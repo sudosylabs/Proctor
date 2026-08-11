@@ -13,7 +13,7 @@ import (
 // InitWebSocket mounts the authenticated upgrade route. Protocol ownership
 // lives in package websocket; this file only bridges session middleware.
 func (a *API) InitWebSocket() error {
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.WebSocket,
 		"",
 		http.MethodGet,

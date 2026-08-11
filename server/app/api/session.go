@@ -33,7 +33,7 @@ func sessionResponsesFromModels(sessions []*model.Session) []sessionResponse {
 }
 
 func (a *API) InitSessions() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.CurrentUser,
 		"/sessions",
 		http.MethodGet,
@@ -41,7 +41,7 @@ func (a *API) InitSessions() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.CurrentUser,
 		"/sessions/revoke",
 		http.MethodPost,
@@ -49,7 +49,7 @@ func (a *API) InitSessions() error {
 	); err != nil {
 		return err
 	}
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.CurrentUser,
 		"/sessions/revoke-all",
 		http.MethodPost,

@@ -1022,14 +1022,3 @@ func openAPITypesEqual(value any, want []string) bool {
 	sort.Strings(want)
 	return reflect.DeepEqual(got, want)
 }
-
-func isHTTPMethod(method string) bool {
-	switch method {
-	case http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead,
-		http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut,
-		http.MethodTrace:
-		return true
-	default:
-		return false
-	}
-}

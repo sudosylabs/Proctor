@@ -70,7 +70,7 @@ func auditEventResponseFromModel(event *model.AuditEvent) auditEventResponse {
 }
 
 func (a *API) InitAudits() error {
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.Audits,
 		"",
 		http.MethodGet,

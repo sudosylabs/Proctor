@@ -84,19 +84,19 @@ func (a *API) InitJobs(provided ...JobOperationsApplication) error {
 	}
 	jobs := a.subrouter(a.BaseRoutes.APIRoot, "/jobs")
 	job := a.subrouter(jobs, "/{job_id:"+canonicalIDRoutePattern()+"}")
-	if err := a.Register(jobs, "", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.listJobs(w, r, operations) }))); err != nil {
+	if err := a.registerLegacyRoute(jobs, "", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.listJobs(w, r, operations) }))); err != nil {
 		return err
 	}
-	if err := a.Register(job, "", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.getJob(w, r, operations) }))); err != nil {
+	if err := a.registerLegacyRoute(job, "", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.getJob(w, r, operations) }))); err != nil {
 		return err
 	}
-	if err := a.Register(job, "/attempts", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.listJobAttempts(w, r, operations) }))); err != nil {
+	if err := a.registerLegacyRoute(job, "/attempts", http.MethodGet, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.listJobAttempts(w, r, operations) }))); err != nil {
 		return err
 	}
-	if err := a.Register(job, "/cancel", http.MethodPost, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.cancelJob(w, r, operations) }))); err != nil {
+	if err := a.registerLegacyRoute(job, "/cancel", http.MethodPost, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.cancelJob(w, r, operations) }))); err != nil {
 		return err
 	}
-	return a.Register(job, "/retry", http.MethodPost, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.retryJob(w, r, operations) })))
+	return a.registerLegacyRoute(job, "/retry", http.MethodPost, a.APIPrincipalRequired(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.retryJob(w, r, operations) })))
 }
 
 func (a *API) listJobs(w http.ResponseWriter, r *http.Request, operations JobOperationsApplication) {

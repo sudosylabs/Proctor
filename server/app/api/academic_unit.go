@@ -60,7 +60,7 @@ func (a *API) registerAcademicUnitRoutes() error {
 		{a.BaseRoutes.AcademicUnit, "/children", http.MethodPost, a.createAcademicUnitChild},
 	}
 	for _, route := range routes {
-		if err := a.Register(
+		if err := a.registerLegacyRoute(
 			route.base, route.path, route.method,
 			a.APIPrincipalRequired(route.handler),
 		); err != nil {

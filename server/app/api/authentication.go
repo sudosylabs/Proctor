@@ -194,7 +194,7 @@ func (a *API) InitAuthentication() error {
 		},
 	}
 	for _, route := range routes {
-		if err := a.Register(
+		if err := a.registerLegacyRoute(
 			a.BaseRoutes.Authentication,
 			route.path,
 			http.MethodPost,
@@ -207,7 +207,7 @@ func (a *API) InitAuthentication() error {
 }
 
 func (a *API) InitUsers() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.CurrentUser,
 		"",
 		http.MethodGet,

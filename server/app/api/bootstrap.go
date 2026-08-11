@@ -100,7 +100,7 @@ func installationBootstrapResponseFromModel(result *model.InstallationBootstrapR
 }
 
 func (a *API) InitBootstrap() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.Bootstrap,
 		"",
 		http.MethodGet,
@@ -108,7 +108,7 @@ func (a *API) InitBootstrap() error {
 	); err != nil {
 		return err
 	}
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.Bootstrap,
 		"",
 		http.MethodPost,

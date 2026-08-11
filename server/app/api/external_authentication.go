@@ -29,7 +29,7 @@ func externalAuthenticationProviderResponses(
 }
 
 func (a *API) InitExternalAuthentication() error {
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.IdentityProviders,
 		"",
 		http.MethodGet,
@@ -37,7 +37,7 @@ func (a *API) InitExternalAuthentication() error {
 	); err != nil {
 		return err
 	}
-	if err := a.Register(
+	if err := a.registerLegacyRoute(
 		a.BaseRoutes.IdentityProvider,
 		"/login",
 		http.MethodGet,
@@ -45,7 +45,7 @@ func (a *API) InitExternalAuthentication() error {
 	); err != nil {
 		return err
 	}
-	return a.Register(
+	return a.registerLegacyRoute(
 		a.BaseRoutes.IdentityProvider,
 		"/callback",
 		http.MethodGet,

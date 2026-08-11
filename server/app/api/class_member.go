@@ -51,7 +51,7 @@ func (a *API) registerClassMemberRoutes() error {
 		{a.BaseRoutes.ClassMember, "", http.MethodDelete, a.endClassMember},
 	}
 	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
+		if err := a.registerLegacyRoute(route.base, route.path, route.method, a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}
 	}

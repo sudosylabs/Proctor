@@ -25,7 +25,7 @@ func (a *API) initUserAdministration() error {
 		{a.BaseRoutes.UserSession, "", http.MethodDelete, a.revokeUserSession},
 	}
 	for _, route := range routes {
-		if err := a.Register(route.base, route.path, route.method,
+		if err := a.registerLegacyRoute(route.base, route.path, route.method,
 			a.APIPrincipalRequired(route.handler)); err != nil {
 			return err
 		}

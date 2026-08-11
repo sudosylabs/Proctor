@@ -28,11 +28,11 @@ type updateInstitutionRequest struct {
 }
 
 func (a *API) registerInstitutionRoutes() error {
-	if err := a.Register(a.BaseRoutes.Institution, "", http.MethodGet,
+	if err := a.registerLegacyRoute(a.BaseRoutes.Institution, "", http.MethodGet,
 		a.APIPrincipalRequired(http.HandlerFunc(a.getInstitution))); err != nil {
 		return err
 	}
-	return a.Register(a.BaseRoutes.Institution, "", http.MethodPatch,
+	return a.registerLegacyRoute(a.BaseRoutes.Institution, "", http.MethodPatch,
 		a.APIPrincipalRequired(http.HandlerFunc(a.patchInstitution)))
 }
 
