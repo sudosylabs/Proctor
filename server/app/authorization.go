@@ -164,9 +164,8 @@ func (s *AuthorizationService) Authorize(
 	return s.authorizeCurrentState(ctx, principal, action, resource, metadata)
 }
 
-// authorizeCurrentState performs and audits a fresh authorization decision.
-// Migrated use cases call this path so they cannot consume a transport-issued
-// preauthorization receipt.
+// authorizeCurrentState performs and audits a fresh authorization decision for
+// the owning application use case.
 func (s *AuthorizationService) authorizeCurrentState(
 	ctx context.Context,
 	principal model.Principal,

@@ -115,18 +115,18 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		t, handler, created.Administrator.Username, password,
 		model.SessionClientCLI, "administrator-cli",
 	)
-	authorizedRequestID := "role-preflight-receipt-test"
+	authorizedRoleListRequestID := "authorized-role-list-test"
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/roles", nil)
 	listRequest.Header.Set(
 		"Authorization",
 		"Bearer "+administratorLogin.Tokens.AccessToken,
 	)
-	listRequest.Header.Set("X-Request-ID", authorizedRequestID)
+	listRequest.Header.Set("X-Request-ID", authorizedRoleListRequestID)
 	listResponse := httptest.NewRecorder()
 	handler.ServeHTTP(listResponse, listRequest)
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf(
-			"authorized role preflight status = %d: %s",
+			"authorized role list status = %d: %s",
 			listResponse.Code,
 			listResponse.Body.String(),
 		)
@@ -235,9 +235,8 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	)
 	malformedResponse := httptest.NewRecorder()
 	handler.ServeHTTP(malformedResponse, malformedRequest)
-	// Role routes authorize in the application use case, not via
-	// handler permission preflights. Malformed bodies are rejected at the
-	// transport decode boundary before the use case runs.
+	// Malformed bodies are rejected at the transport decode boundary before
+	// the application-owned authorization boundary runs.
 	if malformedResponse.Code != http.StatusBadRequest {
 		t.Fatalf(
 			"malformed role create status = %d: %s",
@@ -358,13 +357,13 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var successes, failures, receiptAudits int
+	var successes, failures, requestDecisionAudits int
 	for _, event := range events {
 		if event.Action != string(model.ActionRoleManage) {
 			continue
 		}
-		if event.RequestID == authorizedRequestID {
-			receiptAudits++
+		if event.RequestID == authorizedRoleListRequestID {
+			requestDecisionAudits++
 		}
 		switch event.Status {
 		case model.AuditStatusSuccess:
@@ -380,10 +379,10 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			failures,
 		)
 	}
-	if receiptAudits != 1 {
+	if requestDecisionAudits != 1 {
 		t.Fatalf(
-			"API preflight and application use case wrote %d authorization decisions for one request",
-			receiptAudits,
+			"application use case wrote %d authorization decisions for one request",
+			requestDecisionAudits,
 		)
 	}
 }

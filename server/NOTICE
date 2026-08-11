@@ -438,7 +438,6 @@ Corresponding Proctor paths:
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go
 - server/app/api/audit.go
-- server/app/api/authorization.go
 - server/app/api/bootstrap.go
 - server/app/api/role.go
 - server/app/api/role_binding.go
@@ -494,11 +493,9 @@ Modifications:
   Proctor's immutable principal, current PostgreSQL role bindings, typed
   resources, default-deny fallback, current class relationships, and separate
   audited resource and academic-scope fields;
-- retained Mattermost's visible permission checks at privileged API handlers
-  while keeping application use cases as independent authorization boundaries;
-- added a Proctor-specific per-process sealed, request-bound, one-use
-  authorization receipt so the application can verify and consume the exact
-  audited API preflight decision without repeating role/resource queries;
+- did not retain Mattermost's visible permission checks at privileged API
+  handlers: transports classify credentials and assurance, while each owning
+  application use case evaluates and audits current action/resource authority;
 - omitted Mattermost product, team, channel, scheme, license, enterprise,
   database-replica, and audit-output target assumptions.
 - initially adapted Mattermost's per-domain API ownership, central

@@ -381,7 +381,6 @@ type Realtime interface {
 type Application interface {
 	Authentication
 	ExternalAuthentication
-	PermissionChecker
 	Sessions
 	PersonalAccessTokens
 	MFA
