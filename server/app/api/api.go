@@ -2,9 +2,8 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Adapted from Mattermost server/channels/api4/api.go. Proctor retains the
-// versioned BaseRoutes tree and regex-constrained resource subrouters while
-// applying its own typed authentication wrappers and Problem Details
+// Adapted from Mattermost server/channels/api4/api.go. Proctor applies its own
+// immutable route catalog, typed authentication policies, and Problem Details
 // boundary.
 
 // Package api implements Proctor's versioned HTTP boundary.
@@ -78,6 +77,7 @@ const (
 	RouteProtocolRedirect        RouteProtocolKind = "redirect"
 	RouteProtocolBinaryDownload  RouteProtocolKind = "binary_download"
 	RouteProtocolStreamingUpload RouteProtocolKind = "streaming_upload"
+	RouteProtocolUpgrade         RouteProtocolKind = "upgrade"
 )
 
 type Route struct {
@@ -92,49 +92,6 @@ type Route struct {
 type routeMatcher struct {
 	route      Route
 	pathRegexp *regexp.Regexp
-}
-
-// Routes owns the stable HTTP resource tree. Versioned resources are always
-// derived from APIRoot so changing model.APIURLSuffix moves the complete API
-// without editing individual handlers.
-type Routes struct {
-	Root    *mux.Router
-	APIRoot *mux.Router
-
-	Health               *mux.Router
-	System               *mux.Router
-	Authentication       *mux.Router
-	IdentityProviders    *mux.Router
-	IdentityProvider     *mux.Router
-	Users                *mux.Router
-	CurrentUser          *mux.Router
-	MFA                  *mux.Router
-	PersonalAccessTokens *mux.Router
-	PersonalAccessToken  *mux.Router
-	Audits               *mux.Router
-	Bootstrap            *mux.Router
-	Roles                *mux.Router
-	Role                 *mux.Router
-	RoleBindings         *mux.Router
-	RoleBinding          *mux.Router
-	Institution          *mux.Router
-	AcademicUnits        *mux.Router
-	AcademicUnit         *mux.Router
-	Programmes           *mux.Router
-	Programme            *mux.Router
-	ProgrammeLevels      *mux.Router
-	ProgrammeLevel       *mux.Router
-	AcademicPeriods      *mux.Router
-	AcademicPeriod       *mux.Router
-	Classes              *mux.Router
-	Class                *mux.Router
-	User                 *mux.Router
-	UserSessions         *mux.Router
-	UserSession          *mux.Router
-	Affiliation          *mux.Router
-	AcademicUnitMember   *mux.Router
-	ClassMember          *mux.Router
-	WebSocket            *mux.Router
 }
 
 type Options struct {
@@ -168,7 +125,9 @@ type Options struct {
 }
 
 // WebSocketTransport is the narrow mount surface HTTP needs from the sibling
-// websocket package. Composition supplies the concrete hub.
+// websocket package. Composition supplies the concrete hub. Accept owns the
+// response after invocation; a returned error must describe a pre-upgrade
+// failure and must not follow a committed response.
 type WebSocketTransport interface {
 	Accept(
 		writer http.ResponseWriter,
@@ -435,28 +394,8 @@ type Application interface {
 type API struct {
 	handler                 http.Handler
 	router                  *mux.Router
-	BaseRoutes              *Routes
-	application             Application
 	authenticator           Authenticator
-	academicUnits           AcademicUnitApplication
-	institutions            InstitutionApplication
-	programmes              ProgrammeApplication
-	programmeLevels         ProgrammeLevelApplication
-	academicPeriods         AcademicPeriodApplication
-	classes                 ClassApplication
-	affiliations            AffiliationApplication
-	academicUnitMembers     AcademicUnitMemberApplication
-	classMembers            ClassMemberApplication
-	userProfiles            UserProfileApplication
-	accountStates           AccountStateApplication
-	sessionAdministrations  SessionAdministrationApplication
-	roles                   RoleApplication
-	roleBindings            RoleBindingApplication
-	auditListings           AuditListingApplication
-	bootstrap               BootstrapApplication
 	logger                  Logger
-	health                  Health
-	buildInfo               BuildInfo
 	cookies                 browserCookies
 	recentAuthenticationTTL time.Duration
 	routes                  []Route
@@ -538,27 +477,8 @@ func New(options Options) (*API, error) {
 	}
 
 	api := &API{
-		application:             options.Application,
 		authenticator:           options.Application,
-		academicUnits:           options.AcademicUnits,
-		institutions:            options.Institutions,
-		programmes:              options.Programmes,
-		programmeLevels:         options.ProgrammeLevels,
-		academicPeriods:         options.AcademicPeriods,
-		classes:                 options.Classes,
-		affiliations:            options.Affiliations,
-		academicUnitMembers:     options.AcademicUnitMembers,
-		classMembers:            options.ClassMembers,
-		userProfiles:            options.UserProfiles,
-		accountStates:           options.AccountStates,
-		sessionAdministrations:  options.SessionAdministrations,
-		roles:                   options.Roles,
-		roleBindings:            options.RoleBindings,
-		auditListings:           options.AuditListings,
-		bootstrap:               options.Bootstrap,
 		logger:                  options.Logger,
-		health:                  options.Health,
-		buildInfo:               options.BuildInfo,
 		cookies:                 cookies,
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
 		webSocket:               options.WebSocket,
@@ -568,53 +488,43 @@ func New(options Options) (*API, error) {
 		// Production composition always supplies the sibling websocket.Hub.
 		api.webSocket = noopWebSocketTransport{}
 	}
+	resources := productionResources(options, cookies, api.webSocket)
 	if err := api.buildRoutingKernel(
 		model.APIURLSuffix,
 		options.MaxBodyBytes,
-		api.registerRoutes,
+		func() error { return api.collectResources(model.APIURLSuffix, resources...) },
 	); err != nil {
 		return nil, err
 	}
 	return api, nil
 }
 
-func (a *API) registerRoutes() error {
-	initializers := []func() error{
-		func() error {
-			return a.collectResources(
-				model.APIURLSuffix,
-				systemResource(a.health, a.buildInfo),
-				bootstrapResource(a.bootstrap),
-				authenticationResource(a.application, a.cookies),
-				externalAuthenticationResource(a.application, a.cookies),
-				userProfileResource(a.userProfiles),
-				userAdministrationResource(a.accountStates, a.sessionAdministrations),
-				sessionResource(a.application, a.cookies),
-				mfaResource(a.application),
-				personalAccessTokenResource(a.application),
-				institutionResource(a.institutions),
-				academicUnitResource(a.academicUnits),
-				programmeResource(a.programmes),
-				programmeLevelResource(a.programmeLevels),
-				academicPeriodResource(a.academicPeriods),
-				classResource(a.classes),
-				affiliationResource(a.affiliations),
-				academicUnitMemberResource(a.academicUnitMembers),
-				classMemberResource(a.classMembers),
-				roleResource(a.roles),
-				roleBindingResource(a.roleBindings),
-				auditResource(a.auditListings),
-				jobResource(a.application),
-			)
-		},
-		a.InitWebSocket,
+func productionResources(options Options, cookies browserCookies, webSocket WebSocketTransport) []resource {
+	return []resource{
+		systemResource(options.Health, options.BuildInfo),
+		bootstrapResource(options.Bootstrap),
+		authenticationResource(options.Application, cookies),
+		externalAuthenticationResource(options.Application, cookies),
+		userProfileResource(options.UserProfiles),
+		userAdministrationResource(options.AccountStates, options.SessionAdministrations),
+		sessionResource(options.Application, cookies),
+		mfaResource(options.Application),
+		personalAccessTokenResource(options.Application),
+		institutionResource(options.Institutions),
+		academicUnitResource(options.AcademicUnits),
+		programmeResource(options.Programmes),
+		programmeLevelResource(options.ProgrammeLevels),
+		academicPeriodResource(options.AcademicPeriods),
+		classResource(options.Classes),
+		affiliationResource(options.Affiliations),
+		academicUnitMemberResource(options.AcademicUnitMembers),
+		classMemberResource(options.ClassMembers),
+		roleResource(options.Roles),
+		roleBindingResource(options.RoleBindings),
+		auditResource(options.AuditListings),
+		jobResource(options.Application),
+		webSocketResource(webSocket),
 	}
-	for _, initialize := range initializers {
-		if err := initialize(); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (a *API) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -647,100 +557,6 @@ func (a *API) serveRoutes(writer http.ResponseWriter, request *http.Request) {
 	a.router.ServeHTTP(writer, request)
 }
 
-func (a *API) initializeBaseRoutes(apiURLSuffix string) {
-	if a.catalog == nil {
-		panic("initialize base routes without a catalog builder")
-	}
-	root := mux.NewRouter()
-	a.router = root
-	a.catalog.prefixes[root] = ""
-
-	a.BaseRoutes = &Routes{Root: root}
-	a.BaseRoutes.APIRoot = a.subrouter(root, apiURLSuffix)
-	a.BaseRoutes.Health = a.subrouter(root, "/health")
-	a.BaseRoutes.System = a.subrouter(a.BaseRoutes.APIRoot, "/system")
-	a.BaseRoutes.Authentication = a.subrouter(a.BaseRoutes.APIRoot, "/auth")
-	a.BaseRoutes.IdentityProviders = a.subrouter(
-		a.BaseRoutes.Authentication,
-		"/providers",
-	)
-	a.BaseRoutes.IdentityProvider = a.subrouter(
-		a.BaseRoutes.IdentityProviders,
-		"/{provider_id:"+providerIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.Users = a.subrouter(a.BaseRoutes.APIRoot, "/users")
-	a.BaseRoutes.CurrentUser = a.subrouter(a.BaseRoutes.Users, "/me")
-	a.BaseRoutes.MFA = a.subrouter(a.BaseRoutes.CurrentUser, "/mfa")
-	a.BaseRoutes.PersonalAccessTokens = a.subrouter(
-		a.BaseRoutes.CurrentUser,
-		"/tokens",
-	)
-	a.BaseRoutes.PersonalAccessToken = a.subrouter(
-		a.BaseRoutes.PersonalAccessTokens,
-		"/{personal_access_token_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.Audits = a.subrouter(a.BaseRoutes.APIRoot, "/audits")
-	a.BaseRoutes.Bootstrap = a.subrouter(a.BaseRoutes.APIRoot, "/bootstrap")
-	a.BaseRoutes.Roles = a.subrouter(a.BaseRoutes.APIRoot, "/roles")
-	a.BaseRoutes.Role = a.subrouter(
-		a.BaseRoutes.Roles,
-		"/{role_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.RoleBindings = a.subrouter(a.BaseRoutes.APIRoot, "/role-bindings")
-	a.BaseRoutes.RoleBinding = a.subrouter(
-		a.BaseRoutes.RoleBindings,
-		"/{role_binding_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.Institution = a.subrouter(a.BaseRoutes.APIRoot, "/institution")
-	a.BaseRoutes.AcademicUnits = a.subrouter(a.BaseRoutes.APIRoot, "/academic-units")
-	a.BaseRoutes.AcademicUnit = a.subrouter(
-		a.BaseRoutes.AcademicUnits,
-		"/{academic_unit_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.Programmes = a.subrouter(a.BaseRoutes.APIRoot, "/programmes")
-	a.BaseRoutes.Programme = a.subrouter(
-		a.BaseRoutes.Programmes,
-		"/{programme_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.ProgrammeLevels = a.subrouter(a.BaseRoutes.APIRoot, "/programme-levels")
-	a.BaseRoutes.ProgrammeLevel = a.subrouter(
-		a.BaseRoutes.ProgrammeLevels,
-		"/{programme_level_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.AcademicPeriods = a.subrouter(a.BaseRoutes.APIRoot, "/academic-periods")
-	a.BaseRoutes.AcademicPeriod = a.subrouter(
-		a.BaseRoutes.AcademicPeriods,
-		"/{academic_period_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.Classes = a.subrouter(a.BaseRoutes.APIRoot, "/classes")
-	a.BaseRoutes.Class = a.subrouter(
-		a.BaseRoutes.Classes,
-		"/{class_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.User = a.subrouter(
-		a.BaseRoutes.Users,
-		"/{user_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.UserSessions = a.subrouter(a.BaseRoutes.User, "/sessions")
-	a.BaseRoutes.UserSession = a.subrouter(
-		a.BaseRoutes.UserSessions,
-		"/{session_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.Affiliation = a.subrouter(
-		a.BaseRoutes.APIRoot,
-		"/affiliations/{affiliation_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.AcademicUnitMember = a.subrouter(
-		a.BaseRoutes.APIRoot,
-		"/academic-unit-members/{academic_unit_member_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.ClassMember = a.subrouter(
-		a.BaseRoutes.APIRoot,
-		"/class-members/{class_member_id:"+canonicalIDRoutePattern()+"}",
-	)
-	a.BaseRoutes.WebSocket = a.subrouter(a.BaseRoutes.APIRoot, "/websocket")
-}
-
 func (a *API) Close() error {
 	if a.webSocket == nil {
 		return nil
@@ -770,83 +586,6 @@ func canonicalIDRoutePattern() string {
 
 func providerIDRoutePattern() string {
 	return "[a-z0-9][a-z0-9._-]{0,63}"
-}
-
-func (a *API) subrouter(parent *mux.Router, pathPrefix string) *mux.Router {
-	if a.catalog == nil {
-		panic("create subrouter without a catalog builder")
-	}
-	router := parent.PathPrefix(pathPrefix).Subrouter()
-	a.catalog.prefixes[router] = a.catalog.prefixes[parent] + pathPrefix
-	return router
-}
-
-// registerLegacyRoute is the private bridge for resources not yet migrated to
-// typed definitions. It is sealed when New returns and must not be used for new
-// endpoints. path is relative to base and is empty at the resource root.
-func (a *API) registerLegacyRoute(
-	base *mux.Router,
-	path string,
-	method string,
-	handler *Handler,
-) error {
-	if a.catalog == nil {
-		return fmt.Errorf("register %s %s: route catalog is sealed", method, path)
-	}
-	if handler == nil || handler.handler == nil {
-		return fmt.Errorf("register %s %s: handler is nil", method, path)
-	}
-	auth := handler.authentication
-	switch auth {
-	case AuthPublic,
-		AuthPrincipalRequired,
-		AuthSessionRequired,
-		AuthStrongSessionRequired,
-		AuthRecentSessionRequired,
-		AuthStrongRecentSessionRequired,
-		AuthRefreshCredentialRequired:
-	default:
-		return fmt.Errorf("register %s %s: authentication policy is invalid", method, path)
-	}
-	prefix, exists := a.catalog.prefixes[base]
-	if !exists {
-		return fmt.Errorf("register %s %s: base route is not owned by this API", method, path)
-	}
-	if !isHTTPMethod(method) || strings.ToUpper(method) != method {
-		return fmt.Errorf("register %s %s: HTTP method is invalid", method, path)
-	}
-	if path != "" && (!strings.HasPrefix(path, "/") || strings.HasSuffix(path, "/")) {
-		return fmt.Errorf("register %s %s: relative route path is not canonical", method, path)
-	}
-	fullPath := prefix + path
-	probe := mux.NewRouter().NewRoute().Path(fullPath).Methods(method)
-	if err := probe.GetError(); err != nil {
-		return fmt.Errorf("register %s %s: invalid route: %w", method, fullPath, err)
-	}
-	pathRegexp, err := probe.GetPathRegexp()
-	if err != nil {
-		return fmt.Errorf("register %s %s: compile route: %w", method, fullPath, err)
-	}
-	compiledPathRegexp, err := regexp.Compile(pathRegexp)
-	if err != nil {
-		return fmt.Errorf("register %s %s: compile route regexp: %w", method, fullPath, err)
-	}
-	key := method + " " + pathRegexp
-	if _, exists := a.catalog.routeKeys[key]; exists {
-		return fmt.Errorf("register %s %s: duplicate route", method, fullPath)
-	}
-
-	a.catalog.pendingRoutes = append(a.catalog.pendingRoutes, pendingCatalogRoute{
-		method: method, path: fullPath, handler: handler,
-	})
-	a.catalog.routeKeys[key] = struct{}{}
-	route := Route{Method: method, Path: fullPath, Auth: auth}
-	a.catalog.routes = append(a.catalog.routes, route)
-	a.catalog.routeMatchers = append(a.catalog.routeMatchers, routeMatcher{
-		route:      route,
-		pathRegexp: compiledPathRegexp,
-	})
-	return nil
 }
 
 func sortRoutes(routes []Route) {

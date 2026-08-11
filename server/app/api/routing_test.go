@@ -9,47 +9,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func TestBaseRoutesCentralizeAPIVersionRegexAndParams(t *testing.T) {
+func TestRoutingKernelCentralizesAPIVersionRegexAndParams(t *testing.T) {
 	t.Parallel()
 
-	httpAPI := newRoutingTestAPI("/api/testing")
 	var gotRoleID string
-	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		params, ok := RequestParams(request.Context())
-		if !ok {
-			t.Error("request parameters were not attached")
-		} else {
-			roleID, appErr := params.RequireRoleId()
-			if appErr != nil {
-				t.Errorf("RequireRoleId returned %v", appErr)
-			}
-			gotRoleID = roleID
-		}
-		writer.WriteHeader(http.StatusNoContent)
-	})
-	if err := httpAPI.registerLegacyRoute(
-		httpAPI.BaseRoutes.Role,
-		"",
-		http.MethodGet,
-		httpAPI.APIHandler(handler),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := httpAPI.sealRouteCatalog(); err != nil {
-		t.Fatal(err)
-	}
+	httpAPI := newCompiledRoutingTestAPI(t, "/api/testing", newResource("role",
+		publicRoute(
+			http.MethodGet,
+			apiPath(literal("roles"), canonicalID("role_id")),
+			nil,
+			func(request operationRequest) (operationResult, error) {
+				roleID, err := request.params.RequireRoleId()
+				if err != nil {
+					return operationResult{}, err
+				}
+				gotRoleID = roleID
+				return noContentResult(), nil
+			},
+		),
+	))
 
-	valid := httptest.NewRequest(
-		http.MethodGet,
-		"/api/testing/roles/"+modelIDForRouteTest,
-		nil,
-	)
+	valid := httptest.NewRequest(http.MethodGet, "/api/testing/roles/"+modelIDForRouteTest, nil)
 	validResponse := httptest.NewRecorder()
-	httpAPI.router.ServeHTTP(validResponse, valid)
+	httpAPI.ServeHTTP(validResponse, valid)
 	if validResponse.Code != http.StatusNoContent || gotRoleID != modelIDForRouteTest {
 		t.Fatalf("valid route status/id = %d/%q", validResponse.Code, gotRoleID)
 	}
@@ -60,89 +45,29 @@ func TestBaseRoutesCentralizeAPIVersionRegexAndParams(t *testing.T) {
 		"/api/testing/roles/3UUUid3i7bexfcbzmo6s5w4zqo",
 	} {
 		response := httptest.NewRecorder()
-		httpAPI.router.ServeHTTP(
-			response,
-			httptest.NewRequest(http.MethodGet, path, nil),
-		)
+		httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusNotFound {
 			t.Errorf("%s status = %d, want 404", path, response.Code)
 		}
 	}
 }
 
-func TestRegisterRejectsMissingPolicyDuplicatePatternAndForeignBase(t *testing.T) {
+func TestRouteMetadataRetainsVersionRegexAndPolicyContract(t *testing.T) {
 	t.Parallel()
 
-	httpAPI := newRoutingTestAPI("/api/testing")
-	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
-	first := httpAPI.subrouter(
-		httpAPI.BaseRoutes.APIRoot,
-		"/resources/{id:[a-z]+}",
-	)
-	second := httpAPI.subrouter(
-		httpAPI.BaseRoutes.APIRoot,
-		"/resources/{other:[a-z]+}",
-	)
-	if err := httpAPI.registerLegacyRoute(
-		first,
-		"",
-		http.MethodGet,
-		httpAPI.APIHandler(handler),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := httpAPI.registerLegacyRoute(
-		second,
-		"",
-		http.MethodGet,
-		httpAPI.APIHandler(handler),
-	); err == nil {
-		t.Fatal("duplicate route shape was accepted")
-	}
-	if err := httpAPI.registerLegacyRoute(
-		httpAPI.BaseRoutes.APIRoot,
-		"/resources",
-		"BREW",
-		httpAPI.APIHandler(handler),
-	); err == nil {
-		t.Fatal("unknown HTTP method was accepted")
-	}
-	if err := httpAPI.registerLegacyRoute(
-		httpAPI.BaseRoutes.APIRoot,
-		"/resources",
-		http.MethodPost,
-		&Handler{handler: handler},
-	); err == nil {
-		t.Fatal("route without authentication policy was accepted")
-	}
-	if err := httpAPI.registerLegacyRoute(
-		mux.NewRouter(),
-		"/resources",
-		http.MethodGet,
-		httpAPI.APIHandler(handler),
-	); err == nil {
-		t.Fatal("foreign base router was accepted")
-	}
-}
-
-func TestRouteMetadataRetainsVersionAndRegexContract(t *testing.T) {
-	t.Parallel()
-
-	httpAPI := newRoutingTestAPI("/api/testing")
-	if err := httpAPI.registerLegacyRoute(
-		httpAPI.BaseRoutes.Role,
-		"",
-		http.MethodDelete,
-		httpAPI.APISessionRequired(
-			http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+	httpAPI := newCompiledRoutingTestAPI(t, "/api/testing", newResource("role",
+		sessionRoute(
+			http.MethodDelete,
+			apiPath(literal("roles"), canonicalID("role_id")),
+			[]string{"authentication.required"},
+			func(operationRequest) (operationResult, error) { return noContentResult(), nil },
 		),
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 	routes := httpAPI.Routes()
 	want := "/api/testing/roles/{role_id:" + canonicalIDRoutePattern() + "}"
-	if len(routes) != 1 || routes[0].Path != want {
-		t.Fatalf("routes = %#v, want path %q", routes, want)
+	if len(routes) != 1 || routes[0].Path != want || routes[0].Auth != AuthSessionRequired ||
+		len(routes[0].ErrorCodes) != 1 || routes[0].ErrorCodes[0] != "authentication.required" {
+		t.Fatalf("routes = %#v, want path %q with session policy", routes, want)
 	}
 }
 
@@ -189,12 +114,26 @@ func TestPrincipalAssuranceRequirements(t *testing.T) {
 	}
 }
 
-func newRoutingTestAPI(apiURLSuffix string) *API {
-	httpAPI := &API{
+func newRoutingTestAPI(_ string) *API {
+	return &API{
 		catalog:                 newRouteCatalogBuilder(),
 		recentAuthenticationTTL: 15 * time.Minute,
 	}
-	httpAPI.initializeBaseRoutes(apiURLSuffix)
+}
+
+func newCompiledRoutingTestAPI(t *testing.T, apiURLSuffix string, resources ...resource) *API {
+	t.Helper()
+	logger, _ := newTestLogger(t)
+	httpAPI := &API{
+		authenticator:           classRouteAuthenticator{},
+		logger:                  logger,
+		recentAuthenticationTTL: 15 * time.Minute,
+	}
+	if err := httpAPI.buildRoutingKernel(apiURLSuffix, 1<<20, func() error {
+		return httpAPI.collectResources(apiURLSuffix, resources...)
+	}); err != nil {
+		t.Fatal(err)
+	}
 	return httpAPI
 }
 

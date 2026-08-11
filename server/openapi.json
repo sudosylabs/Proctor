@@ -1226,10 +1226,10 @@
     "/api/v1/websocket": {
       "get": {
         "operationId": "connectWebSocket", "summary": "Upgrade to the WebSocket protocol",
-        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid"],
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid", "websocket.origin.invalid", "websocket.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": []}],
         "parameters": [{"name": "connection_id", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/ID"}}, {"name": "sequence_number", "in": "query", "required": false, "schema": {"type": "integer", "format": "int64", "minimum": 0}}],
-        "responses": {"101": {"description": "Switching Protocols"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
+        "responses": {"101": {"description": "Switching Protocols"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
       }
     }
   },

@@ -10,45 +10,52 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-// InitWebSocket mounts the authenticated upgrade route. Protocol ownership
-// lives in package websocket; this file only bridges session middleware.
-func (a *API) InitWebSocket() error {
-	return a.registerLegacyRoute(
-		a.BaseRoutes.WebSocket,
-		"",
-		http.MethodGet,
-		a.APISessionRequired(http.HandlerFunc(a.connectWebSocket)),
+type webSocketModule struct {
+	transport WebSocketTransport
+}
+
+const (
+	webSocketResourceName = "websocket"
+	webSocketProtocolName = "websocket-upgrade"
+	webSocketPathLiteral  = "websocket"
+)
+
+func webSocketResource(transport WebSocketTransport) resource {
+	module := webSocketModule{transport: transport}
+	return newResource(webSocketResourceName,
+		upgradeRoute(
+			webSocketProtocolName,
+			AuthSessionRequired,
+			http.MethodGet,
+			apiPath(literal(webSocketPathLiteral)),
+			[]string{
+				"authentication.required",
+				"authentication.invalid_token",
+				"authentication.credential_ambiguous",
+				"request.invalid",
+				"websocket.origin.invalid",
+				"websocket.unavailable",
+			},
+			module.connect,
+		),
 	)
 }
 
-func (a *API) connectWebSocket(writer http.ResponseWriter, request *http.Request) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return
-	}
-	params, ok := RequestParams(request.Context())
-	if !ok {
-		WriteError(writer, request, invalidRequestError("route_params", nil))
-		return
-	}
-	connectionID, sequence, err := parseWebSocketResume(params)
+func (module webSocketModule) connect(writer http.ResponseWriter, request operationRequest) error {
+	connectionID, sequence, err := parseWebSocketResume(request.params)
 	if err != nil {
-		WriteError(writer, request, err)
-		return
+		return err
 	}
-	allowMissingOrigin := credentialSourceFromContext(request.Context()) == credentialSourceBearer
-	if acceptErr := a.webSocket.Accept(
+	allowMissingOrigin := credentialSourceFromContext(request.context) == credentialSourceBearer
+	return module.transport.Accept(
 		writer,
-		request,
-		principal,
-		RequestMetadata(request.Context()),
+		request.request,
+		request.principal,
+		request.metadata,
 		connectionID,
 		sequence,
 		allowMissingOrigin,
-	); acceptErr != nil {
-		WriteError(writer, request, acceptErr)
-	}
+	)
 }
 
 func parseWebSocketResume(params Params) (string, int64, error) {

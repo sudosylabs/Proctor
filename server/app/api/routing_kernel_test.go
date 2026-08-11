@@ -71,6 +71,24 @@ func TestRoutingKernelRejectsInvalidCatalogs(t *testing.T) {
 			},
 			wantError: "protocol operation kind",
 		},
+		{
+			name: "upgrade through bounded protocol operation",
+			resources: []resource{
+				newResource("invalid", protocolRoute("invalid-upgrade", RouteProtocolUpgrade, AuthPublic, http.MethodGet, apiPath(literal("resources")), nil, func(operationRequest) (protocolResult, error) {
+					return protocolResult{}, nil
+				})),
+			},
+			wantError: "upgrade requires the dedicated upgrade operation",
+		},
+		{
+			name: "raw upgrade outside reserved websocket operation",
+			resources: []resource{
+				newResource("invalid", upgradeRoute("another-upgrade", AuthSessionRequired, http.MethodGet, apiPath(literal("resources")), nil, func(http.ResponseWriter, operationRequest) error {
+					return nil
+				})),
+			},
+			wantError: "is not the reserved WebSocket upgrade",
+		},
 	}
 
 	for _, test := range tests {
@@ -329,32 +347,5 @@ func TestRoutingKernelPathVocabularyPreservesV1IdentifierPatterns(t *testing.T) 
 		if !found {
 			t.Errorf("route path %q is missing", path)
 		}
-	}
-}
-
-func TestCompiledRoutingKernelRejectsLateLegacyRegistration(t *testing.T) {
-	t.Parallel()
-
-	logger, _ := newTestLogger(t)
-	httpAPI := newFocusedResourceAPI(
-		t,
-		logger,
-		classRouteAuthenticator{},
-		newResource("system", routeDefinition{
-			method: http.MethodGet,
-			path:   apiPath(literal("system"), literal("ping")),
-			auth:   AuthPublic,
-			operation: func(operationRequest) (operationResult, error) {
-				return noContentResult(), nil
-			},
-		}),
-	)
-	if err := httpAPI.registerLegacyRoute(
-		nil,
-		"/late",
-		http.MethodGet,
-		httpAPI.APIHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})),
-	); err == nil {
-		t.Fatal("compiled route catalog accepted late registration")
 	}
 }

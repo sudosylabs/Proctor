@@ -190,6 +190,7 @@ func (result protocolResult) withHeaders(headers http.Header) protocolResult {
 }
 
 type protocolOperation func(operationRequest) (protocolResult, error)
+type upgradeOperation func(http.ResponseWriter, operationRequest) error
 
 type routeDefinition struct {
 	method            string
@@ -200,6 +201,28 @@ type routeDefinition struct {
 	protocolName      string
 	protocolKind      RouteProtocolKind
 	protocolOperation protocolOperation
+	upgradeOperation  upgradeOperation
+}
+
+// upgradeRoute is the sole raw response exception. A successful HTTP upgrade
+// must transfer the response connection to the sibling transport, so this
+// operation alone receives ResponseWriter. Authentication, request metadata,
+// parameters, declared failures, and immutable manifest metadata remain owned
+// by the routing kernel.
+func upgradeRoute(
+	name string,
+	auth AuthRequirement,
+	method string,
+	path routePath,
+	errorCodes []string,
+	operation upgradeOperation,
+) routeDefinition {
+	return routeDefinition{
+		method: method, path: path, auth: auth,
+		errorCodes:   append([]string(nil), errorCodes...),
+		protocolName: name, protocolKind: RouteProtocolUpgrade,
+		upgradeOperation: operation,
+	}
 }
 
 func route(
@@ -305,14 +328,21 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 			}
 			ordinary := route.operation != nil
 			protocol := route.protocolOperation != nil
-			if ordinary == protocol {
+			upgrade := route.upgradeOperation != nil
+			if countTrue(ordinary, protocol, upgrade) != 1 {
 				return fmt.Errorf("resource %q %s operation is required", resource.name, route.method)
 			}
-			if protocol && !regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`).MatchString(route.protocolName) {
+			if (protocol || upgrade) && !regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`).MatchString(route.protocolName) {
 				return fmt.Errorf("resource %q %s protocol operation name %q is invalid", resource.name, route.method, route.protocolName)
 			}
-			if protocol && !validRouteProtocolKind(route.protocolKind) {
+			if (protocol || upgrade) && !validRouteProtocolKind(route.protocolKind) {
 				return fmt.Errorf("resource %q %s protocol operation kind %q is invalid", resource.name, route.method, route.protocolKind)
+			}
+			if upgrade && route.protocolKind != RouteProtocolUpgrade {
+				return fmt.Errorf("resource %q %s upgrade operation kind %q is invalid", resource.name, route.method, route.protocolKind)
+			}
+			if protocol && route.protocolKind == RouteProtocolUpgrade {
+				return fmt.Errorf("resource %q %s upgrade requires the dedicated upgrade operation", resource.name, route.method)
 			}
 			if ordinary && (route.protocolName != "" || route.protocolKind != "") {
 				return fmt.Errorf("resource %q %s ordinary operation has protocol metadata", resource.name, route.method)
@@ -320,6 +350,13 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 			path, normalized, err := route.path.compile(apiPrefix)
 			if err != nil {
 				return fmt.Errorf("resource %q %s path: %w", resource.name, route.method, err)
+			}
+			if upgrade && (resource.name != webSocketResourceName ||
+				route.protocolName != webSocketProtocolName ||
+				route.auth != AuthSessionRequired ||
+				route.method != http.MethodGet ||
+				path != apiPrefix+"/"+webSocketPathLiteral) {
+				return fmt.Errorf("resource %q %s %s is not the reserved WebSocket upgrade", resource.name, route.method, path)
 			}
 			key := route.method + " " + normalized
 			if prior, exists := routeShapes[key]; exists {
@@ -345,11 +382,21 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 
 func validRouteProtocolKind(kind RouteProtocolKind) bool {
 	switch kind {
-	case RouteProtocolRedirect, RouteProtocolBinaryDownload, RouteProtocolStreamingUpload:
+	case RouteProtocolRedirect, RouteProtocolBinaryDownload, RouteProtocolStreamingUpload, RouteProtocolUpgrade:
 		return true
 	default:
 		return false
 	}
+}
+
+func countTrue(values ...bool) int {
+	count := 0
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
 }
 
 func validAuthRequirement(requirement AuthRequirement) bool {
@@ -386,7 +433,6 @@ type pendingCatalogRoute struct {
 
 type routeCatalogBuilder struct {
 	routeKeys     map[string]struct{}
-	prefixes      map[*mux.Router]string
 	pendingRoutes []pendingCatalogRoute
 	routes        []Route
 	routeMatchers []routeMatcher
@@ -395,7 +441,6 @@ type routeCatalogBuilder struct {
 func newRouteCatalogBuilder() *routeCatalogBuilder {
 	return &routeCatalogBuilder{
 		routeKeys: make(map[string]struct{}),
-		prefixes:  make(map[*mux.Router]string),
 	}
 }
 
@@ -430,7 +475,6 @@ func (a *API) buildRoutingKernel(
 		return errors.New("routing kernel is already built")
 	}
 	a.catalog = newRouteCatalogBuilder()
-	a.initializeBaseRoutes(apiPrefix)
 	if err := collect(); err != nil {
 		a.catalog = nil
 		return err
@@ -464,6 +508,8 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 			operationHandler := a.operationHandler(definition, errorPolicy)
 			if definition.protocolOperation != nil {
 				operationHandler = a.protocolOperationHandler(definition, errorPolicy)
+			} else if definition.upgradeOperation != nil {
+				operationHandler = a.upgradeOperationHandler(definition, errorPolicy)
 			}
 			handler := a.newHandlerWithErrorPolicy(
 				operationHandler,
@@ -504,6 +550,40 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 		}
 	}
 	return nil
+}
+
+func (a *API) upgradeOperationHandler(
+	definition routeDefinition,
+	errorPolicy routeErrorPolicy,
+) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		principal, hasPrincipal := Principal(request.Context())
+		if authRequiresPrincipal(definition.auth) && !hasPrincipal {
+			writeRouteApplicationError(writer, request, a.logger, errorPolicy, authenticationRequiredError())
+			return
+		}
+		params, ok := RequestParams(request.Context())
+		if !ok {
+			writeRouteApplicationError(writer, request, a.logger, errorPolicy, invalidRequestError("route_params", nil))
+			return
+		}
+		err := definition.upgradeOperation(writer, operationRequest{
+			context: request.Context(), principal: principal,
+			metadata: RequestMetadata(request.Context()), params: params,
+			request: request,
+		})
+		if err == nil {
+			return
+		}
+		cause, headers := responseErrorParts(err)
+		if validateResponseHeaders(headers) != nil || !routeErrorAllowed(errorPolicy, cause) {
+			a.logInvalidRouteError(request, cause)
+			WriteProblem(writer, internalProblem(request))
+			return
+		}
+		applyResponseHeaders(writer, headers)
+		writeApplicationError(writer, request, a.logger, cause)
+	})
 }
 
 type headerOnlyResponseWriter struct {

@@ -94,7 +94,7 @@ func TestOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(Options{}, browserCookies{}, nil)...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,7 +231,7 @@ func TestIdentityAndSystemOpenAPIOperationDTOsAgreeWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(Options{}, browserCookies{}, nil)...); err != nil {
 		t.Fatal(err)
 	}
 	runtimeRoutes := make(map[string]Route)
@@ -424,7 +424,9 @@ func identityAndSystemErrorContracts() map[string][]string {
 		"DELETE /api/v1/users/me/tokens/{personal_access_token_id}": sessionMutationErrorCodes(
 			"request.invalid", "resource.not_found", "personal_access_token.unavailable", "audit.unavailable",
 		),
-		"GET /api/v1/websocket": sessionErrorCodes("request.invalid"),
+		"GET /api/v1/websocket": sessionErrorCodes(
+			"request.invalid", "websocket.origin.invalid", "websocket.unavailable",
+		),
 	}
 }
 

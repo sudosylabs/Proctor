@@ -89,9 +89,6 @@ func (a *API) newHandlerWithErrorPolicy(
 		return &Handler{authentication: requirement}
 	}
 	authenticator := a.authenticator
-	if authenticator == nil {
-		authenticator = a.application
-	}
 	return &Handler{
 		handler: withRequestParams(requireAuthentication(
 			handler,

@@ -32,7 +32,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.registerRoutes(); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(Options{}, browserCookies{}, nil)...); err != nil {
 		t.Fatal(err)
 	}
 	runtimeRoutes, err := json.Marshal(runtimeAPI.Routes())
@@ -51,7 +51,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 	}
 	digest := sha256.Sum256(canonical)
 	gotDigest := hex.EncodeToString(digest[:])
-	const wantDigest = "91bdb59f013841cee1f96440c9e39cb2722e9c5fdf346879904fdf6b1432e113"
+	const wantDigest = "2a26a294e63d8267770aeae16a65d3750703b08e3c580fb3e22cf935065136ab"
 	if gotDigest != wantDigest {
 		t.Fatalf("v1 HTTP contract digest = %s, want %s", gotDigest, wantDigest)
 	}

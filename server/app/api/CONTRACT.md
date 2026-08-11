@@ -27,9 +27,17 @@ catalog before serving, validates results before applying response effects,
 owns ordinary response and Problem Details writing, and fails closed when an
 operation returns an undeclared error. Redirects, bounded uploads, and binary
 downloads use named protocol-specific results recorded in the manifest rather
-than an unrestricted response-writer escape hatch. The WebSocket upgrade is
-the sole remaining temporary compatibility-bridge route; new endpoints must
-not use that bridge.
+than an unrestricted response-writer escape hatch. The WebSocket handshake is
+the only raw response exception: it is a named, session-authenticated upgrade
+operation whose parameters, request metadata, and pre-upgrade failures remain
+kernel-owned. After a successful upgrade, the sibling transport owns the
+connection lifecycle. The catalog exposes no mutable router or late-registration
+seam.
+
+Catalog completion exposed two existing pre-upgrade outcomes that the prior
+OpenAPI entry omitted: invalid origin (403) and unavailable WebSocket service
+(503). Their declaration is an additive documentation correction for existing
+runtime behavior, not a new failure mode.
 
 Two Academic Unit shapes are frozen compatibility exceptions, not target
 patterns:
