@@ -23,6 +23,11 @@ typed, versioned documents and safe outcomes. The engine depends only on the
 domain Job records and `store.JobStore`; it never imports its parent package or
 selects infrastructure.
 
+Operator Job use cases depend on the engine rather than a separate Job Store
+and descriptor catalog. They retain Principal authorization, resource
+resolution, durable audit ordering, and application-error translation; the
+engine owns safe projections and descriptor-governed persistence mechanics.
+
 Atomic store operations are explicit named aggregate operations such as bootstrap, enrollment transfer, or password-reset consumption. The application decides policy; the adapter owns locking, constraints, concurrency checks, and commit/rollback. Raw SQL transactions and generic `WithTransaction(func(Store))` callbacks do not cross into `app`.
 
 The name and contract expose the complete atomic and race guarantee to callers

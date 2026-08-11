@@ -5,134 +5,160 @@ package app
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
+	"errors"
+	"reflect"
 	"testing"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
 
-type jobOperationsStoreFake struct {
-	job         *model.Job
-	listOptions store.JobListOptions
-	mutation    *store.JobMutation
+type jobOperatorEngineFake struct {
+	events     *[]string
+	view       JobView
+	prepareErr error
+	applyErr   error
+	listQuery  ListJobsQuery
+	applyCalls int
 }
 
-func (f *jobOperationsStoreFake) Get(context.Context, model.JobID) (*model.Job, error) {
-	return f.job, nil
+func (f *jobOperatorEngineFake) List(_ context.Context, query jobengine.ListQuery) (jobengine.Page, error) {
+	*f.events = append(*f.events, "list")
+	f.listQuery = query
+	return JobPage{Items: []JobView{f.view}}, nil
 }
-func (f *jobOperationsStoreFake) List(_ context.Context, options store.JobListOptions) ([]*model.Job, error) {
-	f.listOptions = options
-	return []*model.Job{f.job}, nil
+func (f *jobOperatorEngineFake) Get(context.Context, model.JobID) (jobengine.View, error) {
+	*f.events = append(*f.events, "get")
+	return f.view, nil
 }
-func (f *jobOperationsStoreFake) ListAttemptsPage(context.Context, store.JobAttemptListOptions) ([]model.JobAttempt, error) {
-	return []model.JobAttempt{}, nil
+func (f *jobOperatorEngineFake) Attempts(context.Context, jobengine.AttemptListQuery) (jobengine.AttemptPage, error) {
+	*f.events = append(*f.events, "attempts")
+	return JobAttemptPage{Items: make([]JobAttemptView, 0)}, nil
 }
-func (f *jobOperationsStoreFake) CancelWithAudit(_ context.Context, mutation *store.JobMutation) (*model.Job, error) {
-	f.mutation = mutation
-	return f.job.RequestCancellation(time.Now().UTC())
+func (f *jobOperatorEngineFake) PrepareCancellation(context.Context, model.JobID) (jobengine.ControlTarget, error) {
+	*f.events = append(*f.events, "prepare-cancel")
+	return jobengine.ControlTarget{Projection: f.view}, f.prepareErr
 }
-func (f *jobOperationsStoreFake) RetryWithAudit(_ context.Context, mutation *store.JobMutation) (*model.Job, error) {
-	f.mutation = mutation
-	return f.job.ExplicitRetry(time.Now().UTC())
+func (f *jobOperatorEngineFake) PrepareRetry(context.Context, model.JobID) (jobengine.ControlTarget, error) {
+	*f.events = append(*f.events, "prepare-retry")
+	return jobengine.ControlTarget{Projection: f.view}, f.prepareErr
+}
+func (f *jobOperatorEngineFake) Cancel(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error) {
+	*f.events = append(*f.events, "cancel")
+	f.applyCalls++
+	return f.view, f.applyErr
+}
+func (f *jobOperatorEngineFake) Retry(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error) {
+	*f.events = append(*f.events, "retry")
+	f.applyCalls++
+	return f.view, f.applyErr
 }
 
 type jobOperationsAuthorizerFake struct {
+	events   *[]string
 	actions  []model.Action
 	resource model.Resource
+	err      error
 }
 
 func (f *jobOperationsAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
+	*f.events = append(*f.events, "authorize")
 	f.actions = append(f.actions, action)
-	return f.resource, nil
+	return f.resource, f.err
 }
 
-type jobOperationsAuditorFake struct{ operation string }
+type jobOperationsAuditorFake struct {
+	events    *[]string
+	operation string
+	params    map[string]any
+	err       error
+	failCalls int
+}
 
-func (f *jobOperationsAuditorFake) Begin(_ context.Context, _ Invocation, _ model.Action, _ model.Resource, operation string, _, _ map[string]any) (string, error) {
+func (f *jobOperationsAuditorFake) Begin(_ context.Context, _ Invocation, _ model.Action, _ model.Resource, operation string, params, _ map[string]any) (string, error) {
+	*f.events = append(*f.events, "audit")
 	f.operation = operation
-	return model.NewId(), nil
+	f.params = params
+	return model.NewId(), f.err
 }
-func (*jobOperationsAuditorFake) Fail(context.Context, string, string) error { return nil }
-
-type noOpJobHandler struct{}
-
-func (noOpJobHandler) Run(context.Context, JobExecution) JobOutcome { return JobOutcome{} }
-
-func jobOperationsRegistry(t *testing.T) *JobRegistry {
-	t.Helper()
-	registry, err := NewJobRegistry([]JobDescriptor{{
-		Type: model.JobTypeProfilePictureGenerateDefault, CommandVersions: []int{1}, ResultVersions: []int{1},
-		Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: time.Minute,
-		HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute,
-		Cancelable: true, ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed}, Visibility: JobVisibilityOperator,
-		SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour, Handler: noOpJobHandler{},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return registry
+func (f *jobOperationsAuditorFake) Fail(context.Context, string, string) error {
+	*f.events = append(*f.events, "audit-fail")
+	f.failCalls++
+	return nil
 }
 
-func TestJobOperationsExposeOnlySafeAllowlistedProjection(t *testing.T) {
-	at := time.Now().UTC().Add(-time.Minute)
-	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{"secret":"must-not-leak"}`), "private-dedupe", at, at, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
-	persistence := &jobOperationsStoreFake{job: job}
-	authorizer := &jobOperationsAuthorizerFake{resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}}
-	service := newJobOperationsService(persistence, authorizer, &jobOperationsAuditorFake{}, jobOperationsRegistry(t), time.Now)
+func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
+	t.Parallel()
+	events := make([]string, 0, 2)
+	view := JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
+	engine := &jobOperatorEngineFake{events: &events, view: view}
+	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}}
+	service := newJobOperationsService(engine, authorizer, &jobOperationsAuditorFake{events: &events}, time.Now)
 
 	page, appErr := service.List(context.Background(), Invocation{}, ListJobsQuery{Limit: 20})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if len(page.Items) != 1 || page.Items[0].ID != job.ID || len(persistence.listOptions.Types) != 1 || authorizer.actions[0] != model.ActionJobView {
-		t.Fatalf("safe list = %#v, options = %#v, actions = %#v", page, persistence.listOptions, authorizer.actions)
+	if len(page.Items) != 1 || page.Items[0].ID != view.ID || engine.listQuery.Limit != 20 || !reflect.DeepEqual(events, []string{"authorize", "list"}) || authorizer.actions[0] != model.ActionJobView {
+		t.Fatalf("page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
 	}
-	encoded, err := json.Marshal(page)
-	if err != nil {
-		t.Fatal(err)
+
+	events = events[:0]
+	authorizer.err = errors.New("denied")
+	if _, appErr = service.Get(context.Background(), Invocation{}, GetJobQuery{ID: view.ID}); appErr == nil {
+		t.Fatal("Get() ignored authorization failure")
 	}
-	for _, forbidden := range []string{"must-not-leak", "private-dedupe", "command", "checkpoint", "result", "claim_token"} {
-		if strings.Contains(string(encoded), forbidden) {
-			t.Fatalf("safe projection leaked %q: %s", forbidden, encoded)
-		}
+	if !reflect.DeepEqual(events, []string{"authorize"}) {
+		t.Fatalf("denied events=%v", events)
 	}
 }
 
-func TestJobOperationsCancelAndRetryOnlyWhenDescriptorDeclaresSafe(t *testing.T) {
-	at := time.Now().UTC().Add(-time.Minute)
-	queued, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, json.RawMessage(`{}`), "control", at, at, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
-	persistence := &jobOperationsStoreFake{job: queued}
-	authorizer := &jobOperationsAuthorizerFake{resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}}
-	auditor := &jobOperationsAuditorFake{}
-	service := newJobOperationsService(persistence, authorizer, auditor, jobOperationsRegistry(t), time.Now)
+func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
+	t.Parallel()
+	events := make([]string, 0, 4)
+	view := JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
+	engine := &jobOperatorEngineFake{events: &events, view: view}
+	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}}
+	auditor := &jobOperationsAuditorFake{events: &events}
+	service := newJobOperationsService(engine, authorizer, auditor, time.Now)
 
-	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: queued.ID}); appErr != nil {
+	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID}); appErr != nil {
 		t.Fatal(appErr)
 	}
-	if persistence.mutation == nil || auditor.operation != "cancel" || authorizer.actions[len(authorizer.actions)-1] != model.ActionJobManage {
-		t.Fatal("cancel was not authorized and audited")
+	if !reflect.DeepEqual(events, []string{"authorize", "prepare-cancel", "audit", "cancel"}) || auditor.operation != "cancel" || engine.applyCalls != 1 {
+		t.Fatalf("events=%v operation=%q apply=%d", events, auditor.operation, engine.applyCalls)
+	}
+	if auditor.params["job_id"] != view.ID.String() || auditor.params["type"] != string(view.Type) || auditor.params["status"] != string(view.Status) {
+		t.Fatalf("audit params=%#v", auditor.params)
 	}
 
-	running, _ := queued.Start(at.Add(time.Second))
-	failed, _ := running.Fail("job.failed", at.Add(2*time.Second))
-	persistence.job = failed
-	if _, appErr := service.Retry(context.Background(), Invocation{}, RetryJobCommand{ID: failed.ID}); appErr != nil {
-		t.Fatal(appErr)
+	events = events[:0]
+	auditor.err = errors.New("audit unavailable")
+	if _, appErr := service.Retry(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
+		t.Fatal("Retry() ignored audit failure")
 	}
-	if auditor.operation != "retry" {
-		t.Fatal("retry was not audited")
+	if !reflect.DeepEqual(events, []string{"authorize", "prepare-retry", "audit"}) || engine.applyCalls != 1 {
+		t.Fatalf("failed-audit events=%v apply=%d", events, engine.applyCalls)
 	}
-	page, _ := service.Attempts(context.Background(), Invocation{}, ListJobAttemptsQuery{JobID: failed.ID, Limit: 20})
-	if page.Items == nil {
-		t.Fatal("empty attempt history must be non-null")
+
+	events = events[:0]
+	auditor.err = nil
+	engine.applyErr = errors.New("transition unavailable")
+	if _, appErr := service.Retry(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
+		t.Fatal("Retry() ignored transition failure")
+	}
+	if !reflect.DeepEqual(events, []string{"authorize", "prepare-retry", "audit", "retry", "audit-fail"}) || auditor.failCalls != 1 {
+		t.Fatalf("failed-transition events=%v audit failures=%d", events, auditor.failCalls)
+	}
+}
+
+func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
+	t.Parallel()
+	events := make([]string, 0, 2)
+	engine := &jobOperatorEngineFake{events: &events, prepareErr: jobengine.ErrCancelUnsupported}
+	service := newJobOperationsService(engine, &jobOperationsAuthorizerFake{events: &events}, &jobOperationsAuditorFake{events: &events}, time.Now)
+	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()}); !Is(appErr, "job.cancel.unsupported") {
+		t.Fatalf("Cancel() error=%#v", appErr)
 	}
 }

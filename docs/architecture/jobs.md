@@ -87,6 +87,17 @@ Domain-facing work may later expose status through its owning resource.
 PostgreSQL is authoritative; general realtime Job events are not required for
 the first slice.
 
+Canonical safe Job and Job Attempt projections live with the `app/job` engine
+and omit raw commands, checkpoints, result documents, deduplication keys,
+claim ownership, tokens, and internal errors. Parent `app` names are stable
+aliases for transport consumers. The engine owns descriptor visibility,
+cursor validation, persistence reads, and descriptor-governed cancel/retry
+transitions. Application use cases still authorize the Principal, resolve the
+institution resource, create the fail-closed audit attempt, and translate
+engine/store failures. An opaque prepared control target carries the engine's
+validated transition and revision across that audit boundary without exposing
+persistence mechanics.
+
 The composition root constructs one immutable instance-scoped handler
 registry. Every descriptor declares supported payload versions, timeout,
 per-node concurrency, retry/backoff, cancelability, retention, and handler.

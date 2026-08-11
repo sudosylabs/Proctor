@@ -9,6 +9,9 @@
 // their owning application packages and enter through immutable Descriptors.
 // The engine also owns the lifecycle of pre-start daily recurrence proposers;
 // proposers retain application meaning and enqueue through narrow adapters.
+// Safe operator projections and descriptor-governed control transitions also
+// live here, while callers retain authorization, durable audit, and transport
+// error translation.
 // PostgreSQL remains authoritative through store.JobStore; this package does
 // not select infrastructure or expose transport concerns.
 package job
