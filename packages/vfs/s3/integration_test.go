@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+
 	"github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/packages/vfs/vfstest"
@@ -26,6 +29,7 @@ func TestIntegrationConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse VFS_S3_SECURE: %v", err)
 	}
+	ensureIntegrationBucket(t, endpoint, bucket, secure)
 
 	vfstest.Run(t, func(t *testing.T) vfs.FileSystem {
 		t.Helper()
@@ -52,6 +56,34 @@ func TestIntegrationConformance(t *testing.T) {
 		})
 		return filesystem
 	})
+}
+
+func ensureIntegrationBucket(t *testing.T, endpoint, bucket string, secure bool) {
+	t.Helper()
+	if os.Getenv("VFS_S3_CREATE_BUCKET") != "true" {
+		return
+	}
+	client, err := minio.New(endpoint, &minio.Options{
+		Creds: credentials.NewStaticV4(
+			os.Getenv("VFS_S3_ACCESS_KEY"), os.Getenv("VFS_S3_SECRET_KEY"), os.Getenv("VFS_S3_SESSION_TOKEN"),
+		),
+		Secure: secure,
+		Region: os.Getenv("VFS_S3_REGION"),
+	})
+	if err != nil {
+		t.Fatalf("new S3 bucket client: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	exists, err := client.BucketExists(ctx, bucket)
+	if err != nil {
+		t.Fatalf("check S3 integration bucket: %v", err)
+	}
+	if !exists {
+		if err := client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{Region: os.Getenv("VFS_S3_REGION")}); err != nil {
+			t.Fatalf("create S3 integration bucket: %v", err)
+		}
+	}
 }
 
 func cleanup(t *testing.T, filesystem vfs.FileSystem) {

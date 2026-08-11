@@ -121,7 +121,11 @@ VFS_S3_SECRET_KEY
 VFS_S3_SESSION_TOKEN  (optional)
 VFS_S3_REGION         (optional)
 VFS_S3_SECURE         (default: true)
+VFS_S3_CREATE_BUCKET  (optional; create the named test bucket when true)
 ```
+
+The bucket must already exist unless `VFS_S3_CREATE_BUCKET=true`; automatic
+creation is intended only for isolated integration-test infrastructure.
 
 ## License
 

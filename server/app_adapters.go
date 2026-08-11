@@ -156,7 +156,7 @@ func (a fileContentAdapter) NormalizeAndStoreProfilePicture(ctx context.Context,
 		}
 		path := profilePictureRenditionPath(revisionID, rendition.ID)
 		encodedSize := int64(encoded.Len())
-		if _, err = a.filesystem.Write(ctx, path, bytes.NewReader(encoded.Bytes()), vfspkg.WriteOptions{Size: &encodedSize, NoOverwrite: true}); err != nil {
+		if _, err = a.writeNewRendition(ctx, path, bytes.NewReader(encoded.Bytes()), encodedSize); err != nil {
 			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
@@ -180,13 +180,20 @@ func (a fileContentAdapter) GenerateAndStoreDefaultProfilePicture(ctx context.Co
 		}
 		path := profilePictureRenditionPath(revisionID, rendition.ID)
 		encodedSize := int64(len(encoded))
-		if _, err = a.filesystem.Write(ctx, path, bytes.NewReader(encoded), vfspkg.WriteOptions{Size: &encodedSize, NoOverwrite: true}); err != nil {
+		if _, err = a.writeNewRendition(ctx, path, bytes.NewReader(encoded), encodedSize); err != nil {
 			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
 		renditions = append(renditions, *rendition)
 	}
 	return renditions, nil
+}
+
+func (a fileContentAdapter) writeNewRendition(ctx context.Context, path string, body io.Reader, size int64) (vfspkg.Info, error) {
+	return a.filesystem.Write(ctx, path, body, vfspkg.WriteOptions{
+		Size:        &size,
+		NoOverwrite: a.filesystem.Capabilities().ConditionalWrite,
+	})
 }
 
 func (a fileContentAdapter) RenderDefaultProfilePicture(_ context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {

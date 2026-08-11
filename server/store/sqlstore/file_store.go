@@ -179,7 +179,15 @@ func (s SQLFileStore) RenewUploadLease(ctx context.Context, id model.UploadLease
 	if expiresAt.After(row.DatabaseNow.Add(model.UploadLeaseMaximumLifetime)) {
 		return nil, store.NewErrInvalidInput("upload_lease", "expires_at", nil)
 	}
-	renewed, err := lease.Renew(row.DatabaseNow, expiresAt, bytesReceived)
+	// Expiry eligibility and the renewal horizon remain owned by the primary
+	// database clock. Clamp the persisted lifecycle timestamp to its prior value
+	// so modest forward skew on the application node that created the lease
+	// cannot make UpdatedAt move backwards during an otherwise valid renewal.
+	renewalAt := row.DatabaseNow
+	if renewalAt.Before(lease.UpdatedAt) {
+		renewalAt = lease.UpdatedAt
+	}
+	renewed, err := lease.Renew(renewalAt, expiresAt, bytesReceived)
 	if err != nil {
 		return nil, store.NewErrConflict("upload_lease", "not_renewable", err)
 	}

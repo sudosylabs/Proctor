@@ -46,6 +46,21 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	if _, err = ss.File().RenewUploadLease(ctx, lease.ID, user.ID, renewed.Revision, 1, renewedUntil); !store.IsConflict(err) {
 		t.Fatalf("RenewUploadLease(without progress) error = %v", err)
 	}
+	// Creation timestamps arrive from an application node, while renewal leases
+	// are fenced by the primary database clock. Small forward node skew must not
+	// make a valid, progressing lease fail its monotonic domain validation.
+	futureAt := model.NowUTC().Add(5 * time.Minute)
+	futureEntry, err := model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, futureAt)
+	requireNoError(t, err)
+	futureRevision, err := model.NewFileRevision(model.NewFileRevisionID(), futureEntry.ID, model.FileAvailabilityPending, model.FileIndexingNotRequired, futureAt)
+	requireNoError(t, err)
+	futureLease, err := model.NewUploadLease(model.NewUploadLeaseID(), futureRevision.ID, user.ID, futureAt, futureAt.Add(time.Hour))
+	requireNoError(t, err)
+	_, err = ss.File().CreateUpload(ctx, &store.FileUploadCreation{Entry: futureEntry, Revision: futureRevision, Lease: futureLease})
+	requireNoError(t, err)
+	if _, err = ss.File().RenewUploadLease(ctx, futureLease.ID, user.ID, futureLease.Revision, 1, futureAt.Add(30*time.Minute)); err != nil {
+		t.Fatalf("RenewUploadLease(forward node clock skew) error = %v", err)
+	}
 	renditions := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, renditionErr := model.NewFileRendition(model.NewFileRenditionID(), revision.ID, fmt.Sprintf("profile_%d", size), "image/webp", 8, size, size, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", at)

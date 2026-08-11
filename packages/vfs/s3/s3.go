@@ -94,6 +94,13 @@ func (f *FS) Open(ctx context.Context, name string, options vfs.OpenOptions) (*v
 		return nil, vfs.Error(op, name, err)
 	}
 
+	info, err := f.client.StatObject(ctx, f.bucket, f.key(name), minio.StatObjectOptions{})
+	if err != nil {
+		return nil, vfs.Error(op, name, translateError(err))
+	}
+	if options.Offset > info.Size {
+		return nil, vfs.Error(op, name, vfs.ErrInvalidRange)
+	}
 	getOptions := minio.GetObjectOptions{}
 	if options.Offset > 0 || options.Length > 0 {
 		end := int64(0)
@@ -108,16 +115,11 @@ func (f *FS) Open(ctx context.Context, name string, options vfs.OpenOptions) (*v
 	if err != nil {
 		return nil, vfs.Error(op, name, translateError(err))
 	}
-	info, err := object.Stat()
-	if err != nil {
-		_ = object.Close()
-		return nil, vfs.Error(op, name, translateError(err))
+	var body io.ReadCloser = object
+	if options.Length > 0 {
+		body = &limitedReadCloser{Reader: io.LimitReader(object, options.Length), closer: object}
 	}
-	if options.Offset > info.Size {
-		_ = object.Close()
-		return nil, vfs.Error(op, name, vfs.ErrInvalidRange)
-	}
-	return &vfs.File{Info: objectInfo(name, info), Body: object}, nil
+	return &vfs.File{Info: objectInfo(name, info), Body: body}, nil
 }
 
 func (f *FS) Write(ctx context.Context, name string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
@@ -386,6 +388,15 @@ func normalizeTransfer(source, destination string, options vfs.TransferOptions) 
 		return source, destination, err
 	}
 	return source, destination, nil
+}
+
+type limitedReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (r *limitedReadCloser) Close() error {
+	return r.closer.Close()
 }
 
 func translateError(err error) error {

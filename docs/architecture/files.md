@@ -66,6 +66,13 @@ discoverable. A failed database commit may leave only an invisible object;
 bounded orphan cleanup removes it after a safety window. Visible metadata must
 never point to a partial upload.
 
+Rendition IDs are allocated before storage and produce cryptographically
+unguessable, revision-scoped object keys. Backends with conditional creation
+use it as defense in depth. Shared-object backends that cannot provide that
+primitive write the unique key directly; PostgreSQL publication remains the
+authoritative visibility and concurrency fence. This preserves identical
+application behavior without emulating a racy stat-then-write condition.
+
 New revisions pass through `Pending` to `Available`, `Quarantined`, or
 `Rejected`. Only available revisions may be downloaded, indexed, distributed,
 or projected into an execution environment. Content inspection may initially
@@ -172,7 +179,9 @@ backend.
 
 An Upload Lease initially expires after one hour and may be renewed only by its
 authenticated active upload while progress continues. An expired lease cannot
-be finalized even when partial objects still exist.
+be finalized even when partial objects still exist. The primary database clock
+decides expiry and the renewal horizon; lifecycle timestamps remain monotonic
+when the creating application node is modestly ahead of that clock.
 
 Every required normalized variant must exist before a profile-picture revision
 becomes available. A partial set remains visible only to lease cleanup and can

@@ -33,7 +33,15 @@ func TestFileContentAdapterPurgesBoundedRevisionPrefixIdempotentlyOnLocalVFS(t *
 		t.Fatal(err)
 	}
 	adapter := fileContentAdapter{filesystem: filesystem}
-	revisionID := model.NewFileRevisionID()
+	generatedRevisionID := model.NewFileRevisionID()
+	generated, err := adapter.GenerateAndStoreDefaultProfilePicture(context.Background(), generatedRevisionID, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", time.Now())
+	if err != nil {
+		t.Fatalf("generate complete local rendition set: %v", err)
+	}
+	if len(generated) != 3 {
+		t.Fatalf("generated local renditions = %d", len(generated))
+	}
+	revisionID, referencedRevisionID := model.NewFileRevisionID(), model.NewFileRevisionID()
 	firstID, secondID := model.NewFileRenditionID(), model.NewFileRenditionID()
 	for _, renditionID := range []model.FileRenditionID{firstID, secondID} {
 		body := []byte("partial")
@@ -41,6 +49,12 @@ func TestFileContentAdapterPurgesBoundedRevisionPrefixIdempotentlyOnLocalVFS(t *
 		if _, err = filesystem.Write(context.Background(), profilePictureRenditionPath(revisionID, renditionID), bytes.NewReader(body), vfspkg.WriteOptions{Size: &size, NoOverwrite: true}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	referencedID := model.NewFileRenditionID()
+	referencedBody := []byte("referenced")
+	referencedSize := int64(len(referencedBody))
+	if _, err = filesystem.Write(context.Background(), profilePictureRenditionPath(referencedRevisionID, referencedID), bytes.NewReader(referencedBody), vfspkg.WriteOptions{Size: &referencedSize, NoOverwrite: true}); err != nil {
+		t.Fatal(err)
 	}
 	if err = adapter.RemoveFileRevisionContent(context.Background(), revisionID, nil); err != nil {
 		t.Fatal(err)
@@ -50,6 +64,9 @@ func TestFileContentAdapterPurgesBoundedRevisionPrefixIdempotentlyOnLocalVFS(t *
 	}
 	if _, err = filesystem.Stat(context.Background(), profilePictureRenditionPath(revisionID, firstID)); !errors.Is(err, vfspkg.ErrNotFound) {
 		t.Fatalf("Stat() error = %v", err)
+	}
+	if _, err = filesystem.Stat(context.Background(), profilePictureRenditionPath(referencedRevisionID, referencedID)); err != nil {
+		t.Fatalf("referenced rendition was removed: %v", err)
 	}
 }
 
