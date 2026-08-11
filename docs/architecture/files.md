@@ -8,6 +8,14 @@ authoritative for that semantic metadata. The reusable VFS owns only streaming
 file content and backend-neutral storage operations; VFS paths and listings are
 never an authorization or discovery interface.
 
+The server-owned File Content module concentrates backend-neutral content
+mechanics over VFS: bounded validation and transformation, immutable rendition
+creation, checksums, private key derivation, exact reads, and idempotent
+physical deletion. It is stateless and owns no infrastructure lifecycle. The
+application retains authorization, semantic availability, publication,
+retention decisions, audit, indexing eligibility, and domain events; the sole
+composition root selects and supplies the concrete VFS backend.
+
 An acknowledged file change must survive loss of an application node or
 execution environment. Shared VFS stores the bytes in clustered production,
 while PostgreSQL records the application-visible identity and revision needed

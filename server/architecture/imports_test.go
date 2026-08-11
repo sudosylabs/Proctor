@@ -111,6 +111,9 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "Job engine cannot import platform", from: serverModule + "/app/job", imported: serverModule + "/platform"},
 		{name: "Job engine cannot import SQL adapter", from: serverModule + "/app/job", imported: serverModule + "/store/sqlstore"},
 		{name: "Job engine descendants cannot import Argon2", from: serverModule + "/app/job/internal", imported: "golang.org/x/crypto/argon2"},
+		{name: "File Content cannot import persistence", from: serverModule + "/filecontent", imported: serverModule + "/store"},
+		{name: "File Content cannot import HTTP", from: serverModule + "/filecontent", imported: "net/http"},
+		{name: "File Content cannot select a VFS backend", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs/local"},
 		{name: "HTTP cannot import persistence", from: serverModule + "/app/api", imported: serverModule + "/store"},
 		{name: "HTTP cannot import SQL driver", from: serverModule + "/app/api", imported: "database/sql"},
 		{name: "SQL adapter cannot import application policy", from: serverModule + "/store/sqlstore", imported: serverModule + "/app"},
@@ -147,6 +150,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "application may import store contracts", from: serverModule + "/app", imported: serverModule + "/store"},
 		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},
 		{name: "Job engine may import store contracts", from: serverModule + "/app/job", imported: serverModule + "/store"},
+		{name: "File Content may import domain models", from: serverModule + "/filecontent", imported: serverModule + "/model"},
+		{name: "File Content may import VFS contracts", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs"},
 		{name: "HTTP may import application", from: serverModule + "/app/api", imported: serverModule + "/app"},
 		{name: "HTTP may import router library", from: serverModule + "/app/api", imported: "github.com/gorilla/mux"},
 		{name: "SQL adapter may import store contracts", from: serverModule + "/store/sqlstore", imported: serverModule + "/store"},
@@ -248,6 +253,13 @@ func forbiddenImport(from, imported string) bool {
 	case packageOrBelow(from, serverModule+"/app/job"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
+	case packageOrBelow(from, serverModule+"/filecontent"):
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			forbiddenProjectImportExcept(
+				imported,
+				serverModule+"/model",
+				repositoryModule+"/packages/vfs",
+			)
 	case applicationPackage(from):
 		return standardInfrastructureImport(imported) ||
 			(thirdPartyImport(imported) && imported != "golang.org/x/crypto/argon2") ||
@@ -356,6 +368,7 @@ func knownProductionPackage(packagePath string) bool {
 		packageOrBelow(packagePath, serverModule+"/store/localcachelayer") ||
 		packageOrBelow(packagePath, serverModule+"/store/timerlayer") ||
 		packageOrBelow(packagePath, serverModule+"/store/retrylayer") ||
+		packageOrBelow(packagePath, serverModule+"/filecontent") ||
 		packageOrBelow(packagePath, serverModule+"/cluster/local") ||
 		packageOrBelow(packagePath, serverModule+"/cluster/memberlist") ||
 		packagePath == serverModule+"/cluster" ||

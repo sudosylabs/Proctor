@@ -32,7 +32,7 @@ func TestFileContentAdapterPurgesBoundedRevisionPrefixIdempotentlyOnLocalVFS(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := fileContentAdapter{filesystem: filesystem}
+	adapter := mustFileContentAdapter(t, filesystem)
 	generatedRevisionID := model.NewFileRevisionID()
 	generated, err := adapter.GenerateAndStoreDefaultProfilePicture(context.Background(), generatedRevisionID, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", time.Now())
 	if err != nil {
@@ -45,15 +45,13 @@ func TestFileContentAdapterPurgesBoundedRevisionPrefixIdempotentlyOnLocalVFS(t *
 	firstID, secondID := model.NewFileRenditionID(), model.NewFileRenditionID()
 	for _, renditionID := range []model.FileRenditionID{firstID, secondID} {
 		body := []byte("partial")
-		size := int64(len(body))
-		if _, err = filesystem.Write(context.Background(), profilePictureRenditionPath(revisionID, renditionID), bytes.NewReader(body), vfspkg.WriteOptions{Size: &size, NoOverwrite: true}); err != nil {
+		if err = adapter.content.StageProfilePictureRendition(context.Background(), revisionID, renditionID, bytes.NewReader(body), int64(len(body))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	referencedID := model.NewFileRenditionID()
 	referencedBody := []byte("referenced")
-	referencedSize := int64(len(referencedBody))
-	if _, err = filesystem.Write(context.Background(), profilePictureRenditionPath(referencedRevisionID, referencedID), bytes.NewReader(referencedBody), vfspkg.WriteOptions{Size: &referencedSize, NoOverwrite: true}); err != nil {
+	if err = adapter.content.StageProfilePictureRendition(context.Background(), referencedRevisionID, referencedID, bytes.NewReader(referencedBody), int64(len(referencedBody))); err != nil {
 		t.Fatal(err)
 	}
 	if err = adapter.RemoveFileRevisionContent(context.Background(), revisionID, nil); err != nil {
@@ -62,11 +60,16 @@ func TestFileContentAdapterPurgesBoundedRevisionPrefixIdempotentlyOnLocalVFS(t *
 	if err = adapter.RemoveFileRevisionContent(context.Background(), revisionID, []model.FileRenditionID{firstID, secondID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = filesystem.Stat(context.Background(), profilePictureRenditionPath(revisionID, firstID)); !errors.Is(err, vfspkg.ErrNotFound) {
-		t.Fatalf("Stat() error = %v", err)
+	if body, openErr := adapter.OpenProfilePictureRendition(context.Background(), revisionID, firstID); !errors.Is(openErr, vfspkg.ErrNotFound) {
+		if body != nil {
+			_ = body.Close()
+		}
+		t.Fatalf("open removed rendition error = %v", openErr)
 	}
-	if _, err = filesystem.Stat(context.Background(), profilePictureRenditionPath(referencedRevisionID, referencedID)); err != nil {
-		t.Fatalf("referenced rendition was removed: %v", err)
+	if body, openErr := adapter.OpenProfilePictureRendition(context.Background(), referencedRevisionID, referencedID); openErr != nil {
+		t.Fatalf("referenced rendition was removed: %v", openErr)
+	} else {
+		_ = body.Close()
 	}
 }
 
@@ -81,7 +84,8 @@ func TestFileContentAdapterNormalizesWithoutUpscalingAndUsesPrivateIDKeys(t *tes
 	if err := png.Encode(&input, source); err != nil {
 		t.Fatal(err)
 	}
-	adapter := fileContentAdapter{filesystem: memoryvfs.New()}
+	filesystem := memoryvfs.New()
+	adapter := mustFileContentAdapter(t, filesystem)
 	revisionID := model.NewFileRevisionID()
 	renditions, err := adapter.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(input.Bytes()), int64(input.Len()), time.Now())
 	if err != nil {
@@ -103,15 +107,20 @@ func TestFileContentAdapterNormalizesWithoutUpscalingAndUsesPrivateIDKeys(t *tes
 		if decoded.Bounds().Dx() != 20 || decoded.Bounds().Dy() != 20 {
 			t.Fatalf("%s dimensions = %v", rendition.Name, decoded.Bounds())
 		}
-		path := profilePictureRenditionPath(revisionID, rendition.ID)
-		if bytes.Contains([]byte(path), []byte("student")) || bytes.Contains([]byte(path), []byte("profile_")) {
-			t.Fatalf("path exposes domain/user naming: %q", path)
+	}
+	page, err := filesystem.List(context.Background(), vfspkg.ListOptions{Prefix: "files/", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range page.Entries {
+		if bytes.Contains([]byte(entry.Path), []byte("student")) || bytes.Contains([]byte(entry.Path), []byte("profile_")) {
+			t.Fatalf("path exposes domain/user naming: %q", entry.Path)
 		}
 	}
 }
 
 func TestDefaultProfilePictureRenderingIsDeterministicAndMatchesStoredRenditions(t *testing.T) {
-	adapter := fileContentAdapter{filesystem: memoryvfs.New()}
+	adapter := mustFileContentAdapter(t, memoryvfs.New())
 	seed := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	first, err := adapter.RenderDefaultProfilePicture(context.Background(), seed, 256)
 	if err != nil {
@@ -164,7 +173,7 @@ func TestFileContentAdapterAcceptsSupportedFormatsAndRejectsOversizedDimensions(
 			if err := test.encode(&input); err != nil {
 				t.Fatal(err)
 			}
-			adapter := fileContentAdapter{filesystem: memoryvfs.New()}
+			adapter := mustFileContentAdapter(t, memoryvfs.New())
 			if _, err := adapter.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Now()); err != nil {
 				t.Fatalf("normalize: %v", err)
 			}
@@ -175,7 +184,7 @@ func TestFileContentAdapterAcceptsSupportedFormatsAndRejectsOversizedDimensions(
 	if err := png.Encode(&input, oversized); err != nil {
 		t.Fatal(err)
 	}
-	adapter := fileContentAdapter{filesystem: memoryvfs.New()}
+	adapter := mustFileContentAdapter(t, memoryvfs.New())
 	if _, err := adapter.NormalizeAndStoreProfilePicture(context.Background(), model.NewFileRevisionID(), bytes.NewReader(input.Bytes()), int64(input.Len()), time.Now()); !errors.Is(err, app.ErrInvalidProfilePicture) {
 		t.Fatalf("oversized dimensions error = %v", err)
 	}
@@ -197,7 +206,7 @@ func TestFileContentAdapterAppliesEXIFOrientationBeforeCropping(t *testing.T) {
 		t.Fatal(err)
 	}
 	oriented := jpegWithEXIFOrientation(t, encoded.Bytes(), 6)
-	adapter := fileContentAdapter{filesystem: memoryvfs.New()}
+	adapter := mustFileContentAdapter(t, memoryvfs.New())
 	revisionID := model.NewFileRevisionID()
 	renditions, err := adapter.NormalizeAndStoreProfilePicture(context.Background(), revisionID, bytes.NewReader(oriented), int64(len(oriented)), time.Now())
 	if err != nil {
@@ -217,6 +226,15 @@ func TestFileContentAdapterAppliesEXIFOrientationBeforeCropping(t *testing.T) {
 	if topLeft.B < 180 || bottomLeft.B < 180 || topLeft.R > 80 || bottomLeft.R > 80 {
 		t.Fatalf("orientation was not applied before crop: top-left=%#v bottom-left=%#v", topLeft, bottomLeft)
 	}
+}
+
+func mustFileContentAdapter(t *testing.T, filesystem vfspkg.FileSystem) fileContentAdapter {
+	t.Helper()
+	adapter, err := newFileContentAdapter(filesystem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return adapter
 }
 
 func jpegWithEXIFOrientation(t *testing.T, jpegBytes []byte, orientation uint16) []byte {

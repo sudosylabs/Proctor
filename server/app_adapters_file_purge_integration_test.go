@@ -56,7 +56,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	t.Helper()
 	ctx := context.Background()
 	persistence := openFilePurgeStorageIntegrationStore(t)
-	adapter := fileContentAdapter{filesystem: filesystem}
+	adapter := mustFileContentAdapter(t, filesystem)
 	now := model.NowUTC()
 	user := &model.User{
 		Username: "purge-storage-" + model.NewId(),
@@ -169,8 +169,12 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	}
 	_ = body.Close()
 	for _, rendition := range purgeRenditions {
-		if _, statErr := filesystem.Stat(ctx, profilePictureRenditionPath(purgeRevision.ID, rendition.ID)); !errors.Is(statErr, vfspkg.ErrNotFound) {
-			t.Fatalf("purged rendition %s still exists: %v", rendition.ID, statErr)
+		body, openErr := adapter.OpenProfilePictureRendition(ctx, purgeRevision.ID, rendition.ID)
+		if body != nil {
+			_ = body.Close()
+		}
+		if !errors.Is(openErr, vfspkg.ErrNotFound) {
+			t.Fatalf("purged rendition %s still exists: %v", rendition.ID, openErr)
 		}
 	}
 	var remainingMetadata int

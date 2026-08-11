@@ -3,13 +3,10 @@
 ## Dependency direction
 
 ~~~text
-model ← store ← app/job ← app
-                         ↑  ↑
-                   app/api  websocket
-                       ↖    ↗
-                        server
-                          ↑
-                     cmd/proctor
+model ← store ← app/job ← app ← {app/api, websocket}
+model ← filecontent
+packages/vfs ← filecontent
+{app, app/api, websocket, filecontent} ← server ← cmd/proctor
 ~~~
 
 Infrastructure adapters sit to the side and point inward at their contracts. The root `server` package imports the components needed to assemble the graph.
@@ -20,6 +17,7 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `store` | `model` | `sqlstore`, HTTP, application services |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, transports, concrete adapters |
 | `app` | `model`, `store`, `app/job`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
+| `filecontent` | `model`, `packages/vfs` | application services, persistence, transports, platform service location, Jobs, configuration, third-party codecs, concrete VFS backends |
 | `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `websocket` | `app`, `model`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
@@ -34,9 +32,11 @@ The reusable modules own portable infrastructure behavior; the server owns
 product meaning and policy:
 
 - `packages/vfs` owns backend-neutral file operations. The server owns semantic
-  paths, metadata, authorization, retention, and content policy. Local VFS is
-  for development or genuinely shared single-node storage; clustered
-  production uses shared storage.
+  metadata, authorization, retention, and content policy. The server-owned
+  `filecontent` module concentrates private semantic keys, bounded content
+  processing, immutable rendition mechanics, exact reads, and physical purge
+  over that reusable contract. Local VFS is for development or genuinely
+  shared single-node storage; clustered production uses shared storage.
 - `packages/cache` owns memory/Redis semantics, codecs, TTLs, conditional
   writes, and counters. The server owns namespaces, cache eligibility,
   invalidation, and security staleness. Cache is never durable state, an

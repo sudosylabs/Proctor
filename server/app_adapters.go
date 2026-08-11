@@ -24,6 +24,7 @@ import (
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -43,12 +44,16 @@ func applicationDependencies(
 	auth := cfg.Authentication
 	cache := platformAuthenticationCache{cache: applicationPlatform.Cache()}
 	log := applicationPlatform.Log()
+	content, err := newFileContentAdapter(applicationPlatform.VFS())
+	if err != nil {
+		return app.Dependencies{}, err
+	}
 	return app.Dependencies{
 		Store:       applicationPlatform.Store(),
 		Cache:       cache,
 		Mailer:      accountMailerAdapter{mailer: applicationPlatform.Mailer()},
 		Registry:    externalProviderRegistryAdapter{registry: applicationPlatform},
-		FileContent: fileContentAdapter{filesystem: applicationPlatform.VFS()},
+		FileContent: content,
 		NodeID:      applicationPlatform.Cluster().NodeID(),
 		PublicURL:   cfg.Server.PublicURL,
 		Password: app.PasswordPolicy{
@@ -113,7 +118,15 @@ func applicationDependencies(
 	}, nil
 }
 
-type fileContentAdapter struct{ filesystem vfspkg.FileSystem }
+type fileContentAdapter struct{ content *filecontent.Content }
+
+func newFileContentAdapter(filesystem vfspkg.FileSystem) (fileContentAdapter, error) {
+	content, err := filecontent.New(filesystem)
+	if err != nil {
+		return fileContentAdapter{}, err
+	}
+	return fileContentAdapter{content: content}, nil
+}
 
 func (a fileContentAdapter) NormalizeAndStoreProfilePicture(ctx context.Context, revisionID model.FileRevisionID, body io.Reader, size int64, at time.Time) ([]model.FileRendition, error) {
 	const maximumPixels = 25_000_000
@@ -154,9 +167,8 @@ func (a fileContentAdapter) NormalizeAndStoreProfilePicture(ctx context.Context,
 			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, modelErr
 		}
-		path := profilePictureRenditionPath(revisionID, rendition.ID)
 		encodedSize := int64(encoded.Len())
-		if _, err = a.writeNewRendition(ctx, path, bytes.NewReader(encoded.Bytes()), encodedSize); err != nil {
+		if err = a.content.StageProfilePictureRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded.Bytes()), encodedSize); err != nil {
 			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
@@ -178,22 +190,14 @@ func (a fileContentAdapter) GenerateAndStoreDefaultProfilePicture(ctx context.Co
 			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
-		path := profilePictureRenditionPath(revisionID, rendition.ID)
 		encodedSize := int64(len(encoded))
-		if _, err = a.writeNewRendition(ctx, path, bytes.NewReader(encoded), encodedSize); err != nil {
+		if err = a.content.StageProfilePictureRendition(ctx, revisionID, rendition.ID, bytes.NewReader(encoded), encodedSize); err != nil {
 			_ = a.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
 		}
 		renditions = append(renditions, *rendition)
 	}
 	return renditions, nil
-}
-
-func (a fileContentAdapter) writeNewRendition(ctx context.Context, path string, body io.Reader, size int64) (vfspkg.Info, error) {
-	return a.filesystem.Write(ctx, path, body, vfspkg.WriteOptions{
-		Size:        &size,
-		NoOverwrite: a.filesystem.Capabilities().ConditionalWrite,
-	})
 }
 
 func (a fileContentAdapter) RenderDefaultProfilePicture(_ context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
@@ -243,68 +247,22 @@ func renderDefaultProfilePicture(seed string, size int) ([]byte, string, error) 
 }
 
 func (a fileContentAdapter) OpenProfilePictureRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) (io.ReadCloser, error) {
-	file, err := a.filesystem.Open(ctx, profilePictureRenditionPath(revisionID, renditionID), vfspkg.OpenOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return file.Body, nil
+	return a.content.OpenRendition(ctx, revisionID, renditionID)
 }
 
 func (a fileContentAdapter) RemoveProfilePictureRenditions(ctx context.Context, revisionID model.FileRevisionID, renditions []model.FileRendition) error {
-	var joined error
+	ids := make([]model.FileRenditionID, 0, len(renditions))
 	for _, rendition := range renditions {
-		joined = errors.Join(joined, a.filesystem.Remove(ctx, profilePictureRenditionPath(revisionID, rendition.ID), vfspkg.RemoveOptions{}))
+		ids = append(ids, rendition.ID)
 	}
-	return joined
+	return a.content.RemoveRenditions(ctx, revisionID, ids)
 }
 
 func (a fileContentAdapter) RemoveFileRevisionContent(ctx context.Context, revisionID model.FileRevisionID, renditionIDs []model.FileRenditionID) error {
-	if !revisionID.IsValid() {
-		return fmt.Errorf("invalid file revision ID")
-	}
-	remove := func(path string) error {
-		err := a.filesystem.Remove(ctx, path, vfspkg.RemoveOptions{})
-		if errors.Is(err, vfspkg.ErrNotFound) {
-			return nil
-		}
-		return err
-	}
 	if len(renditionIDs) > 0 {
-		for _, renditionID := range renditionIDs {
-			if !renditionID.IsValid() {
-				return fmt.Errorf("invalid file rendition ID")
-			}
-			if err := remove(profilePictureRenditionPath(revisionID, renditionID)); err != nil {
-				return err
-			}
-		}
-		return nil
+		return a.content.RemoveRenditions(ctx, revisionID, renditionIDs)
 	}
-	prefix := fileRevisionRenditionPrefix(revisionID)
-	page, err := a.filesystem.List(ctx, vfspkg.ListOptions{Prefix: prefix, Limit: 100})
-	if err != nil {
-		return err
-	}
-	if page.NextCursor != "" {
-		return fmt.Errorf("file revision exceeds bounded rendition limit")
-	}
-	for _, entry := range page.Entries {
-		if !entry.IsDir {
-			if err = remove(entry.Path); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func profilePictureRenditionPath(revisionID model.FileRevisionID, renditionID model.FileRenditionID) string {
-	return fileRevisionRenditionPrefix(revisionID) + renditionID.String() + ".webp"
-}
-
-func fileRevisionRenditionPrefix(revisionID model.FileRevisionID) string {
-	id := revisionID.String()
-	return fmt.Sprintf("files/%s/%s/revisions/%s/renditions/", id[:2], id[2:4], id)
+	return a.content.PurgeAbandonedRevision(ctx, revisionID)
 }
 
 // platformAuthenticationCache adapts platform.Cache to app.authenticationCache.

@@ -105,6 +105,13 @@ _Avoid_: Proctor, grader
 
 ## File content
 
+**File Content**:
+The durable bytes and immutable representations belonging to file revisions,
+including any bounded normalized or extracted forms derived from those bytes.
+Whether content may be stored, searched, retained, or exposed remains meaning
+owned by the file entry's application purpose.
+_Avoid_: Live workspace state, authorization policy, search permission
+
 **File Entry**:
 A stable, application-visible file identity with one owner and purpose across
 changes to its content.
