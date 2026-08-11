@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -578,7 +579,7 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	user := &model.User{Username: "student", Email: "student@example.test"}
 	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
 	persistence := &pictureStoreFake{user: user}
-	command, err := EncodeDefaultProfilePictureCommand(DefaultProfilePictureCommandV1{UserID: user.ID})
+	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,8 +589,8 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	}
 	generator := newProfilePictureService(persistence, persistence, &pictureContentFake{}, nil, nil, nil, nil, nil, func() time.Time { return at })
 	handler := defaultProfilePictureHandler{generator: generator}
-	outcome := handler.Run(context.Background(), JobExecution{Job: job})
-	if outcome.Kind != JobOutcomeSucceeded || outcome.Err != nil || persistence.defaultPublication == nil || len(persistence.defaultPublication.Renditions) != 3 || persistence.defaultPublication.UserID != user.ID {
+	outcome := handler.Run(context.Background(), jobengine.Execution{Job: job})
+	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || persistence.defaultPublication == nil || len(persistence.defaultPublication.Renditions) != 3 || persistence.defaultPublication.UserID != user.ID {
 		t.Fatalf("handler outcome/store = %#v / %#v", outcome, persistence)
 	}
 	if !persistence.defaultPublication.AttachedAt.Equal(at) || user.ProfilePictureChangedAt.Valid {
@@ -598,8 +599,8 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	attached := *user
 	attached.DefaultProfilePictureFileID = persistence.defaultPublication.EntryID
 	persistence.user = &attached
-	second := handler.Run(context.Background(), JobExecution{Job: job})
-	if second.Kind != JobOutcomeSucceeded || persistence.defaultPublication.EntryID != attached.DefaultProfilePictureFileID || persistence.defaultPublications != 1 {
+	second := handler.Run(context.Background(), jobengine.Execution{Job: job})
+	if second.Kind != jobengine.OutcomeSucceeded || persistence.defaultPublication.EntryID != attached.DefaultProfilePictureFileID || persistence.defaultPublications != 1 {
 		t.Fatalf("idempotent outcome = %#v", second)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -106,43 +107,43 @@ type filePurgeExpiredContentHandler struct {
 	content filePurgeContent
 }
 
-func newFilePurgeExpiredContentHandler(files filePurgeStore, content filePurgeContent) JobHandler {
+func newFilePurgeExpiredContentHandler(files filePurgeStore, content filePurgeContent) jobengine.Handler {
 	return filePurgeExpiredContentHandler{files: files, content: content}
 }
 
-func (h filePurgeExpiredContentHandler) Run(ctx context.Context, execution JobExecution) JobOutcome {
+func (h filePurgeExpiredContentHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
 	if execution.Job == nil || h.files == nil || h.content == nil {
-		return JobPermanentFailure("job.command.invalid", errors.New("invalid file purge dependencies"))
+		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid file purge dependencies"))
 	}
 	command, err := DecodeFilePurgeExpiredContentCommand(execution.Job.CommandVersion, execution.Job.Command)
 	if err != nil {
-		return JobPermanentFailure("job.command.invalid", err)
+		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
 	checkpoint := FilePurgeExpiredContentCheckpointV1{}
 	if len(execution.Job.Checkpoint) > 0 {
 		checkpoint, err = DecodeFilePurgeExpiredContentCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
 		if err != nil {
-			return JobPermanentFailure("job.checkpoint.invalid", err)
+			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
 	}
 	remaining := command.BatchSize - execution.Job.WorkReserved
 	if checkpoint.Examined >= int64(command.BatchSize) || remaining <= 0 {
 		result, marshalErr := json.Marshal(FilePurgeExpiredContentResultV1{Examined: checkpoint.Examined, Purged: checkpoint.Purged})
-		return JobOutcome{Kind: JobOutcomeSucceeded, ResultVersion: 1, Result: result, Err: marshalErr}
+		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: result, Err: marshalErr}
 	}
 	if checkpointRemaining := command.BatchSize - int(checkpoint.Examined); checkpointRemaining < remaining {
 		remaining = checkpointRemaining
 	}
 	page, err := h.files.ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{After: checkpoint.Cursor, Limit: remaining})
 	if err != nil {
-		return JobRetryableFailure("database.unavailable", err)
+		return jobengine.RetryableFailure("database.unavailable", err)
 	}
 	progressTotal := checkpoint.Examined + int64(len(page.Candidates))
 	for index := range page.Candidates {
 		candidate := &page.Candidates[index]
 		reserved, reserveErr := execution.ReserveWork(ctx, 1, command.BatchSize)
 		if reserveErr != nil {
-			return JobRetryableFailure("database.unavailable", reserveErr)
+			return jobengine.RetryableFailure("database.unavailable", reserveErr)
 		}
 		if !reserved {
 			break
@@ -150,33 +151,33 @@ func (h filePurgeExpiredContentHandler) Run(ctx context.Context, execution JobEx
 		claim, claimErr := h.files.ClaimPurgeCandidate(ctx, candidate)
 		if claimErr != nil {
 			if !store.IsConflict(claimErr) && !store.IsNotFound(claimErr) {
-				return JobRetryableFailure("database.unavailable", claimErr)
+				return jobengine.RetryableFailure("database.unavailable", claimErr)
 			}
 			checkpoint.Cursor = candidate.Cursor
 			checkpoint.Examined++
 			if err = checkpointFilePurge(ctx, execution, checkpoint, progressTotal); err != nil {
-				return JobRetryableFailure("database.unavailable", err)
+				return jobengine.RetryableFailure("database.unavailable", err)
 			}
 			continue
 		}
 		if err = h.content.RemoveFileRevisionContent(ctx, claim.Candidate.RevisionID, claim.Candidate.RenditionIDs); err != nil {
-			return JobRetryableFailure("file.backend_unavailable", err)
+			return jobengine.RetryableFailure("file.backend_unavailable", err)
 		}
 		if err = h.files.CompletePurge(ctx, claim); err != nil {
-			return JobRetryableFailure("database.unavailable", err)
+			return jobengine.RetryableFailure("database.unavailable", err)
 		}
 		checkpoint.Cursor = candidate.Cursor
 		checkpoint.Examined++
 		checkpoint.Purged++
 		if err = checkpointFilePurge(ctx, execution, checkpoint, progressTotal); err != nil {
-			return JobRetryableFailure("database.unavailable", err)
+			return jobengine.RetryableFailure("database.unavailable", err)
 		}
 	}
 	result, err := json.Marshal(FilePurgeExpiredContentResultV1{Examined: checkpoint.Examined, Purged: checkpoint.Purged})
-	return JobOutcome{Kind: JobOutcomeSucceeded, ResultVersion: 1, Result: result, Err: err}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: result, Err: err}
 }
 
-func checkpointFilePurge(ctx context.Context, execution JobExecution, checkpoint FilePurgeExpiredContentCheckpointV1, total int64) error {
+func checkpointFilePurge(ctx context.Context, execution jobengine.Execution, checkpoint FilePurgeExpiredContentCheckpointV1, total int64) error {
 	document, err := EncodeFilePurgeExpiredContentCheckpoint(checkpoint)
 	if err != nil {
 		return err
@@ -184,9 +185,9 @@ func checkpointFilePurge(ctx context.Context, execution JobExecution, checkpoint
 	if total < 1 {
 		total = 1
 	}
-	return execution.Checkpoint(ctx, JobCheckpointValue{Version: 1, Progress: &model.JobProgress{Current: checkpoint.Examined, Total: total, Stage: "purging"}, Document: document})
+	return execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Progress: &model.JobProgress{Current: checkpoint.Examined, Total: total, Stage: "purging"}, Document: document})
 }
 
-func filePurgeExpiredContentDescriptor(handler JobHandler) JobDescriptor {
-	return JobDescriptor{Type: model.JobTypeFilePurgeExpiredContent, CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1}, ProgressStages: []string{"purging"}, PublicErrorCodes: []string{"database.unavailable", "file.backend_unavailable", "job.checkpoint.invalid", "job.command.invalid"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Visibility: JobVisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+func filePurgeExpiredContentDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+	return jobengine.Descriptor{Type: model.JobTypeFilePurgeExpiredContent, CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1}, ProgressStages: []string{"purging"}, PublicErrorCodes: []string{"database.unavailable", "file.backend_unavailable", "job.checkpoint.invalid", "job.command.invalid"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

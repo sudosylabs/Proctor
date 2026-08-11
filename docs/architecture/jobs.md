@@ -12,10 +12,13 @@ reapers do not become Jobs merely because they run in the background.
 `model.JobAttempt` records every execution claim and outcome so retries do not
 erase evidence. `store.JobStore` owns atomic enqueue, claim, fencing,
 checkpoint, terminal, and retention contracts. Application use cases own job
-creation, authorization, cancellation, progress meaning, and type-specific
-handlers. A root-owned `app/job` engine invokes those handlers and owns generic
-execution mechanics; handlers call application use cases rather than
-manipulating unrelated stores.
+creation, actor-sensitive cancellation authorization, progress meaning, and
+type-specific handlers. The application constructs the `app/job` engine from
+those domain handler adapters and immutable recurrence definitions. The
+module-root server then owns the engine's start and close order as part of the
+runtime lifecycle. Root ownership therefore means lifecycle ownership, not
+that the root defines Job types or application policy. Handlers call
+application use cases rather than manipulating unrelated stores.
 
 ## Delivery and claiming
 
@@ -94,9 +97,11 @@ aliases for transport consumers. The engine owns descriptor visibility,
 cursor validation, persistence reads, and descriptor-governed cancel/retry
 transitions. Application use cases still authorize the Principal, resolve the
 institution resource, create the fail-closed audit attempt, and translate
-engine/store failures. An opaque prepared control target carries the engine's
-validated transition and revision across that audit boundary without exposing
-persistence mechanics.
+engine/store failures. Cancellation is therefore actor-sensitive in the
+parent application even though descriptor checks and the cooperative state
+transition belong to the engine. An opaque prepared control target carries the
+engine's validated transition and revision across that audit boundary without
+exposing persistence mechanics.
 
 The composition root constructs one immutable instance-scoped handler
 registry. Every descriptor declares supported payload versions, timeout,

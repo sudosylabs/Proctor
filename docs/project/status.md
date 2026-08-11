@@ -39,9 +39,10 @@ the code and component contracts for that detail.
   change events. Missing default pictures render deterministically without
   profile data and are persisted asynchronously as the same complete rendition
   set without changing the visible-picture timestamp.
-- Durable Jobs have versioned typed contracts, append-preserving Attempt
-  history, database-clock PostgreSQL claims, token-fenced heartbeats and
-  completion, expired-lease recovery, bounded runner lifecycle, and an
+- Durable Jobs run through one application Job engine with immutable type and
+  recurrence registration, versioned typed contracts, append-preserving
+  Attempt history, database-clock PostgreSQL claims, token-fenced heartbeats
+  and completion, expired-lease recovery, bounded root-owned lifecycle, and an
   idempotent default-profile-picture generator. Every user-creation transaction
   now records that generation intent atomically. Daily occurrence-keyed work
   reconciles missed defaults, purges metadata-selected expired file content,

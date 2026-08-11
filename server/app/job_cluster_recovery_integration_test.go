@@ -195,13 +195,13 @@ func (s *recoveryFileStore) PublishDefaultProfilePicture(ctx context.Context, in
 
 type recoveryCommitHandler struct {
 	phase    string
-	next     JobHandler
+	next     jobengine.Handler
 	entered  chan struct{}
 	canceled chan struct{}
 	calls    atomic.Int64
 }
 
-func (h *recoveryCommitHandler) Run(ctx context.Context, execution JobExecution) JobOutcome {
+func (h *recoveryCommitHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
 	call := h.calls.Add(1)
 	if call != 1 {
 		return h.next.Run(ctx, execution)
@@ -211,7 +211,7 @@ func (h *recoveryCommitHandler) Run(ctx context.Context, execution JobExecution)
 		close(h.entered)
 		<-ctx.Done()
 		close(h.canceled)
-		return JobRetryableFailure("dependency.unavailable", ctx.Err())
+		return jobengine.RetryableFailure("dependency.unavailable", ctx.Err())
 	case "during_commit":
 		go func() {
 			<-ctx.Done()
@@ -229,13 +229,13 @@ func (h *recoveryCommitHandler) Run(ctx context.Context, execution JobExecution)
 	}
 }
 
-func clusteredRecoveryJobDescriptor(handler JobHandler) JobDescriptor {
-	return JobDescriptor{
+func clusteredRecoveryJobDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+	return jobengine.Descriptor{
 		Type: model.JobTypeProfilePictureGenerateDefault, CommandVersions: []int{1}, ResultVersions: []int{1},
 		PublicErrorCodes: []string{"dependency.unavailable"}, Timeout: 2 * time.Second, Concurrency: 1,
 		MaximumAttempts: 3, LeaseDuration: 250 * time.Millisecond, HeartbeatInterval: 50 * time.Millisecond,
 		BaseRetryDelay: time.Millisecond, MaximumRetryDelay: 10 * time.Millisecond,
-		Visibility: JobVisibilityOperator, SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour,
+		Visibility: jobengine.VisibilityOperator, SuccessRetention: 24 * time.Hour, FailureRetention: 48 * time.Hour,
 		Handler: handler,
 	}
 }

@@ -6,11 +6,12 @@ package app
 import (
 	"context"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func testJobExecution(record *model.Job, reserveWork func(context.Context, int, int) (bool, error), checkpoint func(context.Context, JobCheckpointValue) error) JobExecution {
-	return newJobExecution(record, nil, checkpoint, reserveWork)
+func testJobExecution(record *model.Job, reserveWork func(context.Context, int, int) (bool, error), checkpoint func(context.Context, jobengine.CheckpointValue) error) jobengine.Execution {
+	return jobengine.NewExecution(record, nil, checkpoint, reserveWork)
 }
 
 func allowJobWorkReservation() func(context.Context, int, int) (bool, error) {

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -56,14 +57,14 @@ func TestDefaultProfilePictureReconciliationUsesBoundedPagesAndSafeCheckpoints(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	var checkpoints []JobCheckpointValue
-	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
+	var checkpoints []jobengine.CheckpointValue
+	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	})
 
 	outcome := handler.Run(context.Background(), execution)
-	if outcome.Kind != JobOutcomeSucceeded || outcome.Err != nil || len(defaults.users) != 2 || len(checkpoints) != 1 {
+	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || len(defaults.users) != 2 || len(checkpoints) != 1 {
 		t.Fatalf("outcome=%#v proposed=%v checkpoints=%#v", outcome, defaults.users, checkpoints)
 	}
 	if len(lister.calls) != 1 || lister.calls[0].Limit != 2 || !lister.calls[0].MissingDefaultProfilePicture || !lister.calls[0].IncludeDisabled {
@@ -103,10 +104,10 @@ func TestDefaultProfilePictureReconciliationDoesNotExceedCommittedBatchOnRetry(t
 	if err = job.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	execution := testJobExecution(job, allowJobWorkReservation(), func(context.Context, JobCheckpointValue) error { return nil })
+	execution := testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil })
 
 	outcome := handler.Run(context.Background(), execution)
-	if outcome.Kind != JobOutcomeSucceeded || len(defaults.users) != 0 || len(lister.calls) != 0 {
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(defaults.users) != 0 || len(lister.calls) != 0 {
 		t.Fatalf("outcome=%#v proposed=%v calls=%#v", outcome, defaults.users, lister.calls)
 	}
 }
@@ -122,7 +123,7 @@ func TestDefaultProfilePictureReconciliationDoesNotRepeatReservedWorkAfterCrash(
 	}
 	job.WorkReserved = 1
 	outcome := (defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	if outcome.Kind != JobOutcomeSucceeded || len(lister.calls) != 0 || len(defaults.users) != 0 {
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(lister.calls) != 0 || len(defaults.users) != 0 {
 		t.Fatalf("outcome=%#v calls=%#v proposed=%#v", outcome, lister.calls, defaults.users)
 	}
 }

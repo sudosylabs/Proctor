@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -85,39 +86,39 @@ type jobHistoryCleanupHandler struct {
 	policies []store.JobRetentionPolicy
 }
 
-func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution JobExecution) JobOutcome {
+func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
 	if execution.Job == nil {
-		return JobPermanentFailure("job.command.invalid", errors.New("job is missing"))
+		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
 	command, err := DecodeJobHistoryCleanupCommand(execution.Job.CommandVersion, execution.Job.Command)
 	if err != nil {
-		return JobPermanentFailure("job.command.invalid", err)
+		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
 	checkpoint := JobHistoryCleanupCheckpointV1{}
 	if len(execution.Job.Checkpoint) != 0 {
 		checkpoint, err = DecodeJobHistoryCleanupCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
 		if err != nil {
-			return JobPermanentFailure("job.checkpoint.invalid", err)
+			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
 		document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{Deleted: checkpoint.Deleted})
-		return JobOutcome{Kind: JobOutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
 	}
 	remaining := command.BatchSize - execution.Job.WorkReserved
 	if remaining <= 0 {
 		document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{})
-		return JobOutcome{Kind: JobOutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
 	}
 	reserved, reserveErr := execution.ReserveWork(ctx, remaining, command.BatchSize)
 	if reserveErr != nil {
-		return JobRetryableFailure("dependency.unavailable", reserveErr)
+		return jobengine.RetryableFailure("dependency.unavailable", reserveErr)
 	}
 	if !reserved {
 		document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{})
-		return JobOutcome{Kind: JobOutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
 	}
 	page, deleteErr := h.jobs.DeleteTerminalHistory(ctx, &store.JobHistoryCleanup{ExcludeJobID: execution.Job.ID, Policies: h.policies, Limit: remaining})
 	if deleteErr != nil {
-		return JobRetryableFailure("dependency.unavailable", deleteErr)
+		return jobengine.RetryableFailure("dependency.unavailable", deleteErr)
 	}
 	checkpoint.Deleted = page.Deleted
 	checkpoint.AfterCompletedAt = page.LastCompletedAt
@@ -125,14 +126,14 @@ func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution JobExecutio
 	if page.Deleted > 0 {
 		document, encodeErr := EncodeJobHistoryCleanupCheckpoint(checkpoint)
 		if encodeErr != nil {
-			return JobPermanentFailure("job.invariant_failed", encodeErr)
+			return jobengine.PermanentFailure("job.invariant_failed", encodeErr)
 		}
-		if checkpointErr := execution.Checkpoint(ctx, JobCheckpointValue{Version: 1, Progress: &model.JobProgress{Current: checkpoint.Deleted, Total: checkpoint.Deleted, Stage: "completed"}, Document: document}); checkpointErr != nil {
-			return JobRetryableFailure("dependency.unavailable", checkpointErr)
+		if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Progress: &model.JobProgress{Current: checkpoint.Deleted, Total: checkpoint.Deleted, Stage: "completed"}, Document: document}); checkpointErr != nil {
+			return jobengine.RetryableFailure("dependency.unavailable", checkpointErr)
 		}
 	}
 	document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{Deleted: checkpoint.Deleted})
-	return JobOutcome{Kind: JobOutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
 }
 
 type jobHistoryCleanupProposer struct {
@@ -155,6 +156,6 @@ func (p jobHistoryCleanupProposer) Propose(ctx context.Context, occurrence time.
 	return err
 }
 
-func jobHistoryCleanupDescriptor(handler JobHandler) JobDescriptor {
-	return JobDescriptor{Type: model.JobTypeCleanup, CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1}, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: JobVisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+func jobHistoryCleanupDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+	return jobengine.Descriptor{Type: model.JobTypeCleanup, CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1}, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

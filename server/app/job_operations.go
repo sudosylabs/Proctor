@@ -19,10 +19,19 @@ type JobView = jobengine.View
 type JobAttemptView = jobengine.AttemptView
 type JobPage = jobengine.Page
 type JobAttemptPage = jobengine.AttemptPage
-type ListJobsQuery = jobengine.ListQuery
-type ListJobAttemptsQuery = jobengine.AttemptListQuery
+
+type ListJobsQuery struct {
+	Statuses        []model.JobStatus
+	BeforeCreatedAt time.Time
+	BeforeID        model.JobID
+	Limit           int
+}
 
 type GetJobQuery struct{ ID model.JobID }
+type ListJobAttemptsQuery struct {
+	JobID               model.JobID
+	BeforeNumber, Limit int
+}
 type CancelJobCommand struct{ ID model.JobID }
 type RetryJobCommand struct{ ID model.JobID }
 
@@ -119,7 +128,10 @@ func (s *jobOperationsService) List(ctx context.Context, invocation Invocation, 
 	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionJobView); err != nil {
 		return JobPage{}, err
 	}
-	page, err := s.jobs.List(ctx, query)
+	page, err := s.jobs.List(ctx, jobengine.ListQuery{
+		Statuses: query.Statuses, BeforeCreatedAt: query.BeforeCreatedAt,
+		BeforeID: query.BeforeID, Limit: query.Limit,
+	})
 	if err != nil {
 		return JobPage{}, jobOperationsError(err)
 	}
@@ -141,7 +153,9 @@ func (s *jobOperationsService) Attempts(ctx context.Context, invocation Invocati
 	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionJobView); err != nil {
 		return JobAttemptPage{}, err
 	}
-	page, err := s.jobs.Attempts(ctx, query)
+	page, err := s.jobs.Attempts(ctx, jobengine.AttemptListQuery{
+		JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit,
+	})
 	if err != nil {
 		return JobAttemptPage{}, jobOperationsError(err)
 	}

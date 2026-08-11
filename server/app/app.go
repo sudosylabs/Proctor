@@ -224,7 +224,7 @@ func New(deps Dependencies) (*App, error) {
 			users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
 		}
 		purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent)
-		descriptors := []JobDescriptor{
+		descriptors := []jobengine.Descriptor{
 			defaultProfilePictureDescriptor(defaultHandler),
 			defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
 			filePurgeExpiredContentDescriptor(purgeHandler),
@@ -338,7 +338,7 @@ func New(deps Dependencies) (*App, error) {
 	}, nil
 }
 
-func jobRetentionPolicies(descriptors []JobDescriptor) []store.JobRetentionPolicy {
+func jobRetentionPolicies(descriptors []jobengine.Descriptor) []store.JobRetentionPolicy {
 	policies := make([]store.JobRetentionPolicy, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		policies = append(policies, store.JobRetentionPolicy{

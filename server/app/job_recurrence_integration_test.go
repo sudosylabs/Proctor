@@ -21,8 +21,8 @@ import (
 
 type recurrenceIntegrationHandler struct{}
 
-func (recurrenceIntegrationHandler) Run(context.Context, JobExecution) JobOutcome {
-	return JobOutcome{Kind: JobOutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}
+func (recurrenceIntegrationHandler) Run(context.Context, jobengine.Execution) jobengine.Outcome {
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}
 }
 
 type signalingCleanupProposer struct {
@@ -179,7 +179,7 @@ func assertOneCleanupOccurrence(t *testing.T, persistence *sqlstore.SQLStore, oc
 	t.Helper()
 	key := "job-history-cleanup:" + occurrence.UTC().Format("2006-01-02")
 	var occurrences, jobs, attempts int
-	if err := persistence.GetMaster().Get(context.Background(), &occurrences, `SELECT count(*) FROM job_permanent_occurrences WHERE job_type = $1 AND dedupe_key = $2`, model.JobTypeCleanup, key); err != nil {
+	if err := persistence.GetMaster().Get(context.Background(), &occurrences, `SELECT count(*) FROM job_permanent_occurrences WHERE type = $1 AND dedupe_key = $2`, model.JobTypeCleanup, key); err != nil {
 		t.Fatal(err)
 	}
 	if err := persistence.GetMaster().Get(context.Background(), &jobs, `SELECT count(*) FROM jobs WHERE type = $1 AND dedupe_key = $2`, model.JobTypeCleanup, key); err != nil {

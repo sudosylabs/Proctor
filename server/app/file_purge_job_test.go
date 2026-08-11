@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -106,12 +107,12 @@ func TestFilePurgeHandlerCheckpointsOnlyAfterContentAndMetadataArePurged(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	var checkpoints []JobCheckpointValue
-	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
+	var checkpoints []jobengine.CheckpointValue
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	}))
-	if outcome.Kind != JobOutcomeRetryableFailure || outcome.PublicErrorCode != "file.backend_unavailable" {
+	if outcome.Kind != jobengine.OutcomeRetryableFailure || outcome.PublicErrorCode != "file.backend_unavailable" {
 		t.Fatalf("outcome = %#v", outcome)
 	}
 	if len(persistence.completed) != 1 || persistence.completed[0].Candidate.Cursor != first.Cursor {
@@ -141,7 +142,7 @@ func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T)
 	}
 	job.WorkReserved = 1
 	outcome := newFilePurgeExpiredContentHandler(persistence, content).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	if outcome.Kind != JobOutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
 		t.Fatalf("outcome=%#v claimed=%#v removed=%#v", outcome, persistence.claimed, content.removed)
 	}
 
@@ -152,7 +153,7 @@ func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T)
 		t.Fatal(err)
 	}
 	outcome = newFilePurgeExpiredContentHandler(persistence, content).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	if outcome.Kind != JobOutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
 		t.Fatalf("checkpoint cap outcome=%#v claimed=%#v removed=%#v", outcome, persistence.claimed, content.removed)
 	}
 }
@@ -173,12 +174,12 @@ func TestFilePurgeHandlerClaimsBeforeDeletingAndDoesNotCountClaimConflicts(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	var checkpoints []JobCheckpointValue
-	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
+	var checkpoints []jobengine.CheckpointValue
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	}))
-	if outcome.Kind != JobOutcomeSucceeded {
+	if outcome.Kind != jobengine.OutcomeSucceeded {
 		t.Fatalf("outcome = %#v", outcome)
 	}
 	if len(content.removed) != 1 || content.removed[0] != second.RevisionID {
@@ -215,12 +216,12 @@ func TestFilePurgeHandlerResumesWithCumulativeProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var checkpoint JobCheckpointValue
-	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
+	var checkpoint jobengine.CheckpointValue
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 		checkpoint = value
 		return nil
 	}))
-	if outcome.Kind != JobOutcomeSucceeded {
+	if outcome.Kind != jobengine.OutcomeSucceeded {
 		t.Fatalf("outcome = %#v", outcome)
 	}
 	got, err := DecodeFilePurgeExpiredContentCheckpoint(checkpoint.Version, checkpoint.Document)

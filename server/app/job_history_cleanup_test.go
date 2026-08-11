@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -42,14 +43,14 @@ func TestJobHistoryCleanupDeletesBoundedPagesAndCheckpointsSafely(t *testing.T) 
 	}}
 	policies := []store.JobRetentionPolicy{{Type: model.JobTypeProfilePictureGenerateDefault, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}
 	handler := jobHistoryCleanupHandler{jobs: cleaner, policies: policies}
-	var checkpoints []JobCheckpointValue
-	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
+	var checkpoints []jobengine.CheckpointValue
+	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
 	})
 
 	outcome := handler.Run(context.Background(), execution)
-	if outcome.Kind != JobOutcomeSucceeded || outcome.Err != nil || len(cleaner.requests) != 1 || len(checkpoints) != 1 {
+	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || len(cleaner.requests) != 1 || len(checkpoints) != 1 {
 		t.Fatalf("outcome=%#v requests=%#v checkpoints=%#v", outcome, cleaner.requests, checkpoints)
 	}
 	if cleaner.requests[0].ExcludeJobID != job.ID || cleaner.requests[0].Limit != 2 {
@@ -86,8 +87,8 @@ func TestJobHistoryCleanupDoesNotDeleteAnotherBatchAfterCommittedCheckpoint(t *t
 	job.Checkpoint = checkpoint
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Done: true}}}
 	handler := jobHistoryCleanupHandler{jobs: cleaner, policies: []store.JobRetentionPolicy{{Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}}
-	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, JobCheckpointValue) error { return nil }))
-	if outcome.Kind != JobOutcomeSucceeded || len(cleaner.requests) != 0 {
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(cleaner.requests) != 0 {
 		t.Fatalf("outcome=%#v requests=%#v", outcome, cleaner.requests)
 	}
 }
@@ -102,7 +103,7 @@ func TestJobHistoryCleanupDoesNotRepeatReservedDeletionAfterCrash(t *testing.T) 
 	job.WorkReserved = 2
 	cleaner := &jobHistoryCleanerFake{}
 	outcome := (jobHistoryCleanupHandler{jobs: cleaner}).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	if outcome.Kind != JobOutcomeSucceeded || len(cleaner.requests) != 0 {
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(cleaner.requests) != 0 {
 		t.Fatalf("outcome=%#v requests=%#v", outcome, cleaner.requests)
 	}
 }

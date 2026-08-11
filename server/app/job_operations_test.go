@@ -19,7 +19,7 @@ type jobOperatorEngineFake struct {
 	view       JobView
 	prepareErr error
 	applyErr   error
-	listQuery  ListJobsQuery
+	listQuery  jobengine.ListQuery
 	applyCalls int
 }
 

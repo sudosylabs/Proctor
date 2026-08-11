@@ -5,9 +5,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,7 +39,7 @@ func prepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model
 	if err := candidate.Validate(); err != nil {
 		return nil, nil, err
 	}
-	command, err := EncodeDefaultProfilePictureCommand(DefaultProfilePictureCommandV1{UserID: candidate.ID})
+	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: candidate.ID})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,7 +54,7 @@ func prepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model
 }
 
 func (p defaultProfilePictureJobProposer) ProposeDefaultProfilePicture(ctx context.Context, userID model.UserID, at time.Time) error {
-	command, err := EncodeDefaultProfilePictureCommand(DefaultProfilePictureCommandV1{UserID: userID})
+	command, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: userID})
 	if err != nil {
 		return err
 	}
@@ -73,27 +75,39 @@ type defaultProfilePictureHandler struct {
 	}
 }
 
-func (h defaultProfilePictureHandler) Run(ctx context.Context, execution JobExecution) JobOutcome {
+func (h defaultProfilePictureHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
 	if execution.Job == nil {
-		return JobPermanentFailure("job.command.invalid", errors.New("job is missing"))
+		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
 	}
-	command, err := DecodeDefaultProfilePictureCommand(execution.Job.CommandVersion, execution.Job.Command)
+	command, err := model.DecodeDefaultProfilePictureCommand(execution.Job.CommandVersion, execution.Job.Command)
 	if err != nil {
-		return JobPermanentFailure("job.command.invalid", err)
+		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
 	entryID, err := h.generator.EnsureDefaultProfilePicture(ctx, command.UserID)
 	if err != nil {
 		if errors.Is(err, errDefaultProfilePictureUserNotFound) {
-			return JobPermanentFailure("user.not_found", err)
+			return jobengine.PermanentFailure("user.not_found", err)
 		}
 		if errors.Is(err, errDefaultProfilePictureInvariant) {
-			return JobPermanentFailure("job.invariant_failed", err)
+			return jobengine.PermanentFailure("job.invariant_failed", err)
 		}
-		return JobRetryableFailure("dependency.unavailable", err)
+		return jobengine.RetryableFailure("dependency.unavailable", err)
 	}
-	return DefaultProfilePictureJobSucceeded(entryID)
+	return defaultProfilePictureJobSucceeded(entryID)
 }
 
-func defaultProfilePictureDescriptor(handler JobHandler) JobDescriptor {
-	return JobDescriptor{Type: model.JobTypeProfilePictureGenerateDefault, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Cancelable: true, ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed}, Visibility: JobVisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+type defaultProfilePictureResultV1 struct {
+	FileEntryID model.FileEntryID `json:"file_entry_id"`
+}
+
+func defaultProfilePictureJobSucceeded(fileEntryID model.FileEntryID) jobengine.Outcome {
+	if !fileEntryID.IsValid() {
+		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, Err: errors.New("default profile-picture result has invalid file entry ID")}
+	}
+	document, err := json.Marshal(defaultProfilePictureResultV1{FileEntryID: fileEntryID})
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
+}
+
+func defaultProfilePictureDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+	return jobengine.Descriptor{Type: model.JobTypeProfilePictureGenerateDefault, CommandVersions: []int{1}, ResultVersions: []int{1}, PublicErrorCodes: []string{"dependency.unavailable", "job.command.invalid", "job.invariant_failed", "user.not_found"}, Timeout: time.Minute, Concurrency: 1, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: 30 * time.Second, Cancelable: true, ExplicitRetryStatuses: []model.JobStatus{model.JobStatusFailed}, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }
