@@ -43,10 +43,10 @@ func TestJobHistoryCleanupDeletesBoundedPagesAndCheckpointsSafely(t *testing.T) 
 	policies := []store.JobRetentionPolicy{{Type: model.JobTypeProfilePictureGenerateDefault, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}
 	handler := jobHistoryCleanupHandler{jobs: cleaner, policies: policies}
 	var checkpoints []JobCheckpointValue
-	execution := JobExecution{Job: job, reserveWork: allowJobWorkReservation(), checkpoint: func(_ context.Context, value JobCheckpointValue) error {
+	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
-	}}
+	})
 
 	outcome := handler.Run(context.Background(), execution)
 	if outcome.Kind != JobOutcomeSucceeded || outcome.Err != nil || len(cleaner.requests) != 1 || len(checkpoints) != 1 {
@@ -86,7 +86,7 @@ func TestJobHistoryCleanupDoesNotDeleteAnotherBatchAfterCommittedCheckpoint(t *t
 	job.Checkpoint = checkpoint
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Done: true}}}
 	handler := jobHistoryCleanupHandler{jobs: cleaner, policies: []store.JobRetentionPolicy{{Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}}
-	outcome := handler.Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation(), checkpoint: func(context.Context, JobCheckpointValue) error { return nil }})
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, JobCheckpointValue) error { return nil }))
 	if outcome.Kind != JobOutcomeSucceeded || len(cleaner.requests) != 0 {
 		t.Fatalf("outcome=%#v requests=%#v", outcome, cleaner.requests)
 	}
@@ -101,7 +101,7 @@ func TestJobHistoryCleanupDoesNotRepeatReservedDeletionAfterCrash(t *testing.T) 
 	}
 	job.WorkReserved = 2
 	cleaner := &jobHistoryCleanerFake{}
-	outcome := (jobHistoryCleanupHandler{jobs: cleaner}).Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation()})
+	outcome := (jobHistoryCleanupHandler{jobs: cleaner}).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
 	if outcome.Kind != JobOutcomeSucceeded || len(cleaner.requests) != 0 {
 		t.Fatalf("outcome=%#v requests=%#v", outcome, cleaner.requests)
 	}

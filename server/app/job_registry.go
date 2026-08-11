@@ -9,276 +9,38 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
-	"slices"
-	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-type JobExecution struct {
-	Job         *model.Job
-	Attempt     *model.JobAttempt
-	checkpoint  func(context.Context, JobCheckpointValue) error
-	reserveWork func(context.Context, int, int) (bool, error)
-}
-
-func (e JobExecution) ReserveWork(ctx context.Context, units, limit int) (bool, error) {
-	if e.reserveWork == nil {
-		return false, errors.New("job execution does not support work reservation")
-	}
-	return e.reserveWork(ctx, units, limit)
-}
-
-type JobCheckpointValue struct {
-	Version  int
-	Progress *model.JobProgress
-	Document json.RawMessage
-}
-
-func (e JobExecution) Checkpoint(ctx context.Context, value JobCheckpointValue) error {
-	if e.checkpoint == nil {
-		return errors.New("job execution does not support checkpointing")
-	}
-	return e.checkpoint(ctx, value)
-}
-
-var jobContractCode = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
-
-type JobOutcomeKind string
+type JobExecution = jobengine.Execution
+type JobCheckpointValue = jobengine.CheckpointValue
+type JobOutcomeKind = jobengine.OutcomeKind
+type JobOutcome = jobengine.Outcome
+type JobHandler = jobengine.Handler
+type JobVisibility = jobengine.Visibility
+type JobDescriptor = jobengine.Descriptor
+type JobRegistry = jobengine.Registry
 
 const (
-	JobOutcomeSucceeded        JobOutcomeKind = "succeeded"
-	JobOutcomeRetryableFailure JobOutcomeKind = "retryable_failure"
-	JobOutcomePermanentFailure JobOutcomeKind = "permanent_failure"
-	JobOutcomeCanceled         JobOutcomeKind = "canceled"
+	JobOutcomeSucceeded        = jobengine.OutcomeSucceeded
+	JobOutcomeRetryableFailure = jobengine.OutcomeRetryableFailure
+	JobOutcomePermanentFailure = jobengine.OutcomePermanentFailure
+	JobOutcomeCanceled         = jobengine.OutcomeCanceled
+	JobVisibilityOperator      = jobengine.VisibilityOperator
+	JobVisibilityDomain        = jobengine.VisibilityDomain
 )
 
-type JobOutcome struct {
-	Kind            JobOutcomeKind
-	ResultVersion   int
-	Result          json.RawMessage
-	PublicErrorCode string
-	Err             error
-}
-
-func JobRetryableFailure(code string, err error) JobOutcome {
-	return JobOutcome{Kind: JobOutcomeRetryableFailure, PublicErrorCode: code, Err: err}
-}
-
-func JobPermanentFailure(code string, err error) JobOutcome {
-	return JobOutcome{Kind: JobOutcomePermanentFailure, PublicErrorCode: code, Err: err}
-}
-
-func JobCanceled(code string) JobOutcome {
-	return JobOutcome{Kind: JobOutcomeCanceled, PublicErrorCode: code}
-}
-
-type JobHandler interface {
-	Run(context.Context, JobExecution) JobOutcome
-}
-
-type JobVisibility string
-
-const (
-	JobVisibilityOperator JobVisibility = "operator"
-	JobVisibilityDomain   JobVisibility = "domain"
+var (
+	JobRetryableFailure = jobengine.RetryableFailure
+	JobPermanentFailure = jobengine.PermanentFailure
+	JobCanceled         = jobengine.Canceled
+	NewJobRegistry      = jobengine.NewRegistry
 )
 
-type JobDescriptor struct {
-	Type                  model.JobType
-	CommandVersions       []int
-	CheckpointVersions    []int
-	ResultVersions        []int
-	ProgressStages        []string
-	PublicErrorCodes      []string
-	Timeout               time.Duration
-	Concurrency           int
-	MaximumAttempts       int
-	LeaseDuration         time.Duration
-	HeartbeatInterval     time.Duration
-	BaseRetryDelay        time.Duration
-	MaximumRetryDelay     time.Duration
-	Cancelable            bool
-	ExplicitRetryStatuses []model.JobStatus
-	Visibility            JobVisibility
-	SuccessRetention      time.Duration
-	FailureRetention      time.Duration
-	Handler               JobHandler
-}
-
-type JobRegistry struct {
-	descriptors map[model.JobType]JobDescriptor
-	types       []model.JobType
-}
-
-func NewJobRegistry(values []JobDescriptor) (*JobRegistry, error) {
-	if len(values) == 0 {
-		return nil, errors.New("job registry requires at least one descriptor")
-	}
-	registry := &JobRegistry{descriptors: make(map[model.JobType]JobDescriptor, len(values)), types: make([]model.JobType, 0, len(values))}
-	for _, value := range values {
-		if value.Handler == nil || len(value.CommandVersions) == 0 || len(value.ResultVersions) == 0 || value.Timeout <= 0 || value.Concurrency <= 0 || value.MaximumAttempts <= 0 || value.LeaseDuration <= 0 || value.HeartbeatInterval <= 0 || value.HeartbeatInterval >= value.LeaseDuration || value.BaseRetryDelay <= 0 || value.MaximumRetryDelay < value.BaseRetryDelay || (value.Visibility != JobVisibilityOperator && value.Visibility != JobVisibilityDomain) || value.SuccessRetention <= 0 || value.FailureRetention < value.SuccessRetention {
-			return nil, fmt.Errorf("invalid descriptor for job type %q", value.Type)
-		}
-		if _, exists := registry.descriptors[value.Type]; exists {
-			return nil, fmt.Errorf("duplicate job type %q", value.Type)
-		}
-		var versionsErr error
-		value.CommandVersions, versionsErr = normalizedJobVersions(value.CommandVersions, false)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid command versions for job type %q: %w", value.Type, versionsErr)
-		}
-		value.CheckpointVersions, versionsErr = normalizedJobVersions(value.CheckpointVersions, true)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid checkpoint versions for job type %q: %w", value.Type, versionsErr)
-		}
-		value.ResultVersions, versionsErr = normalizedJobVersions(value.ResultVersions, false)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid result versions for job type %q: %w", value.Type, versionsErr)
-		}
-		value.ProgressStages, versionsErr = normalizedJobCodes(value.ProgressStages)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid progress stages for job type %q: %w", value.Type, versionsErr)
-		}
-		value.PublicErrorCodes, versionsErr = normalizedJobCodes(value.PublicErrorCodes)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid public error codes for job type %q: %w", value.Type, versionsErr)
-		}
-		value.ExplicitRetryStatuses, versionsErr = normalizedTerminalJobStatuses(value.ExplicitRetryStatuses)
-		if versionsErr != nil {
-			return nil, fmt.Errorf("invalid explicit retry statuses for job type %q: %w", value.Type, versionsErr)
-		}
-		registry.descriptors[value.Type] = value
-		registry.types = append(registry.types, value.Type)
-	}
-	slices.Sort(registry.types)
-	return registry, nil
-}
-
-func (r *JobRegistry) Resolve(jobType model.JobType, commandVersion int) (JobDescriptor, error) {
-	if r == nil {
-		return JobDescriptor{}, errors.New("job registry is nil")
-	}
-	descriptor, ok := r.descriptors[jobType]
-	if !ok {
-		return JobDescriptor{}, fmt.Errorf("job type %q is not registered", jobType)
-	}
-	if _, ok = slices.BinarySearch(descriptor.CommandVersions, commandVersion); !ok {
-		return JobDescriptor{}, fmt.Errorf("job type %q does not support command version %d", jobType, commandVersion)
-	}
-	descriptor.CommandVersions = append([]int(nil), descriptor.CommandVersions...)
-	descriptor.CheckpointVersions = append([]int(nil), descriptor.CheckpointVersions...)
-	descriptor.ResultVersions = append([]int(nil), descriptor.ResultVersions...)
-	descriptor.ProgressStages = append([]string(nil), descriptor.ProgressStages...)
-	descriptor.PublicErrorCodes = append([]string(nil), descriptor.PublicErrorCodes...)
-	descriptor.ExplicitRetryStatuses = append([]model.JobStatus(nil), descriptor.ExplicitRetryStatuses...)
-	return descriptor, nil
-}
-
-func (r *JobRegistry) Descriptor(jobType model.JobType) (JobDescriptor, error) {
-	if r == nil {
-		return JobDescriptor{}, errors.New("job registry is nil")
-	}
-	descriptor, ok := r.descriptors[jobType]
-	if !ok {
-		return JobDescriptor{}, fmt.Errorf("job type %q is not registered", jobType)
-	}
-	descriptor.CommandVersions = append([]int(nil), descriptor.CommandVersions...)
-	descriptor.CheckpointVersions = append([]int(nil), descriptor.CheckpointVersions...)
-	descriptor.ResultVersions = append([]int(nil), descriptor.ResultVersions...)
-	descriptor.ProgressStages = append([]string(nil), descriptor.ProgressStages...)
-	descriptor.PublicErrorCodes = append([]string(nil), descriptor.PublicErrorCodes...)
-	descriptor.ExplicitRetryStatuses = append([]model.JobStatus(nil), descriptor.ExplicitRetryStatuses...)
-	return descriptor, nil
-}
-
-func (d JobDescriptor) SupportsResultVersion(version int) bool {
-	_, ok := slices.BinarySearch(d.ResultVersions, version)
-	return ok
-}
-
-func (d JobDescriptor) SupportsCheckpointVersion(version int) bool {
-	_, ok := slices.BinarySearch(d.CheckpointVersions, version)
-	return ok
-}
-
-func (d JobDescriptor) SupportsProgressStage(stage string) bool {
-	_, ok := slices.BinarySearch(d.ProgressStages, stage)
-	return ok
-}
-
-func (d JobDescriptor) SupportsPublicErrorCode(code string) bool {
-	if code == "" {
-		return true
-	}
-	if slices.Contains([]string{"job.canceled", "job.handler_panic", "job.timeout", "job.result.invalid", "job.outcome.invalid"}, code) {
-		return true
-	}
-	_, ok := slices.BinarySearch(d.PublicErrorCodes, code)
-	return ok
-}
-
-func (d JobDescriptor) SupportsExplicitRetry(status model.JobStatus) bool {
-	return slices.Contains(d.ExplicitRetryStatuses, status)
-}
-
-func normalizedTerminalJobStatuses(values []model.JobStatus) ([]model.JobStatus, error) {
-	statuses := append([]model.JobStatus(nil), values...)
-	slices.Sort(statuses)
-	for index, status := range statuses {
-		if (status != model.JobStatusFailed && status != model.JobStatusCanceled) ||
-			(index > 0 && statuses[index-1] == status) {
-			return nil, errors.New("statuses must be unique terminal retry states")
-		}
-	}
-	return statuses, nil
-}
-
-func normalizedJobVersions(values []int, optional bool) ([]int, error) {
-	if len(values) == 0 {
-		if optional {
-			return nil, nil
-		}
-		return nil, errors.New("at least one version is required")
-	}
-	versions := append([]int(nil), values...)
-	slices.Sort(versions)
-	for index, version := range versions {
-		if version <= 0 || (index > 0 && versions[index-1] == version) {
-			return nil, errors.New("versions must be unique positive integers")
-		}
-	}
-	return versions, nil
-}
-
-func normalizedJobCodes(values []string) ([]string, error) {
-	codes := append([]string(nil), values...)
-	slices.Sort(codes)
-	for index, code := range codes {
-		if !jobContractCode.MatchString(code) || (index > 0 && codes[index-1] == code) {
-			return nil, errors.New("codes must be unique safe identifiers")
-		}
-	}
-	return codes, nil
-}
-
-func (r *JobRegistry) Types() []model.JobType {
-	if r == nil {
-		return nil
-	}
-	return append([]model.JobType(nil), r.types...)
-}
-
-func (r *JobRegistry) MaximumTimeout() time.Duration {
-	var maximum time.Duration
-	if r == nil {
-		return 0
-	}
-	for _, descriptor := range r.descriptors {
-		maximum = max(maximum, descriptor.Timeout)
-	}
-	return maximum
+func newJobExecution(record *model.Job, attempt *model.JobAttempt, checkpoint func(context.Context, JobCheckpointValue) error, reserveWork func(context.Context, int, int) (bool, error)) JobExecution {
+	return jobengine.NewExecution(record, attempt, checkpoint, reserveWork)
 }
 
 type DefaultProfilePictureCommandV1 = model.DefaultProfilePictureCommandV1

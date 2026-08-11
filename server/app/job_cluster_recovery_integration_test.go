@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -21,6 +22,10 @@ import (
 )
 
 func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
+	// This is module-level PostgreSQL recovery evidence, not an alternate
+	// production composition path. Root wiring is covered separately through
+	// testlib; direct Engine construction is required here to control the exact
+	// loss point around the domain commit.
 	for _, phase := range []string{"before_commit", "during_commit", "after_commit"} {
 		t.Run(phase, func(t *testing.T) {
 			persistence := openClusteredJobIntegrationStore(t)
@@ -56,12 +61,10 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				phase: phase, next: realHandler, entered: entered, canceled: canceled,
 			}
 			descriptor := clusteredRecoveryJobDescriptor(handler)
-			registry, err := NewJobRegistry([]JobDescriptor{descriptor})
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			nodeA, err := newJobRunner(persistence.Job(), registry, "node-a", &jobDiagnosticsFake{}, 5*time.Millisecond)
+			nodeA, err := jobengine.New(jobengine.Config{
+				Store: persistence.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: "node-a",
+				Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond},
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +106,10 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			}
 
 			time.Sleep(3 * descriptor.LeaseDuration)
-			nodeB, err := newJobRunner(persistence.Job(), registry, "node-b", &jobDiagnosticsFake{}, 5*time.Millisecond)
+			nodeB, err := jobengine.New(jobengine.Config{
+				Store: persistence.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: "node-b",
+				Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond},
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,6 +173,10 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 		})
 	}
 }
+
+type integrationJobDiagnostics struct{}
+
+func (*integrationJobDiagnostics) ErrorContext(context.Context, string, error) {}
 
 type recoveryFileStore struct {
 	profilePictureFileStore

@@ -4,61 +4,11 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
-
-type jobHandlerFunc func(context.Context, JobExecution) JobOutcome
-
-func (f jobHandlerFunc) Run(ctx context.Context, execution JobExecution) JobOutcome {
-	return f(ctx, execution)
-}
-
-func TestJobRegistryIsClosedImmutableAndVersionAware(t *testing.T) {
-	t.Parallel()
-	handler := jobHandlerFunc(func(context.Context, JobExecution) JobOutcome {
-		return DefaultProfilePictureJobSucceeded(model.NewFileEntryID())
-	})
-	descriptor := testJobDescriptor(handler)
-	registry, err := NewJobRegistry([]JobDescriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 1)
-	if err != nil || resolved.Type != descriptor.Type {
-		t.Fatalf("Resolve() = %#v, %v", resolved, err)
-	}
-	descriptor.CommandVersions[0] = 9
-	if _, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 1); err != nil {
-		t.Fatalf("registry retained caller-owned version slice: %v", err)
-	}
-	if _, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 2); err == nil {
-		t.Fatal("Resolve() accepted unsupported payload version")
-	}
-	if _, err = registry.Resolve(model.JobTypeCleanup, 1); err == nil {
-		t.Fatal("Resolve() accepted an unregistered type")
-	}
-	if described, err := registry.Descriptor(model.JobTypeProfilePictureGenerateDefault); err != nil || described.Type != descriptor.Type {
-		t.Fatalf("Descriptor() = %#v, %v", described, err)
-	}
-}
-
-func TestJobRegistryRejectsDuplicatesAndMissingHandlers(t *testing.T) {
-	t.Parallel()
-	valid := testJobDescriptor(jobHandlerFunc(func(context.Context, JobExecution) JobOutcome {
-		return DefaultProfilePictureJobSucceeded(model.NewFileEntryID())
-	}))
-	if _, err := NewJobRegistry([]JobDescriptor{valid, valid}); err == nil {
-		t.Fatal("NewJobRegistry() accepted duplicate type")
-	}
-	valid.Handler = nil
-	if _, err := NewJobRegistry([]JobDescriptor{valid}); err == nil {
-		t.Fatal("NewJobRegistry() accepted missing handler")
-	}
-}
 
 func TestDefaultProfilePictureCommandIsVersionedAndTyped(t *testing.T) {
 	t.Parallel()

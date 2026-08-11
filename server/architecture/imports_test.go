@@ -106,6 +106,8 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "store contracts cannot import SQL adapters", from: serverModule + "/store", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import platform", from: serverModule + "/app", imported: serverModule + "/platform"},
 		{name: "application cannot import Redis client", from: serverModule + "/app", imported: "github.com/redis/go-redis/v9"},
+		{name: "Job engine descendants cannot import application", from: serverModule + "/app/job/internal", imported: serverModule + "/app"},
+		{name: "Job engine descendants cannot import Argon2", from: serverModule + "/app/job/internal", imported: "golang.org/x/crypto/argon2"},
 		{name: "HTTP cannot import persistence", from: serverModule + "/app/api", imported: serverModule + "/store"},
 		{name: "HTTP cannot import SQL driver", from: serverModule + "/app/api", imported: "database/sql"},
 		{name: "SQL adapter cannot import application policy", from: serverModule + "/store/sqlstore", imported: serverModule + "/app"},
@@ -140,6 +142,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 	}{
 		{name: "store contracts may import domain", from: serverModule + "/store", imported: serverModule + "/model"},
 		{name: "application may import store contracts", from: serverModule + "/app", imported: serverModule + "/store"},
+		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},
+		{name: "Job engine may import store contracts", from: serverModule + "/app/job", imported: serverModule + "/store"},
 		{name: "HTTP may import application", from: serverModule + "/app/api", imported: serverModule + "/app"},
 		{name: "HTTP may import router library", from: serverModule + "/app/api", imported: "github.com/gorilla/mux"},
 		{name: "SQL adapter may import store contracts", from: serverModule + "/store/sqlstore", imported: serverModule + "/store"},
@@ -238,11 +242,14 @@ func forbiddenImport(from, imported string) bool {
 	case packageOrBelow(from, serverModule+"/store"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
+	case packageOrBelow(from, serverModule+"/app/job"):
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
 	case applicationPackage(from):
 		return standardInfrastructureImport(imported) ||
 			(thirdPartyImport(imported) && imported != "golang.org/x/crypto/argon2") ||
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
-				imported != serverModule+"/model" && imported != serverModule+"/store")
+				imported != serverModule+"/model" && imported != serverModule+"/store" && imported != serverModule+"/app/job")
 	case httpOrWebSocketPackage(from):
 		return standardInfrastructureImportExceptHTTP(imported) ||
 			(thirdPartyImport(imported) && !strings.HasPrefix(imported, "github.com/gorilla/")) ||

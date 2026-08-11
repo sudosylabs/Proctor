@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -43,7 +44,7 @@ type App struct {
 	bootstrap              *bootstrapService
 	audit                  *AuditService
 	realtime               *RealtimeService
-	jobs                   *JobRunner
+	jobs                   *jobengine.Engine
 
 	// Cross-cutting policy and ports still used by App-method facades that
 	// have not yet been extracted into focused services.
@@ -59,7 +60,7 @@ type App struct {
 
 // Jobs returns the root-owned durable Job runtime, or nil for lifecycle-only
 // test graphs that intentionally provide no Job store.
-func (a *App) Jobs() *JobRunner {
+func (a *App) Jobs() *jobengine.Engine {
 	if a == nil {
 		return nil
 	}
@@ -215,7 +216,7 @@ func New(deps Dependencies) (*App, error) {
 		nil,
 		time.Now,
 	)
-	var jobs *JobRunner
+	var jobs *jobengine.Engine
 	if deps.Store.Job() != nil {
 		defaultJobs := &defaultProfilePictureJobProposer{jobs: deps.Store.Job()}
 		defaultHandler := defaultProfilePictureHandler{generator: profilePictures}
@@ -233,11 +234,12 @@ func New(deps Dependencies) (*App, error) {
 			Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour,
 		})}
 		descriptors = append(descriptors, jobHistoryCleanupDescriptor(cleanupHandler))
-		jobRegistry, registryErr := NewJobRegistry(descriptors)
-		if registryErr != nil {
-			return nil, registryErr
-		}
-		jobs, err = newJobRunner(deps.Store.Job(), jobRegistry, deps.NodeID, deps.RecoveryDiagnostics, 500*time.Millisecond)
+		jobs, err = jobengine.New(jobengine.Config{
+			Store: deps.Store.Job(), Descriptors: descriptors, NodeID: deps.NodeID,
+			Diagnostics: deps.RecoveryDiagnostics,
+			Policy:      jobengine.Policy{PollInterval: 500 * time.Millisecond},
+			Clock:       time.Now,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -248,7 +250,7 @@ func New(deps Dependencies) (*App, error) {
 			"file-purge-expired-content":             filePurgeExpiredContentProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
 			"job-history-cleanup":                    jobHistoryCleanupProposer{jobs: deps.Store.Job(), wake: jobs.Wake, now: time.Now},
 		} {
-			if err = jobs.addDailyProposal(name, proposer); err != nil {
+			if err = jobs.AddDailyProposal(name, proposer); err != nil {
 				return nil, err
 			}
 		}

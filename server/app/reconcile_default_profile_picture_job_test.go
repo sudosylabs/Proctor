@@ -57,10 +57,10 @@ func TestDefaultProfilePictureReconciliationUsesBoundedPagesAndSafeCheckpoints(t
 		t.Fatal(err)
 	}
 	var checkpoints []JobCheckpointValue
-	execution := JobExecution{Job: job, reserveWork: allowJobWorkReservation(), checkpoint: func(_ context.Context, value JobCheckpointValue) error {
+	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
-	}}
+	})
 
 	outcome := handler.Run(context.Background(), execution)
 	if outcome.Kind != JobOutcomeSucceeded || outcome.Err != nil || len(defaults.users) != 2 || len(checkpoints) != 1 {
@@ -103,7 +103,7 @@ func TestDefaultProfilePictureReconciliationDoesNotExceedCommittedBatchOnRetry(t
 	if err = job.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	execution := JobExecution{Job: job, reserveWork: allowJobWorkReservation(), checkpoint: func(context.Context, JobCheckpointValue) error { return nil }}
+	execution := testJobExecution(job, allowJobWorkReservation(), func(context.Context, JobCheckpointValue) error { return nil })
 
 	outcome := handler.Run(context.Background(), execution)
 	if outcome.Kind != JobOutcomeSucceeded || len(defaults.users) != 0 || len(lister.calls) != 0 {
@@ -121,7 +121,7 @@ func TestDefaultProfilePictureReconciliationDoesNotRepeatReservedWorkAfterCrash(
 		t.Fatal(err)
 	}
 	job.WorkReserved = 1
-	outcome := (defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}).Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation()})
+	outcome := (defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
 	if outcome.Kind != JobOutcomeSucceeded || len(lister.calls) != 0 || len(defaults.users) != 0 {
 		t.Fatalf("outcome=%#v calls=%#v proposed=%#v", outcome, lister.calls, defaults.users)
 	}

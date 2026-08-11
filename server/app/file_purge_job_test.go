@@ -107,10 +107,10 @@ func TestFilePurgeHandlerCheckpointsOnlyAfterContentAndMetadataArePurged(t *test
 		t.Fatal(err)
 	}
 	var checkpoints []JobCheckpointValue
-	outcome := handler.Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation(), checkpoint: func(_ context.Context, value JobCheckpointValue) error {
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
-	}})
+	}))
 	if outcome.Kind != JobOutcomeRetryableFailure || outcome.PublicErrorCode != "file.backend_unavailable" {
 		t.Fatalf("outcome = %#v", outcome)
 	}
@@ -140,7 +140,7 @@ func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T)
 		t.Fatal(err)
 	}
 	job.WorkReserved = 1
-	outcome := newFilePurgeExpiredContentHandler(persistence, content).Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation()})
+	outcome := newFilePurgeExpiredContentHandler(persistence, content).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
 	if outcome.Kind != JobOutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
 		t.Fatalf("outcome=%#v claimed=%#v removed=%#v", outcome, persistence.claimed, content.removed)
 	}
@@ -151,7 +151,7 @@ func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome = newFilePurgeExpiredContentHandler(persistence, content).Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation()})
+	outcome = newFilePurgeExpiredContentHandler(persistence, content).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
 	if outcome.Kind != JobOutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
 		t.Fatalf("checkpoint cap outcome=%#v claimed=%#v removed=%#v", outcome, persistence.claimed, content.removed)
 	}
@@ -174,10 +174,10 @@ func TestFilePurgeHandlerClaimsBeforeDeletingAndDoesNotCountClaimConflicts(t *te
 		t.Fatal(err)
 	}
 	var checkpoints []JobCheckpointValue
-	outcome := handler.Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation(), checkpoint: func(_ context.Context, value JobCheckpointValue) error {
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
 		checkpoints = append(checkpoints, value)
 		return nil
-	}})
+	}))
 	if outcome.Kind != JobOutcomeSucceeded {
 		t.Fatalf("outcome = %#v", outcome)
 	}
@@ -216,10 +216,10 @@ func TestFilePurgeHandlerResumesWithCumulativeProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	var checkpoint JobCheckpointValue
-	outcome := handler.Run(context.Background(), JobExecution{Job: job, reserveWork: allowJobWorkReservation(), checkpoint: func(_ context.Context, value JobCheckpointValue) error {
+	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value JobCheckpointValue) error {
 		checkpoint = value
 		return nil
-	}})
+	}))
 	if outcome.Kind != JobOutcomeSucceeded {
 		t.Fatalf("outcome = %#v", outcome)
 	}

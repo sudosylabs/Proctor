@@ -70,11 +70,16 @@ type jobOperationsAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action) (model.Resource, error)
 }
 
+type jobDescriptorRegistry interface {
+	Descriptor(model.JobType) (JobDescriptor, error)
+	Types() []model.JobType
+}
+
 type jobOperationsService struct {
 	jobs          jobOperationsStore
 	authorization jobOperationsAuthorizer
 	audit         mutationAuditor
-	registry      *JobRegistry
+	registry      jobDescriptorRegistry
 	now           func() time.Time
 }
 
@@ -99,7 +104,7 @@ func (a *App) jobOperationsService() (*jobOperationsService, error) {
 	if a == nil || a.jobs == nil {
 		return nil, NewError("job.unavailable")
 	}
-	return newJobOperationsService(a.store.Job(), jobOperationsAuthorization{authorization: a.authorization, institutions: a.store.Institution()}, mutationAuditAdapter{audit: a.audit}, a.jobs.registry, time.Now), nil
+	return newJobOperationsService(a.store.Job(), jobOperationsAuthorization{authorization: a.authorization, institutions: a.store.Institution()}, mutationAuditAdapter{audit: a.audit}, a.jobs, time.Now), nil
 }
 
 func (a *App) ListJobs(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {
@@ -138,7 +143,7 @@ func (a *App) RetryJob(ctx context.Context, invocation Invocation, command Retry
 	return service.Retry(ctx, invocation, command)
 }
 
-func newJobOperationsService(jobs jobOperationsStore, authorization jobOperationsAuthorizer, audit mutationAuditor, registry *JobRegistry, now func() time.Time) *jobOperationsService {
+func newJobOperationsService(jobs jobOperationsStore, authorization jobOperationsAuthorizer, audit mutationAuditor, registry jobDescriptorRegistry, now func() time.Time) *jobOperationsService {
 	return &jobOperationsService{jobs: jobs, authorization: authorization, audit: audit, registry: registry, now: now}
 }
 

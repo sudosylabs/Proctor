@@ -3,17 +3,13 @@
 ## Dependency direction
 
 ~~~text
-model
-  ↑
-store
-  ↑
-app
-  ↑          ↑
-app/api   websocket
-   ↖        ↗
-      server
-        ↑
-   cmd/proctor
+model ← store ← app/job ← app
+                         ↑  ↑
+                   app/api  websocket
+                       ↖    ↗
+                        server
+                          ↑
+                     cmd/proctor
 ~~~
 
 Infrastructure adapters sit to the side and point inward at their contracts. The root `server` package imports the components needed to assemble the graph.
@@ -22,7 +18,8 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | --- | --- | --- |
 | `model` | Standard library and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
 | `store` | `model` | `sqlstore`, HTTP, application services |
-| `app` | `model`, `store`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
+| `app/job` | `model`, `store.JobStore`, standard library | parent `app`, transports, concrete adapters |
+| `app` | `model`, `store`, `app/job`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
 | `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `websocket` | `app`, `model`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |

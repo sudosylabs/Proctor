@@ -15,6 +15,14 @@ Domain models own local invariants and transitions. Application services own use
 
 Background jobs call application use cases with a system/service invocation. They do not manipulate stores directly.
 
+The `app/job` child module owns the generic durable execution engine: immutable
+descriptor validation, claiming, leases, fenced transitions, checkpoints,
+work budgets, retry, cancellation observation, and bounded lifecycle. Domain
+Job handlers remain beside their owning use cases and cross that seam through
+typed, versioned documents and safe outcomes. The engine depends only on the
+domain Job records and `store.JobStore`; it never imports its parent package or
+selects infrastructure.
+
 Atomic store operations are explicit named aggregate operations such as bootstrap, enrollment transfer, or password-reset consumption. The application decides policy; the adapter owns locking, constraints, concurrency checks, and commit/rollback. Raw SQL transactions and generic `WithTransaction(func(Store))` callbacks do not cross into `app`.
 
 The name and contract expose the complete atomic and race guarantee to callers
