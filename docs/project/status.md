@@ -48,7 +48,11 @@ the code and component contracts for that detail.
   and applies bounded per-type Job-history retention without leader election.
   Institution operators can inspect safe Job and Attempt projections, request
   cooperative cancellation, and explicitly retry descriptor-approved failures
-  through audited, cursor-paginated HTTP operations.
+  through audited, cursor-paginated HTTP operations. Clustered recovery tests
+  cover concurrent publication and scheduling, parallel claims, worker loss
+  around an idempotent commit, bounded shutdown, stale fencing, and retained
+  Attempt history. Local and S3-compatible VFS gates exercise the same complete
+  rendition and referenced-content cleanup boundaries.
 
 ## Architecture migration acceptance
 

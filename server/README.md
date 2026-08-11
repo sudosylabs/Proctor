@@ -393,6 +393,13 @@ with:
 make -C server integration-redis
 ```
 
+Run shared-object VFS conformance and the server file-content integration
+against an isolated S3-compatible MinIO service with:
+
+```sh
+make -C server integration-s3
+```
+
 Run the CAS and OIDC application integrations, using local provider test
 servers and PostgreSQL, with:
 
@@ -412,6 +419,14 @@ The established conformance aliases remain available:
 ```sh
 make -C server conformance-postgres
 make -C server conformance-realtime
+```
+
+The file-management and durable-Job phase acceptance gate combines the
+hermetic server checks, PostgreSQL clustered-recovery tests, shared-object VFS
+integration, and independent `GOWORK=off` builds/tests of all four modules:
+
+```sh
+make -C server phase-file-jobs
 ```
 
 The individual `test`, `test-race`, `vet`, and `build` targets use the root
