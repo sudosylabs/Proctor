@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Adapted from Mattermost server/channels/api4/handlers.go and
-// server/channels/web/handlers.go. Proctor keeps typed route wrappers that make
-// authentication requirements visible at registration while using its
-// immutable principal and standard net/http request context.
+// server/channels/web/handlers.go. Proctor applies authentication requirements
+// from its sealed route catalog while using an immutable principal and the
+// standard net/http request context.
 
 package api
 
@@ -18,89 +18,20 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-// Handler is a fully classified API endpoint. It is intentionally constructed
-// only through APIHandler, APISessionRequired, or another explicit API wrapper
-// so an endpoint cannot be registered without an authentication contract.
-type Handler struct {
-	handler        http.Handler
-	authentication AuthRequirement
-}
-
-func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	h.handler.ServeHTTP(writer, request)
-}
-
-// APIHandler classifies an endpoint as public.
-func (a *API) APIHandler(handler http.Handler) *Handler {
-	return a.newHandler(handler, AuthPublic)
-}
-
-// APIPrincipalRequired accepts either a revocable interactive session or a
-// personal access token. The latter remains subject to its scope and optional
-// academic-unit ceiling during application authorization.
-func (a *API) APIPrincipalRequired(handler http.Handler) *Handler {
-	return a.newHandler(handler, AuthPrincipalRequired)
-}
-
-// APISessionRequired classifies an endpoint as requiring an authenticated,
-// revocable server-side session.
-func (a *API) APISessionRequired(handler http.Handler) *Handler {
-	return a.newHandler(handler, AuthSessionRequired)
-}
-
-// APIStrongSessionRequired requires a session whose current authentication
-// strength records a trusted multi-factor authentication event.
-func (a *API) APIStrongSessionRequired(handler http.Handler) *Handler {
-	return a.newHandler(handler, AuthStrongSessionRequired)
-}
-
-// APIRecentSessionRequired requires a session whose most recent login or
-// stronger authentication event falls within the configured reauthentication
-// window.
-func (a *API) APIRecentSessionRequired(handler http.Handler) *Handler {
-	return a.newHandler(handler, AuthRecentSessionRequired)
-}
-
-// APIStrongRecentSessionRequired composes both assurance requirements.
-func (a *API) APIStrongRecentSessionRequired(handler http.Handler) *Handler {
-	return a.newHandler(handler, AuthStrongRecentSessionRequired)
-}
-
-// APIRefreshCredentialRequired classifies an endpoint as accepting only a
-// refresh credential. The credential is made available to the refresh use case
-// but is never resolved as an ordinary request principal.
-func (a *API) APIRefreshCredentialRequired(handler http.Handler) *Handler {
-	return a.newHandler(handler, AuthRefreshCredentialRequired)
-}
-
-func (a *API) newHandler(
-	handler http.Handler,
-	requirement AuthRequirement,
-) *Handler {
-	return a.newHandlerWithErrorPolicy(handler, requirement, nil)
-}
-
 func (a *API) newHandlerWithErrorPolicy(
 	handler http.Handler,
 	requirement AuthRequirement,
 	errorPolicy routeErrorPolicy,
-) *Handler {
-	if handler == nil {
-		return &Handler{authentication: requirement}
-	}
-	authenticator := a.authenticator
-	return &Handler{
-		handler: withRequestParams(requireAuthentication(
-			handler,
-			requirement,
-			authenticator,
-			a.logger,
-			a.cookies,
-			a.recentAuthenticationTTL,
-			errorPolicy,
-		)),
-		authentication: requirement,
-	}
+) http.Handler {
+	return withRequestParams(requireAuthentication(
+		handler,
+		requirement,
+		a.authenticator,
+		a.logger,
+		a.cookies,
+		a.recentAuthenticationTTL,
+		errorPolicy,
+	))
 }
 
 func requireAuthentication(

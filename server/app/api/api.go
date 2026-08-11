@@ -6,7 +6,6 @@
 // immutable route catalog, typed authentication policies, and Problem Details
 // boundary.
 
-// Package api implements Proctor's versioned HTTP boundary.
 package api
 
 import (

@@ -501,12 +501,13 @@ Modifications:
   audited API preflight decision without repeating role/resource queries;
 - omitted Mattermost product, team, channel, scheme, license, enterprise,
   database-replica, and audit-output target assumptions.
-- adopted Mattermost's per-domain `Init*` API ownership, central client-facing
-  API URL suffix, `BaseRoutes` resource subrouters, named regex route
-  variables, centrally populated request parameters, and typed handler
-  wrappers while retaining Proctor's narrow composed application contract,
-  immutable principal, duplicate-route detection, and Problem Details
-  boundary;
+- initially adapted Mattermost's per-domain API ownership, central
+  client-facing API URL suffix, named regex route variables, centrally
+  populated request parameters, and typed handler wrappers;
+- replaced Mattermost's mutable `Init*` and `BaseRoutes` registration shape
+  with Proctor's sealed declarative catalog, normalized duplicate detection,
+  narrow resource capabilities, immutable principal, fail-closed public-error
+  allowlists, safe manifest projection, and Problem Details boundary;
 - used Mattermost's first-user administrator behavior as a product reference
   but replaced its process-local first-user check with an explicit one-time
   PostgreSQL aggregate, durable installation marker, cluster-safe advisory

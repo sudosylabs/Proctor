@@ -15,8 +15,9 @@ the code and component contracts for that detail.
 - PostgreSQL schema management, the root/per-model store architecture, SQL
   conformance suites, and constrained timing, retry, and local-cache layers
   are implemented.
-- The versioned HTTP API has explicit authentication classifications,
-  transport DTOs, Problem Details, OpenAPI agreement, request limits, and
+- The versioned HTTP API uses a sealed immutable routing catalog with narrow
+  resource capabilities, explicit authentication classifications, transport
+  DTOs, fail-closed Problem Details, OpenAPI agreement, request limits, and
   cursor pagination.
 - Structural academic administration covers institution, academic units,
   programmes, programme levels, academic periods, classes, affiliations,

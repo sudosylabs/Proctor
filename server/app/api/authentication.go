@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Adapted from Mattermost server/channels/api4/user.go login/logout handlers,
-// its APISessionRequired boundary, and browser session-cookie behavior.
-// Proctor keeps explicit wrappers and an immutable request principal without
-// Mattermost's product-specific handler context.
+// its session-authenticated boundary, and browser session-cookie behavior.
+// Proctor keeps explicit catalog classification and an immutable request
+// principal without Mattermost's product-specific handler context.
 
 package api
 

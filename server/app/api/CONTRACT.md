@@ -39,6 +39,29 @@ OpenAPI entry omitted: invalid origin (403) and unavailable WebSocket service
 (503). Their declaration is an additive documentation correction for existing
 runtime behavior, not a new failure mode.
 
+## Ownership and extension workflow
+
+`api.New` is the production construction boundary. Its broad `Options` value
+exists only at composition: construction projects each application capability
+through the exact narrow interface accepted by its resource constructor. A
+resource may retain that focused application capability, but never `Options`,
+`*API`, a router, `store.Store`, SQL, `platform.Service`, or concrete adapters.
+
+To add or change a cohesive resource family:
+
+1. define the focused application capability and transport DTO mapping beside
+   the resource;
+2. declare typed paths, one explicit authentication requirement per operation,
+   typed ordinary or reviewed protocol results, and the complete public-error
+   allowlist;
+3. add the resource constructor once to the explicit production catalog;
+4. update the checked-in OpenAPI operation and focused kernel/agreement tests.
+
+Package initialization, mutable router access, late registration, arbitrary
+path regular expressions, and direct persistence or platform access are not
+extension mechanisms. `API.Routes` is a defensive manifest projection for
+agreement and diagnostics; callers cannot mutate dispatch through it.
+
 Two Academic Unit shapes are frozen compatibility exceptions, not target
 patterns:
 
