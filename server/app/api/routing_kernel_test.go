@@ -269,6 +269,27 @@ func TestRoutingKernelBoundsBinaryProtocolAndPublishesProtocolManifest(t *testin
 	}
 }
 
+func TestRoutesReturnsDefensiveDeepCopy(t *testing.T) {
+	t.Parallel()
+
+	httpAPI := newCompiledRoutingTestAPI(t, "/api/testing", newResource("copy",
+		sessionRoute(
+			http.MethodGet,
+			apiPath(literal("copy")),
+			[]string{"authentication.required"},
+			func(operationRequest) (operationResult, error) { return noContentResult(), nil },
+		),
+	))
+	routes := httpAPI.Routes()
+	routes[0].Path = "/mutated"
+	routes[0].ErrorCodes[0] = "mutated"
+
+	fresh := httpAPI.Routes()
+	if fresh[0].Path == "/mutated" || fresh[0].ErrorCodes[0] == "mutated" {
+		t.Fatalf("Routes() exposed mutable catalog state: %#v", fresh[0])
+	}
+}
+
 func TestPublicRoutingKernelOperationDoesNotRequirePrincipal(t *testing.T) {
 	t.Parallel()
 

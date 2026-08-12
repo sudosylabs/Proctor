@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/filecontent"
-	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
 
@@ -43,7 +43,7 @@ type consumerConstructors struct {
 	attachRealtime func(*app.App, app.RealtimeClusterFanout) error
 	websocket      func(*app.App, runtimeLogger, string, string) (composedWebSocket, error)
 	attachSink     func(*app.App, app.RealtimeSink) error
-	http           func(api.Options) (runtimeTransport, *api.API, error)
+	http           func(api.Options) (runtimeTransport, http.Handler, error)
 	jobs           func(*app.App) runtimeJobs
 }
 
@@ -68,7 +68,7 @@ func defaultConsumerConstructors(snapshot config.Config) consumerConstructors {
 		attachSink: func(application *app.App, sink app.RealtimeSink) error {
 			return application.AttachRealtimeSink(sink)
 		},
-		http: func(options api.Options) (runtimeTransport, *api.API, error) {
+		http: func(options api.Options) (runtimeTransport, http.Handler, error) {
 			transport, err := api.New(options)
 			return transport, transport, err
 		},
@@ -84,10 +84,8 @@ func defaultConsumerConstructors(snapshot config.Config) consumerConstructors {
 // testingProjection borrows behavioral handles from the completed graph. It
 // owns nothing and is discarded for production construction.
 type testingProjection struct {
-	platform    *platform.Service
 	application *app.App
-	transport   *api.API
-	readiness   *app.Health
+	handler     http.Handler
 }
 
 type compositionResult struct {
@@ -203,12 +201,10 @@ func composeConsumers(
 		logger: capabilities.logger, jobs: jobRuntime, transport: httpTransport,
 		websocket: webSocketHub, readiness: readiness, listen: net.Listen, newHTTP: newHTTPServer,
 	}}
-	platformProjection, _ := applicationPlatform.(*platform.Service)
 	return &compositionResult{
 		server: node,
 		test: testingProjection{
-			platform: platformProjection, application: application,
-			transport: httpAPI, readiness: readiness,
+			application: application, handler: httpAPI,
 		},
 	}, nil
 }

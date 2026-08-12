@@ -181,3 +181,123 @@ func TestConstructionProjectionOmitsLifecycleAuthority(t *testing.T) {
 		t.Error("runtimeLogger borrowed contract was removed or made uninspectable")
 	}
 }
+
+func TestTestingRuntimeIsBehavioralProjection(t *testing.T) {
+	t.Parallel()
+
+	file := parseRuntimeOwnershipFile(t, filepath.Join("..", "testhooks.go"))
+	want := map[string]string{"Server": "Server", "Application": "App", "Handler": "Handler"}
+	for _, declaration := range file.Decls {
+		generic, ok := declaration.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, specification := range generic.Specs {
+			typeSpec, ok := specification.(*ast.TypeSpec)
+			if !ok || typeSpec.Name.Name != "TestingRuntime" {
+				continue
+			}
+			structure := typeSpec.Type.(*ast.StructType)
+			if len(structure.Fields.List) != len(want) {
+				t.Fatalf("TestingRuntime fields = %d, want exactly Server, Application, Handler", len(structure.Fields.List))
+			}
+			for _, field := range structure.Fields.List {
+				if len(field.Names) != 1 {
+					t.Fatal("TestingRuntime contains an embedded or grouped field")
+				}
+				name := field.Names[0].Name
+				wantType, ok := want[name]
+				if !ok {
+					t.Errorf("TestingRuntime exposes %s outside the behavioral projection", name)
+					continue
+				}
+				if !expressionNamesType(field.Type, wantType) {
+					t.Errorf("TestingRuntime.%s has unexpected type", name)
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("TestingRuntime declaration not found")
+}
+
+func TestTestingOverridesCannotReplaceCompositionPhases(t *testing.T) {
+	t.Parallel()
+
+	file := parseRuntimeOwnershipFile(t, filepath.Join("..", "testhooks.go"))
+	for _, declaration := range file.Decls {
+		generic, ok := declaration.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, specification := range generic.Specs {
+			typeSpec, ok := specification.(*ast.TypeSpec)
+			if !ok || typeSpec.Name.Name != "TestingOverrides" {
+				continue
+			}
+			structure := typeSpec.Type.(*ast.StructType)
+			for _, field := range structure.Fields.List {
+				if containsFunctionType(field.Type) {
+					t.Errorf("TestingOverrides exposes function-valued phase override %s", field.Names[0].Name)
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("TestingOverrides declaration not found")
+}
+
+func TestNewForTestingDoesNotStartRuntime(t *testing.T) {
+	t.Parallel()
+
+	file := parseRuntimeOwnershipFile(t, filepath.Join("..", "testhooks.go"))
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != "NewForTesting" {
+			continue
+		}
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if ok && selector.Sel.Name == "Start" {
+				t.Error("NewForTesting performs hidden runtime startup")
+			}
+			return true
+		})
+		return
+	}
+	t.Fatal("NewForTesting declaration not found")
+}
+
+func parseRuntimeOwnershipFile(t *testing.T, path string) *ast.File {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func containsFunctionType(expression ast.Expr) bool {
+	found := false
+	ast.Inspect(expression, func(node ast.Node) bool {
+		if _, ok := node.(*ast.FuncType); ok {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+func expressionNamesType(expression ast.Expr, want string) bool {
+	switch value := expression.(type) {
+	case *ast.StarExpr:
+		return expressionNamesType(value.X, want)
+	case *ast.SelectorExpr:
+		return value.Sel.Name == want
+	case *ast.Ident:
+		return value.Name == want
+	default:
+		return false
+	}
+}

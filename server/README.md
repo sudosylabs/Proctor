@@ -19,20 +19,24 @@ startup, HTTP serving, readiness, bounded HTTP drain, transport cleanup, and
 platform shutdown:
 
 ```text
-server.New → config.Store → concrete adapters → platform.Service
-                                                   ├─→ app.App
-                                                   └─→ app/api
+server.New → acquire concrete adapters → platform.Accept (ownership)
+                                         ↓ borrowed construction projection
+                              File Content → app.App → HTTP/WebSocket/Jobs
+                                         ↓ projection discarded
+                                      inert Server
 ```
 
-`platform.New` accepts already-constructed store, cache, mail, VFS, cluster,
-logging, configuration, and external-authentication capabilities. It owns
-their shared health and lifecycle, but does not select their implementations.
-The root translates deployment configuration into those concrete choices.
+`platform.Accept` takes ownership of already-constructed store, cache, mail,
+VFS, cluster, logging, configuration, and external-authentication capabilities
+at call entry, including failure outcomes. A short-lived lifecycle-free
+projection lets the root wire consumers without turning Platform into a
+locator. The projection is discarded before construction returns.
 
 The facade intentionally exposes construction, start, close, readiness, and
 the narrow operator-command capabilities used by the CLI. The CLI remains a
-thin caller of this API, and `testlib` constructs the same graph through typed
-test overrides.
+thin caller of this API. `testlib` uses the same private composition recipe
+through concrete typed overrides and receives only Server, the application
+facade and an HTTP handler; it retains its supplied adapters for assertions.
 
 Durable architecture and capability inventories are maintained outside this
 module README:

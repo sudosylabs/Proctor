@@ -27,91 +27,6 @@ type compatibilityProblem struct {
 	Fields    map[string]string `json:"fields"`
 }
 
-func TestRoutesHaveExplicitAuthenticationPolicy(t *testing.T) {
-	t.Parallel()
-
-	helper := testlib.Setup(t)
-	routes := helper.API.Routes()
-	if len(routes) != 95 {
-		t.Fatalf("route count = %d, want 95", len(routes))
-	}
-	expected := map[string]api.AuthRequirement{
-		http.MethodGet + " /health/live":                                                                                       api.AuthPublic,
-		http.MethodGet + " /health/ready":                                                                                      api.AuthPublic,
-		http.MethodGet + " /api/v1/system/version":                                                                             api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/login":                                                                                api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/refresh":                                                                              api.AuthRefreshCredentialRequired,
-		http.MethodPost + " /api/v1/auth/logout":                                                                               api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/auth/email-verification/complete":                                                          api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/email-verification/request":                                                           api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/auth/password-reset/complete":                                                              api.AuthPublic,
-		http.MethodPost + " /api/v1/auth/password-reset/request":                                                               api.AuthPublic,
-		http.MethodGet + " /api/v1/websocket":                                                                                  api.AuthSessionRequired,
-		http.MethodGet + " /api/v1/auth/providers":                                                                             api.AuthPublic,
-		http.MethodGet + " /api/v1/auth/providers/{provider_id:[a-z0-9][a-z0-9._-]{0,63}}/login":                               api.AuthPublic,
-		http.MethodGet + " /api/v1/auth/providers/{provider_id:[a-z0-9][a-z0-9._-]{0,63}}/callback":                            api.AuthPublic,
-		http.MethodGet + " /api/v1/users/me":                                                                                   api.AuthPrincipalRequired,
-		http.MethodGet + " /api/v1/users/me/sessions":                                                                          api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/sessions/revoke":                                                                  api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/sessions/revoke-all":                                                              api.AuthSessionRequired,
-		http.MethodGet + " /api/v1/users/me/mfa":                                                                               api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/mfa/setup":                                                                        api.AuthRecentSessionRequired,
-		http.MethodPost + " /api/v1/users/me/mfa/activate":                                                                     api.AuthRecentSessionRequired,
-		http.MethodPost + " /api/v1/users/me/mfa/challenge":                                                                    api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/mfa/recovery-codes/regenerate":                                                    api.AuthStrongRecentSessionRequired,
-		http.MethodPost + " /api/v1/users/me/mfa/disable":                                                                      api.AuthStrongRecentSessionRequired,
-		http.MethodPost + " /api/v1/users/me/tokens":                                                                           api.AuthRecentSessionRequired,
-		http.MethodGet + " /api/v1/users/me/tokens":                                                                            api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/tokens/{personal_access_token_id:[ybndrfg8ejkmcpqxot1uwisza345h769]{26}}/disable": api.AuthSessionRequired,
-		http.MethodPost + " /api/v1/users/me/tokens/{personal_access_token_id:[ybndrfg8ejkmcpqxot1uwisza345h769]{26}}/enable":  api.AuthRecentSessionRequired,
-		http.MethodDelete + " /api/v1/users/me/tokens/{personal_access_token_id:[ybndrfg8ejkmcpqxot1uwisza345h769]{26}}":       api.AuthSessionRequired,
-		http.MethodGet + " /api/v1/audits":                                                                                     api.AuthPrincipalRequired,
-		http.MethodGet + " /api/v1/bootstrap":                                                                                  api.AuthPublic,
-		http.MethodPost + " /api/v1/bootstrap":                                                                                 api.AuthPublic,
-		http.MethodGet + " /api/v1/roles":                                                                                      api.AuthPrincipalRequired,
-		http.MethodPost + " /api/v1/roles":                                                                                     api.AuthPrincipalRequired,
-		http.MethodGet + " /api/v1/roles/{role_id:[ybndrfg8ejkmcpqxot1uwisza345h769]{26}}":                                     api.AuthPrincipalRequired,
-		http.MethodPatch + " /api/v1/roles/{role_id:[ybndrfg8ejkmcpqxot1uwisza345h769]{26}}":                                   api.AuthPrincipalRequired,
-		http.MethodDelete + " /api/v1/roles/{role_id:[ybndrfg8ejkmcpqxot1uwisza345h769]{26}}":                                  api.AuthPrincipalRequired,
-		http.MethodGet + " /api/v1/role-bindings":                                                                              api.AuthPrincipalRequired,
-		http.MethodPost + " /api/v1/role-bindings":                                                                             api.AuthPrincipalRequired,
-		http.MethodDelete + " /api/v1/role-bindings/{role_binding_id:[ybndrfg8ejkmcpqxot1uwisza345h769]{26}}":                  api.AuthPrincipalRequired,
-	}
-	for _, route := range routes {
-		if route.Method == "" || route.Path == "" {
-			t.Errorf("route is incomplete: %#v", route)
-		}
-		key := route.Method + " " + route.Path
-		want, exists := expected[key]
-		if !exists {
-			want = api.AuthPrincipalRequired
-		}
-		if route.Auth != want {
-			t.Errorf("route %s auth = %q, want %q", key, route.Auth, want)
-		}
-		if exists {
-			delete(expected, key)
-		}
-	}
-	if len(expected) != 0 {
-		t.Fatalf("missing routes = %#v", expected)
-	}
-	routes[0].Path = "/mutated"
-	if helper.API.Routes()[0].Path == "/mutated" {
-		t.Fatal("Routes exposed mutable internal state")
-	}
-	for index := range routes {
-		if len(routes[index].ErrorCodes) == 0 {
-			continue
-		}
-		routes[index].ErrorCodes[0] = "mutated"
-		if helper.API.Routes()[index].ErrorCodes[0] == "mutated" {
-			t.Fatal("Routes exposed mutable error metadata")
-		}
-		break
-	}
-}
-
 func TestHealthVersionAndCommonHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -145,11 +60,6 @@ func TestHealthVersionAndCommonHeaders(t *testing.T) {
 	readiness := performRequest(helper.Handler(), http.MethodGet, "/health/ready", "")
 	if readiness.Code != http.StatusServiceUnavailable {
 		t.Fatalf("not-ready status = %d", readiness.Code)
-	}
-	helper.Health.SetReady(true)
-	readiness = performRequest(helper.Handler(), http.MethodGet, "/health/ready", "")
-	if readiness.Code != http.StatusOK {
-		t.Fatalf("ready status = %d", readiness.Code)
 	}
 
 	version := performRequest(helper.Handler(), http.MethodGet, "/api/v1/system/version", "")

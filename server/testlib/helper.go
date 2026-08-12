@@ -14,6 +14,7 @@ import (
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	"github.com/sudosylabs/proctor/server/cluster/local"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -62,27 +63,30 @@ func WithBuildInfo(buildInfo api.BuildInfo) Option {
 	}
 }
 
-// Helper exposes the assembled production graph and the test doubles it was
-// constructed with.
+// Helper exposes the runtime's public behaviors and retains the test adapters
+// it supplied for lifecycle assertions.
 type Helper struct {
 	Server      *server.Server
 	App         *app.App
-	Platform    *platform.Service
-	API         *api.API
-	Health      *app.Health
 	ConfigStore *config.Store
 	Logs        *mlog.Buffer
+	// Persistence and Cluster are the exact adapters supplied by testlib. A nil
+	// Cluster means the production selector constructed a non-local configured
+	// adapter such as Memberlist.
+	Persistence store.Store
+	Cluster     platform.Cluster
 	// PersistenceClose tracks close of the default lifecycle-only persistence
 	// stub. It is nil when the graph was constructed with WithStore.
 	PersistenceClose *LifecycleStore
 	Cache            *Cache
 	Mailer           *Mailer
 	VFS              *memoryvfs.FS
+	handler          http.Handler
 }
 
 // Handler returns the HTTP transport of the assembled graph.
 func (h *Helper) Handler() http.Handler {
-	return h.API
+	return h.handler
 }
 
 // Setup constructs the production runtime graph through the module-root
@@ -136,6 +140,12 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		tb.Fatalf("create test mailer: %v", err)
 	}
 	filesystem := memoryvfs.New()
+	if settings.cluster == nil && store.Get().Cluster.Backend == "local" {
+		settings.cluster, err = local.New(store.Get().Cluster.NodeID, testClusterLogger{})
+		if err != nil {
+			tb.Fatalf("create local test cluster: %v", err)
+		}
+	}
 
 	persistenceOverride := settings.persistence
 	var lifecycle *LifecycleStore
@@ -160,11 +170,11 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 	helper := &Helper{
 		Server:           runtime.Server,
 		App:              runtime.Application,
-		Platform:         runtime.Platform,
-		API:              runtime.API,
-		Health:           runtime.Health,
+		handler:          runtime.Handler,
 		ConfigStore:      store,
 		Logs:             logs,
+		Persistence:      persistenceOverride,
+		Cluster:          settings.cluster,
 		PersistenceClose: lifecycle,
 		Cache:            cache,
 		Mailer:           mailer,
@@ -177,6 +187,10 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 	})
 	return helper
 }
+
+type testClusterLogger struct{}
+
+func (testClusterLogger) ErrorContext(context.Context, string, error) {}
 
 // LifecycleStore is the lifecycle-only persistence seam for ordinary unit
 // tests that never exercise durable model stores. Identity accessors return

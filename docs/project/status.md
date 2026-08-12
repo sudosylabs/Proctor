@@ -8,8 +8,11 @@ the code and component contracts for that detail.
 
 - Four independent Go modules are connected by the root workspace: reusable
   cache, mail, and VFS modules plus the Proctor server.
-- The module-root `server.New` composition graph owns concrete infrastructure,
-  `platform.Service`, `app.App`, HTTP, WebSocket, startup, and shutdown.
+- The module-root `server.New` follows one inert ordered composition recipe:
+  explicit acquisition transfers infrastructure atomically to lifecycle-only
+  `platform.Service`, a discarded non-owning projection wires `app.App`, HTTP,
+  WebSocket and Jobs, and `Server` alone owns milestone-based startup,
+  readiness, listener handoff, bounded drain and reverse shutdown.
 - Typed deployment configuration, structured logging, health/readiness,
   graceful shutdown, and the shared `testlib` graph are operational.
 - PostgreSQL schema management, the root/per-model store architecture, SQL

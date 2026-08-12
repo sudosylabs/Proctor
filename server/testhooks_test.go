@@ -318,8 +318,7 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 		t.Fatalf("NewForTesting() error = %v", err)
 	}
 
-	if runtime.Server == nil || runtime.Platform == nil || runtime.Application == nil ||
-		runtime.API == nil || runtime.Health == nil {
+	if runtime.Server == nil || runtime.Application == nil || runtime.Handler == nil {
 		t.Fatalf("NewForTesting() runtime = %#v, want every handle populated", runtime)
 	}
 	if runtime.Server.Ready() {
@@ -649,7 +648,7 @@ func TestNewForTestingServesTheProvidedBuildInfo(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/system/version", nil)
 	response := httptest.NewRecorder()
-	runtime.API.ServeHTTP(response, request)
+	runtime.Handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("version status = %d, want 200", response.Code)
 	}

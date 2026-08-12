@@ -54,8 +54,10 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
-	if helper.Handler() != helper.API {
-		t.Fatal("test helper does not serve the assembled HTTP transport")
+	if helper.Server == nil || helper.App == nil || helper.Handler() == nil ||
+		helper.Persistence == nil || helper.Cache == nil || helper.Cluster == nil ||
+		helper.Mailer == nil || helper.VFS == nil {
+		t.Fatal("test helper did not expose the behavioral runtime projection")
 	}
 }
 

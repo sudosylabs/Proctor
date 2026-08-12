@@ -1,15 +1,6 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package server owns Proctor runtime composition and lifecycle. Business
-// policy remains in the application layer and is not implemented here.
-//
-// As the composition root, this package may depend on the components it wires;
-// those components must not depend back on the module-root package.
-//
-// New selects and assembles infrastructure while this package owns startup,
-// readiness, graceful HTTP shutdown, and cleanup. WebSocket construction is
-// inert; Start owns replay reaping and Close drains the hub.
 package server
 
 import (

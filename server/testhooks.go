@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
@@ -46,14 +47,12 @@ type TestingOverrides struct {
 	BuildInfo api.BuildInfo
 }
 
-// TestingRuntime exposes the assembled graph for test inspection. The Server
-// owns lifecycle exactly as in production and must be Closed.
+// TestingRuntime is a non-owning behavioral projection. Server owns lifecycle
+// exactly as in production and must be Closed.
 type TestingRuntime struct {
 	Server      *Server
-	Platform    *platform.Service
 	Application *app.App
-	API         *api.API
-	Health      *app.Health
+	Handler     http.Handler
 }
 
 // NewForTesting constructs the production runtime graph with explicit
@@ -71,9 +70,7 @@ func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRun
 	}
 	return &TestingRuntime{
 		Server:      result.server,
-		Platform:    result.test.platform,
 		Application: result.test.application,
-		API:         result.test.transport,
-		Health:      result.test.readiness,
+		Handler:     result.test.handler,
 	}, nil
 }

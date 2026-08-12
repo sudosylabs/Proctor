@@ -95,7 +95,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 					return compositionWebSocket{closer: websocketCloser}, nil
 				},
 				attachSink: func(*app.App, app.RealtimeSink) error { return nil },
-				http: func(api.Options) (runtimeTransport, *api.API, error) {
+				http: func(api.Options) (runtimeTransport, http.Handler, error) {
 					return compositionTransport{closer: transportCloser}, nil, nil
 				},
 				jobs: func(*app.App) runtimeJobs { return compositionJobs{} },
@@ -118,7 +118,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			case "attach-sink":
 				constructors.attachSink = func(*app.App, app.RealtimeSink) error { return primaryErr }
 			case "http":
-				constructors.http = func(api.Options) (runtimeTransport, *api.API, error) { return nil, nil, primaryErr }
+				constructors.http = func(api.Options) (runtimeTransport, http.Handler, error) { return nil, nil, primaryErr }
 			case "jobs":
 				constructors.jobs = func(*app.App) runtimeJobs { return nil }
 				primaryErr = errDurableJobRuntimeUnavailable
