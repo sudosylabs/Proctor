@@ -17,7 +17,7 @@ type mutationAuditor interface {
 	Fail(context.Context, string, string) error
 }
 
-type mutationAuditAdapter struct{ audit *AuditService }
+type mutationAuditAdapter struct{ audit *auditService }
 
 func (a mutationAuditAdapter) Begin(
 	ctx context.Context,

@@ -17,14 +17,14 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type AuditService struct {
+type auditService struct {
 	audits       store.AuditStore
 	institutions store.InstitutionStore
 	nodeID       string
 	now          func() time.Time
 }
 
-func newAuditService(audits store.AuditStore, institutions store.InstitutionStore, nodeID string) (*AuditService, error) {
+func newAuditService(audits store.AuditStore, institutions store.InstitutionStore, nodeID string) (*auditService, error) {
 	if audits == nil {
 		return nil, errors.New("audit store is required")
 	}
@@ -34,10 +34,10 @@ func newAuditService(audits store.AuditStore, institutions store.InstitutionStor
 	if nodeID == "" {
 		return nil, errors.New("audit node ID is required")
 	}
-	return &AuditService{audits: audits, institutions: institutions, nodeID: nodeID, now: time.Now}, nil
+	return &auditService{audits: audits, institutions: institutions, nodeID: nodeID, now: time.Now}, nil
 }
 
-func (s *AuditService) BeginAuthentication(
+func (s *auditService) BeginAuthentication(
 	ctx context.Context,
 	userID string,
 	method string,
@@ -84,7 +84,7 @@ func (s *AuditService) BeginAuthentication(
 	return saved, nil
 }
 
-func (s *AuditService) RecordExternalAuthenticationFailure(
+func (s *auditService) RecordExternalAuthenticationFailure(
 	ctx context.Context,
 	providerID string,
 	method string,
@@ -130,7 +130,7 @@ func (s *AuditService) RecordExternalAuthenticationFailure(
 // BeginCriticalAction persists an attempt before a security-sensitive mutation
 // is allowed to start. Callers must pass only bounded safe values or Auditable
 // projections; credentials and secrets are never acceptable audit parameters.
-func (s *AuditService) BeginCriticalAction(
+func (s *auditService) BeginCriticalAction(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -183,7 +183,7 @@ func (s *AuditService) BeginCriticalAction(
 // CompleteCriticalAction records the terminal outcome. If this fails after the
 // mutation committed, the durable attempt remains for operator reconciliation
 // and the use case must return the audit failure instead of reporting success.
-func (s *AuditService) CompleteCriticalAction(
+func (s *auditService) CompleteCriticalAction(
 	ctx context.Context,
 	eventID string,
 	status model.AuditStatus,
@@ -206,7 +206,7 @@ func (s *AuditService) CompleteCriticalAction(
 	return event, nil
 }
 
-func (s *AuditService) RecordAuthorizationDecision(
+func (s *auditService) RecordAuthorizationDecision(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -222,7 +222,7 @@ func (s *AuditService) RecordAuthorizationDecision(
 // RecordUserSearchDecision records collection-level User search without
 // introducing a permission action. Authority comes from user.view and
 // class.members.view grants.
-func (s *AuditService) RecordUserSearchDecision(
+func (s *auditService) RecordUserSearchDecision(
 	ctx context.Context,
 	principal model.Principal,
 	resource model.Resource,
@@ -235,7 +235,7 @@ func (s *AuditService) RecordUserSearchDecision(
 	)
 }
 
-func (s *AuditService) recordDecision(
+func (s *auditService) recordDecision(
 	ctx context.Context,
 	principal model.Principal,
 	action string,
@@ -270,7 +270,7 @@ func (s *AuditService) recordDecision(
 	return nil
 }
 
-func (s *AuditService) List(
+func (s *auditService) List(
 	ctx context.Context,
 	query model.AuditQuery,
 ) ([]*model.AuditEvent, error) {

@@ -111,7 +111,7 @@ func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
 		t.Fatalf("cluster broadcasts = %d, want duplicates attempted", len(cluster.broadcasts))
 	}
 	// Second delete is a no-op success; cache must remain absent.
-	if _, err := cache.Get(ctx, authenticationCachePrefix+hash); !errors.Is(err, errAuthenticationCacheMiss) {
+	if _, err := cache.Get(ctx, authenticationCachePrefix+hash); !errors.Is(err, ErrAuthenticationCacheMiss) {
 		t.Fatalf("cache after duplicate revocation = %v, want miss", err)
 	}
 }

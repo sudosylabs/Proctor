@@ -58,12 +58,13 @@ such as session issuance, MFA verification, Personal Access Token bearer
 resolution, user provisioning, password transition, and session revocation.
 They do not retain sibling implementations or a service aggregate. Observable
 authentication behavior, error precedence, audit ordering, credential
-ceilings, and post-commit effects remain characterization-locked during this
-structural migration; an intentional correction is reviewed separately.
+ceilings, and post-commit effects remain characterization-locked; an
+intentional correction is reviewed separately.
 
-An unexported composition helper may return the fixed set of focused Identity
-services so `app.New` can present their construction order clearly. That value
-exists only during construction: runtime services neither receive nor query it.
+`app.New` constructs the fixed set of focused Identity services in explicit
+dependency order and projects each exact Store or behavioral capability at its
+constructor boundary. Runtime services neither receive nor query a composition
+aggregate.
 Authentication owns credential validation, principal establishment, ordinary
 session issuance, refresh rotation, and logout. External authentication uses a
 narrow session-issuer capability; Personal Access Token resolution and MFA

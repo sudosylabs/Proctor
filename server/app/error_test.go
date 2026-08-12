@@ -109,8 +109,8 @@ func TestErrorHasNoHTTPOrTransportMetadata(t *testing.T) {
 		}
 	}
 
-	// Ensure the concrete type does not satisfy the legacy HTTP-facing surface
-	// that model.AppError still implements for the temporary bridge.
+	// Ensure the concrete type cannot acquire transport-facing presentation
+	// responsibilities through the former HTTP application-error shape.
 	type legacyApplicationError interface {
 		error
 		HTTPStatus() int

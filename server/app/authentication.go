@@ -585,7 +585,7 @@ func (s *authenticationService) updateActivity(
 		[]byte{1},
 		settings.ActivityUpdateInterval,
 	)
-	if errors.Is(err, errAuthenticationCacheNotStored) {
+	if errors.Is(err, ErrAuthenticationCacheNotStored) {
 		return nil
 	}
 	if err != nil {
@@ -752,7 +752,7 @@ func (s *authenticationService) cachedAuthentication(
 	tokenHash string,
 ) *cachedAuthentication {
 	data, err := s.cache.Get(ctx, authenticationCachePrefix+tokenHash)
-	if errors.Is(err, errAuthenticationCacheMiss) {
+	if errors.Is(err, ErrAuthenticationCacheMiss) {
 		return nil
 	}
 	if err != nil {

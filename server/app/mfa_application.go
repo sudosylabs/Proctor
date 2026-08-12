@@ -469,7 +469,7 @@ func (s *mfaApplicationService) failMutation(
 	return mapped
 }
 
-type mfaAuditAdapter struct{ audit *AuditService }
+type mfaAuditAdapter struct{ audit *auditService }
 
 func (a mfaAuditAdapter) Begin(
 	ctx context.Context,

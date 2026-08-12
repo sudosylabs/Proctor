@@ -295,7 +295,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 	return published.User, nil
 }
 
-type profilePictureRealtimeEffects struct{ realtime *RealtimeService }
+type profilePictureRealtimeEffects struct{ realtime *realtimeService }
 
 func (e profilePictureRealtimeEffects) Changed(ctx context.Context, change profilePictureChanged) error {
 	data, err := json.Marshal(struct {
@@ -309,7 +309,7 @@ func (e profilePictureRealtimeEffects) Changed(ctx context.Context, change profi
 	return e.realtime.Publish(ctx, RealtimeEvent{Name: "user_profile_picture_changed", UserID: change.UserID.String(), Data: data})
 }
 
-type profilePictureEffectReporter struct{ realtime *RealtimeService }
+type profilePictureEffectReporter struct{ realtime *realtimeService }
 
 func (r profilePictureEffectReporter) Report(ctx context.Context, operation string, err error) {
 	r.realtime.reportTransientFailure(ctx, operation, err)

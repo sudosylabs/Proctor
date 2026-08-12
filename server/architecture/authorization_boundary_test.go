@@ -130,6 +130,32 @@ func TestApplicationFacadeDoesNotRetainPersistenceLocator(t *testing.T) {
 	})
 }
 
+func TestApplicationDoesNotExportFocusedServiceImplementations(t *testing.T) {
+	t.Parallel()
+
+	retiredImplementationTypes := map[string]struct{}{
+		"AuditService":    {},
+		"RealtimeService": {},
+	}
+	inspectProductionGoFiles(t, []string{"app"}, func(path string, file *ast.File) {
+		for _, declaration := range file.Decls {
+			generic, ok := declaration.(*ast.GenDecl)
+			if !ok || generic.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range generic.Specs {
+				typeSpec, ok := specification.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				if _, retired := retiredImplementationTypes[typeSpec.Name.Name]; retired {
+					t.Errorf("retired exported application implementation %q remains in %s", typeSpec.Name.Name, path)
+				}
+			}
+		}
+	})
+}
+
 func appReceiverNames(function *ast.FuncDecl) (map[string]bool, bool) {
 	names := map[string]bool{}
 	if function == nil || function.Recv == nil || len(function.Recv.List) != 1 {

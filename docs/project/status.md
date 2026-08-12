@@ -24,10 +24,13 @@ the code and component contracts for that detail.
   organizational membership, and effective-dated student enrollment.
 - Identity includes local passwords, sessions and refresh rotation, account
   recovery, personal access tokens, TOTP MFA and recovery codes, administrative
-  session management, direct CAS 3, and generic OIDC.
+  session management, direct CAS 3, and generic OIDC. Its application facade
+  delegates to validated unexported focused services that receive exact Store
+  contracts; it retains no persistence locator or mutable sibling callbacks.
 - Authorization uses current scoped role bindings with institution and
   academic-unit inheritance, exact class scope, durable fail-closed decision
-  auditing, protected built-in administration, and scoped user visibility.
+  auditing, protected built-in administration, and persistence-constrained
+  scoped user visibility through one authoritative Access Control boundary.
 - Realtime behavior includes authenticated WebSockets, authorized
   subscriptions, bounded local replay, explicit resynchronization, local and
   Memberlist cluster transports, and best-effort cross-node fan-out.

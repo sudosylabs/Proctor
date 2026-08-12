@@ -34,7 +34,7 @@ func (c *authenticationCacheFake) Get(_ context.Context, key string) ([]byte, er
 	defer c.mu.Unlock()
 	value, ok := c.values[key]
 	if !ok {
-		return nil, errAuthenticationCacheMiss
+		return nil, ErrAuthenticationCacheMiss
 	}
 	return append([]byte(nil), value...), nil
 }
@@ -50,7 +50,7 @@ func (c *authenticationCacheFake) SetIfAbsent(_ context.Context, key string, val
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.values[key]; ok {
-		return errAuthenticationCacheNotStored
+		return ErrAuthenticationCacheNotStored
 	}
 	c.values[key] = append([]byte(nil), value...)
 	return nil

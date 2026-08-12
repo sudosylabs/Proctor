@@ -50,7 +50,7 @@ type academicUnitEffectFailures interface {
 	Report(context.Context, string, error)
 }
 
-type academicUnitRealtimeEffects struct{ realtime *RealtimeService }
+type academicUnitRealtimeEffects struct{ realtime *realtimeService }
 
 func (e academicUnitRealtimeEffects) Created(
 	ctx context.Context,
@@ -88,7 +88,7 @@ func (e academicUnitRealtimeEffects) publish(
 	})
 }
 
-type academicUnitEffectReporter struct{ realtime *RealtimeService }
+type academicUnitEffectReporter struct{ realtime *realtimeService }
 
 func (r academicUnitEffectReporter) Report(
 	ctx context.Context,

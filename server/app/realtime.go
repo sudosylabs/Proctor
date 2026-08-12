@@ -45,10 +45,10 @@ type RealtimeDiagnostics interface {
 	ErrorContextWithEvent(ctx context.Context, message, event string, err error)
 }
 
-// RealtimeService owns local-first, loop-free realtime publication policy and
+// realtimeService owns local-first, loop-free realtime publication policy and
 // security invalidation fan-out. It does not import platform, WebSocket wire,
 // or cluster wire contracts.
-type RealtimeService struct {
+type realtimeService struct {
 	authenticationInvalidator authenticationInvalidator
 	diagnostics               RealtimeDiagnostics
 	mu                        sync.RWMutex
@@ -113,14 +113,14 @@ type authorizationInvalidationMessage struct {
 func newRealtimeService(
 	authenticationInvalidator authenticationInvalidator,
 	diagnostics RealtimeDiagnostics,
-) (*RealtimeService, error) {
+) (*realtimeService, error) {
 	if authenticationInvalidator == nil {
 		return nil, errors.New("authentication invalidator is required")
 	}
 	if diagnostics == nil {
 		return nil, errors.New("realtime diagnostics are required")
 	}
-	return &RealtimeService{
+	return &realtimeService{
 		authenticationInvalidator: authenticationInvalidator,
 		diagnostics:               diagnostics,
 	}, nil
@@ -128,7 +128,7 @@ func newRealtimeService(
 
 // SetClusterFanout attaches the composition adapter and registers peer
 // handlers. Peer handlers apply only local effects so Broadcast never loops.
-func (s *RealtimeService) SetClusterFanout(fanout RealtimeClusterFanout) error {
+func (s *realtimeService) SetClusterFanout(fanout RealtimeClusterFanout) error {
 	if fanout == nil {
 		return errors.New("realtime cluster fan-out is nil")
 	}
@@ -153,7 +153,7 @@ func (s *RealtimeService) SetClusterFanout(fanout RealtimeClusterFanout) error {
 	return nil
 }
 
-func (s *RealtimeService) SetSink(sink RealtimeSink) error {
+func (s *realtimeService) SetSink(sink RealtimeSink) error {
 	if sink == nil {
 		return errors.New("realtime sink is nil")
 	}
@@ -168,7 +168,7 @@ func (s *RealtimeService) SetSink(sink RealtimeSink) error {
 
 // Publish delivers a transport-neutral event locally first, then fans it out
 // to peers best-effort. Callers must invoke this only after durable commit.
-func (s *RealtimeService) Publish(ctx context.Context, event RealtimeEvent) error {
+func (s *realtimeService) Publish(ctx context.Context, event RealtimeEvent) error {
 	candidate := event.Clone()
 	if candidate.ID == "" {
 		candidate.ID = model.NewId()
@@ -191,7 +191,7 @@ func (s *RealtimeService) Publish(ctx context.Context, event RealtimeEvent) erro
 	return nil
 }
 
-func (s *RealtimeService) publishLocal(ctx context.Context, event RealtimeEvent) {
+func (s *realtimeService) publishLocal(ctx context.Context, event RealtimeEvent) {
 	s.mu.RLock()
 	sink := s.sink
 	s.mu.RUnlock()
@@ -200,7 +200,7 @@ func (s *RealtimeService) publishLocal(ctx context.Context, event RealtimeEvent)
 	}
 }
 
-func (s *RealtimeService) reportTransientFailure(
+func (s *realtimeService) reportTransientFailure(
 	ctx context.Context,
 	event string,
 	err error,
@@ -211,7 +211,7 @@ func (s *RealtimeService) reportTransientFailure(
 	s.diagnostics.ErrorContextWithEvent(ctx, "transient realtime publication failed", event, err)
 }
 
-func (s *RealtimeService) SessionsRevoked(
+func (s *realtimeService) SessionsRevoked(
 	ctx context.Context,
 	userID string,
 	sessionIDs []string,
@@ -231,7 +231,7 @@ func (s *RealtimeService) SessionsRevoked(
 	s.broadcastSecurityInvalidation(ctx, realtimeClusterEventSessionRevoked, message)
 }
 
-func (s *RealtimeService) AuthenticationCacheInvalidated(
+func (s *realtimeService) AuthenticationCacheInvalidated(
 	ctx context.Context,
 	userID string,
 	accessTokenHashes []string,
@@ -248,7 +248,7 @@ func (s *RealtimeService) AuthenticationCacheInvalidated(
 	s.broadcastSecurityInvalidation(ctx, realtimeClusterEventSessionRevoked, message)
 }
 
-func (s *RealtimeService) InvalidateAuthorization(ctx context.Context, userID string) {
+func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID string) {
 	if userID != "" && !model.IsValidId(userID) {
 		s.reportInvalidPropagation(
 			ctx,
@@ -265,7 +265,7 @@ func (s *RealtimeService) InvalidateAuthorization(ctx context.Context, userID st
 	)
 }
 
-func (s *RealtimeService) reportInvalidPropagation(ctx context.Context, message string, err error) {
+func (s *realtimeService) reportInvalidPropagation(ctx context.Context, message string, err error) {
 	if s.diagnostics == nil {
 		return
 	}
@@ -275,7 +275,7 @@ func (s *RealtimeService) reportInvalidPropagation(ctx context.Context, message 
 // broadcastSecurityInvalidation fans out session or authorization invalidation
 // best-effort. Correctness recovers from PostgreSQL and bounded cache TTLs when
 // peers miss the message.
-func (s *RealtimeService) broadcastSecurityInvalidation(ctx context.Context, event string, value any) {
+func (s *realtimeService) broadcastSecurityInvalidation(ctx context.Context, event string, value any) {
 	payload, err := json.Marshal(value)
 	if err == nil {
 		err = s.broadcast(ctx, event, payload)
@@ -285,7 +285,7 @@ func (s *RealtimeService) broadcastSecurityInvalidation(ctx context.Context, eve
 	}
 }
 
-func (s *RealtimeService) broadcast(
+func (s *realtimeService) broadcast(
 	ctx context.Context,
 	event string,
 	data []byte,
@@ -299,7 +299,7 @@ func (s *RealtimeService) broadcast(
 	return cluster.Broadcast(ctx, event, data)
 }
 
-func (s *RealtimeService) handlePeerPublication(ctx context.Context, data []byte) error {
+func (s *realtimeService) handlePeerPublication(ctx context.Context, data []byte) error {
 	var publication realtimePublication
 	if err := decodeRealtimePayload(data, &publication); err != nil {
 		return err
@@ -316,7 +316,7 @@ func (s *RealtimeService) handlePeerPublication(ctx context.Context, data []byte
 	return nil
 }
 
-func (s *RealtimeService) handlePeerSessionRevocation(ctx context.Context, data []byte) error {
+func (s *realtimeService) handlePeerSessionRevocation(ctx context.Context, data []byte) error {
 	var revocation sessionRevocationMessage
 	if err := decodeRealtimePayload(data, &revocation); err != nil {
 		return err
@@ -328,7 +328,7 @@ func (s *RealtimeService) handlePeerSessionRevocation(ctx context.Context, data 
 	return nil
 }
 
-func (s *RealtimeService) applySessionRevocation(
+func (s *realtimeService) applySessionRevocation(
 	ctx context.Context,
 	revocation sessionRevocationMessage,
 ) {
@@ -352,9 +352,9 @@ func (s *RealtimeService) applySessionRevocation(
 	}
 }
 
-var _ authenticationSecurityEffects = (*RealtimeService)(nil)
+var _ authenticationSecurityEffects = (*realtimeService)(nil)
 
-func (s *RealtimeService) handlePeerAuthorizationInvalidation(_ context.Context, data []byte) error {
+func (s *realtimeService) handlePeerAuthorizationInvalidation(_ context.Context, data []byte) error {
 	var invalidation authorizationInvalidationMessage
 	if err := decodeRealtimePayload(data, &invalidation); err != nil {
 		return err
@@ -366,7 +366,7 @@ func (s *RealtimeService) handlePeerAuthorizationInvalidation(_ context.Context,
 	return nil
 }
 
-func (s *RealtimeService) applyAuthorizationInvalidation(userID string) {
+func (s *realtimeService) applyAuthorizationInvalidation(userID string) {
 	s.mu.RLock()
 	sink := s.sink
 	s.mu.RUnlock()

@@ -155,5 +155,5 @@ var (
 	_ accountTokenPasswordHasher = (*passwordHasher)(nil)
 	_ accountTokenRateLimiter    = (*cacheAccountTokenRateLimiter)(nil)
 	_ accountTokenAudit          = accountTokenAuditRecorder{}
-	_ accountTokenEffects        = (*RealtimeService)(nil)
+	_ accountTokenEffects        = (*realtimeService)(nil)
 )

@@ -167,7 +167,7 @@ func TestRealtimeSessionRevocationClosesLocalSessions(t *testing.T) {
 type noopAuthenticationCache struct{}
 
 func (noopAuthenticationCache) Get(context.Context, string) ([]byte, error) {
-	return nil, errAuthenticationCacheMiss
+	return nil, ErrAuthenticationCacheMiss
 }
 func (noopAuthenticationCache) SetAlways(context.Context, string, []byte, time.Duration) error {
 	return nil
@@ -180,7 +180,7 @@ func (noopAuthenticationCache) Add(context.Context, string, int64, time.Duration
 	return 0, nil
 }
 
-func newTestRealtimeService(t *testing.T, cache authenticationCache) *RealtimeService {
+func newTestRealtimeService(t *testing.T, cache authenticationCache) *realtimeService {
 	t.Helper()
 	invalidator, err := newAuthenticationCacheInvalidator(cache, &securityEffectsDiagnosticsFake{})
 	if err != nil {

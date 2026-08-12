@@ -163,23 +163,23 @@ func TestAuthenticationAndRealtimeRetainOnlyNarrowSiblingPorts(t *testing.T) {
 	t.Parallel()
 
 	authenticationType := reflect.TypeOf(authenticationService{})
-	realtimePointerType := reflect.TypeOf((*RealtimeService)(nil))
+	realtimePointerType := reflect.TypeOf((*realtimeService)(nil))
 	for index := 0; index < authenticationType.NumField(); index++ {
 		field := authenticationType.Field(index)
 		if field.Type == realtimePointerType {
-			t.Fatalf("authenticationService retains RealtimeService in field %q", field.Name)
+			t.Fatalf("authenticationService retains realtimeService in field %q", field.Name)
 		}
 		if field.Type.Kind() == reflect.Func && field.Name != "now" && field.Name != "newCredential" {
 			t.Fatalf("authenticationService retains mutable callback field %q", field.Name)
 		}
 	}
 
-	realtimeType := reflect.TypeOf(RealtimeService{})
+	realtimeType := reflect.TypeOf(realtimeService{})
 	authenticationPointerType := reflect.TypeOf((*authenticationService)(nil))
 	for index := 0; index < realtimeType.NumField(); index++ {
 		field := realtimeType.Field(index)
 		if field.Type == authenticationPointerType {
-			t.Fatalf("RealtimeService retains authenticationService in field %q", field.Name)
+			t.Fatalf("realtimeService retains authenticationService in field %q", field.Name)
 		}
 	}
 }

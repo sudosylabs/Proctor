@@ -26,8 +26,8 @@ type applicationErrorMapping struct {
 }
 
 // applicationErrorMappings is the exhaustive HTTP table for transport-neutral
-// application codes. Capabilities register their public codes here as they
-// migrate off model.AppError. An unmapped code fails safe as a generic 500.
+// application codes. Each capability registers its reviewed public codes;
+// an unmapped code fails safe as a generic 500.
 var applicationErrorMappings = map[string]applicationErrorMapping{
 	"authentication.invalid_credentials":                   {status: http.StatusUnauthorized},
 	"authentication.invalid_token":                         {status: http.StatusUnauthorized},

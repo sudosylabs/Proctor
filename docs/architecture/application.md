@@ -46,9 +46,9 @@ Migrations are by vertical slice. A package or capability is introduced only whe
 
 `app.App` is the public application facade, not a persistence locator. Focused
 services receive exact Store contracts during composition and App methods
-delegate to them. Migration of the remaining Identity, Access Control, and
-academic-administration facades removes the root Store field and accessor;
-production application code must not regain an `App.Store()` traversal.
+delegate to them. The facade retains neither the root Store nor a Store
+accessor; architecture tests reject restoration of either that locator or
+production `App.Store()` traversal.
 
 Readable ordered construction and selective child modules are useful
 structural patterns, but another project's platform-service taxonomy is not a

@@ -1,7 +1,6 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package app owns Proctor's application use cases and orchestration.
 package app
 
 import (
@@ -43,8 +42,8 @@ type App struct {
 	roleBindings                      *roleBindingService
 	auditListings                     *auditListingService
 	bootstrap                         *bootstrapService
-	audit                             *AuditService
-	realtime                          *RealtimeService
+	audit                             *auditService
+	realtime                          *realtimeService
 	jobs                              *jobengine.Engine
 	jobOperations                     *jobOperationsService
 
@@ -443,18 +442,11 @@ func (a *App) Authorize(
 	return a.authorization.Authorize(ctx, principal, action, resource, metadata)
 }
 
-// errAuthenticationCacheMiss and errAuthenticationCacheNotStored are the
+// ErrAuthenticationCacheMiss and ErrAuthenticationCacheNotStored are the
 // transport-neutral sentinels authentication uses for disposable cache
 // outcomes. Composition adapters translate infrastructure cache errors into
 // these values so authentication never imports platform.
 var (
 	ErrAuthenticationCacheMiss      = errors.New("authentication cache: key not found")
 	ErrAuthenticationCacheNotStored = errors.New("authentication cache: conditional write not applied")
-)
-
-// Deprecated aliases kept unexported for any same-package references during
-// the transition; prefer the exported Err* names in new code.
-var (
-	errAuthenticationCacheMiss      = ErrAuthenticationCacheMiss
-	errAuthenticationCacheNotStored = ErrAuthenticationCacheNotStored
 )

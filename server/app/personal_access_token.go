@@ -421,7 +421,7 @@ func (s *personalAccessTokenAdministrationService) failMutation(
 }
 
 type personalAccessTokenAuditAdapter struct {
-	audit *AuditService
+	audit *auditService
 }
 
 func (a personalAccessTokenAuditAdapter) Begin(
