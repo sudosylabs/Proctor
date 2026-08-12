@@ -8,9 +8,7 @@
 package app
 
 import (
-	"context"
 	"errors"
-	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -18,75 +16,11 @@ import (
 
 const defaultAdministrationListLimit = 100
 
-func (a *App) programmeAcademicUnit(ctx context.Context, programmeID string) (*model.Programme, string, error) {
-	programme, err := a.Store().Programme().Get(ctx, programmeID)
-	if err != nil {
-		return nil, "", administrationError("programmeAcademicUnit", "programme", err)
-	}
-	return programme, programme.AcademicUnitID.String(), nil
-}
-
-func (a *App) programmeLevelAcademicUnit(
-	ctx context.Context,
-	levelID string,
-) (*model.ProgrammeLevel, string, error) {
-	level, err := a.Store().ProgrammeLevel().Get(ctx, levelID)
-	if err != nil {
-		return nil, "", administrationError("programmeLevelAcademicUnit", "programme_level", err)
-	}
-	_, unitID, appErr := a.programmeAcademicUnit(ctx, level.ProgrammeID.String())
-	return level, unitID, appErr
-}
-
 func normalizeAdministrationLimit(limit int) int {
 	if limit == 0 {
 		return defaultAdministrationListLimit
 	}
 	return limit
-}
-
-func mutationAction(resource model.Resource) model.Action {
-	if resource.Type == model.ResourceInstitution {
-		return model.ActionInstitutionManage
-	}
-	return model.ActionAcademicUnitManage
-}
-
-func (a *App) beginAdministrationMutation(
-	ctx context.Context,
-	principal model.Principal,
-	action model.Action,
-	resource model.Resource,
-	metadata model.RequestMetadata,
-	operation string,
-	value any,
-	prior any,
-) (*model.AuditEvent, error) {
-	return a.audit.BeginCriticalAction(
-		ctx, principal, action, resource, metadata,
-		map[string]any{"operation": operation, "value": value}, prior,
-	)
-}
-
-func (a *App) completeAdministrationMutation(ctx context.Context, auditID string, result model.Auditable) error {
-	_, appErr := a.audit.CompleteCriticalAction(
-		ctx, auditID, model.AuditStatusSuccess, "", result.Auditable(),
-	)
-	return appErr
-}
-
-func (a *App) failAdministrationMutation(ctx context.Context, auditID, where, resource string, err error) error {
-	mapped := administrationError(where, resource, err)
-	code := "administration.unavailable"
-	if failure, ok := As(mapped); ok {
-		code = failure.Code()
-	}
-	if _, auditErr := a.audit.CompleteCriticalAction(
-		ctx, auditID, model.AuditStatusFail, code, nil,
-	); auditErr != nil {
-		return auditErr
-	}
-	return mapped
 }
 
 func administrationError(where, resource string, err error) error {
@@ -117,90 +51,4 @@ func administrationError(where, resource string, err error) error {
 		}
 	}
 	return NewError(code).WithField("resource", resource).Wrap(err)
-}
-
-func saveAcademicEntity[T model.Auditable](
-	a *App,
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	action model.Action,
-	resource model.Resource,
-	where string,
-	entity string,
-	auditable map[string]any,
-	save func() (T, error),
-) (T, error) {
-	var zero T
-	attempt, appErr := a.beginAdministrationMutation(
-		ctx, principal, action, resource, metadata, "create", auditable, nil,
-	)
-	if appErr != nil {
-		return zero, appErr
-	}
-	saved, err := save()
-	if err != nil {
-		return zero, a.failAdministrationMutation(ctx, attempt.ID.String(), where, entity, err)
-	}
-	if appErr := a.completeAdministrationMutation(ctx, attempt.ID.String(), saved); appErr != nil {
-		return zero, appErr
-	}
-	return saved, nil
-}
-
-func updateAcademicEntity[T model.Auditable](
-	a *App,
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	action model.Action,
-	resource model.Resource,
-	where string,
-	entity string,
-	auditable map[string]any,
-	prior map[string]any,
-	update func() (T, error),
-) (T, error) {
-	var zero T
-	attempt, appErr := a.beginAdministrationMutation(
-		ctx, principal, action, resource, metadata, "patch", auditable, prior,
-	)
-	if appErr != nil {
-		return zero, appErr
-	}
-	updated, err := update()
-	if err != nil {
-		return zero, a.failAdministrationMutation(ctx, attempt.ID.String(), where, entity, err)
-	}
-	if appErr := a.completeAdministrationMutation(ctx, attempt.ID.String(), updated); appErr != nil {
-		return zero, appErr
-	}
-	return updated, nil
-}
-
-func archiveAcademicEntity[T model.Auditable](
-	a *App,
-	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
-	action model.Action,
-	resource model.Resource,
-	where string,
-	entity string,
-	id string,
-	prior map[string]any,
-	archive func(int64) (T, error),
-) error {
-	attempt, appErr := a.beginAdministrationMutation(
-		ctx, principal, action, resource, metadata,
-		"archive", map[string]any{"id": id}, prior,
-	)
-	if appErr != nil {
-		return appErr
-	}
-	archived, err := archive(time.Now().UnixMilli())
-	if err != nil {
-		return a.failAdministrationMutation(ctx, attempt.ID.String(), where, entity, err)
-	}
-	return a.completeAdministrationMutation(ctx, attempt.ID.String(), archived)
 }

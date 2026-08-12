@@ -94,7 +94,10 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 	view := JobView{ID: model.NewJobID(), Type: model.JobTypeProfilePictureGenerateDefault, Status: model.JobStatusQueued}
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}}
-	service := newJobOperationsService(engine, authorizer, &jobOperationsAuditorFake{events: &events}, time.Now)
+	service, err := newJobOperationsService(engine, authorizer, &jobOperationsAuditorFake{events: &events}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	page, appErr := service.List(context.Background(), Invocation{}, ListJobsQuery{Limit: 20})
 	if appErr != nil {
@@ -121,7 +124,10 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}}
 	auditor := &jobOperationsAuditorFake{events: &events}
-	service := newJobOperationsService(engine, authorizer, auditor, time.Now)
+	service, err := newJobOperationsService(engine, authorizer, auditor, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID}); appErr != nil {
 		t.Fatal(appErr)
@@ -157,8 +163,38 @@ func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
 	t.Parallel()
 	events := make([]string, 0, 2)
 	engine := &jobOperatorEngineFake{events: &events, prepareErr: jobengine.ErrCancelUnsupported}
-	service := newJobOperationsService(engine, &jobOperationsAuthorizerFake{events: &events}, &jobOperationsAuditorFake{events: &events}, time.Now)
+	service, err := newJobOperationsService(engine, &jobOperationsAuthorizerFake{events: &events}, &jobOperationsAuditorFake{events: &events}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()}); !Is(appErr, "job.cancel.unsupported") {
 		t.Fatalf("Cancel() error=%#v", appErr)
+	}
+}
+
+func TestJobOperationsRequireDependencies(t *testing.T) {
+	t.Parallel()
+
+	engine := &jobOperatorEngineFake{}
+	authorizer := &jobOperationsAuthorizerFake{}
+	auditor := &jobOperationsAuditorFake{events: &[]string{}}
+	tests := []struct {
+		name          string
+		jobs          jobOperatorEngine
+		authorization jobOperationsAuthorizer
+		audit         mutationAuditor
+		now           func() time.Time
+	}{
+		{name: "engine", authorization: authorizer, audit: auditor, now: time.Now},
+		{name: "authorization", jobs: engine, audit: auditor, now: time.Now},
+		{name: "audit", jobs: engine, authorization: authorizer, now: time.Now},
+		{name: "clock", jobs: engine, authorization: authorizer, audit: auditor},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := newJobOperationsService(test.jobs, test.authorization, test.audit, test.now); err == nil {
+				t.Fatalf("nil %s dependency was accepted", test.name)
+			}
+		})
 	}
 }

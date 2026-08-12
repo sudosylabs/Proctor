@@ -15,10 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
 
 // RealtimeSink delivers already-authorized events and connection closes to the
@@ -467,23 +465,5 @@ func (a *App) ValidateWebSocketPrincipal(
 	ctx context.Context,
 	principal model.Principal,
 ) error {
-	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return invalidTokenAppError()
-	}
-	session, err := a.Store().Session().Get(ctx, principal.SessionID.String())
-	if err != nil {
-		if store.IsNotFound(err) {
-			return invalidTokenAppError()
-		}
-		return authenticationUnavailable(err)
-	}
-	if session.UserID != principal.UserID ||
-		session.IsExpiredAt(time.Now().UTC()) {
-		return invalidTokenAppError()
-	}
-	user, err := a.Store().User().Get(ctx, principal.UserID.String())
-	if err != nil || !user.IsActive() {
-		return invalidTokenAppError()
-	}
-	return nil
+	return a.authentication.ValidatePrincipal(ctx, principal)
 }

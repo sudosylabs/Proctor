@@ -227,7 +227,7 @@ func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore {
 }
 func (s *LifecycleStore) Role() store.RoleStore                 { return lifecycleRoleStore{} }
 func (s *LifecycleStore) RoleBinding() store.RoleBindingStore   { return lifecycleRoleBindingStore{} }
-func (s *LifecycleStore) Audit() store.AuditStore               { return nil }
+func (s *LifecycleStore) Audit() store.AuditStore               { return lifecycleAuditStore{} }
 func (s *LifecycleStore) Installation() store.InstallationStore { return nil }
 func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	// Composition always requests discovery while constructing the cluster
@@ -278,6 +278,7 @@ type lifecyclePasswordCredentialStore struct{ store.PasswordCredentialStore }
 type lifecycleSessionStore struct{ store.SessionStore }
 type lifecycleSessionCredentialStore struct{ store.SessionCredentialStore }
 type lifecycleMFAStore struct{ store.MFAStore }
+type lifecycleAuditStore struct{ store.AuditStore }
 type lifecyclePersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }
 type lifecycleRoleStore struct{ store.RoleStore }
 type lifecycleRoleBindingStore struct{ store.RoleBindingStore }

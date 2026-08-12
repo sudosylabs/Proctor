@@ -18,8 +18,6 @@ import (
 // explicit Dependencies bundle; infrastructure getters and platform location
 // are not part of the public surface.
 type App struct {
-	store store.Store
-
 	authentication                    *authenticationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
@@ -48,6 +46,7 @@ type App struct {
 	audit                             *AuditService
 	realtime                          *RealtimeService
 	jobs                              *jobengine.Engine
+	jobOperations                     *jobOperationsService
 
 	// Cross-cutting policy and ports still used by App-method facades that
 	// have not yet been extracted into focused services.
@@ -117,7 +116,10 @@ func New(deps Dependencies) (*App, error) {
 		return nil, err
 	}
 
-	audit := newAuditService(deps.Store, deps.NodeID)
+	audit, err := newAuditService(deps.Store.Audit(), deps.Store.Institution(), deps.NodeID)
+	if err != nil {
+		return nil, err
+	}
 	mfaApplication, err := newMFAApplicationService(
 		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
 		mfaAuditAdapter{audit: audit}, realtime, mfa, deps.RecentAuthenticationTTL, time.Now,
@@ -318,6 +320,17 @@ func New(deps Dependencies) (*App, error) {
 		defaultJobs.wake = jobs.Wake
 		profilePictures.reads.defaultJobs = defaultJobs
 	}
+	var jobOperations *jobOperationsService
+	if jobs != nil {
+		jobOperations, err = newJobOperationsService(
+			jobs,
+			jobOperationsAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
+			mutationAuditAdapter{audit: audit}, time.Now,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	accountStates := newAccountStateService(
 		deps.Store.User(),
 		userProfileAuthorization{
@@ -366,7 +379,6 @@ func New(deps Dependencies) (*App, error) {
 		time.Now,
 	)
 	return &App{
-		store:                             deps.Store,
 		authentication:                    authentication,
 		selfSessions:                      selfSessions,
 		externalAuthentication:            externalAuthentication,
@@ -395,6 +407,7 @@ func New(deps Dependencies) (*App, error) {
 		audit:                             audit,
 		realtime:                          realtime,
 		jobs:                              jobs,
+		jobOperations:                     jobOperations,
 		recentAuthenticationTTL:           deps.RecentAuthenticationTTL,
 	}, nil
 }
@@ -428,13 +441,6 @@ func (a *App) Authorize(
 	metadata model.RequestMetadata,
 ) error {
 	return a.authorization.Authorize(ctx, principal, action, resource, metadata)
-}
-
-// Store returns the root persistence contract. Focused services receive narrow
-// store ports; App-method facades that still share this root should migrate
-// onto explicit ports when their stable dependency seams are available.
-func (a *App) Store() store.Store {
-	return a.store
 }
 
 // errAuthenticationCacheMiss and errAuthenticationCacheNotStored are the

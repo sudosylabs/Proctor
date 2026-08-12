@@ -155,8 +155,12 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	audit, err := newAuditService(root.Audit(), root.Institution(), "node-test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	authz, err := newAccessControlService(
-		root.Role(), root.RoleBinding(), resolver, newAuditService(root, "node-test"),
+		root.Role(), root.RoleBinding(), resolver, audit,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -375,7 +379,7 @@ func (s *recoveryAuthorizationStore) UserToken() store.UserTokenStore           
 func (s *recoveryAuthorizationStore) Affiliation() store.AffiliationStore               { return nil }
 func (s *recoveryAuthorizationStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
 func (s *recoveryAuthorizationStore) ClassMember() store.ClassMemberStore               { return nil }
-func (s *recoveryAuthorizationStore) Audit() store.AuditStore                           { return nil }
+func (s *recoveryAuthorizationStore) Audit() store.AuditStore                           { return recoveryAuditStore{} }
 func (s *recoveryAuthorizationStore) Installation() store.InstallationStore             { return nil }
 func (s *recoveryAuthorizationStore) ClusterDiscovery() store.ClusterDiscoveryStore     { return nil }
 func (s *recoveryAuthorizationStore) Ping(context.Context) error                        { return nil }
@@ -385,6 +389,7 @@ func (s *recoveryAuthorizationStore) ValidateSchema(context.Context) error      
 func (s *recoveryAuthorizationStore) Close() error                                      { return nil }
 
 type recoveryInstitutionStore struct{ root *recoveryAuthorizationStore }
+type recoveryAuditStore struct{ store.AuditStore }
 
 func (s recoveryInstitutionStore) Get(_ context.Context, id string) (*model.Institution, error) {
 	if s.root.institution == nil || s.root.institution.ID.String() != id {

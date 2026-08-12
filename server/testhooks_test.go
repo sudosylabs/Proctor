@@ -67,7 +67,7 @@ func (s *hookStore) ExternalLoginState() store.ExternalLoginStateStore {
 func (s *hookStore) UserToken() store.UserTokenStore                   { return hookUserTokenStore{} }
 func (s *hookStore) Role() store.RoleStore                             { return hookRoleStore{} }
 func (s *hookStore) RoleBinding() store.RoleBindingStore               { return hookRoleBindingStore{} }
-func (s *hookStore) Audit() store.AuditStore                           { return nil }
+func (s *hookStore) Audit() store.AuditStore                           { return hookAuditStore{} }
 func (s *hookStore) Installation() store.InstallationStore             { return nil }
 func (s *hookStore) ClusterDiscovery() store.ClusterDiscoveryStore     { return nil }
 func (s *hookStore) ClassMember() store.ClassMemberStore               { return hookClassMemberStore{} }
@@ -93,6 +93,7 @@ type hookSessionStore struct{ store.SessionStore }
 type hookSessionCredentialStore struct{ store.SessionCredentialStore }
 type hookPasswordCredentialStore struct{ store.PasswordCredentialStore }
 type hookMFAStore struct{ store.MFAStore }
+type hookAuditStore struct{ store.AuditStore }
 type hookPersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }
 type hookExternalIdentityStore struct{ store.ExternalIdentityStore }
 type hookExternalLoginStateStore struct{ store.ExternalLoginStateStore }
@@ -201,23 +202,20 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	if runtime.Server.Ready() {
 		t.Fatal("server is ready before Start")
 	}
-	if runtime.Application.Store() == persistence {
-		t.Fatal("application persistence bypassed the root store layers")
+	if runtime.Platform.Store() == persistence {
+		t.Fatal("platform persistence bypassed the root store layers")
 	}
-	if _, ok := runtime.Application.Store().(*localcachelayer.Layer); !ok {
-		t.Fatalf("outer store layer = %T, want *localcachelayer.Layer", runtime.Application.Store())
+	if _, ok := runtime.Platform.Store().(*localcachelayer.Layer); !ok {
+		t.Fatalf("outer store layer = %T, want *localcachelayer.Layer", runtime.Platform.Store())
 	}
 	if runtime.Platform.ConfigStore() != configuration {
 		t.Fatal("platform does not own the provided configuration store")
-	}
-	if runtime.Platform.Store() != runtime.Application.Store() {
-		t.Fatal("platform and application do not share the root-decorated persistence store")
 	}
 	if runtime.Platform.Cluster() == nil {
 		t.Fatal("cluster was not selected from configuration")
 	}
 	observationsBeforePing := timedOperations.Load()
-	if err := runtime.Application.Store().Ping(context.Background()); err != nil {
+	if err := runtime.Platform.Store().Ping(context.Background()); err != nil {
 		t.Fatalf("timed persistence Ping() error = %v", err)
 	}
 	if timedOperations.Load() != observationsBeforePing+1 {
@@ -276,7 +274,7 @@ func TestRootComposesLocalCacheOutsideTimerAndRetry(t *testing.T) {
 	t.Cleanup(func() { _ = runtime.Server.Close() })
 
 	for range 2 {
-		if _, err := runtime.Application.Store().AcademicPeriod().Get(
+		if _, err := runtime.Platform.Store().AcademicPeriod().Get(
 			context.Background(),
 			periods.period.ID.String(),
 		); err != nil {

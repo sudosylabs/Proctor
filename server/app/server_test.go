@@ -57,11 +57,8 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	if helper.Platform.ConfigStore() != helper.ConfigStore {
 		t.Fatal("platform and test helper do not share the same configuration store")
 	}
-	if helper.Platform.Store() != helper.App.Store() {
-		t.Fatal("application and platform do not share the root-decorated persistence store")
-	}
-	if helper.App.Store() == helper.PersistenceClose {
-		t.Fatal("application persistence bypassed the root store timing layer")
+	if helper.Platform.Store() == helper.PersistenceClose {
+		t.Fatal("platform persistence bypassed the root store timing layer")
 	}
 	if helper.Platform.Cluster() != helper.Cluster {
 		t.Fatal("application graph contains more than one cluster transport")

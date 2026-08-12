@@ -116,6 +116,10 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 
 	persistence := newAuthenticationStoreFake()
 	authentication := newTestAuthenticationService(t, persistence)
+	audit, auditErr := newAuditService(securityAuditStore{}, securityInstitutionStore{}, model.NewId())
+	if auditErr != nil {
+		t.Fatal(auditErr)
+	}
 	_, err := newExternalAuthenticationService(
 		securityEffectsProviderSourceFake{},
 		securityExternalLoginStateStore{},
@@ -125,7 +129,7 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 		newAuthenticationCacheFake(),
 		authentication,
 		nil,
-		newAuditService(persistence, model.NewId()),
+		audit,
 		ExternalAuthenticationPolicy{},
 		&securityEffectsDiagnosticsFake{},
 		model.NewCredentialToken,
@@ -136,9 +140,24 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 	}
 }
 
+func TestAuditServiceRequiresDependencies(t *testing.T) {
+	t.Parallel()
+
+	if _, err := newAuditService(nil, securityInstitutionStore{}, model.NewId()); err == nil {
+		t.Fatal("nil audit store was accepted")
+	}
+	if _, err := newAuditService(securityAuditStore{}, nil, model.NewId()); err == nil {
+		t.Fatal("nil audit institution store was accepted")
+	}
+	if _, err := newAuditService(securityAuditStore{}, securityInstitutionStore{}, ""); err == nil {
+		t.Fatal("empty audit node ID was accepted")
+	}
+}
+
 type securityExternalLoginStateStore struct{ store.ExternalLoginStateStore }
 type securityInstitutionStore struct{ store.InstitutionStore }
 type securityExternalIdentityStore struct{ store.ExternalIdentityStore }
+type securityAuditStore struct{ store.AuditStore }
 
 func TestAuthenticationAndRealtimeRetainOnlyNarrowSiblingPorts(t *testing.T) {
 	t.Parallel()

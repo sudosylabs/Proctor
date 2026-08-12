@@ -186,7 +186,9 @@ func newTestRealtimeService(t *testing.T, cache authenticationCache) *RealtimeSe
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := newRealtimeService(invalidator, &securityEffectsRealtimeDiagnosticsFake{})
+	service, err := newRealtimeService(
+		invalidator, &securityEffectsRealtimeDiagnosticsFake{},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

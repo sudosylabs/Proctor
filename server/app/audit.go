@@ -10,6 +10,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -17,13 +18,23 @@ import (
 )
 
 type AuditService struct {
-	store  store.Store
-	nodeID string
-	now    func() time.Time
+	audits       store.AuditStore
+	institutions store.InstitutionStore
+	nodeID       string
+	now          func() time.Time
 }
 
-func newAuditService(persistence store.Store, nodeID string) *AuditService {
-	return &AuditService{store: persistence, nodeID: nodeID, now: time.Now}
+func newAuditService(audits store.AuditStore, institutions store.InstitutionStore, nodeID string) (*AuditService, error) {
+	if audits == nil {
+		return nil, errors.New("audit store is required")
+	}
+	if institutions == nil {
+		return nil, errors.New("audit institution store is required")
+	}
+	if nodeID == "" {
+		return nil, errors.New("audit node ID is required")
+	}
+	return &AuditService{audits: audits, institutions: institutions, nodeID: nodeID, now: time.Now}, nil
 }
 
 func (s *AuditService) BeginAuthentication(
@@ -39,7 +50,7 @@ func (s *AuditService) BeginAuthentication(
 		!clientType.IsValid() || method == "" {
 		return nil, NewError("audit.event.invalid")
 	}
-	if s.store == nil || s.store.Audit() == nil {
+	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	parameters, err := model.EncodeAuditData(map[string]string{
@@ -66,7 +77,7 @@ func (s *AuditService) BeginAuthentication(
 		UserAgent:  metadata.UserAgent,
 		Parameters: parameters,
 	}
-	saved, err := s.store.Audit().Save(ctx, event)
+	saved, err := s.audits.Save(ctx, event)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
@@ -90,7 +101,7 @@ func (s *AuditService) RecordExternalAuthenticationFailure(
 	if err != nil {
 		return domainInvalid("audit.event.invalid", err)
 	}
-	if s.store == nil || s.store.Audit() == nil {
+	if s.audits == nil {
 		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	event := &model.AuditEvent{
@@ -110,7 +121,7 @@ func (s *AuditService) RecordExternalAuthenticationFailure(
 		ErrorCode:  errorCode,
 		Parameters: parameters,
 	}
-	if _, err := s.store.Audit().Save(ctx, event); err != nil {
+	if _, err := s.audits.Save(ctx, event); err != nil {
 		return auditUnavailable(err)
 	}
 	return nil
@@ -131,7 +142,7 @@ func (s *AuditService) BeginCriticalAction(
 	if principal.Validate() != nil {
 		return nil, invalidTokenAppError()
 	}
-	if s.store == nil || s.store.Audit() == nil {
+	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	encodedParameters, err := model.EncodeAuditData(parameters)
@@ -145,7 +156,7 @@ func (s *AuditService) BeginCriticalAction(
 	scopeType := model.RoleScopeType(resource.Type)
 	scopeID := resource.ID
 	if resource.Type == model.ResourceUser {
-		institution, err := s.store.Institution().GetSingleton(ctx)
+		institution, err := s.institutions.GetSingleton(ctx)
 		if err != nil {
 			return nil, auditUnavailable(err)
 		}
@@ -162,7 +173,7 @@ func (s *AuditService) BeginCriticalAction(
 		UserAgent: metadata.UserAgent, Parameters: encodedParameters,
 		PriorState: encodedPriorState,
 	}
-	saved, err := s.store.Audit().Save(ctx, event)
+	saved, err := s.audits.Save(ctx, event)
 	if err != nil {
 		return nil, auditUnavailable(err)
 	}
@@ -179,14 +190,14 @@ func (s *AuditService) CompleteCriticalAction(
 	errorCode string,
 	result any,
 ) (*model.AuditEvent, error) {
-	if s.store == nil || s.store.Audit() == nil {
+	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	encodedResult, err := model.EncodeAuditData(result)
 	if err != nil {
 		return nil, domainInvalid("audit.event.invalid", err)
 	}
-	event, err := s.store.Audit().Complete(
+	event, err := s.audits.Complete(
 		ctx, eventID, status, errorCode, encodedResult, s.now().UnixMilli(),
 	)
 	if err != nil {
@@ -250,10 +261,10 @@ func (s *AuditService) recordDecision(
 		IPAddress:  metadata.IPAddress, UserAgent: metadata.UserAgent,
 		ErrorCode: errorCode,
 	}
-	if s.store == nil || s.store.Audit() == nil {
+	if s.audits == nil {
 		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
-	if _, err := s.store.Audit().Save(ctx, event); err != nil {
+	if _, err := s.audits.Save(ctx, event); err != nil {
 		return auditUnavailable(err)
 	}
 	return nil
@@ -269,7 +280,7 @@ func (s *AuditService) List(
 		(query.Resource != nil && query.Resource.Validate() != nil) {
 		return nil, NewError("audit.query.invalid")
 	}
-	events, err := s.store.Audit().List(ctx, store.AuditListOptions{
+	events, err := s.audits.List(ctx, store.AuditListOptions{
 		ActorId: query.ActorID, Action: query.Action, Resource: query.Resource,
 		BeforeTime: query.BeforeTime, BeforeId: query.BeforeID, Limit: query.Limit,
 	})

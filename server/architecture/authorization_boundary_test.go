@@ -84,6 +84,83 @@ func TestTransportCannotOwnApplicationAuthorizationCompatibility(t *testing.T) {
 	})
 }
 
+func TestApplicationFacadeDoesNotRetainPersistenceLocator(t *testing.T) {
+	t.Parallel()
+
+	inspectProductionGoFiles(t, []string{"app"}, func(path string, file *ast.File) {
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch candidate := node.(type) {
+			case *ast.TypeSpec:
+				if candidate.Name.Name != "App" {
+					break
+				}
+				structure, ok := candidate.Type.(*ast.StructType)
+				if !ok {
+					break
+				}
+				for _, field := range structure.Fields.List {
+					selector, ok := field.Type.(*ast.SelectorExpr)
+					if ok && selector.Sel.Name == "Store" {
+						t.Errorf("application retains root Store field in %s", path)
+					}
+				}
+			case *ast.FuncDecl:
+				receiverNames, appReceiver := appReceiverNames(candidate)
+				if !appReceiver {
+					break
+				}
+				if candidate.Name.Name == "Store" {
+					t.Errorf("application Store accessor remains in %s", path)
+				}
+				ast.Inspect(candidate.Body, func(bodyNode ast.Node) bool {
+					call, ok := bodyNode.(*ast.CallExpr)
+					if !ok {
+						return true
+					}
+					selector, ok := call.Fun.(*ast.SelectorExpr)
+					receiver, receiverOK := selectorReceiver(selector)
+					if ok && receiverOK && selector.Sel.Name == "Store" && receiverNames[receiver] {
+						t.Errorf("production application Store traversal remains in %s", path)
+					}
+					return true
+				})
+			}
+			return true
+		})
+	})
+}
+
+func appReceiverNames(function *ast.FuncDecl) (map[string]bool, bool) {
+	names := map[string]bool{}
+	if function == nil || function.Recv == nil || len(function.Recv.List) != 1 {
+		return names, false
+	}
+	receiver := function.Recv.List[0]
+	receiverType := receiver.Type
+	if pointer, ok := receiverType.(*ast.StarExpr); ok {
+		receiverType = pointer.X
+	}
+	identifier, ok := receiverType.(*ast.Ident)
+	if !ok || identifier.Name != "App" {
+		return names, false
+	}
+	for _, name := range receiver.Names {
+		names[name.Name] = true
+	}
+	return names, true
+}
+
+func selectorReceiver(selector *ast.SelectorExpr) (string, bool) {
+	if selector == nil {
+		return "", false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	return receiver.Name, true
+}
+
 func transportAuthorizationName(name string) bool {
 	switch name {
 	case "Can", "Authorize", "CheckAccess", "CheckPermission", "HasPermission", "requirePermission":

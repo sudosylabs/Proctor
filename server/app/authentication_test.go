@@ -304,8 +304,13 @@ func (s authenticationSessionStore) Revoke(_ context.Context, sessionID, _ strin
 	return hashes, nil
 }
 
-func (authenticationSessionStore) Get(context.Context, string) (*model.Session, error) {
-	return nil, errors.New("unused")
+func (s authenticationSessionStore) Get(_ context.Context, id string) (*model.Session, error) {
+	session, ok := s.root.sessions[id]
+	if !ok {
+		return nil, store.NewErrNotFound("session", id)
+	}
+	cloned := *session
+	return &cloned, nil
 }
 func (authenticationSessionStore) ListByUser(context.Context, string) ([]*model.Session, error) {
 	return nil, errors.New("unused")
@@ -463,6 +468,39 @@ func newTestAuthenticationServiceWithEffects(
 		t.Fatal(err)
 	}
 	return service
+}
+
+func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	user := &model.User{ID: model.NewUserID()}
+	session := &model.Session{
+		ID: model.NewSessionID(), UserID: user.ID,
+		ExpiresAt: at.Add(time.Hour), IdleExpiresAt: at.Add(30 * time.Minute),
+	}
+	persistence := newAuthenticationStoreFake()
+	persistence.users[user.ID.String()] = user
+	persistence.sessions[session.ID.String()] = session
+	service := newTestAuthenticationServiceWithPorts(
+		t, persistence, newAuthenticationCacheFake(),
+		discardAuthenticationMFAVerifier{}, discardAuthenticationPATResolver{},
+		model.NewCredentialToken, func() time.Time { return at },
+	)
+	principal := model.Principal{
+		UserID: user.ID, SessionID: session.ID,
+		CredentialID:         model.PrincipalCredentialID(model.NewId()),
+		CredentialType:       model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,
+	}
+	if err := service.ValidatePrincipal(context.Background(), principal); err != nil {
+		t.Fatalf("valid principal rejected: %v", err)
+	}
+	session.UserID = model.NewUserID()
+	if err := service.ValidatePrincipal(context.Background(), principal); !Is(err, "authentication.invalid_token") {
+		t.Fatalf("mismatched session error = %v", err)
+	}
 }
 
 func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *testing.T) {

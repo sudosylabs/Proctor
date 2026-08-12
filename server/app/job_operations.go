@@ -74,10 +74,10 @@ func (a jobOperationsAuthorization) Authorize(ctx context.Context, invocation In
 }
 
 func (a *App) jobOperationsService() (*jobOperationsService, error) {
-	if a == nil || a.jobs == nil {
+	if a == nil || a.jobOperations == nil {
 		return nil, NewError("job.unavailable")
 	}
-	return newJobOperationsService(a.jobs, jobOperationsAuthorization{authorization: a.authorization, institutions: a.store.Institution()}, mutationAuditAdapter{audit: a.audit}, time.Now), nil
+	return a.jobOperations, nil
 }
 
 func (a *App) ListJobs(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {
@@ -120,8 +120,20 @@ func (a *App) RetryJob(ctx context.Context, invocation Invocation, command Retry
 	return service.Retry(ctx, invocation, command)
 }
 
-func newJobOperationsService(jobs jobOperatorEngine, authorization jobOperationsAuthorizer, audit mutationAuditor, now func() time.Time) *jobOperationsService {
-	return &jobOperationsService{jobs: jobs, authorization: authorization, audit: audit, now: now}
+func newJobOperationsService(jobs jobOperatorEngine, authorization jobOperationsAuthorizer, audit mutationAuditor, now func() time.Time) (*jobOperationsService, error) {
+	if jobs == nil {
+		return nil, errors.New("job operations engine is required")
+	}
+	if authorization == nil {
+		return nil, errors.New("job operations authorization is required")
+	}
+	if audit == nil {
+		return nil, errors.New("job operations audit is required")
+	}
+	if now == nil {
+		return nil, errors.New("job operations clock is required")
+	}
+	return &jobOperationsService{jobs: jobs, authorization: authorization, audit: audit, now: now}, nil
 }
 
 func (s *jobOperationsService) List(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {

@@ -118,6 +118,30 @@ type cachedAuthentication struct {
 	User       *model.User              `json:"user"`
 }
 
+// ValidatePrincipal revalidates the authoritative session and user state for
+// a previously established session principal. Long-lived transports call this
+// through the App facade before continuing to trust the principal.
+func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal model.Principal) error {
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
+		return invalidTokenAppError()
+	}
+	session, err := s.sessions.Get(ctx, principal.SessionID.String())
+	if err != nil {
+		if store.IsNotFound(err) {
+			return invalidTokenAppError()
+		}
+		return authenticationUnavailable(err)
+	}
+	if session.UserID != principal.UserID || session.IsExpiredAt(s.now().UTC()) {
+		return invalidTokenAppError()
+	}
+	user, err := s.users.Get(ctx, principal.UserID.String())
+	if err != nil || !user.IsActive() {
+		return invalidTokenAppError()
+	}
+	return nil
+}
+
 func newAuthenticationService(
 	users store.UserStore,
 	passwords store.PasswordCredentialStore,
