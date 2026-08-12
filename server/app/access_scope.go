@@ -23,7 +23,7 @@ type authorizedScopeConstraint struct {
 	ClassIDs            []string
 }
 
-func (s *AuthorizationService) authorizeUserSearch(
+func (s *accessControlService) authorizeUserSearch(
 	ctx context.Context,
 	invocation Invocation,
 ) (store.UserVisibilityScope, error) {
@@ -54,12 +54,12 @@ func (s *AuthorizationService) authorizeUserSearch(
 		return store.UserVisibilityScope{}, err
 	}
 	if !allowed {
-		return store.UserVisibilityScope{}, authorizationDeniedError("AuthorizationService.authorizeUserSearch")
+		return store.UserVisibilityScope{}, authorizationDeniedError("accessControlService.authorizeUserSearch")
 	}
 	return visibility, nil
 }
 
-func (s *AuthorizationService) authorizedScopes(
+func (s *accessControlService) authorizedScopes(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -79,10 +79,10 @@ func (s *AuthorizationService) authorizedScopes(
 	}
 	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID.String(), s.now().UnixMilli())
 	if err != nil {
-		return constraint, authorizationUnavailableError("AuthorizationService.authorizedScopes.bindings", err)
+		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.bindings", err)
 	}
 	if len(bindings) > 256 {
-		return constraint, authorizationUnavailableError("AuthorizationService.authorizedScopes.bound", errors.New("active binding bound exceeded"))
+		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.bound", errors.New("active binding bound exceeded"))
 	}
 	roleIDs := make([]string, 0, len(bindings))
 	seenRoles := map[string]struct{}{}
@@ -94,7 +94,7 @@ func (s *AuthorizationService) authorizedScopes(
 	}
 	roles, err := s.roles.GetByIds(ctx, roleIDs)
 	if err != nil {
-		return constraint, authorizationUnavailableError("AuthorizationService.authorizedScopes.roles", err)
+		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.roles", err)
 	}
 	grants := map[string]bool{}
 	for _, role := range roles {

@@ -22,9 +22,9 @@ every recognized action and is protected as described in
   resource permissions or issue authorization receipts.
 - Every actor-sensitive application use case performs its authoritative check
   immediately, before avoidable expensive work or mutation.
-- `PrincipalHasPermissionTo*` predicates compose policy without auditing;
-  `AuthorizePrincipalTo*` boundaries durably record allow or deny and fail
-  closed.
+- `App.Can` composes policy without auditing; `App.Authorize` durably records
+  allow or deny and fails closed. Focused authorizers provide the same split at
+  owning use-case boundaries.
 - List/search queries constrain results by authorized scope in persistence;
   they do not fetch everything and filter in memory.
 - WebSocket commands/subscriptions and background jobs use the same application

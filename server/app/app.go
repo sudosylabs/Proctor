@@ -26,7 +26,7 @@ type App struct {
 	mfaApplication                    *mfaApplicationService
 	accountTokens                     *accountTokenService
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
-	authorization                     *AuthorizationService
+	authorization                     *accessControlService
 	academicUnits                     *academicUnitQueryService
 	academicUnitCommands              *academicUnitCommandService
 	institutions                      *institutionService
@@ -212,7 +212,7 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	authorization, err := newAuthorizationService(
+	authorization, err := newAccessControlService(
 		deps.Store.Role(), deps.Store.RoleBinding(), scopeResolver, audit,
 	)
 	if err != nil {
@@ -415,7 +415,19 @@ func (a *App) Can(
 	action model.Action,
 	resource model.Resource,
 ) (bool, error) {
-	return a.PrincipalHasPermissionTo(ctx, principal, action, resource)
+	return a.authorization.Can(ctx, principal, action, resource)
+}
+
+// Authorize records the current allow or deny decision durably and fails
+// closed if either policy resolution or decision audit fails.
+func (a *App) Authorize(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	metadata model.RequestMetadata,
+) error {
+	return a.authorization.Authorize(ctx, principal, action, resource, metadata)
 }
 
 // Store returns the root persistence contract. Focused services receive narrow

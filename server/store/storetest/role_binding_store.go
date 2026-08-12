@@ -7,6 +7,7 @@ package storetest
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -131,12 +132,48 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		t.Fatalf("End(last system administrator) error = %v", err)
 	}
 	secondUser := saveUser(t, ctx, ss)
-	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+	secondAdmin, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserID: secondUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
 	if _, err := ss.RoleBinding().End(ctx, firstAdmin.ID.String(), start+10); err != nil {
 		t.Fatalf("End(system administrator with successor) error = %v", err)
+	}
+	thirdUser := saveUser(t, ctx, ss)
+	thirdAdmin, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: thirdUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
+	})
+	requireNoError(t, err)
+	startRace := make(chan struct{})
+	endErrors := make(chan error, 2)
+	var workers sync.WaitGroup
+	for _, id := range []string{secondAdmin.ID.String(), thirdAdmin.ID.String()} {
+		id := id
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-startRace
+			_, endErr := ss.RoleBinding().End(ctx, id, start+20)
+			endErrors <- endErr
+		}()
+	}
+	close(startRace)
+	workers.Wait()
+	close(endErrors)
+	succeeded, conflicted := 0, 0
+	for endErr := range endErrors {
+		switch {
+		case endErr == nil:
+			succeeded++
+		case store.IsConflict(endErr):
+			conflicted++
+		default:
+			t.Fatalf("concurrent administrator End() error = %v", endErr)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("concurrent administrator End() results = success %d conflict %d", succeeded, conflicted)
 	}
 }

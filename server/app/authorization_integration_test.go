@@ -289,33 +289,33 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		UserAgent: "proctor-authorization-integration-test",
 	}
 
-	// Permission helpers return error/*app.Error; keep them off variables shared
-	// with CreateLocalUser/AuthenticateAccess to avoid typed-nil interface traps.
-	allowed, permErr := helper.App.PrincipalHasPermissionToUser(
-		ctx, *principal, viewer.ID.String(), model.ActionUserView,
+	// Generic policy composition remains available through Can; contextual
+	// teacher-to-student visibility is owned by the focused User Profile use case.
+	allowed, permErr := helper.App.Can(
+		ctx, *principal, model.ActionUserView,
+		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
 	)
 	if permErr != nil || !allowed {
 		t.Fatalf("self visibility = %v, %v", allowed, permErr)
 	}
-	allowed, permErr = helper.App.PrincipalHasPermissionToUser(
-		ctx, *principal, viewer.ID.String(), model.ActionUserManage,
+	allowed, permErr = helper.App.Can(
+		ctx, *principal, model.ActionUserManage,
+		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("self management without permission = %v, %v", allowed, permErr)
 	}
-	if authErr := helper.App.AuthorizePrincipalToUser(
-		ctx, *principal, viewer.ID.String(), model.ActionUserProfilePictureManage, metadata,
+	if authErr := helper.App.Authorize(
+		ctx, *principal, model.ActionUserProfilePictureManage,
+		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()}, metadata,
 	); authErr != nil {
 		t.Fatalf("self profile-picture authorization = %v", authErr)
 	}
-	if authErr := helper.App.AuthorizePrincipalToUser(
-		ctx, *principal, target.ID.String(), model.ActionUserProfilePictureManage, metadata,
+	if authErr := helper.App.Authorize(
+		ctx, *principal, model.ActionUserProfilePictureManage,
+		model.Resource{Type: model.ResourceUser, ID: target.ID.String()}, metadata,
 	); !application.Is(authErr, "authorization.denied") {
 		t.Fatalf("cross-user profile-picture authorization = %v", authErr)
-	}
-	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.ID.String())
-	if permErr != nil || allowed {
-		t.Fatalf("unbound cross-user visibility = %v, %v", allowed, permErr)
 	}
 	if _, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
@@ -338,18 +338,15 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.ID.String())
-	if permErr != nil || !allowed {
-		t.Fatalf("bound cross-user visibility = %v, %v", allowed, permErr)
-	}
 	visible, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
 	)
 	if err != nil || visible.ID != target.ID {
 		t.Fatalf("authorized cross-user read = %#v, %v", visible, err)
 	}
-	allowed, permErr = helper.App.PrincipalHasPermissionToUser(
-		ctx, *principal, target.ID.String(), model.ActionUserManage,
+	allowed, permErr = helper.App.Can(
+		ctx, *principal, model.ActionUserManage,
+		model.Resource{Type: model.ResourceUser, ID: target.ID.String()},
 	)
 	if permErr != nil || allowed {
 		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, permErr)
@@ -357,10 +354,6 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 
 	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis()); err != nil {
 		t.Fatal(err)
-	}
-	allowed, permErr = helper.App.UserCanSeeOtherUser(ctx, *principal, target.ID.String())
-	if permErr != nil || allowed {
-		t.Fatalf("ended binding visibility = %v, %v", allowed, permErr)
 	}
 	if _, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},

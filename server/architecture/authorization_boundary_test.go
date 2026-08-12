@@ -22,6 +22,18 @@ func TestTransportCannotOwnApplicationAuthorizationCompatibility(t *testing.T) {
 		"requirePermission": {},
 	}
 	forbiddenApplicationFunctions := map[string]struct{}{
+		"PrincipalHasPermissionTo":                              {},
+		"PrincipalHasPermissionToInstitution":                   {},
+		"PrincipalHasPermissionToAcademicUnit":                  {},
+		"PrincipalHasPermissionToClass":                         {},
+		"PrincipalHasPermissionToUser":                          {},
+		"AuthorizePrincipalTo":                                  {},
+		"AuthorizePrincipalToInstitution":                       {},
+		"AuthorizePrincipalToAcademicUnit":                      {},
+		"AuthorizePrincipalToClass":                             {},
+		"AuthorizePrincipalToUser":                              {},
+		"UserCanSeeOtherUser":                                   {},
+		"GetUserForPrincipal":                                   {},
 		"PrincipalHasPermissionToSystem":                        {},
 		"principalHasPermissionToResourceForRequest":            {},
 		"PrincipalHasPermissionToAcademicUnitForRequest":        {},

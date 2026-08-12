@@ -219,7 +219,7 @@ func (s *sessionAdministrationService) RevokeAll(
 }
 
 type sessionAdministrationAuthorization struct {
-	authorization *AuthorizationService
+	authorization *accessControlService
 }
 
 func (a sessionAdministrationAuthorization) AuthorizeView(

@@ -18,7 +18,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type AuthorizationService struct {
+type accessControlService struct {
 	roles    store.RoleStore
 	bindings store.RoleBindingStore
 	resolver *accessScopeResolver
@@ -37,22 +37,22 @@ type resolvedAuthorizationResource struct {
 	classID        string
 }
 
-func newAuthorizationService(
+func newAccessControlService(
 	roles store.RoleStore,
 	bindings store.RoleBindingStore,
 	resolver *accessScopeResolver,
 	audit authorizationDecisionAudit,
-) (*AuthorizationService, error) {
+) (*accessControlService, error) {
 	if roles == nil || bindings == nil || resolver == nil || audit == nil {
 		return nil, errors.New("authorization dependencies are required")
 	}
-	return &AuthorizationService{roles: roles, bindings: bindings, resolver: resolver, audit: audit, now: time.Now}, nil
+	return &accessControlService{roles: roles, bindings: bindings, resolver: resolver, audit: audit, now: time.Now}, nil
 }
 
 // Can resolves current durable bindings and roles. It performs no auditing and
 // is intended for composition inside an application use case. Use Authorize at
 // a security boundary so both allowed and denied decisions are durable.
-func (s *AuthorizationService) Can(
+func (s *accessControlService) Can(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -62,7 +62,7 @@ func (s *AuthorizationService) Can(
 	return allowed, appErr
 }
 
-func (s *AuthorizationService) evaluate(
+func (s *accessControlService) evaluate(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -84,7 +84,7 @@ func (s *AuthorizationService) evaluate(
 		!personalAccessTokenAllows(principal, action, resource, resolved) {
 		return false, resolved, nil
 	}
-	if action == model.ActionUserProfilePictureManage &&
+	if (action == model.ActionUserView || action == model.ActionUserProfilePictureManage) &&
 		principal.UserID.String() == resource.ID {
 		return true, resolved, nil
 	}
@@ -92,7 +92,7 @@ func (s *AuthorizationService) evaluate(
 		ctx, principal.UserID.String(), s.now().UnixMilli(),
 	)
 	if err != nil {
-		return false, unresolved, authorizationUnavailableError("AuthorizationService.Can.bindings", err)
+		return false, unresolved, authorizationUnavailableError("accessControlService.Can.bindings", err)
 	}
 	roleIDs := make([]string, 0, len(bindings))
 	seen := make(map[string]struct{}, len(bindings))
@@ -105,7 +105,7 @@ func (s *AuthorizationService) evaluate(
 	}
 	roles, err := s.roles.GetByIds(ctx, roleIDs)
 	if err != nil {
-		return false, unresolved, authorizationUnavailableError("AuthorizationService.Can.roles", err)
+		return false, unresolved, authorizationUnavailableError("accessControlService.Can.roles", err)
 	}
 	permissionByRole := make(map[string]map[string]struct{}, len(roles))
 	for _, role := range roles {
@@ -158,7 +158,7 @@ func personalAccessTokenAllows(
 
 // Authorize is fail-closed: the requested action is allowed only after the
 // decision itself has been durably recorded.
-func (s *AuthorizationService) Authorize(
+func (s *accessControlService) Authorize(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -170,7 +170,7 @@ func (s *AuthorizationService) Authorize(
 
 // authorizeCurrentState performs and audits a fresh authorization decision for
 // the owning application use case.
-func (s *AuthorizationService) authorizeCurrentState(
+func (s *accessControlService) authorizeCurrentState(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -182,7 +182,7 @@ func (s *AuthorizationService) authorizeCurrentState(
 		return appErr
 	}
 	if !allowed {
-		return authorizationDeniedError("AuthorizationService.Authorize")
+		return authorizationDeniedError("accessControlService.Authorize")
 	}
 	return nil
 }
@@ -190,7 +190,7 @@ func (s *AuthorizationService) authorizeCurrentState(
 // authorizeUserViewThroughClass evaluates the contextual class permission but
 // records the use-case decision against the user being viewed. The class is an
 // authorization input, not the application resource exposed by this decision.
-func (s *AuthorizationService) authorizeUserViewThroughClass(
+func (s *accessControlService) authorizeUserViewThroughClass(
 	ctx context.Context,
 	principal model.Principal,
 	userResource model.Resource,
@@ -216,12 +216,12 @@ func (s *AuthorizationService) authorizeUserViewThroughClass(
 		return appErr
 	}
 	if !allowed {
-		return authorizationDeniedError("AuthorizationService.authorizeUserViewThroughClass")
+		return authorizationDeniedError("accessControlService.authorizeUserViewThroughClass")
 	}
 	return nil
 }
 
-func (s *AuthorizationService) authorizeUserRead(
+func (s *accessControlService) authorizeUserRead(
 	ctx context.Context,
 	invocation Invocation,
 	userID string,
@@ -264,10 +264,10 @@ func (s *AuthorizationService) authorizeUserRead(
 	); err != nil {
 		return err
 	}
-	return authorizationDeniedError("AuthorizationService.authorizeUserRead")
+	return authorizationDeniedError("accessControlService.authorizeUserRead")
 }
 
-func (s *AuthorizationService) preauthorize(
+func (s *accessControlService) preauthorize(
 	ctx context.Context,
 	principal model.Principal,
 	action model.Action,
@@ -337,7 +337,7 @@ func authorizationResourceError(resource string, err error) error {
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").WithField("resource", resource).Wrap(err)
 	}
-	return authorizationUnavailableError("AuthorizationService.resolveResource", err)
+	return authorizationUnavailableError("accessControlService.resolveResource", err)
 }
 
 func authorizationUnavailableError(where string, err error) error {

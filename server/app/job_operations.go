@@ -57,7 +57,7 @@ type jobOperationsService struct {
 }
 
 type jobOperationsAuthorization struct {
-	authorization *AuthorizationService
+	authorization *accessControlService
 	institutions  store.InstitutionStore
 }
 

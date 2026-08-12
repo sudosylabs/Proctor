@@ -454,7 +454,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 	if !ok || resource.Validate() != nil || definition.ResourceType != resource.Type {
 		return invalidRealtimeRequest("subscription")
 	}
-	return a.AuthorizePrincipalTo(
+	return a.Authorize(
 		ctx,
 		principal,
 		action,

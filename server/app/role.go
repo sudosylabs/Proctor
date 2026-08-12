@@ -230,7 +230,7 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 }
 
 type roleAuthorization struct {
-	authorization *AuthorizationService
+	authorization *accessControlService
 	institutions  store.InstitutionStore
 }
 

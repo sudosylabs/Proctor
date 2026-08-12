@@ -49,7 +49,7 @@ func (a academicUnitAuthorization) Installation(
 }
 
 type academicUnitAuthorization struct {
-	authorization *AuthorizationService
+	authorization *accessControlService
 	institutions  store.InstitutionStore
 }
 

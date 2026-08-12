@@ -429,11 +429,11 @@ Corresponding Proctor paths:
 - server/model/client.go
 - server/app/authorization.go
 - server/app/authorization_decision.go
-- server/app/permissions.go
+- server/app/access_scope.go
+- server/app/user_profile.go
 - server/app/academic_administration.go
 - server/app/class_member.go
 - server/app/user_administration.go
-- server/app/user_profile.go
 - server/app/audit.go
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go

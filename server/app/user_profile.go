@@ -159,7 +159,7 @@ func userProfileError(err error) error {
 }
 
 type userProfileAuthorization struct {
-	authorization *AuthorizationService
+	authorization *accessControlService
 	institutions  store.InstitutionStore
 }
 

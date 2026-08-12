@@ -155,7 +155,7 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	authz, err := newAuthorizationService(
+	authz, err := newAccessControlService(
 		root.Role(), root.RoleBinding(), resolver, newAuditService(root, "node-test"),
 	)
 	if err != nil {

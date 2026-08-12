@@ -68,7 +68,7 @@ func (s *auditListingService) List(ctx context.Context, invocation Invocation, q
 }
 
 type auditListingAuthorization struct {
-	authorization *AuthorizationService
+	authorization *accessControlService
 	institutions  store.InstitutionStore
 }
 

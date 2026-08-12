@@ -9,6 +9,7 @@ package storetest
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -47,6 +48,42 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if len(list) != 1 || len(batch) != 1 {
 			t.Fatalf("List/GetByIds = %d/%d", len(list), len(batch))
 		}
+		firstUpdate := saved.Clone()
+		firstUpdate.DisplayName = "Concurrent First"
+		secondUpdate := saved.Clone()
+		secondUpdate.DisplayName = "Concurrent Second"
+		start := make(chan struct{})
+		errorsByUpdate := make(chan error, 2)
+		var workers sync.WaitGroup
+		for _, candidate := range []*model.Role{firstUpdate, secondUpdate} {
+			candidate := candidate
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				<-start
+				_, updateErr := ss.Role().Update(ctx, candidate)
+				errorsByUpdate <- updateErr
+			}()
+		}
+		close(start)
+		workers.Wait()
+		close(errorsByUpdate)
+		succeeded, conflicted := 0, 0
+		for updateErr := range errorsByUpdate {
+			switch {
+			case updateErr == nil:
+				succeeded++
+			case store.IsConflict(updateErr):
+				conflicted++
+			default:
+				t.Fatalf("concurrent Update() error = %v", updateErr)
+			}
+		}
+		if succeeded != 1 || conflicted != 1 {
+			t.Fatalf("concurrent Update() results = success %d conflict %d", succeeded, conflicted)
+		}
+		saved, err = ss.Role().Get(ctx, saved.ID.String())
+		requireNoError(t, err)
 		archived, err := ss.Role().Archive(ctx, saved.ID.String(), model.GetMillis())
 		requireNoError(t, err)
 		if !archived.IsArchived() {

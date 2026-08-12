@@ -51,7 +51,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	authorization, err := newAuthorizationService(
+	authorization, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionAcademicUnitView)}}}},
 		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: childID.String()}}},
 		resolver, accessDecisionAuditFake{},
@@ -102,6 +102,47 @@ func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
 	}
 }
 
+func TestAccessControlPreservesIntrinsicSelfRead(t *testing.T) {
+	t.Parallel()
+
+	institution := &model.Institution{ID: model.NewInstitutionID()}
+	user := &model.User{
+		ID: model.NewUserID(), Username: "self-reader", Email: "self@example.edu",
+		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), Revision: 1,
+	}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{institution: institution},
+		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{},
+		&accessUserStoreFake{user: user}, &accessClassMemberStoreFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := newAccessControlService(
+		&accessRoleStoreFake{}, &accessRoleBindingStoreFake{}, resolver,
+		accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{
+		UserID: user.ID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess,
+		SessionID:      model.SessionID(model.NewId()), AuthenticationMethod: "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt:        model.NowUTC(), ClientType: model.SessionClientWeb,
+	}
+	resource := model.Resource{Type: model.ResourceUser, ID: user.ID.String()}
+	allowed, err := access.Can(context.Background(), principal, model.ActionUserView, resource)
+	if err != nil || !allowed {
+		t.Fatalf("self read = %v, %v", allowed, err)
+	}
+	allowed, err = access.Can(context.Background(), principal, model.ActionUserManage, resource)
+	if err != nil || allowed {
+		t.Fatalf("self management = %v, %v", allowed, err)
+	}
+}
+
 type accessInstitutionStoreFake struct {
 	store.InstitutionStore
 	institution *model.Institution
@@ -125,7 +166,18 @@ func (s *accessAcademicUnitStoreFake) ListAncestors(_ context.Context, id string
 }
 
 type accessClassStoreFake struct{ store.ClassStore }
-type accessUserStoreFake struct{ store.UserStore }
+type accessUserStoreFake struct {
+	store.UserStore
+	user *model.User
+}
+
+func (s *accessUserStoreFake) Get(context.Context, string) (*model.User, error) {
+	if s.user == nil {
+		return nil, store.NewErrNotFound("user", "")
+	}
+	return s.user, nil
+}
+
 type accessClassMemberStoreFake struct{ store.ClassMemberStore }
 
 type accessRoleStoreFake struct {
