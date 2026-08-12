@@ -49,15 +49,6 @@ type outboundMessage struct {
 	response *Response
 }
 
-type replayState struct {
-	userID        string
-	sessionID     string
-	nextSequence  int64
-	history       []*Event
-	subscriptions map[string]Subscription
-	expiresAt     time.Time
-}
-
 type hubState uint8
 
 const (
@@ -320,30 +311,28 @@ func (h *Hub) register(
 	return connection, resumed
 }
 
-func (h *Hub) unregister(connection *connection) {
-	shard := h.shardForUser(connection.principal.UserID.String())
+func (h *Hub) unregister(connection *connection, snapshot connectionSnapshot) {
+	shard := h.shardForUser(snapshot.principal.UserID.String())
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
-	current, exists := shard.conns[connection.id]
+	current, exists := shard.conns[snapshot.id]
 	if !exists || current != connection {
 		return
 	}
-	delete(shard.conns, connection.id)
-	connection.mu.Lock()
+	delete(shard.conns, snapshot.id)
 	h.mu.RLock()
 	started := h.state == hubStarted
 	h.mu.RUnlock()
-	if connection.replayable && started {
-		shard.replay[connection.id] = &replayState{
-			userID:        connection.principal.UserID.String(),
-			sessionID:     connection.principal.SessionID.String(),
-			nextSequence:  connection.nextSequence,
-			history:       cloneEvents(connection.history),
-			subscriptions: cloneSubscriptions(connection.subscriptions),
+	if snapshot.replayable && started {
+		shard.replay[snapshot.id] = &replayState{
+			userID:        snapshot.principal.UserID.String(),
+			sessionID:     snapshot.principal.SessionID.String(),
+			nextSequence:  snapshot.nextSequence,
+			history:       cloneEvents(snapshot.history),
+			subscriptions: cloneSubscriptions(snapshot.subscriptions),
 			expiresAt:     time.Now().Add(replayRetention),
 		}
 	}
-	connection.mu.Unlock()
 }
 
 // PublishLocal implements app.RealtimeSink using transport-neutral events.
@@ -525,22 +514,4 @@ func (h *Hub) shardForUser(userID string) *shard {
 	hash.SetSeed(h.hashSeed)
 	_, _ = hash.WriteString(userID)
 	return h.shards[int(hash.Sum64()%uint64(len(h.shards)))]
-}
-
-func cloneEvents(events []*Event) []*Event {
-	cloned := make([]*Event, 0, len(events))
-	for _, event := range events {
-		cloned = append(cloned, event.Clone())
-	}
-	return cloned
-}
-
-func cloneSubscriptions(
-	subscriptions map[string]Subscription,
-) map[string]Subscription {
-	cloned := make(map[string]Subscription, len(subscriptions))
-	for key, subscription := range subscriptions {
-		cloned[key] = subscription
-	}
-	return cloned
 }

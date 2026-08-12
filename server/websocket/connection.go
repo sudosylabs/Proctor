@@ -37,11 +37,11 @@ type connection struct {
 type connectionRuntime = connection
 
 func (c *connection) pump(ctx context.Context) {
-	c.run(ctx)
-	c.hub.unregister(c)
+	snapshot := c.run(ctx)
+	c.hub.unregister(c, snapshot)
 }
 
-func (c *connection) run(ctx context.Context) {
+func (c *connection) run(ctx context.Context) connectionSnapshot {
 	pumpCtx, cancel := context.WithCancel(ctx)
 	var pumps sync.WaitGroup
 	pumps.Add(2)
@@ -57,4 +57,5 @@ func (c *connection) run(ctx context.Context) {
 	cancel()
 	c.closeTransport()
 	pumps.Wait()
+	return c.finalSnapshot()
 }
