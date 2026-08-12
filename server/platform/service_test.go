@@ -33,7 +33,8 @@ func (testStore) Job() store.JobStore   { return nil }
 
 type trackedStore struct {
 	testStore
-	closed atomic.Bool
+	closed      atomic.Bool
+	validateErr error
 }
 
 type unhealthyCache struct {
@@ -57,7 +58,7 @@ type trackedCluster struct {
 	stopped atomic.Bool
 }
 
-func completeServiceConfig(t *testing.T, configuration *config.Store) ServiceConfig {
+func completeOwnedResources(t *testing.T, configuration *config.Store) OwnedResources {
 	t.Helper()
 	logger, err := mlog.New()
 	if err != nil {
@@ -71,17 +72,21 @@ func completeServiceConfig(t *testing.T, configuration *config.Store) ServiceCon
 		_ = logger.Shutdown()
 		t.Fatal(err)
 	}
-	return ServiceConfig{
-		Context:                context.Background(),
-		ConfigStore:            configuration,
+	return OwnedResources{
+		Configuration:          configuration,
 		Logger:                 logger,
-		Store:                  testStore{},
+		Persistence:            testStore{},
 		Cache:                  testCache{},
 		Cluster:                &trackedCluster{},
 		Mailer:                 testMailer{},
 		VFS:                    memoryvfs.New(),
 		ExternalAuthentication: providers,
 	}
+}
+
+func acceptForTest(resources OwnedResources) (*Service, error) {
+	service, _, err := Accept(context.Background(), resources)
+	return service, err
 }
 
 func TestServiceRequiresConstructedCapabilities(t *testing.T) {
@@ -118,16 +123,16 @@ func TestServiceRequiresConstructedCapabilities(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		remove func(*ServiceConfig)
+		remove func(*OwnedResources)
 	}{
-		{name: "configuration store", remove: func(settings *ServiceConfig) { settings.ConfigStore = nil }},
-		{name: "logger", remove: func(settings *ServiceConfig) { settings.Logger = nil }},
-		{name: "persistence store", remove: func(settings *ServiceConfig) { settings.Store = nil }},
-		{name: "cache", remove: func(settings *ServiceConfig) { settings.Cache = nil }},
-		{name: "cluster", remove: func(settings *ServiceConfig) { settings.Cluster = nil }},
-		{name: "mailer", remove: func(settings *ServiceConfig) { settings.Mailer = nil }},
-		{name: "VFS", remove: func(settings *ServiceConfig) { settings.VFS = nil }},
-		{name: "external authentication", remove: func(settings *ServiceConfig) {
+		{name: "configuration store", remove: func(settings *OwnedResources) { settings.Configuration = nil }},
+		{name: "logger", remove: func(settings *OwnedResources) { settings.Logger = nil }},
+		{name: "persistence store", remove: func(settings *OwnedResources) { settings.Persistence = nil }},
+		{name: "cache", remove: func(settings *OwnedResources) { settings.Cache = nil }},
+		{name: "cluster", remove: func(settings *OwnedResources) { settings.Cluster = nil }},
+		{name: "mailer", remove: func(settings *OwnedResources) { settings.Mailer = nil }},
+		{name: "VFS", remove: func(settings *OwnedResources) { settings.VFS = nil }},
+		{name: "external authentication", remove: func(settings *OwnedResources) {
 			settings.ExternalAuthentication = nil
 		}},
 	}
@@ -136,26 +141,191 @@ func TestServiceRequiresConstructedCapabilities(t *testing.T) {
 			t.Parallel()
 			configuration := newConfiguration(t)
 			logger := newLogger(t)
-			settings := ServiceConfig{
-				Context:                context.Background(),
-				ConfigStore:            configuration,
+			settings := OwnedResources{
+				Configuration:          configuration,
 				Logger:                 logger,
-				Store:                  testStore{},
+				Persistence:            testStore{},
 				Cache:                  testCache{},
 				Cluster:                &trackedCluster{},
 				Mailer:                 testMailer{},
 				VFS:                    memoryvfs.New(),
 				ExternalAuthentication: newProviders(t),
 			}
-			t.Cleanup(func() {
-				_ = configuration.Close()
-				_ = logger.Shutdown()
-			})
 			tt.remove(&settings)
-			if _, err := New(settings); err == nil || !strings.Contains(err.Error(), "required") {
+			if settings.Configuration == nil {
+				t.Cleanup(func() { _ = configuration.Close() })
+			}
+			if settings.Logger == nil {
+				t.Cleanup(func() { _ = logger.Shutdown() })
+			}
+			if _, err := acceptForTest(settings); err == nil || !strings.Contains(err.Error(), "required") {
 				t.Fatalf("New() error = %v, want required dependency failure", err)
 			}
 		})
+	}
+}
+
+func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &trackedStore{}
+	cache := &unhealthyCache{}
+	mailer := &trackedMailer{}
+	clusterTransport := &trackedCluster{}
+
+	service, _, err := Accept(context.Background(), OwnedResources{
+		Configuration: configuration,
+		Logger:        logger,
+		Persistence:   persistence,
+		Cache:         cache,
+		Cluster:       clusterTransport,
+		Mailer:        mailer,
+		VFS:           memoryvfs.New(),
+		// Missing ExternalAuthentication deliberately fails required validation.
+	})
+	if service != nil || err == nil || !strings.Contains(err.Error(), "external authentication registry is required") {
+		t.Fatalf("Accept() = (%#v, %v), want required dependency failure", service, err)
+	}
+	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() ||
+		!clusterTransport.stopped.Load() {
+		t.Fatal("Accept() did not close every supplied lifecycle resource")
+	}
+	if listenerID := configuration.AddListener(func(config.Config, config.Config) {}); listenerID != "" {
+		t.Fatalf("closed configuration accepted listener %q", listenerID)
+	}
+	if err := logger.Configure(mlog.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("closed logger Configure() error = %v", err)
+	}
+}
+
+func TestAcceptReturnsTheValidatedConstructionSnapshot(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := configuration.Get()
+	initial.Server.PublicURL = "https://initial.example.test"
+	if _, _, err := configuration.Set(context.Background(), initial); err != nil {
+		t.Fatal(err)
+	}
+	resources := completeOwnedResources(t, configuration)
+	service, snapshot, err := Accept(context.Background(), resources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	updated := service.ConfigStore().Get()
+	updated.Server.PublicURL = "https://updated.example.test"
+	if _, _, err := service.ConfigStore().Set(context.Background(), updated); err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshot.Server.PublicURL; got != "https://initial.example.test" {
+		t.Fatalf("snapshot public URL = %q, want initial value", got)
+	}
+}
+
+func TestAcceptClosesOwnedResourcesOnSchemaFailure(t *testing.T) {
+	t.Parallel()
+
+	schemaErr := errors.New("schema is incompatible")
+	configuration, err := config.NewStore(
+		context.Background(), config.NewMemoryStore(nil), config.StoreOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources := completeOwnedResources(t, configuration)
+	persistence := &trackedStore{validateErr: schemaErr}
+	clusterTransport := &trackedCluster{}
+	resources.Persistence = persistence
+	resources.Cluster = clusterTransport
+	service, _, err := Accept(context.Background(), resources)
+	if service != nil || !errors.Is(err, schemaErr) {
+		t.Fatalf("Accept(schema failure) = (%#v, %v), want wrapped %v", service, err, schemaErr)
+	}
+	if !persistence.closed.Load() || !clusterTransport.stopped.Load() {
+		t.Fatal("schema failure did not close accepted resources")
+	}
+}
+
+func TestAcceptClosesOwnedResourcesOnProviderConfigurationFailure(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(), config.NewMemoryStore(nil), config.StoreOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := configuration.Get()
+	settings.Authentication.External.Providers = []config.ExternalAuthenticationProvider{{
+		ID: "missing-factory", Type: config.ExternalAuthenticationTypeCAS,
+		DisplayName: "Missing", Enabled: true,
+		CAS: &config.CASProvider{
+			BaseURL: "https://cas.example.test", ValidationPath: "/p3/serviceValidate",
+			Timeout: config.Duration{Duration: 5 * time.Second}, MaxResponseBytes: 64 << 10,
+		},
+		Claims: config.ExternalClaimMapping{Subject: "user"},
+	}}
+	if _, _, err := configuration.Set(context.Background(), settings); err != nil {
+		t.Fatal(err)
+	}
+	resources := completeOwnedResources(t, configuration)
+	providers, err := externalauth.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &trackedStore{}
+	resources.Persistence = persistence
+	resources.ExternalAuthentication = providers
+	service, _, err := Accept(context.Background(), resources)
+	if service != nil || err == nil || !strings.Contains(err.Error(), "unregistered type") {
+		t.Fatalf("Accept(provider failure) = (%#v, %v)", service, err)
+	}
+	if !persistence.closed.Load() {
+		t.Fatal("provider configuration failure did not close accepted Store")
+	}
+}
+
+func TestAcceptRejectsClosedConfigurationListenerRegistration(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(), config.NewMemoryStore(nil), config.StoreOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources := completeOwnedResources(t, configuration)
+	persistence := &trackedStore{}
+	resources.Persistence = persistence
+	if err := configuration.Close(); err != nil {
+		t.Fatal(err)
+	}
+	service, _, err := Accept(context.Background(), resources)
+	if service != nil || err == nil || !strings.Contains(err.Error(), "register dynamic configuration listener") {
+		t.Fatalf("Accept(closed configuration) = (%#v, %v), want listener failure", service, err)
+	}
+	if !persistence.closed.Load() {
+		t.Fatal("listener registration failure did not close accepted Store")
 	}
 }
 
@@ -219,6 +389,8 @@ func (s *trackedStore) Close() error {
 	s.closed.Store(true)
 	return nil
 }
+
+func (s *trackedStore) ValidateSchema(context.Context) error { return s.validateErr }
 
 func (c *unhealthyCache) Ping(context.Context) error {
 	return context.DeadlineExceeded
@@ -296,7 +468,7 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service, err := New(completeServiceConfig(t, store))
+	service, err := acceptForTest(completeOwnedResources(t, store))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +536,7 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	service, err := New(completeServiceConfig(t, configuration))
+	service, err := acceptForTest(completeOwnedResources(t, configuration))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,10 +583,10 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = New(ServiceConfig{
-		ConfigStore:            configuration,
+	_, err = acceptForTest(OwnedResources{
+		Configuration:          configuration,
 		Logger:                 logger,
-		Store:                  persistence,
+		Persistence:            persistence,
 		Cache:                  cache,
 		Cluster:                cluster,
 		Mailer:                 mailer,
@@ -458,10 +630,10 @@ func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache := &cleanupErrorCache{}
-	_, err = New(ServiceConfig{
-		ConfigStore:            configuration,
+	_, err = acceptForTest(OwnedResources{
+		Configuration:          configuration,
 		Logger:                 logger,
-		Store:                  testStore{},
+		Persistence:            testStore{},
 		Cache:                  cache,
 		Cluster:                &trackedCluster{},
 		Mailer:                 testMailer{},
@@ -488,9 +660,9 @@ func TestServiceOwnsClusterLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := &trackedCluster{}
-	settings := completeServiceConfig(t, configuration)
+	settings := completeOwnedResources(t, configuration)
 	settings.Cluster = cluster
-	service, err := New(settings)
+	service, err := acceptForTest(settings)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,6 +39,7 @@ type hookStore struct {
 	closed         atomic.Bool
 	pingAttempts   atomic.Int64
 	ping           func(int64) error
+	validateErr    error
 	academicPeriod store.AcademicPeriodStore
 	closedCount    atomic.Int64
 	closeEvents    *hookCloseEvents
@@ -89,7 +90,7 @@ func (s *hookStore) Ping(context.Context) error {
 }
 func (s *hookStore) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
 func (s *hookStore) GetLocalSchemaVersion() (int, error)             { return 0, nil }
-func (s *hookStore) ValidateSchema(context.Context) error            { return nil }
+func (s *hookStore) ValidateSchema(context.Context) error            { return s.validateErr }
 func (s *hookStore) Close() error {
 	s.closed.Store(true)
 	s.closedCount.Add(1)
@@ -481,6 +482,62 @@ func TestCancellationBetweenAcquisitionPhasesUnwindsCurrentOwner(t *testing.T) {
 	}
 	if configurationBacking.closedCount.Load() != 1 {
 		t.Fatalf("configuration close count = %d, want 1", configurationBacking.closedCount.Load())
+	}
+}
+
+func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T) {
+	t.Parallel()
+
+	events := &hookCloseEvents{}
+	configuration, configurationBacking := newHookConfiguration(t, events)
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaErr := errors.New("schema validation failed")
+	persistence := &hookStore{validateErr: schemaErr, closeEvents: events}
+	cache := &hookCache{closeEvents: events}
+	mailer := &hookMailer{closeEvents: events}
+	clusterTransport := &hookCluster{closeEvents: events}
+	filesystem := &hookFilesystem{
+		FileSystem:  memoryvfs.New(),
+		closeEvents: events,
+	}
+
+	runtime, err := server.NewForTesting(context.Background(), server.TestingOverrides{
+		Configuration: configuration,
+		Logger:        logger,
+		Persistence:   persistence,
+		Cache:         cache,
+		Mailer:        mailer,
+		Filesystem:    filesystem,
+		Cluster:       clusterTransport,
+	})
+	if runtime != nil {
+		t.Fatalf("NewForTesting(schema failure) runtime = %#v, want nil", runtime)
+	}
+	if !errors.Is(err, schemaErr) {
+		t.Fatalf("NewForTesting(schema failure) error = %v, want %v", err, schemaErr)
+	}
+
+	wantOrder := []string{"cluster", "vfs", "mailer", "cache", "store", "configuration"}
+	if got := events.snapshot(); !slices.Equal(got, wantOrder) {
+		t.Fatalf("acceptance cleanup order = %v, want %v", got, wantOrder)
+	}
+	for name, count := range map[string]int64{
+		"cluster":       clusterTransport.closedCount.Load(),
+		"vfs":           filesystem.closedCount.Load(),
+		"mailer":        mailer.closedCount.Load(),
+		"cache":         cache.closedCount.Load(),
+		"store":         persistence.closedCount.Load(),
+		"configuration": configurationBacking.closedCount.Load(),
+	} {
+		if count != 1 {
+			t.Fatalf("%s close count = %d, want 1", name, count)
+		}
+	}
+	if err := logger.Configure(mlog.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("logger Configure() after acceptance failure error = %v, want closed", err)
 	}
 }
 

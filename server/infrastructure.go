@@ -82,17 +82,7 @@ func assembleRuntime(
 	if err != nil {
 		return nil, err
 	}
-	applicationPlatform, err := platform.New(platform.ServiceConfig{
-		Context:                ctx,
-		ConfigStore:            infrastructure.configuration,
-		Logger:                 infrastructure.logger,
-		Store:                  infrastructure.persistence,
-		Cache:                  infrastructure.cache,
-		Cluster:                infrastructure.cluster,
-		Mailer:                 infrastructure.mailer,
-		VFS:                    infrastructure.filesystem,
-		ExternalAuthentication: infrastructure.externalAuthentication,
-	})
+	applicationPlatform, snapshot, err := infrastructure.acceptPlatform(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +96,7 @@ func assembleRuntime(
 			applicationPlatform.Close(),
 		)
 	}
-	applicationDeps, err := applicationDependencies(applicationPlatform, content)
+	applicationDeps, err := applicationDependencies(applicationPlatform, snapshot, content)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("project application dependencies: %w", err),
@@ -134,7 +124,7 @@ func assembleRuntime(
 		)
 	}
 	readiness := &app.Health{}
-	cfg := applicationPlatform.Config()
+	cfg := snapshot
 	buildInfo := overrides.BuildInfo
 	if buildInfo == (api.BuildInfo{}) {
 		current := app.CurrentBuildInfo()
@@ -390,6 +380,23 @@ func checkAcquisitionContext(ctx context.Context, phase string) error {
 		return fmt.Errorf("%s: %w", phase, err)
 	}
 	return nil
+}
+
+func (i *ownedInfrastructure) acceptPlatform(
+	ctx context.Context,
+) (*platform.Service, config.Config, error) {
+	resources := platform.OwnedResources{
+		Configuration:          i.configuration,
+		Logger:                 i.logger,
+		Persistence:            i.persistence,
+		Cache:                  i.cache,
+		Cluster:                i.cluster,
+		Mailer:                 i.mailer,
+		VFS:                    i.filesystem,
+		ExternalAuthentication: i.externalAuthentication,
+	}
+	*i = ownedInfrastructure{}
+	return platform.Accept(ctx, resources)
 }
 
 func (i *ownedInfrastructure) replacePersistence(next store.Store) {

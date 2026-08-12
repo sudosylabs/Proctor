@@ -11,6 +11,7 @@ import (
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -22,12 +23,12 @@ import (
 // imports platform.
 func applicationDependencies(
 	applicationPlatform *platform.Service,
+	cfg config.Config,
 	content app.FileContent,
 ) (app.Dependencies, error) {
 	if applicationPlatform == nil {
 		return app.Dependencies{}, errors.New("platform service is nil")
 	}
-	cfg := applicationPlatform.Config()
 	auth := cfg.Authentication
 	cache := platformAuthenticationCache{cache: applicationPlatform.Cache()}
 	log := applicationPlatform.Log()

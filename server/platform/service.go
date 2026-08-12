@@ -22,11 +22,15 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type ServiceConfig struct {
-	Context                context.Context
-	ConfigStore            *config.Store
+// OwnedResources contains infrastructure whose lifecycle transfers to
+// Platform when Accept is called. Accept closes every non-nil resource on any
+// unsuccessful outcome; callers must never close supplied resources after the
+// call. Construction may retain explicitly non-owning aliases, but those
+// aliases do not carry lifecycle authority.
+type OwnedResources struct {
+	Configuration          *config.Store
 	Logger                 *mlog.Logger
-	Store                  store.Store
+	Persistence            store.Store
 	Cache                  Cache
 	Cluster                Cluster
 	Mailer                 Mailer
@@ -48,34 +52,52 @@ type Service struct {
 	shutdownErr            error
 }
 
-type constructionCleanupPolicy struct {
-	logger        bool
-	configuration bool
-}
-
-func New(serviceConfig ServiceConfig) (*Service, error) {
-	if err := validateServiceConfig(serviceConfig); err != nil {
-		return nil, err
+// Accept takes ownership of resources at call entry. On success, the returned
+// Service owns them and snapshot is the immutable configuration view used for
+// this construction attempt. On failure, Accept closes every supplied non-nil
+// resource and joins cleanup failures with the primary error.
+func Accept(
+	ctx context.Context,
+	resources OwnedResources,
+) (_ *Service, snapshot config.Config, resultErr error) {
+	accepted := false
+	defer func() {
+		if !accepted {
+			resultErr = errors.Join(resultErr, closeOwnedResources(resources))
+		}
+	}()
+	if err := validateOwnedResources(resources); err != nil {
+		return nil, config.Config{}, err
 	}
-	return newService(serviceConfig, constructionCleanupPolicy{
-		logger:        true,
-		configuration: true,
-	})
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// config.Store validates both persisted and effective configuration before
+	// making a snapshot observable. Acceptance therefore consumes that
+	// established invariant instead of adding a second, unreachable validation
+	// branch.
+	snapshot = resources.Configuration.Get()
+	service, err := newService(ctx, resources, snapshot)
+	if err != nil {
+		return nil, config.Config{}, err
+	}
+	accepted = true
+	return service, snapshot, nil
 }
 
-func validateServiceConfig(serviceConfig ServiceConfig) error {
+func validateOwnedResources(resources OwnedResources) error {
 	required := []struct {
 		name    string
 		missing bool
 	}{
-		{name: "configuration store", missing: serviceConfig.ConfigStore == nil},
-		{name: "logger", missing: serviceConfig.Logger == nil},
-		{name: "persistence store", missing: serviceConfig.Store == nil},
-		{name: "cache", missing: serviceConfig.Cache == nil},
-		{name: "cluster transport", missing: serviceConfig.Cluster == nil},
-		{name: "mailer", missing: serviceConfig.Mailer == nil},
-		{name: "VFS", missing: serviceConfig.VFS == nil},
-		{name: "external authentication registry", missing: serviceConfig.ExternalAuthentication == nil},
+		{name: "configuration store", missing: resources.Configuration == nil},
+		{name: "logger", missing: resources.Logger == nil},
+		{name: "persistence store", missing: resources.Persistence == nil},
+		{name: "cache", missing: resources.Cache == nil},
+		{name: "cluster transport", missing: resources.Cluster == nil},
+		{name: "mailer", missing: resources.Mailer == nil},
+		{name: "VFS", missing: resources.VFS == nil},
+		{name: "external authentication registry", missing: resources.ExternalAuthentication == nil},
 	}
 	for _, dependency := range required {
 		if dependency.missing {
@@ -86,43 +108,34 @@ func validateServiceConfig(serviceConfig ServiceConfig) error {
 }
 
 func newService(
-	serviceConfig ServiceConfig,
-	cleanupPolicy constructionCleanupPolicy,
+	constructionCtx context.Context,
+	resources OwnedResources,
+	snapshot config.Config,
 ) (*Service, error) {
-	logger := serviceConfig.Logger
-	if err := configureLogger(logger, serviceConfig.ConfigStore.Get().Log); err != nil &&
+	logger := resources.Logger
+	if err := configureLogger(logger, snapshot.Log); err != nil &&
 		!errors.Is(err, mlog.ErrConfigurationLocked) {
-		return nil, errors.Join(
-			fmt.Errorf("configure logger: %w", err),
-			closeServiceConfig(serviceConfig, cleanupPolicy),
-		)
+		return nil, fmt.Errorf("configure logger: %w", err)
 	}
 
-	constructionCtx := serviceConfig.Context
-	if constructionCtx == nil {
-		constructionCtx = context.Background()
-	}
-	persistence := serviceConfig.Store
+	persistence := resources.Persistence
 	if err := persistence.ValidateSchema(constructionCtx); err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("validate database schema: %w", err),
-			closeServiceConfig(serviceConfig, cleanupPolicy),
-		)
+		return nil, fmt.Errorf("validate database schema: %w", err)
 	}
 
-	cacheStore := serviceConfig.Cache
-	mailer := serviceConfig.Mailer
-	filesystem := serviceConfig.VFS
-	clusterTransport := serviceConfig.Cluster
-	externalAuthentication := serviceConfig.ExternalAuthentication
+	cacheStore := resources.Cache
+	mailer := resources.Mailer
+	filesystem := resources.VFS
+	clusterTransport := resources.Cluster
+	externalAuthentication := resources.ExternalAuthentication
 	if err := externalAuthentication.Configure(
-		serviceConfig.ConfigStore.Get().Authentication.External,
+		snapshot.Authentication.External,
 	); err != nil {
-		return nil, errors.Join(err, closeServiceConfig(serviceConfig, cleanupPolicy))
+		return nil, err
 	}
 
 	service := &Service{
-		configStore:            serviceConfig.ConfigStore,
+		configStore:            resources.Configuration,
 		logger:                 logger,
 		store:                  persistence,
 		cache:                  cacheStore,
@@ -134,10 +147,7 @@ func newService(
 	checkCtx, cancelCheck := context.WithTimeout(constructionCtx, 15*time.Second)
 	defer cancelCheck()
 	if err := service.CheckDependencies(checkCtx); err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("check platform dependencies: %w", err),
-			closeServiceConfig(serviceConfig, cleanupPolicy),
-		)
+		return nil, fmt.Errorf("check platform dependencies: %w", err)
 	}
 	service.configListener = service.configStore.AddListener(func(old, current config.Config) {
 		if !reflect.DeepEqual(
@@ -163,45 +173,62 @@ func newService(
 			}
 		}
 	})
+	if service.configListener == "" {
+		return nil, errors.New("register dynamic configuration listener: configuration store is closed")
+	}
 	service.logger.Info(
 		"platform initialized",
 		mlog.String("go_version", runtime.Version()),
 		mlog.String("config_source", service.configStore.Describe()),
 		mlog.String("node_id", service.cluster.NodeID()),
-		mlog.String("cluster_backend", service.Config().Cluster.Backend),
+		mlog.String("cluster_backend", snapshot.Cluster.Backend),
 	)
 	return service, nil
 }
 
-func closeServiceConfig(
-	serviceConfig ServiceConfig,
-	policy constructionCleanupPolicy,
-) error {
-	stopCtx, cancelStop := context.WithTimeout(
-		context.Background(),
-		serviceConfig.ConfigStore.Get().Server.ShutdownTimeout.Duration,
-	)
+func closeOwnedResources(resources OwnedResources) error {
+	shutdownTimeout := 15 * time.Second
+	if resources.Configuration != nil {
+		shutdownTimeout = resources.Configuration.Get().Server.ShutdownTimeout.Duration
+	}
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancelStop()
+	var clusterErr error
+	if resources.Cluster != nil {
+		clusterErr = resources.Cluster.Stop(stopCtx)
+	}
 	var vfsErr error
-	if closer, ok := serviceConfig.VFS.(interface{ Close() error }); ok {
+	if closer, ok := resources.VFS.(interface{ Close() error }); ok {
 		vfsErr = closer.Close()
 	}
-	var loggerErr error
-	if policy.logger {
-		loggerErr = serviceConfig.Logger.Shutdown()
+	var mailerErr error
+	if resources.Mailer != nil {
+		mailerErr = resources.Mailer.Close()
 	}
-	var configErr error
-	if policy.configuration {
-		configErr = serviceConfig.ConfigStore.Close()
+	var cacheErr error
+	if resources.Cache != nil {
+		cacheErr = resources.Cache.Close()
+	}
+	var persistenceErr error
+	if resources.Persistence != nil {
+		persistenceErr = resources.Persistence.Close()
+	}
+	var loggerErr error
+	if resources.Logger != nil {
+		loggerErr = resources.Logger.Shutdown()
+	}
+	var configurationErr error
+	if resources.Configuration != nil {
+		configurationErr = resources.Configuration.Close()
 	}
 	return errors.Join(
-		serviceConfig.Cluster.Stop(stopCtx),
+		clusterErr,
 		vfsErr,
-		serviceConfig.Mailer.Close(),
-		serviceConfig.Cache.Close(),
-		serviceConfig.Store.Close(),
+		mailerErr,
+		cacheErr,
+		persistenceErr,
 		loggerErr,
-		configErr,
+		configurationErr,
 	)
 }
 
