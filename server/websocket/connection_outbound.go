@@ -77,12 +77,7 @@ func (c *connectionRuntime) enqueueEvent(event *Event) {
 	if len(c.history) > replayQueueSize {
 		c.history = append([]*Event(nil), c.history[len(c.history)-replayQueueSize:]...)
 	}
-	queued := false
-	select {
-	case c.send <- outboundMessage{event: candidate}:
-		queued = true
-	default:
-	}
+	queued := c.tryEnqueueOutbound(outboundMessage{event: candidate})
 	c.mu.Unlock()
 	if !queued {
 		c.close(CloseBackpressure, "client is too slow", false)
@@ -93,11 +88,7 @@ func (c *connectionRuntime) enqueueResponse(sequence int64, data json.RawMessage
 	response := &Response{
 		Status: "ok", Sequence: sequence, Data: append(json.RawMessage(nil), data...),
 	}
-	select {
-	case c.send <- outboundMessage{response: response}:
-	default:
-		c.close(CloseBackpressure, "client is too slow", false)
-	}
+	c.enqueueOutbound(outboundMessage{response: response})
 }
 
 func (c *connectionRuntime) enqueueError(sequence int64, code, message string) {
@@ -105,18 +96,16 @@ func (c *connectionRuntime) enqueueError(sequence int64, code, message string) {
 		Status: "error", Sequence: sequence,
 		Error: &Error{Code: code, Message: message},
 	}
-	select {
-	case c.send <- outboundMessage{response: response}:
-	default:
-		c.close(CloseBackpressure, "client is too slow", false)
-	}
+	c.enqueueOutbound(outboundMessage{response: response})
 }
 
 func (c *connectionRuntime) close(code int, reason string, replayable bool) {
-	c.closeOnce.Do(func() {
+	if !replayable {
 		c.mu.Lock()
-		c.replayable = replayable
+		c.replayable = false
 		c.mu.Unlock()
+	}
+	c.closeOnce.Do(func() {
 		message := gorilla.FormatCloseMessage(code, reason)
 		_ = c.socket.WriteControl(
 			websocketCloseMessage,
@@ -131,4 +120,19 @@ func (c *connectionRuntime) closeTransport() {
 	c.closeOnce.Do(func() {
 		_ = c.socket.Close()
 	})
+}
+
+func (c *connectionRuntime) enqueueOutbound(message outboundMessage) {
+	if !c.tryEnqueueOutbound(message) {
+		c.close(CloseBackpressure, "client is too slow", false)
+	}
+}
+
+func (c *connectionRuntime) tryEnqueueOutbound(message outboundMessage) bool {
+	select {
+	case c.send <- message:
+		return true
+	default:
+		return false
+	}
 }

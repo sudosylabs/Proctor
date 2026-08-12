@@ -6,6 +6,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	goruntime "runtime"
 	"testing"
 	"time"
 
@@ -66,6 +67,85 @@ func TestConnectionRuntimeFinalSnapshotIsDeeplyImmutable(t *testing.T) {
 	}
 }
 
+func TestConnectionRuntimeClonesTheAcceptedPrincipal(t *testing.T) {
+	t.Parallel()
+
+	principal := model.Principal{
+		UserID:           model.NewUserID(),
+		SessionID:        model.NewSessionID(),
+		CredentialScopes: []string{"class.view"},
+	}
+	runtime := newConnectionRuntime(
+		&inboundTestApplication{},
+		"node-a",
+		newInboundTestSocket(),
+		principal,
+		model.RequestMetadata{},
+		model.NewId(),
+		0,
+		nil,
+		map[string]Subscription{},
+		nil,
+	)
+
+	principal.CredentialScopes[0] = "changed-by-caller"
+	if got := runtime.principal.CredentialScopes[0]; got != "class.view" {
+		t.Fatalf("connection principal scope = %q, want immutable %q", got, "class.view")
+	}
+}
+
+func TestConnectionRuntimeFinalSnapshotWaitsForSelectedPublication(t *testing.T) {
+	t.Parallel()
+
+	runtime := newOutboundTestRuntime(newOutboundTestSocket(), 1)
+	if !runtime.acquire() {
+		t.Fatal("active runtime rejected Hub publication")
+	}
+	snapshotReady := make(chan connectionSnapshot, 1)
+	go func() {
+		snapshotReady <- runtime.finalSnapshot()
+	}()
+	finalizationDeadline := time.After(time.Second)
+	for {
+		runtime.activityMu.Lock()
+		finalized := runtime.finalized
+		runtime.activityMu.Unlock()
+		if finalized {
+			break
+		}
+		select {
+		case <-finalizationDeadline:
+			t.Fatal("final snapshot did not begin finalization")
+		default:
+			goruntime.Gosched()
+		}
+	}
+
+	event := &Event{Id: model.NewId(), Event: "class.updated", UserID: model.NewId()}
+	runtime.enqueueEvent(event)
+	select {
+	case <-snapshotReady:
+		t.Fatal("final snapshot completed before selected publication")
+	default:
+	}
+	runtime.release()
+
+	var snapshot connectionSnapshot
+	select {
+	case snapshot = <-snapshotReady:
+	case <-time.After(time.Second):
+		t.Fatal("final snapshot did not complete after selected publication")
+	}
+	if len(snapshot.history) != 1 || snapshot.history[0].Id != event.Id ||
+		snapshot.history[0].Sequence != 1 {
+		t.Fatalf("final snapshot history = %#v, want selected publication", snapshot.history)
+	}
+	if runtime.acquire() {
+		runtime.release()
+		t.Fatal("finalized runtime accepted a later Hub publication")
+	}
+}
+
 func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -78,32 +158,29 @@ func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 		UserID:    model.NewUserID(),
 		SessionID: model.NewSessionID(),
 	}
+	subscription := validInboundSubscription()
+	connectionID := model.NewId()
 	runtime := &connectionRuntime{
-		principal: principal,
-		id:        model.NewId(),
+		principal:     principal,
+		id:            connectionID,
+		nextSequence:  7,
+		history:       []*Event{{Id: model.NewId(), Event: "class.updated", Sequence: 7, Data: json.RawMessage(`{"ok":true}`)}},
+		subscriptions: map[string]Subscription{subscription.Key(): subscription},
+		replayable:    true,
 	}
 	shard := hub.shardForUser(principal.UserID.String())
 	shard.mu.Lock()
 	shard.conns[runtime.id] = runtime
 	shard.mu.Unlock()
 
-	subscription := validInboundSubscription()
-	snapshot := connectionSnapshot{
-		id:            runtime.id,
-		principal:     clonePrincipal(principal),
-		nextSequence:  7,
-		history:       []*Event{{Id: model.NewId(), Event: "class.updated", Sequence: 7, Data: json.RawMessage(`{"ok":true}`)}},
-		subscriptions: map[string]Subscription{subscription.Key(): subscription},
-		replayable:    true,
-	}
-	hub.unregister(runtime, snapshot)
+	hub.unregister(runtime)
 
-	// Mutating both inputs after unregister must not alter retained replay.
+	// Mutating the stopped runtime after unregister must not alter retained replay.
 	runtime.id = model.NewId()
-	snapshot.history[0].Data[0] = '['
-	delete(snapshot.subscriptions, subscription.Key())
+	runtime.history[0].Data[0] = '['
+	delete(runtime.subscriptions, subscription.Key())
 	shard.mu.RLock()
-	retained := shard.replay[snapshot.id]
+	retained := shard.replay[connectionID]
 	shard.mu.RUnlock()
 	if retained == nil {
 		t.Fatal("Hub did not retain the stopped runtime snapshot")

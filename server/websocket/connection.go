@@ -30,6 +30,10 @@ type connectionRuntime struct {
 	replayable    bool
 	send          chan outboundMessage
 	closeOnce     sync.Once
+
+	activityMu sync.Mutex
+	activities sync.WaitGroup
+	finalized  bool
 }
 
 func newConnectionRuntime(
@@ -49,7 +53,7 @@ func newConnectionRuntime(
 		nodeID:        nodeID,
 		socket:        socket,
 		clock:         systemRuntimeClock{},
-		principal:     principal,
+		principal:     clonePrincipal(principal),
 		metadata:      metadata,
 		id:            id,
 		nextSequence:  nextSequence,
@@ -64,7 +68,7 @@ func newConnectionRuntime(
 	return runtime
 }
 
-func (c *connectionRuntime) run(ctx context.Context) connectionSnapshot {
+func (c *connectionRuntime) run(ctx context.Context) {
 	pumpCtx, cancel := context.WithCancel(ctx)
 	var pumps sync.WaitGroup
 	pumps.Add(2)
@@ -80,7 +84,23 @@ func (c *connectionRuntime) run(ctx context.Context) connectionSnapshot {
 	cancel()
 	c.closeTransport()
 	pumps.Wait()
-	return c.finalSnapshot()
+}
+
+// acquire retains the runtime for one Hub-selected operation. The Hub calls it
+// while holding the shard read lock, so unregister cannot detach and finalize
+// the runtime between selection and retention.
+func (c *connectionRuntime) acquire() bool {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+	if c.finalized {
+		return false
+	}
+	c.activities.Add(1)
+	return true
+}
+
+func (c *connectionRuntime) release() {
+	c.activities.Done()
 }
 
 func (c *connectionRuntime) belongsToUser(userID string) bool {
@@ -89,4 +109,12 @@ func (c *connectionRuntime) belongsToUser(userID string) bool {
 
 func (c *connectionRuntime) belongsToSession(sessionID string) bool {
 	return c.principal.SessionID.String() == sessionID
+}
+
+func (c *connectionRuntime) userID() string {
+	return c.principal.UserID.String()
+}
+
+func (c *connectionRuntime) connectionID() string {
+	return c.id
 }

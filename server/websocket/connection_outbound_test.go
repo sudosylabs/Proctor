@@ -296,6 +296,12 @@ func TestConnectionRuntimeWriteFailureAndExplicitCloseShareOneTerminalPath(t *te
 	if got := len(socket.controls()); got != 0 {
 		t.Fatalf("terminal close controls after transport failure = %d, want 0", got)
 	}
+	runtime.mu.Lock()
+	replayable := runtime.replayable
+	runtime.mu.Unlock()
+	if replayable {
+		t.Fatal("explicit close did not revoke replay after transport failure")
+	}
 }
 
 func TestConnectionRuntimeCloseIsConcurrentAndIdempotent(t *testing.T) {

@@ -34,6 +34,11 @@ type connectionSnapshot struct {
 }
 
 func (c *connectionRuntime) finalSnapshot() connectionSnapshot {
+	c.activityMu.Lock()
+	c.finalized = true
+	c.activityMu.Unlock()
+	c.activities.Wait()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return connectionSnapshot{

@@ -88,8 +88,8 @@ type Logger interface {
 	WarnContext(ctx context.Context, message string, err error)
 }
 
-// Application is the narrow application surface the hub needs for subscription
-// authorization and session revalidation.
+// Application is the narrow application surface each connection runtime needs
+// for subscription authorization and principal revalidation.
 type Application interface {
 	AuthorizeWebSocketSubscription(
 		context.Context,
@@ -226,8 +226,8 @@ func (h *Hub) Accept(
 		return nil
 	}
 	connection.enqueueHello(resumed, connectionID != "" && !resumed)
-	snapshot := connection.run(request.Context())
-	h.unregister(connection, snapshot)
+	connection.run(request.Context())
+	h.unregister(connection)
 	return nil
 }
 
@@ -314,15 +314,17 @@ func (h *Hub) register(
 	return connection, resumed
 }
 
-func (h *Hub) unregister(connection *connectionRuntime, snapshot connectionSnapshot) {
-	shard := h.shardForUser(snapshot.principal.UserID.String())
+func (h *Hub) unregister(connection *connectionRuntime) {
+	shard := h.shardForUser(connection.userID())
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
-	current, exists := shard.conns[snapshot.id]
+	connectionID := connection.connectionID()
+	current, exists := shard.conns[connectionID]
 	if !exists || current != connection {
 		return
 	}
-	delete(shard.conns, snapshot.id)
+	delete(shard.conns, connectionID)
+	snapshot := connection.finalSnapshot()
 	h.mu.RLock()
 	started := h.state == hubStarted
 	h.mu.RUnlock()
@@ -357,20 +359,23 @@ func (h *Hub) publishWire(event *Event) {
 	for _, shard := range shards {
 		shard.mu.RLock()
 		for _, connection := range shard.conns {
-			connections = append(connections, connection)
+			if event.UserID != "" && !connection.belongsToUser(event.UserID) {
+				continue
+			}
+			if event.Action != "" && !connection.hasSubscription(
+				Subscription{Action: event.Action, Resource: event.Resource},
+			) {
+				continue
+			}
+			if connection.acquire() {
+				connections = append(connections, connection)
+			}
 		}
 		shard.mu.RUnlock()
 	}
 	for _, connection := range connections {
-		if event.UserID != "" && !connection.belongsToUser(event.UserID) {
-			continue
-		}
-		if event.Action != "" && !connection.hasSubscription(
-			Subscription{Action: event.Action, Resource: event.Resource},
-		) {
-			continue
-		}
 		connection.enqueueEvent(event)
+		connection.release()
 	}
 }
 
@@ -429,7 +434,7 @@ func (h *Hub) closeMatching(
 	for _, shard := range h.shards {
 		shard.mu.RLock()
 		for _, connection := range shard.conns {
-			if matches(connection) {
+			if matches(connection) && connection.acquire() {
 				connections = append(connections, connection)
 			}
 		}
@@ -437,6 +442,7 @@ func (h *Hub) closeMatching(
 	}
 	for _, connection := range connections {
 		connection.close(code, reason, false)
+		connection.release()
 	}
 }
 
@@ -465,13 +471,16 @@ func (h *Hub) Close() error {
 		for _, shard := range h.shards {
 			shard.mu.Lock()
 			for _, connection := range shard.conns {
-				connections = append(connections, connection)
+				if connection.acquire() {
+					connections = append(connections, connection)
+				}
 			}
 			shard.replay = make(map[string]*replayState)
 			shard.mu.Unlock()
 		}
 		for _, connection := range connections {
 			connection.close(CloseServer, "server shutting down", false)
+			connection.release()
 		}
 		<-done
 		return nil
