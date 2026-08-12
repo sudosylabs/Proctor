@@ -33,13 +33,13 @@ func (c *connection) writePump(ctx context.Context) {
 				err = c.socket.WriteJSON(message.response)
 			}
 			if err != nil {
-				_ = c.socket.Close()
+				c.closeTransport()
 				return
 			}
 		case <-ticker.Chan():
 			_ = c.socket.SetWriteDeadline(c.clock.Now().Add(writeWait))
 			if err := c.socket.WriteMessage(websocketPingMessage, nil); err != nil {
-				_ = c.socket.Close()
+				c.closeTransport()
 				return
 			}
 		}
@@ -77,10 +77,14 @@ func (c *connection) enqueueEvent(event *Event) {
 	if len(c.history) > replayQueueSize {
 		c.history = append([]*Event(nil), c.history[len(c.history)-replayQueueSize:]...)
 	}
-	c.mu.Unlock()
+	queued := false
 	select {
 	case c.send <- outboundMessage{event: candidate}:
+		queued = true
 	default:
+	}
+	c.mu.Unlock()
+	if !queued {
 		c.close(CloseBackpressure, "client is too slow", false)
 	}
 }
@@ -119,6 +123,12 @@ func (c *connection) close(code int, reason string, replayable bool) {
 			message,
 			c.clock.Now().Add(writeWait),
 		)
+		_ = c.socket.Close()
+	})
+}
+
+func (c *connection) closeTransport() {
+	c.closeOnce.Do(func() {
 		_ = c.socket.Close()
 	})
 }
