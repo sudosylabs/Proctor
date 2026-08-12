@@ -192,6 +192,182 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	}
 }
 
+func TestPersonalAccessTokenEnvironmentOverridesAreNeverPersisted(t *testing.T) {
+	t.Parallel()
+
+	initial := Default()
+	data, err := json.Marshal(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment := map[string]string{
+		"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MINIMUM_LIFETIME":          "2h",
+		"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MAXIMUM_LIFETIME":          "4320h",
+		"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_LAST_USED_UPDATE_INTERVAL": "10m",
+		"PROCTOR_AUTHENTICATION_PERSONAL_ACCESS_TOKENS_MAXIMUM_PER_USER":          "75",
+	}
+	store, err := NewStore(
+		context.Background(),
+		NewMemoryStore(data),
+		StoreOptions{LookupEnv: func(key string) (string, bool) {
+			value, ok := environment[key]
+			return value, ok
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	effective := store.Get()
+	if effective.Authentication.PersonalAccessTokens.MinimumLifetime.Duration != 2*time.Hour ||
+		effective.Authentication.PersonalAccessTokens.MaximumLifetime.Duration != 180*24*time.Hour ||
+		effective.Authentication.PersonalAccessTokens.LastUsedUpdateInterval.Duration != 10*time.Minute ||
+		effective.Authentication.PersonalAccessTokens.MaximumPerUser != 75 {
+		t.Fatalf(
+			"effective personal access token settings = %#v",
+			effective.Authentication.PersonalAccessTokens,
+		)
+	}
+	effective.Server.PublicURL = "https://proctor.example.edu"
+	if _, _, err := store.Set(context.Background(), effective); err != nil {
+		t.Fatal(err)
+	}
+
+	persisted := store.GetPersisted()
+	if !reflect.DeepEqual(
+		persisted.Authentication.PersonalAccessTokens,
+		initial.Authentication.PersonalAccessTokens,
+	) {
+		t.Fatalf(
+			"persisted personal access token settings = %#v, want %#v",
+			persisted.Authentication.PersonalAccessTokens,
+			initial.Authentication.PersonalAccessTokens,
+		)
+	}
+	if persisted.Server.PublicURL != "https://proctor.example.edu" {
+		t.Fatalf("non-overridden public URL = %q", persisted.Server.PublicURL)
+	}
+}
+
+func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) {
+	t.Parallel()
+
+	initial := Default()
+	initial.Server.ListenAddress = "127.0.0.1:8000"
+	data, err := json.Marshal(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment := map[string]string{
+		"PROCTOR_SERVER_LISTEN_ADDRESS": "127.0.0.1:9000",
+	}
+	store, err := NewStore(
+		context.Background(),
+		NewMemoryStore(data),
+		StoreOptions{LookupEnv: func(key string) (string, bool) {
+			value, ok := environment[key]
+			return value, ok
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	candidate := store.Get()
+	candidate.Server.ReadTimeout.Duration = 45 * time.Second
+	delete(environment, "PROCTOR_SERVER_LISTEN_ADDRESS")
+	environment["PROCTOR_SERVER_PUBLIC_URL"] = "https://environment.example.edu"
+	if _, _, err := store.Set(context.Background(), candidate); err != nil {
+		t.Fatal(err)
+	}
+
+	persisted := store.GetPersisted()
+	if persisted.Server.ListenAddress != initial.Server.ListenAddress {
+		t.Fatalf("persisted listen address = %q", persisted.Server.ListenAddress)
+	}
+	if persisted.Server.PublicURL != initial.Server.PublicURL {
+		t.Fatalf("persisted public URL = %q", persisted.Server.PublicURL)
+	}
+	if persisted.Server.ReadTimeout.Duration != 45*time.Second {
+		t.Fatalf("persisted read timeout = %s", persisted.Server.ReadTimeout.Duration)
+	}
+	effective := store.Get()
+	if effective.Server.ListenAddress != initial.Server.ListenAddress ||
+		effective.Server.PublicURL != environment["PROCTOR_SERVER_PUBLIC_URL"] {
+		t.Fatalf("effective server configuration = %#v", effective.Server)
+	}
+	overrides := store.EnvironmentOverrides()
+	if !reflect.DeepEqual(overrides, []string{"PROCTOR_SERVER_PUBLIC_URL"}) {
+		t.Fatalf("environment overrides = %v", overrides)
+	}
+	overrides[0] = "mutated"
+	if !reflect.DeepEqual(
+		store.EnvironmentOverrides(),
+		[]string{"PROCTOR_SERVER_PUBLIC_URL"},
+	) {
+		t.Fatal("EnvironmentOverrides exposed mutable store state")
+	}
+}
+
+func TestInvalidEnvironmentDuringSetDoesNotPublishPartialState(t *testing.T) {
+	t.Parallel()
+
+	environment := map[string]string{}
+	initialData, err := json.Marshal(Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	backing := NewMemoryStore(initialData)
+	store, err := NewStore(
+		context.Background(),
+		backing,
+		StoreOptions{LookupEnv: func(key string) (string, bool) {
+			value, ok := environment[key]
+			return value, ok
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	beforePersisted := store.GetPersisted()
+	beforeEffective := store.Get()
+	var notifications atomic.Int32
+	store.AddListener(func(Config, Config) {
+		notifications.Add(1)
+	})
+	environment["PROCTOR_SERVER_MAX_HEADER_BYTES"] = "invalid"
+	candidate := store.Get()
+	candidate.Server.PublicURL = "https://should-not-persist.example.edu"
+	if _, _, err := store.Set(context.Background(), candidate); err == nil {
+		t.Fatal("Set accepted an invalid environment value")
+	}
+
+	if !reflect.DeepEqual(store.GetPersisted(), beforePersisted) {
+		t.Fatal("failed Set changed persisted configuration")
+	}
+	if !reflect.DeepEqual(store.Get(), beforeEffective) {
+		t.Fatal("failed Set changed effective configuration")
+	}
+	if notifications.Load() != 0 {
+		t.Fatalf("failed Set sent %d listener notifications", notifications.Load())
+	}
+	data, err := backing.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved Config
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(saved, beforePersisted) {
+		t.Fatal("failed Set changed backing configuration")
+	}
+}
+
 func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	t.Parallel()
 

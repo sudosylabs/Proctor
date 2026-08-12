@@ -1,7 +1,6 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package config owns Proctor's deployment configuration and its lifecycle.
 package config
 
 import (

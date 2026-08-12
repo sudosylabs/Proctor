@@ -32,7 +32,7 @@ type Store struct {
 	lookupEnv   LookupEnv
 	persisted   Config
 	current     Config
-	overrides   []string
+	overrides   appliedEnvironment
 	listeners   map[string]Listener
 	nextID      uint64
 	initialized bool
@@ -74,7 +74,7 @@ func (s *Store) GetPersisted() Config {
 func (s *Store) EnvironmentOverrides() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return append([]string(nil), s.overrides...)
+	return s.overrides.keys()
 }
 
 func (s *Store) Describe() string {
@@ -125,7 +125,7 @@ func (s *Store) reload(ctx context.Context, notify bool) error {
 		hadValue := s.initialized
 		s.persisted = persisted.Clone()
 		s.current = current.Clone()
-		s.overrides = append([]string(nil), overrides...)
+		s.overrides = overrides.clone()
 		s.initialized = true
 		listeners = s.copyListenersLocked()
 		changed = notify && hadValue && !reflect.DeepEqual(old, current)
@@ -156,7 +156,7 @@ func (s *Store) Set(ctx context.Context, candidate Config) (Config, Config, erro
 		}
 
 		persisted := candidate.Clone()
-		removeEnvironmentOverrides(&persisted, s.persisted, s.overrides)
+		s.overrides.restore(&persisted, s.persisted)
 		if err := persisted.Validate(); err != nil {
 			return err
 		}
@@ -180,7 +180,7 @@ func (s *Store) Set(ctx context.Context, candidate Config) (Config, Config, erro
 		old = s.current.Clone()
 		s.persisted = persisted.Clone()
 		s.current = current.Clone()
-		s.overrides = append([]string(nil), overrides...)
+		s.overrides = overrides.clone()
 		listeners = s.copyListenersLocked()
 		changed = !reflect.DeepEqual(old, current)
 		return nil
