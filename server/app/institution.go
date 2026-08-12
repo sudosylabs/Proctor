@@ -109,28 +109,28 @@ func (s *institutionService) Update(
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("institution.invalid", err)
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionInstitutionManage, resource,
-		"patch", candidate.Auditable(), current.Auditable(),
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionInstitutionManage,
+			Resource:   resource,
+			Operation:  "patch",
+			Value:      candidate.Auditable(),
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Institution, error) {
+			return s.store.UpdateWithAudit(ctx, &store.InstitutionUpdate{
+				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		institutionError,
 	)
-	if err != nil {
-		return nil, err
-	}
-	updated, err := s.store.UpdateWithAudit(ctx, &store.InstitutionUpdate{
-		Institution: &candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli(),
-	})
-	if err != nil {
-		mapped := institutionError(err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, mapped
-	}
-	return updated, nil
 }
 
-func institutionError(err error) error {
+func institutionError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "institution").Wrap(err)

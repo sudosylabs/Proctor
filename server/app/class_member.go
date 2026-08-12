@@ -114,14 +114,26 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("class_member.invalid", err)
 	}
-	auditAt := model.MillisFromTime(at)
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionClassMembersManage, resource, "enroll", candidate.Auditable(), nil)
+	result, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionClassMembersManage,
+			Resource:   resource,
+			Operation:  "enroll",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
+			return s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
+				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		classMemberError,
+	)
 	if err != nil {
 		return nil, err
-	}
-	result, err := s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: candidate, AuditEventID: auditID, AuditAt: auditAt})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
 	}
 	return &model.ClassEnrollment{Membership: result.Membership, Previous: result.Previous}, nil
 }
@@ -143,17 +155,25 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, err
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionClassMembersManage, resource, "end", nil, current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	at := s.now()
-	auditAt := model.MillisFromTime(at)
-	ended, err := s.store.EndWithAudit(ctx, &store.ClassMemberEnd{ID: id, ExpectedRevision: current.Revision, EndAt: auditAt, AuditEventID: auditID, AuditAt: auditAt})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return ended, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionClassMembersManage,
+			Resource:   resource,
+			Operation:  "end",
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.ClassMember, error) {
+			return s.store.EndWithAudit(ctx, &store.ClassMemberEnd{
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		classMemberError,
+	)
 }
 
 func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invocation, classID string, action model.Action) (model.Resource, error) {
@@ -167,16 +187,7 @@ func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invo
 	return resource, nil
 }
 
-func (s *classMemberService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := classMemberError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func classMemberError(err error) error {
+func classMemberError(err error) *Error {
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").WithField("resource", "class_member").Wrap(err)
 	}

@@ -133,34 +133,29 @@ func (s *sessionAdministrationService) RevokeOne(
 		}
 		return sessionAdministrationError(err)
 	}
-	auditID, err := s.audit.Begin(
+	result, err := runAuditedMutation(
 		ctx,
-		invocation,
-		model.ActionSessionManage,
-		model.Resource{Type: model.ResourceUser, ID: userID},
-		"revoke_session",
-		map[string]any{"user_id": userID, "session_id": sessionID},
-		session.Auditable(),
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionSessionManage,
+			Resource:   model.Resource{Type: model.ResourceUser, ID: userID},
+			Operation:  "revoke_session",
+			Value:      map[string]any{"user_id": userID, "session_id": sessionID},
+			Prior:      session.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.SessionRevocationResult, error) {
+			return s.sessions.RevokeWithAudit(ctx, &store.SessionRevocation{
+				SessionID: sessionID, UserID: userID, RevokedAt: reference.At,
+				Reason:       "session revoked by administrator",
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		sessionAdministrationError,
 	)
 	if err != nil {
 		return err
-	}
-	at := s.now().UnixMilli()
-	result, err := s.sessions.RevokeWithAudit(ctx, &store.SessionRevocation{
-		SessionID:    sessionID,
-		UserID:       userID,
-		RevokedAt:    at,
-		Reason:       "session revoked by administrator",
-		AuditEventID: auditID,
-		AuditAt:      at,
-	})
-	if err != nil {
-		mapped := sessionAdministrationError(err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return auditErr
-		}
-		return mapped
 	}
 	s.effects.SessionsRevoked(ctx, userID, []*model.Session{result.Session}, result.TokenHashes)
 	return nil
@@ -186,33 +181,28 @@ func (s *sessionAdministrationService) RevokeAll(
 	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
 		return err
 	}
-	auditID, err := s.audit.Begin(
+	result, err := runAuditedMutation(
 		ctx,
-		invocation,
-		model.ActionSessionManage,
-		model.Resource{Type: model.ResourceUser, ID: userID},
-		"revoke_sessions",
-		map[string]any{"user_id": userID},
-		nil,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionSessionManage,
+			Resource:   model.Resource{Type: model.ResourceUser, ID: userID},
+			Operation:  "revoke_sessions",
+			Value:      map[string]any{"user_id": userID},
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.UserSessionsRevocationResult, error) {
+			return s.sessions.RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
+				UserID: userID, RevokedAt: reference.At,
+				Reason:       "sessions revoked by administrator",
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		sessionAdministrationError,
 	)
 	if err != nil {
 		return err
-	}
-	at := s.now().UnixMilli()
-	result, err := s.sessions.RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
-		UserID:       userID,
-		RevokedAt:    at,
-		Reason:       "sessions revoked by administrator",
-		AuditEventID: auditID,
-		AuditAt:      at,
-	})
-	if err != nil {
-		mapped := sessionAdministrationError(err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return auditErr
-		}
-		return mapped
 	}
 	s.effects.SessionsRevoked(ctx, userID, result.Sessions, result.TokenHashes)
 	return nil
@@ -263,7 +253,7 @@ func (e sessionAdministrationRealtimeEffects) SessionsRevoked(
 	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
 }
 
-func sessionAdministrationError(err error) error {
+func sessionAdministrationError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("session.not_found").WithField("resource", "session").Wrap(err)

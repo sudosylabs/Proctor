@@ -104,16 +104,24 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("affiliation.invalid", err)
 	}
-	auditAt := model.MillisFromTime(at)
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserManage, resource, "create", candidate.Auditable(), nil)
-	if err != nil {
-		return nil, err
-	}
-	saved, err := s.store.Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: auditID, AuditAt: auditAt})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return saved, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionUserManage,
+			Resource:   resource,
+			Operation:  "create",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
+			return s.store.Create(ctx, &store.AffiliationCreation{
+				Affiliation: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		affiliationError,
+	)
 }
 
 func (a *App) EndAffiliation(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
@@ -145,17 +153,25 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 			}
 		}
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserManage, resource, "end", nil, current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	at := s.now()
-	auditAt := model.MillisFromTime(at)
-	ended, err := s.store.EndWithAudit(ctx, &store.AffiliationEnd{ID: id, ExpectedRevision: current.Revision, EndAt: auditAt, AuditEventID: auditID, AuditAt: auditAt})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return ended, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionUserManage,
+			Resource:   resource,
+			Operation:  "end",
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
+			return s.store.EndWithAudit(ctx, &store.AffiliationEnd{
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		affiliationError,
+	)
 }
 
 func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invocation, userID string) (model.Resource, error) {
@@ -169,16 +185,7 @@ func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invoc
 	return resource, nil
 }
 
-func (s *affiliationService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := affiliationError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func affiliationError(err error) error {
+func affiliationError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "affiliation").Wrap(err)

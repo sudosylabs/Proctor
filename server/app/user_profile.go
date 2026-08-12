@@ -126,23 +126,29 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 		return nil, domainInvalid("user.invalid", err)
 	}
 	resource := model.Resource{Type: model.ResourceUser, ID: id}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionUserManage, resource, "update_profile", candidate.Auditable(), current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	updated, err := s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{User: &candidate, ExpectedRevision: expectedRevision, AuditEventID: auditID, AuditAt: at.UnixMilli()})
-	if err != nil {
-		mapped := userProfileError(err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, mapped
-	}
-	return updated, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionUserManage,
+			Resource:   resource,
+			Operation:  "update_profile",
+			Value:      candidate.Auditable(),
+			Prior:      current.Auditable(),
+		},
+		func() time.Time { return at },
+		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
+			return s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+				User: &candidate, ExpectedRevision: expectedRevision,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		userProfileError,
+	)
 }
 
-func userProfileError(err error) error {
+func userProfileError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "user").Wrap(err)

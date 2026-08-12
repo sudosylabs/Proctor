@@ -16,4 +16,11 @@
 // content mechanics. Focused service implementations remain unexported behind
 // App and consumer-owned interfaces. The app/job child package is the bounded
 // exception for the generic durable Job execution engine.
+//
+// Uniform audited mutations share a private mutation-attempt runner for the
+// begin, named Store mutation, error mapping, and failed-attempt sequence.
+// Successful completion stays atomic with the Store mutation, while callers
+// retain post-commit effects. Credential-bearing MFA, personal-access-token,
+// and external-authentication protocols remain explicit, as do Job operations,
+// because their completion and compensation rules differ from that sequence.
 package app

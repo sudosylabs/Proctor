@@ -178,15 +178,24 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("class.invalid", err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
-	if err != nil {
-		return nil, err
-	}
-	saved, err := s.store.Create(ctx, &store.ClassCreation{Class: candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli()})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return saved, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "create",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
+			return s.store.Create(ctx, &store.ClassCreation{
+				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		classError,
+	)
 }
 
 func (a *App) UpdateClass(ctx context.Context, invocation Invocation, command UpdateClassCommand) (*model.Class, error) {
@@ -250,21 +259,29 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("class.invalid", err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	updated, err := s.store.UpdateWithAudit(ctx, &store.ClassUpdate{
-		Class:                  &candidate,
-		ExpectedAcademicUnitID: unitID,
-		ExpectedRevision:       current.Revision,
-		AuditEventID:           auditID,
-		AuditAt:                s.now().UnixMilli(),
-	})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return updated, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "patch",
+			Value:      candidate.Auditable(),
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
+			return s.store.UpdateWithAudit(ctx, &store.ClassUpdate{
+				Class:                  &candidate,
+				ExpectedAcademicUnitID: unitID,
+				ExpectedRevision:       current.Revision,
+				AuditEventID:           reference.ID,
+				AuditAt:                reference.At,
+			})
+		},
+		classError,
+	)
 }
 
 func (a *App) ArchiveClass(ctx context.Context, invocation Invocation, command ArchiveClassCommand) error {
@@ -287,27 +304,36 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 	if err != nil {
 		return classError(err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "archive", nil, current.Auditable())
-	if err != nil {
-		return err
-	}
-	at := s.now()
-	if !at.After(current.UpdatedAt) {
-		at = current.UpdatedAt.Add(time.Millisecond)
-	}
-	archiveAt := at.UnixMilli()
-	_, err = s.store.ArchiveWithAudit(ctx, &store.ClassArchive{
-		ID:                     id,
-		ExpectedAcademicUnitID: unitID,
-		ExpectedRevision:       current.Revision,
-		ArchiveAt:              archiveAt,
-		AuditEventID:           auditID,
-		AuditAt:                archiveAt,
-	})
-	if err != nil {
-		return s.failMutation(ctx, auditID, err)
-	}
-	return nil
+	_, err = runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "archive",
+			Prior:      current.Auditable(),
+		},
+		func() time.Time {
+			at := s.now()
+			if !at.After(current.UpdatedAt) {
+				return current.UpdatedAt.Add(time.Millisecond)
+			}
+			return at
+		},
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
+			return s.store.ArchiveWithAudit(ctx, &store.ClassArchive{
+				ID:                     id,
+				ExpectedAcademicUnitID: unitID,
+				ExpectedRevision:       current.Revision,
+				ArchiveAt:              reference.At,
+				AuditEventID:           reference.ID,
+				AuditAt:                reference.At,
+			})
+		},
+		classError,
+	)
+	return err
 }
 
 func (s *classService) programmeLevelResource(ctx context.Context, id string) (model.Resource, error) {
@@ -325,16 +351,7 @@ func (s *classService) programmeLevelResource(ctx context.Context, id string) (m
 	return model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}, nil
 }
 
-func (s *classService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := classError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func classError(err error) error {
+func classError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "class").Wrap(err)

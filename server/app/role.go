@@ -125,20 +125,24 @@ func (s *roleService) Create(ctx context.Context, invocation Invocation, command
 	if err := validateKnownPermissions(candidate.Permissions); err != nil {
 		return nil, err
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionRoleManage, resource, "create", candidate.Auditable(), nil,
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionRoleManage,
+			Resource:   resource,
+			Operation:  "create",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
+			return s.roles.SaveWithAudit(ctx, &store.RoleCreation{
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		roleError,
 	)
-	if err != nil {
-		return nil, err
-	}
-	at := s.now().UnixMilli()
-	saved, err := s.roles.SaveWithAudit(ctx, &store.RoleCreation{
-		Role: candidate, AuditEventID: auditID, AuditAt: at,
-	})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return saved, nil
 }
 
 func (a *App) UpdateRole(ctx context.Context, invocation Invocation, command UpdateRoleCommand) (*model.Role, error) {
@@ -174,19 +178,27 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 	if err := validatePatchedPermissions(current.Permissions, command.Permissions); err != nil {
 		return nil, err
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionRoleManage, resource, "patch",
-		map[string]any{"role_id": id}, current.Auditable(),
+	updated, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionRoleManage,
+			Resource:   resource,
+			Operation:  "patch",
+			Value:      map[string]any{"role_id": id},
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
+			return s.roles.UpdateWithAudit(ctx, &store.RoleUpdate{
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		roleError,
 	)
 	if err != nil {
 		return nil, err
-	}
-	at := s.now().UnixMilli()
-	updated, err := s.roles.UpdateWithAudit(ctx, &store.RoleUpdate{
-		Role: candidate, AuditEventID: auditID, AuditAt: at,
-	})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
 	}
 	s.effects.AuthorizationChanged(ctx)
 	return updated, nil
@@ -212,18 +224,28 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 	if current.BuiltIn {
 		return NewError("role.built_in.protected").WithField("resource", "role")
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionRoleManage, resource, "archive",
-		map[string]any{"role_id": id}, current.Auditable(),
+	_, err = runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionRoleManage,
+			Resource:   resource,
+			Operation:  "archive",
+			Value:      map[string]any{"role_id": id},
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
+			return s.roles.ArchiveWithAudit(ctx, &store.RoleArchive{
+				ID: id, ArchiveAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		roleError,
 	)
 	if err != nil {
 		return err
-	}
-	at := s.now().UnixMilli()
-	if _, err := s.roles.ArchiveWithAudit(ctx, &store.RoleArchive{
-		ID: id, ArchiveAt: at, AuditEventID: auditID, AuditAt: at,
-	}); err != nil {
-		return s.failMutation(ctx, auditID, err)
 	}
 	s.effects.AuthorizationChanged(ctx)
 	return nil
@@ -260,19 +282,10 @@ func (e roleRealtimeEffects) AuthorizationChanged(ctx context.Context) {
 	e.effects.InvalidateAuthorization(ctx, "")
 }
 
-func (s *roleService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := roleError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func roleError(err error) error {
+func roleError(err error) *Error {
 	var appFailure *Error
 	if errors.As(err, &appFailure) {
-		return err
+		return appFailure
 	}
 	switch {
 	case store.IsNotFound(err):

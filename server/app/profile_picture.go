@@ -273,20 +273,32 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 	if invocation.Principal().UserID == current.ID {
 		action = model.ActionUserProfilePictureManage
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceUser, ID: current.ID.String()}, "set_profile_picture", map[string]any{"user_id": current.ID.String(), "active_file_entry_id": entryID.String()}, map[string]any{"user": current.Auditable(), "active_file_entry_id": current.CustomProfilePictureFileID.String()})
-	if err != nil {
-		return nil, err
-	}
-	published, err := s.files.PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: invocation.Principal().UserID, UserID: current.ID, ExpectedUserRevision: current.Revision, EntryID: entryID, RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions, ChangedAt: changedAt, AuditEventID: auditID, AuditAt: changedAt.UnixMilli()})
+	published, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     action,
+			Resource:   model.Resource{Type: model.ResourceUser, ID: current.ID.String()},
+			Operation:  "set_profile_picture",
+			Value:      map[string]any{"user_id": current.ID.String(), "active_file_entry_id": entryID.String()},
+			Prior:      map[string]any{"user": current.Auditable(), "active_file_entry_id": current.CustomProfilePictureFileID.String()},
+		},
+		func() time.Time { return changedAt },
+		func(ctx context.Context, reference mutationAttemptReference) (*store.ProfilePicturePublicationResult, error) {
+			return s.files.PublishProfilePicture(ctx, &store.ProfilePicturePublication{
+				ActorID: invocation.Principal().UserID, UserID: current.ID,
+				ExpectedUserRevision: current.Revision, EntryID: entryID, RevisionID: revision.ID,
+				LeaseID: lease.ID, Renditions: renditions, ChangedAt: changedAt,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		profilePictureError,
+	)
 	if err != nil {
 		// Publication may have committed even when the commit acknowledgement was
 		// lost. Leave staged bytes for authoritative reconciliation/lease cleanup.
-		mapped := profilePictureError(err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, mapped
+		return nil, err
 	}
 	change := profilePictureChanged{UserID: published.User.ID, ActiveFileEntryID: published.User.CustomProfilePictureFileID, Revision: published.User.Revision, ChangedAt: published.User.ProfilePictureChangedAt.Time}
 	if err := s.effects.Changed(ctx, change); err != nil {
@@ -389,19 +401,34 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 	if invocation.Principal().UserID == current.ID {
 		action = model.ActionUserProfilePictureManage
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceUser, ID: current.ID.String()}, "remove_profile_picture", map[string]any{"user_id": current.ID.String()}, map[string]any{"user": current.Auditable(), "active_file_entry_id": current.CustomProfilePictureFileID.String()})
+	var changedAt time.Time
+	updated, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     action,
+			Resource:   model.Resource{Type: model.ResourceUser, ID: current.ID.String()},
+			Operation:  "remove_profile_picture",
+			Value:      map[string]any{"user_id": current.ID.String()},
+			Prior:      map[string]any{"user": current.Auditable(), "active_file_entry_id": current.CustomProfilePictureFileID.String()},
+		},
+		func() time.Time {
+			changedAt = model.TimeUTC(s.now())
+			return changedAt
+		},
+		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
+			return s.files.RemoveProfilePictureWithAudit(ctx, &store.ProfilePictureRemoval{
+				ActorID: invocation.Principal().UserID, UserID: current.ID,
+				ExpectedUserRevision: current.Revision, EntryID: state.EntryID,
+				ExpectedCurrentRevisionID: state.RevisionID, ExpectedSHA256: expectedSHA256,
+				ChangedAt: changedAt, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		profilePictureError,
+	)
 	if err != nil {
 		return nil, err
-	}
-	changedAt := model.TimeUTC(s.now())
-	updated, err := s.files.RemoveProfilePictureWithAudit(ctx, &store.ProfilePictureRemoval{ActorID: invocation.Principal().UserID, UserID: current.ID, ExpectedUserRevision: current.Revision, EntryID: state.EntryID, ExpectedCurrentRevisionID: state.RevisionID, ExpectedSHA256: expectedSHA256, ChangedAt: changedAt, AuditEventID: auditID, AuditAt: changedAt.UnixMilli()})
-	if err != nil {
-		mapped := profilePictureError(err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, mapped
 	}
 	change := profilePictureChanged{UserID: updated.ID, ActiveFileEntryID: updated.DefaultProfilePictureFileID, Revision: updated.Revision, ChangedAt: updated.ProfilePictureChangedAt.Time}
 	if err := s.effects.Changed(ctx, change); err != nil {
@@ -508,7 +535,7 @@ func (s *defaultProfilePictureService) Ensure(ctx context.Context, userID model.
 	return published.User.DefaultProfilePictureFileID, nil
 }
 
-func profilePictureError(err error) error {
+func profilePictureError(err error) *Error {
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").Wrap(err)
 	}

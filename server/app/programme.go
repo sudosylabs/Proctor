@@ -141,15 +141,24 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme.invalid", err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
-	if err != nil {
-		return nil, err
-	}
-	saved, err := s.store.Create(ctx, &store.ProgrammeCreation{Programme: candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli()})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return saved, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "create",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
+			return s.store.Create(ctx, &store.ProgrammeCreation{
+				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		programmeError,
+	)
 }
 
 func (a *App) UpdateProgramme(ctx context.Context, invocation Invocation, command UpdateProgrammeCommand) (*model.Programme, error) {
@@ -176,15 +185,25 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 		return nil, domainInvalid("programme.invalid", err)
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: current.AcademicUnitID.String()}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	updated, err := s.store.UpdateWithAudit(ctx, &store.ProgrammeUpdate{Programme: &candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli()})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return updated, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "patch",
+			Value:      candidate.Auditable(),
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
+			return s.store.UpdateWithAudit(ctx, &store.ProgrammeUpdate{
+				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		programmeError,
+	)
 }
 
 func (a *App) ArchiveProgramme(ctx context.Context, invocation Invocation, command ArchiveProgrammeCommand) error {
@@ -197,16 +216,26 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 		return err
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: current.AcademicUnitID.String()}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "archive", nil, current.Auditable())
-	if err != nil {
-		return err
-	}
-	at := s.now().UnixMilli()
-	_, err = s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: current.ID.String(), ArchiveAt: at, AuditEventID: auditID, AuditAt: at})
-	if err != nil {
-		return s.failMutation(ctx, auditID, err)
-	}
-	return nil
+	_, err = runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "archive",
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
+			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{
+				ID: current.ID.String(), ArchiveAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		programmeError,
+	)
+	return err
 }
 
 func (s *programmeService) getForMutation(ctx context.Context, invocation Invocation, id string) (*model.Programme, error) {
@@ -228,16 +257,7 @@ func (s *programmeService) authorize(ctx context.Context, invocation Invocation,
 	return s.authorization.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID})
 }
 
-func (s *programmeService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := programmeError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func programmeError(err error) error {
+func programmeError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "programme").Wrap(err)

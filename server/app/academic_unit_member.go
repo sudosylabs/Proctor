@@ -101,16 +101,24 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit_member.invalid", err)
 	}
-	auditAt := model.MillisFromTime(at)
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create_member", candidate.Auditable(), nil)
-	if err != nil {
-		return nil, err
-	}
-	saved, err := s.store.Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: auditID, AuditAt: auditAt})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return saved, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "create_member",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
+			return s.store.Create(ctx, &store.AcademicUnitMemberCreation{
+				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		academicUnitMemberError,
+	)
 }
 
 func (a *App) EndAcademicUnitMember(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
@@ -130,17 +138,25 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if err != nil {
 		return nil, err
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "end_member", nil, current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	at := s.now()
-	auditAt := model.MillisFromTime(at)
-	ended, err := s.store.EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: id, ExpectedRevision: current.Revision, EndAt: auditAt, AuditEventID: auditID, AuditAt: auditAt})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return ended, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "end_member",
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
+			return s.store.EndWithAudit(ctx, &store.AcademicUnitMemberEnd{
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		academicUnitMemberError,
+	)
 }
 
 func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation Invocation, unitID string) (model.Resource, error) {
@@ -154,16 +170,7 @@ func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocatio
 	return resource, nil
 }
 
-func (s *academicUnitMemberService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := academicUnitMemberError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func academicUnitMemberError(err error) error {
+func academicUnitMemberError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)

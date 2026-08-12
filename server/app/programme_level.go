@@ -137,15 +137,24 @@ func (s *programmeLevelService) Create(ctx context.Context, invocation Invocatio
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme_level.invalid", err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "create", candidate.Auditable(), nil)
-	if err != nil {
-		return nil, err
-	}
-	saved, err := s.store.Create(ctx, &store.ProgrammeLevelCreation{Level: candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli()})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return saved, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "create",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
+			return s.store.Create(ctx, &store.ProgrammeLevelCreation{
+				Level: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		programmeLevelError,
+	)
 }
 
 func (a *App) UpdateProgrammeLevel(ctx context.Context, invocation Invocation, command UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
@@ -175,15 +184,25 @@ func (s *programmeLevelService) Update(ctx context.Context, invocation Invocatio
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme_level.invalid", err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "patch", candidate.Auditable(), current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	updated, err := s.store.UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{Level: &candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli()})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return updated, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "patch",
+			Value:      candidate.Auditable(),
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
+			return s.store.UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{
+				Level: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		programmeLevelError,
+	)
 }
 
 func (a *App) ArchiveProgrammeLevel(ctx context.Context, invocation Invocation, command ArchiveProgrammeLevelCommand) error {
@@ -199,16 +218,26 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
 		return err
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionAcademicUnitManage, resource, "archive", nil, current.Auditable())
-	if err != nil {
-		return err
-	}
-	at := s.now().UnixMilli()
-	_, err = s.store.ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: current.ID.String(), ArchiveAt: at, AuditEventID: auditID, AuditAt: at})
-	if err != nil {
-		return s.failMutation(ctx, auditID, err)
-	}
-	return nil
+	_, err = runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "archive",
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
+			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{
+				ID: current.ID.String(), ArchiveAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		programmeLevelError,
+	)
+	return err
 }
 
 func (s *programmeLevelService) levelAndProgramme(ctx context.Context, id string) (*model.ProgrammeLevel, *model.Programme, error) {
@@ -248,16 +277,7 @@ func (s *programmeLevelService) authorize(ctx context.Context, invocation Invoca
 	return err
 }
 
-func (s *programmeLevelService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := programmeLevelError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func programmeLevelError(err error) error {
+func programmeLevelError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "programme_level").Wrap(err)

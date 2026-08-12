@@ -122,15 +122,24 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_period.invalid", err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionInstitutionManage, resource, "create", candidate.Auditable(), nil)
-	if err != nil {
-		return nil, err
-	}
-	saved, err := s.store.Create(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli()})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return saved, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionInstitutionManage,
+			Resource:   resource,
+			Operation:  "create",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
+			return s.store.Create(ctx, &store.AcademicPeriodCreation{
+				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		academicPeriodError,
+	)
 }
 
 func (a *App) UpdateAcademicPeriod(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
@@ -166,15 +175,25 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_period.invalid", err)
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionInstitutionManage, resource, "patch", candidate.Auditable(), current.Auditable())
-	if err != nil {
-		return nil, err
-	}
-	updated, err := s.store.UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli()})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
-	}
-	return updated, nil
+	return runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionInstitutionManage,
+			Resource:   resource,
+			Operation:  "patch",
+			Value:      candidate.Auditable(),
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
+			return s.store.UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{
+				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		academicPeriodError,
+	)
 }
 
 func (a *App) ArchiveAcademicPeriod(ctx context.Context, invocation Invocation, command ArchiveAcademicPeriodCommand) error {
@@ -190,16 +209,26 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 	if err != nil {
 		return err
 	}
-	auditID, err := s.audit.Begin(ctx, invocation, model.ActionInstitutionManage, resource, "archive", nil, current.Auditable())
-	if err != nil {
-		return err
-	}
-	at := s.now().UnixMilli()
-	_, err = s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: current.ID.String(), ArchiveAt: at, AuditEventID: auditID, AuditAt: at})
-	if err != nil {
-		return s.failMutation(ctx, auditID, err)
-	}
-	return nil
+	_, err = runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionInstitutionManage,
+			Resource:   resource,
+			Operation:  "archive",
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
+			return s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
+				ID: current.ID.String(), ArchiveAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		academicPeriodError,
+	)
+	return err
 }
 
 func (s *academicPeriodService) get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
@@ -214,16 +243,7 @@ func (s *academicPeriodService) get(ctx context.Context, id string) (*model.Acad
 	return period, nil
 }
 
-func (s *academicPeriodService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := academicPeriodError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func academicPeriodError(err error) error {
+func academicPeriodError(err error) *Error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "academic_period").Wrap(err)

@@ -154,19 +154,26 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		candidate.ScopeType != model.RoleScopeInstitution {
 		return nil, NewError("role_binding.system_admin_requires_institution_scope")
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionRoleManage, resource, "create_binding",
-		candidate.Auditable(), nil,
+	saved, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionRoleManage,
+			Resource:   resource,
+			Operation:  "create_binding",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
+			return s.bindings.SaveWithAudit(ctx, &store.RoleBindingCreation{
+				Binding: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		roleBindingError,
 	)
 	if err != nil {
 		return nil, err
-	}
-	at := s.now().UnixMilli()
-	saved, err := s.bindings.SaveWithAudit(ctx, &store.RoleBindingCreation{
-		Binding: candidate, AuditEventID: auditID, AuditAt: at,
-	})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
 	}
 	s.effects.AuthorizationChangedForUser(ctx, saved.UserID.String())
 	return saved, nil
@@ -189,19 +196,28 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, roleBindingError(err)
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionRoleManage, resource, "end_binding",
-		map[string]any{"role_binding_id": id}, current.Auditable(),
+	ended, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionRoleManage,
+			Resource:   resource,
+			Operation:  "end_binding",
+			Value:      map[string]any{"role_binding_id": id},
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
+			return s.bindings.EndWithAudit(ctx, &store.RoleBindingEnd{
+				ID: id, EndAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		roleBindingError,
 	)
 	if err != nil {
 		return nil, err
-	}
-	at := s.now().UnixMilli()
-	ended, err := s.bindings.EndWithAudit(ctx, &store.RoleBindingEnd{
-		ID: id, EndAt: at, AuditEventID: auditID, AuditAt: at,
-	})
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, err)
 	}
 	s.effects.AuthorizationChangedForUser(ctx, ended.UserID.String())
 	return ended, nil
@@ -215,19 +231,10 @@ func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Cont
 	e.effects.InvalidateAuthorization(ctx, userID)
 }
 
-func (s *roleBindingService) failMutation(ctx context.Context, auditID string, err error) error {
-	mapped := roleBindingError(err)
-	failure, _ := As(mapped)
-	if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return auditErr
-	}
-	return mapped
-}
-
-func roleBindingError(err error) error {
+func roleBindingError(err error) *Error {
 	var appFailure *Error
 	if errors.As(err, &appFailure) {
-		return err
+		return appFailure
 	}
 	switch {
 	case store.IsNotFound(err):

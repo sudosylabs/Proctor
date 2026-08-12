@@ -192,22 +192,26 @@ func (s *academicUnitCommandService) Create(
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit.invalid", err)
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, action, authorized, "create", candidate.Auditable(), nil,
+	saved, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     action,
+			Resource:   authorized,
+			Operation:  "create",
+			Value:      candidate.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
+			return s.store.Create(ctx, &store.AcademicUnitCreation{
+				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		func(err error) *Error { return academicUnitReadError("academic_unit", err) },
 	)
 	if err != nil {
 		return nil, err
-	}
-	saved, err := s.store.Create(ctx, &store.AcademicUnitCreation{
-		Unit: candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli(),
-	})
-	if err != nil {
-		mapped := academicUnitReadError("academic_unit", err)
-		mappedFailure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, mappedFailure.Code()); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, mapped
 	}
 	// The unit and success audit are committed before transient fan-out.
 	// Publication remains best effort so callers do not retry committed work.
@@ -278,23 +282,27 @@ func (s *academicUnitCommandService) Update(
 			return nil, err
 		}
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionAcademicUnitManage, resource,
-		"patch", candidate.Auditable(), current.Auditable(),
+	updated, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "patch",
+			Value:      candidate.Auditable(),
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
+			return s.store.UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
+				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		func(err error) *Error { return academicUnitReadError("academic_unit", err) },
 	)
 	if err != nil {
 		return nil, err
-	}
-	updated, err := s.store.UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
-		Unit: &candidate, AuditEventID: auditID, AuditAt: s.now().UnixMilli(),
-	})
-	if err != nil {
-		mapped := academicUnitReadError("academic_unit", err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, mapped
 	}
 	if err := s.effects.Updated(ctx, updated.ID.String()); err != nil {
 		s.effectFailures.Report(ctx, "academic_unit_updated", err)
@@ -328,24 +336,28 @@ func (s *academicUnitCommandService) Archive(
 	if err != nil {
 		return academicUnitReadError("academic_unit", err)
 	}
-	auditID, err := s.audit.Begin(
-		ctx, invocation, model.ActionAcademicUnitManage, resource,
-		"archive", map[string]any{"id": command.ID}, current.Auditable(),
+	archived, err := runAuditedMutation(
+		ctx,
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionAcademicUnitManage,
+			Resource:   resource,
+			Operation:  "archive",
+			Value:      map[string]any{"id": command.ID},
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
+			return s.store.ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
+				ID: command.ID, ArchiveAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		func(err error) *Error { return academicUnitReadError("academic_unit", err) },
 	)
 	if err != nil {
 		return err
-	}
-	at := s.now().UnixMilli()
-	archived, err := s.store.ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
-		ID: command.ID, ArchiveAt: at, AuditEventID: auditID, AuditAt: at,
-	})
-	if err != nil {
-		mapped := academicUnitReadError("academic_unit", err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return auditErr
-		}
-		return mapped
 	}
 	if err := s.effects.Archived(ctx, archived.ID.String()); err != nil {
 		s.effectFailures.Report(ctx, "academic_unit_archived", err)

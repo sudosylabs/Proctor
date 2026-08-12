@@ -63,35 +63,29 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		return nil, accountStateError(err)
 	}
 	disabled := !command.Enabled
-	auditID, err := s.audit.Begin(
+	result, err := runAuditedMutation(
 		ctx,
-		invocation,
-		model.ActionUserManage,
-		model.Resource{Type: model.ResourceUser, ID: userID},
-		"set_disabled",
-		map[string]any{"user_id": userID, "disabled": disabled},
-		current.Auditable(),
+		s.audit,
+		mutationAttempt{
+			Invocation: invocation,
+			Action:     model.ActionUserManage,
+			Resource:   model.Resource{Type: model.ResourceUser, ID: userID},
+			Operation:  "set_disabled",
+			Value:      map[string]any{"user_id": userID, "disabled": disabled},
+			Prior:      current.Auditable(),
+		},
+		s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.UserDisabledStateResult, error) {
+			return s.users.SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
+				ChangedAt: reference.At, RevocationReason: "account disabled by administrator",
+				AuditEventID: reference.ID, AuditAt: reference.At,
+			})
+		},
+		accountStateError,
 	)
 	if err != nil {
 		return nil, err
-	}
-	at := s.now().UnixMilli()
-	result, err := s.users.SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
-		ID:               userID,
-		ExpectedRevision: current.Revision,
-		Disabled:         disabled,
-		ChangedAt:        at,
-		RevocationReason: "account disabled by administrator",
-		AuditEventID:     auditID,
-		AuditAt:          at,
-	})
-	if err != nil {
-		mapped := accountStateError(err)
-		failure, _ := As(mapped)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return nil, auditErr
-		}
-		return nil, mapped
 	}
 	if disabled {
 		s.effects.SessionsRevoked(ctx, userID, result.RevokedSessions, result.RevokedTokenHashes)
@@ -107,7 +101,7 @@ func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID
 	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
 }
 
-func accountStateError(err error) error {
+func accountStateError(err error) *Error {
 	var conflict *store.ErrConflict
 	if errors.As(err, &conflict) && conflict.Constraint == "users_last_system_admin" {
 		return NewError("user.last_system_admin").WithField("resource", "user").Wrap(err)
