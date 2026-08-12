@@ -41,6 +41,7 @@ func (c *connection) sessionPump(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			c.closeTransport()
 			return
 		case <-ticker.Chan():
 			if appErr := c.hub.application.ValidateWebSocketPrincipal(

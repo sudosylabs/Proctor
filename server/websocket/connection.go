@@ -55,6 +55,6 @@ func (c *connection) run(ctx context.Context) {
 	}()
 	c.readPump(pumpCtx)
 	cancel()
-	_ = c.socket.Close()
+	c.closeTransport()
 	pumps.Wait()
 }
