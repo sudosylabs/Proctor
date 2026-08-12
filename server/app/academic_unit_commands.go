@@ -205,7 +205,7 @@ func (s *academicUnitCommandService) Create(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.store.Create(ctx, &store.AcademicUnitCreation{
-				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		func(err error) error { return academicUnitReadError("academic_unit", err) },
@@ -296,7 +296,7 @@ func (s *academicUnitCommandService) Update(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.store.UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
-				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		func(err error) error { return academicUnitReadError("academic_unit", err) },
@@ -350,8 +350,8 @@ func (s *academicUnitCommandService) Archive(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
-				ID: command.ID, ArchiveAt: reference.AtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ID: command.ID, ArchiveAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		func(err error) error { return academicUnitReadError("academic_unit", err) },

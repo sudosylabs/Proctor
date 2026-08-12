@@ -105,7 +105,7 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 		func() time.Time { return at },
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != auditID || reference.AtMillis != at.UnixMilli() {
+			if reference.ID != auditID || reference.MutationAtMillis != at.UnixMilli() {
 				t.Fatalf("reference = %#v", reference)
 			}
 			return "", storeErr
@@ -245,7 +245,7 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 		},
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != auditID || reference.AtMillis != 500 {
+			if reference.ID != auditID || reference.MutationAtMillis != 500 {
 				t.Fatalf("reference = %#v", reference)
 			}
 			return "saved", nil

@@ -138,7 +138,7 @@ func (s *roleService) Create(ctx context.Context, invocation Invocation, command
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.roles.SaveWithAudit(ctx, &store.RoleCreation{
-				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		roleError,
@@ -192,7 +192,7 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.roles.UpdateWithAudit(ctx, &store.RoleUpdate{
-				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		roleError,
@@ -238,8 +238,8 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.roles.ArchiveWithAudit(ctx, &store.RoleArchive{
-				ID: id, ArchiveAt: reference.AtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ID: id, ArchiveAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		roleError,

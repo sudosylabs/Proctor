@@ -154,7 +154,7 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.store.Create(ctx, &store.ProgrammeCreation{
-				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		programmeError,
@@ -199,7 +199,7 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.store.UpdateWithAudit(ctx, &store.ProgrammeUpdate{
-				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		programmeError,
@@ -229,8 +229,8 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{
-				ID: current.ID.String(), ArchiveAt: reference.AtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ID: current.ID.String(), ArchiveAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		programmeError,

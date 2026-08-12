@@ -78,8 +78,8 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserDisabledStateResult, error) {
 			return s.users.SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
 				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
-				ChangedAt: reference.AtMillis, RevocationReason: "account disabled by administrator",
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ChangedAt: reference.MutationAtMillis, RevocationReason: "account disabled by administrator",
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		accountStateError,

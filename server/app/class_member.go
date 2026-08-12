@@ -127,7 +127,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
 			return s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
-				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		classMemberError,
@@ -168,8 +168,8 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ClassMember, error) {
 			return s.store.EndWithAudit(ctx, &store.ClassMemberEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.AtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		classMemberError,

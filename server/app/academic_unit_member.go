@@ -114,7 +114,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
 			return s.store.Create(ctx, &store.AcademicUnitMemberCreation{
-				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		academicUnitMemberError,
@@ -151,8 +151,8 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
 			return s.store.EndWithAudit(ctx, &store.AcademicUnitMemberEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.AtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		academicUnitMemberError,

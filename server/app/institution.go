@@ -123,7 +123,7 @@ func (s *institutionService) Update(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Institution, error) {
 			return s.store.UpdateWithAudit(ctx, &store.InstitutionUpdate{
-				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		institutionError,

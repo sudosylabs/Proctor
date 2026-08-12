@@ -117,7 +117,7 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			return s.store.Create(ctx, &store.AffiliationCreation{
-				Affiliation: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Affiliation: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		affiliationError,
@@ -166,8 +166,8 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			return s.store.EndWithAudit(ctx, &store.AffiliationEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.AtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		affiliationError,

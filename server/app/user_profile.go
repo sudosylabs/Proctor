@@ -141,7 +141,7 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
 			return s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
 				User: &candidate, ExpectedRevision: expectedRevision,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		userProfileError,

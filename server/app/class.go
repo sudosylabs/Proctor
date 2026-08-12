@@ -191,7 +191,7 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
 			return s.store.Create(ctx, &store.ClassCreation{
-				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		classError,
@@ -277,7 +277,7 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,
 				AuditEventID:           reference.ID,
-				AuditAt:                reference.AtMillis,
+				AuditAt:                reference.MutationAtMillis,
 			})
 		},
 		classError,
@@ -326,9 +326,9 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 				ID:                     id,
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,
-				ArchiveAt:              reference.AtMillis,
+				ArchiveAt:              reference.MutationAtMillis,
 				AuditEventID:           reference.ID,
-				AuditAt:                reference.AtMillis,
+				AuditAt:                reference.MutationAtMillis,
 			})
 		},
 		classError,

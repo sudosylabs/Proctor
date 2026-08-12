@@ -135,7 +135,7 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.Create(ctx, &store.AcademicPeriodCreation{
-				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		academicPeriodError,
@@ -189,7 +189,7 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{
-				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		academicPeriodError,
@@ -222,8 +222,8 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
-				ID: current.ID.String(), ArchiveAt: reference.AtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
+				ID: current.ID.String(), ArchiveAt: reference.MutationAtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		academicPeriodError,

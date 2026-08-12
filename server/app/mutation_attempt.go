@@ -26,8 +26,8 @@ type mutationAttempt struct {
 // mutationAttemptReference is the complete audit input a named Store mutation
 // needs to commit durable state and successful audit completion atomically.
 type mutationAttemptReference struct {
-	ID       string
-	AtMillis int64
+	ID               string
+	MutationAtMillis int64
 }
 
 // runAuditedMutation owns the common attempt and failure protocol. Successful
@@ -57,8 +57,8 @@ func runAuditedMutation[T any](
 	}
 
 	result, err := mutate(ctx, mutationAttemptReference{
-		ID:       auditID,
-		AtMillis: model.MillisFromTime(now()),
+		ID:               auditID,
+		MutationAtMillis: model.MillisFromTime(now()),
 	})
 	if err == nil {
 		return result, nil
