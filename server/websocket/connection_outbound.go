@@ -80,7 +80,7 @@ func (c *connectionRuntime) enqueueEvent(event *Event) {
 	queued := c.tryEnqueueOutbound(outboundMessage{event: candidate})
 	c.mu.Unlock()
 	if !queued {
-		c.close(CloseBackpressure, "client is too slow", false)
+		c.closeForBackpressure()
 	}
 }
 
@@ -124,8 +124,12 @@ func (c *connectionRuntime) closeTransport() {
 
 func (c *connectionRuntime) enqueueOutbound(message outboundMessage) {
 	if !c.tryEnqueueOutbound(message) {
-		c.close(CloseBackpressure, "client is too slow", false)
+		c.closeForBackpressure()
 	}
+}
+
+func (c *connectionRuntime) closeForBackpressure() {
+	c.close(CloseBackpressure, "client is too slow", false)
 }
 
 func (c *connectionRuntime) tryEnqueueOutbound(message outboundMessage) bool {
