@@ -9,14 +9,19 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
+	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app/api"
+	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
@@ -35,6 +40,9 @@ type hookStore struct {
 	pingAttempts   atomic.Int64
 	ping           func(int64) error
 	academicPeriod store.AcademicPeriodStore
+	closedCount    atomic.Int64
+	closeEvents    *hookCloseEvents
+	closeErr       error
 }
 
 func (s *hookStore) Institution() store.InstitutionStore       { return hookInstitutionStore{} }
@@ -82,7 +90,14 @@ func (s *hookStore) Ping(context.Context) error {
 func (s *hookStore) GetDBSchemaVersion(context.Context) (int, error) { return 0, nil }
 func (s *hookStore) GetLocalSchemaVersion() (int, error)             { return 0, nil }
 func (s *hookStore) ValidateSchema(context.Context) error            { return nil }
-func (s *hookStore) Close() error                                    { s.closed.Store(true); return nil }
+func (s *hookStore) Close() error {
+	s.closed.Store(true)
+	s.closedCount.Add(1)
+	if s.closeEvents != nil {
+		s.closeEvents.record("store")
+	}
+	return s.closeErr
+}
 
 type hookUserStore struct{ store.UserStore }
 type hookInstitutionStore struct{ store.InstitutionStore }
@@ -101,7 +116,12 @@ type hookUserTokenStore struct{ store.UserTokenStore }
 type hookRoleStore struct{ store.RoleStore }
 type hookRoleBindingStore struct{ store.RoleBindingStore }
 
-type hookCache struct{ closed atomic.Bool }
+type hookCache struct {
+	closed      atomic.Bool
+	closedCount atomic.Int64
+	closeEvents *hookCloseEvents
+	closeErr    error
+}
 
 type hookAcademicPeriodStore struct {
 	store.AcademicPeriodStore
@@ -125,9 +145,21 @@ func (c *hookCache) Add(context.Context, string, int64, time.Duration) (int64, e
 	return 0, nil
 }
 func (c *hookCache) Ping(context.Context) error { return nil }
-func (c *hookCache) Close() error               { c.closed.Store(true); return nil }
+func (c *hookCache) Close() error {
+	c.closed.Store(true)
+	c.closedCount.Add(1)
+	if c.closeEvents != nil {
+		c.closeEvents.record("cache")
+	}
+	return c.closeErr
+}
 
-type hookMailer struct{ closed atomic.Bool }
+type hookMailer struct {
+	closed      atomic.Bool
+	closedCount atomic.Int64
+	closeEvents *hookCloseEvents
+	closeErr    error
+}
 
 func (m *hookMailer) Enabled() bool { return true }
 func (m *hookMailer) From() mailpkg.Address {
@@ -137,7 +169,89 @@ func (m *hookMailer) Send(context.Context, mailpkg.Message) (mailpkg.Receipt, er
 	return mailpkg.Receipt{}, nil
 }
 func (m *hookMailer) Test(context.Context) error { return nil }
-func (m *hookMailer) Close() error               { m.closed.Store(true); return nil }
+func (m *hookMailer) Close() error {
+	m.closed.Store(true)
+	m.closedCount.Add(1)
+	if m.closeEvents != nil {
+		m.closeEvents.record("mailer")
+	}
+	return m.closeErr
+}
+
+type hookCloseEvents struct {
+	mu     sync.Mutex
+	values []string
+}
+
+func (e *hookCloseEvents) record(value string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.values = append(e.values, value)
+}
+
+func (e *hookCloseEvents) snapshot() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.values...)
+}
+
+type hookCluster struct {
+	platform.Cluster
+	cancel      context.CancelFunc
+	closedCount atomic.Int64
+	closeEvents *hookCloseEvents
+}
+
+func (c *hookCluster) NodeID() string { return "hook-node" }
+func (c *hookCluster) RegisterHandler(cluster.Event, cluster.Handler) error {
+	if c.cancel != nil {
+		c.cancel()
+	}
+	return nil
+}
+func (c *hookCluster) Stop(context.Context) error {
+	c.closedCount.Add(1)
+	if c.closeEvents != nil {
+		c.closeEvents.record("cluster")
+	}
+	return nil
+}
+
+type hookFilesystem struct {
+	vfspkg.FileSystem
+	closedCount atomic.Int64
+	closeEvents *hookCloseEvents
+}
+
+func (f *hookFilesystem) Close() error {
+	f.closedCount.Add(1)
+	if f.closeEvents != nil {
+		f.closeEvents.record("vfs")
+	}
+	return nil
+}
+
+type hookConfigurationBacking struct {
+	data        []byte
+	closedCount atomic.Int64
+	closeEvents *hookCloseEvents
+}
+
+func (b *hookConfigurationBacking) Load(ctx context.Context) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), b.data...), nil
+}
+func (b *hookConfigurationBacking) Save(context.Context, []byte) error { return nil }
+func (b *hookConfigurationBacking) String() string                     { return "hook" }
+func (b *hookConfigurationBacking) Close() error {
+	b.closedCount.Add(1)
+	if b.closeEvents != nil {
+		b.closeEvents.record("configuration")
+	}
+	return nil
+}
 
 func newHookOverrides(t *testing.T) (server.TestingOverrides, *hookStore, *hookCache, *hookMailer) {
 	t.Helper()
@@ -165,6 +279,21 @@ func newHookOverrides(t *testing.T) (server.TestingOverrides, *hookStore, *hookC
 		Mailer:        mailer,
 		Filesystem:    memoryvfs.New(),
 	}, persistence, cache, mailer
+}
+
+func newHookConfiguration(t *testing.T, events *hookCloseEvents) (*config.Store, *hookConfigurationBacking) {
+	t.Helper()
+
+	backing := &hookConfigurationBacking{closeEvents: events}
+	configuration, err := config.NewStore(
+		context.Background(),
+		backing,
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return configuration, backing
 }
 
 func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
@@ -250,6 +379,140 @@ func TestNewForTestingCanceledConstructionClosesOwnedOverrides(t *testing.T) {
 	}
 	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
 		t.Fatal("canceled construction did not close every owned override")
+	}
+}
+
+func TestFailedStoreDecoratorLeavesInputOwnedByAcquisition(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, cache, mailer := newHookOverrides(t)
+	overrides.StoreRetry = &retrylayer.Policy{}
+
+	runtime, err := server.NewForTesting(context.Background(), overrides)
+	if runtime != nil {
+		t.Fatalf("NewForTesting(invalid retry) runtime = %#v, want nil", runtime)
+	}
+	if err == nil || !strings.Contains(err.Error(), "construct store retry layer") {
+		t.Fatalf("NewForTesting(invalid retry) error = %v, want retry-layer construction failure", err)
+	}
+	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
+		t.Fatal("failed Store decorator did not release every owned override")
+	}
+}
+
+func TestCanceledAcquisitionReleasesOverridesOnceInReverseOrder(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, cache, mailer := newHookOverrides(t)
+	events := &hookCloseEvents{}
+	configuration, configurationBacking := newHookConfiguration(t, events)
+	overrides.Configuration = configuration
+	persistence.closeEvents = events
+	cache.closeEvents = events
+	mailer.closeEvents = events
+	clusterTransport := &hookCluster{closeEvents: events}
+	filesystem := &hookFilesystem{
+		FileSystem:  memoryvfs.New(),
+		closeEvents: events,
+	}
+	overrides.Cluster = clusterTransport
+	overrides.Filesystem = filesystem
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runtime, err := server.NewForTesting(ctx, overrides)
+	if runtime != nil {
+		t.Fatalf("NewForTesting(canceled) runtime = %#v, want nil", runtime)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("NewForTesting(canceled) error = %v, want context.Canceled", err)
+	}
+	wantOrder := []string{"cluster", "vfs", "mailer", "cache", "store", "configuration"}
+	if got := events.snapshot(); !slices.Equal(got, wantOrder) {
+		t.Fatalf("release order = %v, want %v", got, wantOrder)
+	}
+	for name, count := range map[string]int64{
+		"cluster":       clusterTransport.closedCount.Load(),
+		"vfs":           filesystem.closedCount.Load(),
+		"mailer":        mailer.closedCount.Load(),
+		"cache":         cache.closedCount.Load(),
+		"store":         persistence.closedCount.Load(),
+		"configuration": configurationBacking.closedCount.Load(),
+	} {
+		if count != 1 {
+			t.Fatalf("%s close count = %d, want 1", name, count)
+		}
+	}
+	if err := overrides.Logger.Configure(mlog.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("logger Configure() after release error = %v, want closed", err)
+	}
+}
+
+func TestCancellationBetweenAcquisitionPhasesUnwindsCurrentOwner(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, cache, mailer := newHookOverrides(t)
+	events := &hookCloseEvents{}
+	configuration, configurationBacking := newHookConfiguration(t, events)
+	overrides.Configuration = configuration
+	persistence.closeEvents = events
+	cache.closeEvents = events
+	mailer.closeEvents = events
+	ctx, cancel := context.WithCancel(context.Background())
+	clusterTransport := &hookCluster{cancel: cancel, closeEvents: events}
+	filesystem := &hookFilesystem{
+		FileSystem:  memoryvfs.New(),
+		closeEvents: events,
+	}
+	overrides.Cluster = clusterTransport
+	overrides.Filesystem = filesystem
+
+	runtime, err := server.NewForTesting(ctx, overrides)
+	if runtime != nil {
+		t.Fatalf("NewForTesting(mid-acquisition cancellation) runtime = %#v, want nil", runtime)
+	}
+	if !errors.Is(err, context.Canceled) ||
+		!strings.Contains(err.Error(), "decorate persistence with local cache") {
+		t.Fatalf("NewForTesting(mid-acquisition cancellation) error = %v", err)
+	}
+	wantOrder := []string{"cluster", "vfs", "mailer", "cache", "store", "configuration"}
+	if got := events.snapshot(); !slices.Equal(got, wantOrder) {
+		t.Fatalf("release order = %v, want %v", got, wantOrder)
+	}
+	if configurationBacking.closedCount.Load() != 1 {
+		t.Fatalf("configuration close count = %d, want 1", configurationBacking.closedCount.Load())
+	}
+}
+
+func TestAcquisitionPreservesPrimaryAndCleanupFailures(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, cache, mailer := newHookOverrides(t)
+	storeCleanupErr := errors.New("store cleanup failed")
+	cacheCleanupErr := errors.New("cache cleanup failed")
+	persistence.closeErr = storeCleanupErr
+	cache.closeErr = cacheCleanupErr
+	overrides.StoreRetry = &retrylayer.Policy{
+		MaxAttempts:    0,
+		InitialBackoff: time.Nanosecond,
+		MaxBackoff:     time.Nanosecond,
+		IsTransient:    func(error) bool { return false },
+	}
+
+	runtime, err := server.NewForTesting(context.Background(), overrides)
+	if runtime != nil {
+		t.Fatalf("NewForTesting(invalid retry) runtime = %#v, want nil", runtime)
+	}
+	if err == nil || !strings.Contains(err.Error(), "construct store retry layer") {
+		t.Fatalf("NewForTesting(invalid retry) error = %v, want primary retry failure", err)
+	}
+	for _, expected := range []error{storeCleanupErr, cacheCleanupErr} {
+		if !errors.Is(err, expected) {
+			t.Fatalf("NewForTesting(invalid retry) error = %v, want joined %v", err, expected)
+		}
+	}
+	if !mailer.closed.Load() {
+		t.Fatal("cleanup stopped before closing remaining owned resources")
 	}
 }
 

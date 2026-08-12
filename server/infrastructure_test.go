@@ -11,7 +11,84 @@ import (
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/platform"
+	"github.com/sudosylabs/proctor/server/store"
 )
+
+type releaseStore struct {
+	store.Store
+	events *[]string
+}
+
+func (s releaseStore) Close() error {
+	*s.events = append(*s.events, "store")
+	return nil
+}
+
+type releaseCache struct {
+	platform.Cache
+	events *[]string
+}
+
+func (c releaseCache) Close() error {
+	*c.events = append(*c.events, "cache")
+	return nil
+}
+
+type releaseMailer struct {
+	platform.Mailer
+	events *[]string
+}
+
+func (m releaseMailer) Close() error {
+	*m.events = append(*m.events, "mailer")
+	return nil
+}
+
+type releaseCluster struct {
+	platform.Cluster
+	events *[]string
+}
+
+func (c releaseCluster) Stop(context.Context) error {
+	*c.events = append(*c.events, "cluster")
+	return nil
+}
+
+type releaseVFS struct {
+	vfspkg.FileSystem
+	events *[]string
+}
+
+func (f releaseVFS) Close() error {
+	*f.events = append(*f.events, "vfs")
+	return nil
+}
+
+func TestOwnedInfrastructureReleasesInReverseDependencyOrder(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	owned := ownedInfrastructure{
+		persistence: releaseStore{events: &events},
+		cache:       releaseCache{events: &events},
+		mailer:      releaseMailer{events: &events},
+		filesystem:  releaseVFS{events: &events},
+		cluster:     releaseCluster{events: &events},
+	}
+	if err := owned.release(); err != nil {
+		t.Fatalf("release() error = %v", err)
+	}
+	want := []string{"cluster", "vfs", "mailer", "cache", "store"}
+	if len(events) != len(want) {
+		t.Fatalf("release order = %v, want %v", events, want)
+	}
+	for index := range want {
+		if events[index] != want[index] {
+			t.Fatalf("release order = %v, want %v", events, want)
+		}
+	}
+}
 
 func TestRootSelectsLocalDevelopmentInfrastructure(t *testing.T) {
 	t.Parallel()

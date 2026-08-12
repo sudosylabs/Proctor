@@ -41,7 +41,10 @@ import (
 	"github.com/sudosylabs/proctor/server/websocket"
 )
 
-type runtimeInfrastructure struct {
+// ownedInfrastructure is the sole owner of infrastructure while the root is
+// acquiring and decorating it. Ownership is transferred as one unit to the
+// Platform boundary; before then, release is the only cleanup path.
+type ownedInfrastructure struct {
 	configuration          *config.Store
 	logger                 *mlog.Logger
 	persistence            store.Store
@@ -218,42 +221,57 @@ func openRuntimeInfrastructure(
 	ctx context.Context,
 	configPath string,
 	overrides TestingOverrides,
-) (result runtimeInfrastructure, resultErr error) {
+) (result ownedInfrastructure, resultErr error) {
+	result = ownedInfrastructure{
+		configuration: overrides.Configuration,
+		logger:        overrides.Logger,
+		persistence:   overrides.Persistence,
+		cache:         overrides.Cache,
+		cluster:       overrides.Cluster,
+		mailer:        overrides.Mailer,
+		filesystem:    overrides.Filesystem,
+	}
 	defer func() {
 		if resultErr != nil {
-			resultErr = errors.Join(resultErr, result.close())
+			resultErr = errors.Join(resultErr, result.release())
 		}
 	}()
 
-	if overrides.Configuration != nil {
-		result.configuration = overrides.Configuration
-	} else {
+	if err := checkAcquisitionContext(ctx, "begin infrastructure acquisition"); err != nil {
+		return result, err
+	}
+	if result.configuration == nil {
 		configuration, err := openConfiguration(ctx, configPath)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("acquire configuration: %w", err)
 		}
 		result.configuration = configuration
 	}
+	if err := checkAcquisitionContext(ctx, "acquire configuration"); err != nil {
+		return result, err
+	}
 
-	if overrides.Logger != nil {
-		result.logger = overrides.Logger
-	} else {
+	if result.logger == nil {
 		logger, err := mlog.New()
 		if err != nil {
 			return result, fmt.Errorf("create logger: %w", err)
 		}
 		result.logger = logger
 	}
+	if err := checkAcquisitionContext(ctx, "acquire logger"); err != nil {
+		return result, err
+	}
 
 	cfg := result.configuration.Get()
-	if overrides.Persistence != nil {
-		result.persistence = overrides.Persistence
-	} else {
+	if result.persistence == nil {
 		persistence, err := sqlstore.New(ctx, sqlstore.SettingsFromConfig(cfg.Database))
 		if err != nil {
 			return result, fmt.Errorf("open database: %w", err)
 		}
 		result.persistence = persistence
+	}
+	if err := checkAcquisitionContext(ctx, "acquire persistence"); err != nil {
+		return result, err
 	}
 	storeRetry := retrylayer.DefaultPolicy(sqlstore.IsTransientError)
 	if overrides.StoreRetry != nil {
@@ -263,7 +281,10 @@ func openRuntimeInfrastructure(
 	if err != nil {
 		return result, fmt.Errorf("construct store retry layer: %w", err)
 	}
-	result.persistence = retriedPersistence
+	result.replacePersistence(retriedPersistence)
+	if err := checkAcquisitionContext(ctx, "decorate persistence with retry"); err != nil {
+		return result, err
+	}
 	storeMetrics := overrides.StoreMetrics
 	if storeMetrics == nil {
 		storeMetrics = timerlayer.NopRecorder{}
@@ -272,37 +293,41 @@ func openRuntimeInfrastructure(
 	if err != nil {
 		return result, fmt.Errorf("construct store timing layer: %w", err)
 	}
-	result.persistence = timedPersistence
-	if overrides.Cache != nil {
-		result.cache = overrides.Cache
-	} else {
+	result.replacePersistence(timedPersistence)
+	if err := checkAcquisitionContext(ctx, "decorate persistence with timing"); err != nil {
+		return result, err
+	}
+	if result.cache == nil {
 		cache, err := newCache(cfg.Cache)
 		if err != nil {
 			return result, fmt.Errorf("open cache: %w", err)
 		}
 		result.cache = cache
 	}
-	if overrides.Mailer != nil {
-		result.mailer = overrides.Mailer
-	} else {
+	if err := checkAcquisitionContext(ctx, "acquire cache"); err != nil {
+		return result, err
+	}
+	if result.mailer == nil {
 		mailer, err := newMailer(cfg.Mail)
 		if err != nil {
 			return result, fmt.Errorf("open mail transport: %w", err)
 		}
 		result.mailer = mailer
 	}
-	if overrides.Filesystem != nil {
-		result.filesystem = overrides.Filesystem
-	} else {
+	if err := checkAcquisitionContext(ctx, "acquire mail transport"); err != nil {
+		return result, err
+	}
+	if result.filesystem == nil {
 		filesystem, err := newVFS(cfg.VFS)
 		if err != nil {
 			return result, fmt.Errorf("open VFS: %w", err)
 		}
 		result.filesystem = filesystem
 	}
-	if overrides.Cluster != nil {
-		result.cluster = overrides.Cluster
-	} else {
+	if err := checkAcquisitionContext(ctx, "acquire VFS"); err != nil {
+		return result, err
+	}
+	if result.cluster == nil {
 		var discovery store.ClusterDiscoveryStore
 		if result.persistence != nil {
 			discovery = result.persistence.ClusterDiscovery()
@@ -312,6 +337,9 @@ func openRuntimeInfrastructure(
 			return result, fmt.Errorf("open cluster transport: %w", err)
 		}
 		result.cluster = cluster
+	}
+	if err := checkAcquisitionContext(ctx, "acquire cluster transport"); err != nil {
+		return result, err
 	}
 	storeLocalCache := overrides.StoreLocalCache
 	if storeLocalCache == nil {
@@ -342,16 +370,33 @@ func openRuntimeInfrastructure(
 	if err != nil {
 		return result, fmt.Errorf("construct local-cache store layer: %w", err)
 	}
-	result.persistence = cachedPersistence
+	result.replacePersistence(cachedPersistence)
+	if err := checkAcquisitionContext(ctx, "decorate persistence with local cache"); err != nil {
+		return result, err
+	}
 	externalAuthentication, err := newExternalAuthenticationRegistry()
 	if err != nil {
 		return result, fmt.Errorf("construct external authentication registry: %w", err)
 	}
 	result.externalAuthentication = externalAuthentication
+	if err := checkAcquisitionContext(ctx, "acquire external authentication registry"); err != nil {
+		return result, err
+	}
 	return result, nil
 }
 
-func (i *runtimeInfrastructure) close() error {
+func checkAcquisitionContext(ctx context.Context, phase string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", phase, err)
+	}
+	return nil
+}
+
+func (i *ownedInfrastructure) replacePersistence(next store.Store) {
+	i.persistence = next
+}
+
+func (i *ownedInfrastructure) release() error {
 	var clusterErr error
 	if i.cluster != nil {
 		shutdownTimeout := 15 * time.Second
