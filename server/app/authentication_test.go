@@ -244,7 +244,10 @@ func (s authenticationSessionStore) Save(
 		}
 	}
 	cloned := *session
-	now := model.NowUTC()
+	now := cloned.LastActivityAt
+	if now.IsZero() {
+		now = model.NowUTC()
+	}
 	if cloned.ID.IsZero() {
 		cloned.PrepareCreate(model.NewSessionID(), now)
 	} else {
@@ -682,15 +685,6 @@ func (discardAuthenticationPATResolver) ResolveBearer(
 	time.Time,
 ) (*model.Principal, error) {
 	return nil, invalidTokenAppError()
-}
-
-func mustTestMFAService(t *testing.T) *MFAService {
-	t.Helper()
-	service, err := newMFAService(MFAPolicy{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return service
 }
 
 func TestLoginReturnsTransportNeutralInvalidCredentials(t *testing.T) {

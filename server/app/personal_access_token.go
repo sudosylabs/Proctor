@@ -11,6 +11,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -47,17 +48,84 @@ type SetPersonalAccessTokenDisabledCommand struct {
 	Disabled bool
 }
 
+type personalAccessTokenAuditor interface {
+	Begin(
+		context.Context, model.Principal, model.Action, model.Resource,
+		model.RequestMetadata, map[string]any, map[string]any,
+	) (string, error)
+	Complete(
+		context.Context, string, model.AuditStatus, string, map[string]any,
+	) error
+}
+
+type personalAccessTokenAdministrationService struct {
+	tokens                  store.PersonalAccessTokenStore
+	academicUnits           store.AcademicUnitStore
+	institutions            store.InstitutionStore
+	audit                   personalAccessTokenAuditor
+	policy                  PersonalAccessTokenPolicy
+	recentAuthenticationTTL time.Duration
+	newCredential           func() string
+	now                     func() time.Time
+}
+
+func newPersonalAccessTokenAdministrationService(
+	tokens store.PersonalAccessTokenStore,
+	academicUnits store.AcademicUnitStore,
+	institutions store.InstitutionStore,
+	audit personalAccessTokenAuditor,
+	policy PersonalAccessTokenPolicy,
+	recentAuthenticationTTL time.Duration,
+	newCredential func() string,
+	now func() time.Time,
+) (*personalAccessTokenAdministrationService, error) {
+	if tokens == nil {
+		return nil, errors.New("personal access token administration store is required")
+	}
+	if academicUnits == nil {
+		return nil, errors.New("personal access token academic unit store is required")
+	}
+	if institutions == nil {
+		return nil, errors.New("personal access token institution store is required")
+	}
+	if audit == nil {
+		return nil, errors.New("personal access token audit is required")
+	}
+	if newCredential == nil {
+		return nil, errors.New("personal access token credential generator is required")
+	}
+	if now == nil {
+		return nil, errors.New("personal access token clock is required")
+	}
+	return &personalAccessTokenAdministrationService{
+		tokens: tokens, academicUnits: academicUnits, institutions: institutions,
+		audit: audit, policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
+		newCredential: newCredential, now: now,
+	}, nil
+}
+
 func (a *App) CreatePersonalAccessToken(
 	ctx context.Context,
 	invocation Invocation,
 	command CreatePersonalAccessTokenCommand,
 ) (*model.PersonalAccessTokenCreation, error) {
+	return a.personalAccessTokenAdministration.Create(ctx, invocation, command)
+}
+
+func (s *personalAccessTokenAdministrationService) Create(
+	ctx context.Context,
+	invocation Invocation,
+	command CreatePersonalAccessTokenCommand,
+) (*model.PersonalAccessTokenCreation, error) {
 	principal := invocation.Principal()
-	if err := a.requireInteractiveSession(principal, true); err != nil {
+	at := s.now()
+	if err := requireInteractiveSession(
+		principal, true, at, s.recentAuthenticationTTL,
+	); err != nil {
 		return nil, err
 	}
-	now := time.Now().UnixMilli()
-	settings := a.personalAccessTokens
+	now := at.UnixMilli()
+	settings := s.policy
 	if command.ExpiresAt < now+settings.MinimumLifetime.Milliseconds() ||
 		command.ExpiresAt > now+settings.MaximumLifetime.Milliseconds() {
 		return nil, invalidPersonalAccessTokenRequest("expires_at")
@@ -70,12 +138,12 @@ func (a *App) CreatePersonalAccessToken(
 		if !model.IsValidId(command.AcademicUnitID) {
 			return nil, invalidPersonalAccessTokenRequest("academic_unit_id")
 		}
-		if _, err := a.Store().AcademicUnit().Get(ctx, command.AcademicUnitID); err != nil {
+		if _, err := s.academicUnits.Get(ctx, command.AcademicUnitID); err != nil {
 			return nil, personalAccessTokenFailure("academic_unit", err)
 		}
 	}
 
-	rawCredential := model.NewCredentialToken()
+	rawCredential := s.newCredential()
 	candidate := &model.PersonalAccessToken{
 		UserID:         principal.UserID,
 		Description:    command.Description,
@@ -88,28 +156,28 @@ func (a *App) CreatePersonalAccessToken(
 		"description": command.Description, "scopes": normalizedScopes,
 		"academic_unit_id": command.AcademicUnitID, "expires_at": command.ExpiresAt,
 	}
-	resource, err := a.personalAccessTokenAuditResource(ctx)
+	resource, err := s.auditResource(ctx)
 	if err != nil {
 		return nil, err
 	}
-	attempt, appErr := a.audit.BeginCriticalAction(
+	auditID, appErr := s.audit.Begin(
 		ctx, principal, actionPersonalAccessTokenCreate, resource, invocation.RequestMetadata(),
 		parameters, nil,
 	)
 	if appErr != nil {
 		return nil, appErr
 	}
-	saved, err := a.Store().PersonalAccessToken().Save(
+	saved, err := s.tokens.Save(
 		ctx,
 		candidate,
 		settings.MaximumPerUser,
 	)
 	if err != nil {
-		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.ID.String(), err)
+		return nil, s.failMutation(ctx, auditID, err)
 	}
-	if _, appErr := a.audit.CompleteCriticalAction(
+	if appErr := s.audit.Complete(
 		ctx,
-		attempt.ID.String(),
+		auditID,
 		model.AuditStatusSuccess,
 		"",
 		saved.Auditable(),
@@ -124,13 +192,21 @@ func (a *App) CreatePersonalAccessToken(
 func (a *App) ListPersonalAccessTokens(
 	ctx context.Context,
 	invocation Invocation,
+	query ListPersonalAccessTokensQuery,
+) ([]*model.PersonalAccessToken, error) {
+	return a.personalAccessTokenAdministration.List(ctx, invocation, query)
+}
+
+func (s *personalAccessTokenAdministrationService) List(
+	ctx context.Context,
+	invocation Invocation,
 	_ ListPersonalAccessTokensQuery,
 ) ([]*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()
-	if err := a.requireInteractiveSession(principal, false); err != nil {
+	if err := requireInteractiveSession(principal, false, s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	tokens, err := a.Store().PersonalAccessToken().ListByUser(ctx, principal.UserID.String())
+	tokens, err := s.tokens.ListByUser(ctx, principal.UserID.String())
 	if err != nil {
 		return nil, personalAccessTokenFailure("personal_access_token", err)
 	}
@@ -142,25 +218,33 @@ func (a *App) RevokePersonalAccessToken(
 	invocation Invocation,
 	command RevokePersonalAccessTokenCommand,
 ) (*model.PersonalAccessToken, error) {
+	return a.personalAccessTokenAdministration.Revoke(ctx, invocation, command)
+}
+
+func (s *personalAccessTokenAdministrationService) Revoke(
+	ctx context.Context,
+	invocation Invocation,
+	command RevokePersonalAccessTokenCommand,
+) (*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()
-	if err := a.requireInteractiveSession(principal, false); err != nil {
+	if err := requireInteractiveSession(principal, false, s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
 	if !model.IsValidId(command.TokenID) {
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
-	current, err := a.Store().PersonalAccessToken().Get(ctx, command.TokenID)
+	current, err := s.tokens.Get(ctx, command.TokenID)
 	if err != nil || current.UserID != principal.UserID {
 		if err == nil {
 			err = store.NewErrNotFound("personal_access_token", command.TokenID)
 		}
 		return nil, personalAccessTokenFailure("personal_access_token", err)
 	}
-	resource, err := a.personalAccessTokenAuditResource(ctx)
+	resource, err := s.auditResource(ctx)
 	if err != nil {
 		return nil, err
 	}
-	attempt, appErr := a.audit.BeginCriticalAction(
+	auditID, appErr := s.audit.Begin(
 		ctx, principal, actionPersonalAccessTokenRevoke, resource, invocation.RequestMetadata(),
 		map[string]any{"personal_access_token_id": command.TokenID},
 		current.Auditable(),
@@ -168,18 +252,18 @@ func (a *App) RevokePersonalAccessToken(
 	if appErr != nil {
 		return nil, appErr
 	}
-	revoked, err := a.Store().PersonalAccessToken().Revoke(
+	revoked, err := s.tokens.Revoke(
 		ctx,
 		command.TokenID,
 		principal.UserID.String(),
-		time.Now().UnixMilli(),
+		s.now().UnixMilli(),
 	)
 	if err != nil {
-		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.ID.String(), err)
+		return nil, s.failMutation(ctx, auditID, err)
 	}
-	if _, appErr := a.audit.CompleteCriticalAction(
+	if appErr := s.audit.Complete(
 		ctx,
-		attempt.ID.String(),
+		auditID,
 		model.AuditStatusSuccess,
 		"",
 		revoked.Auditable(),
@@ -194,29 +278,40 @@ func (a *App) SetPersonalAccessTokenDisabled(
 	invocation Invocation,
 	command SetPersonalAccessTokenDisabledCommand,
 ) (*model.PersonalAccessToken, error) {
+	return a.personalAccessTokenAdministration.SetDisabled(ctx, invocation, command)
+}
+
+func (s *personalAccessTokenAdministrationService) SetDisabled(
+	ctx context.Context,
+	invocation Invocation,
+	command SetPersonalAccessTokenDisabledCommand,
+) (*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()
+	at := s.now()
 	action := actionPersonalAccessTokenDisable
 	if !command.Disabled {
 		action = actionPersonalAccessTokenEnable
 	}
-	if err := a.requireInteractiveSession(principal, !command.Disabled); err != nil {
+	if err := requireInteractiveSession(
+		principal, !command.Disabled, at, s.recentAuthenticationTTL,
+	); err != nil {
 		return nil, err
 	}
 	if !model.IsValidId(command.TokenID) {
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
-	current, err := a.Store().PersonalAccessToken().Get(ctx, command.TokenID)
+	current, err := s.tokens.Get(ctx, command.TokenID)
 	if err != nil || current.UserID != principal.UserID {
 		if err == nil {
 			err = store.NewErrNotFound("personal_access_token", command.TokenID)
 		}
 		return nil, personalAccessTokenFailure("personal_access_token", err)
 	}
-	resource, err := a.personalAccessTokenAuditResource(ctx)
+	resource, err := s.auditResource(ctx)
 	if err != nil {
 		return nil, err
 	}
-	attempt, appErr := a.audit.BeginCriticalAction(
+	auditID, appErr := s.audit.Begin(
 		ctx, principal, action, resource, invocation.RequestMetadata(),
 		map[string]any{
 			"personal_access_token_id": command.TokenID,
@@ -227,20 +322,20 @@ func (a *App) SetPersonalAccessTokenDisabled(
 	if appErr != nil {
 		return nil, appErr
 	}
-	updated, err := a.Store().PersonalAccessToken().SetDisabled(
+	updated, err := s.tokens.SetDisabled(
 		ctx,
 		command.TokenID,
 		principal.UserID.String(),
 		command.Disabled,
-		time.Now().UnixMilli(),
-		a.personalAccessTokens.MaximumPerUser,
+		at.UnixMilli(),
+		s.policy.MaximumPerUser,
 	)
 	if err != nil {
-		return nil, a.failPersonalAccessTokenMutation(ctx, attempt.ID.String(), err)
+		return nil, s.failMutation(ctx, auditID, err)
 	}
-	if _, appErr := a.audit.CompleteCriticalAction(
+	if appErr := s.audit.Complete(
 		ctx,
-		attempt.ID.String(),
+		auditID,
 		model.AuditStatusSuccess,
 		"",
 		updated.Auditable(),
@@ -251,13 +346,24 @@ func (a *App) SetPersonalAccessTokenDisabled(
 }
 
 func (a *App) requireInteractiveSession(principal model.Principal, recent bool) error {
+	return requireInteractiveSession(
+		principal, recent, time.Now(), a.recentAuthenticationTTL,
+	)
+}
+
+func requireInteractiveSession(
+	principal model.Principal,
+	recent bool,
+	now time.Time,
+	recentAuthenticationTTL time.Duration,
+) error {
 	if principal.Validate() != nil ||
 		principal.CredentialType != model.CredentialSessionAccess {
 		return NewError("authentication.session_required")
 	}
 	if recent && !principal.IsRecentlyAuthenticated(
-		time.Now(),
-		a.recentAuthenticationTTL,
+		now,
+		recentAuthenticationTTL,
 	) {
 		return NewError("authentication.reauthentication_required")
 	}
@@ -279,8 +385,10 @@ func normalizePersonalAccessTokenScopes(scopes []string) ([]string, error) {
 	return result, nil
 }
 
-func (a *App) personalAccessTokenAuditResource(ctx context.Context) (model.Resource, error) {
-	institution, err := a.Store().Institution().GetSingleton(ctx)
+func (s *personalAccessTokenAdministrationService) auditResource(
+	ctx context.Context,
+) (model.Resource, error) {
+	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, personalAccessTokenFailure("institution", err)
 	}
@@ -290,13 +398,17 @@ func (a *App) personalAccessTokenAuditResource(ctx context.Context) (model.Resou
 	}, nil
 }
 
-func (a *App) failPersonalAccessTokenMutation(ctx context.Context, auditID string, err error) error {
+func (s *personalAccessTokenAdministrationService) failMutation(
+	ctx context.Context,
+	auditID string,
+	err error,
+) error {
 	mapped := personalAccessTokenFailure("personal_access_token", err)
 	code := "personal_access_token.unavailable"
 	if failure, ok := As(mapped); ok {
 		code = failure.Code()
 	}
-	if _, auditErr := a.audit.CompleteCriticalAction(
+	if auditErr := s.audit.Complete(
 		ctx,
 		auditID,
 		model.AuditStatusFail,
@@ -306,6 +418,41 @@ func (a *App) failPersonalAccessTokenMutation(ctx context.Context, auditID strin
 		return auditErr
 	}
 	return mapped
+}
+
+type personalAccessTokenAuditAdapter struct {
+	audit *AuditService
+}
+
+func (a personalAccessTokenAuditAdapter) Begin(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	metadata model.RequestMetadata,
+	parameters map[string]any,
+	prior map[string]any,
+) (string, error) {
+	event, err := a.audit.BeginCriticalAction(
+		ctx, principal, action, resource, metadata, parameters, prior,
+	)
+	if err != nil {
+		return "", err
+	}
+	return event.ID.String(), nil
+}
+
+func (a personalAccessTokenAuditAdapter) Complete(
+	ctx context.Context,
+	auditID string,
+	status model.AuditStatus,
+	errorCode string,
+	result map[string]any,
+) error {
+	_, err := a.audit.CompleteCriticalAction(
+		ctx, auditID, status, errorCode, result,
+	)
+	return err
 }
 
 func invalidPersonalAccessTokenRequest(field string) error {

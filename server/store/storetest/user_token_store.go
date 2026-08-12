@@ -31,6 +31,9 @@ func TestUserTokenStore(t *testing.T, ss store.Store) {
 	t.Run("ConcurrentConsumptionHasOneWinner", func(t *testing.T) {
 		testUserTokenConcurrentConsumption(t, ss)
 	})
+	t.Run("ExpiredTokenCannotBeConsumed", func(t *testing.T) {
+		testExpiredUserTokenCannotBeConsumed(t, ss)
+	})
 	t.Run("AuditFailureRollsBackCredentialState", func(t *testing.T) {
 		testUserTokenAuditFailureRollsBack(t, ss)
 	})
@@ -63,6 +66,35 @@ func testUserTokenIssueReplacesPriorToken(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if gotSecond.ArchivedAt.Valid || gotSecond.Target != user.Email {
 		t.Fatalf("replacement token = %#v", gotSecond)
+	}
+	if _, err := ss.UserToken().ConsumeEmailVerification(
+		ctx,
+		first.TokenHash,
+		model.MillisFromTime(second.CreatedAt)+1,
+		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+	); !store.IsNotFound(err) {
+		t.Fatalf("superseded token consumption error = %v, want not found", err)
+	}
+}
+
+func testExpiredUserTokenCannotBeConsumed(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	token := newUserToken(user, model.UserTokenEmailVerification)
+	token, err := ss.UserToken().Issue(
+		ctx,
+		token,
+		userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String()),
+	)
+	requireNoError(t, err)
+	if _, err := ss.UserToken().ConsumeEmailVerification(
+		ctx,
+		token.TokenHash,
+		model.MillisFromTime(token.ExpiresAt),
+		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
+	); !store.IsNotFound(err) {
+		t.Fatalf("expired token consumption error = %v, want not found", err)
 	}
 }
 

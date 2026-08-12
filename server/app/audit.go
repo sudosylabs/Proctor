@@ -205,6 +205,35 @@ func (s *AuditService) RecordAuthorizationDecision(
 	metadata model.RequestMetadata,
 	allowed bool,
 ) error {
+	return s.recordDecision(ctx, principal, string(action), resource, scopeType, scopeID, metadata, allowed)
+}
+
+// RecordUserSearchDecision records collection-level User search without
+// introducing a permission action. Authority comes from user.view and
+// class.members.view grants.
+func (s *AuditService) RecordUserSearchDecision(
+	ctx context.Context,
+	principal model.Principal,
+	resource model.Resource,
+	metadata model.RequestMetadata,
+	allowed bool,
+) error {
+	return s.recordDecision(
+		ctx, principal, "user.search", resource,
+		model.RoleScopeInstitution, resource.ID, metadata, allowed,
+	)
+}
+
+func (s *AuditService) recordDecision(
+	ctx context.Context,
+	principal model.Principal,
+	action string,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	metadata model.RequestMetadata,
+	allowed bool,
+) error {
 	status := model.AuditStatusFail
 	errorCode := "authorization.denied"
 	if allowed {
@@ -213,7 +242,7 @@ func (s *AuditService) RecordAuthorizationDecision(
 	}
 	event := &model.AuditEvent{
 		ActorID: principal.UserID, SessionID: principal.SessionID,
-		Action: string(action), Resource: resource,
+		Action: action, Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID, Status: status,
 		RequestID: metadata.RequestID, NodeID: s.nodeID,
 		ClientType: string(principal.ClientType),

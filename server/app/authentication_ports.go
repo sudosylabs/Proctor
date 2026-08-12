@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -43,52 +42,6 @@ type authenticationSessionIssuer interface {
 		context.Context,
 		sessionIssuance,
 	) (*model.Session, *model.AuthenticationTokens, error)
-}
-
-type loginMFAVerifier struct {
-	credentials store.MFAStore
-	mechanics   *MFAService
-}
-
-func newLoginMFAVerifier(
-	credentials store.MFAStore,
-	mechanics *MFAService,
-) (*loginMFAVerifier, error) {
-	if credentials == nil {
-		return nil, errors.New("MFA store is required")
-	}
-	if mechanics == nil {
-		return nil, errors.New("MFA mechanics are required")
-	}
-	return &loginMFAVerifier{credentials: credentials, mechanics: mechanics}, nil
-}
-
-func (v *loginMFAVerifier) VerifyLogin(
-	ctx context.Context,
-	userID string,
-	code string,
-	at time.Time,
-) (model.AuthenticationStrength, int64, error) {
-	credential, err := v.credentials.GetByUser(ctx, userID)
-	if store.IsNotFound(err) {
-		return model.AuthenticationSingleFactor, 0, nil
-	}
-	if err != nil {
-		return "", 0, authenticationUnavailable(err)
-	}
-	if !credential.IsActive() {
-		return model.AuthenticationSingleFactor, 0, nil
-	}
-	if !v.mechanics.settings.Enabled {
-		return "", 0, NewError("authentication.mfa.unavailable")
-	}
-	if strings.TrimSpace(code) == "" {
-		return "", 0, NewError("authentication.mfa.required")
-	}
-	if appErr := v.mechanics.consumeSecondFactor(ctx, v.credentials, userID, code, at); appErr != nil {
-		return "", 0, appErr
-	}
-	return model.AuthenticationMultiFactor, at.UnixMilli(), nil
 }
 
 type personalAccessTokenBearerResolver struct {
@@ -153,5 +106,4 @@ func (r *personalAccessTokenBearerResolver) ResolveBearer(
 	return principal, nil
 }
 
-var _ authenticationMFAVerifier = (*loginMFAVerifier)(nil)
 var _ authenticationPATResolver = (*personalAccessTokenBearerResolver)(nil)

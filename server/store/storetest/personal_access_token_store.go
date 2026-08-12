@@ -26,12 +26,45 @@ func TestPersonalAccessTokenStore(t *testing.T, ss store.Store) {
 	t.Run("RejectsUnknownActionScope", func(t *testing.T) {
 		testPersonalAccessTokenRejectsUnknownScope(t, ss)
 	})
+	t.Run("RejectsDisabledAccount", func(t *testing.T) {
+		testPersonalAccessTokenRejectsDisabledAccount(t, ss)
+	})
 	t.Run("ReenableEnforcesMaximumActive", func(t *testing.T) {
 		testPersonalAccessTokenReenableMaximum(t, ss)
 	})
 	t.Run("MaximumActiveIsSerialized", func(t *testing.T) {
 		testPersonalAccessTokenMaximumActive(t, ss)
 	})
+}
+
+func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	raw := model.NewCredentialToken()
+	token, err := ss.PersonalAccessToken().Save(
+		ctx,
+		newPersonalAccessToken(user.ID.String(), raw),
+		10,
+	)
+	requireNoError(t, err)
+	at := model.MillisFromTime(token.CreatedAt) + 10
+	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
+		ChangedAt: at, RevocationReason: "account disabled",
+		AuditEventID: audit.ID.String(), AuditAt: at,
+	})
+	requireNoError(t, err)
+
+	if _, err := ss.PersonalAccessToken().Resolve(
+		ctx,
+		model.HashToken(raw),
+		at+1,
+		1000,
+	); !store.IsNotFound(err) {
+		t.Fatalf("disabled-account Resolve() error = %v, want not found", err)
+	}
 }
 
 func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
@@ -138,6 +171,27 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if len(list) != 1 || !list[0].RevokedAt.Valid {
 		t.Fatalf("ListByUser() = %#v", list)
+	}
+
+	unscopedRaw := model.NewCredentialToken()
+	unscoped, err := ss.PersonalAccessToken().Save(
+		ctx,
+		newPersonalAccessToken(user.ID.String(), unscopedRaw),
+		10,
+	)
+	requireNoError(t, err)
+	if !unscoped.AcademicUnitID.IsZero() {
+		t.Fatalf("unscoped token acquired academic unit %q", unscoped.AcademicUnitID)
+	}
+	unscopedResolved, err := ss.PersonalAccessToken().Resolve(
+		ctx,
+		model.HashToken(unscopedRaw),
+		model.MillisFromTime(unscoped.CreatedAt)+1,
+		1000,
+	)
+	requireNoError(t, err)
+	if !unscopedResolved.Token.AcademicUnitID.IsZero() {
+		t.Fatalf("unscoped resolution acquired academic unit %q", unscopedResolved.Token.AcademicUnitID)
 	}
 }
 

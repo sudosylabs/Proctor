@@ -11,6 +11,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -18,9 +19,16 @@ import (
 )
 
 type AuthorizationService struct {
-	store store.Store
-	audit *AuditService
-	now   func() time.Time
+	roles    store.RoleStore
+	bindings store.RoleBindingStore
+	resolver *accessScopeResolver
+	audit    authorizationDecisionAudit
+	now      func() time.Time
+}
+
+type authorizationDecisionAudit interface {
+	RecordAuthorizationDecision(context.Context, model.Principal, model.Action, model.Resource, model.RoleScopeType, string, model.RequestMetadata, bool) error
+	RecordUserSearchDecision(context.Context, model.Principal, model.Resource, model.RequestMetadata, bool) error
 }
 
 type resolvedAuthorizationResource struct {
@@ -30,12 +38,15 @@ type resolvedAuthorizationResource struct {
 }
 
 func newAuthorizationService(
-	persistence store.Store,
-	audit *AuditService,
-) *AuthorizationService {
-	return &AuthorizationService{
-		store: persistence, audit: audit, now: time.Now,
+	roles store.RoleStore,
+	bindings store.RoleBindingStore,
+	resolver *accessScopeResolver,
+	audit authorizationDecisionAudit,
+) (*AuthorizationService, error) {
+	if roles == nil || bindings == nil || resolver == nil || audit == nil {
+		return nil, errors.New("authorization dependencies are required")
 	}
+	return &AuthorizationService{roles: roles, bindings: bindings, resolver: resolver, audit: audit, now: time.Now}, nil
 }
 
 // Can resolves current durable bindings and roles. It performs no auditing and
@@ -65,14 +76,7 @@ func (s *AuthorizationService) evaluate(
 	if !known || resource.Validate() != nil || definition.ResourceType != resource.Type {
 		return false, unresolved, NewError("authorization.request.invalid")
 	}
-	if s.store == nil || s.store.Role() == nil || s.store.RoleBinding() == nil {
-		return false, unresolved, authorizationUnavailableError(
-			"AuthorizationService.Can",
-			store.NewErrNotFound("authorization_store", ""),
-		)
-	}
-
-	resolved, appErr := s.resolveResource(ctx, resource)
+	resolved, appErr := s.resolver.resolve(ctx, resource)
 	if appErr != nil {
 		return false, unresolved, appErr
 	}
@@ -84,7 +88,7 @@ func (s *AuthorizationService) evaluate(
 		principal.UserID.String() == resource.ID {
 		return true, resolved, nil
 	}
-	bindings, err := s.store.RoleBinding().ListActiveByUser(
+	bindings, err := s.bindings.ListActiveByUser(
 		ctx, principal.UserID.String(), s.now().UnixMilli(),
 	)
 	if err != nil {
@@ -99,7 +103,7 @@ func (s *AuthorizationService) evaluate(
 			roleIDs = append(roleIDs, roleKey)
 		}
 	}
-	roles, err := s.store.Role().GetByIds(ctx, roleIDs)
+	roles, err := s.roles.GetByIds(ctx, roleIDs)
 	if err != nil {
 		return false, unresolved, authorizationUnavailableError("AuthorizationService.Can.roles", err)
 	}
@@ -217,6 +221,52 @@ func (s *AuthorizationService) authorizeUserViewThroughClass(
 	return nil
 }
 
+func (s *AuthorizationService) authorizeUserRead(
+	ctx context.Context,
+	invocation Invocation,
+	userID string,
+) error {
+	principal := invocation.Principal()
+	userResource := model.Resource{Type: model.ResourceUser, ID: userID}
+	allowed, appErr := s.Can(ctx, principal, model.ActionUserView, userResource)
+	if appErr != nil && !Is(appErr, "resource.not_found") {
+		return appErr
+	}
+	if allowed {
+		return s.authorizeCurrentState(ctx, principal, model.ActionUserView, userResource, invocation.RequestMetadata())
+	}
+	if appErr == nil {
+		classes, err := s.resolver.userClasses(ctx, userID, s.now().UnixMilli())
+		if err != nil {
+			return err
+		}
+		for _, classResource := range classes {
+			allowed, err = s.Can(ctx, principal, model.ActionClassMembersView, classResource)
+			if err != nil {
+				return err
+			}
+			if allowed {
+				return s.authorizeUserViewThroughClass(ctx, principal, userResource, classResource, invocation.RequestMetadata())
+			}
+		}
+		return s.authorizeCurrentState(ctx, principal, model.ActionUserView, userResource, invocation.RequestMetadata())
+	}
+	// Missing/inactive targets are indistinguishable from existing but
+	// unauthorized targets. Record the denial against the attempted User.
+	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	if err != nil {
+		return authorizationResourceError("institution", err)
+	}
+	if err := s.audit.RecordAuthorizationDecision(
+		ctx, principal, model.ActionUserView, userResource,
+		model.RoleScopeInstitution, institution.ID.String(),
+		invocation.RequestMetadata(), false,
+	); err != nil {
+		return err
+	}
+	return authorizationDeniedError("AuthorizationService.authorizeUserRead")
+}
+
 func (s *AuthorizationService) preauthorize(
 	ctx context.Context,
 	principal model.Principal,
@@ -258,56 +308,6 @@ func authorizationAuditScope(
 	default:
 		return "", ""
 	}
-}
-
-func (s *AuthorizationService) resolveResource(
-	ctx context.Context,
-	resource model.Resource,
-) (resolvedAuthorizationResource, error) {
-	resolved := resolvedAuthorizationResource{
-		academicUnitID: make(map[string]struct{}),
-	}
-	switch resource.Type {
-	case model.ResourceInstitution:
-		institution, err := s.store.Institution().Get(ctx, resource.ID)
-		if err != nil {
-			return resolved, authorizationResourceError("institution", err)
-		}
-		resolved.institutionID = institution.ID.String()
-	case model.ResourceAcademicUnit:
-		units, err := s.store.AcademicUnit().ListAncestors(ctx, resource.ID)
-		if err != nil {
-			return resolved, authorizationResourceError("academic_unit", err)
-		}
-		resolved.institutionID = units[0].InstitutionID.String()
-		for _, unit := range units {
-			resolved.academicUnitID[unit.ID.String()] = struct{}{}
-		}
-	case model.ResourceClass:
-		academicUnitID, err := s.store.Class().GetAcademicUnitId(ctx, resource.ID)
-		if err != nil {
-			return resolved, authorizationResourceError("class", err)
-		}
-		units, err := s.store.AcademicUnit().ListAncestors(ctx, academicUnitID)
-		if err != nil {
-			return resolved, authorizationResourceError("class_academic_unit", err)
-		}
-		resolved.classID = resource.ID
-		resolved.institutionID = units[0].InstitutionID.String()
-		for _, unit := range units {
-			resolved.academicUnitID[unit.ID.String()] = struct{}{}
-		}
-	case model.ResourceUser:
-		if _, err := s.store.User().Get(ctx, resource.ID); err != nil {
-			return resolved, authorizationResourceError("user", err)
-		}
-		institution, err := s.store.Institution().GetSingleton(ctx)
-		if err != nil {
-			return resolved, authorizationResourceError("institution", err)
-		}
-		resolved.institutionID = institution.ID.String()
-	}
-	return resolved, nil
 }
 
 func roleBindingApplies(

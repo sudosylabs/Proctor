@@ -10,7 +10,6 @@ package app
 
 import (
 	"context"
-	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -279,16 +278,11 @@ func (a *App) userVisibilityPermission(
 		}
 		return model.Resource{}, appErr
 	}
-	memberships, err := a.Store().ClassMember().ListActiveByUser(
-		ctx, otherUserID, time.Now().UnixMilli(),
-	)
+	classes, err := a.authorization.resolver.userClasses(ctx, otherUserID, a.authorization.now().UnixMilli())
 	if err != nil {
-		return model.Resource{}, administrationError(
-			"userVisibilityPermission", "class_member", err,
-		)
+		return model.Resource{}, err
 	}
-	for _, membership := range memberships {
-		classResource := model.Resource{Type: model.ResourceClass, ID: membership.ClassID.String()}
+	for _, classResource := range classes {
 		allowed, appErr = a.PrincipalHasPermissionTo(
 			ctx, principal, model.ActionClassMembersView, classResource,
 		)

@@ -118,19 +118,27 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 	authentication := newTestAuthenticationService(t, persistence)
 	_, err := newExternalAuthenticationService(
 		securityEffectsProviderSourceFake{},
-		persistence,
+		securityExternalLoginStateStore{},
+		securityInstitutionStore{},
+		securityExternalIdentityStore{},
+		persistence.Session(),
 		newAuthenticationCacheFake(),
 		authentication,
 		nil,
 		newAuditService(persistence, model.NewId()),
 		ExternalAuthenticationPolicy{},
 		&securityEffectsDiagnosticsFake{},
+		model.NewCredentialToken,
 		nil,
 	)
 	if err == nil {
 		t.Fatal("nil authentication invalidator was accepted")
 	}
 }
+
+type securityExternalLoginStateStore struct{ store.ExternalLoginStateStore }
+type securityInstitutionStore struct{ store.InstitutionStore }
+type securityExternalIdentityStore struct{ store.ExternalIdentityStore }
 
 func TestAuthenticationAndRealtimeRetainOnlyNarrowSiblingPorts(t *testing.T) {
 	t.Parallel()

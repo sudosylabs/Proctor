@@ -44,7 +44,7 @@ type userProfileStore interface {
 }
 
 type userProfileAuthorizer interface {
-	AuthorizeSearch(context.Context, Invocation) error
+	AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error)
 	AuthorizeRead(context.Context, Invocation, string) error
 	AuthorizeManage(context.Context, Invocation, string) error
 }
@@ -65,13 +65,14 @@ func (a *App) SearchUsers(ctx context.Context, invocation Invocation, query Sear
 }
 
 func (s *userProfileService) Search(ctx context.Context, invocation Invocation, query SearchUsersQuery) ([]*model.User, error) {
-	if err := s.authorization.AuthorizeSearch(ctx, invocation); err != nil {
+	visibility, err := s.authorization.AuthorizeSearch(ctx, invocation)
+	if err != nil {
 		return nil, err
 	}
 	if query.Limit == 0 {
 		query.Limit = defaultAdministrationListLimit
 	}
-	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterId: query.AfterID, Limit: query.Limit, IncludeDisabled: query.IncludeDisabled})
+	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterId: query.AfterID, Limit: query.Limit, IncludeDisabled: query.IncludeDisabled, Visibility: visibility})
 	if err != nil {
 		return nil, userProfileError(err)
 	}
@@ -160,16 +161,10 @@ func userProfileError(err error) error {
 type userProfileAuthorization struct {
 	authorization *AuthorizationService
 	institutions  store.InstitutionStore
-	classMembers  store.ClassMemberStore
-	now           func() time.Time
 }
 
-func (a userProfileAuthorization) AuthorizeSearch(ctx context.Context, invocation Invocation) error {
-	institution, err := a.institutions.GetSingleton(ctx)
-	if err != nil {
-		return userProfileError(err)
-	}
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionInstitutionManage, model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, invocation.RequestMetadata())
+func (a userProfileAuthorization) AuthorizeSearch(ctx context.Context, invocation Invocation) (store.UserVisibilityScope, error) {
+	return a.authorization.authorizeUserSearch(ctx, invocation)
 }
 
 func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation Invocation, userID string) error {
@@ -180,29 +175,7 @@ func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation 
 	if principal.UserID.String() == userID {
 		return nil
 	}
-	userResource := model.Resource{Type: model.ResourceUser, ID: userID}
-	allowed, appErr := a.authorization.Can(ctx, principal, model.ActionUserView, userResource)
-	if appErr != nil {
-		return appErr
-	}
-	if allowed {
-		return a.authorization.authorizeCurrentState(ctx, principal, model.ActionUserView, userResource, invocation.RequestMetadata())
-	}
-	memberships, err := a.classMembers.ListActiveByUser(ctx, userID, a.now().UnixMilli())
-	if err != nil {
-		return userProfileError(err)
-	}
-	for _, membership := range memberships {
-		resource := model.Resource{Type: model.ResourceClass, ID: membership.ClassID.String()}
-		allowed, appErr = a.authorization.Can(ctx, principal, model.ActionClassMembersView, resource)
-		if appErr != nil {
-			return appErr
-		}
-		if allowed {
-			return a.authorization.authorizeUserViewThroughClass(ctx, principal, userResource, resource, invocation.RequestMetadata())
-		}
-	}
-	return a.authorization.authorizeCurrentState(ctx, principal, model.ActionUserView, userResource, invocation.RequestMetadata())
+	return a.authorization.authorizeUserRead(ctx, invocation, userID)
 }
 
 func (a userProfileAuthorization) AuthorizeManage(ctx context.Context, invocation Invocation, userID string) error {

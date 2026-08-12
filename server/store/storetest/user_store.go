@@ -139,15 +139,64 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	second.Username = "bbb-" + model.NewId()
 	second, err = createUser(t, ctx, ss, second)
 	requireNoError(t, err)
+	activeAt := model.GetMillis() + 100
+	fixture := saveClassFixture(t, ctx, ss)
+	visibleClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "user-search-visible")
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
+		UserID: first.ID, Kind: model.AffiliationStudent,
+		StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	firstMembership, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
+		ClassID: visibleClass.ID, UserID: first.ID, StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	_, err = ss.ClassMember().End(ctx, firstMembership.Membership.ID.String(), firstMembership.Membership.Revision, activeAt+100)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
+		UserID: second.ID, Kind: model.AffiliationStudent,
+		StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
+		ClassID: visibleClass.ID, UserID: second.ID, StartsAt: model.TimeFromMillis(activeAt + 10),
+	})
+	requireNoError(t, err)
+	denied, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
+	requireNoError(t, err)
+	if len(denied) != 0 {
+		t.Fatalf("List(without visibility) = %#v, want empty", denied)
+	}
+	classVisible, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: activeAt}, Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(classVisible) != 1 || classVisible[0].ID != first.ID {
+		t.Fatalf("List(class visibility) = %#v, want only %s", classVisible, first.ID)
+	}
+	unitVisible, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: activeAt}, Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(unitVisible) != 1 || unitVisible[0].ID != first.ID {
+		t.Fatalf("List(academic-unit visibility) = %#v, want only %s", unitVisible, first.ID)
+	}
+	if _, err = ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassIDs: []string{"malformed"}, ActiveAt: activeAt}, Limit: 10,
+	}); err == nil {
+		t.Fatal("List accepted a malformed visibility ID")
+	}
 
 	found, err := ss.User().List(ctx, store.UserListOptions{
-		Query: "Searchable Alpha", Limit: 10,
+		Visibility: store.UserVisibilityScope{InstitutionWide: true},
+		Query:      "Searchable Alpha", Limit: 10,
 	})
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != first.ID {
 		t.Fatalf("List(search) = %#v", found)
 	}
 	page, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility:    store.UserVisibilityScope{InstitutionWide: true},
 		AfterUsername: first.Username, AfterId: first.ID.String(), Limit: 10,
 	})
 	requireNoError(t, err)
@@ -166,7 +215,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	if disabled.DisabledAt.Millis() != at || disabled.Revision != first.Revision+1 {
 		t.Fatalf("SetDisabledWithAudit() = %#v", result)
 	}
-	active, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
+	active, err := ss.User().List(ctx, store.UserListOptions{Limit: 10, Visibility: store.UserVisibilityScope{InstitutionWide: true}})
 	requireNoError(t, err)
 	for _, user := range active {
 		if user.ID == first.ID {
@@ -174,7 +223,8 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		}
 	}
 	all, err := ss.User().List(ctx, store.UserListOptions{
-		Limit: 10, IncludeDisabled: true,
+		Visibility: store.UserVisibilityScope{InstitutionWide: true},
+		Limit:      10, IncludeDisabled: true,
 	})
 	requireNoError(t, err)
 	seen := false

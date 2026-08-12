@@ -37,12 +37,12 @@ type hookStore struct {
 	academicPeriod store.AcademicPeriodStore
 }
 
-func (s *hookStore) Institution() store.InstitutionStore       { return nil }
-func (s *hookStore) AcademicUnit() store.AcademicUnitStore     { return nil }
+func (s *hookStore) Institution() store.InstitutionStore       { return hookInstitutionStore{} }
+func (s *hookStore) AcademicUnit() store.AcademicUnitStore     { return hookAcademicUnitStore{} }
 func (s *hookStore) Programme() store.ProgrammeStore           { return nil }
 func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
 func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore { return s.academicPeriod }
-func (s *hookStore) Class() store.ClassStore                   { return nil }
+func (s *hookStore) Class() store.ClassStore                   { return hookClassStore{} }
 func (s *hookStore) Affiliation() store.AffiliationStore       { return nil }
 func (s *hookStore) User() store.UserStore                     { return hookUserStore{} }
 func (s *hookStore) File() store.FileStore                     { return nil }
@@ -58,12 +58,19 @@ func (s *hookStore) MFA() store.MFAStore { return hookMFAStore{} }
 func (s *hookStore) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return hookPersonalAccessTokenStore{}
 }
-func (s *hookStore) Role() store.RoleStore                             { return nil }
-func (s *hookStore) RoleBinding() store.RoleBindingStore               { return nil }
+func (s *hookStore) ExternalIdentity() store.ExternalIdentityStore {
+	return hookExternalIdentityStore{}
+}
+func (s *hookStore) ExternalLoginState() store.ExternalLoginStateStore {
+	return hookExternalLoginStateStore{}
+}
+func (s *hookStore) UserToken() store.UserTokenStore                   { return hookUserTokenStore{} }
+func (s *hookStore) Role() store.RoleStore                             { return hookRoleStore{} }
+func (s *hookStore) RoleBinding() store.RoleBindingStore               { return hookRoleBindingStore{} }
 func (s *hookStore) Audit() store.AuditStore                           { return nil }
 func (s *hookStore) Installation() store.InstallationStore             { return nil }
 func (s *hookStore) ClusterDiscovery() store.ClusterDiscoveryStore     { return nil }
-func (s *hookStore) ClassMember() store.ClassMemberStore               { return nil }
+func (s *hookStore) ClassMember() store.ClassMemberStore               { return hookClassMemberStore{} }
 func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
 func (s *hookStore) Ping(context.Context) error {
 	attempt := s.pingAttempts.Add(1)
@@ -78,11 +85,20 @@ func (s *hookStore) ValidateSchema(context.Context) error            { return ni
 func (s *hookStore) Close() error                                    { s.closed.Store(true); return nil }
 
 type hookUserStore struct{ store.UserStore }
+type hookInstitutionStore struct{ store.InstitutionStore }
+type hookAcademicUnitStore struct{ store.AcademicUnitStore }
+type hookClassStore struct{ store.ClassStore }
+type hookClassMemberStore struct{ store.ClassMemberStore }
 type hookSessionStore struct{ store.SessionStore }
 type hookSessionCredentialStore struct{ store.SessionCredentialStore }
 type hookPasswordCredentialStore struct{ store.PasswordCredentialStore }
 type hookMFAStore struct{ store.MFAStore }
 type hookPersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }
+type hookExternalIdentityStore struct{ store.ExternalIdentityStore }
+type hookExternalLoginStateStore struct{ store.ExternalLoginStateStore }
+type hookUserTokenStore struct{ store.UserTokenStore }
+type hookRoleStore struct{ store.RoleStore }
+type hookRoleBindingStore struct{ store.RoleBindingStore }
 
 type hookCache struct{ closed atomic.Bool }
 

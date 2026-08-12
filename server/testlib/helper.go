@@ -193,25 +193,31 @@ func NewLifecycleStore() *LifecycleStore {
 	return &LifecycleStore{}
 }
 
-func (s *LifecycleStore) Institution() store.InstitutionStore               { return nil }
-func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore             { return nil }
-func (s *LifecycleStore) Programme() store.ProgrammeStore                   { return nil }
-func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore         { return nil }
-func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore         { return nil }
-func (s *LifecycleStore) Class() store.ClassStore                           { return nil }
-func (s *LifecycleStore) User() store.UserStore                             { return lifecycleUserStore{} }
-func (s *LifecycleStore) File() store.FileStore                             { return nil }
-func (s *LifecycleStore) Job() store.JobStore                               { return nil }
-func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore     { return nil }
-func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore { return nil }
-func (s *LifecycleStore) UserToken() store.UserTokenStore                   { return nil }
+func (s *LifecycleStore) Institution() store.InstitutionStore       { return lifecycleInstitutionStore{} }
+func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore     { return lifecycleAcademicUnitStore{} }
+func (s *LifecycleStore) Programme() store.ProgrammeStore           { return nil }
+func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
+func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
+func (s *LifecycleStore) Class() store.ClassStore                   { return lifecycleClassStore{} }
+func (s *LifecycleStore) User() store.UserStore                     { return lifecycleUserStore{} }
+func (s *LifecycleStore) File() store.FileStore                     { return nil }
+func (s *LifecycleStore) Job() store.JobStore                       { return nil }
+func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore {
+	return lifecycleExternalIdentityStore{}
+}
+func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore {
+	return lifecycleExternalLoginStateStore{}
+}
+func (s *LifecycleStore) UserToken() store.UserTokenStore { return lifecycleUserTokenStore{} }
 func (s *LifecycleStore) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return lifecyclePersonalAccessTokenStore{}
 }
 func (s *LifecycleStore) MFA() store.MFAStore                               { return lifecycleMFAStore{} }
 func (s *LifecycleStore) Affiliation() store.AffiliationStore               { return nil }
 func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
-func (s *LifecycleStore) ClassMember() store.ClassMemberStore               { return nil }
+func (s *LifecycleStore) ClassMember() store.ClassMemberStore {
+	return lifecycleClassMemberStore{}
+}
 func (s *LifecycleStore) PasswordCredential() store.PasswordCredentialStore {
 	return lifecyclePasswordCredentialStore{}
 }
@@ -219,8 +225,8 @@ func (s *LifecycleStore) Session() store.SessionStore { return lifecycleSessionS
 func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore {
 	return lifecycleSessionCredentialStore{}
 }
-func (s *LifecycleStore) Role() store.RoleStore                 { return nil }
-func (s *LifecycleStore) RoleBinding() store.RoleBindingStore   { return nil }
+func (s *LifecycleStore) Role() store.RoleStore                 { return lifecycleRoleStore{} }
+func (s *LifecycleStore) RoleBinding() store.RoleBindingStore   { return lifecycleRoleBindingStore{} }
 func (s *LifecycleStore) Audit() store.AuditStore               { return nil }
 func (s *LifecycleStore) Installation() store.InstallationStore { return nil }
 func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
@@ -261,8 +267,17 @@ var _ store.Store = (*LifecycleStore)(nil)
 // composition graph to validate focused service dependencies while keeping
 // lifecycle tests free of unrelated persistence behavior.
 type lifecycleUserStore struct{ store.UserStore }
+type lifecycleInstitutionStore struct{ store.InstitutionStore }
+type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }
+type lifecycleClassStore struct{ store.ClassStore }
+type lifecycleClassMemberStore struct{ store.ClassMemberStore }
+type lifecycleExternalIdentityStore struct{ store.ExternalIdentityStore }
+type lifecycleExternalLoginStateStore struct{ store.ExternalLoginStateStore }
+type lifecycleUserTokenStore struct{ store.UserTokenStore }
 type lifecyclePasswordCredentialStore struct{ store.PasswordCredentialStore }
 type lifecycleSessionStore struct{ store.SessionStore }
 type lifecycleSessionCredentialStore struct{ store.SessionCredentialStore }
 type lifecycleMFAStore struct{ store.MFAStore }
 type lifecyclePersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }
+type lifecycleRoleStore struct{ store.RoleStore }
+type lifecycleRoleBindingStore struct{ store.RoleBindingStore }

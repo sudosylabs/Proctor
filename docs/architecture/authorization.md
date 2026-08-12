@@ -81,6 +81,10 @@ User visibility is contextual: self-view does not imply self-management;
 cross-user access needs `user.view`/`user.manage` at institution scope or the
 implemented teacher-to-student class relationship. Audit records keep the
 target user and the academic authorization scope distinct.
+The collection-level `user.search` audit-event action records a bounded
+User-search decision against the Institution; it is not a permission action.
+Authority is derived from current `user.view` and `class.members.view` grants
+before persistence applies the resulting constraints.
 
 Profile-picture mutation uses the narrow `user.profile_picture.manage` action.
 Users have intrinsic access to that action on themselves, subject to their

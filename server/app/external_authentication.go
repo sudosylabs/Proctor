@@ -72,34 +72,48 @@ type ExternalAuthenticationPolicy struct {
 	NodeID         string
 }
 
-type ExternalAuthenticationService struct {
+type externalAuthenticationAudit interface {
+	BeginAuthentication(context.Context, string, string, string, model.SessionClientType, model.RequestMetadata, string) (*model.AuditEvent, error)
+	RecordExternalAuthenticationFailure(context.Context, string, string, model.RequestMetadata, string, string) error
+	CompleteCriticalAction(context.Context, string, model.AuditStatus, string, any) (*model.AuditEvent, error)
+}
+
+type externalAuthenticationService struct {
 	registry       externalProviderSource
-	store          store.Store
+	loginStates    store.ExternalLoginStateStore
+	institutions   store.InstitutionStore
+	identities     store.ExternalIdentityStore
+	sessions       store.SessionStore
 	cache          authenticationCache
 	authentication authenticationSessionIssuer
 	invalidator    authenticationInvalidator
-	audit          *AuditService
+	audit          externalAuthenticationAudit
 	policy         ExternalAuthenticationPolicy
 	diagnostics    authenticationDiagnostics
+	newCredential  func() string
 	now            func() time.Time
 }
 
 func newExternalAuthenticationService(
 	registry externalProviderSource,
-	persistence store.Store,
+	loginStates store.ExternalLoginStateStore,
+	institutions store.InstitutionStore,
+	identities store.ExternalIdentityStore,
+	sessions store.SessionStore,
 	cache authenticationCache,
 	authentication authenticationSessionIssuer,
 	invalidator authenticationInvalidator,
-	audit *AuditService,
+	audit externalAuthenticationAudit,
 	policy ExternalAuthenticationPolicy,
 	diagnostics authenticationDiagnostics,
+	newCredential func() string,
 	now func() time.Time,
-) (*ExternalAuthenticationService, error) {
+) (*externalAuthenticationService, error) {
 	if registry == nil {
 		return nil, errors.New("external authentication provider registry is required")
 	}
-	if persistence == nil {
-		return nil, errors.New("external authentication store is required")
+	if loginStates == nil || institutions == nil || identities == nil || sessions == nil {
+		return nil, errors.New("external authentication persistence is required")
 	}
 	if cache == nil {
 		return nil, errors.New("external authentication cache is required")
@@ -116,13 +130,17 @@ func newExternalAuthenticationService(
 	if diagnostics == nil {
 		return nil, errors.New("external authentication diagnostics are required")
 	}
-	if now == nil {
-		now = time.Now
+	if newCredential == nil {
+		return nil, errors.New("external authentication credential generator is required")
 	}
-	return &ExternalAuthenticationService{
-		registry: registry, store: persistence, cache: cache,
+	if now == nil {
+		return nil, errors.New("external authentication clock is required")
+	}
+	return &externalAuthenticationService{
+		registry: registry, loginStates: loginStates, institutions: institutions,
+		identities: identities, sessions: sessions, cache: cache,
 		authentication: authentication, invalidator: invalidator, audit: audit, policy: policy,
-		diagnostics: diagnostics, now: now,
+		diagnostics: diagnostics, newCredential: newCredential, now: now,
 	}, nil
 }
 
@@ -130,7 +148,7 @@ func (a *App) ExternalAuthenticationProviders() []model.ExternalAuthenticationPr
 	return a.externalAuthentication.providers()
 }
 
-func (s *ExternalAuthenticationService) providers() []model.ExternalAuthenticationProvider {
+func (s *externalAuthenticationService) providers() []model.ExternalAuthenticationProvider {
 	return s.registry.Descriptors()
 }
 
@@ -169,7 +187,7 @@ func (a *App) BeginExternalAuthentication(
 	return result, appErr
 }
 
-func (s *ExternalAuthenticationService) begin(
+func (s *externalAuthenticationService) begin(
 	ctx context.Context,
 	providerID string,
 	returnTo string,
@@ -196,8 +214,8 @@ func (s *ExternalAuthenticationService) begin(
 	if appErr := s.checkInitiationRateLimit(ctx, providerID, source); appErr != nil {
 		return nil, appErr
 	}
-	stateToken := model.NewCredentialToken()
-	bindingToken := model.NewCredentialToken()
+	stateToken := s.newCredential()
+	bindingToken := s.newCredential()
 	now := s.now().UnixMilli()
 	expiresAt := now + s.policy.LoginStateTTL.Milliseconds()
 	callbackURL, err := externalAuthenticationCallbackURL(
@@ -224,11 +242,7 @@ func (s *ExternalAuthenticationService) begin(
 	if challenge == nil || challenge.RedirectURL == "" {
 		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"))
 	}
-	stateStore := s.store.ExternalLoginState()
-	if stateStore == nil {
-		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"))
-	}
-	if _, err := stateStore.Save(ctx, &model.ExternalLoginState{
+	if _, err := s.loginStates.Save(ctx, &model.ExternalLoginState{
 		Provider: providerID, StateHash: model.HashToken(stateToken),
 		BindingHash: model.HashToken(bindingToken), ReturnTo: returnTo,
 		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
@@ -258,7 +272,7 @@ func (a *App) CompleteExternalAuthentication(
 	return result, appErr
 }
 
-func (s *ExternalAuthenticationService) complete(
+func (s *externalAuthenticationService) complete(
 	ctx context.Context,
 	providerID string,
 	bindingToken string,
@@ -279,12 +293,8 @@ func (s *ExternalAuthenticationService) complete(
 			"CompleteExternalAuthentication.state",
 		)
 	}
-	stateStore := s.store.ExternalLoginState()
-	if stateStore == nil {
-		return nil, authenticationUnavailable(errors.New("external login state store is unavailable"))
-	}
 	stateHash := model.HashToken(stateToken)
-	state, err := stateStore.GetByStateHash(ctx, stateHash)
+	state, err := s.loginStates.GetByStateHash(ctx, stateHash)
 	nowTime := s.now()
 	now := nowTime.UnixMilli()
 	if err != nil || state == nil || state.Provider != providerID ||
@@ -303,7 +313,7 @@ func (s *ExternalAuthenticationService) complete(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	state, err = stateStore.Consume(
+	state, err = s.loginStates.Consume(
 		ctx,
 		providerID,
 		stateHash,
@@ -319,7 +329,7 @@ func (s *ExternalAuthenticationService) complete(
 		return nil, authenticationUnavailable(err)
 	}
 
-	institution, err := s.store.Institution().GetSingleton(ctx)
+	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
@@ -369,10 +379,6 @@ func (s *ExternalAuthenticationService) complete(
 	if appErr != nil {
 		return nil, appErr
 	}
-	identityStore := s.store.ExternalIdentity()
-	if identityStore == nil {
-		return nil, authenticationUnavailable(errors.New("external identity store is unavailable"))
-	}
 	var defaultPictureJob *model.Job
 	if provider.AutoProvision() {
 		userCandidate, defaultPictureJob, err = prepareUserDefaultProfilePictureJob(userCandidate, nowTime)
@@ -380,7 +386,7 @@ func (s *ExternalAuthenticationService) complete(
 			return nil, authenticationUnavailable(err)
 		}
 	}
-	resolution, err := identityStore.ResolveOrProvision(
+	resolution, err := s.identities.ResolveOrProvision(
 		ctx, &store.ExternalIdentityResolutionRequest{
 			Identity: &model.ExternalIdentity{
 				Provider: providerID, Subject: assertion.Subject,
@@ -501,7 +507,7 @@ func (s *ExternalAuthenticationService) complete(
 	}, nil
 }
 
-func (s *ExternalAuthenticationService) checkInitiationRateLimit(
+func (s *externalAuthenticationService) checkInitiationRateLimit(
 	ctx context.Context,
 	providerID string,
 	source string,
@@ -524,11 +530,11 @@ func (s *ExternalAuthenticationService) checkInitiationRateLimit(
 	return nil
 }
 
-func (s *ExternalAuthenticationService) revokeUnreportedSession(
+func (s *externalAuthenticationService) revokeUnreportedSession(
 	ctx context.Context,
 	session *model.Session,
 ) {
-	hashes, err := s.store.Session().Revoke(
+	hashes, err := s.sessions.Revoke(
 		ctx,
 		session.ID.String(),
 		session.UserID.String(),

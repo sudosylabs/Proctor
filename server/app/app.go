@@ -20,44 +20,38 @@ import (
 type App struct {
 	store store.Store
 
-	authentication         *authenticationService
-	selfSessions           *selfSessionService
-	externalAuthentication *ExternalAuthenticationService
-	mfa                    *MFAService
-	authorization          *AuthorizationService
-	academicUnits          *academicUnitQueryService
-	academicUnitCommands   *academicUnitCommandService
-	institutions           *institutionService
-	programmes             *programmeService
-	programmeLevels        *programmeLevelService
-	academicPeriods        *academicPeriodService
-	classes                *classService
-	affiliations           *affiliationService
-	academicUnitMembers    *academicUnitMemberService
-	classMembers           *classMemberService
-	userProfiles           *userProfileService
-	profilePictures        *profilePictureService
-	accountStates          *accountStateService
-	sessionAdministrations *sessionAdministrationService
-	roles                  *roleService
-	roleBindings           *roleBindingService
-	auditListings          *auditListingService
-	bootstrap              *bootstrapService
-	audit                  *AuditService
-	realtime               *RealtimeService
-	authenticationEffects  authenticationSecurityEffects
-	jobs                   *jobengine.Engine
+	authentication                    *authenticationService
+	selfSessions                      *selfSessionService
+	externalAuthentication            *externalAuthenticationService
+	mfaApplication                    *mfaApplicationService
+	accountTokens                     *accountTokenService
+	personalAccessTokenAdministration *personalAccessTokenAdministrationService
+	authorization                     *AuthorizationService
+	academicUnits                     *academicUnitQueryService
+	academicUnitCommands              *academicUnitCommandService
+	institutions                      *institutionService
+	programmes                        *programmeService
+	programmeLevels                   *programmeLevelService
+	academicPeriods                   *academicPeriodService
+	classes                           *classService
+	affiliations                      *affiliationService
+	academicUnitMembers               *academicUnitMemberService
+	classMembers                      *classMemberService
+	userProfiles                      *userProfileService
+	profilePictures                   *profilePictureService
+	accountStates                     *accountStateService
+	sessionAdministrations            *sessionAdministrationService
+	roles                             *roleService
+	roleBindings                      *roleBindingService
+	auditListings                     *auditListingService
+	bootstrap                         *bootstrapService
+	audit                             *AuditService
+	realtime                          *RealtimeService
+	jobs                              *jobengine.Engine
 
 	// Cross-cutting policy and ports still used by App-method facades that
 	// have not yet been extracted into focused services.
-	mailer                  AccountMailer
-	cache                   authenticationCache
-	nodeID                  string
-	publicURL               string
-	accountRecovery         AccountRecoveryPolicy
-	personalAccessTokens    PersonalAccessTokenPolicy
 	recentAuthenticationTTL time.Duration
-	recoveryDiagnostics     recoveryDiagnostics
 }
 
 // Jobs returns the root-owned durable Job runtime, or nil for lifecycle-only
@@ -100,7 +94,7 @@ func New(deps Dependencies) (*App, error) {
 		return nil, errors.New("recovery diagnostics is required")
 	}
 
-	mfa, err := newMFAService(deps.MFA)
+	mfa, err := newMFAMechanics(deps.MFA)
 	if err != nil {
 		return nil, err
 	}
@@ -123,12 +117,17 @@ func New(deps Dependencies) (*App, error) {
 		return nil, err
 	}
 
-	// Expand PAT policy used both at bearer resolution and administration.
-	patPolicy := deps.PersonalAccessToken
-	mfaVerifier, err := newLoginMFAVerifier(deps.Store.MFA(), mfa)
+	audit := newAuditService(deps.Store, deps.NodeID)
+	mfaApplication, err := newMFAApplicationService(
+		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
+		mfaAuditAdapter{audit: audit}, realtime, mfa, deps.RecentAuthenticationTTL, time.Now,
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	// Expand PAT policy used both at bearer resolution and administration.
+	patPolicy := deps.PersonalAccessToken
 	patResolver, err := newPersonalAccessTokenBearerResolver(
 		deps.Store.PersonalAccessToken(), patPolicy, deps.AuthenticationDiagnostics,
 	)
@@ -143,7 +142,7 @@ func New(deps Dependencies) (*App, error) {
 		deps.Cache,
 		realtime,
 		hasher,
-		mfaVerifier,
+		mfaApplication,
 		patResolver,
 		deps.Sessions,
 		deps.LoginRateLimit,
@@ -158,7 +157,27 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	audit := newAuditService(deps.Store, deps.NodeID)
+	recoveryRateLimiter, err := newCacheAccountTokenRateLimiter(deps.Cache, deps.AccountRecovery.RateLimit)
+	if err != nil {
+		return nil, err
+	}
+	accountTokens, err := newAccountTokenService(
+		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), deps.Store.Institution(),
+		deps.Mailer, recoveryRateLimiter, hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
+		realtime, deps.RecoveryDiagnostics, deps.AccountRecovery, deps.PublicURL,
+		model.NewCredentialToken, time.Now,
+	)
+	if err != nil {
+		return nil, err
+	}
+	personalAccessTokenAdministration, err := newPersonalAccessTokenAdministrationService(
+		deps.Store.PersonalAccessToken(), deps.Store.AcademicUnit(), deps.Store.Institution(),
+		personalAccessTokenAuditAdapter{audit: audit}, patPolicy, deps.RecentAuthenticationTTL,
+		model.NewCredentialToken, time.Now,
+	)
+	if err != nil {
+		return nil, err
+	}
 	externalPolicy := deps.ExternalAuth
 	if externalPolicy.PublicURL == "" {
 		externalPolicy.PublicURL = deps.PublicURL
@@ -171,19 +190,34 @@ func New(deps Dependencies) (*App, error) {
 	}
 	externalAuthentication, err := newExternalAuthenticationService(
 		deps.Registry,
-		deps.Store,
+		deps.Store.ExternalLoginState(),
+		deps.Store.Institution(),
+		deps.Store.ExternalIdentity(),
+		deps.Store.Session(),
 		deps.Cache,
 		authentication,
 		authenticationInvalidator,
 		audit,
 		externalPolicy,
 		deps.AuthenticationDiagnostics,
+		model.NewCredentialToken,
 		time.Now,
 	)
 	if err != nil {
 		return nil, err
 	}
-	authorization := newAuthorizationService(deps.Store, audit)
+	scopeResolver, err := newAccessScopeResolver(
+		deps.Store.Institution(), deps.Store.AcademicUnit(), deps.Store.Class(), deps.Store.User(), deps.Store.ClassMember(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	authorization, err := newAuthorizationService(
+		deps.Store.Role(), deps.Store.RoleBinding(), scopeResolver, audit,
+	)
+	if err != nil {
+		return nil, err
+	}
 	academicAuthorization := academicUnitAuthorization{
 		authorization: authorization,
 		institutions:  deps.Store.Institution(),
@@ -236,8 +270,6 @@ func New(deps Dependencies) (*App, error) {
 		userProfileAuthorization{
 			authorization: authorization,
 			institutions:  deps.Store.Institution(),
-			classMembers:  deps.Store.ClassMember(),
-			now:           time.Now,
 		},
 		mutationAuditAdapter{audit: audit}, time.Now,
 	)
@@ -246,8 +278,6 @@ func New(deps Dependencies) (*App, error) {
 		userProfileAuthorization{
 			authorization: authorization,
 			institutions:  deps.Store.Institution(),
-			classMembers:  deps.Store.ClassMember(),
-			now:           time.Now,
 		},
 		mutationAuditAdapter{audit: audit}, profilePictureRealtimeEffects{realtime: realtime}, profilePictureEffectReporter{realtime: realtime},
 		nil,
@@ -293,8 +323,6 @@ func New(deps Dependencies) (*App, error) {
 		userProfileAuthorization{
 			authorization: authorization,
 			institutions:  deps.Store.Institution(),
-			classMembers:  deps.Store.ClassMember(),
-			now:           time.Now,
 		},
 		mutationAuditAdapter{audit: audit},
 		accountStateRealtimeEffects{effects: realtime},
@@ -338,42 +366,36 @@ func New(deps Dependencies) (*App, error) {
 		time.Now,
 	)
 	return &App{
-		store:                   deps.Store,
-		authentication:          authentication,
-		selfSessions:            selfSessions,
-		externalAuthentication:  externalAuthentication,
-		mfa:                     mfa,
-		authorization:           authorization,
-		academicUnits:           academicUnits,
-		academicUnitCommands:    academicUnitCommands,
-		institutions:            institutions,
-		programmes:              programmes,
-		programmeLevels:         programmeLevels,
-		academicPeriods:         academicPeriods,
-		classes:                 classes,
-		affiliations:            affiliations,
-		academicUnitMembers:     academicUnitMembers,
-		classMembers:            classMembers,
-		userProfiles:            userProfiles,
-		profilePictures:         profilePictures,
-		accountStates:           accountStates,
-		sessionAdministrations:  sessionAdministrations,
-		roles:                   roles,
-		roleBindings:            roleBindings,
-		auditListings:           auditListings,
-		bootstrap:               bootstrap,
-		audit:                   audit,
-		realtime:                realtime,
-		authenticationEffects:   realtime,
-		jobs:                    jobs,
-		mailer:                  deps.Mailer,
-		cache:                   deps.Cache,
-		nodeID:                  deps.NodeID,
-		publicURL:               deps.PublicURL,
-		accountRecovery:         deps.AccountRecovery,
-		personalAccessTokens:    patPolicy,
-		recentAuthenticationTTL: deps.RecentAuthenticationTTL,
-		recoveryDiagnostics:     deps.RecoveryDiagnostics,
+		store:                             deps.Store,
+		authentication:                    authentication,
+		selfSessions:                      selfSessions,
+		externalAuthentication:            externalAuthentication,
+		mfaApplication:                    mfaApplication,
+		accountTokens:                     accountTokens,
+		personalAccessTokenAdministration: personalAccessTokenAdministration,
+		authorization:                     authorization,
+		academicUnits:                     academicUnits,
+		academicUnitCommands:              academicUnitCommands,
+		institutions:                      institutions,
+		programmes:                        programmes,
+		programmeLevels:                   programmeLevels,
+		academicPeriods:                   academicPeriods,
+		classes:                           classes,
+		affiliations:                      affiliations,
+		academicUnitMembers:               academicUnitMembers,
+		classMembers:                      classMembers,
+		userProfiles:                      userProfiles,
+		profilePictures:                   profilePictures,
+		accountStates:                     accountStates,
+		sessionAdministrations:            sessionAdministrations,
+		roles:                             roles,
+		roleBindings:                      roleBindings,
+		auditListings:                     auditListings,
+		bootstrap:                         bootstrap,
+		audit:                             audit,
+		realtime:                          realtime,
+		jobs:                              jobs,
+		recentAuthenticationTTL:           deps.RecentAuthenticationTTL,
 	}, nil
 }
 

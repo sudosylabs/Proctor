@@ -29,10 +29,12 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	const (
-		providerID = "campus-cas"
-		ticket     = "ST-sensitive-ticket"
-		subject    = "opaque-sensitive-subject"
+		providerID         = "campus-cas"
+		ticket             = "ST-sensitive-ticket"
+		linkedSubject      = "opaque-sensitive-subject"
+		conflictingSubject = "opaque-conflicting-subject"
 	)
+	subject := linkedSubject
 	var validatedService string
 	casServer := httptest.NewServer(http.HandlerFunc(func(
 		writer http.ResponseWriter,
@@ -249,8 +251,54 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if replay.Code != http.StatusUnauthorized {
 		t.Fatalf("callback replay status = %d: %s", replay.Code, replay.Body.String())
 	}
+
+	loginAgain := func() int {
+		begin := performJSONRequest(
+			helper.Handler(), http.MethodGet,
+			"/api/v1/auth/providers/"+providerID+"/login?client_type=desktop&device_id=electron-2",
+			nil, "",
+		)
+		if begin.Code != http.StatusSeeOther {
+			t.Fatalf("repeat begin status = %d: %s", begin.Code, begin.Body.String())
+		}
+		location, parseErr := url.Parse(begin.Header().Get("Location"))
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		service, parseErr := url.Parse(location.Query().Get("service"))
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		query := service.Query()
+		query.Set("ticket", ticket)
+		request := httptest.NewRequest(http.MethodGet, service.Path+"?"+query.Encode(), nil)
+		for _, cookie := range begin.Result().Cookies() {
+			if cookie.Name == api.BrowserExternalLoginCookieName {
+				request.AddCookie(cookie)
+			}
+		}
+		response := httptest.NewRecorder()
+		helper.Handler().ServeHTTP(response, request)
+		return response.Code
+	}
+
+	if status := loginAgain(); status != http.StatusSeeOther {
+		t.Fatalf("existing linked user login status = %d", status)
+	}
+	disabled := *user
+	disabled.DisabledAt = model.OptionalTimeFrom(time.Now())
+	if _, err = persistence.User().Update(context.Background(), &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if status := loginAgain(); status != http.StatusUnauthorized {
+		t.Fatalf("disabled linked user login status = %d", status)
+	}
+	subject = conflictingSubject
+	if status := loginAgain(); status != http.StatusConflict {
+		t.Fatalf("conflicting provision status = %d", status)
+	}
 	logs := helper.Logs.String()
-	for _, secret := range []string{ticket, subject, bindingCookie.Value} {
+	for _, secret := range []string{ticket, linkedSubject, conflictingSubject, bindingCookie.Value} {
 		if strings.Contains(logs, secret) {
 			t.Fatalf("external authentication secret appeared in logs")
 		}

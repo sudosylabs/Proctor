@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -193,10 +194,40 @@ func (s SQLUserStore) List(
 	options store.UserListOptions,
 ) ([]*model.User, error) {
 	if options.Limit < 1 || options.Limit > 200 ||
-		(options.AfterUsername == "") != (options.AfterId == "") {
+		(options.AfterUsername == "") != (options.AfterId == "") ||
+		(options.AfterId != "" && !model.IsValidId(options.AfterId)) ||
+		len(options.Visibility.ClassIDs)+len(options.Visibility.AcademicUnitRootIDs) > 256 ||
+		!validVisibilityIDs(options.Visibility.ClassIDs) ||
+		!validVisibilityIDs(options.Visibility.AcademicUnitRootIDs) {
 		return nil, store.NewErrInvalidInput("user", "list_options", nil)
 	}
 	query := s.usersQuery.Where(sq.Eq{"users.archived_at": nil})
+	if !options.Visibility.InstitutionWide {
+		if len(options.Visibility.ClassIDs) == 0 && len(options.Visibility.AcademicUnitRootIDs) == 0 {
+			query = query.Where("FALSE")
+		} else {
+			if options.Visibility.ActiveAt <= 0 {
+				return nil, store.NewErrInvalidInput("user", "visibility_active_at", nil)
+			}
+			activeAt := model.TimeFromMillis(options.Visibility.ActiveAt)
+			query = query.Where(`EXISTS (
+				SELECT 1 FROM class_members cm
+				JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
+				JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+				JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+				WHERE cm.user_id = users.id AND cm.archived_at IS NULL
+				AND cm.start_at <= ? AND (cm.end_at IS NULL OR cm.end_at > ?)
+				AND (cm.class_id = ANY(?) OR p.academic_unit_id IN (
+					WITH RECURSIVE allowed_units AS (
+						SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
+						UNION ALL SELECT child.id FROM academic_units child
+						JOIN allowed_units parent ON child.parent_id = parent.id
+						WHERE child.archived_at IS NULL
+					) SELECT id FROM allowed_units
+				))
+			)`, activeAt, activeAt, pq.Array(options.Visibility.ClassIDs), pq.Array(options.Visibility.AcademicUnitRootIDs))
+		}
+	}
 	if !options.IncludeDisabled {
 		query = query.Where(sq.Eq{"users.disabled_at": nil})
 	}
@@ -230,6 +261,15 @@ func (s SQLUserStore) List(
 		users = append(users, row.model())
 	}
 	return users, nil
+}
+
+func validVisibilityIDs(ids []string) bool {
+	for _, id := range ids {
+		if !model.IsValidId(id) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s SQLUserStore) get(

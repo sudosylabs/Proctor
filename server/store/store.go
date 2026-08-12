@@ -545,6 +545,15 @@ type UserListOptions struct {
 	Limit                        int
 	IncludeDisabled              bool
 	MissingDefaultProfilePicture bool
+	Visibility                   UserVisibilityScope
+}
+
+// UserVisibilityScope constrains user list/search results in persistence.
+type UserVisibilityScope struct {
+	InstitutionWide     bool
+	ClassIDs            []string
+	AcademicUnitRootIDs []string
+	ActiveAt            int64
 }
 
 type UserProfileUpdate struct {

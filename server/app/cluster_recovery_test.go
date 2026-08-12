@@ -149,7 +149,18 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 		roles:       map[string]*model.Role{roleID: role},
 		bindings:    map[string]*model.RoleBinding{bindingID: binding},
 	}
-	authz := newAuthorizationService(root, nil)
+	resolver, err := newAccessScopeResolver(
+		root.Institution(), recoveryAccessAcademicUnitStore{}, recoveryAccessClassStore{}, recoveryAccessUserStore{}, recoveryAccessClassMemberStore{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authz, err := newAuthorizationService(
+		root.Role(), root.RoleBinding(), resolver, newAuditService(root, "node-test"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	authz.now = func() time.Time { return now }
 
 	principal := model.Principal{
@@ -185,6 +196,11 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 		t.Fatal("Can() after binding end without cluster message = true, want false")
 	}
 }
+
+type recoveryAccessAcademicUnitStore struct{ store.AcademicUnitStore }
+type recoveryAccessClassStore struct{ store.ClassStore }
+type recoveryAccessUserStore struct{ store.UserStore }
+type recoveryAccessClassMemberStore struct{ store.ClassMemberStore }
 
 func TestStaleAuthenticationCacheBoundedBySessionExpiry(t *testing.T) {
 	t.Parallel()

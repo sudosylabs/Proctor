@@ -127,7 +127,7 @@ func (h defaultProfilePictureReconciliationHandler) Run(ctx context.Context, exe
 	if remaining <= 0 {
 		return defaultProfilePictureReconciliationSucceeded(checkpoint)
 	}
-	users, listErr := h.users.List(ctx, store.UserListOptions{Limit: remaining, IncludeDisabled: true, MissingDefaultProfilePicture: true})
+	users, listErr := h.users.List(ctx, store.UserListOptions{Limit: remaining, IncludeDisabled: true, MissingDefaultProfilePicture: true, Visibility: store.UserVisibilityScope{InstitutionWide: true}})
 	if listErr != nil {
 		return jobengine.RetryableFailure("dependency.unavailable", listErr)
 	}

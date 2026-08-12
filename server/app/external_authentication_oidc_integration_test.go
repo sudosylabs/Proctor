@@ -207,6 +207,13 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			callback.Body.String(),
 		)
 	}
+	replayRequest := httptest.NewRequest(http.MethodGet, callbackPath, nil)
+	replayRequest.AddCookie(bindingCookie)
+	replay := httptest.NewRecorder()
+	helper.Handler().ServeHTTP(replay, replayRequest)
+	if replay.Code != http.StatusUnauthorized {
+		t.Fatalf("replayed callback status=%d body=%s", replay.Code, replay.Body.String())
+	}
 	identity, err := persistence.ExternalIdentity().GetByProviderSubject(
 		context.Background(),
 		providerID,

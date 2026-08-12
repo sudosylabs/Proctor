@@ -17,14 +17,16 @@ type userProfileStoreFake struct {
 	events      *[]string
 	current     *model.User
 	updateInput *store.UserProfileUpdate
+	listOptions store.UserListOptions
 }
 
 func (s *userProfileStoreFake) Get(context.Context, string) (*model.User, error) {
 	*s.events = append(*s.events, "get-user")
 	return s.current, nil
 }
-func (s *userProfileStoreFake) List(context.Context, store.UserListOptions) ([]*model.User, error) {
+func (s *userProfileStoreFake) List(_ context.Context, options store.UserListOptions) ([]*model.User, error) {
 	*s.events = append(*s.events, "list-users")
+	s.listOptions = options
 	return nil, nil
 }
 func (s *userProfileStoreFake) UpdateProfileWithAudit(_ context.Context, input *store.UserProfileUpdate) (*model.User, error) {
@@ -41,9 +43,9 @@ type userProfileAuthorizerFake struct {
 	writeErr error
 }
 
-func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation) error {
+func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error) {
 	*a.events = append(*a.events, "authorize-search")
-	return nil
+	return store.UserVisibilityScope{ClassIDs: []string{"class-a"}, ActiveAt: 100}, nil
 }
 func (a *userProfileAuthorizerFake) AuthorizeRead(context.Context, Invocation, string) error {
 	*a.events = append(*a.events, "authorize-read")
@@ -82,12 +84,16 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newUserProfileService(&userProfileStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now)
+	persistence := &userProfileStoreFake{events: &events}
+	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now)
 	users, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if users == nil || len(users) != 0 {
 		t.Fatalf("users = %#v, want non-nil empty", users)
+	}
+	if !reflect.DeepEqual(persistence.listOptions.Visibility.ClassIDs, []string{"class-a"}) {
+		t.Fatalf("visibility = %#v", persistence.listOptions.Visibility)
 	}
 }
