@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"hash/maphash"
 	"net/http"
 	"net/url"
@@ -91,22 +90,6 @@ type shard struct {
 	mu     sync.RWMutex
 	conns  map[string]*connection
 	replay map[string]*replayState
-}
-
-type connection struct {
-	hub       *Hub
-	socket    *websocket.Conn
-	principal model.Principal
-	metadata  model.RequestMetadata
-	id        string
-
-	mu            sync.Mutex
-	nextSequence  int64
-	history       []*Event
-	subscriptions map[string]Subscription
-	replayable    bool
-	send          chan outboundMessage
-	closeOnce     sync.Once
 }
 
 // Logger reports operational transport failures without depending on mlog.
@@ -234,20 +217,21 @@ func (h *Hub) Accept(
 		h.logger.WarnContext(request.Context(), "WebSocket upgrade failed", err)
 		return nil
 	}
+	runtimeSocket := newGorillaConnectionSocket(socket)
 	connection, resumed := h.register(
-		socket,
+		runtimeSocket,
 		principal,
 		metadata,
 		connectionID,
 		sequence,
 	)
 	if connection == nil {
-		_ = socket.WriteControl(
-			websocket.CloseMessage,
+		_ = runtimeSocket.WriteControl(
+			websocketCloseMessage,
 			websocket.FormatCloseMessage(CloseLimit, "connection limit reached"),
 			time.Now().Add(writeWait),
 		)
-		_ = socket.Close()
+		_ = runtimeSocket.Close()
 		return nil
 	}
 	connection.enqueueHello(resumed, connectionID != "" && !resumed)
@@ -256,7 +240,7 @@ func (h *Hub) Accept(
 }
 
 func (h *Hub) register(
-	socket *websocket.Conn,
+	socket connectionSocket,
 	principal model.Principal,
 	metadata model.RequestMetadata,
 	requestedID string,
@@ -323,7 +307,8 @@ func (h *Hub) register(
 		}
 	}
 	connection := &connection{
-		hub: h, socket: socket, principal: principal, metadata: metadata,
+		hub: h, socket: socket, clock: systemRuntimeClock{},
+		principal: principal, metadata: metadata,
 		id: connectionID, nextSequence: nextSequence, history: history,
 		subscriptions: subscriptions, replayable: true,
 		send: make(chan outboundMessage, sendQueueSize),
@@ -540,242 +525,6 @@ func (h *Hub) shardForUser(userID string) *shard {
 	hash.SetSeed(h.hashSeed)
 	_, _ = hash.WriteString(userID)
 	return h.shards[int(hash.Sum64()%uint64(len(h.shards)))]
-}
-
-func (c *connection) pump(ctx context.Context) {
-	pumpCtx, cancel := context.WithCancel(ctx)
-	var pumps sync.WaitGroup
-	pumps.Add(2)
-	go func() {
-		defer pumps.Done()
-		c.writePump(pumpCtx)
-	}()
-	go func() {
-		defer pumps.Done()
-		c.sessionPump(pumpCtx)
-	}()
-	c.readPump(pumpCtx)
-	cancel()
-	_ = c.socket.Close()
-	pumps.Wait()
-	c.hub.unregister(c)
-}
-
-func (c *connection) readPump(ctx context.Context) {
-	c.socket.SetReadLimit(MaxMessageBytes)
-	_ = c.socket.SetReadDeadline(time.Now().Add(pongWait))
-	c.socket.SetPongHandler(func(string) error {
-		return c.socket.SetReadDeadline(time.Now().Add(pongWait))
-	})
-	for {
-		var request Request
-		if err := c.socket.ReadJSON(&request); err != nil {
-			return
-		}
-		if err := request.Validate(); err != nil {
-			c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid WebSocket request.")
-			continue
-		}
-		c.handleRequest(ctx, &request)
-	}
-}
-
-func (c *connection) writePump(ctx context.Context) {
-	ticker := time.NewTicker(pingInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case message := <-c.send:
-			_ = c.socket.SetWriteDeadline(time.Now().Add(writeWait))
-			var err error
-			if message.event != nil {
-				err = c.socket.WriteJSON(message.event)
-			} else {
-				err = c.socket.WriteJSON(message.response)
-			}
-			if err != nil {
-				_ = c.socket.Close()
-				return
-			}
-		case <-ticker.C:
-			_ = c.socket.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.socket.WriteMessage(websocket.PingMessage, nil); err != nil {
-				_ = c.socket.Close()
-				return
-			}
-		}
-	}
-}
-
-func (c *connection) sessionPump(ctx context.Context) {
-	ticker := time.NewTicker(sessionCheck)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if appErr := c.hub.application.ValidateWebSocketPrincipal(
-				ctx,
-				c.principal,
-			); appErr != nil {
-				c.close(CloseSessionRevoked, "session no longer valid", false)
-				return
-			}
-		}
-	}
-}
-
-func (c *connection) handleRequest(
-	ctx context.Context,
-	request *Request,
-) {
-	switch request.Action {
-	case "ping":
-		c.enqueueResponse(request.Sequence, json.RawMessage(`{"pong":true}`))
-	case "subscribe":
-		var subscription Subscription
-		if err := json.Unmarshal(request.Data, &subscription); err != nil ||
-			!subscription.IsValid() {
-			c.enqueueError(request.Sequence, "websocket.subscription.invalid", "Invalid subscription.")
-			return
-		}
-		metadata := c.metadata
-		metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-		if err := c.hub.application.AuthorizeWebSocketSubscription(
-			ctx,
-			c.principal,
-			metadata,
-			subscription.Action,
-			subscription.Resource.model(),
-		); err != nil {
-			code := "authorization.denied"
-			message := "WebSocket subscription denied."
-			if failure, ok := app.As(err); ok {
-				code = failure.Code()
-				if code != "authorization.denied" {
-					message = "WebSocket subscription failed."
-				}
-			}
-			c.enqueueError(request.Sequence, code, message)
-			return
-		}
-		c.mu.Lock()
-		if _, exists := c.subscriptions[subscription.Key()]; !exists &&
-			len(c.subscriptions) >= maximumSubscriptions {
-			c.mu.Unlock()
-			c.enqueueError(
-				request.Sequence,
-				"websocket.subscription.limit",
-				"WebSocket subscription limit reached.",
-			)
-			return
-		}
-		c.subscriptions[subscription.Key()] = subscription
-		c.mu.Unlock()
-		c.enqueueResponse(request.Sequence, nil)
-	case "unsubscribe":
-		var subscription Subscription
-		if err := json.Unmarshal(request.Data, &subscription); err != nil ||
-			!subscription.IsValid() {
-			c.enqueueError(request.Sequence, "websocket.subscription.invalid", "Invalid subscription.")
-			return
-		}
-		c.mu.Lock()
-		delete(c.subscriptions, subscription.Key())
-		c.mu.Unlock()
-		c.enqueueResponse(request.Sequence, nil)
-	default:
-		c.enqueueError(request.Sequence, "websocket.action.unknown", "Unknown WebSocket action.")
-	}
-}
-
-func (c *connection) enqueueHello(resumed, resyncRequired bool) {
-	data, _ := json.Marshal(Hello{
-		ConnectionId: c.id, NodeId: c.hub.nodeID, Resumed: resumed,
-	})
-	c.enqueueEvent(&Event{
-		Id: model.NewId(), Event: string(EventHello),
-		UserID: c.principal.UserID.String(), Data: data,
-	})
-	if resyncRequired {
-		c.enqueueEvent(&Event{
-			Id: model.NewId(), Event: string(EventResync),
-			UserID: c.principal.UserID.String(),
-		})
-	}
-}
-
-func (c *connection) enqueueEvent(event *Event) {
-	c.mu.Lock()
-	for _, sent := range c.history {
-		if sent.Id == event.Id {
-			c.mu.Unlock()
-			return
-		}
-	}
-	c.nextSequence++
-	candidate := event.Clone()
-	candidate.Sequence = c.nextSequence
-	c.history = append(c.history, candidate.Clone())
-	if len(c.history) > replayQueueSize {
-		c.history = append([]*Event(nil), c.history[len(c.history)-replayQueueSize:]...)
-	}
-	c.mu.Unlock()
-	select {
-	case c.send <- outboundMessage{event: candidate}:
-	default:
-		c.close(CloseBackpressure, "client is too slow", false)
-	}
-}
-
-func (c *connection) enqueueResponse(sequence int64, data json.RawMessage) {
-	response := &Response{
-		Status: "ok", Sequence: sequence, Data: append(json.RawMessage(nil), data...),
-	}
-	select {
-	case c.send <- outboundMessage{response: response}:
-	default:
-		c.close(CloseBackpressure, "client is too slow", false)
-	}
-}
-
-func (c *connection) enqueueError(sequence int64, code, message string) {
-	response := &Response{
-		Status: "error", Sequence: sequence,
-		Error: &Error{Code: code, Message: message},
-	}
-	select {
-	case c.send <- outboundMessage{response: response}:
-	default:
-		c.close(CloseBackpressure, "client is too slow", false)
-	}
-}
-
-func (c *connection) hasSubscription(
-	subscription Subscription,
-) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_, exists := c.subscriptions[subscription.Key()]
-	return exists
-}
-
-func (c *connection) close(code int, reason string, replayable bool) {
-	c.closeOnce.Do(func() {
-		c.mu.Lock()
-		c.replayable = replayable
-		c.mu.Unlock()
-		message := websocket.FormatCloseMessage(code, reason)
-		_ = c.socket.WriteControl(
-			websocket.CloseMessage,
-			message,
-			time.Now().Add(writeWait),
-		)
-		_ = c.socket.Close()
-	})
 }
 
 func cloneEvents(events []*Event) []*Event {
