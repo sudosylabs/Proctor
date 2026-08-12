@@ -137,7 +137,6 @@ type WebSocketTransport interface {
 		sequence int64,
 		allowMissingOrigin bool,
 	) error
-	Close() error
 }
 
 type Authenticator interface {
@@ -556,10 +555,9 @@ func (a *API) serveRoutes(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (a *API) Close() error {
-	if a.webSocket == nil {
-		return nil
-	}
-	return a.webSocket.Close()
+	// The HTTP transport borrows the sibling WebSocket transport for upgrade
+	// dispatch. Node Runtime owns and closes that sibling explicitly.
+	return nil
 }
 
 type noopWebSocketTransport struct{}
@@ -575,8 +573,6 @@ func (noopWebSocketTransport) Accept(
 ) error {
 	return errors.New("websocket transport is not configured")
 }
-
-func (noopWebSocketTransport) Close() error { return nil }
 
 func canonicalIDRoutePattern() string {
 	return "[" + model.IdAlphabet + "]{" + strconv.Itoa(model.IdLength) + "}"

@@ -56,13 +56,23 @@ func TestPlatformDoesNotExposeInfrastructureLookup(t *testing.T) {
 func TestConstructionProjectionRemainsRootPrivate(t *testing.T) {
 	t.Parallel()
 
-	allowedFunctions := map[string]bool{"applicationDependencies": true, "acceptPlatform": true}
+	allowedFunctions := map[string]bool{
+		"acceptPlatform":              true,
+		"applicationDependencies":     true,
+		"composeConsumers":            true,
+		"composeNode":                 true,
+		"defaultConsumerConstructors": true,
+	}
+	allowedTypes := map[string]bool{
+		"constructionCapabilities": true,
+		"consumerConstructors":     true,
+	}
 	root := filepath.Join("..")
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || filepath.Ext(path) != ".go" || filepath.Base(path) == "runtime_ownership_test.go" {
+		if entry.IsDir() || filepath.Ext(path) != ".go" || filepath.Base(path) == "runtime_ownership_test.go" || filepath.Base(path) == "composition_test.go" {
 			return nil
 		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
@@ -71,14 +81,14 @@ func TestConstructionProjectionRemainsRootPrivate(t *testing.T) {
 		}
 		for _, declaration := range file.Decls {
 			if generic, ok := declaration.(*ast.GenDecl); ok {
-				declaresProjection := false
+				allowedDeclaration := false
 				for _, specification := range generic.Specs {
 					typeSpec, ok := specification.(*ast.TypeSpec)
-					if ok && typeSpec.Name.Name == "constructionCapabilities" {
-						declaresProjection = true
+					if ok && allowedTypes[typeSpec.Name.Name] {
+						allowedDeclaration = true
 					}
 				}
-				if declaresProjection && filepath.Base(path) == "infrastructure.go" {
+				if allowedDeclaration && (filepath.Base(path) == "infrastructure.go" || filepath.Base(path) == "composition.go") {
 					continue
 				}
 			}
@@ -89,7 +99,7 @@ func TestConstructionProjectionRemainsRootPrivate(t *testing.T) {
 			ast.Inspect(declaration, func(node ast.Node) bool {
 				identifier, ok := node.(*ast.Ident)
 				if ok && identifier.Name == "constructionCapabilities" {
-					t.Errorf("construction projection escaped into %s outside its two construction seams", path)
+					t.Errorf("construction projection escaped into %s outside its reviewed construction seams", path)
 				}
 				return true
 			})

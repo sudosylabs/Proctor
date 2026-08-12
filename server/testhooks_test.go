@@ -184,12 +184,18 @@ func (e *hookCloseEvents) snapshot() []string {
 
 type hookCluster struct {
 	platform.Cluster
-	cancel      context.CancelFunc
-	closedCount atomic.Int64
-	closeEvents *hookCloseEvents
+	cancel       context.CancelFunc
+	startedCount atomic.Int64
+	closedCount  atomic.Int64
+	closeEvents  *hookCloseEvents
 }
 
 func (c *hookCluster) NodeID() string { return "hook-node" }
+func (c *hookCluster) Start(context.Context) error {
+	c.startedCount.Add(1)
+	return nil
+}
+func (c *hookCluster) Ping(context.Context) error { return nil }
 func (c *hookCluster) RegisterHandler(cluster.Event, cluster.Handler) error {
 	if c.cancel != nil {
 		c.cancel()
@@ -259,12 +265,13 @@ func newHookOverrides(t *testing.T) (server.TestingOverrides, *hookStore, *hookC
 	cache := &hookCache{}
 	mailer := &hookMailer{}
 	return server.TestingOverrides{
-		Configuration: configuration,
-		Logger:        logger,
-		Persistence:   persistence,
-		Cache:         cache,
-		Mailer:        mailer,
-		Filesystem:    memoryvfs.New(),
+		Configuration:    configuration,
+		Logger:           logger,
+		Persistence:      persistence,
+		Cache:            cache,
+		Mailer:           mailer,
+		Filesystem:       memoryvfs.New(),
+		AllowMissingJobs: true,
 	}, persistence, cache, mailer
 }
 
@@ -328,6 +335,44 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	}
 	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
 		t.Fatal("Close() did not close the overridden capabilities")
+	}
+}
+
+func TestCompositionIsInertUntilServerStart(t *testing.T) {
+	t.Parallel()
+
+	overrides, _, _, _ := newHookOverrides(t)
+	clusterTransport := &hookCluster{}
+	overrides.Cluster = clusterTransport
+	runtime, err := server.NewForTesting(context.Background(), overrides)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.Server.Ready() {
+		t.Fatal("composed node is ready before Start")
+	}
+	if got := clusterTransport.startedCount.Load(); got != 0 {
+		t.Fatalf("cluster Start calls during composition = %d, want 0", got)
+	}
+	if err := runtime.Server.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompositionRequiresDurableJobsUnlessExplicitlyDisabled(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, cache, mailer := newHookOverrides(t)
+	overrides.AllowMissingJobs = false
+	runtime, err := server.NewForTesting(context.Background(), overrides)
+	if runtime != nil {
+		t.Fatalf("NewForTesting(missing Jobs) runtime = %#v, want nil", runtime)
+	}
+	if err == nil || !strings.Contains(err.Error(), "require durable Job runtime") {
+		t.Fatalf("NewForTesting(missing Jobs) error = %v", err)
+	}
+	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
+		t.Fatal("missing Job runtime did not release composed infrastructure")
 	}
 }
 

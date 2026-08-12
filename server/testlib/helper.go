@@ -144,14 +144,15 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		persistenceOverride = lifecycle
 	}
 	runtime, err := server.NewForTesting(context.Background(), server.TestingOverrides{
-		Configuration: store,
-		Logger:        logger,
-		Persistence:   persistenceOverride,
-		Cache:         cache,
-		Cluster:       settings.cluster,
-		Mailer:        mailer,
-		Filesystem:    filesystem,
-		BuildInfo:     settings.buildInfo,
+		Configuration:    store,
+		Logger:           logger,
+		Persistence:      persistenceOverride,
+		Cache:            cache,
+		Cluster:          settings.cluster,
+		Mailer:           mailer,
+		Filesystem:       filesystem,
+		AllowMissingJobs: lifecycle != nil,
+		BuildInfo:        settings.buildInfo,
 	})
 	if err != nil {
 		tb.Fatalf("create test server: %v", err)

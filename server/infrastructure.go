@@ -22,12 +22,10 @@ import (
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
 	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	clustermemberlist "github.com/sudosylabs/proctor/server/cluster/memberlist"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
@@ -38,7 +36,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
-	"github.com/sudosylabs/proctor/server/websocket"
 )
 
 // ownedInfrastructure is the sole owner of infrastructure while the root is
@@ -57,7 +54,7 @@ type ownedInfrastructure struct {
 
 // constructionCapabilities is a short-lived, non-owning projection used only
 // while the root assembles consumers. It has no lifecycle operations and must
-// not escape assembleRuntime; Platform owns every referenced capability after
+// not escape composeNode; Platform owns every referenced capability after
 // acceptance.
 type constructionCapabilities struct {
 	logger                 runtimeLogger
@@ -86,160 +83,6 @@ type borrowedCluster interface {
 	NodeID() string
 	RegisterHandler(cluster.Event, cluster.Handler) error
 	Broadcast(context.Context, *cluster.Message) error
-}
-
-// assembledRuntime retains the assembled graph handles beside the lifecycle
-// components so test construction can inspect the same graph production runs.
-type assembledRuntime struct {
-	components  runtimeComponents
-	platform    *platform.Service
-	application *app.App
-	transport   *api.API
-	readiness   *app.Health
-}
-
-func constructRuntime(ctx context.Context, configPath string) (runtimeComponents, error) {
-	assembled, err := assembleRuntime(ctx, configPath, TestingOverrides{})
-	if err != nil {
-		return runtimeComponents{}, err
-	}
-	return assembled.components, nil
-}
-
-func assembleRuntime(
-	ctx context.Context,
-	configPath string,
-	overrides TestingOverrides,
-) (*assembledRuntime, error) {
-	infrastructure, err := openRuntimeInfrastructure(ctx, configPath, overrides)
-	if err != nil {
-		return nil, err
-	}
-	applicationPlatform, snapshot, capabilities, err := infrastructure.acceptPlatform(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// Construct stateless domain-aware content mechanics over the VFS selected
-	// by the sole composition root. platform.Service retains VFS lifecycle
-	// ownership; File Content neither starts nor closes infrastructure.
-	content, err := filecontent.New(capabilities.filesystem)
-	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct file content: %w", err),
-			applicationPlatform.Close(),
-		)
-	}
-	applicationDeps, err := applicationDependencies(capabilities, snapshot, content)
-	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("project application dependencies: %w", err),
-			applicationPlatform.Close(),
-		)
-	}
-	application, err := app.New(applicationDeps)
-	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct application: %w", err),
-			applicationPlatform.Close(),
-		)
-	}
-	clusterFanout, err := newRealtimeClusterAdapter(capabilities.cluster)
-	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct realtime cluster adapter: %w", err),
-			applicationPlatform.Close(),
-		)
-	}
-	if err := application.AttachRealtimeClusterFanout(clusterFanout); err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("attach realtime cluster fan-out: %w", err),
-			applicationPlatform.Close(),
-		)
-	}
-	readiness := &app.Health{}
-	cfg := snapshot
-	buildInfo := overrides.BuildInfo
-	if buildInfo == (api.BuildInfo{}) {
-		current := app.CurrentBuildInfo()
-		buildInfo = api.BuildInfo{
-			Version: current.Version, Commit: current.Commit,
-			BuildTime: current.BuildTime, GoVersion: current.GoVersion,
-		}
-	}
-	webSocketHub, err := websocket.NewHub(
-		application,
-		websocketLogger{log: capabilities.logger},
-		cfg.Server.PublicURL,
-		capabilities.nodeID,
-	)
-	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct WebSocket hub: %w", err),
-			applicationPlatform.Close(),
-		)
-	}
-	if err := application.AttachRealtimeSink(webSocketHub); err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("attach realtime sink: %w", err),
-			webSocketHub.Close(),
-			applicationPlatform.Close(),
-		)
-	}
-	httpAPI, err := api.New(api.Options{
-		Logger:                  apiLogger{log: capabilities.logger},
-		Health:                  readiness,
-		Application:             application,
-		AcademicUnits:           application,
-		Institutions:            application,
-		Programmes:              application,
-		ProgrammeLevels:         application,
-		AcademicPeriods:         application,
-		Classes:                 application,
-		Affiliations:            application,
-		AcademicUnitMembers:     application,
-		ClassMembers:            application,
-		UserProfiles:            application,
-		AccountStates:           application,
-		SessionAdministrations:  application,
-		Roles:                   application,
-		RoleBindings:            application,
-		AuditListings:           application,
-		Bootstrap:               application,
-		BuildInfo:               buildInfo,
-		PublicURL:               cfg.Server.PublicURL,
-		MaxBodyBytes:            cfg.Server.MaxBodyBytes,
-		RecentAuthenticationTTL: cfg.Authentication.RecentAuthenticationTTL.Duration,
-		NodeID:                  capabilities.nodeID,
-		WebSocket:               webSocketHub,
-	})
-	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("construct HTTP API: %w", err),
-			webSocketHub.Close(),
-			applicationPlatform.Close(),
-		)
-	}
-	var jobRuntime runtimeJobs
-	if runner := application.Jobs(); runner != nil {
-		jobRuntime = runner
-	}
-	return &assembledRuntime{
-		components: runtimeComponents{
-			platform:  applicationPlatform,
-			settings:  runtimeSettingsFromConfig(snapshot.Server),
-			logger:    capabilities.logger,
-			jobs:      jobRuntime,
-			transport: httpAPI,
-			websocket: webSocketHub,
-			readiness: readiness,
-			listen:    net.Listen,
-			newHTTP:   newHTTPServer,
-		},
-		platform:    applicationPlatform,
-		application: application,
-		transport:   httpAPI,
-		readiness:   readiness,
-	}, nil
 }
 
 func openRuntimeInfrastructure(

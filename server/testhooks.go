@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
@@ -40,6 +39,9 @@ type TestingOverrides struct {
 	Cluster           platform.Cluster
 	Mailer            platform.Mailer
 	Filesystem        vfspkg.FileSystem
+	// AllowMissingJobs is an explicit lifecycle-only test policy. Production
+	// construction always requires durable Job persistence and a Job runtime.
+	AllowMissingJobs bool
 	// BuildInfo replaces the served build information when any field is set.
 	BuildInfo api.BuildInfo
 }
@@ -56,38 +58,22 @@ type TestingRuntime struct {
 
 // NewForTesting constructs the production runtime graph with explicit
 // capability overrides and returns the assembled handles alongside the
-// lifecycle-owning Server. Construction flows through New, so startup,
-// readiness, shutdown, and cleanup behavior is identical to production.
+// lifecycle-owning Server. Construction uses the same private recipe as New,
+// so startup, readiness, shutdown, and cleanup behavior is identical to
+// production.
 func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRuntime, error) {
-	var assembled *assembledRuntime
-	node, err := New(ctx, func(settings *options) error {
-		settings.runtimeFactory = func(ctx context.Context, configPath string) (runtimeComponents, error) {
-			graph, err := assembleRuntime(ctx, configPath, overrides)
-			if err != nil {
-				return runtimeComponents{}, err
-			}
-			assembled = graph
-			return graph.components, nil
-		}
-		return nil
+	result, err := composeNode(ctx, compositionInput{
+		overrides:        overrides,
+		allowMissingJobs: overrides.AllowMissingJobs,
 	})
 	if err != nil {
 		return nil, err
 	}
-	// Tests that serve the HTTP handler without Server.Start still need the
-	// WebSocket hub running so upgrade and realtime fan-out work. Production
-	// Start owns this step for real processes.
-	if assembled.components.websocket != nil {
-		if err := assembled.components.websocket.Start(ctx); err != nil {
-			_ = node.Close()
-			return nil, fmt.Errorf("start WebSocket for testing: %w", err)
-		}
-	}
 	return &TestingRuntime{
-		Server:      node,
-		Platform:    assembled.platform,
-		Application: assembled.application,
-		API:         assembled.transport,
-		Health:      assembled.readiness,
+		Server:      result.server,
+		Platform:    result.test.platform,
+		Application: result.test.application,
+		API:         result.test.transport,
+		Health:      result.test.readiness,
 	}, nil
 }

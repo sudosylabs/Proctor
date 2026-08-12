@@ -689,17 +689,7 @@ func newLifecycleTestServer(t *testing.T, components runtimeComponents) *Server 
 			return nil
 		}
 	}
-	option := func(settings *options) error {
-		settings.runtimeFactory = func(context.Context, string) (runtimeComponents, error) {
-			return components, nil
-		}
-		return nil
-	}
-	node, err := New(context.Background(), option)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	return node
+	return &Server{components: components}
 }
 
 func assertLifecycleEvents(t *testing.T, events *lifecycleEvents, expected ...string) {

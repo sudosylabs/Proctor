@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestNewConstructsUsableFacade(t *testing.T) {
+func TestInertServerFacadeOwnsConstructedRuntime(t *testing.T) {
 	t.Parallel()
 
 	events := &lifecycleEvents{}
@@ -19,16 +19,7 @@ func TestNewConstructsUsableFacade(t *testing.T) {
 		transport: &lifecycleTransport{events: events},
 		readiness: readiness,
 	}
-	option := func(settings *options) error {
-		settings.runtimeFactory = func(context.Context, string) (runtimeComponents, error) {
-			return components, nil
-		}
-		return nil
-	}
-	facade, err := New(context.Background(), option)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	facade := &Server{components: components}
 	if facade.Ready() {
 		t.Fatal("New().Ready() = true before Start()")
 	}

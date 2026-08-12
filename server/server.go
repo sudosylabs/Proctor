@@ -29,8 +29,7 @@ import (
 )
 
 type options struct {
-	configPath     string
-	runtimeFactory func(context.Context, string) (runtimeComponents, error)
+	configPath string
 }
 
 // Option configures construction without exposing infrastructure or transport
@@ -168,7 +167,7 @@ type Server struct {
 // New does not start network listeners or WebSocket background work. Call
 // Start to begin serving and Close to drain transports and infrastructure.
 func New(ctx context.Context, optionValues ...Option) (*Server, error) {
-	settings := options{runtimeFactory: constructRuntime}
+	settings := options{}
 	for _, option := range optionValues {
 		if option == nil {
 			return nil, errors.New("server option is nil")
@@ -178,11 +177,11 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 		}
 	}
 
-	components, err := settings.runtimeFactory(ctx, settings.configPath)
+	result, err := composeNode(ctx, compositionInput{configPath: settings.configPath})
 	if err != nil {
 		return nil, fmt.Errorf("construct server: %w", err)
 	}
-	return &Server{components: components}, nil
+	return result.server, nil
 }
 
 func newHTTPServer(settings httpServerSettings) httpRuntime {

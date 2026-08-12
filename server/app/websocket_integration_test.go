@@ -49,10 +49,11 @@ func TestWebSocketIntegration(t *testing.T) {
 	helper := testlib.Setup(
 		t,
 		testlib.WithStore(persistence),
+		testlib.WithConfig(func(cfg *config.Config) {
+			cfg.Server.ListenAddress = "127.0.0.1:0"
+		}),
 	)
-	if err := helper.Platform.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	startIntegrationServer(t, helper)
 
 	password := "correct horse battery staple"
 	bootstrap := performJSONRequest(
@@ -279,6 +280,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	portB := freeTCPPort(t)
 	nodeConfig := func(nodeID string, port int) testlib.Option {
 		return testlib.WithConfig(func(cfg *config.Config) {
+			cfg.Server.ListenAddress = "127.0.0.1:0"
 			cfg.Cluster.Backend = "memberlist"
 			cfg.Cluster.NodeID = nodeID
 			address := fmt.Sprintf("127.0.0.1:%d", port)
@@ -312,12 +314,8 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		nodeConfig("node-b", portB),
 		testlib.WithStore(persistenceB),
 	)
-	if err := nodeA.Platform.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := nodeB.Platform.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	startIntegrationServer(t, nodeA)
+	startIntegrationServer(t, nodeB)
 
 	password := "correct horse battery staple"
 	bootstrap := performJSONRequest(
@@ -455,6 +453,30 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		closeError.Code != websocket.CloseSessionRevoked {
 		t.Fatalf("node B revocation close = %v", err)
 	}
+}
+
+func startIntegrationServer(t *testing.T, helper *testlib.Helper) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- helper.Server.Start(ctx) }()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for !helper.Server.Ready() {
+		select {
+		case err := <-done:
+			t.Fatalf("start integration server before readiness: %v", err)
+		case <-deadline.C:
+			t.Fatal("integration server did not become ready")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("stop integration server: %v", err)
+		}
+	})
 }
 
 func writeWebSocketRequest(
