@@ -32,6 +32,8 @@ type options struct {
 	configPath string
 }
 
+var errHTTPServerStopTimeout = errors.New("HTTP server did not stop after graceful shutdown")
+
 // Option configures construction without exposing infrastructure or transport
 // implementation types.
 type Option func(*options) error
@@ -91,13 +93,48 @@ type runtimeReadiness interface {
 }
 
 type httpRuntime interface {
-	Serve(net.Listener, func()) error
+	Serve(net.Listener, func() bool) error
 	Shutdown(context.Context) error
 	Close() error
 }
 
 type standardHTTPRuntime struct {
 	server *http.Server
+}
+
+// ownershipListener transfers the bound listener at the first HTTP accept.
+// Until then Server remains responsible for closing it on cancellation.
+type ownershipListener struct {
+	net.Listener
+	accept func() bool
+	mu     sync.Mutex
+	once   sync.Once
+	owned  bool
+}
+
+func (l *ownershipListener) Accept() (net.Conn, error) {
+	l.once.Do(func() {
+		l.mu.Lock()
+		l.owned = l.accept()
+		l.mu.Unlock()
+	})
+	l.mu.Lock()
+	owned := l.owned
+	l.mu.Unlock()
+	if !owned {
+		return nil, net.ErrClosed
+	}
+	return l.Listener.Accept()
+}
+
+func (l *ownershipListener) Close() error {
+	l.mu.Lock()
+	owned := l.owned
+	l.mu.Unlock()
+	if !owned {
+		return nil
+	}
+	return l.Listener.Close()
 }
 
 type httpServerSettings struct {
@@ -143,18 +180,45 @@ type runtimeComponents struct {
 	newHTTP   func(httpServerSettings) httpRuntime
 }
 
+// lifecycleMilestones records only stages that the node successfully entered.
+// It is private because callers need behavioral lifecycle operations, not a
+// second state-machine API.
+type lifecycleMilestones struct {
+	platformStarted  bool
+	jobsStarted      bool
+	websocketStarted bool
+	listenerBound    bool
+	httpServing      bool
+	ready            bool
+}
+
+type nodeState uint8
+
+const (
+	nodeInert nodeState = iota
+	nodeStarting
+	nodeRunning
+	nodeStopping
+	nodeClosed
+)
+
 // Server is the lifecycle owner for one assembled Proctor node.
 type Server struct {
 	components runtimeComponents
 
-	lifecycleMu sync.Mutex
-	started     bool
-	closed      bool
-	runCancel   context.CancelFunc
-	runDone     chan struct{}
+	lifecycleMu  sync.Mutex
+	state        nodeState
+	runCancel    context.CancelFunc
+	runDone      chan struct{}
+	milestones   lifecycleMilestones
+	listener     net.Listener
+	lifecycleErr error
 
 	httpMu sync.Mutex
 	http   httpRuntime
+	// httpShutdownErr is retained so the Close call that requested shutdown and
+	// every later Close observe the same drain failure as Start.
+	httpShutdownErr error
 
 	closeOnce sync.Once
 	closeErr  error
@@ -196,9 +260,8 @@ func newHTTPServer(settings httpServerSettings) httpRuntime {
 	}}
 }
 
-func (r *standardHTTPRuntime) Serve(listener net.Listener, entered func()) error {
-	entered()
-	return r.server.Serve(listener)
+func (r *standardHTTPRuntime) Serve(listener net.Listener, accept func() bool) error {
+	return r.server.Serve(&ownershipListener{Listener: listener, accept: accept})
 }
 
 func (r *standardHTTPRuntime) Shutdown(ctx context.Context) error {
@@ -216,16 +279,16 @@ func (r *standardHTTPRuntime) Close() error {
 // exit path closes the assembled runtime.
 func (s *Server) Start(ctx context.Context) (resultErr error) {
 	s.lifecycleMu.Lock()
-	if s.closed {
+	if s.state == nodeClosed {
 		s.lifecycleMu.Unlock()
 		return errors.New("server is closed")
 	}
-	if s.started {
+	if s.state != nodeInert {
 		s.lifecycleMu.Unlock()
 		return errors.New("server has already been started")
 	}
 	runCtx, runCancel := context.WithCancel(ctx)
-	s.started = true
+	s.state = nodeStarting
 	s.runCancel = runCancel
 	s.runDone = make(chan struct{})
 	runDone := s.runDone
@@ -235,31 +298,43 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		runCancel()
 		resultErr = errors.Join(resultErr, s.closeRuntime())
 		s.lifecycleMu.Lock()
-		s.closed = true
+		s.state = nodeClosed
 		close(runDone)
 		s.lifecycleMu.Unlock()
 	}()
 
 	if err := s.components.platform.Start(runCtx); err != nil {
-		if errors.Is(err, context.Canceled) && errors.Is(runCtx.Err(), context.Canceled) {
+		if gracefulCancellation(err, runCtx.Err()) {
 			return nil
 		}
 		return fmt.Errorf("start platform: %w", err)
 	}
+	s.recordStarted(func(m *lifecycleMilestones) { m.platformStarted = true })
+	if runCtx.Err() != nil {
+		return nil
+	}
 	if s.components.jobs != nil {
 		if err := s.components.jobs.Start(runCtx); err != nil {
-			if errors.Is(err, context.Canceled) && errors.Is(runCtx.Err(), context.Canceled) {
+			if gracefulCancellation(err, runCtx.Err()) {
 				return nil
 			}
 			return fmt.Errorf("start durable jobs: %w", err)
 		}
+		s.recordStarted(func(m *lifecycleMilestones) { m.jobsStarted = true })
+		if runCtx.Err() != nil {
+			return nil
+		}
 	}
 	if s.components.websocket != nil {
 		if err := s.components.websocket.Start(runCtx); err != nil {
-			if errors.Is(err, context.Canceled) && errors.Is(runCtx.Err(), context.Canceled) {
+			if gracefulCancellation(err, runCtx.Err()) {
 				return nil
 			}
 			return fmt.Errorf("start WebSocket: %w", err)
+		}
+		s.recordStarted(func(m *lifecycleMilestones) { m.websocketStarted = true })
+		if runCtx.Err() != nil {
+			return nil
 		}
 	}
 
@@ -267,6 +342,16 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	listener, err := s.components.listen("tcp", settings.listenAddress)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", settings.listenAddress, err)
+	}
+	s.lifecycleMu.Lock()
+	s.listener = listener
+	s.milestones.listenerBound = true
+	s.lifecycleMu.Unlock()
+	if runCtx.Err() != nil {
+		if err := s.closeOwnedListener(); err != nil {
+			return fmt.Errorf("close listener after canceled startup: %w", err)
+		}
+		return nil
 	}
 
 	httpServer := s.components.newHTTP(httpServerSettings{
@@ -283,41 +368,69 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	s.httpMu.Unlock()
 
 	serveErrors := make(chan error, 1)
-	serveEntered := make(chan struct{})
+	handoff := make(chan bool, 1)
 	go func() {
-		serveErrors <- httpServer.Serve(listener, func() { close(serveEntered) })
+		serveErrors <- httpServer.Serve(listener, func() bool {
+			s.lifecycleMu.Lock()
+			accepted := s.state == nodeStarting && runCtx.Err() == nil && s.listener == listener
+			if accepted {
+				s.listener = nil
+				s.milestones.listenerBound = false
+				s.milestones.httpServing = true
+			}
+			s.lifecycleMu.Unlock()
+			handoff <- accepted
+			return accepted
+		})
 	}()
 	// The listener is bound, every mandatory runtime dependency is running, and
 	// the HTTP runtime has accepted the listener for serving. An implementation
 	// that rejects the listener reports that error instead of acknowledging it.
 	select {
 	case serveErr := <-serveErrors:
-		shutdownErr := s.shutdownHTTP(settings.shutdownTimeout)
+		if !s.httpServing() && runCtx.Err() != nil && errors.Is(serveErr, net.ErrClosed) {
+			return nil
+		}
+		var shutdownErr error
+		if s.httpServing() {
+			shutdownErr = s.shutdownHTTP(settings.shutdownTimeout)
+		}
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), shutdownErr)
 		}
 		return shutdownErr
-	case <-serveEntered:
+	case accepted := <-handoff:
+		if !accepted {
+			return nil
+		}
+	case <-runCtx.Done():
+		if err := s.closeOwnedListener(); err != nil {
+			return fmt.Errorf("close listener before HTTP handoff: %w", err)
+		}
+		if !s.httpServing() {
+			return nil
+		}
 	}
-	s.components.readiness.SetReady(true)
-	s.components.logger.InfoContext(
-		runCtx,
-		"server started",
-		mlog.String("listen_address", listener.Addr().String()),
-		mlog.String("public_url", settings.publicURL),
-		mlog.String("version", app.Version),
-	)
+	if s.publishReady(runCtx) {
+		s.components.logger.InfoContext(
+			runCtx,
+			"server started",
+			mlog.String("listen_address", listener.Addr().String()),
+			mlog.String("public_url", settings.publicURL),
+			mlog.String("version", app.Version),
+		)
+	}
 
 	select {
 	case serveErr := <-serveErrors:
-		s.components.readiness.SetReady(false)
+		s.setUnready()
 		shutdownErr := s.shutdownHTTP(settings.shutdownTimeout)
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), shutdownErr)
 		}
 		return shutdownErr
 	case <-runCtx.Done():
-		s.components.readiness.SetReady(false)
+		s.setUnready()
 		s.components.logger.Info("server shutdown started")
 	}
 
@@ -329,10 +442,14 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	select {
 	case serveErr := <-serveErrors:
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			return fmt.Errorf("serve HTTP during shutdown: %w", serveErr)
+			err := fmt.Errorf("serve HTTP during shutdown: %w", serveErr)
+			s.retainHTTPShutdownError(err)
+			return err
 		}
 	case <-shutdownTimer.C:
-		return errors.New("HTTP server did not stop after graceful shutdown")
+		err := errHTTPServerStopTimeout
+		s.retainHTTPShutdownError(err)
+		return err
 	}
 	s.components.logger.Info("server stopped")
 	return nil
@@ -343,27 +460,30 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 // running Start call to finish, and returns any shutdown failures.
 func (s *Server) Close() error {
 	s.lifecycleMu.Lock()
-	if s.closed {
+	if s.state == nodeClosed {
 		done := s.runDone
 		s.lifecycleMu.Unlock()
 		if done != nil {
 			<-done
 		}
-		return s.closeRuntime()
+		return errors.Join(s.retainedLifecycleError(), s.retainedHTTPShutdownError(), s.closeRuntime())
 	}
-	s.closed = true
+	s.state = nodeStopping
 	cancel := s.runCancel
 	done := s.runDone
-	started := s.started
+	started := done != nil
 	s.lifecycleMu.Unlock()
 
-	s.components.readiness.SetReady(false)
+	s.setUnready()
 	if !started {
-		return s.closeRuntime()
+		s.lifecycleMu.Lock()
+		s.state = nodeClosed
+		s.lifecycleMu.Unlock()
+		return errors.Join(s.retainedLifecycleError(), s.retainedHTTPShutdownError(), s.closeRuntime())
 	}
 	cancel()
 	<-done
-	return s.closeRuntime()
+	return errors.Join(s.retainedLifecycleError(), s.retainedHTTPShutdownError(), s.closeRuntime())
 }
 
 // Ready reports whether the server can currently accept traffic.
@@ -382,13 +502,43 @@ func (s *Server) shutdownHTTP(timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := httpServer.Shutdown(ctx); err != nil {
-		return errors.Join(fmt.Errorf("graceful HTTP shutdown: %w", err), httpServer.Close())
+		result := errors.Join(fmt.Errorf("graceful HTTP shutdown: %w", err), httpServer.Close())
+		s.retainHTTPShutdownError(result)
+		return result
 	}
 	return nil
 }
 
+func (s *Server) retainHTTPShutdownError(err error) {
+	if err == nil {
+		return
+	}
+	s.httpMu.Lock()
+	s.httpShutdownErr = errors.Join(s.httpShutdownErr, err)
+	s.httpMu.Unlock()
+}
+
+func (s *Server) retainedHTTPShutdownError() error {
+	s.httpMu.Lock()
+	defer s.httpMu.Unlock()
+	return s.httpShutdownErr
+}
+
 func (s *Server) closeRuntime() error {
 	s.closeOnce.Do(func() {
+		s.setUnready()
+
+		s.lifecycleMu.Lock()
+		listener := s.listener
+		s.listener = nil
+		s.milestones.listenerBound = false
+		s.lifecycleMu.Unlock()
+
+		var listenerErr error
+		if listener != nil {
+			listenerErr = listener.Close()
+		}
+
 		// Stop durable handlers before transports and shared infrastructure so
 		// no worker outlives its persistence or VFS dependencies.
 		var jobsErr error
@@ -400,6 +550,7 @@ func (s *Server) closeRuntime() error {
 			websocketErr = s.components.websocket.Close()
 		}
 		s.closeErr = errors.Join(
+			listenerErr,
 			jobsErr,
 			websocketErr,
 			s.components.transport.Close(),
@@ -407,4 +558,92 @@ func (s *Server) closeRuntime() error {
 		)
 	})
 	return s.closeErr
+}
+
+func (s *Server) recordStarted(record func(*lifecycleMilestones)) {
+	s.lifecycleMu.Lock()
+	record(&s.milestones)
+	s.lifecycleMu.Unlock()
+}
+
+func (s *Server) httpServing() bool {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	return s.milestones.httpServing
+}
+
+func (s *Server) publishReady(ctx context.Context) bool {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.state != nodeStarting || ctx.Err() != nil || !s.milestones.httpServing {
+		return false
+	}
+	s.milestones.ready = true
+	s.state = nodeRunning
+	s.components.readiness.SetReady(true)
+	return true
+}
+
+func (s *Server) setUnready() {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	s.milestones.ready = false
+	s.components.readiness.SetReady(false)
+}
+
+func (s *Server) closeOwnedListener() error {
+	s.lifecycleMu.Lock()
+	listener := s.listener
+	s.listener = nil
+	s.milestones.listenerBound = false
+	s.lifecycleMu.Unlock()
+	if listener == nil {
+		return nil
+	}
+	err := listener.Close()
+	if err != nil {
+		s.retainLifecycleError(fmt.Errorf("close Server-owned listener: %w", err))
+	}
+	return err
+}
+
+func (s *Server) retainLifecycleError(err error) {
+	if err == nil {
+		return
+	}
+	s.lifecycleMu.Lock()
+	s.lifecycleErr = errors.Join(s.lifecycleErr, err)
+	s.lifecycleMu.Unlock()
+}
+
+func (s *Server) retainedLifecycleError() error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	return s.lifecycleErr
+}
+
+func gracefulCancellation(err, contextErr error) bool {
+	if err == nil || contextErr == nil {
+		return false
+	}
+	return errorContainsOnly(err, contextErr)
+}
+
+func errorContainsOnly(err, target error) bool {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !errorContainsOnly(child, target) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return errorContainsOnly(wrapped.Unwrap(), target)
+	}
+	return err == target
 }
