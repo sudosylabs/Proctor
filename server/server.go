@@ -83,9 +83,13 @@ type runtimeReadiness interface {
 }
 
 type httpRuntime interface {
-	Serve(net.Listener) error
+	Serve(net.Listener, func()) error
 	Shutdown(context.Context) error
 	Close() error
+}
+
+type standardHTTPRuntime struct {
+	server *http.Server
 }
 
 type httpServerSettings struct {
@@ -150,7 +154,7 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 }
 
 func newHTTPServer(settings httpServerSettings) httpRuntime {
-	return &http.Server{
+	return &standardHTTPRuntime{server: &http.Server{
 		Handler:           settings.handler,
 		ErrorLog:          settings.errorLog,
 		ReadHeaderTimeout: settings.readHeaderTimeout,
@@ -158,7 +162,20 @@ func newHTTPServer(settings httpServerSettings) httpRuntime {
 		WriteTimeout:      settings.writeTimeout,
 		IdleTimeout:       settings.idleTimeout,
 		MaxHeaderBytes:    settings.maxHeaderBytes,
-	}
+	}}
+}
+
+func (r *standardHTTPRuntime) Serve(listener net.Listener, entered func()) error {
+	entered()
+	return r.server.Serve(listener)
+}
+
+func (r *standardHTTPRuntime) Shutdown(ctx context.Context) error {
+	return r.server.Shutdown(ctx)
+}
+
+func (r *standardHTTPRuntime) Close() error {
+	return r.server.Close()
 }
 
 // Start starts shared infrastructure and HTTP serving in dependency order,
@@ -235,13 +252,23 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	s.httpMu.Unlock()
 
 	serveErrors := make(chan error, 1)
-	// The listener is bound and every mandatory runtime dependency is running.
-	// Publish readiness before Serve can notify test/runtime observers that it
-	// entered the accept loop; an immediate Serve failure clears it below.
-	s.components.readiness.SetReady(true)
+	serveEntered := make(chan struct{})
 	go func() {
-		serveErrors <- httpServer.Serve(listener)
+		serveErrors <- httpServer.Serve(listener, func() { close(serveEntered) })
 	}()
+	// The listener is bound, every mandatory runtime dependency is running, and
+	// the HTTP runtime has accepted the listener for serving. An implementation
+	// that rejects the listener reports that error instead of acknowledging it.
+	select {
+	case serveErr := <-serveErrors:
+		shutdownErr := s.shutdownHTTP(cfg.Server.ShutdownTimeout.Duration)
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), shutdownErr)
+		}
+		return shutdownErr
+	case <-serveEntered:
+	}
+	s.components.readiness.SetReady(true)
 	s.components.platform.Log().InfoContext(
 		runCtx,
 		"server started",

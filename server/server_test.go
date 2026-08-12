@@ -12,11 +12,11 @@ import (
 func TestNewConstructsUsableFacade(t *testing.T) {
 	t.Parallel()
 
-	events := []string{}
+	events := &lifecycleEvents{}
 	readiness := &lifecycleReadiness{}
 	components := runtimeComponents{
-		platform:  &lifecyclePlatform{events: &events},
-		transport: &lifecycleTransport{events: &events},
+		platform:  &lifecyclePlatform{events: events},
+		transport: &lifecycleTransport{events: events},
 		readiness: readiness,
 	}
 	option := func(settings *options) error {

@@ -234,6 +234,25 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	}
 }
 
+func TestNewForTestingCanceledConstructionClosesOwnedOverrides(t *testing.T) {
+	t.Parallel()
+
+	overrides, persistence, cache, mailer := newHookOverrides(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runtime, err := server.NewForTesting(ctx, overrides)
+	if runtime != nil {
+		t.Fatalf("NewForTesting(canceled) runtime = %#v, want nil", runtime)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("NewForTesting(canceled) error = %v, want context.Canceled", err)
+	}
+	if !persistence.closed.Load() || !cache.closed.Load() || !mailer.closed.Load() {
+		t.Fatal("canceled construction did not close every owned override")
+	}
+}
+
 func TestRootComposesLocalCacheOutsideTimerAndRetry(t *testing.T) {
 	t.Parallel()
 
