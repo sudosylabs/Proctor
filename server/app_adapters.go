@@ -22,26 +22,23 @@ import (
 // configuration into the explicit app.Dependencies bundle so package app never
 // imports platform.
 func applicationDependencies(
-	applicationPlatform *platform.Service,
+	capabilities constructionCapabilities,
 	cfg config.Config,
 	content app.FileContent,
 ) (app.Dependencies, error) {
-	if applicationPlatform == nil {
-		return app.Dependencies{}, errors.New("platform service is nil")
-	}
 	auth := cfg.Authentication
-	cache := platformAuthenticationCache{cache: applicationPlatform.Cache()}
-	log := applicationPlatform.Log()
+	cache := platformAuthenticationCache{cache: capabilities.cache}
+	log := capabilities.logger
 	if content == nil {
 		return app.Dependencies{}, errors.New("file content is nil")
 	}
 	return app.Dependencies{
-		Store:       applicationPlatform.Store(),
+		Store:       capabilities.persistence,
 		Cache:       cache,
-		Mailer:      accountMailerAdapter{mailer: applicationPlatform.Mailer()},
-		Registry:    externalProviderRegistryAdapter{registry: applicationPlatform},
+		Mailer:      accountMailerAdapter{mailer: capabilities.mailer},
+		Registry:    externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent: content,
-		NodeID:      applicationPlatform.Cluster().NodeID(),
+		NodeID:      capabilities.nodeID,
 		PublicURL:   cfg.Server.PublicURL,
 		Password: app.PasswordPolicy{
 			MinimumLength:    auth.Password.MinimumLength,
@@ -96,7 +93,7 @@ func applicationDependencies(
 				MaximumAttempts:       auth.LoginRateLimit.MaximumAttempts,
 				MaximumSourceAttempts: auth.LoginRateLimit.MaximumSourceAttempts,
 			},
-			NodeID: applicationPlatform.Cluster().NodeID(),
+			NodeID: capabilities.nodeID,
 		},
 		RecentAuthenticationTTL:   auth.RecentAuthenticationTTL.Duration,
 		AuthenticationDiagnostics: mlogAuthenticationDiagnostics{log: log},
@@ -107,7 +104,7 @@ func applicationDependencies(
 
 // platformAuthenticationCache adapts platform.Cache to app.authenticationCache.
 type platformAuthenticationCache struct {
-	cache platform.Cache
+	cache borrowedCache
 }
 
 func (c platformAuthenticationCache) Get(ctx context.Context, key string) ([]byte, error) {
@@ -154,7 +151,7 @@ func (c platformAuthenticationCache) Add(
 }
 
 type accountMailerAdapter struct {
-	mailer platform.Mailer
+	mailer borrowedMailer
 }
 
 func (a accountMailerAdapter) Enabled() bool {
@@ -185,20 +182,17 @@ func (a accountMailerAdapter) SendCredentialMail(
 // externalProviderRegistryAdapter exposes the platform registry through the
 // app-owned ExternalIdentityProvider port.
 type externalProviderRegistryAdapter struct {
-	registry interface {
-		ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
-		ExternalAuthenticationProvider(string) (externalauth.Provider, bool)
-	}
+	registry *externalauth.Registry
 }
 
 func (a externalProviderRegistryAdapter) Descriptors() []model.ExternalAuthenticationProvider {
-	return a.registry.ExternalAuthenticationProviders()
+	return a.registry.Descriptors()
 }
 
 func (a externalProviderRegistryAdapter) Provider(
 	id string,
 ) (app.ExternalIdentityProvider, bool) {
-	provider, ok := a.registry.ExternalAuthenticationProvider(id)
+	provider, ok := a.registry.Provider(id)
 	if !ok {
 		return nil, false
 	}
@@ -275,7 +269,7 @@ func mapExternalProviderError(err error) error {
 }
 
 type mlogAuthenticationDiagnostics struct {
-	log *mlog.Logger
+	log runtimeLogger
 }
 
 func (d mlogAuthenticationDiagnostics) WarnContext(ctx context.Context, message string, err error) {
@@ -290,7 +284,7 @@ func (d mlogAuthenticationDiagnostics) WarnContext(ctx context.Context, message 
 }
 
 type mlogRealtimeDiagnostics struct {
-	log *mlog.Logger
+	log runtimeLogger
 }
 
 func (d mlogRealtimeDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
@@ -320,7 +314,7 @@ func (d mlogRealtimeDiagnostics) ErrorContextWithEvent(
 }
 
 type mlogRecoveryDiagnostics struct {
-	log *mlog.Logger
+	log runtimeLogger
 }
 
 func (d mlogRecoveryDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
@@ -337,7 +331,7 @@ func (d mlogRecoveryDiagnostics) ErrorContext(ctx context.Context, message strin
 // websocketLogger adapts mlog to the narrow websocket.Logger port so the
 // sibling transport package never imports mlog.
 type websocketLogger struct {
-	log *mlog.Logger
+	log runtimeLogger
 }
 
 func (l websocketLogger) WarnContext(ctx context.Context, message string, err error) {
@@ -354,7 +348,7 @@ func (l websocketLogger) WarnContext(ctx context.Context, message string, err er
 // apiLogger adapts mlog to the narrow api.Logger port so the HTTP transport
 // package never imports mlog.
 type apiLogger struct {
-	log *mlog.Logger
+	log runtimeLogger
 }
 
 func (l apiLogger) InfoContext(ctx context.Context, message string, fields ...api.LogField) {

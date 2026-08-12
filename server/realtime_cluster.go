@@ -14,10 +14,10 @@ import (
 // realtimeClusterAdapter maps the application RealtimeClusterFanout port onto
 // the best-effort cluster.Transport contract.
 type realtimeClusterAdapter struct {
-	cluster cluster.Transport
+	cluster borrowedCluster
 }
 
-func newRealtimeClusterAdapter(transport cluster.Transport) (*realtimeClusterAdapter, error) {
+func newRealtimeClusterAdapter(transport borrowedCluster) (*realtimeClusterAdapter, error) {
 	if transport == nil {
 		return nil, fmt.Errorf("cluster is nil")
 	}

@@ -55,6 +55,39 @@ type ownedInfrastructure struct {
 	externalAuthentication *externalauth.Registry
 }
 
+// constructionCapabilities is a short-lived, non-owning projection used only
+// while the root assembles consumers. It has no lifecycle operations and must
+// not escape assembleRuntime; Platform owns every referenced capability after
+// acceptance.
+type constructionCapabilities struct {
+	logger                 runtimeLogger
+	persistence            store.Catalog
+	cache                  borrowedCache
+	cluster                borrowedCluster
+	mailer                 borrowedMailer
+	filesystem             vfspkg.FileSystem
+	externalAuthentication *externalauth.Registry
+	nodeID                 string
+}
+
+type borrowedCache interface {
+	Get(context.Context, string) ([]byte, error)
+	Set(context.Context, string, []byte, time.Duration, platform.CacheCondition) error
+	Delete(context.Context, string) error
+	Add(context.Context, string, int64, time.Duration) (int64, error)
+}
+
+type borrowedMailer interface {
+	Enabled() bool
+	Send(context.Context, mailpkg.Message) (mailpkg.Receipt, error)
+}
+
+type borrowedCluster interface {
+	NodeID() string
+	RegisterHandler(cluster.Event, cluster.Handler) error
+	Broadcast(context.Context, *cluster.Message) error
+}
+
 // assembledRuntime retains the assembled graph handles beside the lifecycle
 // components so test construction can inspect the same graph production runs.
 type assembledRuntime struct {
@@ -82,21 +115,21 @@ func assembleRuntime(
 	if err != nil {
 		return nil, err
 	}
-	applicationPlatform, snapshot, err := infrastructure.acceptPlatform(ctx)
+	applicationPlatform, snapshot, capabilities, err := infrastructure.acceptPlatform(ctx)
 	if err != nil {
 		return nil, err
 	}
 	// Construct stateless domain-aware content mechanics over the VFS selected
 	// by the sole composition root. platform.Service retains VFS lifecycle
 	// ownership; File Content neither starts nor closes infrastructure.
-	content, err := filecontent.New(applicationPlatform.VFS())
+	content, err := filecontent.New(capabilities.filesystem)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("construct file content: %w", err),
 			applicationPlatform.Close(),
 		)
 	}
-	applicationDeps, err := applicationDependencies(applicationPlatform, snapshot, content)
+	applicationDeps, err := applicationDependencies(capabilities, snapshot, content)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("project application dependencies: %w", err),
@@ -110,7 +143,7 @@ func assembleRuntime(
 			applicationPlatform.Close(),
 		)
 	}
-	clusterFanout, err := newRealtimeClusterAdapter(applicationPlatform.Cluster())
+	clusterFanout, err := newRealtimeClusterAdapter(capabilities.cluster)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("construct realtime cluster adapter: %w", err),
@@ -135,9 +168,9 @@ func assembleRuntime(
 	}
 	webSocketHub, err := websocket.NewHub(
 		application,
-		websocketLogger{log: applicationPlatform.Log()},
+		websocketLogger{log: capabilities.logger},
 		cfg.Server.PublicURL,
-		applicationPlatform.Cluster().NodeID(),
+		capabilities.nodeID,
 	)
 	if err != nil {
 		return nil, errors.Join(
@@ -153,7 +186,7 @@ func assembleRuntime(
 		)
 	}
 	httpAPI, err := api.New(api.Options{
-		Logger:                  apiLogger{log: applicationPlatform.Log()},
+		Logger:                  apiLogger{log: capabilities.logger},
 		Health:                  readiness,
 		Application:             application,
 		AcademicUnits:           application,
@@ -176,7 +209,7 @@ func assembleRuntime(
 		PublicURL:               cfg.Server.PublicURL,
 		MaxBodyBytes:            cfg.Server.MaxBodyBytes,
 		RecentAuthenticationTTL: cfg.Authentication.RecentAuthenticationTTL.Duration,
-		NodeID:                  applicationPlatform.Cluster().NodeID(),
+		NodeID:                  capabilities.nodeID,
 		WebSocket:               webSocketHub,
 	})
 	if err != nil {
@@ -193,6 +226,8 @@ func assembleRuntime(
 	return &assembledRuntime{
 		components: runtimeComponents{
 			platform:  applicationPlatform,
+			settings:  runtimeSettingsFromConfig(snapshot.Server),
+			logger:    capabilities.logger,
 			jobs:      jobRuntime,
 			transport: httpAPI,
 			websocket: webSocketHub,
@@ -384,7 +419,19 @@ func checkAcquisitionContext(ctx context.Context, phase string) error {
 
 func (i *ownedInfrastructure) acceptPlatform(
 	ctx context.Context,
-) (*platform.Service, config.Config, error) {
+) (*platform.Service, config.Config, constructionCapabilities, error) {
+	capabilities := constructionCapabilities{
+		logger:                 i.logger,
+		persistence:            i.persistence,
+		cache:                  i.cache,
+		cluster:                i.cluster,
+		mailer:                 i.mailer,
+		filesystem:             i.filesystem,
+		externalAuthentication: i.externalAuthentication,
+	}
+	if i.cluster != nil {
+		capabilities.nodeID = i.cluster.NodeID()
+	}
 	resources := platform.OwnedResources{
 		Configuration:          i.configuration,
 		Logger:                 i.logger,
@@ -396,7 +443,11 @@ func (i *ownedInfrastructure) acceptPlatform(
 		ExternalAuthentication: i.externalAuthentication,
 	}
 	*i = ownedInfrastructure{}
-	return platform.Accept(ctx, resources)
+	service, snapshot, err := platform.Accept(ctx, resources)
+	if err != nil {
+		return nil, config.Config{}, constructionCapabilities{}, err
+	}
+	return service, snapshot, capabilities, nil
 }
 
 func (i *ownedInfrastructure) replacePersistence(next store.Store) {

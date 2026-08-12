@@ -134,7 +134,7 @@ func TestWebSocketIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !model.IsValidId(helloData.ConnectionId) ||
-		helloData.NodeId != helper.Cluster.NodeID() ||
+		helloData.NodeId != helper.ConfigStore.Get().Cluster.NodeID ||
 		helloData.Resumed {
 		t.Fatalf("hello data = %#v", helloData)
 	}

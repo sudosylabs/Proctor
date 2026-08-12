@@ -14,7 +14,7 @@ import (
 // composition package builds these from deployment configuration and concrete
 // adapters; App never holds platform.Service.
 type Dependencies struct {
-	Store       store.Store
+	Store       store.Catalog
 	Cache       authenticationCache
 	Mailer      AccountMailer
 	Registry    externalProviderSource

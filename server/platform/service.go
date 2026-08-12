@@ -17,7 +17,6 @@ import (
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
-	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -232,48 +231,6 @@ func closeOwnedResources(resources OwnedResources) error {
 	)
 }
 
-func (s *Service) Config() config.Config {
-	return s.configStore.Get()
-}
-
-func (s *Service) ConfigStore() *config.Store {
-	return s.configStore
-}
-
-func (s *Service) Log() *mlog.Logger {
-	return s.logger
-}
-
-func (s *Service) Store() store.Store {
-	return s.store
-}
-
-func (s *Service) Cache() Cache {
-	return s.cache
-}
-
-func (s *Service) Cluster() Cluster {
-	return s.cluster
-}
-
-func (s *Service) Mailer() Mailer {
-	return s.mailer
-}
-
-func (s *Service) VFS() vfspkg.FileSystem {
-	return s.vfs
-}
-
-func (s *Service) ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider {
-	return s.externalAuthentication.Descriptors()
-}
-
-func (s *Service) ExternalAuthenticationProvider(
-	id string,
-) (externalauth.Provider, bool) {
-	return s.externalAuthentication.Provider(id)
-}
-
 func (s *Service) Start(ctx context.Context) error {
 	if err := s.cluster.Start(ctx); err != nil {
 		return fmt.Errorf("start cluster transport: %w", err)
@@ -306,7 +263,7 @@ func (s *Service) Close() error {
 		s.configStore.RemoveListener(s.configListener)
 		stopCtx, cancelStop := context.WithTimeout(
 			context.Background(),
-			s.Config().Server.ShutdownTimeout.Duration,
+			s.configStore.Get().Server.ShutdownTimeout.Duration,
 		)
 		defer cancelStop()
 		s.shutdownErr = errors.Join(

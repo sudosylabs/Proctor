@@ -38,8 +38,6 @@ type lifecyclePlatform struct {
 	startErr error
 	closeErr error
 	events   *lifecycleEvents
-	config   config.Config
-	logger   *mlog.Logger
 }
 
 func (p *lifecyclePlatform) Start(context.Context) error {
@@ -51,9 +49,6 @@ func (p *lifecyclePlatform) Close() error {
 	p.events.record("platform-close")
 	return p.closeErr
 }
-
-func (p *lifecyclePlatform) Config() config.Config { return p.config }
-func (p *lifecyclePlatform) Log() *mlog.Logger     { return p.logger }
 
 type lifecycleTransport struct {
 	events   *lifecycleEvents
@@ -675,14 +670,14 @@ func newLifecycleTestServer(t *testing.T, components runtimeComponents) *Server 
 		t.Fatalf("create test logger: %v", err)
 	}
 	t.Cleanup(func() { _ = logger.Shutdown() })
-	platform, ok := components.platform.(*lifecyclePlatform)
-	if !ok {
+	if _, ok := components.platform.(*lifecyclePlatform); !ok {
 		t.Fatal("lifecycle test platform has unexpected type")
 	}
-	platform.config = config.Default()
-	platform.config.Server.ListenAddress = "127.0.0.1:0"
-	platform.config.Server.ShutdownTimeout.Duration = time.Second
-	platform.logger = logger
+	settings := config.Default().Server
+	settings.ListenAddress = "127.0.0.1:0"
+	settings.ShutdownTimeout.Duration = time.Second
+	components.settings = runtimeSettingsFromConfig(settings)
+	components.logger = logger
 	if components.listen == nil {
 		components.listen = func(string, string) (net.Listener, error) {
 			return nil, errors.New("listener should not be created")

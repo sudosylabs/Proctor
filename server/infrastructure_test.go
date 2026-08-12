@@ -5,14 +5,19 @@ package server
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
+	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/localcachelayer"
+	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
 
 type releaseStore struct {
@@ -21,7 +26,9 @@ type releaseStore struct {
 }
 
 func (s releaseStore) Close() error {
-	*s.events = append(*s.events, "store")
+	if s.events != nil {
+		*s.events = append(*s.events, "store")
+	}
 	return nil
 }
 
@@ -31,7 +38,9 @@ type releaseCache struct {
 }
 
 func (c releaseCache) Close() error {
-	*c.events = append(*c.events, "cache")
+	if c.events != nil {
+		*c.events = append(*c.events, "cache")
+	}
 	return nil
 }
 
@@ -41,7 +50,9 @@ type releaseMailer struct {
 }
 
 func (m releaseMailer) Close() error {
-	*m.events = append(*m.events, "mailer")
+	if m.events != nil {
+		*m.events = append(*m.events, "mailer")
+	}
 	return nil
 }
 
@@ -50,8 +61,14 @@ type releaseCluster struct {
 	events *[]string
 }
 
+func (c releaseCluster) NodeID() string                                       { return "release-node" }
+func (c releaseCluster) RegisterHandler(cluster.Event, cluster.Handler) error { return nil }
+func (c releaseCluster) Broadcast(context.Context, *cluster.Message) error    { return nil }
+
 func (c releaseCluster) Stop(context.Context) error {
-	*c.events = append(*c.events, "cluster")
+	if c.events != nil {
+		*c.events = append(*c.events, "cluster")
+	}
 	return nil
 }
 
@@ -61,7 +78,9 @@ type releaseVFS struct {
 }
 
 func (f releaseVFS) Close() error {
-	*f.events = append(*f.events, "vfs")
+	if f.events != nil {
+		*f.events = append(*f.events, "vfs")
+	}
 	return nil
 }
 
@@ -87,6 +106,81 @@ func TestOwnedInfrastructureReleasesInReverseDependencyOrder(t *testing.T) {
 		if events[index] != want[index] {
 			t.Fatalf("release order = %v, want %v", events, want)
 		}
+	}
+}
+
+type layerOrderStore struct {
+	store.Store
+	periods store.AcademicPeriodStore
+}
+
+func (s layerOrderStore) AcademicPeriod() store.AcademicPeriodStore   { return s.periods }
+func (layerOrderStore) ClusterDiscovery() store.ClusterDiscoveryStore { return nil }
+func (layerOrderStore) Close() error                                  { return nil }
+
+type layerOrderPeriods struct {
+	store.AcademicPeriodStore
+	period *model.AcademicPeriod
+	reads  atomic.Int64
+}
+
+func (s *layerOrderPeriods) Get(context.Context, string) (*model.AcademicPeriod, error) {
+	s.reads.Add(1)
+	copy := *s.period
+	return &copy, nil
+}
+
+func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(context.Background(), config.NewMemoryStore(nil), config.StoreOptions{
+		LookupEnv: func(string) (string, bool) { return "", false },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger, err := mlog.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	period := &model.AcademicPeriod{
+		ID: model.NewAcademicPeriodID(), InstitutionID: model.NewInstitutionID(),
+		Name: "2026", DisplayName: "2026", StartsAt: time.Now().UTC(),
+		EndsAt: time.Now().UTC().Add(time.Hour), CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(), Revision: 1,
+	}
+	periods := &layerOrderPeriods{period: period}
+	cache, err := localcachelayer.NewMemoryCache(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var timedReads atomic.Int64
+	owner, err := openRuntimeInfrastructure(context.Background(), "", TestingOverrides{
+		Configuration: configuration,
+		Logger:        logger,
+		Persistence:   layerOrderStore{periods: periods},
+		Cache:         releaseCache{}, Mailer: releaseMailer{}, Filesystem: releaseVFS{}, Cluster: releaseCluster{},
+		StoreLocalCache: cache,
+		StoreMetrics: timerlayer.RecorderFunc(func(operation timerlayer.Operation, _ timerlayer.Outcome, _ time.Duration) {
+			if operation.String() == "academic_period.get" {
+				timedReads.Add(1)
+			}
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.release() })
+	for range 2 {
+		if _, err := owner.persistence.AcademicPeriod().Get(context.Background(), period.ID.String()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := periods.reads.Load(); got != 1 {
+		t.Fatalf("authoritative reads = %d, want 1", got)
+	}
+	if got := timedReads.Load(); got != 1 {
+		t.Fatalf("timed reads = %d, want 1 because local cache is outermost", got)
 	}
 }
 

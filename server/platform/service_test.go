@@ -232,9 +232,9 @@ func TestAcceptReturnsTheValidatedConstructionSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	updated := service.ConfigStore().Get()
+	updated := configuration.Get()
 	updated.Server.PublicURL = "https://updated.example.test"
-	if _, _, err := service.ConfigStore().Set(context.Background(), updated); err != nil {
+	if _, _, err := configuration.Set(context.Background(), updated); err != nil {
 		t.Fatal(err)
 	}
 	if got := snapshot.Server.PublicURL; got != "https://initial.example.test" {
@@ -468,13 +468,15 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service, err := acceptForTest(completeOwnedResources(t, store))
+	resources := completeOwnedResources(t, store)
+	logger := resources.Logger
+	service, err := acceptForTest(resources)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	service.Log().Info("first target")
-	if err := service.Log().Flush(); err != nil {
+	logger.Info("first target")
+	if err := logger.Flush(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -483,8 +485,8 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 	if _, _, err := store.Set(context.Background(), updated); err != nil {
 		t.Fatal(err)
 	}
-	service.Log().Info("second target")
-	if err := service.Log().Flush(); err != nil {
+	logger.Info("second target")
+	if err := logger.Flush(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -536,13 +538,15 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	service, err := acceptForTest(completeOwnedResources(t, configuration))
+	resources := completeOwnedResources(t, configuration)
+	providers := resources.ExternalAuthentication
+	service, err := acceptForTest(resources)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	if providers := service.ExternalAuthenticationProviders(); len(providers) != 1 || providers[0].Id != "campus-cas" {
-		t.Fatalf("initial external providers = %#v", providers)
+	if descriptors := providers.Descriptors(); len(descriptors) != 1 || descriptors[0].Id != "campus-cas" {
+		t.Fatalf("initial external providers = %#v", descriptors)
 	}
 
 	updated := configuration.Get()
@@ -553,8 +557,8 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if providers := service.ExternalAuthenticationProviders(); len(providers) != 0 {
-		t.Fatalf("reconfigured external providers = %#v", providers)
+	if descriptors := providers.Descriptors(); len(descriptors) != 0 {
+		t.Fatalf("reconfigured external providers = %#v", descriptors)
 	}
 }
 

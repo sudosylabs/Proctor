@@ -53,8 +53,17 @@ func WithConfigPath(path string) Option {
 type runtimePlatform interface {
 	Start(context.Context) error
 	Close() error
-	Config() config.Config
-	Log() *mlog.Logger
+}
+
+// runtimeLogger is a borrowed operational view. Lifecycle operations such as
+// Flush and Shutdown remain available only to Platform, the infrastructure
+// owner.
+type runtimeLogger interface {
+	Info(message string, fields ...mlog.Field)
+	InfoContext(ctx context.Context, message string, fields ...mlog.Field)
+	WarnContext(ctx context.Context, message string, fields ...mlog.Field)
+	ErrorContext(ctx context.Context, message string, fields ...mlog.Field)
+	StdLogger(level slog.Level) *log.Logger
 }
 
 type runtimeTransport interface {
@@ -102,8 +111,31 @@ type httpServerSettings struct {
 	maxHeaderBytes    int
 }
 
+type runtimeSettings struct {
+	listenAddress     string
+	publicURL         string
+	readHeaderTimeout time.Duration
+	readTimeout       time.Duration
+	writeTimeout      time.Duration
+	idleTimeout       time.Duration
+	shutdownTimeout   time.Duration
+	maxHeaderBytes    int
+}
+
+func runtimeSettingsFromConfig(settings config.Server) runtimeSettings {
+	return runtimeSettings{
+		listenAddress: settings.ListenAddress, publicURL: settings.PublicURL,
+		readHeaderTimeout: settings.ReadHeaderTimeout.Duration,
+		readTimeout:       settings.ReadTimeout.Duration, writeTimeout: settings.WriteTimeout.Duration,
+		idleTimeout: settings.IdleTimeout.Duration, shutdownTimeout: settings.ShutdownTimeout.Duration,
+		maxHeaderBytes: settings.MaxHeaderBytes,
+	}
+}
+
 type runtimeComponents struct {
 	platform  runtimePlatform
+	settings  runtimeSettings
+	logger    runtimeLogger
 	jobs      runtimeJobs
 	transport runtimeTransport
 	websocket runtimeWebSocket
@@ -232,20 +264,20 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		}
 	}
 
-	cfg := s.components.platform.Config()
-	listener, err := s.components.listen("tcp", cfg.Server.ListenAddress)
+	settings := s.components.settings
+	listener, err := s.components.listen("tcp", settings.listenAddress)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", cfg.Server.ListenAddress, err)
+		return fmt.Errorf("listen on %s: %w", settings.listenAddress, err)
 	}
 
 	httpServer := s.components.newHTTP(httpServerSettings{
 		handler:           s.components.transport,
-		errorLog:          s.components.platform.Log().StdLogger(slog.LevelError),
-		readHeaderTimeout: cfg.Server.ReadHeaderTimeout.Duration,
-		readTimeout:       cfg.Server.ReadTimeout.Duration,
-		writeTimeout:      cfg.Server.WriteTimeout.Duration,
-		idleTimeout:       cfg.Server.IdleTimeout.Duration,
-		maxHeaderBytes:    cfg.Server.MaxHeaderBytes,
+		errorLog:          s.components.logger.StdLogger(slog.LevelError),
+		readHeaderTimeout: settings.readHeaderTimeout,
+		readTimeout:       settings.readTimeout,
+		writeTimeout:      settings.writeTimeout,
+		idleTimeout:       settings.idleTimeout,
+		maxHeaderBytes:    settings.maxHeaderBytes,
 	})
 	s.httpMu.Lock()
 	s.http = httpServer
@@ -261,7 +293,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	// that rejects the listener reports that error instead of acknowledging it.
 	select {
 	case serveErr := <-serveErrors:
-		shutdownErr := s.shutdownHTTP(cfg.Server.ShutdownTimeout.Duration)
+		shutdownErr := s.shutdownHTTP(settings.shutdownTimeout)
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), shutdownErr)
 		}
@@ -269,31 +301,31 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	case <-serveEntered:
 	}
 	s.components.readiness.SetReady(true)
-	s.components.platform.Log().InfoContext(
+	s.components.logger.InfoContext(
 		runCtx,
 		"server started",
 		mlog.String("listen_address", listener.Addr().String()),
-		mlog.String("public_url", cfg.Server.PublicURL),
+		mlog.String("public_url", settings.publicURL),
 		mlog.String("version", app.Version),
 	)
 
 	select {
 	case serveErr := <-serveErrors:
 		s.components.readiness.SetReady(false)
-		shutdownErr := s.shutdownHTTP(cfg.Server.ShutdownTimeout.Duration)
+		shutdownErr := s.shutdownHTTP(settings.shutdownTimeout)
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), shutdownErr)
 		}
 		return shutdownErr
 	case <-runCtx.Done():
 		s.components.readiness.SetReady(false)
-		s.components.platform.Log().Info("server shutdown started")
+		s.components.logger.Info("server shutdown started")
 	}
 
-	if err := s.shutdownHTTP(cfg.Server.ShutdownTimeout.Duration); err != nil {
+	if err := s.shutdownHTTP(settings.shutdownTimeout); err != nil {
 		return err
 	}
-	shutdownTimer := time.NewTimer(cfg.Server.ShutdownTimeout.Duration)
+	shutdownTimer := time.NewTimer(settings.shutdownTimeout)
 	defer shutdownTimer.Stop()
 	select {
 	case serveErr := <-serveErrors:
@@ -303,7 +335,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	case <-shutdownTimer.C:
 		return errors.New("HTTP server did not stop after graceful shutdown")
 	}
-	s.components.platform.Log().Info("server stopped")
+	s.components.logger.Info("server stopped")
 	return nil
 }
 

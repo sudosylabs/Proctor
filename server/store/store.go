@@ -15,6 +15,37 @@ import (
 // Store is the root persistence contract used by the application and platform.
 // Concrete adapters expose each model store through this interface so callers
 // do not depend on PostgreSQL implementation types.
+// Catalog exposes the complete family of authoritative persistence contracts
+// without lifecycle authority. Application construction borrows this view;
+// the node runtime and Platform retain validation and closure ownership.
+type Catalog interface {
+	Institution() InstitutionStore
+	AcademicUnit() AcademicUnitStore
+	Programme() ProgrammeStore
+	ProgrammeLevel() ProgrammeLevelStore
+	AcademicPeriod() AcademicPeriodStore
+	Class() ClassStore
+	User() UserStore
+	File() FileStore
+	Job() JobStore
+	ExternalIdentity() ExternalIdentityStore
+	ExternalLoginState() ExternalLoginStateStore
+	UserToken() UserTokenStore
+	PersonalAccessToken() PersonalAccessTokenStore
+	MFA() MFAStore
+	Affiliation() AffiliationStore
+	AcademicUnitMember() AcademicUnitMemberStore
+	ClassMember() ClassMemberStore
+	PasswordCredential() PasswordCredentialStore
+	Session() SessionStore
+	SessionCredential() SessionCredentialStore
+	Role() RoleStore
+	RoleBinding() RoleBindingStore
+	Audit() AuditStore
+	Installation() InstallationStore
+	ClusterDiscovery() ClusterDiscoveryStore
+}
+
 type Store interface {
 	Institution() InstitutionStore
 	AcademicUnit() AcademicUnitStore

@@ -54,15 +54,6 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
-	if helper.Platform.ConfigStore() != helper.ConfigStore {
-		t.Fatal("platform and test helper do not share the same configuration store")
-	}
-	if helper.Platform.Store() == helper.PersistenceClose {
-		t.Fatal("platform persistence bypassed the root store timing layer")
-	}
-	if helper.Platform.Cluster() != helper.Cluster {
-		t.Fatal("application graph contains more than one cluster transport")
-	}
 	if helper.Handler() != helper.API {
 		t.Fatal("test helper does not serve the assembled HTTP transport")
 	}

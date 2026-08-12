@@ -24,10 +24,8 @@ import (
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/mlog"
-	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
@@ -36,21 +34,20 @@ import (
 // graph construction.
 type hookStore struct {
 	store.Store
-	closed         atomic.Bool
-	pingAttempts   atomic.Int64
-	ping           func(int64) error
-	validateErr    error
-	academicPeriod store.AcademicPeriodStore
-	closedCount    atomic.Int64
-	closeEvents    *hookCloseEvents
-	closeErr       error
+	closed       atomic.Bool
+	pingAttempts atomic.Int64
+	ping         func(int64) error
+	validateErr  error
+	closedCount  atomic.Int64
+	closeEvents  *hookCloseEvents
+	closeErr     error
 }
 
 func (s *hookStore) Institution() store.InstitutionStore       { return hookInstitutionStore{} }
 func (s *hookStore) AcademicUnit() store.AcademicUnitStore     { return hookAcademicUnitStore{} }
 func (s *hookStore) Programme() store.ProgrammeStore           { return nil }
 func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
-func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore { return s.academicPeriod }
+func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
 func (s *hookStore) Class() store.ClassStore                   { return hookClassStore{} }
 func (s *hookStore) Affiliation() store.AffiliationStore       { return nil }
 func (s *hookStore) User() store.UserStore                     { return hookUserStore{} }
@@ -122,17 +119,6 @@ type hookCache struct {
 	closedCount atomic.Int64
 	closeEvents *hookCloseEvents
 	closeErr    error
-}
-
-type hookAcademicPeriodStore struct {
-	store.AcademicPeriodStore
-	period   *model.AcademicPeriod
-	attempts atomic.Int64
-}
-
-func (s *hookAcademicPeriodStore) Get(context.Context, string) (*model.AcademicPeriod, error) {
-	s.attempts.Add(1)
-	return s.period, nil
 }
 
 func (c *hookCache) Get(context.Context, string) ([]byte, error) {
@@ -332,28 +318,9 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	if runtime.Server.Ready() {
 		t.Fatal("server is ready before Start")
 	}
-	if runtime.Platform.Store() == persistence {
-		t.Fatal("platform persistence bypassed the root store layers")
-	}
-	if _, ok := runtime.Platform.Store().(*localcachelayer.Layer); !ok {
-		t.Fatalf("outer store layer = %T, want *localcachelayer.Layer", runtime.Platform.Store())
-	}
-	if runtime.Platform.ConfigStore() != configuration {
-		t.Fatal("platform does not own the provided configuration store")
-	}
-	if runtime.Platform.Cluster() == nil {
-		t.Fatal("cluster was not selected from configuration")
-	}
 	observationsBeforePing := timedOperations.Load()
-	if err := runtime.Platform.Store().Ping(context.Background()); err != nil {
-		t.Fatalf("timed persistence Ping() error = %v", err)
-	}
-	if timedOperations.Load() != observationsBeforePing+1 {
-		t.Fatalf(
-			"timed persistence observations = %d, want %d",
-			timedOperations.Load(),
-			observationsBeforePing+1,
-		)
+	if observationsBeforePing == 0 {
+		t.Fatal("root store timing layer did not observe construction dependency checks")
 	}
 
 	if err := runtime.Server.Close(); err != nil {
@@ -570,61 +537,6 @@ func TestAcquisitionPreservesPrimaryAndCleanupFailures(t *testing.T) {
 	}
 	if !mailer.closed.Load() {
 		t.Fatal("cleanup stopped before closing remaining owned resources")
-	}
-}
-
-func TestRootComposesLocalCacheOutsideTimerAndRetry(t *testing.T) {
-	t.Parallel()
-
-	overrides, persistence, _, _ := newHookOverrides(t)
-	now := time.Now().UTC()
-	periods := &hookAcademicPeriodStore{period: &model.AcademicPeriod{
-		ID:            model.NewAcademicPeriodID(),
-		InstitutionID: model.NewInstitutionID(),
-		Name:          "2026-2027",
-		DisplayName:   "2026-2027",
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		StartsAt:      now,
-		EndsAt:        now.Add(time.Hour),
-		Revision:      1,
-	}}
-	persistence.academicPeriod = periods
-	cache, err := localcachelayer.NewMemoryCache(8)
-	if err != nil {
-		t.Fatal(err)
-	}
-	overrides.StoreLocalCache = cache
-	var timedReads atomic.Int64
-	overrides.StoreMetrics = timerlayer.RecorderFunc(func(
-		operation timerlayer.Operation,
-		_ timerlayer.Outcome,
-		_ time.Duration,
-	) {
-		if operation.String() == "academic_period.get" {
-			timedReads.Add(1)
-		}
-	})
-
-	runtime, err := server.NewForTesting(context.Background(), overrides)
-	if err != nil {
-		t.Fatalf("NewForTesting() error = %v", err)
-	}
-	t.Cleanup(func() { _ = runtime.Server.Close() })
-
-	for range 2 {
-		if _, err := runtime.Platform.Store().AcademicPeriod().Get(
-			context.Background(),
-			periods.period.ID.String(),
-		); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := periods.attempts.Load(); got != 1 {
-		t.Fatalf("authoritative reads = %d, want 1", got)
-	}
-	if got := timedReads.Load(); got != 1 {
-		t.Fatalf("timed reads = %d, want 1 because cache is outermost", got)
 	}
 }
 

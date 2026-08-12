@@ -76,7 +76,6 @@ type Helper struct {
 	// stub. It is nil when the graph was constructed with WithStore.
 	PersistenceClose *LifecycleStore
 	Cache            *Cache
-	Cluster          platform.Cluster
 	Mailer           *Mailer
 	VFS              *memoryvfs.FS
 }
@@ -167,7 +166,6 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		Logs:             logs,
 		PersistenceClose: lifecycle,
 		Cache:            cache,
-		Cluster:          runtime.Platform.Cluster(),
 		Mailer:           mailer,
 		VFS:              filesystem,
 	}
