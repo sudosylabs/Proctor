@@ -4,6 +4,11 @@
 // Package config owns Proctor's operator-supplied deployment configuration and
 // its lifecycle.
 //
+// The package excludes durable application settings and business policy. It
+// depends only on the Go standard library; the module-root composition code
+// selects configuration paths and projects validated values into runtime
+// policies and infrastructure adapters.
+//
 // A Store loads defaults, overlays a typed backing, and finally applies active
 // PROCTOR_ environment settings. It keeps the validated backing snapshot
 // separate from the effective snapshot observed by the runtime. Callers always

@@ -261,6 +261,7 @@ func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) 
 	}
 	environment := map[string]string{
 		"PROCTOR_SERVER_LISTEN_ADDRESS": "127.0.0.1:9000",
+		"PROCTOR_SERVER_READ_TIMEOUT":   "40s",
 	}
 	store, err := NewStore(
 		context.Background(),
@@ -276,8 +277,9 @@ func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) 
 	t.Cleanup(func() { _ = store.Close() })
 
 	candidate := store.Get()
-	candidate.Server.ReadTimeout.Duration = 45 * time.Second
+	candidate.Server.WriteTimeout.Duration = 45 * time.Second
 	delete(environment, "PROCTOR_SERVER_LISTEN_ADDRESS")
+	environment["PROCTOR_SERVER_READ_TIMEOUT"] = "50s"
 	environment["PROCTOR_SERVER_PUBLIC_URL"] = "https://environment.example.edu"
 	if _, _, err := store.Set(context.Background(), candidate); err != nil {
 		t.Fatal(err)
@@ -290,25 +292,123 @@ func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) 
 	if persisted.Server.PublicURL != initial.Server.PublicURL {
 		t.Fatalf("persisted public URL = %q", persisted.Server.PublicURL)
 	}
-	if persisted.Server.ReadTimeout.Duration != 45*time.Second {
+	if persisted.Server.ReadTimeout != initial.Server.ReadTimeout {
 		t.Fatalf("persisted read timeout = %s", persisted.Server.ReadTimeout.Duration)
+	}
+	if persisted.Server.WriteTimeout.Duration != 45*time.Second {
+		t.Fatalf("persisted write timeout = %s", persisted.Server.WriteTimeout.Duration)
 	}
 	effective := store.Get()
 	if effective.Server.ListenAddress != initial.Server.ListenAddress ||
-		effective.Server.PublicURL != environment["PROCTOR_SERVER_PUBLIC_URL"] {
+		effective.Server.PublicURL != environment["PROCTOR_SERVER_PUBLIC_URL"] ||
+		effective.Server.ReadTimeout.Duration != 50*time.Second {
 		t.Fatalf("effective server configuration = %#v", effective.Server)
 	}
 	overrides := store.EnvironmentOverrides()
-	if !reflect.DeepEqual(overrides, []string{"PROCTOR_SERVER_PUBLIC_URL"}) {
+	wantOverrides := []string{
+		"PROCTOR_SERVER_PUBLIC_URL",
+		"PROCTOR_SERVER_READ_TIMEOUT",
+	}
+	if !reflect.DeepEqual(overrides, wantOverrides) {
 		t.Fatalf("environment overrides = %v", overrides)
 	}
 	overrides[0] = "mutated"
 	if !reflect.DeepEqual(
 		store.EnvironmentOverrides(),
-		[]string{"PROCTOR_SERVER_PUBLIC_URL"},
+		wantOverrides,
 	) {
 		t.Fatal("EnvironmentOverrides exposed mutable store state")
 	}
+}
+
+func TestSetFailuresDoNotPublishPartialState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		environment map[string]string
+		candidate   func(*Config)
+		failSave    bool
+	}{
+		{
+			name:      "candidate validation",
+			candidate: func(candidate *Config) { candidate.Server.ReadTimeout.Duration = 0 },
+		},
+		{
+			name: "effective validation",
+			environment: map[string]string{
+				"PROCTOR_SERVER_MAX_HEADER_BYTES": "0",
+			},
+		},
+		{
+			name:     "backing save",
+			failSave: true,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			environment := map[string]string{}
+			initialData, err := json.Marshal(Default())
+			if err != nil {
+				t.Fatal(err)
+			}
+			memory := NewMemoryStore(initialData)
+			var backing BackingStore = memory
+			if test.failSave {
+				backing = failingSaveBacking{BackingStore: memory}
+			}
+			store, err := NewStore(
+				context.Background(),
+				backing,
+				StoreOptions{LookupEnv: func(key string) (string, bool) {
+					value, ok := environment[key]
+					return value, ok
+				}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			for key, value := range test.environment {
+				environment[key] = value
+			}
+
+			beforePersisted := store.GetPersisted()
+			beforeEffective := store.Get()
+			var notifications atomic.Int32
+			store.AddListener(func(Config, Config) { notifications.Add(1) })
+			candidate := store.Get()
+			candidate.Server.PublicURL = "https://should-not-persist.example.edu"
+			if test.candidate != nil {
+				test.candidate(&candidate)
+			}
+			if _, _, err := store.Set(context.Background(), candidate); err == nil {
+				t.Fatal("Set succeeded")
+			}
+
+			if !reflect.DeepEqual(store.GetPersisted(), beforePersisted) {
+				t.Fatal("failed Set changed persisted configuration")
+			}
+			if !reflect.DeepEqual(store.Get(), beforeEffective) {
+				t.Fatal("failed Set changed effective configuration")
+			}
+			if notifications.Load() != 0 {
+				t.Fatalf("failed Set sent %d listener notifications", notifications.Load())
+			}
+			data, err := memory.Load(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(data, initialData) {
+				t.Fatal("failed Set changed backing configuration")
+			}
+		})
+	}
+	// Config is a closed concrete JSON shape whose marshalers have no
+	// data-dependent error outcome, so encoding has no inducible failure case.
 }
 
 func TestInvalidEnvironmentDuringSetDoesNotPublishPartialState(t *testing.T) {
@@ -606,4 +706,12 @@ func TestDiffReportsStableConfigurationPaths(t *testing.T) {
 
 func noEnvironment(string) (string, bool) {
 	return "", false
+}
+
+type failingSaveBacking struct {
+	BackingStore
+}
+
+func (failingSaveBacking) Save(context.Context, []byte) error {
+	return errors.New("save failed")
 }
