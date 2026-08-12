@@ -20,7 +20,8 @@ import (
 type App struct {
 	store store.Store
 
-	authentication         *AuthenticationService
+	authentication         *authenticationService
+	selfSessions           *selfSessionService
 	externalAuthentication *ExternalAuthenticationService
 	mfa                    *MFAService
 	authorization          *AuthorizationService
@@ -124,18 +125,36 @@ func New(deps Dependencies) (*App, error) {
 
 	// Expand PAT policy used both at bearer resolution and administration.
 	patPolicy := deps.PersonalAccessToken
+	mfaVerifier, err := newLoginMFAVerifier(deps.Store.MFA(), mfa)
+	if err != nil {
+		return nil, err
+	}
+	patResolver, err := newPersonalAccessTokenBearerResolver(
+		deps.Store.PersonalAccessToken(), patPolicy, deps.AuthenticationDiagnostics,
+	)
+	if err != nil {
+		return nil, err
+	}
 	authentication, err := newAuthenticationService(
-		deps.Store,
+		deps.Store.User(),
+		deps.Store.PasswordCredential(),
+		deps.Store.Session(),
+		deps.Store.SessionCredential(),
 		deps.Cache,
 		realtime,
 		hasher,
-		mfa,
+		mfaVerifier,
+		patResolver,
 		deps.Sessions,
 		deps.LoginRateLimit,
-		patPolicy,
 		deps.AuthenticationDiagnostics,
+		model.NewCredentialToken,
 		time.Now,
 	)
+	if err != nil {
+		return nil, err
+	}
+	selfSessions, err := newSelfSessionService(deps.Store.Session(), realtime, time.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -321,6 +340,7 @@ func New(deps Dependencies) (*App, error) {
 	return &App{
 		store:                   deps.Store,
 		authentication:          authentication,
+		selfSessions:            selfSessions,
 		externalAuthentication:  externalAuthentication,
 		mfa:                     mfa,
 		authorization:           authorization,

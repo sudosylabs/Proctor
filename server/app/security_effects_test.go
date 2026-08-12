@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestAuthenticationCacheInvalidatorRequiresDependencies(t *testing.T) {
@@ -50,24 +51,63 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mfa := mustTestMFAService(t)
-	arguments := func(effects authenticationSecurityEffects) error {
+	type dependencies struct {
+		users              store.UserStore
+		passwords          store.PasswordCredentialStore
+		sessions           store.SessionStore
+		sessionCredentials store.SessionCredentialStore
+		effects            authenticationSecurityEffects
+		mfa                authenticationMFAVerifier
+		personalTokens     authenticationPATResolver
+		newCredential      func() string
+	}
+	valid := dependencies{
+		users: persistence.User(), passwords: persistence.PasswordCredential(),
+		sessions: persistence.Session(), sessionCredentials: persistence.SessionCredential(),
+		effects: discardAuthenticationSecurityEffects{},
+		mfa:     discardAuthenticationMFAVerifier{}, personalTokens: discardAuthenticationPATResolver{},
+		newCredential: model.NewCredentialToken,
+	}
+	construct := func(deps dependencies) error {
 		_, constructorErr := newAuthenticationService(
-			persistence,
+			deps.users,
+			deps.passwords,
+			deps.sessions,
+			deps.sessionCredentials,
 			cache,
-			effects,
+			deps.effects,
 			hasher,
-			mfa,
+			deps.mfa,
+			deps.personalTokens,
 			SessionPolicy{},
 			LoginRateLimitPolicy{},
-			PersonalAccessTokenPolicy{},
 			&securityEffectsDiagnosticsFake{},
+			deps.newCredential,
 			nil,
 		)
 		return constructorErr
 	}
-	if err := arguments(nil); err == nil {
-		t.Fatal("nil authentication security effects were accepted")
+	tests := []struct {
+		name   string
+		mutate func(*dependencies)
+	}{
+		{name: "users", mutate: func(deps *dependencies) { deps.users = nil }},
+		{name: "passwords", mutate: func(deps *dependencies) { deps.passwords = nil }},
+		{name: "sessions", mutate: func(deps *dependencies) { deps.sessions = nil }},
+		{name: "session credentials", mutate: func(deps *dependencies) { deps.sessionCredentials = nil }},
+		{name: "effects", mutate: func(deps *dependencies) { deps.effects = nil }},
+		{name: "MFA verifier", mutate: func(deps *dependencies) { deps.mfa = nil }},
+		{name: "PAT resolver", mutate: func(deps *dependencies) { deps.personalTokens = nil }},
+		{name: "credential generator", mutate: func(deps *dependencies) { deps.newCredential = nil }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := valid
+			test.mutate(&candidate)
+			if err := construct(candidate); err == nil {
+				t.Fatalf("nil %s dependency was accepted", test.name)
+			}
+		})
 	}
 }
 
@@ -95,24 +135,24 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 func TestAuthenticationAndRealtimeRetainOnlyNarrowSiblingPorts(t *testing.T) {
 	t.Parallel()
 
-	authenticationType := reflect.TypeOf(AuthenticationService{})
+	authenticationType := reflect.TypeOf(authenticationService{})
 	realtimePointerType := reflect.TypeOf((*RealtimeService)(nil))
 	for index := 0; index < authenticationType.NumField(); index++ {
 		field := authenticationType.Field(index)
 		if field.Type == realtimePointerType {
-			t.Fatalf("AuthenticationService retains RealtimeService in field %q", field.Name)
+			t.Fatalf("authenticationService retains RealtimeService in field %q", field.Name)
 		}
-		if field.Type.Kind() == reflect.Func && field.Name != "now" {
-			t.Fatalf("AuthenticationService retains mutable callback field %q", field.Name)
+		if field.Type.Kind() == reflect.Func && field.Name != "now" && field.Name != "newCredential" {
+			t.Fatalf("authenticationService retains mutable callback field %q", field.Name)
 		}
 	}
 
 	realtimeType := reflect.TypeOf(RealtimeService{})
-	authenticationPointerType := reflect.TypeOf((*AuthenticationService)(nil))
+	authenticationPointerType := reflect.TypeOf((*authenticationService)(nil))
 	for index := 0; index < realtimeType.NumField(); index++ {
 		field := realtimeType.Field(index)
 		if field.Type == authenticationPointerType {
-			t.Fatalf("RealtimeService retains AuthenticationService in field %q", field.Name)
+			t.Fatalf("RealtimeService retains authenticationService in field %q", field.Name)
 		}
 	}
 }

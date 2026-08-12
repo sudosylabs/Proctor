@@ -194,9 +194,9 @@ func TestStaleAuthenticationCacheBoundedBySessionExpiry(t *testing.T) {
 	storeFake := newAuthenticationStoreFake()
 	cache := newAuthenticationCacheFake()
 	service := newTestAuthenticationServiceWithCache(t, storeFake, cache)
-	service.sessions.AccessTTL = time.Hour
-	service.sessions.IdleTTL = time.Hour
-	service.sessions.AbsoluteTTL = time.Hour
+	service.sessionPolicy.AccessTTL = time.Hour
+	service.sessionPolicy.IdleTTL = time.Hour
+	service.sessionPolicy.AbsoluteTTL = time.Hour
 
 	fixedNow := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return fixedNow }
@@ -289,7 +289,7 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 
 func seedAuthenticatedSession(
 	t *testing.T,
-	service *AuthenticationService,
+	service *authenticationService,
 ) (*model.User, string) {
 	t.Helper()
 	password := "CorrectHorseBatteryStaple1!"

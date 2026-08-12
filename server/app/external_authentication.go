@@ -76,7 +76,7 @@ type ExternalAuthenticationService struct {
 	registry       externalProviderSource
 	store          store.Store
 	cache          authenticationCache
-	authentication *AuthenticationService
+	authentication authenticationSessionIssuer
 	invalidator    authenticationInvalidator
 	audit          *AuditService
 	policy         ExternalAuthenticationPolicy
@@ -88,7 +88,7 @@ func newExternalAuthenticationService(
 	registry externalProviderSource,
 	persistence store.Store,
 	cache authenticationCache,
-	authentication *AuthenticationService,
+	authentication authenticationSessionIssuer,
 	invalidator authenticationInvalidator,
 	audit *AuditService,
 	policy ExternalAuthenticationPolicy,
@@ -460,14 +460,12 @@ func (s *ExternalAuthenticationService) complete(
 	}
 	session, tokens, sessionErr := s.authentication.createSession(
 		ctx,
-		resolution.User,
-		state.ClientType,
-		state.DeviceID,
-		state.DeviceName,
-		method,
-		assertion.AuthenticationStrength,
-		assertion.AuthenticatedAt,
-		mfaCompletedAt,
+		sessionIssuance{
+			User: resolution.User, ClientType: state.ClientType,
+			DeviceID: state.DeviceID, DeviceName: state.DeviceName,
+			AuthenticationMethod: method, AuthenticationStrength: assertion.AuthenticationStrength,
+			AuthenticatedAt: assertion.AuthenticatedAt, MFACompletedAt: mfaCompletedAt,
+		},
 	)
 	if sessionErr != nil {
 		legacy := sessionErr

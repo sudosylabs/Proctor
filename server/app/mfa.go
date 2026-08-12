@@ -479,17 +479,16 @@ func (a *App) consumeMFASecondFactor(
 	code string,
 	now time.Time,
 ) error {
-	return a.mfa.consumeSecondFactor(ctx, a.Store(), userID, code, now)
+	return a.mfa.consumeSecondFactor(ctx, a.Store().MFA(), userID, code, now)
 }
 
 func (s *MFAService) consumeSecondFactor(
 	ctx context.Context,
-	persistence store.Store,
+	mfaPersistence store.MFAStore,
 	userID string,
 	code string,
 	now time.Time,
 ) error {
-	mfaPersistence := persistence.MFA()
 	if mfaPersistence == nil {
 		return mfaStoreError(
 			"ConsumeMFASecondFactor",

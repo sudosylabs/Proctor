@@ -16,7 +16,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -94,19 +93,23 @@ type authenticationDiagnostics interface {
 	WarnContext(context.Context, string, error)
 }
 
-// AuthenticationService owns access-credential resolution, local login, session
+// authenticationService owns access-credential resolution, local login, session
 // issuance, refresh, and logout orchestration behind explicit ports.
-type AuthenticationService struct {
-	store                store.Store
-	cache                authenticationCache
-	securityEffects      authenticationSecurityEffects
-	hasher               *passwordHasher
-	mfa                  *MFAService
-	sessions             SessionPolicy
-	loginRateLimit       LoginRateLimitPolicy
-	personalAccessTokens PersonalAccessTokenPolicy
-	diagnostics          authenticationDiagnostics
-	now                  func() time.Time
+type authenticationService struct {
+	users              store.UserStore
+	passwords          store.PasswordCredentialStore
+	sessions           store.SessionStore
+	sessionCredentials store.SessionCredentialStore
+	cache              authenticationCache
+	securityEffects    authenticationSecurityEffects
+	hasher             *passwordHasher
+	mfa                authenticationMFAVerifier
+	personalTokens     authenticationPATResolver
+	sessionPolicy      SessionPolicy
+	loginRateLimit     LoginRateLimitPolicy
+	diagnostics        authenticationDiagnostics
+	newCredential      func() string
+	now                func() time.Time
 }
 
 type cachedAuthentication struct {
@@ -116,19 +119,32 @@ type cachedAuthentication struct {
 }
 
 func newAuthenticationService(
-	persistence store.Store,
+	users store.UserStore,
+	passwords store.PasswordCredentialStore,
+	sessions store.SessionStore,
+	sessionCredentials store.SessionCredentialStore,
 	cache authenticationCache,
 	securityEffects authenticationSecurityEffects,
 	hasher *passwordHasher,
-	mfa *MFAService,
-	sessions SessionPolicy,
+	mfa authenticationMFAVerifier,
+	personalTokens authenticationPATResolver,
+	sessionPolicy SessionPolicy,
 	loginRateLimit LoginRateLimitPolicy,
-	personalAccessTokens PersonalAccessTokenPolicy,
 	diagnostics authenticationDiagnostics,
+	newCredential func() string,
 	now func() time.Time,
-) (*AuthenticationService, error) {
-	if persistence == nil {
-		return nil, errors.New("authentication store is required")
+) (*authenticationService, error) {
+	if users == nil {
+		return nil, errors.New("authentication user store is required")
+	}
+	if passwords == nil {
+		return nil, errors.New("authentication password store is required")
+	}
+	if sessions == nil {
+		return nil, errors.New("authentication session store is required")
+	}
+	if sessionCredentials == nil {
+		return nil, errors.New("authentication session credential store is required")
 	}
 	if cache == nil {
 		return nil, errors.New("authentication cache is required")
@@ -140,25 +156,27 @@ func newAuthenticationService(
 		return nil, errors.New("password hasher is required")
 	}
 	if mfa == nil {
-		return nil, errors.New("MFA service is required")
+		return nil, errors.New("authentication MFA verifier is required")
+	}
+	if personalTokens == nil {
+		return nil, errors.New("authentication PAT resolver is required")
 	}
 	if diagnostics == nil {
 		return nil, errors.New("authentication diagnostics are required")
 	}
+	if newCredential == nil {
+		return nil, errors.New("authentication credential generator is required")
+	}
 	if now == nil {
 		now = time.Now
 	}
-	return &AuthenticationService{
-		store:                persistence,
-		cache:                cache,
-		securityEffects:      securityEffects,
-		hasher:               hasher,
-		mfa:                  mfa,
-		sessions:             sessions,
-		loginRateLimit:       loginRateLimit,
-		personalAccessTokens: personalAccessTokens,
-		diagnostics:          diagnostics,
-		now:                  now,
+	return &authenticationService{
+		users: users, passwords: passwords, sessions: sessions,
+		sessionCredentials: sessionCredentials, cache: cache,
+		securityEffects: securityEffects, hasher: hasher, mfa: mfa,
+		personalTokens: personalTokens, sessionPolicy: sessionPolicy,
+		loginRateLimit: loginRateLimit, diagnostics: diagnostics,
+		newCredential: newCredential, now: now,
 	}, nil
 }
 
@@ -173,7 +191,7 @@ func (a *App) CreateLocalUser(
 	})
 }
 
-func (s *AuthenticationService) createLocalUser(
+func (s *authenticationService) createLocalUser(
 	ctx context.Context,
 	command CreateLocalUserCommand,
 ) (*model.User, error) {
@@ -189,7 +207,7 @@ func (s *AuthenticationService) createLocalUser(
 	}
 	credential := &model.PasswordCredential{UserID: user.ID, PasswordHash: hash}
 	credential.PrepareCreate(model.NewPasswordCredentialID(), user.CreatedAt)
-	result, err := s.store.User().Create(ctx, &store.UserCreation{
+	result, err := s.users.Create(ctx, &store.UserCreation{
 		User: user, PasswordCredential: credential, DefaultProfilePictureJob: job,
 	})
 	if err != nil {
@@ -210,7 +228,7 @@ func (a *App) Login(
 	return a.authentication.login(ctx, command)
 }
 
-func (s *AuthenticationService) login(
+func (s *authenticationService) login(
 	ctx context.Context,
 	command LoginCommand,
 ) (*LoginResult, error) {
@@ -232,7 +250,7 @@ func (s *AuthenticationService) login(
 		}
 		return nil, invalidCredentialsAppError()
 	}
-	credential, err := s.store.PasswordCredential().GetByUser(ctx, user.ID.String())
+	credential, err := s.passwords.GetByUser(ctx, user.ID.String())
 	if err != nil {
 		s.hasher.VerifyDummy(command.Password)
 		if !store.IsNotFound(err) {
@@ -248,40 +266,12 @@ func (s *AuthenticationService) login(
 			WithField("field", "client_type")
 	}
 
-	authenticationStrength := model.AuthenticationSingleFactor
-	mfaCompletedAt := int64(0)
 	now := s.now()
-	mfaPersistence := s.store.MFA()
-	var (
-		mfaCredential *model.MFACredential
-		mfaErr        error
+	authenticationStrength, mfaCompletedAt, err := s.mfa.VerifyLogin(
+		ctx, user.ID.String(), command.MFACode, now,
 	)
-	if mfaPersistence == nil {
-		mfaErr = store.NewErrNotFound("mfa_credential", user.ID.String())
-	} else {
-		mfaCredential, mfaErr = mfaPersistence.GetByUser(ctx, user.ID.String())
-	}
-	switch {
-	case mfaErr == nil && mfaCredential.IsActive():
-		if s.mfa == nil || !s.mfa.settings.Enabled {
-			return nil, NewError("authentication.mfa.unavailable")
-		}
-		if strings.TrimSpace(command.MFACode) == "" {
-			return nil, NewError("authentication.mfa.required")
-		}
-		if appErr := s.mfa.consumeSecondFactor(
-			ctx,
-			s.store,
-			user.ID.String(),
-			command.MFACode,
-			now,
-		); appErr != nil {
-			return nil, appErr
-		}
-		authenticationStrength = model.AuthenticationMultiFactor
-		mfaCompletedAt = now.UnixMilli()
-	case mfaErr != nil && !store.IsNotFound(mfaErr):
-		return nil, authenticationUnavailable(mfaErr)
+	if err != nil {
+		return nil, err
 	}
 
 	if s.hasher.NeedsRehash(credential.PasswordHash) {
@@ -290,21 +280,19 @@ func (s *AuthenticationService) login(
 			return nil, authenticationUnavailable(hashErr)
 		}
 		credential.PasswordHash = rehashed
-		if _, updateErr := s.store.PasswordCredential().Update(ctx, credential); updateErr != nil {
+		if _, updateErr := s.passwords.Update(ctx, credential); updateErr != nil {
 			return nil, authenticationUnavailable(updateErr)
 		}
 	}
 
 	savedSession, tokens, sessionErr := s.createSession(
 		ctx,
-		user,
-		command.ClientType,
-		command.DeviceID,
-		command.DeviceName,
-		"password",
-		authenticationStrength,
-		now.UnixMilli(),
-		mfaCompletedAt,
+		sessionIssuance{
+			User: user, ClientType: command.ClientType,
+			DeviceID: command.DeviceID, DeviceName: command.DeviceName,
+			AuthenticationMethod: "password", AuthenticationStrength: authenticationStrength,
+			AuthenticatedAt: now.UnixMilli(), MFACompletedAt: mfaCompletedAt,
+		},
 	)
 	if sessionErr != nil {
 		return nil, sessionErr
@@ -315,17 +303,15 @@ func (s *AuthenticationService) login(
 	return &LoginResult{User: user, Session: savedSession, Tokens: tokens}, nil
 }
 
-func (s *AuthenticationService) createSession(
+func (s *authenticationService) createSession(
 	ctx context.Context,
-	user *model.User,
-	clientType model.SessionClientType,
-	deviceID string,
-	deviceName string,
-	method string,
-	strength model.AuthenticationStrength,
-	authenticatedAt int64,
-	mfaCompletedAt int64,
+	command sessionIssuance,
 ) (*model.Session, *model.AuthenticationTokens, error) {
+	user := command.User
+	clientType := command.ClientType
+	strength := command.AuthenticationStrength
+	authenticatedAt := command.AuthenticatedAt
+	mfaCompletedAt := command.MFACompletedAt
 	if user == nil || !user.IsActive() || !clientType.IsValid() ||
 		!strength.IsValid() || authenticatedAt <= 0 {
 		return nil, nil, NewError("authentication.session.invalid")
@@ -341,16 +327,16 @@ func (s *AuthenticationService) createSession(
 	} else {
 		mfaCompletedAt = 0
 	}
-	settings := s.sessions
+	settings := s.sessionPolicy
 	absoluteExpiresAt := nowMillis + settings.AbsoluteTTL.Milliseconds()
 	accessExpiresAt := min(nowMillis+settings.AccessTTL.Milliseconds(), absoluteExpiresAt)
 	refreshExpiresAt := min(nowMillis+settings.RefreshTTL.Milliseconds(), absoluteExpiresAt)
 	session := &model.Session{
 		UserID:                 user.ID,
 		ClientType:             clientType,
-		DeviceID:               deviceID,
-		DeviceName:             deviceName,
-		AuthenticationMethod:   method,
+		DeviceID:               command.DeviceID,
+		DeviceName:             command.DeviceName,
+		AuthenticationMethod:   command.AuthenticationMethod,
 		AuthenticationStrength: strength,
 		AuthenticatedAt:        model.TimeFromMillis(authenticatedAt),
 		MFACompletedAt:         model.OptionalTimeFromMillis(mfaCompletedAt),
@@ -361,9 +347,9 @@ func (s *AuthenticationService) createSession(
 		)),
 		ExpiresAt: model.TimeFromMillis(absoluteExpiresAt),
 	}
-	accessToken := model.NewCredentialToken()
-	refreshToken := model.NewCredentialToken()
-	savedSession, credentials, saveErr := s.store.Session().Save(
+	accessToken := s.newCredential()
+	refreshToken := s.newCredential()
+	savedSession, credentials, saveErr := s.sessions.Save(
 		ctx,
 		session,
 		[]*model.SessionCredential{
@@ -414,7 +400,7 @@ func (s *AuthenticationService) createSession(
 	}, nil
 }
 
-func (s *AuthenticationService) checkLoginRateLimit(
+func (s *authenticationService) checkLoginRateLimit(
 	ctx context.Context,
 	loginID string,
 	source string,
@@ -465,12 +451,12 @@ func digestCacheKey(value string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func (s *AuthenticationService) findLoginUser(ctx context.Context, loginID string) (*model.User, error) {
+func (s *authenticationService) findLoginUser(ctx context.Context, loginID string) (*model.User, error) {
 	loginID = strings.ToLower(strings.TrimSpace(loginID))
 	if strings.Contains(loginID, "@") {
-		return s.store.User().GetByEmail(ctx, loginID)
+		return s.users.GetByEmail(ctx, loginID)
 	}
-	return s.store.User().GetByUsername(ctx, loginID)
+	return s.users.GetByUsername(ctx, loginID)
 }
 
 func (a *App) AuthenticateAccess(
@@ -494,53 +480,10 @@ func (a *App) AuthenticateBearer(
 	if failure, ok := As(err); !ok || failure.Code() != "authentication.invalid_token" {
 		return nil, err
 	}
-	return a.authentication.authenticatePersonalAccessToken(ctx, rawToken)
+	return a.authentication.personalTokens.ResolveBearer(ctx, rawToken, a.authentication.now())
 }
 
-func (s *AuthenticationService) authenticatePersonalAccessToken(
-	ctx context.Context,
-	rawToken string,
-) (*model.Principal, error) {
-	if !validRawCredential(rawToken) {
-		return nil, invalidTokenAppError()
-	}
-	settings := s.personalAccessTokens
-	tokenStore := s.store.PersonalAccessToken()
-	if tokenStore == nil {
-		return nil, authenticationUnavailable(
-			errors.New("personal access token store is unavailable"),
-		)
-	}
-	resolved, err := tokenStore.Resolve(
-		ctx,
-		model.HashToken(rawToken),
-		s.now().UnixMilli(),
-		settings.LastUsedUpdateInterval.Milliseconds(),
-	)
-	if err != nil {
-		if store.IsNotFound(err) {
-			return nil, invalidTokenAppError()
-		}
-		return nil, authenticationUnavailable(err)
-	}
-	principal := &model.Principal{
-		UserID:               resolved.User.ID,
-		CredentialID:         model.PrincipalCredentialID(resolved.Token.ID),
-		CredentialType:       model.CredentialPersonalAccessToken,
-		AuthenticationMethod: "personal_access_token",
-		ClientType:           model.SessionClientCLI,
-		CredentialScopes:     append([]string(nil), resolved.Token.Scopes...),
-		AcademicUnitID:       resolved.Token.AcademicUnitID,
-	}
-	if principal.Validate() != nil {
-		s.warn(ctx, "personal access token resolved to invalid principal",
-			fmt.Errorf("personal_access_token_id=%s", resolved.Token.ID.String()))
-		return nil, invalidTokenAppError()
-	}
-	return principal, nil
-}
-
-func (s *AuthenticationService) authenticateAccess(
+func (s *authenticationService) authenticateAccess(
 	ctx context.Context,
 	rawToken string,
 ) (*model.Principal, error) {
@@ -551,7 +494,7 @@ func (s *AuthenticationService) authenticateAccess(
 	tokenHash := model.HashToken(rawToken)
 	resolved := s.cachedAuthentication(ctx, tokenHash)
 	if resolved == nil {
-		credential, session, err := s.store.SessionCredential().GetSessionByTokenHash(
+		credential, session, err := s.sessionCredentials.GetSessionByTokenHash(
 			ctx,
 			tokenHash,
 			model.SessionCredentialAccess,
@@ -562,7 +505,7 @@ func (s *AuthenticationService) authenticateAccess(
 			}
 			return nil, authenticationUnavailable(err)
 		}
-		user, err := s.store.User().Get(ctx, session.UserID.String())
+		user, err := s.users.Get(ctx, session.UserID.String())
 		if err != nil {
 			if store.IsNotFound(err) {
 				return nil, invalidTokenAppError()
@@ -601,12 +544,12 @@ func (s *AuthenticationService) authenticateAccess(
 	return principal, nil
 }
 
-func (s *AuthenticationService) updateActivity(
+func (s *authenticationService) updateActivity(
 	ctx context.Context,
 	resolved *cachedAuthentication,
 	now int64,
 ) error {
-	settings := s.sessions
+	settings := s.sessionPolicy
 	lastActivityMillis := model.MillisFromTime(resolved.Session.LastActivityAt)
 	if now-lastActivityMillis < settings.ActivityUpdateInterval.Milliseconds() {
 		return nil
@@ -626,7 +569,7 @@ func (s *AuthenticationService) updateActivity(
 		return nil
 	}
 	idleExpiresAt := min(now+settings.IdleTTL.Milliseconds(), model.MillisFromTime(resolved.Session.ExpiresAt))
-	if err := s.store.Session().UpdateActivity(
+	if err := s.sessions.UpdateActivity(
 		ctx,
 		resolved.Session.ID.String(),
 		now,
@@ -654,7 +597,7 @@ func (a *App) RefreshSession(
 	return a.authentication.refresh(ctx, command.RefreshToken)
 }
 
-func (s *AuthenticationService) refresh(
+func (s *authenticationService) refresh(
 	ctx context.Context,
 	rawRefreshToken string,
 ) (*model.Session, *model.AuthenticationTokens, error) {
@@ -662,10 +605,10 @@ func (s *AuthenticationService) refresh(
 		return nil, nil, invalidTokenAppError()
 	}
 	now := s.now().UnixMilli()
-	settings := s.sessions
-	accessToken := model.NewCredentialToken()
-	refreshToken := model.NewCredentialToken()
-	rotation, err := s.store.SessionCredential().RotateRefresh(
+	settings := s.sessionPolicy
+	accessToken := s.newCredential()
+	refreshToken := s.newCredential()
+	rotation, err := s.sessionCredentials.RotateRefresh(
 		ctx,
 		model.HashToken(rawRefreshToken),
 		&model.SessionCredential{
@@ -703,11 +646,11 @@ func (s *AuthenticationService) refresh(
 	if rotation.ReplayDetected {
 		return nil, nil, invalidTokenAppError()
 	}
-	user, err := s.store.User().Get(ctx, rotation.Session.UserID.String())
+	user, err := s.users.Get(ctx, rotation.Session.UserID.String())
 	if err != nil || !user.IsActive() {
 		if err == nil {
 			var revokedAccessHashes []string
-			revokedAccessHashes, err = s.store.Session().Revoke(
+			revokedAccessHashes, err = s.sessions.Revoke(
 				ctx,
 				rotation.Session.ID.String(),
 				rotation.Session.UserID.String(),
@@ -739,16 +682,19 @@ func (s *AuthenticationService) refresh(
 }
 
 func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) error {
+	return a.authentication.logout(ctx, invocation)
+}
+
+func (s *authenticationService) logout(ctx context.Context, invocation Invocation) error {
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
-	now := a.authentication.now().UnixMilli()
-	hashes, err := a.Store().Session().Revoke(
+	hashes, err := s.sessions.Revoke(
 		ctx,
 		principal.SessionID.String(),
 		principal.UserID.String(),
-		now,
+		s.now().UnixMilli(),
 		"user logout",
 	)
 	if err != nil {
@@ -757,7 +703,7 @@ func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand
 		}
 		return authenticationUnavailable(err)
 	}
-	a.authenticationEffects.SessionsRevoked(
+	s.securityEffects.SessionsRevoked(
 		ctx,
 		principal.UserID.String(),
 		[]string{principal.SessionID.String()},
@@ -767,7 +713,7 @@ func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand
 }
 
 func (a *App) GetUser(ctx context.Context, id string) (*model.User, error) {
-	user, err := a.Store().User().Get(ctx, id)
+	user, err := a.authentication.users.Get(ctx, id)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, NewError("user.not_found")
@@ -777,7 +723,7 @@ func (a *App) GetUser(ctx context.Context, id string) (*model.User, error) {
 	return user, nil
 }
 
-func (s *AuthenticationService) cachedAuthentication(
+func (s *authenticationService) cachedAuthentication(
 	ctx context.Context,
 	tokenHash string,
 ) *cachedAuthentication {
@@ -800,7 +746,7 @@ func (s *AuthenticationService) cachedAuthentication(
 	return &resolved
 }
 
-func (s *AuthenticationService) cacheAuthentication(
+func (s *authenticationService) cacheAuthentication(
 	ctx context.Context,
 	tokenHash string,
 	resolved *cachedAuthentication,
@@ -829,7 +775,7 @@ func (s *AuthenticationService) cacheAuthentication(
 	}
 }
 
-func (s *AuthenticationService) authenticationCacheInvalidated(
+func (s *authenticationService) authenticationCacheInvalidated(
 	ctx context.Context,
 	userID string,
 	hashes []string,
@@ -837,7 +783,7 @@ func (s *AuthenticationService) authenticationCacheInvalidated(
 	s.securityEffects.AuthenticationCacheInvalidated(ctx, userID, hashes)
 }
 
-func (s *AuthenticationService) sessionsRevoked(
+func (s *authenticationService) sessionsRevoked(
 	ctx context.Context,
 	userID string,
 	sessionIDs []string,
@@ -846,7 +792,7 @@ func (s *AuthenticationService) sessionsRevoked(
 	s.securityEffects.SessionsRevoked(ctx, userID, sessionIDs, hashes)
 }
 
-func (s *AuthenticationService) warn(ctx context.Context, message string, err error) {
+func (s *authenticationService) warn(ctx context.Context, message string, err error) {
 	if s.diagnostics == nil {
 		return
 	}

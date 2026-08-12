@@ -180,9 +180,10 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 }
 
 // LifecycleStore is the lifecycle-only persistence seam for ordinary unit
-// tests that never exercise durable model stores. Accessors return nil so
-// composition can construct the graph; capability tests must supply WithStore
-// or a focused consumer-owned fake.
+// tests that never exercise durable model stores. Identity accessors return
+// non-nil panic-on-use contracts so focused constructors can validate the real
+// graph; capability tests must supply WithStore or a focused consumer-owned
+// fake.
 type LifecycleStore struct {
 	closed atomic.Bool
 }
@@ -192,30 +193,36 @@ func NewLifecycleStore() *LifecycleStore {
 	return &LifecycleStore{}
 }
 
-func (s *LifecycleStore) Institution() store.InstitutionStore                 { return nil }
-func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore               { return nil }
-func (s *LifecycleStore) Programme() store.ProgrammeStore                     { return nil }
-func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore           { return nil }
-func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore           { return nil }
-func (s *LifecycleStore) Class() store.ClassStore                             { return nil }
-func (s *LifecycleStore) User() store.UserStore                               { return nil }
-func (s *LifecycleStore) File() store.FileStore                               { return nil }
-func (s *LifecycleStore) Job() store.JobStore                                 { return nil }
-func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore       { return nil }
-func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore   { return nil }
-func (s *LifecycleStore) UserToken() store.UserTokenStore                     { return nil }
-func (s *LifecycleStore) PersonalAccessToken() store.PersonalAccessTokenStore { return nil }
-func (s *LifecycleStore) MFA() store.MFAStore                                 { return nil }
-func (s *LifecycleStore) Affiliation() store.AffiliationStore                 { return nil }
-func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore   { return nil }
-func (s *LifecycleStore) ClassMember() store.ClassMemberStore                 { return nil }
-func (s *LifecycleStore) PasswordCredential() store.PasswordCredentialStore   { return nil }
-func (s *LifecycleStore) Session() store.SessionStore                         { return nil }
-func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore     { return nil }
-func (s *LifecycleStore) Role() store.RoleStore                               { return nil }
-func (s *LifecycleStore) RoleBinding() store.RoleBindingStore                 { return nil }
-func (s *LifecycleStore) Audit() store.AuditStore                             { return nil }
-func (s *LifecycleStore) Installation() store.InstallationStore               { return nil }
+func (s *LifecycleStore) Institution() store.InstitutionStore               { return nil }
+func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore             { return nil }
+func (s *LifecycleStore) Programme() store.ProgrammeStore                   { return nil }
+func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore         { return nil }
+func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore         { return nil }
+func (s *LifecycleStore) Class() store.ClassStore                           { return nil }
+func (s *LifecycleStore) User() store.UserStore                             { return lifecycleUserStore{} }
+func (s *LifecycleStore) File() store.FileStore                             { return nil }
+func (s *LifecycleStore) Job() store.JobStore                               { return nil }
+func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore     { return nil }
+func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore { return nil }
+func (s *LifecycleStore) UserToken() store.UserTokenStore                   { return nil }
+func (s *LifecycleStore) PersonalAccessToken() store.PersonalAccessTokenStore {
+	return lifecyclePersonalAccessTokenStore{}
+}
+func (s *LifecycleStore) MFA() store.MFAStore                               { return lifecycleMFAStore{} }
+func (s *LifecycleStore) Affiliation() store.AffiliationStore               { return nil }
+func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
+func (s *LifecycleStore) ClassMember() store.ClassMemberStore               { return nil }
+func (s *LifecycleStore) PasswordCredential() store.PasswordCredentialStore {
+	return lifecyclePasswordCredentialStore{}
+}
+func (s *LifecycleStore) Session() store.SessionStore { return lifecycleSessionStore{} }
+func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore {
+	return lifecycleSessionCredentialStore{}
+}
+func (s *LifecycleStore) Role() store.RoleStore                 { return nil }
+func (s *LifecycleStore) RoleBinding() store.RoleBindingStore   { return nil }
+func (s *LifecycleStore) Audit() store.AuditStore               { return nil }
+func (s *LifecycleStore) Installation() store.InstallationStore { return nil }
 func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	// Composition always requests discovery while constructing the cluster
 	// transport. Local-mode unit tests only need a no-op implementation.
@@ -248,3 +255,14 @@ func (s *LifecycleStore) Close() error {
 func (s *LifecycleStore) Closed() bool { return s.closed.Load() }
 
 var _ store.Store = (*LifecycleStore)(nil)
+
+// These non-nil lifecycle-only contracts intentionally panic if a capability
+// test invokes persistence without supplying WithStore. They allow the real
+// composition graph to validate focused service dependencies while keeping
+// lifecycle tests free of unrelated persistence behavior.
+type lifecycleUserStore struct{ store.UserStore }
+type lifecyclePasswordCredentialStore struct{ store.PasswordCredentialStore }
+type lifecycleSessionStore struct{ store.SessionStore }
+type lifecycleSessionCredentialStore struct{ store.SessionCredentialStore }
+type lifecycleMFAStore struct{ store.MFAStore }
+type lifecyclePersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }

@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"sync"
@@ -80,6 +81,11 @@ type authenticationStoreFake struct {
 	saveErr             error
 	maximumPerUser      int
 	createdJob          *model.Job
+	rotation            *store.SessionRotation
+	rotatedAccess       *model.SessionCredential
+	rotatedRefresh      *model.SessionCredential
+	rotatedAt           int64
+	rotatedIdleExpiry   int64
 }
 
 func (s *authenticationStoreFake) File() store.FileStore { return nil }
@@ -337,18 +343,30 @@ func (s authenticationSessionCredentialStore) GetSessionByTokenHash(
 	return &credentialClone, &sessionClone, nil
 }
 
-func (authenticationSessionCredentialStore) RotateRefresh(
-	context.Context,
-	string,
-	*model.SessionCredential,
-	*model.SessionCredential,
-	int64,
-	int64,
+func (s authenticationSessionCredentialStore) RotateRefresh(
+	_ context.Context,
+	_ string,
+	access *model.SessionCredential,
+	refresh *model.SessionCredential,
+	at int64,
+	idleExpiry int64,
 ) (*store.SessionRotation, error) {
-	return nil, errors.New("unused")
+	s.root.rotatedAccess = access
+	s.root.rotatedRefresh = refresh
+	s.root.rotatedAt = at
+	s.root.rotatedIdleExpiry = idleExpiry
+	if s.root.rotation == nil {
+		return nil, errors.New("unused")
+	}
+	result := *s.root.rotation
+	if !result.ReplayDetected {
+		result.AccessCredential = access
+		result.RefreshCredential = refresh
+	}
+	return &result, nil
 }
 
-func newTestAuthenticationService(t *testing.T, persistence *authenticationStoreFake) *AuthenticationService {
+func newTestAuthenticationService(t *testing.T, persistence *authenticationStoreFake) *authenticationService {
 	return newTestAuthenticationServiceWithCache(t, persistence, newAuthenticationCacheFake())
 }
 
@@ -356,7 +374,55 @@ func newTestAuthenticationServiceWithCache(
 	t *testing.T,
 	persistence *authenticationStoreFake,
 	cache authenticationCache,
-) *AuthenticationService {
+) *authenticationService {
+	return newTestAuthenticationServiceWithRuntime(
+		t, persistence, cache, model.NewCredentialToken, time.Now,
+	)
+}
+
+func newTestAuthenticationServiceWithRuntime(
+	t *testing.T,
+	persistence *authenticationStoreFake,
+	cache authenticationCache,
+	newCredential func() string,
+	now func() time.Time,
+) *authenticationService {
+	return newTestAuthenticationServiceWithPorts(
+		t,
+		persistence,
+		cache,
+		discardAuthenticationMFAVerifier{},
+		discardAuthenticationPATResolver{},
+		newCredential,
+		now,
+	)
+}
+
+func newTestAuthenticationServiceWithPorts(
+	t *testing.T,
+	persistence *authenticationStoreFake,
+	cache authenticationCache,
+	mfa authenticationMFAVerifier,
+	personalTokens authenticationPATResolver,
+	newCredential func() string,
+	now func() time.Time,
+) *authenticationService {
+	return newTestAuthenticationServiceWithEffects(
+		t, persistence, cache, discardAuthenticationSecurityEffects{}, mfa,
+		personalTokens, newCredential, now,
+	)
+}
+
+func newTestAuthenticationServiceWithEffects(
+	t *testing.T,
+	persistence *authenticationStoreFake,
+	cache authenticationCache,
+	effects authenticationSecurityEffects,
+	mfa authenticationMFAVerifier,
+	personalTokens authenticationPATResolver,
+	newCredential func() string,
+	now func() time.Time,
+) *authenticationService {
 	t.Helper()
 	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings)
@@ -364,11 +430,15 @@ func newTestAuthenticationServiceWithCache(
 		t.Fatal(err)
 	}
 	service, err := newAuthenticationService(
-		persistence,
+		persistence.User(),
+		persistence.PasswordCredential(),
+		persistence.Session(),
+		persistence.SessionCredential(),
 		cache,
-		discardAuthenticationSecurityEffects{},
+		effects,
 		hasher,
-		mustTestMFAService(t),
+		mfa,
+		personalTokens,
 		SessionPolicy{
 			AccessTTL:              time.Hour,
 			RefreshTTL:             24 * time.Hour,
@@ -382,14 +452,236 @@ func newTestAuthenticationServiceWithCache(
 			MaximumAttempts:       20,
 			MaximumSourceAttempts: 100,
 		},
-		PersonalAccessTokenPolicy{LastUsedUpdateInterval: time.Hour},
 		&securityEffectsDiagnosticsFake{},
-		time.Now,
+		newCredential,
+		now,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return service
+}
+
+func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC)
+	user := &model.User{ID: model.NewUserID(), CreatedAt: at, UpdatedAt: at, Revision: 1}
+	session := &model.Session{ID: model.NewSessionID(), UserID: user.ID}
+	access := base64.RawURLEncoding.EncodeToString([]byte("01234567890123456789012345678901"))
+	refresh := base64.RawURLEncoding.EncodeToString([]byte("abcdefghijklmnopqrstuvwxyzABCDEF"))
+	presentedRefresh := base64.RawURLEncoding.EncodeToString([]byte("fedcba9876543210fedcba9876543210"))
+	for _, test := range []struct {
+		name       string
+		replay     bool
+		wantCode   string
+		wantEffect string
+	}{
+		{name: "success", wantEffect: "cache"},
+		{name: "replay", replay: true, wantCode: "authentication.invalid_token", wantEffect: "sessions"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			persistence := newAuthenticationStoreFake()
+			persistence.users[user.ID.String()] = user
+			persistence.rotation = &store.SessionRotation{
+				Session: session, ReplayDetected: test.replay,
+				RevokedAccessHashes: []string{"old-access-hash"},
+			}
+			effects := &authenticationEffectsRecorder{}
+			credentials := []string{access, refresh}
+			next := 0
+			service := newTestAuthenticationServiceWithEffects(
+				t, persistence, newAuthenticationCacheFake(), effects,
+				discardAuthenticationMFAVerifier{}, discardAuthenticationPATResolver{},
+				func() string { value := credentials[next]; next++; return value },
+				func() time.Time { return at },
+			)
+
+			_, tokens, err := service.refresh(context.Background(), presentedRefresh)
+			if test.wantCode != "" {
+				if !Is(err, test.wantCode) {
+					t.Fatalf("refresh error = %v, want %s", err, test.wantCode)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tokens.AccessToken != access || tokens.RefreshToken != refresh {
+					t.Fatalf("tokens = %#v, want controlled credentials", tokens)
+				}
+			}
+			if persistence.rotatedAt != at.UnixMilli() ||
+				persistence.rotatedIdleExpiry != at.Add(2*time.Hour).UnixMilli() {
+				t.Fatalf("rotation time = %d idle = %d", persistence.rotatedAt, persistence.rotatedIdleExpiry)
+			}
+			if effects.last != test.wantEffect {
+				t.Fatalf("effect = %q, want %q", effects.last, test.wantEffect)
+			}
+		})
+	}
+}
+
+type authenticationEffectsRecorder struct{ last string }
+
+func (e *authenticationEffectsRecorder) AuthenticationCacheInvalidated(context.Context, string, []string) {
+	e.last = "cache"
+}
+
+func (e *authenticationEffectsRecorder) SessionsRevoked(context.Context, string, []string, []string) {
+	e.last = "sessions"
+}
+
+func TestAuthenticationUsesControlledClockAndCredentialGenerator(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
+	credentials := []string{
+		base64.RawURLEncoding.EncodeToString([]byte("01234567890123456789012345678901")),
+		base64.RawURLEncoding.EncodeToString([]byte("abcdefghijklmnopqrstuvwxyzABCDEF")),
+	}
+	next := 0
+	service := newTestAuthenticationServiceWithRuntime(
+		t,
+		newAuthenticationStoreFake(),
+		newAuthenticationCacheFake(),
+		func() string {
+			credential := credentials[next]
+			next++
+			return credential
+		},
+		func() time.Time { return at },
+	)
+	user := &model.User{ID: model.NewUserID(), CreatedAt: at, UpdatedAt: at, Revision: 1}
+	resultSession, tokens, err := service.createSession(
+		context.Background(),
+		sessionIssuance{
+			User: user, ClientType: model.SessionClientCLI,
+			DeviceID: "device", DeviceName: "Device",
+			AuthenticationMethod:   "password",
+			AuthenticationStrength: model.AuthenticationSingleFactor,
+			AuthenticatedAt:        at.UnixMilli(),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokens.AccessToken != credentials[0] || tokens.RefreshToken != credentials[1] {
+		t.Fatalf("tokens = %#v, want controlled credentials", tokens)
+	}
+	if resultSession.LastActivityAt != at ||
+		!tokens.AccessExpiresAt.Equal(at.Add(time.Hour)) ||
+		!tokens.RefreshExpiresAt.Equal(at.Add(24*time.Hour)) {
+		t.Fatalf("session/tokens did not use controlled clock: session=%#v tokens=%#v", resultSession, tokens)
+	}
+}
+
+func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC)
+	persistence := newAuthenticationStoreFake()
+	mfa := &authenticationMFAVerifierFake{
+		strength:    model.AuthenticationMultiFactor,
+		completedAt: at.UnixMilli(),
+	}
+	patPrincipal := &model.Principal{
+		UserID:               model.NewUserID(),
+		CredentialID:         model.PrincipalCredentialID(model.NewPersonalAccessTokenID()),
+		CredentialType:       model.CredentialPersonalAccessToken,
+		AuthenticationMethod: "personal_access_token",
+		ClientType:           model.SessionClientCLI,
+		CredentialScopes:     []string{string(model.ActionUserView)},
+	}
+	pat := &authenticationPATResolverFake{principal: patPrincipal}
+	service := newTestAuthenticationServiceWithPorts(
+		t,
+		persistence,
+		newAuthenticationCacheFake(),
+		mfa,
+		pat,
+		model.NewCredentialToken,
+		func() time.Time { return at },
+	)
+	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+		User:     &model.User{Username: "behavior-port-user", Email: "behavior-port@example.edu"},
+		Password: "CorrectHorseBatteryStaple1!",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := service.login(context.Background(), LoginCommand{
+		LoginID:    user.Username,
+		Password:   "CorrectHorseBatteryStaple1!",
+		ClientType: model.SessionClientCLI,
+		MFACode:    "123456",
+		Source:     "127.0.0.1:1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mfa.calls != 1 || login.Session.AuthenticationStrength != model.AuthenticationMultiFactor {
+		t.Fatalf("MFA calls=%d session=%#v", mfa.calls, login.Session)
+	}
+
+	app := &App{authentication: service}
+	resolved, err := app.AuthenticateBearer(context.Background(), model.NewCredentialToken())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pat.calls != 1 || resolved.UserID != patPrincipal.UserID {
+		t.Fatalf("PAT calls=%d principal=%#v", pat.calls, resolved)
+	}
+}
+
+type authenticationMFAVerifierFake struct {
+	calls       int
+	strength    model.AuthenticationStrength
+	completedAt int64
+}
+
+func (f *authenticationMFAVerifierFake) VerifyLogin(
+	context.Context,
+	string,
+	string,
+	time.Time,
+) (model.AuthenticationStrength, int64, error) {
+	f.calls++
+	return f.strength, f.completedAt, nil
+}
+
+type authenticationPATResolverFake struct {
+	calls     int
+	principal *model.Principal
+}
+
+func (f *authenticationPATResolverFake) ResolveBearer(
+	context.Context,
+	string,
+	time.Time,
+) (*model.Principal, error) {
+	f.calls++
+	return f.principal, nil
+}
+
+type discardAuthenticationMFAVerifier struct{}
+
+func (discardAuthenticationMFAVerifier) VerifyLogin(
+	context.Context,
+	string,
+	string,
+	time.Time,
+) (model.AuthenticationStrength, int64, error) {
+	return model.AuthenticationSingleFactor, 0, nil
+}
+
+type discardAuthenticationPATResolver struct{}
+
+func (discardAuthenticationPATResolver) ResolveBearer(
+	context.Context,
+	string,
+	time.Time,
+) (*model.Principal, error) {
+	return nil, invalidTokenAppError()
 }
 
 func mustTestMFAService(t *testing.T) *MFAService {
