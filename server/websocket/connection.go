@@ -14,13 +14,14 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-type connection struct {
-	hub       *Hub
-	socket    connectionSocket
-	clock     runtimeClock
-	principal model.Principal
-	metadata  model.RequestMetadata
-	id        string
+type connectionRuntime struct {
+	application Application
+	nodeID      string
+	socket      connectionSocket
+	clock       runtimeClock
+	principal   model.Principal
+	metadata    model.RequestMetadata
+	id          string
 
 	mu            sync.Mutex
 	nextSequence  int64
@@ -31,17 +32,39 @@ type connection struct {
 	closeOnce     sync.Once
 }
 
-// connectionRuntime names the private deep runtime exercised by the Hub and
-// deterministic package tests. The temporary alias keeps this first migration
-// slice behavior-preserving while ownership moves behind the runtime seam.
-type connectionRuntime = connection
-
-func (c *connection) pump(ctx context.Context) {
-	snapshot := c.run(ctx)
-	c.hub.unregister(c, snapshot)
+func newConnectionRuntime(
+	application Application,
+	nodeID string,
+	socket connectionSocket,
+	principal model.Principal,
+	metadata model.RequestMetadata,
+	id string,
+	nextSequence int64,
+	history []*Event,
+	subscriptions map[string]Subscription,
+	replayEvents []*Event,
+) *connectionRuntime {
+	runtime := &connectionRuntime{
+		application:   application,
+		nodeID:        nodeID,
+		socket:        socket,
+		clock:         systemRuntimeClock{},
+		principal:     principal,
+		metadata:      metadata,
+		id:            id,
+		nextSequence:  nextSequence,
+		history:       history,
+		subscriptions: subscriptions,
+		replayable:    true,
+		send:          make(chan outboundMessage, sendQueueSize),
+	}
+	for _, event := range replayEvents {
+		runtime.send <- outboundMessage{event: event}
+	}
+	return runtime
 }
 
-func (c *connection) run(ctx context.Context) connectionSnapshot {
+func (c *connectionRuntime) run(ctx context.Context) connectionSnapshot {
 	pumpCtx, cancel := context.WithCancel(ctx)
 	var pumps sync.WaitGroup
 	pumps.Add(2)
@@ -58,4 +81,12 @@ func (c *connection) run(ctx context.Context) connectionSnapshot {
 	c.closeTransport()
 	pumps.Wait()
 	return c.finalSnapshot()
+}
+
+func (c *connectionRuntime) belongsToUser(userID string) bool {
+	return c.principal.UserID.String() == userID
+}
+
+func (c *connectionRuntime) belongsToSession(sessionID string) bool {
+	return c.principal.SessionID.String() == sessionID
 }

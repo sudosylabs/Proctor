@@ -143,9 +143,9 @@ func newInboundRuntime(
 	clock runtimeClock,
 ) *connectionRuntime {
 	return &connectionRuntime{
-		hub:    &Hub{application: application},
-		socket: socket,
-		clock:  clock,
+		application: application,
+		socket:      socket,
+		clock:       clock,
 		principal: model.Principal{
 			UserID:       model.NewUserID(),
 			SessionID:    model.NewSessionID(),

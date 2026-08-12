@@ -175,7 +175,7 @@ func TestConnectionRuntimeEnqueuesHelloAndResyncInSequence(t *testing.T) {
 
 	runtime := newOutboundTestRuntime(newOutboundTestSocket(), 2)
 	runtime.id = model.NewId()
-	runtime.hub = &Hub{nodeID: "node-a"}
+	runtime.nodeID = "node-a"
 	runtime.principal = model.Principal{UserID: model.NewUserID()}
 
 	runtime.enqueueHello(false, true)

@@ -17,7 +17,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func (c *connection) writePump(ctx context.Context) {
+func (c *connectionRuntime) writePump(ctx context.Context) {
 	ticker := c.clock.NewTicker(pingInterval)
 	defer ticker.Stop()
 	for {
@@ -46,9 +46,9 @@ func (c *connection) writePump(ctx context.Context) {
 	}
 }
 
-func (c *connection) enqueueHello(resumed, resyncRequired bool) {
+func (c *connectionRuntime) enqueueHello(resumed, resyncRequired bool) {
 	data, _ := json.Marshal(Hello{
-		ConnectionId: c.id, NodeId: c.hub.nodeID, Resumed: resumed,
+		ConnectionId: c.id, NodeId: c.nodeID, Resumed: resumed,
 	})
 	c.enqueueEvent(&Event{
 		Id: model.NewId(), Event: string(EventHello),
@@ -62,7 +62,7 @@ func (c *connection) enqueueHello(resumed, resyncRequired bool) {
 	}
 }
 
-func (c *connection) enqueueEvent(event *Event) {
+func (c *connectionRuntime) enqueueEvent(event *Event) {
 	c.mu.Lock()
 	for _, sent := range c.history {
 		if sent.Id == event.Id {
@@ -89,7 +89,7 @@ func (c *connection) enqueueEvent(event *Event) {
 	}
 }
 
-func (c *connection) enqueueResponse(sequence int64, data json.RawMessage) {
+func (c *connectionRuntime) enqueueResponse(sequence int64, data json.RawMessage) {
 	response := &Response{
 		Status: "ok", Sequence: sequence, Data: append(json.RawMessage(nil), data...),
 	}
@@ -100,7 +100,7 @@ func (c *connection) enqueueResponse(sequence int64, data json.RawMessage) {
 	}
 }
 
-func (c *connection) enqueueError(sequence int64, code, message string) {
+func (c *connectionRuntime) enqueueError(sequence int64, code, message string) {
 	response := &Response{
 		Status: "error", Sequence: sequence,
 		Error: &Error{Code: code, Message: message},
@@ -112,7 +112,7 @@ func (c *connection) enqueueError(sequence int64, code, message string) {
 	}
 }
 
-func (c *connection) close(code int, reason string, replayable bool) {
+func (c *connectionRuntime) close(code int, reason string, replayable bool) {
 	c.closeOnce.Do(func() {
 		c.mu.Lock()
 		c.replayable = replayable
@@ -127,7 +127,7 @@ func (c *connection) close(code int, reason string, replayable bool) {
 	})
 }
 
-func (c *connection) closeTransport() {
+func (c *connectionRuntime) closeTransport() {
 	c.closeOnce.Do(func() {
 		_ = c.socket.Close()
 	})

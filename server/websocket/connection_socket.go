@@ -14,9 +14,6 @@ const (
 	websocketPingMessage  = gorilla.PingMessage
 )
 
-// connectionSocket is the runtime's private seam around an accepted WebSocket.
-// Production uses gorillaConnectionSocket; deterministic tests provide an
-// in-memory implementation.
 type connectionSocket interface {
 	SetReadLimit(int64)
 	SetReadDeadline(time.Time) error

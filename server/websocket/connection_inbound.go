@@ -16,7 +16,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app"
 )
 
-func (c *connection) readPump(ctx context.Context) {
+func (c *connectionRuntime) readPump(ctx context.Context) {
 	c.socket.SetReadLimit(MaxMessageBytes)
 	_ = c.socket.SetReadDeadline(c.clock.Now().Add(pongWait))
 	c.socket.SetPongHandler(func(string) error {
@@ -35,7 +35,7 @@ func (c *connection) readPump(ctx context.Context) {
 	}
 }
 
-func (c *connection) sessionPump(ctx context.Context) {
+func (c *connectionRuntime) sessionPump(ctx context.Context) {
 	ticker := c.clock.NewTicker(sessionCheck)
 	defer ticker.Stop()
 	for {
@@ -44,7 +44,7 @@ func (c *connection) sessionPump(ctx context.Context) {
 			c.closeTransport()
 			return
 		case <-ticker.Chan():
-			if appErr := c.hub.application.ValidateWebSocketPrincipal(
+			if appErr := c.application.ValidateWebSocketPrincipal(
 				ctx,
 				c.principal,
 			); appErr != nil {
@@ -55,7 +55,7 @@ func (c *connection) sessionPump(ctx context.Context) {
 	}
 }
 
-func (c *connection) handleRequest(
+func (c *connectionRuntime) handleRequest(
 	ctx context.Context,
 	request *Request,
 ) {
@@ -71,7 +71,7 @@ func (c *connection) handleRequest(
 		}
 		metadata := c.metadata
 		metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
-		if err := c.hub.application.AuthorizeWebSocketSubscription(
+		if err := c.application.AuthorizeWebSocketSubscription(
 			ctx,
 			c.principal,
 			metadata,
@@ -119,7 +119,7 @@ func (c *connection) handleRequest(
 	}
 }
 
-func (c *connection) hasSubscription(
+func (c *connectionRuntime) hasSubscription(
 	subscription Subscription,
 ) bool {
 	c.mu.Lock()

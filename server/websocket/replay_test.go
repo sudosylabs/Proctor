@@ -78,8 +78,7 @@ func TestHubRetainsOnlyTheRuntimeFinalSnapshot(t *testing.T) {
 		UserID:    model.NewUserID(),
 		SessionID: model.NewSessionID(),
 	}
-	runtime := &connection{
-		hub:       hub,
+	runtime := &connectionRuntime{
 		principal: principal,
 		id:        model.NewId(),
 	}

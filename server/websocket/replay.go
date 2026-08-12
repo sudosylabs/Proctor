@@ -33,7 +33,7 @@ type connectionSnapshot struct {
 	replayable    bool
 }
 
-func (c *connection) finalSnapshot() connectionSnapshot {
+func (c *connectionRuntime) finalSnapshot() connectionSnapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return connectionSnapshot{

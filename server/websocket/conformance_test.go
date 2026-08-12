@@ -15,6 +15,9 @@ import (
 //   - construction is inert; Start/Close ownership (lifecycle_test.go)
 //   - origin allow/deny and missing-origin bearer policy (lifecycle_test.go)
 //   - wire event/subscription validation (protocol_test.go)
+//   - deterministic connection pumps, liveness, commands, and validation
+//   - ordered outbound delivery, backpressure disconnect, and close-once
+//   - immutable final snapshots and Hub-owned replay retention
 //   - stable close codes below
 //
 // Covered in //go:build integration app/websocket_integration_test.go:
@@ -22,10 +25,6 @@ import (
 //   - subscription success, sequence monotonicity, local replay, resync_required
 //   - session revocation and authorization-change connection close
 //   - application ping/pong command
-//
-// Backpressure disconnect remains implementation-stable via CloseBackpressure
-// when the outbound queue is full; a dedicated unit harness for a full send
-// queue requires a deeper connection seam and is not yet extracted.
 func TestConformanceCloseCodesRemainStable(t *testing.T) {
 	t.Parallel()
 

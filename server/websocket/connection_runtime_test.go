@@ -167,7 +167,7 @@ func TestConnectionRuntimeUsesDeterministicLivenessAndValidation(t *testing.T) {
 		CredentialType: model.CredentialSessionAccess,
 	}
 	runtime := &connectionRuntime{
-		hub:           &Hub{application: application},
+		application:   application,
 		socket:        socket,
 		clock:         clock,
 		principal:     principal,

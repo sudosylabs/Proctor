@@ -79,7 +79,7 @@ type Hub struct {
 
 type shard struct {
 	mu     sync.RWMutex
-	conns  map[string]*connection
+	conns  map[string]*connectionRuntime
 	replay map[string]*replayState
 }
 
@@ -131,7 +131,7 @@ func NewHub(
 	}
 	for index := range hub.shards {
 		hub.shards[index] = &shard{
-			conns:  make(map[string]*connection),
+			conns:  make(map[string]*connectionRuntime),
 			replay: make(map[string]*replayState),
 		}
 	}
@@ -226,7 +226,8 @@ func (h *Hub) Accept(
 		return nil
 	}
 	connection.enqueueHello(resumed, connectionID != "" && !resumed)
-	connection.pump(request.Context())
+	snapshot := connection.run(request.Context())
+	h.unregister(connection, snapshot)
 	return nil
 }
 
@@ -236,7 +237,7 @@ func (h *Hub) register(
 	metadata model.RequestMetadata,
 	requestedID string,
 	requestedSequence int64,
-) (*connection, bool) {
+) (*connectionRuntime, bool) {
 	h.mu.RLock()
 	started := h.state == hubStarted
 	h.mu.RUnlock()
@@ -256,10 +257,10 @@ func (h *Hub) register(
 	h.pruneReplayLocked(shard, time.Now())
 	var userConnections, sessionConnections int
 	for _, connection := range shard.conns {
-		if connection.principal.UserID.String() == principal.UserID.String() {
+		if connection.belongsToUser(principal.UserID.String()) {
 			userConnections++
 		}
-		if connection.principal.SessionID.String() == principal.SessionID.String() {
+		if connection.belongsToSession(principal.SessionID.String()) {
 			sessionConnections++
 		}
 	}
@@ -297,21 +298,23 @@ func (h *Hub) register(
 			delete(shard.replay, requestedID)
 		}
 	}
-	connection := &connection{
-		hub: h, socket: socket, clock: systemRuntimeClock{},
-		principal: principal, metadata: metadata,
-		id: connectionID, nextSequence: nextSequence, history: history,
-		subscriptions: subscriptions, replayable: true,
-		send: make(chan outboundMessage, sendQueueSize),
-	}
-	shard.conns[connection.id] = connection
-	for _, event := range replayEvents {
-		connection.send <- outboundMessage{event: event}
-	}
+	connection := newConnectionRuntime(
+		h.application,
+		h.nodeID,
+		socket,
+		principal,
+		metadata,
+		connectionID,
+		nextSequence,
+		history,
+		subscriptions,
+		replayEvents,
+	)
+	shard.conns[connectionID] = connection
 	return connection, resumed
 }
 
-func (h *Hub) unregister(connection *connection, snapshot connectionSnapshot) {
+func (h *Hub) unregister(connection *connectionRuntime, snapshot connectionSnapshot) {
 	shard := h.shardForUser(snapshot.principal.UserID.String())
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
@@ -350,7 +353,7 @@ func (h *Hub) publishWire(event *Event) {
 	} else {
 		shards = h.shards
 	}
-	var connections []*connection
+	var connections []*connectionRuntime
 	for _, shard := range shards {
 		shard.mu.RLock()
 		for _, connection := range shard.conns {
@@ -359,7 +362,7 @@ func (h *Hub) publishWire(event *Event) {
 		shard.mu.RUnlock()
 	}
 	for _, connection := range connections {
-		if event.UserID != "" && connection.principal.UserID.String() != event.UserID {
+		if event.UserID != "" && !connection.belongsToUser(event.UserID) {
 			continue
 		}
 		if event.Action != "" && !connection.hasSubscription(
@@ -374,23 +377,23 @@ func (h *Hub) publishWire(event *Event) {
 // CloseSession implements app.RealtimeSink.
 func (h *Hub) CloseSession(sessionID string, reason app.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
-	h.closeMatching(code, text, func(connection *connection) bool {
-		return connection.principal.SessionID.String() == sessionID
+	h.closeMatching(code, text, func(connection *connectionRuntime) bool {
+		return connection.belongsToSession(sessionID)
 	})
 }
 
 // CloseUser implements app.RealtimeSink.
 func (h *Hub) CloseUser(userID string, reason app.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
-	h.closeMatching(code, text, func(connection *connection) bool {
-		return connection.principal.UserID.String() == userID
+	h.closeMatching(code, text, func(connection *connectionRuntime) bool {
+		return connection.belongsToUser(userID)
 	})
 }
 
 // CloseAll implements app.RealtimeSink.
 func (h *Hub) CloseAll(reason app.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
-	h.closeMatching(code, text, func(*connection) bool { return true })
+	h.closeMatching(code, text, func(*connectionRuntime) bool { return true })
 }
 
 func eventFromRealtime(event app.RealtimeEvent) *Event {
@@ -420,9 +423,9 @@ var _ app.RealtimeSink = (*Hub)(nil)
 func (h *Hub) closeMatching(
 	code int,
 	reason string,
-	matches func(*connection) bool,
+	matches func(*connectionRuntime) bool,
 ) {
-	var connections []*connection
+	var connections []*connectionRuntime
 	for _, shard := range h.shards {
 		shard.mu.RLock()
 		for _, connection := range shard.conns {
@@ -458,7 +461,7 @@ func (h *Hub) Close() error {
 		close(h.stop)
 		done := h.done
 		h.mu.Unlock()
-		var connections []*connection
+		var connections []*connectionRuntime
 		for _, shard := range h.shards {
 			shard.mu.Lock()
 			for _, connection := range shard.conns {
