@@ -147,9 +147,9 @@ func (s *sessionAdministrationService) RevokeOne(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.SessionRevocationResult, error) {
 			return s.sessions.RevokeWithAudit(ctx, &store.SessionRevocation{
-				SessionID: sessionID, UserID: userID, RevokedAt: reference.At,
+				SessionID: sessionID, UserID: userID, RevokedAt: reference.AtMillis,
 				Reason:       "session revoked by administrator",
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		sessionAdministrationError,
@@ -194,9 +194,9 @@ func (s *sessionAdministrationService) RevokeAll(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserSessionsRevocationResult, error) {
 			return s.sessions.RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
-				UserID: userID, RevokedAt: reference.At,
+				UserID: userID, RevokedAt: reference.AtMillis,
 				Reason:       "sessions revoked by administrator",
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		sessionAdministrationError,
@@ -253,7 +253,7 @@ func (e sessionAdministrationRealtimeEffects) SessionsRevoked(
 	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
 }
 
-func sessionAdministrationError(err error) *Error {
+func sessionAdministrationError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("session.not_found").WithField("resource", "session").Wrap(err)

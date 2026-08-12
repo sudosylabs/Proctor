@@ -138,7 +138,7 @@ func (s *roleService) Create(ctx context.Context, invocation Invocation, command
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.roles.SaveWithAudit(ctx, &store.RoleCreation{
-				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		roleError,
@@ -192,7 +192,7 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.roles.UpdateWithAudit(ctx, &store.RoleUpdate{
-				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		roleError,
@@ -238,8 +238,8 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Role, error) {
 			return s.roles.ArchiveWithAudit(ctx, &store.RoleArchive{
-				ID: id, ArchiveAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: id, ArchiveAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		roleError,
@@ -282,10 +282,10 @@ func (e roleRealtimeEffects) AuthorizationChanged(ctx context.Context) {
 	e.effects.InvalidateAuthorization(ctx, "")
 }
 
-func roleError(err error) *Error {
+func roleError(err error) error {
 	var appFailure *Error
 	if errors.As(err, &appFailure) {
-		return appFailure
+		return err
 	}
 	switch {
 	case store.IsNotFound(err):

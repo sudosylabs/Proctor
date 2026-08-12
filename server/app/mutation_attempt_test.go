@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -72,7 +73,7 @@ func TestMutationAttemptBeginFailurePreventsMutation(t *testing.T) {
 			mutated = true
 			return "", nil
 		},
-		func(err error) *Error { return NewError("programme.conflict").Wrap(err) },
+		func(err error) error { return NewError("programme.conflict").Wrap(err) },
 	)
 	if err != beginErr {
 		t.Fatalf("runAuditedMutation() error = %v, want begin error", err)
@@ -104,12 +105,12 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 		func() time.Time { return at },
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != auditID || reference.At != at.UnixMilli() {
+			if reference.ID != auditID || reference.AtMillis != at.UnixMilli() {
 				t.Fatalf("reference = %#v", reference)
 			}
 			return "", storeErr
 		},
-		func(err error) *Error {
+		func(err error) error {
 			events = append(events, "map")
 			if err != storeErr {
 				t.Fatalf("mapped error = %v", err)
@@ -148,36 +149,71 @@ func TestMutationAttemptFailureCompletionErrorWins(t *testing.T) {
 		func(context.Context, mutationAttemptReference) (struct{}, error) {
 			return struct{}{}, storeErr
 		},
-		func(err error) *Error { return NewError("programme.conflict").Wrap(err) },
+		func(err error) error { return NewError("programme.conflict").Wrap(err) },
 	)
 	if err != auditErr {
 		t.Fatalf("runAuditedMutation() error = %v, want audit error", err)
 	}
 }
 
-func TestMutationAttemptRejectsNilMappedError(t *testing.T) {
+func TestMutationAttemptRejectsInvalidMappedError(t *testing.T) {
+	t.Parallel()
+
+	for name, mapped := range map[string]error{
+		"nil":   nil,
+		"plain": errors.New("unmapped store failure"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			events := []string{}
+			auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
+			_, err := runAuditedMutation(
+				context.Background(), auditor,
+				mutationAttempt{
+					Action:    model.ActionAcademicUnitManage,
+					Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewId()},
+					Operation: "create",
+				},
+				time.Now,
+				func(context.Context, mutationAttemptReference) (struct{}, error) {
+					return struct{}{}, errors.New("store failed")
+				},
+				func(error) error { return mapped },
+			)
+			appErr, ok := As(err)
+			if !ok || appErr.Code() != "audit.event.invalid" {
+				t.Fatalf("runAuditedMutation() error = %v", err)
+			}
+			if auditor.failCode != "audit.event.invalid" {
+				t.Fatalf("failure code = %q", auditor.failCode)
+			}
+		})
+	}
+}
+
+func TestMutationAttemptPreservesMappedErrorWrapper(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
+	appFailure := NewError("role.conflict")
+	mapped := fmt.Errorf("persistence context: %w", appFailure)
 	_, err := runAuditedMutation(
 		context.Background(), auditor,
 		mutationAttempt{
-			Action:    model.ActionAcademicUnitManage,
-			Resource:  model.Resource{Type: model.ResourceAcademicUnit, ID: model.NewId()},
-			Operation: "create",
+			Action:    model.ActionRoleManage,
+			Resource:  model.Resource{Type: model.ResourceInstitution, ID: model.NewId()},
+			Operation: "patch",
 		},
 		time.Now,
 		func(context.Context, mutationAttemptReference) (struct{}, error) {
 			return struct{}{}, errors.New("store failed")
 		},
-		func(error) *Error { return nil },
+		func(error) error { return mapped },
 	)
-	appErr, ok := As(err)
-	if !ok || appErr.Code() != "audit.event.invalid" {
-		t.Fatalf("runAuditedMutation() error = %v", err)
+	if err != mapped {
+		t.Fatalf("runAuditedMutation() error = %v, want original mapped wrapper", err)
 	}
-	if auditor.failCode != "audit.event.invalid" {
+	if auditor.failCode != appFailure.Code() {
 		t.Fatalf("failure code = %q", auditor.failCode)
 	}
 }
@@ -209,12 +245,12 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 		},
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != auditID || reference.At != 500 {
+			if reference.ID != auditID || reference.AtMillis != 500 {
 				t.Fatalf("reference = %#v", reference)
 			}
 			return "saved", nil
 		},
-		func(error) *Error {
+		func(error) error {
 			t.Fatal("error mapper called on success")
 			return nil
 		},

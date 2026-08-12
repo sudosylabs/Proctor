@@ -150,7 +150,7 @@ func (s *programmeLevelService) Create(ctx context.Context, invocation Invocatio
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
 			return s.store.Create(ctx, &store.ProgrammeLevelCreation{
-				Level: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Level: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		programmeLevelError,
@@ -198,7 +198,7 @@ func (s *programmeLevelService) Update(ctx context.Context, invocation Invocatio
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
 			return s.store.UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{
-				Level: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Level: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		programmeLevelError,
@@ -231,8 +231,8 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{
-				ID: current.ID.String(), ArchiveAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: current.ID.String(), ArchiveAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		programmeLevelError,
@@ -277,7 +277,7 @@ func (s *programmeLevelService) authorize(ctx context.Context, invocation Invoca
 	return err
 }
 
-func programmeLevelError(err error) *Error {
+func programmeLevelError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "programme_level").Wrap(err)

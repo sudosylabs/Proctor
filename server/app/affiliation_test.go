@@ -81,7 +81,11 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 	events := []string{}
 	userID := model.NewId()
 	persistence := &affiliationStoreFake{events: &events}
-	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	clockCalls := 0
+	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time {
+		clockCalls++
+		return time.UnixMilli(int64(500 + clockCalls))
+	}, model.NewId)
 	for _, kind := range []model.AffiliationKind{model.AffiliationStudent, model.AffiliationTeacher} {
 		created, err := service.Create(context.Background(), Invocation{}, CreateAffiliationCommand{UserID: userID, Kind: kind, StartAt: 100})
 		if err != nil {
@@ -90,6 +94,12 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 		if created.Kind != kind || persistence.createInput.Affiliation.UserID.String() != userID {
 			t.Fatalf("created = %#v", created)
 		}
+		if persistence.createInput.AuditAt != model.MillisFromTime(created.CreatedAt) {
+			t.Fatalf("creation/audit time = %v/%d", created.CreatedAt, persistence.createInput.AuditAt)
+		}
+	}
+	if clockCalls != 2 {
+		t.Fatalf("clock calls = %d, want one per creation", clockCalls)
 	}
 	want := []string{"authorize", "audit-begin", "store-create", "authorize", "audit-begin", "store-create"}
 	if !reflect.DeepEqual(events, want) {

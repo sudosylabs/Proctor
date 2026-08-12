@@ -205,10 +205,10 @@ func (s *academicUnitCommandService) Create(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.store.Create(ctx, &store.AcademicUnitCreation{
-				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
-		func(err error) *Error { return academicUnitReadError("academic_unit", err) },
+		func(err error) error { return academicUnitReadError("academic_unit", err) },
 	)
 	if err != nil {
 		return nil, err
@@ -296,10 +296,10 @@ func (s *academicUnitCommandService) Update(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.store.UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
-				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
-		func(err error) *Error { return academicUnitReadError("academic_unit", err) },
+		func(err error) error { return academicUnitReadError("academic_unit", err) },
 	)
 	if err != nil {
 		return nil, err
@@ -350,11 +350,11 @@ func (s *academicUnitCommandService) Archive(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
-				ID: command.ID, ArchiveAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: command.ID, ArchiveAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
-		func(err error) *Error { return academicUnitReadError("academic_unit", err) },
+		func(err error) error { return academicUnitReadError("academic_unit", err) },
 	)
 	if err != nil {
 		return err

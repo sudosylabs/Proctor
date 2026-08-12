@@ -58,13 +58,20 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 	classID, periodID, userID := model.NewId(), model.NewId(), model.NewId()
 	persistence := &classMemberStoreFake{events: &events}
 	classes := &classMemberClassStoreFake{events: &events, value: &model.Class{ID: model.ClassID(classID), AcademicPeriodID: model.AcademicPeriodID(periodID)}}
-	service := newClassMemberService(persistence, classes, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	clockCalls := 0
+	service := newClassMemberService(persistence, classes, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time {
+		clockCalls++
+		return time.UnixMilli(500)
+	}, model.NewId)
 	enrollment, err := service.Enroll(context.Background(), Invocation{}, EnrollClassMemberCommand{ClassID: classID, UserID: userID, StartAt: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if enrollment.Membership.AcademicPeriodID.String() != periodID || persistence.enrollInput.Member.UserID.String() != userID {
 		t.Fatalf("enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
+	}
+	if clockCalls != 1 || persistence.enrollInput.AuditAt != model.MillisFromTime(enrollment.Membership.CreatedAt) {
+		t.Fatalf("clock calls/creation/audit time = %d/%v/%d", clockCalls, enrollment.Membership.CreatedAt, persistence.enrollInput.AuditAt)
 	}
 	want := []string{"authorize", "get-class", "audit-begin", "store-enroll"}
 	if !reflect.DeepEqual(events, want) {

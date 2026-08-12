@@ -26,20 +26,21 @@ type mutationAttempt struct {
 // mutationAttemptReference is the complete audit input a named Store mutation
 // needs to commit durable state and successful audit completion atomically.
 type mutationAttemptReference struct {
-	ID string
-	At int64
+	ID       string
+	AtMillis int64
 }
 
 // runAuditedMutation owns the common attempt and failure protocol. Successful
 // completion remains inside the named Store mutation; post-commit effects
-// remain with the calling use case.
+// remain with the calling use case. The mapper may preserve contextual wrappers
+// but must return an error chain containing an application Error.
 func runAuditedMutation[T any](
 	ctx context.Context,
 	auditor mutationAuditor,
 	attempt mutationAttempt,
 	now func() time.Time,
 	mutate func(context.Context, mutationAttemptReference) (T, error),
-	mapError func(error) *Error,
+	mapError func(error) error,
 ) (T, error) {
 	var zero T
 	auditID, err := auditor.Begin(
@@ -56,20 +57,22 @@ func runAuditedMutation[T any](
 	}
 
 	result, err := mutate(ctx, mutationAttemptReference{
-		ID: auditID,
-		At: now().UnixMilli(),
+		ID:       auditID,
+		AtMillis: model.MillisFromTime(now()),
 	})
 	if err == nil {
 		return result, nil
 	}
 
 	mapped := mapError(err)
-	if mapped == nil {
+	failure, ok := As(mapped)
+	if !ok {
 		mapped = NewError("audit.event.invalid").Wrap(
-			errors.New("mutation error mapper returned nil"),
+			errors.New("mutation error mapper returned no application error"),
 		)
+		failure, _ = As(mapped)
 	}
-	if auditErr := auditor.Fail(ctx, auditID, mapped.Code()); auditErr != nil {
+	if auditErr := auditor.Fail(ctx, auditID, failure.Code()); auditErr != nil {
 		return zero, auditErr
 	}
 	return zero, mapped

@@ -233,3 +233,20 @@ func TestValidatePatchedPermissionsPreservesButDoesNotIntroduceUnknownActions(t 
 		t.Fatalf("new unknown permission error = %v", err)
 	}
 }
+
+func TestRoleMappersPreserveApplicationFailureWrappers(t *testing.T) {
+	t.Parallel()
+
+	applicationFailure := NewError("authorization.denied")
+	wrapped := errors.Join(errors.New("persistence context"), applicationFailure)
+	for name, mapper := range map[string]func(error) error{
+		"role":         roleError,
+		"role binding": roleBindingError,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := mapper(wrapped); got != wrapped {
+				t.Fatalf("mapper returned %v, want original wrapper", got)
+			}
+		})
+	}
+}

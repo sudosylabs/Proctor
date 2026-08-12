@@ -124,10 +124,10 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			Operation:  "enroll",
 			Value:      candidate.Auditable(),
 		},
-		s.now,
+		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
 			return s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
-				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		classMemberError,
@@ -168,8 +168,8 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ClassMember, error) {
 			return s.store.EndWithAudit(ctx, &store.ClassMemberEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		classMemberError,
@@ -187,7 +187,7 @@ func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invo
 	return resource, nil
 }
 
-func classMemberError(err error) *Error {
+func classMemberError(err error) error {
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").WithField("resource", "class_member").Wrap(err)
 	}

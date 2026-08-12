@@ -141,14 +141,14 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
 			return s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
 				User: &candidate, ExpectedRevision: expectedRevision,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		userProfileError,
 	)
 }
 
-func userProfileError(err error) *Error {
+func userProfileError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "user").Wrap(err)

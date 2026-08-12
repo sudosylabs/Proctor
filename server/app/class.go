@@ -191,7 +191,7 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Class, error) {
 			return s.store.Create(ctx, &store.ClassCreation{
-				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		classError,
@@ -277,7 +277,7 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,
 				AuditEventID:           reference.ID,
-				AuditAt:                reference.At,
+				AuditAt:                reference.AtMillis,
 			})
 		},
 		classError,
@@ -326,9 +326,9 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 				ID:                     id,
 				ExpectedAcademicUnitID: unitID,
 				ExpectedRevision:       current.Revision,
-				ArchiveAt:              reference.At,
+				ArchiveAt:              reference.AtMillis,
 				AuditEventID:           reference.ID,
-				AuditAt:                reference.At,
+				AuditAt:                reference.AtMillis,
 			})
 		},
 		classError,
@@ -351,7 +351,7 @@ func (s *classService) programmeLevelResource(ctx context.Context, id string) (m
 	return model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}, nil
 }
 
-func classError(err error) *Error {
+func classError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "class").Wrap(err)

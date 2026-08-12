@@ -167,7 +167,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
 			return s.bindings.SaveWithAudit(ctx, &store.RoleBindingCreation{
-				Binding: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Binding: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		roleBindingError,
@@ -210,8 +210,8 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
 			return s.bindings.EndWithAudit(ctx, &store.RoleBindingEnd{
-				ID: id, EndAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: id, EndAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		roleBindingError,
@@ -231,10 +231,10 @@ func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Cont
 	e.effects.InvalidateAuthorization(ctx, userID)
 }
 
-func roleBindingError(err error) *Error {
+func roleBindingError(err error) error {
 	var appFailure *Error
 	if errors.As(err, &appFailure) {
-		return appFailure
+		return err
 	}
 	switch {
 	case store.IsNotFound(err):

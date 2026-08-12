@@ -114,10 +114,10 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 			Operation:  "create",
 			Value:      candidate.Auditable(),
 		},
-		s.now,
+		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			return s.store.Create(ctx, &store.AffiliationCreation{
-				Affiliation: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Affiliation: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		affiliationError,
@@ -166,8 +166,8 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
 			return s.store.EndWithAudit(ctx, &store.AffiliationEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		affiliationError,
@@ -185,7 +185,7 @@ func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invoc
 	return resource, nil
 }
 
-func affiliationError(err error) *Error {
+func affiliationError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "affiliation").Wrap(err)

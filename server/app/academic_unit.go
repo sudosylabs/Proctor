@@ -225,7 +225,7 @@ func nonNilAcademicUnits(units []*model.AcademicUnit) []*model.AcademicUnit {
 	return units
 }
 
-func academicUnitReadError(resource string, err error) *Error {
+func academicUnitReadError(resource string, err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").

@@ -290,7 +290,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 				ActorID: invocation.Principal().UserID, UserID: current.ID,
 				ExpectedUserRevision: current.Revision, EntryID: entryID, RevisionID: revision.ID,
 				LeaseID: lease.ID, Renditions: renditions, ChangedAt: changedAt,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		profilePictureError,
@@ -422,7 +422,7 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 				ActorID: invocation.Principal().UserID, UserID: current.ID,
 				ExpectedUserRevision: current.Revision, EntryID: state.EntryID,
 				ExpectedCurrentRevisionID: state.RevisionID, ExpectedSHA256: expectedSHA256,
-				ChangedAt: changedAt, AuditEventID: reference.ID, AuditAt: reference.At,
+				ChangedAt: changedAt, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		profilePictureError,
@@ -535,7 +535,7 @@ func (s *defaultProfilePictureService) Ensure(ctx context.Context, userID model.
 	return published.User.DefaultProfilePictureFileID, nil
 }
 
-func profilePictureError(err error) *Error {
+func profilePictureError(err error) error {
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").Wrap(err)
 	}

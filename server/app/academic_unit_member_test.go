@@ -47,13 +47,20 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	events := []string{}
 	unitID, userID := model.NewId(), model.NewId()
 	persistence := &academicUnitMemberStoreFake{events: &events}
-	service := newAcademicUnitMemberService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	clockCalls := 0
+	service := newAcademicUnitMemberService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time {
+		clockCalls++
+		return time.UnixMilli(500)
+	}, model.NewId)
 	created, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: userID, StartAt: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.AcademicUnitID.String() != unitID || created.UserID.String() != userID || created.EndsAt.Valid || persistence.createInput.Member.EndsAt.Valid {
 		t.Fatalf("created = %#v", created)
+	}
+	if clockCalls != 1 || persistence.createInput.AuditAt != model.MillisFromTime(created.CreatedAt) {
+		t.Fatalf("clock calls/creation/audit time = %d/%v/%d", clockCalls, created.CreatedAt, persistence.createInput.AuditAt)
 	}
 	want := []string{"authorize", "audit-begin", "store-create"}
 	if !reflect.DeepEqual(events, want) {

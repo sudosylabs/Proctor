@@ -123,14 +123,14 @@ func (s *institutionService) Update(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Institution, error) {
 			return s.store.UpdateWithAudit(ctx, &store.InstitutionUpdate{
-				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		institutionError,
 	)
 }
 
-func institutionError(err error) *Error {
+func institutionError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "institution").Wrap(err)

@@ -154,7 +154,7 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.store.Create(ctx, &store.ProgrammeCreation{
-				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		programmeError,
@@ -199,7 +199,7 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.store.UpdateWithAudit(ctx, &store.ProgrammeUpdate{
-				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		programmeError,
@@ -229,8 +229,8 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{
-				ID: current.ID.String(), ArchiveAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: current.ID.String(), ArchiveAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		programmeError,
@@ -257,7 +257,7 @@ func (s *programmeService) authorize(ctx context.Context, invocation Invocation,
 	return s.authorization.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID})
 }
 
-func programmeError(err error) *Error {
+func programmeError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "programme").Wrap(err)

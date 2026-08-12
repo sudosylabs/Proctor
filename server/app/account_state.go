@@ -78,8 +78,8 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserDisabledStateResult, error) {
 			return s.users.SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
 				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
-				ChangedAt: reference.At, RevocationReason: "account disabled by administrator",
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ChangedAt: reference.AtMillis, RevocationReason: "account disabled by administrator",
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		accountStateError,
@@ -101,7 +101,7 @@ func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID
 	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
 }
 
-func accountStateError(err error) *Error {
+func accountStateError(err error) error {
 	var conflict *store.ErrConflict
 	if errors.As(err, &conflict) && conflict.Constraint == "users_last_system_admin" {
 		return NewError("user.last_system_admin").WithField("resource", "user").Wrap(err)

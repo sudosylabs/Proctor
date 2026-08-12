@@ -135,7 +135,7 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.Create(ctx, &store.AcademicPeriodCreation{
-				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		academicPeriodError,
@@ -189,7 +189,7 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{
-				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		academicPeriodError,
@@ -222,8 +222,8 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
-				ID: current.ID.String(), ArchiveAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: current.ID.String(), ArchiveAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		academicPeriodError,
@@ -243,7 +243,7 @@ func (s *academicPeriodService) get(ctx context.Context, id string) (*model.Acad
 	return period, nil
 }
 
-func academicPeriodError(err error) *Error {
+func academicPeriodError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "academic_period").Wrap(err)

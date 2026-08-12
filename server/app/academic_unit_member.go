@@ -111,10 +111,10 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 			Operation:  "create_member",
 			Value:      candidate.Auditable(),
 		},
-		s.now,
+		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
 			return s.store.Create(ctx, &store.AcademicUnitMemberCreation{
-				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.At,
+				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		academicUnitMemberError,
@@ -151,8 +151,8 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
 			return s.store.EndWithAudit(ctx, &store.AcademicUnitMemberEnd{
-				ID: id, ExpectedRevision: current.Revision, EndAt: reference.At,
-				AuditEventID: reference.ID, AuditAt: reference.At,
+				ID: id, ExpectedRevision: current.Revision, EndAt: reference.AtMillis,
+				AuditEventID: reference.ID, AuditAt: reference.AtMillis,
 			})
 		},
 		academicUnitMemberError,
@@ -170,7 +170,7 @@ func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocatio
 	return resource, nil
 }
 
-func academicUnitMemberError(err error) *Error {
+func academicUnitMemberError(err error) error {
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)
