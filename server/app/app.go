@@ -9,9 +9,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
 
 // App is the long-lived application facade. Construction receives only the
@@ -63,368 +61,32 @@ func (a *App) Jobs() *jobengine.Engine {
 }
 
 // New constructs the application graph from explicit dependencies. Only the
-// module-root composition package should call this.
+// module-root composition package should call this. The ordered recipe remains
+// visible here while private construction modules retain each cohesive slice's
+// projection and wiring knowledge.
 func New(deps Dependencies) (*App, error) {
-	if deps.Store == nil {
-		return nil, errors.New("store is required")
+	if err := validateApplicationDependencies(deps); err != nil {
+		return nil, err
 	}
-	if deps.Cache == nil {
-		return nil, errors.New("cache is required")
-	}
-	if deps.Mailer == nil {
-		return nil, errors.New("mailer is required")
-	}
-	if deps.Registry == nil {
-		return nil, errors.New("external provider registry is required")
-	}
-	if deps.FileContent == nil {
-		return nil, errors.New("file content is required")
-	}
-	if deps.NodeID == "" {
-		return nil, errors.New("node ID is required")
-	}
-	if deps.AuthenticationDiagnostics == nil {
-		return nil, errors.New("authentication diagnostics is required")
-	}
-	if deps.RealtimeDiagnostics == nil {
-		return nil, errors.New("realtime diagnostics is required")
-	}
-	if deps.RecoveryDiagnostics == nil {
-		return nil, errors.New("recovery diagnostics is required")
-	}
-
-	mfa, err := newMFAMechanics(deps.MFA)
+	foundation, err := constructApplicationFoundation(deps)
 	if err != nil {
 		return nil, err
 	}
-	hasher, err := newPasswordHasher(deps.Password)
+	identity, err := constructIdentity(deps, foundation)
 	if err != nil {
 		return nil, err
 	}
-	attemptAccounting, err := newAuthenticationAttemptAccounting(deps.Cache)
+	access, err := constructAccessAndAcademics(deps, foundation)
 	if err != nil {
 		return nil, err
 	}
-	authenticationInvalidator, err := newAuthenticationCacheInvalidator(
-		deps.Cache,
-		deps.AuthenticationDiagnostics,
-	)
+	profiles := constructProfilesAndFiles(deps, foundation, access)
+	jobs, err := constructJobs(deps, foundation, access, profiles)
 	if err != nil {
 		return nil, err
 	}
-	realtimeDelivery, err := apprealtime.New(
-		authenticationInvalidator,
-		deps.RealtimeDiagnostics,
-	)
-	if err != nil {
-		return nil, err
-	}
-	realtime, err := newRealtimeServiceWithDelivery(
-		realtimeDelivery,
-		deps.RealtimeDiagnostics,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	audit, err := newAuditService(deps.Store.Audit(), deps.Store.Institution(), deps.NodeID)
-	if err != nil {
-		return nil, err
-	}
-	mfaApplication, err := newMFAApplicationService(
-		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
-		mfaAuditAdapter{audit: audit}, realtime, mfa, deps.RecentAuthenticationTTL, time.Now,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Expand PAT policy used both at bearer resolution and administration.
-	patPolicy := deps.PersonalAccessToken
-	patResolver, err := newPersonalAccessTokenBearerResolver(
-		deps.Store.PersonalAccessToken(), patPolicy, deps.AuthenticationDiagnostics,
-	)
-	if err != nil {
-		return nil, err
-	}
-	authentication, err := newAuthenticationService(
-		deps.Store.User(),
-		deps.Store.PasswordCredential(),
-		deps.Store.Session(),
-		deps.Store.SessionCredential(),
-		deps.Cache,
-		attemptAccounting,
-		realtime,
-		hasher,
-		mfaApplication,
-		patResolver,
-		deps.Sessions,
-		deps.LoginRateLimit,
-		deps.AuthenticationDiagnostics,
-		model.NewCredentialToken,
-		time.Now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	selfSessions, err := newSelfSessionService(deps.Store.Session(), realtime, time.Now)
-	if err != nil {
-		return nil, err
-	}
-	accountTokens, err := newAccountTokenService(
-		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), deps.Store.Institution(),
-		deps.Mailer, attemptAccounting, hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
-		realtime, deps.RecoveryDiagnostics, deps.AccountRecovery, deps.PublicURL,
-		model.NewCredentialToken, time.Now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	personalAccessTokenAdministration, err := newPersonalAccessTokenAdministrationService(
-		deps.Store.PersonalAccessToken(), deps.Store.AcademicUnit(), deps.Store.Institution(),
-		personalAccessTokenAuditAdapter{audit: audit}, patPolicy, deps.RecentAuthenticationTTL,
-		model.NewCredentialToken, time.Now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	externalPolicy := deps.ExternalAuth
-	if externalPolicy.PublicURL == "" {
-		externalPolicy.PublicURL = deps.PublicURL
-	}
-	if externalPolicy.NodeID == "" {
-		externalPolicy.NodeID = deps.NodeID
-	}
-	if externalPolicy.LoginRateLimit == (LoginRateLimitPolicy{}) {
-		externalPolicy.LoginRateLimit = deps.LoginRateLimit
-	}
-	externalAuthentication, err := newExternalAuthenticationService(
-		deps.Registry,
-		deps.Store.ExternalLoginState(),
-		deps.Store.Institution(),
-		deps.Store.ExternalIdentity(),
-		deps.Store.Session(),
-		attemptAccounting,
-		authentication,
-		authenticationInvalidator,
-		audit,
-		externalPolicy,
-		deps.AuthenticationDiagnostics,
-		model.NewCredentialToken,
-		time.Now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	scopeResolver, err := newAccessScopeResolver(
-		deps.Store.Institution(), deps.Store.AcademicUnit(), deps.Store.Class(), deps.Store.User(), deps.Store.ClassMember(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	authorization, err := newAccessControlService(
-		deps.Store.Role(), deps.Store.RoleBinding(), scopeResolver, audit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	academicAuthorization := academicUnitAuthorization{
-		authorization: authorization,
-		institutions:  deps.Store.Institution(),
-	}
-	academicUnits := newAcademicUnitQueryService(
-		deps.Store.AcademicUnit(), academicAuthorization,
-	)
-	academicUnitCommands := newAcademicUnitCommandService(
-		deps.Store.AcademicUnit(), academicAuthorization,
-		mutationAuditAdapter{audit: audit},
-		academicUnitRealtimeEffects{realtime: realtime},
-		academicUnitEffectReporter{realtime: realtime},
-		time.Now, model.NewId,
-	)
-	institutions := newInstitutionService(
-		deps.Store.Institution(), academicAuthorization,
-		mutationAuditAdapter{audit: audit}, time.Now,
-	)
-	programmes := newProgrammeService(
-		deps.Store.Programme(), academicAuthorization,
-		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
-	)
-	programmeLevels := newProgrammeLevelService(
-		deps.Store.ProgrammeLevel(), deps.Store.Programme(),
-		academicAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
-	)
-	academicPeriods := newAcademicPeriodService(
-		deps.Store.AcademicPeriod(), academicAuthorization,
-		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
-	)
-	classes := newClassService(
-		deps.Store.Class(), deps.Store.ProgrammeLevel(),
-		deps.Store.Programme(), academicAuthorization,
-		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
-	)
-	affiliations := newAffiliationService(
-		deps.Store.Affiliation(), deps.Store.ClassMember(),
-		academicAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
-	)
-	academicUnitMembers := newAcademicUnitMemberService(
-		deps.Store.AcademicUnitMember(), academicAuthorization,
-		mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
-	)
-	classMembers := newClassMemberService(
-		deps.Store.ClassMember(), deps.Store.Class(),
-		academicAuthorization, mutationAuditAdapter{audit: audit}, time.Now, model.NewId,
-	)
-	userProfiles := newUserProfileService(
-		deps.Store.User(),
-		userProfileAuthorization{
-			authorization: authorization,
-			institutions:  deps.Store.Institution(),
-		},
-		mutationAuditAdapter{audit: audit}, time.Now,
-	)
-	profilePictures := newProfilePictureService(
-		deps.Store.User(), deps.Store.File(), deps.FileContent, deps.FileContent, deps.FileContent, deps.FileContent,
-		userProfileAuthorization{
-			authorization: authorization,
-			institutions:  deps.Store.Institution(),
-		},
-		mutationAuditAdapter{audit: audit}, profilePictureRealtimeEffects{realtime: realtime}, profilePictureEffectReporter{realtime: realtime},
-		nil,
-		time.Now,
-	)
-	var jobs *jobengine.Engine
-	if deps.Store.Job() != nil {
-		defaultJobs := &defaultProfilePictureJobProposer{jobs: deps.Store.Job()}
-		defaultHandler := defaultProfilePictureHandler{generator: profilePictures}
-		reconciliationHandler := defaultProfilePictureReconciliationHandler{
-			users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
-		}
-		purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent)
-		descriptors := []jobengine.Descriptor{
-			defaultProfilePictureDescriptor(defaultHandler),
-			defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
-			filePurgeExpiredContentDescriptor(purgeHandler),
-		}
-		retentionPolicies := jobRetentionPolicies(descriptors)
-		cleanupHandler := jobHistoryCleanupHandler{jobs: deps.Store.Job(), policies: append(retentionPolicies, store.JobRetentionPolicy{
-			Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour,
-		})}
-		descriptors = append(descriptors, jobHistoryCleanupDescriptor(cleanupHandler))
-		recurrences := []jobengine.Recurrence{
-			{Name: "profile-picture-default-reconciliation", Proposer: defaultProfilePictureReconciliationJobProposer{jobs: deps.Store.Job(), now: time.Now}},
-			{Name: "file-purge-expired-content", Proposer: filePurgeExpiredContentProposer{jobs: deps.Store.Job(), now: time.Now}},
-			{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
-		}
-		jobs, err = jobengine.New(jobengine.Config{
-			Store: deps.Store.Job(), Descriptors: descriptors, NodeID: deps.NodeID,
-			Diagnostics: deps.RecoveryDiagnostics,
-			Policy:      jobengine.Policy{PollInterval: 500 * time.Millisecond},
-			Recurrences: recurrences,
-		})
-		if err != nil {
-			return nil, err
-		}
-		defaultJobs.wake = jobs.Wake
-		profilePictures.reads.defaultJobs = defaultJobs
-	}
-	var jobOperations *jobOperationsService
-	if jobs != nil {
-		jobOperations, err = newJobOperationsService(
-			jobs,
-			jobOperationsAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
-			mutationAuditAdapter{audit: audit}, time.Now,
-		)
-		if err != nil {
-			return nil, err
-		}
-	}
-	accountStates := newAccountStateService(
-		deps.Store.User(),
-		userProfileAuthorization{
-			authorization: authorization,
-			institutions:  deps.Store.Institution(),
-		},
-		mutationAuditAdapter{audit: audit},
-		accountStateRealtimeEffects{effects: realtime},
-		time.Now,
-	)
-	sessionAdministrations := newSessionAdministrationService(
-		deps.Store.Session(),
-		sessionAdministrationAuthorization{authorization: authorization},
-		mutationAuditAdapter{audit: audit},
-		sessionAdministrationRealtimeEffects{effects: realtime},
-		time.Now,
-	)
-	roles := newRoleService(
-		deps.Store.Role(),
-		roleAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
-		mutationAuditAdapter{audit: audit},
-		roleRealtimeEffects{effects: realtime},
-		time.Now,
-	)
-	roleBindings := newRoleBindingService(
-		deps.Store.RoleBinding(),
-		deps.Store.Role(),
-		roleAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
-		mutationAuditAdapter{audit: audit},
-		roleBindingRealtimeEffects{effects: realtime},
-		time.Now,
-	)
-	auditListings := newAuditListingService(
-		deps.Store.Audit(),
-		auditListingAuthorization{authorization: authorization, institutions: deps.Store.Institution()},
-	)
-	bootstrap := newBootstrapService(
-		deps.Store.Installation(),
-		authentication.hasher,
-		attemptAccounting,
-		deps.LoginRateLimit,
-		deps.NodeID,
-		time.Now,
-	)
-	return &App{
-		authentication:                    authentication,
-		selfSessions:                      selfSessions,
-		externalAuthentication:            externalAuthentication,
-		mfaApplication:                    mfaApplication,
-		accountTokens:                     accountTokens,
-		personalAccessTokenAdministration: personalAccessTokenAdministration,
-		authorization:                     authorization,
-		academicUnits:                     academicUnits,
-		academicUnitCommands:              academicUnitCommands,
-		institutions:                      institutions,
-		programmes:                        programmes,
-		programmeLevels:                   programmeLevels,
-		academicPeriods:                   academicPeriods,
-		classes:                           classes,
-		affiliations:                      affiliations,
-		academicUnitMembers:               academicUnitMembers,
-		classMembers:                      classMembers,
-		userProfiles:                      userProfiles,
-		profilePictures:                   profilePictures,
-		accountStates:                     accountStates,
-		sessionAdministrations:            sessionAdministrations,
-		roles:                             roles,
-		roleBindings:                      roleBindings,
-		auditListings:                     auditListings,
-		bootstrap:                         bootstrap,
-		audit:                             audit,
-		realtime:                          realtime,
-		jobs:                              jobs,
-		jobOperations:                     jobOperations,
-		recentAuthenticationTTL:           deps.RecentAuthenticationTTL,
-	}, nil
-}
-
-func jobRetentionPolicies(descriptors []jobengine.Descriptor) []store.JobRetentionPolicy {
-	policies := make([]store.JobRetentionPolicy, 0, len(descriptors))
-	for _, descriptor := range descriptors {
-		policies = append(policies, store.JobRetentionPolicy{
-			Type: descriptor.Type, SucceededCanceledAge: descriptor.SuccessRetention, FailedAge: descriptor.FailureRetention,
-		})
-	}
-	return policies
+	administration := constructAdministration(deps, foundation, access)
+	return assembleApplication(deps, foundation, identity, access, profiles, jobs, administration), nil
 }
 
 func (a *App) Can(

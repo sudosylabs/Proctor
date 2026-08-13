@@ -1,0 +1,33 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app
+
+import "time"
+
+func constructProfilesAndFiles(
+	deps Dependencies,
+	foundation applicationFoundation,
+	access accessAcademicConstruction,
+) profileFileConstruction {
+	authorization := userProfileAuthorization{
+		authorization: access.authorization,
+		institutions:  deps.Store.Institution(),
+	}
+	return profileFileConstruction{
+		userProfiles: newUserProfileService(
+			deps.Store.User(), authorization,
+			mutationAuditAdapter{audit: foundation.audit}, time.Now,
+		),
+		profilePictures: newProfilePictureService(
+			deps.Store.User(), deps.Store.File(),
+			deps.FileContent, deps.FileContent, deps.FileContent, deps.FileContent,
+			authorization,
+			mutationAuditAdapter{audit: foundation.audit},
+			profilePictureRealtimeEffects{realtime: foundation.realtime},
+			profilePictureEffectReporter{realtime: foundation.realtime},
+			nil,
+			time.Now,
+		),
+	}
+}

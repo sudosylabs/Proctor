@@ -103,6 +103,8 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 	}{
 		{name: "domain cannot import HTTP", from: serverModule + "/model", imported: "net/http"},
 		{name: "domain cannot import PostgreSQL client", from: serverModule + "/model", imported: "github.com/jackc/pgx/v5"},
+		{name: "model build tools cannot import server code", from: serverModule + "/model/internal/idgen", imported: serverModule + "/app"},
+		{name: "model build tools cannot import third-party code", from: serverModule + "/model/internal/idgen", imported: "golang.org/x/tools/go/packages"},
 		{name: "store contracts cannot import SQL adapters", from: serverModule + "/store", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import platform", from: serverModule + "/app", imported: serverModule + "/platform"},
 		{name: "Realtime child cannot import parent application", from: serverModule + "/app/realtime", imported: serverModule + "/app"},
@@ -177,6 +179,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "application may import password hashing library", from: serverModule + "/app", imported: "golang.org/x/crypto/argon2"},
 		{name: "root composition may import platform", from: serverModule, imported: serverModule + "/platform"},
 		{name: "standard library remains available", from: serverModule + "/app", imported: "context"},
+		{name: "model build tools may import standard library", from: serverModule + "/model/internal/idgen", imported: "go/format"},
 	}
 
 	for _, tt := range tests {
@@ -244,6 +247,8 @@ func forbiddenImport(from, imported string) bool {
 	switch {
 	case from == serverModule:
 		return false
+	case packageOrBelow(from, serverModule+"/model/internal/idgen"):
+		return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")
 	case from == serverModule+"/model":
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			strings.HasPrefix(imported, repositoryModule+"/")
@@ -387,6 +392,7 @@ func knownProductionPackage(packagePath string) bool {
 		return true
 	}
 	if packagePath == serverModule || packagePath == serverModule+"/model" ||
+		packageOrBelow(packagePath, serverModule+"/model/internal/idgen") ||
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
 		packagePath == serverModule+"/mlog" || packagePath == serverModule+"/migrations" ||
 		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" {

@@ -101,6 +101,13 @@ representation. Every entity has a distinct validated string-backed type such
 as `UserID` or `ClassID`; the zero value is invalid, and IDs encode no ordering,
 institution, or domain meaning.
 
+Entity-specific type declarations and their domain documentation remain
+handwritten. An explicit build-time catalog generates only their uniform
+constructor, parser, validation, string, text, and JSON mechanics. The
+deterministic output is checked in and freshness-tested; it does not introduce
+a runtime-generic identifier or move persistence and transport concerns into
+`model`.
+
 Mutable, conflict-prone aggregates carry explicit revisions. Updates compare
 and increment the expected revision; timestamps are not concurrency tokens and
 revisions are not added mechanically to immutable or append-only records.

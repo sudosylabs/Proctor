@@ -68,6 +68,15 @@ delegate to them. The facade retains neither the root Store nor a Store
 accessor; architecture tests reject restoration of either that locator or
 production `App.Store()` traversal.
 
+`app.New` remains the sole application constructor and exposes its fail-fast
+order directly: validate shared dependencies, construct shared mechanics,
+construct Identity, construct access and Academic Structure, construct profile
+and file behavior, construct optional Jobs, then construct administration and
+bootstrap behavior before assembling the facade. Private same-package recipes
+retain the projection and wiring knowledge for those cohesive slices. Their
+result values exist only during construction and are not runtime locators or
+alternate application interfaces.
+
 Readable ordered construction and selective child modules are useful
 structural patterns, but another project's platform-service taxonomy is not a
 package template. A child package is introduced only after the responsibility

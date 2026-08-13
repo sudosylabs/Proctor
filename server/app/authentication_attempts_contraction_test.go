@@ -42,8 +42,8 @@ func TestAuthenticationAttemptAccountingHasOneProductionOwner(t *testing.T) {
 			identifier, ok := call.Fun.(*ast.Ident)
 			if ok && identifier.Name == "newAuthenticationAttemptAccounting" {
 				constructorCalls++
-				if name != "app.go" {
-					t.Errorf("%s constructs authentication attempt accounting; only app.go may construct it", name)
+				if name != "construction.go" {
+					t.Errorf("%s constructs authentication attempt accounting; only the private construction recipe may construct it", name)
 				}
 			}
 			return true
