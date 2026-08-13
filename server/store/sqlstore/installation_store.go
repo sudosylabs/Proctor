@@ -36,7 +36,7 @@ func (s SQLInstallationStore) Get(ctx context.Context) (*model.InstallationState
 		 WHERE singleton = 1`); err != nil {
 		return nil, translateError("installation", "singleton", err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLInstallationStore) Bootstrap(
@@ -48,69 +48,54 @@ func (s SQLInstallationStore) Bootstrap(
 		return nil, err
 	}
 
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin installation bootstrap: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "installation bootstrap", func(ctx context.Context, tx *sqlxTxWrapper) (*model.InstallationBootstrapResult, error) {
+		if _, err := tx.Exec(ctx,
+			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+			installationBootstrapLock,
+		); err != nil {
+			return nil, fmt.Errorf("lock installation bootstrap: %w", err)
+		}
+		pristine, err := installationIsPristine(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		if !pristine {
+			return nil, store.NewErrConflict("installation", "installation_already_initialized_or_not_pristine", nil)
+		}
 
-	if _, err := tx.Exec(
-		ctx,
-		`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-		installationBootstrapLock,
-	); err != nil {
-		return nil, fmt.Errorf("lock installation bootstrap: %w", err)
-	}
-	pristine, err := installationIsPristine(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-	if !pristine {
-		return nil, store.NewErrConflict(
-			"installation",
-			"installation_already_initialized_or_not_pristine",
-			nil,
-		)
-	}
-
-	if err := insertInstallationInstitution(ctx, tx, prepared.Institution); err != nil {
-		return nil, err
-	}
-	if err := insertUser(ctx, tx, prepared.Administrator); err != nil {
-		return nil, err
-	}
-	if err := insertPasswordCredential(ctx, tx, prepared.credential); err != nil {
-		return nil, err
-	}
-	if _, err := insertQueuedJob(ctx, tx, prepared.DefaultProfilePictureJob, false); err != nil {
-		return nil, fmt.Errorf("enqueue bootstrap default profile picture generation: %w", translateError("job", prepared.DefaultProfilePictureJob.ID.String(), err))
-	}
-	if err := insertInstallationRole(ctx, tx, prepared.Role); err != nil {
-		return nil, err
-	}
-	if err := insertInstallationRoleBinding(ctx, tx, prepared.RoleBinding); err != nil {
-		return nil, err
-	}
-	if err := insertInstallationAudit(ctx, tx, prepared.auditEvent); err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx, `
+		if err := insertInstallationInstitution(ctx, tx, prepared.Institution); err != nil {
+			return nil, err
+		}
+		if err := insertUser(ctx, tx, prepared.Administrator); err != nil {
+			return nil, err
+		}
+		if err := insertPasswordCredential(ctx, tx, prepared.credential); err != nil {
+			return nil, err
+		}
+		if _, err := insertQueuedJob(ctx, tx, prepared.DefaultProfilePictureJob, false); err != nil {
+			return nil, fmt.Errorf("enqueue bootstrap default profile picture generation: %w", translateError("job", prepared.DefaultProfilePictureJob.ID.String(), err))
+		}
+		if err := insertInstallationRole(ctx, tx, prepared.Role); err != nil {
+			return nil, err
+		}
+		if err := insertInstallationRoleBinding(ctx, tx, prepared.RoleBinding); err != nil {
+			return nil, err
+		}
+		if err := insertInstallationAudit(ctx, tx, prepared.auditEvent); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
 		INSERT INTO installation_states (
 			singleton, initialized_at, institution_id, administrator_user_id
 		) VALUES (1, $1, $2, $3)`,
-		prepared.State.InitializedAt,
-		prepared.State.InstitutionID.String(),
-		prepared.State.AdministratorUserID.String(),
-	); err != nil {
-		return nil, fmt.Errorf(
-			"save installation state: %w",
-			translateError("installation", "singleton", err),
-		)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit installation bootstrap: %w", err)
-	}
-	return prepared.InstallationBootstrapResult, nil
+			prepared.State.InitializedAt,
+			prepared.State.InstitutionID.String(),
+			prepared.State.AdministratorUserID.String(),
+		); err != nil {
+			return nil, fmt.Errorf("save installation state: %w", translateError("installation", "singleton", err))
+		}
+		return prepared.InstallationBootstrapResult, nil
+	})
 }
 
 type preparedInstallationBootstrap struct {
@@ -337,12 +322,24 @@ func insertInstallationAudit(
 	return nil
 }
 
-func (row installationStateRow) model() *model.InstallationState {
-	return &model.InstallationState{
-		InitializedAt:       row.InitializedAt.UTC(),
-		InstitutionID:       model.InstitutionID(row.InstitutionID),
-		AdministratorUserID: model.UserID(row.AdministratorUserID),
+func (row installationStateRow) model() (*model.InstallationState, error) {
+	institutionID, err := parsePersistedID("installation", "institution_id", row.InstitutionID, model.ParseInstitutionID)
+	if err != nil {
+		return nil, err
 	}
+	administratorUserID, err := parsePersistedID("installation", "administrator_user_id", row.AdministratorUserID, model.ParseUserID)
+	if err != nil {
+		return nil, err
+	}
+	state := &model.InstallationState{
+		InitializedAt:       row.InitializedAt.UTC(),
+		InstitutionID:       institutionID,
+		AdministratorUserID: administratorUserID,
+	}
+	if err := validatePersistedModel("installation", state); err != nil {
+		return nil, err
+	}
+	return state, nil
 }
 
 var _ store.InstallationStore = (*SQLInstallationStore)(nil)

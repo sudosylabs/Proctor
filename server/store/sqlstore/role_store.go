@@ -87,27 +87,21 @@ func (s SQLRoleStore) SaveWithAudit(ctx context.Context, input *store.RoleCreati
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("role", "value", nil).Wrap(err)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin audited role creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := insertRole(ctx, tx, candidate); err != nil {
-		return nil, err
-	}
-	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(
-		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete role creation audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit audited role creation: %w", err)
-	}
-	return candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Role, error) {
+		if _, err := insertRole(ctx, tx, candidate); err != nil {
+			return nil, err
+		}
+		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete role creation audit: %w", err)
+		}
+		return candidate, nil
+	})
 }
 
 func insertRole(ctx context.Context, executor sqlxExecutor, role *model.Role) (roleRow, error) {
@@ -142,7 +136,7 @@ func (s SQLRoleStore) get(ctx context.Context, query sq.SelectBuilder, key strin
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("role", key, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLRoleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role, error) {
@@ -177,7 +171,11 @@ func (s SQLRoleStore) selectRoles(
 	}
 	roles := make([]*model.Role, 0, len(rows))
 	for _, row := range rows {
-		roles = append(roles, row.model())
+		role, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
 	}
 	return roles, nil
 }
@@ -189,14 +187,19 @@ func (s SQLRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role
 	if role.BuiltIn {
 		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 	}
+	expectedUpdatedAt := role.UpdatedAt
 	candidate := role.Clone()
 	candidate.PrepareUpdate(model.NowUTC())
 	if err := candidate.Validate(); err != nil {
 		return nil, err
 	}
-	if err := updateRole(ctx, s.GetMaster(), candidate); err != nil {
+	if err := updateRole(ctx, s.GetMaster(), candidate, expectedUpdatedAt); err != nil {
 		return nil, err
 	}
+	// Update is a legacy model-oriented Store operation. Advancing the caller's
+	// snapshot lets a subsequent update carry the new optimistic concurrency
+	// token while concurrent clones still compete on the same prior instant.
+	*role = *candidate.Clone()
 	return candidate, nil
 }
 
@@ -208,6 +211,7 @@ func (s SQLRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpda
 	if input.Role.BuiltIn {
 		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 	}
+	expectedUpdatedAt := input.Role.UpdatedAt
 	candidate := input.Role.Clone()
 	at := model.TimeFromMillis(input.AuditAt)
 	if at.IsZero() {
@@ -217,40 +221,36 @@ func (s SQLRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpda
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("role", "value", nil).Wrap(err)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin audited role update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := updateRole(ctx, tx, candidate); err != nil {
-		return nil, err
-	}
-	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(
-		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete role update audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit audited role update: %w", err)
-	}
-	return candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Role, error) {
+		if err := updateRole(ctx, tx, candidate, expectedUpdatedAt); err != nil {
+			return nil, err
+		}
+		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete role update audit: %w", err)
+		}
+		return candidate, nil
+	})
 }
 
-func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role) error {
+func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role, expectedUpdatedAt time.Time) error {
 	row := newRoleRow(role)
-	result, err := executor.NamedExec(ctx, `
+	result, err := executor.Exec(ctx, `
 		UPDATE roles
-		   SET updated_at = :updated_at, name = :name, display_name = :display_name,
-		       description = :description, permissions = :permissions
-		 WHERE id = :id AND archived_at IS NULL AND built_in = :built_in`, &row)
+		   SET updated_at = ?, name = ?, display_name = ?,
+		       description = ?, permissions = ?
+		 WHERE id = ? AND archived_at IS NULL AND built_in = ? AND updated_at = ?`,
+		row.UpdatedAt, row.Name, row.DisplayName, row.Description, row.Permissions,
+		row.ID, row.BuiltIn, expectedUpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update role: %w", translateError("role", role.ID.String(), err))
 	}
-	return requireAffected(result, "role", role.ID.String())
+	return requireRevisionAffected(ctx, executor, result, "role", "roles", role.ID.String())
 }
 
 func (s SQLRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (*model.Role, error) {
@@ -278,43 +278,40 @@ func (s SQLRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArc
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "archive", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin audited role archive: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	var row roleRow
-	if err := tx.Get(ctx, &row, `
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Role, error) {
+		var row roleRow
+		if err := tx.Get(ctx, &row, `
 		SELECT id, created_at, updated_at, archived_at, name, display_name,
 		       description, permissions, built_in
 		  FROM roles
 		 WHERE id = ? AND archived_at IS NULL
 		 FOR UPDATE`, input.ID); err != nil {
-		return nil, translateError("role", input.ID, err)
-	}
-	role := row.model()
-	if role.BuiltIn {
-		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
-	}
-	if err := archiveRole(ctx, tx, input.ID, input.ArchiveAt); err != nil {
-		return nil, err
-	}
-	at := model.TimeFromMillis(input.ArchiveAt)
-	role.UpdatedAt = at
-	role.ArchivedAt = model.OptionalTimeFrom(at)
-	encoded, appErr := model.EncodeAuditData(role.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(
-		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete role archive audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit audited role archive: %w", err)
-	}
-	return role, nil
+			return nil, translateError("role", input.ID, err)
+		}
+		role, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		if role.BuiltIn {
+			return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
+		}
+		if err := archiveRole(ctx, tx, input.ID, input.ArchiveAt); err != nil {
+			return nil, err
+		}
+		at := model.TimeFromMillis(input.ArchiveAt)
+		role.UpdatedAt = at
+		role.ArchivedAt = model.OptionalTimeFrom(at)
+		encoded, appErr := model.EncodeAuditData(role.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete role archive audit: %w", err)
+		}
+		return role, nil
+	})
 }
 
 func archiveRole(ctx context.Context, executor sqlxExecutor, id string, archiveAt int64) error {
@@ -341,14 +338,22 @@ func newRoleRow(role *model.Role) roleRow {
 	}
 }
 
-func (row roleRow) model() *model.Role {
-	return &model.Role{
-		ID: model.RoleID(row.ID), CreatedAt: row.CreatedAt.UTC(),
+func (row roleRow) model() (*model.Role, error) {
+	id, err := parsePersistedID("role", "id", row.ID, model.ParseRoleID)
+	if err != nil {
+		return nil, err
+	}
+	value := &model.Role{
+		ID: id, CreatedAt: row.CreatedAt.UTC(),
 		UpdatedAt: row.UpdatedAt.UTC(), ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
 		Name: row.Name, DisplayName: row.DisplayName,
 		Description: row.Description, Permissions: append([]string(nil), row.Permissions...),
 		BuiltIn: row.BuiltIn,
 	}
+	if err := validatePersistedModel("role", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.RoleStore = (*SQLRoleStore)(nil)

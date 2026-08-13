@@ -120,7 +120,7 @@ func (s SQLAuditStore) Get(ctx context.Context, id string) (*model.AuditEvent, e
 	); err != nil {
 		return nil, translateError("audit_event", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLAuditStore) Complete(
@@ -165,7 +165,7 @@ func completeAuditEvent(
 	if err != nil {
 		return nil, translateError("audit_event", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLAuditStore) List(
@@ -210,7 +210,11 @@ func (s SQLAuditStore) List(
 	}
 	events := make([]*model.AuditEvent, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, row.model())
+		event, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
 	}
 	return events, nil
 }
@@ -231,11 +235,29 @@ func newAuditRow(event *model.AuditEvent) auditRow {
 	}
 }
 
-func (row auditRow) model() *model.AuditEvent {
-	return &model.AuditEvent{
-		ID: model.AuditEventID(row.ID), CreatedAt: row.CreatedAt.UTC(),
+func (row auditRow) model() (*model.AuditEvent, error) {
+	id, err := parsePersistedID("audit_event", "id", row.ID, model.ParseAuditEventID)
+	if err != nil {
+		return nil, err
+	}
+	actorID, err := parseNullablePersistedID("audit_event", "actor_id", row.ActorID, model.ParseUserID)
+	if err != nil {
+		return nil, err
+	}
+	sessionID, err := parseNullablePersistedID("audit_event", "session_id", row.SessionID, model.ParseSessionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validatePersistedResourceID(row.ResourceType, row.ResourceID); err != nil {
+		return nil, err
+	}
+	if err := validatePersistedScopeID("audit_event", row.ScopeType, row.ScopeID); err != nil {
+		return nil, err
+	}
+	value := &model.AuditEvent{
+		ID: id, CreatedAt: row.CreatedAt.UTC(),
 		UpdatedAt: row.UpdatedAt.UTC(),
-		ActorID:   model.UserID(row.ActorID.String), SessionID: model.SessionID(row.SessionID.String),
+		ActorID:   actorID, SessionID: sessionID,
 		Action:    row.Action,
 		Resource:  model.Resource{Type: row.ResourceType, ID: row.ResourceID},
 		ScopeType: row.ScopeType, ScopeID: row.ScopeID, Status: row.Status,
@@ -244,6 +266,30 @@ func (row auditRow) model() *model.AuditEvent {
 		ErrorCode: row.ErrorCode, Parameters: append([]byte(nil), row.Parameters...),
 		PriorState: append([]byte(nil), row.PriorState...), Result: append([]byte(nil), row.Result...),
 	}
+	if err := validatePersistedModel("audit_event", value); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func validatePersistedResourceID(resourceType model.ResourceType, raw string) error {
+	var err error
+	switch resourceType {
+	case model.ResourceInstitution:
+		_, err = model.ParseInstitutionID(raw)
+	case model.ResourceAcademicUnit:
+		_, err = model.ParseAcademicUnitID(raw)
+	case model.ResourceClass:
+		_, err = model.ParseClassID(raw)
+	case model.ResourceUser:
+		_, err = model.ParseUserID(raw)
+	default:
+		return nil
+	}
+	if err != nil {
+		return invalidPersistedState("audit_event", "resource_id", err)
+	}
+	return nil
 }
 
 func nullableAuditString(value string) sql.NullString {

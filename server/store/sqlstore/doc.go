@@ -10,6 +10,14 @@
 // remain private here; callers use named Store operations whose contracts state
 // their complete atomic and concurrency guarantees.
 //
+// Persisted entity identifiers are decoded through their domain-specific types
+// and backed by validated PostgreSQL CHECK constraints. A malformed row is an
+// internal persistence invariant failure: reconstruction stops without partial
+// results, diagnostics identify only the entity and field, and the adapter does
+// not normalize or repair authoritative data. Deliberate non-entity values such
+// as hashes, claim tokens, object keys, protocol versions, addresses, and
+// cluster node identifiers retain their own bounded contracts.
+//
 // Package sqlstore excludes application policy, authorization decisions,
 // transport contracts, transient cache state, and post-commit effects. It may
 // depend inward on store contracts and domain models plus PostgreSQL and SQL
