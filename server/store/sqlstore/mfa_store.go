@@ -38,7 +38,7 @@ type mfaCredentialRow struct {
 }
 
 type mfaActivationTransactionResult struct {
-	credential mfaCredentialRow
+	credential *model.MFACredential
 	session    *model.Session
 	hashes     []string
 }
@@ -160,6 +160,10 @@ func (s SQLMFAStore) Activate(
 		); err != nil {
 			return nil, translateError("mfa_credential", credentialID, err)
 		}
+		credential, err := row.model()
+		if err != nil {
+			return nil, err
+		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE mfa_recovery_codes
 		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
@@ -181,17 +185,13 @@ func (s SQLMFAStore) Activate(
 		if err != nil {
 			return nil, err
 		}
-		return &mfaActivationTransactionResult{credential: row, session: session, hashes: hashes}, nil
+		return &mfaActivationTransactionResult{credential: credential, session: session, hashes: hashes}, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	credential, err := result.credential.model()
-	if err != nil {
-		return nil, err
-	}
 	return &store.MFAActivationResult{
-		Credential:        credential,
+		Credential:        result.credential,
 		Session:           result.session,
 		AccessTokenHashes: result.hashes,
 	}, nil

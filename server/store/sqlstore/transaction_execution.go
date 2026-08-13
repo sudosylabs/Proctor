@@ -13,6 +13,12 @@ type transactionFinalizer interface {
 	Rollback() error
 }
 
+type sqlTransactionPolicy[T any] struct {
+	beginError  func(error) error
+	commit      bool
+	commitError func(T, error) error
+}
+
 // runSQLTransaction owns the ordinary transaction lifecycle inside the
 // PostgreSQL adapter. Operation bodies retain domain locks, queries, error
 // translation, and result construction; application code never receives this
@@ -23,10 +29,28 @@ func runSQLTransaction[Tx transactionFinalizer, T any](
 	operation string,
 	body func(context.Context, Tx) (T, error),
 ) (T, error) {
+	return executeSQLTransaction(ctx, begin, sqlTransactionPolicy[T]{
+		beginError: func(err error) error { return fmt.Errorf("begin %s: %w", operation, err) },
+		commit:     true,
+		commitError: func(_ T, err error) error {
+			return fmt.Errorf("commit %s: %w", operation, err)
+		},
+	}, body)
+}
+
+// executeSQLTransaction is the single transaction lifecycle implementation.
+// The policy exists for characterized legacy branches that deliberately expose
+// raw errors, branch-specific commit labels, or rollback-only read completion.
+func executeSQLTransaction[Tx transactionFinalizer, T any](
+	ctx context.Context,
+	begin func(context.Context) (Tx, error),
+	policy sqlTransactionPolicy[T],
+	body func(context.Context, Tx) (T, error),
+) (T, error) {
 	var zero T
 	tx, err := begin(ctx)
 	if err != nil {
-		return zero, fmt.Errorf("begin %s: %w", operation, err)
+		return zero, policy.beginError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -34,8 +58,11 @@ func runSQLTransaction[Tx transactionFinalizer, T any](
 	if err != nil {
 		return zero, err
 	}
+	if !policy.commit {
+		return result, nil
+	}
 	if err := tx.Commit(); err != nil {
-		return zero, fmt.Errorf("commit %s: %w", operation, err)
+		return zero, policy.commitError(result, err)
 	}
 	return result, nil
 }

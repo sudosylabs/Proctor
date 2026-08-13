@@ -61,6 +61,43 @@ func TestJobAttemptRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 	}
 }
 
+func TestJobTransactionPoliciesPreserveLegacyBranchSemantics(t *testing.T) {
+	t.Parallel()
+
+	failure := errors.New("database failure")
+	tests := []struct {
+		name string
+		got  error
+		want string
+	}{
+		{name: "permanent enqueue begin", got: permanentJobTransactionPolicy().beginError(failure), want: "begin permanent job enqueue: database failure"},
+		{name: "permanent enqueue commit", got: permanentJobTransactionPolicy().commitError(&permanentJobEnqueueOutcome{created: true}, failure), want: "commit permanent job enqueue: database failure"},
+		{name: "deduplicated enqueue commit", got: permanentJobTransactionPolicy().commitError(&permanentJobEnqueueOutcome{}, failure), want: "commit deduplicated permanent job enqueue: database failure"},
+		{name: "job claim begin", got: jobClaimSQLTransactionPolicy().beginError(failure), want: "begin job claim: database failure"},
+		{name: "job claim commit", got: jobClaimSQLTransactionPolicy().commitError(&jobClaimTransactionOutcome{}, failure), want: "commit job claim: database failure"},
+		{name: "expired recovery commit", got: jobClaimSQLTransactionPolicy().commitError(&jobClaimTransactionOutcome{postCommitErr: errors.New("not found")}, failure), want: "commit expired job recovery: database failure"},
+		{name: "history cleanup begin", got: jobHistorySQLTransactionPolicy().beginError(failure), want: "begin job history cleanup: database failure"},
+		{name: "history cleanup commit", got: jobHistorySQLTransactionPolicy().commitError(&jobHistoryCleanupOutcome{}, failure), want: "commit job history cleanup: database failure"},
+		{name: "empty history cleanup commit", got: jobHistorySQLTransactionPolicy().commitError(&jobHistoryCleanupOutcome{empty: true}, failure), want: "commit empty job history cleanup: database failure"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.got == nil || test.got.Error() != test.want || !errors.Is(test.got, failure) {
+				t.Fatalf("policy error = %v, want %q wrapping primary failure", test.got, test.want)
+			}
+		})
+	}
+
+	raw := rawJobTransactionPolicy[bool](false, nil)
+	if raw.commit || raw.beginError(failure) != failure {
+		t.Fatalf("rollback-only observation policy = %#v", raw)
+	}
+	rawCommit := rawJobTransactionPolicy[bool](true, func(_ bool, err error) error { return err })
+	if !rawCommit.commit || rawCommit.commitError(true, failure) != failure {
+		t.Fatalf("raw commit policy = %#v", rawCommit)
+	}
+}
+
 func validJobRow(t *testing.T) jobRow {
 	t.Helper()
 	now := time.UnixMilli(1_700_000_000_000).UTC()

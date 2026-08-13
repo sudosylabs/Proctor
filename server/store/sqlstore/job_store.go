@@ -31,6 +31,58 @@ type jobClaimTransactionOutcome struct {
 	postCommitErr error
 }
 
+type jobHistoryCleanupOutcome struct {
+	result *store.JobHistoryCleanupResult
+	empty  bool
+}
+
+func rawJobTransactionPolicy[T any](commit bool, commitError func(T, error) error) sqlTransactionPolicy[T] {
+	return sqlTransactionPolicy[T]{
+		beginError:  func(err error) error { return err },
+		commit:      commit,
+		commitError: commitError,
+	}
+}
+
+func permanentJobTransactionPolicy() sqlTransactionPolicy[*permanentJobEnqueueOutcome] {
+	return sqlTransactionPolicy[*permanentJobEnqueueOutcome]{
+		beginError: func(err error) error { return fmt.Errorf("begin permanent job enqueue: %w", err) },
+		commit:     true,
+		commitError: func(outcome *permanentJobEnqueueOutcome, err error) error {
+			if outcome != nil && outcome.created {
+				return fmt.Errorf("commit permanent job enqueue: %w", err)
+			}
+			return fmt.Errorf("commit deduplicated permanent job enqueue: %w", err)
+		},
+	}
+}
+
+func jobClaimSQLTransactionPolicy() sqlTransactionPolicy[*jobClaimTransactionOutcome] {
+	return sqlTransactionPolicy[*jobClaimTransactionOutcome]{
+		beginError: func(err error) error { return fmt.Errorf("begin job claim: %w", err) },
+		commit:     true,
+		commitError: func(outcome *jobClaimTransactionOutcome, err error) error {
+			if outcome != nil && outcome.postCommitErr != nil {
+				return fmt.Errorf("commit expired job recovery: %w", err)
+			}
+			return fmt.Errorf("commit job claim: %w", err)
+		},
+	}
+}
+
+func jobHistorySQLTransactionPolicy() sqlTransactionPolicy[*jobHistoryCleanupOutcome] {
+	return sqlTransactionPolicy[*jobHistoryCleanupOutcome]{
+		beginError: func(err error) error { return fmt.Errorf("begin job history cleanup: %w", err) },
+		commit:     true,
+		commitError: func(outcome *jobHistoryCleanupOutcome, err error) error {
+			if outcome != nil && outcome.empty {
+				return fmt.Errorf("commit empty job history cleanup: %w", err)
+			}
+			return fmt.Errorf("commit job history cleanup: %w", err)
+		},
+	}
+}
+
 type jobRow struct {
 	ID                string         `db:"id"`
 	Type              string         `db:"type"`
@@ -112,7 +164,7 @@ func (s SQLJobStore) Enqueue(ctx context.Context, input *store.JobEnqueue) (*mod
 }
 
 func (s SQLJobStore) enqueuePermanent(ctx context.Context, proposed *model.Job) (*model.Job, bool, error) {
-	outcome, err := runSQLTransaction(ctx, s.GetMaster().Begin, "permanent job enqueue", func(ctx context.Context, tx *sqlxTxWrapper) (*permanentJobEnqueueOutcome, error) {
+	outcome, err := executeSQLTransaction(ctx, s.GetMaster().Begin, permanentJobTransactionPolicy(), func(ctx context.Context, tx *sqlxTxWrapper) (*permanentJobEnqueueOutcome, error) {
 		result, err := tx.Exec(ctx, `INSERT INTO job_permanent_occurrences (type, dedupe_key, job_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (type, dedupe_key) DO NOTHING`, string(proposed.Type), proposed.DedupeKey, proposed.ID.String(), proposed.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("reserve permanent job occurrence: %w", err)
@@ -172,7 +224,7 @@ func (s SQLJobStore) ClaimNext(ctx context.Context, request *store.JobClaimReque
 	for index, jobType := range request.Types {
 		types[index] = string(jobType)
 	}
-	outcome, err := runSQLTransaction(ctx, s.GetMaster().Begin, "job claim", func(ctx context.Context, tx *sqlxTxWrapper) (*jobClaimTransactionOutcome, error) {
+	outcome, err := executeSQLTransaction(ctx, s.GetMaster().Begin, jobClaimSQLTransactionPolicy(), func(ctx context.Context, tx *sqlxTxWrapper) (*jobClaimTransactionOutcome, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -228,7 +280,7 @@ func (s SQLJobStore) Heartbeat(ctx context.Context, input *store.JobHeartbeat) (
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.LeaseDuration <= 0 || input.LeaseDuration > time.Hour {
 		return nil, store.NewErrInvalidInput("job_attempt", "heartbeat", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "job heartbeat", func(ctx context.Context, tx *sqlxTxWrapper) (*model.JobAttempt, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.JobAttempt](true, func(_ *model.JobAttempt, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.JobAttempt, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -252,7 +304,7 @@ func (s SQLJobStore) Checkpoint(ctx context.Context, input *store.JobCheckpoint)
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() {
 		return nil, store.NewErrInvalidInput("job", "checkpoint", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "job checkpoint", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -280,7 +332,9 @@ func (s SQLJobStore) ReserveWork(ctx context.Context, input *store.JobWorkReserv
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.Units <= 0 || input.Limit <= 0 || input.Units > input.Limit || input.Limit > 1_000_000 {
 		return nil, store.NewErrInvalidInput("job", "reserve_work", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "job work reservation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.JobWorkReservationResult, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*store.JobWorkReservationResult](true, func(_ *store.JobWorkReservationResult, err error) error {
+		return fmt.Errorf("commit job work reservation: %w", err)
+	}), func(ctx context.Context, tx *sqlxTxWrapper) (*store.JobWorkReservationResult, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -306,7 +360,7 @@ func (s SQLJobStore) Complete(ctx context.Context, input *store.JobCompletion) (
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.RetryDelay < 0 || input.RetryDelay > 24*time.Hour {
 		return nil, store.NewErrInvalidInput("job", "completion", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "job completion", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -452,7 +506,7 @@ func (s SQLJobStore) CancellationRequested(ctx context.Context, attemptID model.
 	if !attemptID.IsValid() || !token.IsValid() {
 		return false, store.NewErrInvalidInput("job_attempt", "observe_cancellation", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "job cancellation observation", func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[bool](false, nil), func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
 		now, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return false, err
@@ -481,7 +535,7 @@ func (s SQLJobStore) mutateOperatorJob(ctx context.Context, input *store.JobMuta
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("job", operation, nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "job "+operation, func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -515,7 +569,7 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 	if input == nil || !input.ExcludeJobID.IsValid() || input.Limit < 1 || input.Limit > 200 || len(input.Policies) == 0 || (input.AfterCompletedAt.IsZero() != input.AfterJobID.IsZero()) || (!input.AfterJobID.IsZero() && !input.AfterJobID.IsValid()) {
 		return nil, store.NewErrInvalidInput("job", "history_cleanup", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "job history cleanup", func(ctx context.Context, tx *sqlxTxWrapper) (*store.JobHistoryCleanupResult, error) {
+	outcome, err := executeSQLTransaction(ctx, s.GetMaster().Begin, jobHistorySQLTransactionPolicy(), func(ctx context.Context, tx *sqlxTxWrapper) (*jobHistoryCleanupOutcome, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -549,7 +603,7 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 		}
 		result := &store.JobHistoryCleanupResult{Done: len(rows) < input.Limit}
 		if len(rows) == 0 {
-			return result, nil
+			return &jobHistoryCleanupOutcome{result: result, empty: true}, nil
 		}
 		ids := make([]string, len(rows))
 		for index, row := range rows {
@@ -573,8 +627,12 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 		}
 		result.LastCompletedAt = last.CompletedAt.UTC()
 		result.LastJobID = lastID
-		return result, nil
+		return &jobHistoryCleanupOutcome{result: result}, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return outcome.result, nil
 }
 
 func getFencedAttempt(ctx context.Context, tx *sqlxTxWrapper, id model.JobAttemptID, token model.JobClaimToken, at time.Time) (*model.JobAttempt, error) {

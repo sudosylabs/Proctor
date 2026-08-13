@@ -86,6 +86,50 @@ func TestRunSQLTransactionRollsBackPanic(t *testing.T) {
 	})
 }
 
+func TestExecuteSQLTransactionSupportsCharacterizedCompletionPolicies(t *testing.T) {
+	t.Parallel()
+
+	beginFailure := errors.New("raw begin")
+	result, err := executeSQLTransaction(context.Background(),
+		func(context.Context) (*transactionTestTx, error) { return nil, beginFailure },
+		sqlTransactionPolicy[string]{beginError: func(err error) error { return err }},
+		func(context.Context, *transactionTestTx) (string, error) { return "unexpected", nil },
+	)
+	if err != beginFailure || result != "" {
+		t.Fatalf("raw begin result=%q error=%v", result, err)
+	}
+
+	var events []string
+	rollbackOnly := &transactionTestTx{events: &events}
+	result, err = executeSQLTransaction(context.Background(), transactionTestBegin(rollbackOnly, &events),
+		sqlTransactionPolicy[string]{beginError: func(err error) error { return err }},
+		func(context.Context, *transactionTestTx) (string, error) {
+			events = append(events, "body")
+			return "observed", nil
+		},
+	)
+	if err != nil || result != "observed" || !reflect.DeepEqual(events, []string{"begin", "body", "rollback"}) {
+		t.Fatalf("rollback-only result=%q error=%v events=%v", result, err, events)
+	}
+
+	events = nil
+	commitFailure := errors.New("commit")
+	branchTx := &transactionTestTx{events: &events, commitErr: commitFailure}
+	result, err = executeSQLTransaction(context.Background(), transactionTestBegin(branchTx, &events),
+		sqlTransactionPolicy[string]{
+			beginError: func(err error) error { return err }, commit: true,
+			commitError: func(result string, err error) error { return errors.New(result + ": " + err.Error()) },
+		},
+		func(context.Context, *transactionTestTx) (string, error) {
+			events = append(events, "body")
+			return "deduplicated", nil
+		},
+	)
+	if result != "" || err == nil || err.Error() != "deduplicated: commit" || !reflect.DeepEqual(events, []string{"begin", "body", "commit", "rollback"}) {
+		t.Fatalf("branch commit result=%q error=%v events=%v", result, err, events)
+	}
+}
+
 type transactionTestContextKey struct{}
 
 func transactionTestBegin(tx *transactionTestTx, events *[]string) func(context.Context) (*transactionTestTx, error) {
