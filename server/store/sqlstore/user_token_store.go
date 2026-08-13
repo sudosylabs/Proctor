@@ -89,38 +89,32 @@ func (s SQLUserTokenStore) Issue(
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
 	}
 
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin user token issue: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockUserTokenPurpose(
-		ctx, tx, candidate.UserID.String(), candidate.Purpose,
-	); err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE user_tokens
-		   SET updated_at = ?, archived_at = ?
-		 WHERE user_id = ? AND purpose = ?
-		   AND archived_at IS NULL AND consumed_at IS NULL`,
-		candidate.CreatedAt,
-		candidate.CreatedAt,
-		candidate.UserID.String(),
-		candidate.Purpose,
-	); err != nil {
-		return nil, fmt.Errorf("invalidate prior user tokens: %w", err)
-	}
-	if err := insertUserToken(ctx, tx, &candidate); err != nil {
-		return nil, err
-	}
-	if _, err := insertAuditEvent(ctx, tx, auditEvent); err != nil {
-		return nil, fmt.Errorf("audit user token issue: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit user token issue: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "user token issue", func(ctx context.Context, tx *sqlxTxWrapper) (*model.UserToken, error) {
+		if err := lockUserTokenPurpose(
+			ctx, tx, candidate.UserID.String(), candidate.Purpose,
+		); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE user_tokens
+			   SET updated_at = ?, archived_at = ?
+			 WHERE user_id = ? AND purpose = ?
+			   AND archived_at IS NULL AND consumed_at IS NULL`,
+			candidate.CreatedAt,
+			candidate.CreatedAt,
+			candidate.UserID.String(),
+			candidate.Purpose,
+		); err != nil {
+			return nil, fmt.Errorf("invalidate prior user tokens: %w", err)
+		}
+		if err := insertUserToken(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		if _, err := insertAuditEvent(ctx, tx, auditEvent); err != nil {
+			return nil, fmt.Errorf("audit user token issue: %w", err)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLUserTokenStore) GetByHash(
@@ -139,7 +133,7 @@ func (s SQLUserTokenStore) GetByHash(
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("user_token", "", err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLUserTokenStore) ConsumeEmailVerification(
@@ -151,55 +145,53 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 	if !model.IsValidTokenHash(tokenHash) || now <= 0 || auditEvent == nil {
 		return nil, store.NewErrInvalidInput("user_token", "consume", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin email verification: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	at := model.TimeFromMillis(now)
-	token, err := lockActiveUserToken(
-		ctx, tx, tokenHash, model.UserTokenEmailVerification, now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	user, err := lockTokenUser(ctx, tx, token)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx, `
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "email verification", func(ctx context.Context, tx *sqlxTxWrapper) (*store.EmailVerificationResult, error) {
+		at := model.TimeFromMillis(now)
+		token, err := lockActiveUserToken(
+			ctx, tx, tokenHash, model.UserTokenEmailVerification, now,
+		)
+		if err != nil {
+			return nil, err
+		}
+		user, err := lockTokenUser(ctx, tx, token)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
 		UPDATE users
 		   SET updated_at = ?, email_verified = true, revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL`,
-		at, user.ID,
-	); err != nil {
-		return nil, fmt.Errorf("verify user email: %w", err)
-	}
-	if err := consumeUserTokens(
-		ctx, tx, token.UserID, token.Purpose, now,
-	); err != nil {
-		return nil, err
-	}
-	event, err := tokenAuditEvent(auditEvent, token.UserID)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := insertAuditEvent(ctx, tx, event); err != nil {
-		return nil, fmt.Errorf("audit email verification: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit email verification: %w", err)
-	}
-	token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
-	token.UpdatedAt = at
-	verified := user.model()
-	verified.UpdatedAt = model.TimeFromMillis(now)
-	verified.EmailVerified = true
-	verified.Revision++
-	return &store.EmailVerificationResult{
-		Token: token.model(),
-		User:  verified,
-	}, nil
+			at, user.ID,
+		); err != nil {
+			return nil, fmt.Errorf("verify user email: %w", err)
+		}
+		if err := consumeUserTokens(
+			ctx, tx, token.UserID, token.Purpose, now,
+		); err != nil {
+			return nil, err
+		}
+		event, err := tokenAuditEvent(auditEvent, token.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := insertAuditEvent(ctx, tx, event); err != nil {
+			return nil, fmt.Errorf("audit email verification: %w", err)
+		}
+		token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
+		token.UpdatedAt = at
+		verified, err := user.model()
+		if err != nil {
+			return nil, err
+		}
+		verified.UpdatedAt = model.TimeFromMillis(now)
+		verified.EmailVerified = true
+		verified.Revision++
+		rehydratedToken, err := token.model()
+		if err != nil {
+			return nil, err
+		}
+		return &store.EmailVerificationResult{Token: rehydratedToken, User: verified}, nil
+	})
 }
 
 func (s SQLUserTokenStore) ConsumePasswordReset(
@@ -216,77 +208,87 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		auditEvent == nil {
 		return nil, store.NewErrInvalidInput("user_token", "password_reset", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin password reset: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	at := model.TimeFromMillis(now)
-	token, err := lockActiveUserToken(
-		ctx, tx, tokenHash, model.UserTokenPasswordReset, now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	user, err := lockTokenUser(ctx, tx, token)
-	if err != nil {
-		return nil, err
-	}
-	var credential passwordCredentialRow
-	if err := tx.Get(ctx, &credential, `
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "password reset", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PasswordResetResult, error) {
+		at := model.TimeFromMillis(now)
+		token, err := lockActiveUserToken(
+			ctx, tx, tokenHash, model.UserTokenPasswordReset, now,
+		)
+		if err != nil {
+			return nil, err
+		}
+		user, err := lockTokenUser(ctx, tx, token)
+		if err != nil {
+			return nil, err
+		}
+		var credential passwordCredentialRow
+		if err := tx.Get(ctx, &credential, `
 		SELECT id, created_at, updated_at, archived_at, user_id,
 		       password_hash, password_changed_at
 		  FROM password_credentials
 		 WHERE user_id = ? AND archived_at IS NULL
 		 FOR UPDATE`,
-		token.UserID,
-	); err != nil {
-		return nil, translateError("password_credential", token.UserID, err)
-	}
-	credential.PasswordHash = passwordHash
-	credential.PasswordChangedAt = at
-	credential.UpdatedAt = at
-	if _, err := tx.Exec(ctx, `
+			token.UserID,
+		); err != nil {
+			return nil, translateError("password_credential", token.UserID, err)
+		}
+		credential.PasswordHash = passwordHash
+		credential.PasswordChangedAt = at
+		credential.UpdatedAt = at
+		if _, err := tx.Exec(ctx, `
 		UPDATE password_credentials
 		   SET updated_at = ?, password_hash = ?, password_changed_at = ?
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL`,
-		at, passwordHash, at, credential.ID, token.UserID,
-	); err != nil {
-		return nil, fmt.Errorf("update reset password: %w", err)
-	}
-	if err := lockUserSessions(ctx, tx, token.UserID); err != nil {
-		return nil, err
-	}
-	sessionRows, hashes, err := revokeAllUserSessions(
-		ctx, tx, token.UserID, now, reason,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if err := consumeUserTokens(
-		ctx, tx, token.UserID, token.Purpose, now,
-	); err != nil {
-		return nil, err
-	}
-	event, err := tokenAuditEvent(auditEvent, token.UserID)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := insertAuditEvent(ctx, tx, event); err != nil {
-		return nil, fmt.Errorf("audit password reset: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit password reset: %w", err)
-	}
-	token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
-	token.UpdatedAt = at
-	return &store.PasswordResetResult{
-		Token:               token.model(),
-		User:                user.model(),
-		PasswordCredential:  credential.model(),
-		RevokedSessions:     revokedSessionModels(sessionRows, now, reason),
-		RevokedAccessHashes: hashes,
-	}, nil
+			at, passwordHash, at, credential.ID, token.UserID,
+		); err != nil {
+			return nil, fmt.Errorf("update reset password: %w", err)
+		}
+		if err := lockUserSessions(ctx, tx, token.UserID); err != nil {
+			return nil, err
+		}
+		sessionRows, hashes, err := revokeAllUserSessions(
+			ctx, tx, token.UserID, now, reason,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if err := consumeUserTokens(
+			ctx, tx, token.UserID, token.Purpose, now,
+		); err != nil {
+			return nil, err
+		}
+		event, err := tokenAuditEvent(auditEvent, token.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := insertAuditEvent(ctx, tx, event); err != nil {
+			return nil, fmt.Errorf("audit password reset: %w", err)
+		}
+		token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
+		token.UpdatedAt = at
+		rehydratedUser, err := user.model()
+		if err != nil {
+			return nil, err
+		}
+		revokedSessions, err := revokedSessionModels(sessionRows, now, reason)
+		if err != nil {
+			return nil, err
+		}
+		rehydratedToken, err := token.model()
+		if err != nil {
+			return nil, err
+		}
+		rehydratedCredential, err := credential.model()
+		if err != nil {
+			return nil, err
+		}
+		return &store.PasswordResetResult{
+			Token:               rehydratedToken,
+			User:                rehydratedUser,
+			PasswordCredential:  rehydratedCredential,
+			RevokedSessions:     revokedSessions,
+			RevokedAccessHashes: hashes,
+		}, nil
+	})
 }
 
 func insertUserToken(
@@ -431,19 +433,31 @@ func newUserTokenRow(token *model.UserToken) userTokenRow {
 	}
 }
 
-func (row userTokenRow) model() *model.UserToken {
-	return &model.UserToken{
-		ID:         model.UserTokenID(row.ID),
+func (row userTokenRow) model() (*model.UserToken, error) {
+	id, err := parsePersistedID("user_token", "id", row.ID, model.ParseUserTokenID)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := parsePersistedID("user_token", "user_id", row.UserID, model.ParseUserID)
+	if err != nil {
+		return nil, err
+	}
+	value := &model.UserToken{
+		ID:         id,
 		CreatedAt:  row.CreatedAt.UTC(),
 		UpdatedAt:  row.UpdatedAt.UTC(),
 		ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
-		UserID:     model.UserID(row.UserID),
+		UserID:     userID,
 		Purpose:    row.Purpose,
 		TokenHash:  row.TokenHash,
 		Target:     row.Target,
 		ExpiresAt:  row.ExpiresAt.UTC(),
 		ConsumedAt: OptionalTimeFromNullTime(row.ConsumedAt),
 	}
+	if err := validatePersistedModel("user_token", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.UserTokenStore = (*SQLUserTokenStore)(nil)

@@ -4,48 +4,79 @@
 package sqlstore
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func TestClassRowConversion(t *testing.T) {
-	id, err := model.ParseClassID(model.NewId())
-	if err != nil {
-		t.Fatal(err)
-	}
-	levelID, err := model.ParseProgrammeLevelID(model.NewId())
-	if err != nil {
-		t.Fatal(err)
-	}
-	periodID, err := model.ParseAcademicPeriodID(model.NewId())
-	if err != nil {
-		t.Fatal(err)
-	}
-	class := &model.Class{
-		ID:               id,
-		CreatedAt:        model.TimeFromMillis(1),
-		UpdatedAt:        model.TimeFromMillis(2),
-		ArchivedAt:       model.OptionalTimeFromMillis(3),
-		Revision:         4,
-		ProgrammeLevelID: levelID,
-		AcademicPeriodID: periodID,
+func TestClassRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
+	t.Parallel()
+
+	valid := classRow{
+		ID:               model.NewClassID().String(),
+		CreatedAt:        time.Unix(10, 0).UTC(),
+		UpdatedAt:        time.Unix(11, 0).UTC(),
+		Revision:         1,
+		ProgrammeLevelID: model.NewProgrammeLevelID().String(),
+		AcademicPeriodID: model.NewAcademicPeriodID().String(),
 		Name:             "class-a",
 		DisplayName:      "Class A",
-		Description:      "Student roster",
 	}
-	row := newClassRow(class)
+
+	tests := []struct {
+		name  string
+		row   classRow
+		field string
+	}{
+		{name: "class id", row: replaceClassRow(valid, func(row *classRow) { row.ID = "bad" }), field: "id"},
+		{name: "programme level id", row: replaceClassRow(valid, func(row *classRow) { row.ProgrammeLevelID = "bad" }), field: "programme_level_id"},
+		{name: "academic period id", row: replaceClassRow(valid, func(row *classRow) { row.AcademicPeriodID = "bad" }), field: "academic_period_id"},
+		{name: "domain state", row: replaceClassRow(valid, func(row *classRow) { row.Revision = 0 }), field: "revision"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := test.row.model()
+			var persisted *persistedStateError
+			if !errors.As(err, &persisted) {
+				t.Fatalf("model() error = %v, want persisted-state error", err)
+			}
+			if persisted.Entity != "class" || persisted.Field != test.field {
+				t.Fatalf("persisted-state context = %s.%s, want class.%s", persisted.Entity, persisted.Field, test.field)
+			}
+		})
+	}
+}
+
+func TestClassRowRehydrationReturnsValidatedModel(t *testing.T) {
+	t.Parallel()
+
+	row := classRow{
+		ID:               model.NewClassID().String(),
+		CreatedAt:        time.Unix(10, 0).UTC(),
+		UpdatedAt:        time.Unix(11, 0).UTC(),
+		Revision:         2,
+		ProgrammeLevelID: model.NewProgrammeLevelID().String(),
+		AcademicPeriodID: model.NewAcademicPeriodID().String(),
+		Name:             "class-a",
+		DisplayName:      "Class A",
+		Description:      "Description",
+	}
+
 	got, err := row.model()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *got != *class {
-		t.Fatalf("row.model() = %#v, want %#v", got, class)
+	if err := got.Validate(); err != nil {
+		t.Fatalf("rehydrated class is invalid: %v", err)
 	}
-	if !row.CreatedAt.Equal(class.CreatedAt) ||
-		!row.UpdatedAt.Equal(class.UpdatedAt) ||
-		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(class.ArchivedAt.Time) ||
-		row.Revision != 4 {
-		t.Fatalf("row times = %#v", row)
+	if got.ID.String() != row.ID || got.ProgrammeLevelID.String() != row.ProgrammeLevelID || got.AcademicPeriodID.String() != row.AcademicPeriodID || got.Revision != row.Revision {
+		t.Fatalf("model() = %#v, want row identity and lineage fields", got)
 	}
+}
+
+func replaceClassRow(row classRow, replace func(*classRow)) classRow {
+	replace(&row)
+	return row
 }

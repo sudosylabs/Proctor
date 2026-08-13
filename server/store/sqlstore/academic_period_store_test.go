@@ -4,45 +4,80 @@
 package sqlstore
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func TestAcademicPeriodRowConversion(t *testing.T) {
-	id, err := model.ParseAcademicPeriodID(model.NewId())
-	if err != nil {
-		t.Fatal(err)
+func TestAcademicPeriodRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
+	t.Parallel()
+
+	valid := academicPeriodRow{
+		ID:            model.NewAcademicPeriodID().String(),
+		CreatedAt:     time.Unix(10, 0).UTC(),
+		UpdatedAt:     time.Unix(11, 0).UTC(),
+		Revision:      1,
+		InstitutionID: model.NewInstitutionID().String(),
+		Name:          "period",
+		DisplayName:   "Period",
+		StartAt:       time.Unix(20, 0).UTC(),
+		EndAt:         time.Unix(30, 0).UTC(),
 	}
-	institutionID, err := model.ParseInstitutionID(model.NewId())
-	if err != nil {
-		t.Fatal(err)
+
+	tests := []struct {
+		name  string
+		row   academicPeriodRow
+		field string
+	}{
+		{name: "period id", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) { row.ID = "bad" }), field: "id"},
+		{name: "institution id", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) { row.InstitutionID = "bad" }), field: "institution_id"},
+		{name: "domain state", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) { row.EndAt = row.StartAt }), field: "end_at"},
 	}
-	period := &model.AcademicPeriod{
-		ID:            id,
-		CreatedAt:     model.TimeFromMillis(1),
-		UpdatedAt:     model.TimeFromMillis(2),
-		ArchivedAt:    model.OptionalTimeFromMillis(3),
-		Revision:      7,
-		InstitutionID: institutionID,
-		Name:          "2026-2027",
-		DisplayName:   "Academic Year 2026-2027",
-		Description:   "Primary academic year",
-		StartsAt:      model.TimeFromMillis(4),
-		EndsAt:        model.TimeFromMillis(5),
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := test.row.model()
+			var persisted *persistedStateError
+			if !errors.As(err, &persisted) {
+				t.Fatalf("model() error = %v, want persisted-state error", err)
+			}
+			if persisted.Entity != "academic_period" || persisted.Field != test.field {
+				t.Fatalf("persisted-state context = %s.%s, want academic_period.%s", persisted.Entity, persisted.Field, test.field)
+			}
+		})
 	}
-	row := newAcademicPeriodRow(period)
+}
+
+func TestAcademicPeriodRowRehydrationReturnsValidatedModel(t *testing.T) {
+	t.Parallel()
+
+	row := academicPeriodRow{
+		ID:            model.NewAcademicPeriodID().String(),
+		CreatedAt:     time.Unix(10, 0).UTC(),
+		UpdatedAt:     time.Unix(11, 0).UTC(),
+		Revision:      2,
+		InstitutionID: model.NewInstitutionID().String(),
+		Name:          "period",
+		DisplayName:   "Period",
+		Description:   "Description",
+		StartAt:       time.Unix(20, 0).UTC(),
+		EndAt:         time.Unix(30, 0).UTC(),
+	}
+
 	got, err := row.model()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *got != *period {
-		t.Fatalf("row.model() = %#v, want %#v", got, period)
+	if err := got.Validate(); err != nil {
+		t.Fatalf("rehydrated academic period is invalid: %v", err)
 	}
-	if !row.CreatedAt.Equal(period.CreatedAt) ||
-		!row.UpdatedAt.Equal(period.UpdatedAt) ||
-		!row.ArchivedAt.Valid || !row.ArchivedAt.Time.Equal(period.ArchivedAt.Time) ||
-		!row.StartAt.Equal(period.StartsAt) || !row.EndAt.Equal(period.EndsAt) {
-		t.Fatalf("row times = %#v", row)
+	if got.ID.String() != row.ID || got.InstitutionID.String() != row.InstitutionID || got.Revision != row.Revision {
+		t.Fatalf("model() = %#v, want row identity and ownership fields", got)
 	}
+}
+
+func replaceAcademicPeriodRow(row academicPeriodRow, replace func(*academicPeriodRow)) academicPeriodRow {
+	replace(&row)
+	return row
 }

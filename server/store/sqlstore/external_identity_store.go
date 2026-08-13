@@ -117,7 +117,11 @@ func (s SQLExternalIdentityStore) ListByUser(
 	}
 	identities := make([]*model.ExternalIdentity, 0, len(rows))
 	for _, row := range rows {
-		identities = append(identities, row.model())
+		identity, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		identities = append(identities, identity)
 	}
 	return identities, nil
 }
@@ -137,91 +141,81 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	}
 	provider := strings.ToLower(strings.TrimSpace(identity.Provider))
 	lastSeenAt := identity.LastSeenAt.Millis()
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin external identity resolution: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity resolution", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityResolution, error) {
+		if _, err := tx.Exec(
+			ctx,
+			"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+			strconv.Itoa(len(provider))+":"+provider+identity.Subject,
+		); err != nil {
+			return nil, fmt.Errorf("lock external identity resolution: %w", err)
+		}
 
-	if _, err := tx.Exec(
-		ctx,
-		"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-		strconv.Itoa(len(provider))+":"+provider+identity.Subject,
-	); err != nil {
-		return nil, fmt.Errorf("lock external identity resolution: %w", err)
-	}
+		resolvedIdentity, resolvedUser, err := resolveExternalIdentity(
+			ctx,
+			tx,
+			provider,
+			identity.Subject,
+			lastSeenAt,
+		)
+		if err == nil {
+			return &store.ExternalIdentityResolution{
+				Identity: resolvedIdentity,
+				User:     resolvedUser,
+			}, nil
+		}
+		if !store.IsNotFound(err) {
+			return nil, err
+		}
+		if !request.AutoProvision {
+			return nil, store.NewErrNotFound("external_identity", provider)
+		}
+		if request.User == nil || request.ProvisionAudit == nil ||
+			!request.ProvisionAudit.ID.IsZero() || request.DefaultProfilePictureJob == nil {
+			return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
+		}
 
-	resolvedIdentity, resolvedUser, err := resolveExternalIdentity(
-		ctx,
-		tx,
-		provider,
-		identity.Subject,
-		lastSeenAt,
-	)
-	if err == nil {
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("commit external identity resolution: %w", err)
+		at := model.TimeFromMillis(lastSeenAt)
+		if at.IsZero() {
+			at = model.NowUTC()
+		}
+		userCandidate := *request.User
+		if err := userCandidate.Validate(); err != nil {
+			return nil, err
+		}
+		if err := validateUserDefaultProfilePictureJob(&userCandidate, request.DefaultProfilePictureJob); err != nil {
+			return nil, err
+		}
+		identityCandidate := *identity
+		identityCandidate.Provider = provider
+		identityCandidate.UserID = userCandidate.ID
+		identityCandidate.PrepareCreate(model.NewExternalIdentityID(), at)
+		if err := identityCandidate.Validate(); err != nil {
+			return nil, err
+		}
+		if err := insertUser(ctx, tx, &userCandidate); err != nil {
+			return nil, err
+		}
+		if err := insertExternalIdentity(ctx, tx, &identityCandidate); err != nil {
+			return nil, err
+		}
+		if _, err := insertQueuedJob(ctx, tx, request.DefaultProfilePictureJob, false); err != nil {
+			return nil, fmt.Errorf("enqueue external user default profile picture generation: %w", translateError("job", request.DefaultProfilePictureJob.ID.String(), err))
+		}
+		auditCandidate := request.ProvisionAudit.Clone()
+		auditCandidate.ActorID = userCandidate.ID
+		auditCandidate.Resource = model.Resource{
+			Type: model.ResourceUser,
+			ID:   userCandidate.ID.String(),
+		}
+		if _, err := insertAuditEvent(ctx, tx, auditCandidate); err != nil {
+			return nil, err
 		}
 		return &store.ExternalIdentityResolution{
-			Identity: resolvedIdentity,
-			User:     resolvedUser,
+			Identity:    &identityCandidate,
+			User:        &userCandidate,
+			Provisioned: true,
 		}, nil
-	}
-	if !store.IsNotFound(err) {
-		return nil, err
-	}
-	if !request.AutoProvision {
-		return nil, store.NewErrNotFound("external_identity", provider)
-	}
-	if request.User == nil || request.ProvisionAudit == nil ||
-		!request.ProvisionAudit.ID.IsZero() || request.DefaultProfilePictureJob == nil {
-		return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
-	}
-
-	at := model.TimeFromMillis(lastSeenAt)
-	if at.IsZero() {
-		at = model.NowUTC()
-	}
-	userCandidate := *request.User
-	if err := userCandidate.Validate(); err != nil {
-		return nil, err
-	}
-	if err := validateUserDefaultProfilePictureJob(&userCandidate, request.DefaultProfilePictureJob); err != nil {
-		return nil, err
-	}
-	identityCandidate := *identity
-	identityCandidate.Provider = provider
-	identityCandidate.UserID = userCandidate.ID
-	identityCandidate.PrepareCreate(model.NewExternalIdentityID(), at)
-	if err := identityCandidate.Validate(); err != nil {
-		return nil, err
-	}
-	if err := insertUser(ctx, tx, &userCandidate); err != nil {
-		return nil, err
-	}
-	if err := insertExternalIdentity(ctx, tx, &identityCandidate); err != nil {
-		return nil, err
-	}
-	if _, err := insertQueuedJob(ctx, tx, request.DefaultProfilePictureJob, false); err != nil {
-		return nil, fmt.Errorf("enqueue external user default profile picture generation: %w", translateError("job", request.DefaultProfilePictureJob.ID.String(), err))
-	}
-	auditCandidate := request.ProvisionAudit.Clone()
-	auditCandidate.ActorID = userCandidate.ID
-	auditCandidate.Resource = model.Resource{
-		Type: model.ResourceUser,
-		ID:   userCandidate.ID.String(),
-	}
-	if _, err := insertAuditEvent(ctx, tx, auditCandidate); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit external identity provisioning: %w", err)
-	}
-	return &store.ExternalIdentityResolution{
-		Identity:    &identityCandidate,
-		User:        &userCandidate,
-		Provisioned: true,
-	}, nil
+	})
 }
 
 func resolveExternalIdentity(
@@ -278,7 +272,15 @@ func resolveExternalIdentity(
 	); err != nil {
 		return nil, nil, translateError("user", identityRow.UserID, err)
 	}
-	return identityRow.model(), row.model(), nil
+	user, err := row.model()
+	if err != nil {
+		return nil, nil, err
+	}
+	identity, err := identityRow.model()
+	if err != nil {
+		return nil, nil, err
+	}
+	return identity, user, nil
 }
 
 func insertExternalIdentity(
@@ -312,7 +314,7 @@ func (s SQLExternalIdentityStore) get(
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("external_identity", key, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func newExternalIdentityRow(identity *model.ExternalIdentity) externalIdentityRow {
@@ -328,17 +330,29 @@ func newExternalIdentityRow(identity *model.ExternalIdentity) externalIdentityRo
 	}
 }
 
-func (row externalIdentityRow) model() *model.ExternalIdentity {
-	return &model.ExternalIdentity{
-		ID:         model.ExternalIdentityID(row.ID),
+func (row externalIdentityRow) model() (*model.ExternalIdentity, error) {
+	id, err := parsePersistedID("external_identity", "id", row.ID, model.ParseExternalIdentityID)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := parsePersistedID("external_identity", "user_id", row.UserID, model.ParseUserID)
+	if err != nil {
+		return nil, err
+	}
+	value := &model.ExternalIdentity{
+		ID:         id,
 		CreatedAt:  row.CreatedAt.UTC(),
 		UpdatedAt:  row.UpdatedAt.UTC(),
 		ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
-		UserID:     model.UserID(row.UserID),
+		UserID:     userID,
 		Provider:   row.Provider,
 		Subject:    row.Subject,
 		LastSeenAt: OptionalTimeFromNullTime(row.LastSeenAt),
 	}
+	if err := validatePersistedModel("external_identity", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.ExternalIdentityStore = (*SQLExternalIdentityStore)(nil)

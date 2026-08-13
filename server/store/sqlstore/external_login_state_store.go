@@ -77,38 +77,32 @@ func (s SQLExternalLoginStateStore) Save(
 	if err := candidate.Validate(); err != nil {
 		return nil, err
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin external login state save: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(
-		ctx,
-		"DELETE FROM external_login_states WHERE expires_at < ?",
-		candidate.CreatedAt.Add(-externalLoginStateRetention),
-	); err != nil {
-		return nil, fmt.Errorf("prune external login states: %w", err)
-	}
-	row := newExternalLoginStateRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO external_login_states (
-			id, created_at, updated_at, provider, state_hash, binding_hash,
-			return_to, client_type, device_id, device_name, expires_at,
-			consumed_at
-		) VALUES (
-			:id, :created_at, :updated_at, :provider, :state_hash, :binding_hash,
-			:return_to, :client_type, :device_id, :device_name, :expires_at,
-			:consumed_at
-		)`, &row); err != nil {
-		return nil, fmt.Errorf(
-			"save external login state: %w",
-			translateError("external_login_state", candidate.ID.String(), err),
-		)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit external login state save: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "external login state save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExternalLoginState, error) {
+		if _, err := tx.Exec(
+			ctx,
+			"DELETE FROM external_login_states WHERE expires_at < ?",
+			candidate.CreatedAt.Add(-externalLoginStateRetention),
+		); err != nil {
+			return nil, fmt.Errorf("prune external login states: %w", err)
+		}
+		row := newExternalLoginStateRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO external_login_states (
+				id, created_at, updated_at, provider, state_hash, binding_hash,
+				return_to, client_type, device_id, device_name, expires_at,
+				consumed_at
+			) VALUES (
+				:id, :created_at, :updated_at, :provider, :state_hash, :binding_hash,
+				:return_to, :client_type, :device_id, :device_name, :expires_at,
+				:consumed_at
+			)`, &row); err != nil {
+			return nil, fmt.Errorf(
+				"save external login state: %w",
+				translateError("external_login_state", candidate.ID.String(), err),
+			)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLExternalLoginStateStore) GetByStateHash(
@@ -122,7 +116,7 @@ func (s SQLExternalLoginStateStore) GetByStateHash(
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("external_login_state", "", err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLExternalLoginStateStore) Consume(
@@ -157,7 +151,7 @@ func (s SQLExternalLoginStateStore) Consume(
 	if err != nil {
 		return nil, translateError("external_login_state", "", err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func newExternalLoginStateRow(
@@ -179,9 +173,13 @@ func newExternalLoginStateRow(
 	}
 }
 
-func (row externalLoginStateRow) model() *model.ExternalLoginState {
-	return &model.ExternalLoginState{
-		ID:          model.ExternalLoginStateID(row.ID),
+func (row externalLoginStateRow) model() (*model.ExternalLoginState, error) {
+	id, err := parsePersistedID("external_login_state", "id", row.ID, model.ParseExternalLoginStateID)
+	if err != nil {
+		return nil, err
+	}
+	value := &model.ExternalLoginState{
+		ID:          id,
 		CreatedAt:   row.CreatedAt.UTC(),
 		UpdatedAt:   row.UpdatedAt.UTC(),
 		Provider:    row.Provider,
@@ -194,6 +192,10 @@ func (row externalLoginStateRow) model() *model.ExternalLoginState {
 		ExpiresAt:   row.ExpiresAt.UTC(),
 		ConsumedAt:  OptionalTimeFromNullTime(row.ConsumedAt),
 	}
+	if err := validatePersistedModel("external_login_state", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.ExternalLoginStateStore = (*SQLExternalLoginStateStore)(nil)

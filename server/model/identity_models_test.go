@@ -203,6 +203,35 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 	}
 }
 
+func TestSessionValidationAllowsLaterMFAUpgrade(t *testing.T) {
+	t.Parallel()
+
+	createdAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	completedAt := createdAt.Add(time.Minute)
+	session := &Session{
+		ID:                     NewSessionID(),
+		CreatedAt:              createdAt,
+		UpdatedAt:              completedAt,
+		UserID:                 NewUserID(),
+		ClientType:             SessionClientWeb,
+		AuthenticationMethod:   "password",
+		AuthenticationStrength: AuthenticationMultiFactor,
+		AuthenticatedAt:        createdAt,
+		MFACompletedAt:         OptionalTimeFrom(completedAt),
+		LastActivityAt:         createdAt,
+		IdleExpiresAt:          createdAt.Add(time.Hour),
+		ExpiresAt:              createdAt.Add(2 * time.Hour),
+	}
+	if err := session.Validate(); err != nil {
+		t.Fatalf("Validate() rejected a later MFA upgrade: %v", err)
+	}
+
+	session.MFACompletedAt = OptionalTimeFrom(completedAt.Add(time.Millisecond))
+	if err := session.Validate(); err == nil {
+		t.Fatal("Validate() accepted MFA completion after the persisted update time")
+	}
+}
+
 func TestCredentialSecretsAreExcludedFromJSON(t *testing.T) {
 	t.Parallel()
 

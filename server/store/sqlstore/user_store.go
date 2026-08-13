@@ -108,26 +108,20 @@ func (s SQLUserStore) Create(ctx context.Context, input *store.UserCreation) (*s
 		credential = &candidate
 	}
 
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin user creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := insertUser(ctx, tx, &user); err != nil {
-		return nil, err
-	}
-	if credential != nil {
-		if err := insertPasswordCredential(ctx, tx, credential); err != nil {
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "user creation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.UserCreationResult, error) {
+		if err := insertUser(ctx, tx, &user); err != nil {
 			return nil, err
 		}
-	}
-	if _, err := insertQueuedJob(ctx, tx, &job, false); err != nil {
-		return nil, fmt.Errorf("enqueue default profile picture generation: %w", translateError("job", job.ID.String(), err))
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit user creation: %w", err)
-	}
-	return &store.UserCreationResult{User: &user, PasswordCredential: credential}, nil
+		if credential != nil {
+			if err := insertPasswordCredential(ctx, tx, credential); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := insertQueuedJob(ctx, tx, &job, false); err != nil {
+			return nil, fmt.Errorf("enqueue default profile picture generation: %w", translateError("job", job.ID.String(), err))
+		}
+		return &store.UserCreationResult{User: &user, PasswordCredential: credential}, nil
+	})
 }
 
 func validateUserDefaultProfilePictureJob(user *model.User, job *model.Job) error {
@@ -258,7 +252,11 @@ func (s SQLUserStore) List(
 	}
 	users := make([]*model.User, 0, len(rows))
 	for _, row := range rows {
-		users = append(users, row.model())
+		user, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
 	}
 	return users, nil
 }
@@ -281,7 +279,7 @@ func (s SQLUserStore) get(
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("user", key, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLUserStore) Update(ctx context.Context, user *model.User) (*model.User, error) {
@@ -295,22 +293,12 @@ func (s SQLUserStore) Update(ctx context.Context, user *model.User) (*model.User
 	if err := candidate.Validate(); err != nil {
 		return nil, err
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin user update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := updateUserProfile(ctx, tx, &candidate, expectedRevision); err != nil {
-		return nil, err
-	}
-	updated, err := getUserByID(ctx, tx, candidate.ID.String())
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit user update: %w", err)
-	}
-	return updated, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "user update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.User, error) {
+		if err := updateUserProfile(ctx, tx, &candidate, expectedRevision); err != nil {
+			return nil, err
+		}
+		return getUserByID(ctx, tx, candidate.ID.String())
+	})
 }
 
 func (s SQLUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
@@ -327,29 +315,23 @@ func (s SQLUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.U
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("user", "value", nil).Wrap(err)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin audited user profile update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := updateUserProfile(ctx, tx, &candidate, input.ExpectedRevision); err != nil {
-		return nil, err
-	}
-	updated, err := getUserByID(ctx, tx, candidate.ID.String())
-	if err != nil {
-		return nil, err
-	}
-	encoded, appErr := model.EncodeAuditData(updated.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete user profile update audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit audited user profile update: %w", err)
-	}
-	return updated, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user profile update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.User, error) {
+		if err := updateUserProfile(ctx, tx, &candidate, input.ExpectedRevision); err != nil {
+			return nil, err
+		}
+		updated, err := getUserByID(ctx, tx, candidate.ID.String())
+		if err != nil {
+			return nil, err
+		}
+		encoded, appErr := model.EncodeAuditData(updated.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete user profile update audit: %w", err)
+		}
+		return updated, nil
+	})
 }
 
 func getUserByID(ctx context.Context, executor sqlxExecutor, id string) (*model.User, error) {
@@ -364,7 +346,7 @@ func getUserByID(ctx context.Context, executor sqlxExecutor, id string) (*model.
 		 WHERE id = ? AND archived_at IS NULL`, id); err != nil {
 		return nil, translateError("user", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func updateUserProfile(ctx context.Context, executor sqlxExecutor, candidate *model.User, expectedRevision int64) error {
@@ -422,79 +404,79 @@ func (s SQLUserStore) SetDisabledWithAudit(
 	if input.Disabled && utf8.RuneCountInString(revocationReason) > model.SessionRevocationMaxRunes {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin audited user disabled state change: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Serialize disabling with login and refresh rotation before changing the
-	// user row. A login that commits first is included in the revocation; one
-	// that follows observes the disabled account.
-	if input.Disabled {
-		if err := lockUserSessions(ctx, tx, input.ID); err != nil {
-			return nil, err
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user disabled state change", func(ctx context.Context, tx *sqlxTxWrapper) (*store.UserDisabledStateResult, error) {
+		// Serialize disabling with login and refresh rotation before changing the
+		// user row. A login that commits first is included in the revocation; one
+		// that follows observes the disabled account.
+		if input.Disabled {
+			if err := lockUserSessions(ctx, tx, input.ID); err != nil {
+				return nil, err
+			}
 		}
-	}
-	disabledAt := int64(0)
-	if input.Disabled {
-		disabledAt = input.ChangedAt
-	}
-	row, err := setUserDisabled(
-		ctx,
-		tx,
-		input.ID,
-		input.ExpectedRevision,
-		disabledAt,
-		input.ChangedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	result := &store.UserDisabledStateResult{
-		User:               row.model(),
-		RevokedSessions:    []*model.Session{},
-		RevokedTokenHashes: []string{},
-	}
-	if input.Disabled {
-		sessionRows, hashes, err := revokeAllUserSessions(
+		disabledAt := int64(0)
+		if input.Disabled {
+			disabledAt = input.ChangedAt
+		}
+		row, err := setUserDisabled(
 			ctx,
 			tx,
 			input.ID,
+			input.ExpectedRevision,
+			disabledAt,
 			input.ChangedAt,
-			revocationReason,
 		)
 		if err != nil {
 			return nil, err
 		}
-		result.RevokedSessions = revokedSessionModels(
-			sessionRows,
-			input.ChangedAt,
-			revocationReason,
-		)
-		result.RevokedTokenHashes = hashes
-	}
 
-	encoded, appErr := model.EncodeAuditData(result.User.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(
-		ctx,
-		tx,
-		input.AuditEventID,
-		model.AuditStatusSuccess,
-		"",
-		encoded,
-		input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete user disabled state audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit audited user disabled state change: %w", err)
-	}
-	return result, nil
+		user, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		result := &store.UserDisabledStateResult{
+			User:               user,
+			RevokedSessions:    []*model.Session{},
+			RevokedTokenHashes: []string{},
+		}
+		if input.Disabled {
+			sessionRows, hashes, err := revokeAllUserSessions(
+				ctx,
+				tx,
+				input.ID,
+				input.ChangedAt,
+				revocationReason,
+			)
+			if err != nil {
+				return nil, err
+			}
+			result.RevokedSessions, err = revokedSessionModels(
+				sessionRows,
+				input.ChangedAt,
+				revocationReason,
+			)
+			if err != nil {
+				return nil, err
+			}
+			result.RevokedTokenHashes = hashes
+		}
+
+		encoded, appErr := model.EncodeAuditData(result.User.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx,
+			tx,
+			input.AuditEventID,
+			model.AuditStatusSuccess,
+			"",
+			encoded,
+			input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete user disabled state audit: %w", err)
+		}
+		return result, nil
+	})
 }
 
 func setUserDisabled(
@@ -628,9 +610,21 @@ func newUserRow(user *model.User) userRow {
 	}
 }
 
-func (row userRow) model() *model.User {
-	return &model.User{
-		ID:                          model.UserID(row.ID),
+func (row userRow) model() (*model.User, error) {
+	id, err := parsePersistedID("user", "id", row.ID, model.ParseUserID)
+	if err != nil {
+		return nil, err
+	}
+	defaultPictureID, err := parseNullablePersistedID("user", "default_profile_picture_file_id", row.DefaultProfilePictureFileID, model.ParseFileEntryID)
+	if err != nil {
+		return nil, err
+	}
+	customPictureID, err := parseNullablePersistedID("user", "custom_profile_picture_file_id", row.CustomProfilePictureFileID, model.ParseFileEntryID)
+	if err != nil {
+		return nil, err
+	}
+	value := &model.User{
+		ID:                          id,
 		CreatedAt:                   row.CreatedAt.UTC(),
 		UpdatedAt:                   row.UpdatedAt.UTC(),
 		ArchivedAt:                  OptionalTimeFromNullTime(row.ArchivedAt),
@@ -647,10 +641,14 @@ func (row userRow) model() *model.User {
 		LastActivityAt:              OptionalTimeFromNullTime(row.LastActivityAt),
 		DisabledAt:                  OptionalTimeFromNullTime(row.DisabledAt),
 		DefaultProfilePictureSeed:   row.DefaultProfilePictureSeed,
-		DefaultProfilePictureFileID: model.FileEntryID(row.DefaultProfilePictureFileID.String),
-		CustomProfilePictureFileID:  model.FileEntryID(row.CustomProfilePictureFileID.String),
+		DefaultProfilePictureFileID: defaultPictureID,
+		CustomProfilePictureFileID:  customPictureID,
 		ProfilePictureChangedAt:     OptionalTimeFromNullTime(row.ProfilePictureChangedAt),
 	}
+	if err := validatePersistedModel("user", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 func nullableID(value string) sql.NullString {

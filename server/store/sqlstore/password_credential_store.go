@@ -111,7 +111,7 @@ func (s SQLPasswordCredentialStore) GetByUser(
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
 		return nil, translateError("password_credential", userID, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLPasswordCredentialStore) Update(
@@ -158,16 +158,28 @@ func newPasswordCredentialRow(credential *model.PasswordCredential) passwordCred
 	}
 }
 
-func (row passwordCredentialRow) model() *model.PasswordCredential {
-	return &model.PasswordCredential{
-		ID:                model.PasswordCredentialID(row.ID),
+func (row passwordCredentialRow) model() (*model.PasswordCredential, error) {
+	id, err := parsePersistedID("password_credential", "id", row.ID, model.ParsePasswordCredentialID)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := parsePersistedID("password_credential", "user_id", row.UserID, model.ParseUserID)
+	if err != nil {
+		return nil, err
+	}
+	value := &model.PasswordCredential{
+		ID:                id,
 		CreatedAt:         row.CreatedAt.UTC(),
 		UpdatedAt:         row.UpdatedAt.UTC(),
 		ArchivedAt:        OptionalTimeFromNullTime(row.ArchivedAt),
-		UserID:            model.UserID(row.UserID),
+		UserID:            userID,
 		PasswordHash:      row.PasswordHash,
 		PasswordChangedAt: row.PasswordChangedAt.UTC(),
 	}
+	if err := validatePersistedModel("password_credential", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.PasswordCredentialStore = (*SQLPasswordCredentialStore)(nil)

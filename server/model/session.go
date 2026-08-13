@@ -151,7 +151,7 @@ func (s *Session) Validate() error {
 	if s.AuthenticationStrength == AuthenticationMultiFactor {
 		if !s.MFACompletedAt.Valid ||
 			s.MFACompletedAt.Time.Before(s.AuthenticatedAt) ||
-			s.MFACompletedAt.Time.After(s.CreatedAt) {
+			s.MFACompletedAt.Time.After(s.UpdatedAt) {
 			return invalidModelError(where, "session", "mfa_completed_at", "is inconsistent", details)
 		}
 	}

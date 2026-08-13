@@ -81,29 +81,23 @@ func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 	if appErr != nil {
 		return nil, appErr
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic period creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	row := newAcademicPeriodRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO academic_periods (
-			id, created_at, updated_at, archived_at, revision, institution_id,
-			name, display_name, description, start_at, end_at
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
-			:name, :display_name, :description, :start_at, :end_at
-		)`, &row); err != nil {
-		return nil, fmt.Errorf("create academic period: %w", translateError("academic_period", candidate.ID.String(), err))
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete academic period creation audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic period creation: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic period creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
+		row := newAcademicPeriodRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO academic_periods (
+				id, created_at, updated_at, archived_at, revision, institution_id,
+				name, display_name, description, start_at, end_at
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
+				:name, :display_name, :description, :start_at, :end_at
+			)`, &row); err != nil {
+			return nil, fmt.Errorf("create academic period: %w", translateError("academic_period", candidate.ID.String(), err))
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete academic period creation audit: %w", err)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLAcademicPeriodStore) Save(
@@ -286,40 +280,34 @@ func (s SQLAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *stor
 	if appErr != nil {
 		return nil, appErr
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic period audited update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	row := newAcademicPeriodRow(&candidate)
-	result, err := tx.NamedExec(ctx, `
-		UPDATE academic_periods
-		   SET updated_at = :updated_at, revision = :revision, name = :name, display_name = :display_name,
-		       description = :description, start_at = :start_at, end_at = :end_at
-		 WHERE id = :id AND institution_id = :institution_id AND archived_at IS NULL
-		   AND revision = :expected_revision`, map[string]any{
-		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
-		"revision": candidate.Revision, "institution_id": row.InstitutionID,
-		"name": row.Name, "display_name": row.DisplayName, "description": row.Description,
-		"start_at": row.StartAt, "end_at": row.EndAt,
-		"expected_revision": candidate.Revision - 1,
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic period audited update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
+		row := newAcademicPeriodRow(&candidate)
+		result, err := tx.NamedExec(ctx, `
+			UPDATE academic_periods
+			   SET updated_at = :updated_at, revision = :revision, name = :name, display_name = :display_name,
+			       description = :description, start_at = :start_at, end_at = :end_at
+			 WHERE id = :id AND institution_id = :institution_id AND archived_at IS NULL
+			   AND revision = :expected_revision`, map[string]any{
+			"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+			"revision": candidate.Revision, "institution_id": row.InstitutionID,
+			"name": row.Name, "display_name": row.DisplayName, "description": row.Description,
+			"start_at": row.StartAt, "end_at": row.EndAt,
+			"expected_revision": candidate.Revision - 1,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update academic period: %w", translateError("academic_period", candidate.ID.String(), err))
+		}
+		if err := requireOwnedRevisionAffected(
+			ctx, tx, result, "academic_period", "academic_periods", "institution_id",
+			candidate.ID.String(), candidate.InstitutionID.String(),
+		); err != nil {
+			return nil, err
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete academic period update audit: %w", err)
+		}
+		return &candidate, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("update academic period: %w", translateError("academic_period", candidate.ID.String(), err))
-	}
-	if err := requireOwnedRevisionAffected(
-		ctx, tx, result, "academic_period", "academic_periods", "institution_id",
-		candidate.ID.String(), candidate.InstitutionID.String(),
-	); err != nil {
-		return nil, err
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete academic period update audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic period update: %w", err)
-	}
-	return &candidate, nil
 }
 
 func (s SQLAcademicPeriodStore) Archive(
@@ -330,111 +318,99 @@ func (s SQLAcademicPeriodStore) Archive(
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "archived_at", archiveAt)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic period archive: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	var row academicPeriodRow
-	query := s.academicPeriodsQuery.Where(sq.Eq{"academic_periods.id": id, "academic_periods.archived_at": nil})
-	if err := tx.GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("academic_period", id, err)
-	}
-	current, err := row.model()
-	if err != nil {
-		return nil, err
-	}
-	var dependent bool
-	if err := tx.Get(ctx, &dependent, `
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic period archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
+		if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		var row academicPeriodRow
+		query := s.academicPeriodsQuery.Where(sq.Eq{"academic_periods.id": id, "academic_periods.archived_at": nil})
+		if err := tx.GetBuilder(ctx, &row, query); err != nil {
+			return nil, translateError("academic_period", id, err)
+		}
+		current, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		var dependent bool
+		if err := tx.Get(ctx, &dependent, `
 		SELECT EXISTS (
 			SELECT 1 FROM classes WHERE academic_period_id = ? AND archived_at IS NULL
 			UNION ALL
 			SELECT 1 FROM class_members WHERE academic_period_id = ? AND archived_at IS NULL
 		)`, id, id); err != nil {
-		return nil, fmt.Errorf("check academic period archive dependencies: %w", err)
-	}
-	if dependent {
-		return nil, store.NewErrConflict(
-			"academic_period",
-			"academic_period_has_active_dependents",
-			nil,
-		)
-	}
-	result, err := tx.Exec(ctx, `
+			return nil, fmt.Errorf("check academic period archive dependencies: %w", err)
+		}
+		if dependent {
+			return nil, store.NewErrConflict(
+				"academic_period",
+				"academic_period_has_active_dependents",
+				nil,
+			)
+		}
+		result, err := tx.Exec(ctx, `
 		UPDATE academic_periods SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
-	if err != nil {
-		return nil, fmt.Errorf("archive academic period: %w", err)
-	}
-	if err := requireRevisionAffected(ctx, tx, result, "academic_period", "academic_periods", id); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic period archive: %w", err)
-	}
-	at := model.TimeFromMillis(archiveAt)
-	current.UpdatedAt = at
-	current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
-	current.Revision++
-	return current, nil
+		if err != nil {
+			return nil, fmt.Errorf("archive academic period: %w", err)
+		}
+		if err := requireRevisionAffected(ctx, tx, result, "academic_period", "academic_periods", id); err != nil {
+			return nil, err
+		}
+		at := model.TimeFromMillis(archiveAt)
+		current.UpdatedAt = at
+		current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
+		current.Revision++
+		return current, nil
+	})
 }
 
 func (s SQLAcademicPeriodStore) ArchiveWithAudit(ctx context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "archive", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic period archive: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	var row academicPeriodRow
-	query := s.academicPeriodsQuery.Where(sq.Eq{"academic_periods.id": input.ID, "academic_periods.archived_at": nil})
-	if err := tx.GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("academic_period", input.ID, err)
-	}
-	var dependent bool
-	if err := tx.Get(ctx, &dependent, `SELECT EXISTS (
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic period archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
+		if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		var row academicPeriodRow
+		query := s.academicPeriodsQuery.Where(sq.Eq{"academic_periods.id": input.ID, "academic_periods.archived_at": nil})
+		if err := tx.GetBuilder(ctx, &row, query); err != nil {
+			return nil, translateError("academic_period", input.ID, err)
+		}
+		var dependent bool
+		if err := tx.Get(ctx, &dependent, `SELECT EXISTS (
 		SELECT 1 FROM classes WHERE academic_period_id = ? AND archived_at IS NULL
 		UNION ALL SELECT 1 FROM class_members WHERE academic_period_id = ? AND archived_at IS NULL
 	)`, input.ID, input.ID); err != nil {
-		return nil, fmt.Errorf("check academic period archive dependencies: %w", err)
-	}
-	if dependent {
-		return nil, store.NewErrConflict("academic_period", "academic_period_has_active_dependents", nil)
-	}
-	result, err := tx.Exec(ctx, `UPDATE academic_periods SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
-	if err != nil {
-		return nil, fmt.Errorf("archive academic period: %w", err)
-	}
-	if err := requireRevisionAffected(ctx, tx, result, "academic_period", "academic_periods", input.ID); err != nil {
-		return nil, err
-	}
-	period, err := row.model()
-	if err != nil {
-		return nil, err
-	}
-	at := model.TimeFromMillis(input.ArchiveAt)
-	period.UpdatedAt = at
-	period.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
-	period.Revision++
-	encoded, appErr := model.EncodeAuditData(period.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete academic period archive audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic period archive: %w", err)
-	}
-	return period, nil
+			return nil, fmt.Errorf("check academic period archive dependencies: %w", err)
+		}
+		if dependent {
+			return nil, store.NewErrConflict("academic_period", "academic_period_has_active_dependents", nil)
+		}
+		result, err := tx.Exec(ctx, `UPDATE academic_periods SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
+		if err != nil {
+			return nil, fmt.Errorf("archive academic period: %w", err)
+		}
+		if err := requireRevisionAffected(ctx, tx, result, "academic_period", "academic_periods", input.ID); err != nil {
+			return nil, err
+		}
+		period, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		at := model.TimeFromMillis(input.ArchiveAt)
+		period.UpdatedAt = at
+		period.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
+		period.Revision++
+		encoded, appErr := model.EncodeAuditData(period.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete academic period archive audit: %w", err)
+		}
+		return period, nil
+	})
 }
 
 func lockAcademicPeriodLifecycle(ctx context.Context, tx sqlxExecutor) error {
@@ -472,13 +448,13 @@ func newAcademicPeriodRow(period *model.AcademicPeriod) academicPeriodRow {
 }
 
 func (row academicPeriodRow) model() (*model.AcademicPeriod, error) {
-	id, err := model.ParseAcademicPeriodID(row.ID)
+	id, err := parsePersistedID("academic_period", "id", row.ID, model.ParseAcademicPeriodID)
 	if err != nil {
-		return nil, fmt.Errorf("rehydrate academic period %q: %w", row.ID, err)
+		return nil, err
 	}
-	institutionID, err := model.ParseInstitutionID(row.InstitutionID)
+	institutionID, err := parsePersistedID("academic_period", "institution_id", row.InstitutionID, model.ParseInstitutionID)
 	if err != nil {
-		return nil, fmt.Errorf("rehydrate academic period %q: %w", row.ID, err)
+		return nil, err
 	}
 	period := &model.AcademicPeriod{
 		ID:            id,
@@ -493,8 +469,8 @@ func (row academicPeriodRow) model() (*model.AcademicPeriod, error) {
 		StartsAt:      row.StartAt.UTC(),
 		EndsAt:        row.EndAt.UTC(),
 	}
-	if err := period.Validate(); err != nil {
-		return nil, fmt.Errorf("rehydrate academic period %q: %w", row.ID, err)
+	if err := validatePersistedModel("academic_period", period); err != nil {
+		return nil, err
 	}
 	return period, nil
 }
