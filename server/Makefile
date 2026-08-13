@@ -79,12 +79,10 @@ integration-postgres:
 		go test -tags=integration . -run '^TestFilePurgeStorageIntegrationOnLocalVFS$$' -count=1
 
 integration-redis:
-	@set -eu; \
-	cleanup() { $(COMPOSE) down --remove-orphans; }; \
-	trap cleanup EXIT INT TERM; \
-	$(COMPOSE) up --detach --wait redis; \
-	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
-		go test -tags=integration ./platform -run 'Redis' -count=1
+	$(MAKE) -C ../packages/cache \
+		CACHE_REDIS_PORT='$(PROCTOR_REDIS_PORT)' \
+		CACHE_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
+		conformance-redis
 
 integration-s3:
 	@set -eu; \

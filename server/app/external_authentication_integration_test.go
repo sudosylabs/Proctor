@@ -285,9 +285,37 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if status := loginAgain(); status != http.StatusSeeOther {
 		t.Fatalf("existing linked user login status = %d", status)
 	}
-	disabled := *user
-	disabled.DisabledAt = model.OptionalTimeFrom(time.Now())
-	if _, err = persistence.User().Update(context.Background(), &disabled); err != nil {
+	currentUser, err := persistence.User().Get(context.Background(), user.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabledAt := model.GetMillis()
+	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
+		Action: string(model.ActionUserManage),
+		Resource: model.Resource{
+			Type: model.ResourceUser,
+			ID:   user.ID.String(),
+		},
+		ScopeType: model.RoleScopeInstitution,
+		ScopeID:   institution.ID.String(),
+		Status:    model.AuditStatusAttempt,
+		NodeID:    "external-authentication-integration",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = persistence.User().SetDisabledWithAudit(
+		context.Background(),
+		&store.UserDisabledStateChange{
+			ID:               user.ID.String(),
+			ExpectedRevision: currentUser.Revision,
+			Disabled:         true,
+			ChangedAt:        disabledAt,
+			RevocationReason: "external authentication integration disabled account",
+			AuditEventID:     auditAttempt.ID.String(),
+			AuditAt:          disabledAt,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if status := loginAgain(); status != http.StatusUnauthorized {

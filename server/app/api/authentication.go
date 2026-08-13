@@ -223,7 +223,8 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 func authenticationLoginErrorCodes() []string {
 	return []string{
 		"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid",
-		"authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.unavailable",
+		"authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code",
+		"authentication.mfa.unavailable",
 		"authentication.sessions.maximum_reached", "authentication.rate_limited",
 		"authentication.rate_limit_unavailable", "authentication.internal",
 	}

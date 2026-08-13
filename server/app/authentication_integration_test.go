@@ -83,7 +83,8 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 	if _, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken); !application.Is(err, "authentication.invalid_token") {
 		t.Fatalf("AuthenticateAccess() after logout error = %v, want invalid token", err)
 	}
-	if !strings.Contains(helper.Logs.String(), "security invalidation broadcast failed") {
+	if !strings.Contains(helper.Logs.String(), "session revocation broadcast failed") ||
+		!strings.Contains(helper.Logs.String(), "realtime cluster fan-out failed") {
 		t.Fatal("failed best-effort security fan-out was not diagnosed")
 	}
 	for _, secret := range []string{password, login.Tokens.AccessToken, login.Tokens.RefreshToken} {

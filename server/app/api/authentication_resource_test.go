@@ -219,6 +219,21 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 	if undeclared.Code != http.StatusInternalServerError || !strings.Contains(undeclared.Body.String(), `"code":"internal"`) || strings.Contains(undeclared.Body.String(), "resource.not_found") {
 		t.Fatalf("undeclared login error = %d %s", undeclared.Code, undeclared.Body.String())
 	}
+
+	authentication.loginError = application.NewError("authentication.mfa.invalid_code")
+	invalidSecondFactor := httptest.NewRecorder()
+	httpAPI.ServeHTTP(
+		invalidSecondFactor,
+		httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/auth/login",
+			strings.NewReader(`{"login_id":"student","password":"secret","client_type":"desktop","mfa_code":"used-recovery-code"}`),
+		),
+	)
+	if invalidSecondFactor.Code != http.StatusUnauthorized ||
+		!strings.Contains(invalidSecondFactor.Body.String(), `"code":"authentication.mfa.invalid_code"`) {
+		t.Fatalf("invalid login second factor = %d %s", invalidSecondFactor.Code, invalidSecondFactor.Body.String())
+	}
 }
 
 func TestExternalAuthenticationRedirectIsNamedKernelProtocolOperation(t *testing.T) {

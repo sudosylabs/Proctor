@@ -190,7 +190,7 @@ func identityAndSystemOperation(_ string, path string) bool {
 func identityAndSystemErrorContracts() map[string][]string {
 	return map[string][]string{
 		"GET /health/live": {"not_live"}, "GET /health/ready": {"not_ready"}, "GET /api/v1/system/version": {},
-		"POST /api/v1/auth/login":                                         {"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.unavailable", "authentication.sessions.maximum_reached", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal"},
+		"POST /api/v1/auth/login":                                         {"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code", "authentication.mfa.unavailable", "authentication.sessions.maximum_reached", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal"},
 		"POST /api/v1/auth/refresh":                                       {"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.session.invalid", "authentication.internal"},
 		"POST /api/v1/auth/logout":                                        sessionMutationErrorCodes("authentication.internal"),
 		"POST /api/v1/auth/email-verification/request":                    sessionMutationErrorCodes("authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.account_recovery.unavailable"),

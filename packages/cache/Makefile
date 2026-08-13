@@ -34,4 +34,4 @@ conformance-redis:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait redis; \
 	CACHE_REDIS_ADDRESS=$(CACHE_REDIS_ADDRESS) \
-		go test ./redis -run '^TestIntegrationConformance$$' -count=1
+		go test ./redis -count=1
