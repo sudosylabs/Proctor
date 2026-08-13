@@ -92,50 +92,46 @@ func (s SQLClassMemberStore) enroll(
 	auditEventID string,
 	auditAt int64,
 ) (*store.ClassEnrollmentResult, error) {
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin class enrollment: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := lockClassLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	var periodRaw string
-	if err := tx.Get(ctx, &periodRaw, `
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "class enrollment", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ClassEnrollmentResult, error) {
+		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := lockClassLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		var periodRaw string
+		if err := tx.Get(ctx, &periodRaw, `
 		SELECT academic_period_id FROM classes WHERE id = ? AND archived_at IS NULL`,
-		candidate.ClassID.String(),
-	); err != nil {
-		return nil, translateError("class", candidate.ClassID.String(), err)
-	}
-	periodID, err := model.ParseAcademicPeriodID(periodRaw)
-	if err != nil {
-		return nil, store.NewErrInvalidInput("class_member", "academic_period_id", periodRaw).Wrap(err)
-	}
-	candidate.AcademicPeriodID = periodID
-	if err := lockClassEnrollment(ctx, tx, candidate.UserID.String(), candidate.AcademicPeriodID.String()); err != nil {
-		return nil, err
-	}
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("class_member", "value", nil).Wrap(err)
-	}
-	startAt := candidate.StartsAt
-	endAt := NullTimeFromOptional(candidate.EndsAt)
-	var student bool
-	if err := tx.Get(ctx, &student, `SELECT EXISTS (
+			candidate.ClassID.String(),
+		); err != nil {
+			return nil, translateError("class", candidate.ClassID.String(), err)
+		}
+		periodID, err := parsePersistedID("class", "academic_period_id", periodRaw, model.ParseAcademicPeriodID)
+		if err != nil {
+			return nil, err
+		}
+		candidate.AcademicPeriodID = periodID
+		if err := lockClassEnrollment(ctx, tx, candidate.UserID.String(), candidate.AcademicPeriodID.String()); err != nil {
+			return nil, err
+		}
+		if err := candidate.Validate(); err != nil {
+			return nil, store.NewErrInvalidInput("class_member", "value", nil).Wrap(err)
+		}
+		startAt := candidate.StartsAt
+		endAt := NullTimeFromOptional(candidate.EndsAt)
+		var student bool
+		if err := tx.Get(ctx, &student, `SELECT EXISTS (
 		SELECT 1 FROM affiliations WHERE user_id = ? AND kind = ? AND archived_at IS NULL
 		 AND start_at <= ? AND end_at IS NULL
 	)`, candidate.UserID.String(), model.AffiliationStudent, startAt); err != nil {
-		return nil, fmt.Errorf("validate student affiliation: %w", err)
-	}
-	if !student {
-		return nil, store.NewErrConflict("class_member", "class_member_student_affiliation_required", nil)
-	}
+			return nil, fmt.Errorf("validate student affiliation: %w", err)
+		}
+		if !student {
+			return nil, store.NewErrConflict("class_member", "class_member_student_affiliation_required", nil)
+		}
 
-	var previousRow classMemberRow
-	err = tx.Get(ctx, &previousRow, `
+		var previousRow classMemberRow
+		err = tx.Get(ctx, &previousRow, `
 		SELECT id, created_at, updated_at, archived_at, revision, class_id,
 		       academic_period_id, user_id, start_at, end_at
 		  FROM class_members
@@ -144,46 +140,49 @@ func (s SQLClassMemberStore) enroll(
 		 ORDER BY start_at DESC, id
 		 LIMIT 1
 		 FOR UPDATE`,
-		candidate.UserID.String(), candidate.AcademicPeriodID.String(),
-	)
-	var previous *model.ClassMember
-	switch {
-	case err == nil:
-		previous = previousRow.model()
-		if previous.ClassID == candidate.ClassID {
-			return nil, store.NewErrConflict(
-				"class_member",
-				"class_members_one_active_class_per_period_key",
-				nil,
-			)
-		}
-		if !candidate.StartsAt.After(previous.StartsAt) {
-			return nil, store.NewErrConflict(
-				"class_member",
-				"class_members_transfer_time",
-				nil,
-			)
-		}
-		if _, err := tx.Exec(ctx, `
+			candidate.UserID.String(), candidate.AcademicPeriodID.String(),
+		)
+		var previous *model.ClassMember
+		switch {
+		case err == nil:
+			previous, err = previousRow.model()
+			if err != nil {
+				return nil, err
+			}
+			if previous.ClassID == candidate.ClassID {
+				return nil, store.NewErrConflict(
+					"class_member",
+					"class_members_one_active_class_per_period_key",
+					nil,
+				)
+			}
+			if !candidate.StartsAt.After(previous.StartsAt) {
+				return nil, store.NewErrConflict(
+					"class_member",
+					"class_members_transfer_time",
+					nil,
+				)
+			}
+			if _, err := tx.Exec(ctx, `
 			UPDATE class_members
 			SET updated_at = ?, end_at = ?, revision = revision + 1
 			 WHERE id = ? AND archived_at IS NULL AND end_at IS NULL`,
-			candidate.UpdatedAt, startAt, previous.ID.String(),
-		); err != nil {
-			return nil, fmt.Errorf("end previous class enrollment: %w", err)
+				candidate.UpdatedAt, startAt, previous.ID.String(),
+			); err != nil {
+				return nil, fmt.Errorf("end previous class enrollment: %w", err)
+			}
+			previous.UpdatedAt = candidate.UpdatedAt
+			previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
+			previous.Revision++
+		case err != nil && !isNoRows(err):
+			return nil, fmt.Errorf("find current class enrollment: %w", err)
 		}
-		previous.UpdatedAt = candidate.UpdatedAt
-		previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
-		previous.Revision++
-	case err != nil && !isNoRows(err):
-		return nil, fmt.Errorf("find current class enrollment: %w", err)
-	}
-	var overlaps bool
-	excludedID := ""
-	if previous != nil {
-		excludedID = previous.ID.String()
-	}
-	if err := tx.Get(ctx, &overlaps, `
+		var overlaps bool
+		excludedID := ""
+		if previous != nil {
+			excludedID = previous.ID.String()
+		}
+		if err := tx.Get(ctx, &overlaps, `
 		SELECT EXISTS (
 			SELECT 1
 			  FROM class_members
@@ -192,24 +191,24 @@ func (s SQLClassMemberStore) enroll(
 			   AND (end_at IS NULL OR end_at > ?)
 			   AND (CAST(? AS timestamptz) IS NULL OR start_at < ?)
 		)`,
-		candidate.UserID.String(),
-		candidate.AcademicPeriodID.String(),
-		excludedID,
-		excludedID,
-		startAt,
-		endAt,
-		endAt,
-	); err != nil {
-		return nil, fmt.Errorf("check class enrollment overlap: %w", err)
-	}
-	if overlaps {
-		return nil, store.NewErrConflict(
-			"class_member", "class_members_effective_range_overlap", nil,
-		)
-	}
+			candidate.UserID.String(),
+			candidate.AcademicPeriodID.String(),
+			excludedID,
+			excludedID,
+			startAt,
+			endAt,
+			endAt,
+		); err != nil {
+			return nil, fmt.Errorf("check class enrollment overlap: %w", err)
+		}
+		if overlaps {
+			return nil, store.NewErrConflict(
+				"class_member", "class_members_effective_range_overlap", nil,
+			)
+		}
 
-	row := newClassMemberRow(candidate)
-	if _, err := tx.NamedExec(ctx, `
+		row := newClassMemberRow(candidate)
+		if _, err := tx.NamedExec(ctx, `
 		INSERT INTO class_members (
 			id, created_at, updated_at, archived_at, revision, class_id,
 			academic_period_id, user_id, start_at, end_at
@@ -217,26 +216,24 @@ func (s SQLClassMemberStore) enroll(
 			:id, :created_at, :updated_at, :archived_at, :revision, :class_id,
 			:academic_period_id, :user_id, :start_at, :end_at
 		)`, &row); err != nil {
-		return nil, fmt.Errorf(
-			"save class enrollment: %w",
-			translateError("class_member", candidate.ID.String(), err),
-		)
-	}
-	result := &store.ClassEnrollmentResult{Membership: candidate, Previous: previous}
-	if auditEventID != "" {
-		enrollment := &model.ClassEnrollment{Membership: candidate, Previous: previous}
-		encoded, appErr := model.EncodeAuditData(enrollment.Auditable())
-		if appErr != nil {
-			return nil, appErr
+			return nil, fmt.Errorf(
+				"save class enrollment: %w",
+				translateError("class_member", candidate.ID.String(), err),
+			)
 		}
-		if _, err := completeAuditEvent(ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt); err != nil {
-			return nil, fmt.Errorf("complete class enrollment audit: %w", err)
+		result := &store.ClassEnrollmentResult{Membership: candidate, Previous: previous}
+		if auditEventID != "" {
+			enrollment := &model.ClassEnrollment{Membership: candidate, Previous: previous}
+			encoded, appErr := model.EncodeAuditData(enrollment.Auditable())
+			if appErr != nil {
+				return nil, appErr
+			}
+			if _, err := completeAuditEvent(ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt); err != nil {
+				return nil, fmt.Errorf("complete class enrollment audit: %w", err)
+			}
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit class enrollment: %w", err)
-	}
-	return result, nil
+		return result, nil
+	})
 }
 
 func isNoRows(err error) bool {
@@ -253,7 +250,7 @@ func (s SQLClassMemberStore) Get(
 	})); err != nil {
 		return nil, translateError("class_member", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLClassMemberStore) ListByUser(
@@ -303,28 +300,18 @@ func (s SQLClassMemberStore) End(
 	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin class member end: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	var row classMemberRow
-	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"class_members.id": id, "class_members.archived_at": nil,
-	})); err != nil {
-		return nil, translateError("class_member", id, err)
-	}
-	if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
-		return nil, err
-	}
-	ended, err := s.endClassMember(ctx, tx, id, expectedRevision, endAt)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit class member end: %w", err)
-	}
-	return ended, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "class member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ClassMember, error) {
+		var row classMemberRow
+		if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
+			"class_members.id": id, "class_members.archived_at": nil,
+		})); err != nil {
+			return nil, translateError("class_member", id, err)
+		}
+		if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
+			return nil, err
+		}
+		return s.endClassMember(ctx, tx, id, expectedRevision, endAt)
+	})
 }
 
 func (s SQLClassMemberStore) EndWithAudit(
@@ -335,35 +322,29 @@ func (s SQLClassMemberStore) EndWithAudit(
 		input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin class member audited end: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	var row classMemberRow
-	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
-		"class_members.id": input.ID, "class_members.archived_at": nil,
-	})); err != nil {
-		return nil, translateError("class_member", input.ID, err)
-	}
-	if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
-		return nil, err
-	}
-	ended, err := s.endClassMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
-	if err != nil {
-		return nil, err
-	}
-	encoded, appErr := model.EncodeAuditData(ended.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete class member end audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit class member audited end: %w", err)
-	}
-	return ended, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "class member audited end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ClassMember, error) {
+		var row classMemberRow
+		if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
+			"class_members.id": input.ID, "class_members.archived_at": nil,
+		})); err != nil {
+			return nil, translateError("class_member", input.ID, err)
+		}
+		if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
+			return nil, err
+		}
+		ended, err := s.endClassMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
+		if err != nil {
+			return nil, err
+		}
+		encoded, appErr := model.EncodeAuditData(ended.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete class member end audit: %w", err)
+		}
+		return ended, nil
+	})
 }
 
 func (s SQLClassMemberStore) endClassMember(
@@ -379,7 +360,10 @@ func (s SQLClassMemberStore) endClassMember(
 	})); err != nil {
 		return nil, translateError("class_member", id, err)
 	}
-	current := row.model()
+	current, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("class_member", "class_member_changed", nil)
 	}
@@ -428,7 +412,11 @@ func (s SQLClassMemberStore) selectMembers(
 	}
 	result := make([]*model.ClassMember, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, row.model())
+		member, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, member)
 	}
 	return result, nil
 }
@@ -448,24 +436,24 @@ func newClassMemberRow(m *model.ClassMember) classMemberRow {
 	}
 }
 
-func (r classMemberRow) model() *model.ClassMember {
-	id, err := model.ParseClassMemberID(r.ID)
+func (r classMemberRow) model() (*model.ClassMember, error) {
+	id, err := parsePersistedID("class_member", "id", r.ID, model.ParseClassMemberID)
 	if err != nil {
-		id = model.ClassMemberID(r.ID)
+		return nil, err
 	}
-	classID, err := model.ParseClassID(r.ClassID)
+	classID, err := parsePersistedID("class_member", "class_id", r.ClassID, model.ParseClassID)
 	if err != nil {
-		classID = model.ClassID(r.ClassID)
+		return nil, err
 	}
-	periodID, err := model.ParseAcademicPeriodID(r.AcademicPeriodID)
+	periodID, err := parsePersistedID("class_member", "academic_period_id", r.AcademicPeriodID, model.ParseAcademicPeriodID)
 	if err != nil {
-		periodID = model.AcademicPeriodID(r.AcademicPeriodID)
+		return nil, err
 	}
-	userID, err := model.ParseUserID(r.UserID)
+	userID, err := parsePersistedID("class_member", "user_id", r.UserID, model.ParseUserID)
 	if err != nil {
-		userID = model.UserID(r.UserID)
+		return nil, err
 	}
-	return &model.ClassMember{
+	value := &model.ClassMember{
 		ID:               id,
 		CreatedAt:        r.CreatedAt.UTC(),
 		UpdatedAt:        r.UpdatedAt.UTC(),
@@ -477,6 +465,10 @@ func (r classMemberRow) model() *model.ClassMember {
 		StartsAt:         r.StartAt.UTC(),
 		EndsAt:           OptionalTimeFromNullTime(r.EndAt),
 	}
+	if err := validatePersistedModel("class_member", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.ClassMemberStore = (*SQLClassMemberStore)(nil)

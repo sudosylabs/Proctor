@@ -147,48 +147,41 @@ func (s SQLInstitutionStore) updateInstitution(
 	auditEventID string,
 	auditAt int64,
 ) (*model.Institution, error) {
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin institution update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	row := newInstitutionRow(candidate)
-	result, err := tx.NamedExec(ctx, `
-		UPDATE institutions
-		   SET updated_at = :updated_at,
-		       revision = :revision,
-		       name = :name,
-		       display_name = :display_name,
-		       description = :description
-		 WHERE id = :id AND singleton = TRUE AND archived_at IS NULL
-		   AND revision = :expected_revision`, map[string]any{
-		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
-		"revision": candidate.Revision, "name": row.Name,
-		"display_name": row.DisplayName, "description": row.Description,
-		"expected_revision": candidate.Revision - 1,
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "institution update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Institution, error) {
+		row := newInstitutionRow(candidate)
+		result, err := tx.NamedExec(ctx, `
+			UPDATE institutions
+			   SET updated_at = :updated_at,
+			       revision = :revision,
+			       name = :name,
+			       display_name = :display_name,
+			       description = :description
+			 WHERE id = :id AND singleton = TRUE AND archived_at IS NULL
+			   AND revision = :expected_revision`, map[string]any{
+			"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+			"revision": candidate.Revision, "name": row.Name,
+			"display_name": row.DisplayName, "description": row.Description,
+			"expected_revision": candidate.Revision - 1,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update institution: %w", translateError("institution", candidate.ID.String(), err))
+		}
+		if err := requireRevisionAffected(ctx, tx, result, "institution", "institutions", candidate.ID.String()); err != nil {
+			return nil, err
+		}
+		if auditEventID != "" {
+			encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+			if appErr != nil {
+				return nil, appErr
+			}
+			if _, err := completeAuditEvent(
+				ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt,
+			); err != nil {
+				return nil, fmt.Errorf("complete institution update audit: %w", err)
+			}
+		}
+		return candidate, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("update institution: %w", translateError("institution", candidate.ID.String(), err))
-	}
-	if err := requireRevisionAffected(ctx, tx, result, "institution", "institutions", candidate.ID.String()); err != nil {
-		return nil, err
-	}
-	if auditEventID != "" {
-		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		if _, err := completeAuditEvent(
-			ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt,
-		); err != nil {
-			return nil, fmt.Errorf("complete institution update audit: %w", err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit institution update: %w", err)
-	}
-	return candidate, nil
 }
 
 func (s SQLInstitutionStore) Archive(ctx context.Context, id string, archiveAt int64) error {
@@ -227,9 +220,9 @@ func newInstitutionRow(institution *model.Institution) institutionRow {
 }
 
 func (row institutionRow) model() (*model.Institution, error) {
-	id, err := model.ParseInstitutionID(row.ID)
+	id, err := parsePersistedID("institution", "id", row.ID, model.ParseInstitutionID)
 	if err != nil {
-		return nil, fmt.Errorf("rehydrate institution %q: %w", row.ID, err)
+		return nil, err
 	}
 	institution := &model.Institution{
 		ID:          id,
@@ -241,8 +234,8 @@ func (row institutionRow) model() (*model.Institution, error) {
 		DisplayName: row.DisplayName,
 		Description: row.Description,
 	}
-	if err := institution.Validate(); err != nil {
-		return nil, fmt.Errorf("rehydrate institution %q: %w", row.ID, err)
+	if err := validatePersistedModel("institution", institution); err != nil {
+		return nil, err
 	}
 	return institution, nil
 }

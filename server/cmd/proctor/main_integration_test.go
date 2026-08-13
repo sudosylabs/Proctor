@@ -9,8 +9,11 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/store/sqlstore"
 )
 
 func TestMigrateIntegration(t *testing.T) {
@@ -25,7 +28,11 @@ func TestMigrateIntegration(t *testing.T) {
 	if err := run(context.Background(), []string{"migrate", "up"}, &stdout, &stderr); err != nil {
 		t.Fatalf("migrate up error = %v, stderr = %q", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "version 12") {
+	version, err := sqlstore.LocalSchemaVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "version "+strconv.Itoa(version)) {
 		t.Fatalf("migrate up output = %q", stdout.String())
 	}
 

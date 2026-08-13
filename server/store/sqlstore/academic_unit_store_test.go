@@ -4,10 +4,75 @@
 package sqlstore
 
 import (
+	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+func TestAcademicUnitRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
+	t.Parallel()
+
+	valid := academicUnitRow{
+		ID:            model.NewAcademicUnitID().String(),
+		CreatedAt:     model.TimeFromMillis(1),
+		UpdatedAt:     model.TimeFromMillis(2),
+		Revision:      1,
+		InstitutionID: model.NewInstitutionID().String(),
+		Name:          "computing",
+		DisplayName:   "Computing",
+	}
+
+	tests := []struct {
+		name  string
+		row   academicUnitRow
+		field string
+	}{
+		{
+			name:  "academic unit id",
+			row:   replaceAcademicUnitRow(valid, func(row *academicUnitRow) { row.ID = "bad" }),
+			field: "id",
+		},
+		{
+			name:  "institution id",
+			row:   replaceAcademicUnitRow(valid, func(row *academicUnitRow) { row.InstitutionID = "bad" }),
+			field: "institution_id",
+		},
+		{
+			name: "nullable parent id",
+			row: replaceAcademicUnitRow(valid, func(row *academicUnitRow) {
+				row.ParentID = sql.NullString{String: "bad", Valid: true}
+			}),
+			field: "parent_id",
+		},
+		{
+			name: "present empty parent id",
+			row: replaceAcademicUnitRow(valid, func(row *academicUnitRow) {
+				row.ParentID = sql.NullString{Valid: true}
+			}),
+			field: "parent_id",
+		},
+		{
+			name:  "domain state",
+			row:   replaceAcademicUnitRow(valid, func(row *academicUnitRow) { row.ParentID = sql.NullString{String: row.ID, Valid: true} }),
+			field: "parent_id",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := test.row.model()
+			var persisted *persistedStateError
+			if !errors.As(err, &persisted) {
+				t.Fatalf("model() error = %v, want persisted-state error", err)
+			}
+			if persisted.Entity != "academic_unit" || persisted.Field != test.field {
+				t.Fatalf("persisted-state context = %s.%s, want academic_unit.%s", persisted.Entity, persisted.Field, test.field)
+			}
+		})
+	}
+}
 
 func TestAcademicUnitRowConversion(t *testing.T) {
 	unitID, err := model.ParseAcademicUnitID(model.NewId())
@@ -58,4 +123,9 @@ func TestAcademicUnitRowConversion(t *testing.T) {
 	if got.ParentID != "" {
 		t.Fatalf("NULL parent mapped to %q", got.ParentID)
 	}
+}
+
+func replaceAcademicUnitRow(row academicUnitRow, replace func(*academicUnitRow)) academicUnitRow {
+	replace(&row)
+	return row
 }

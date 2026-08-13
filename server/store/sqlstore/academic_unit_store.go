@@ -82,51 +82,45 @@ func (s SQLAcademicUnitStore) Create(
 		return nil, appErr
 	}
 
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := validateAcademicUnitParent(
-		ctx, tx,
-		candidate.ID.String(),
-		candidate.InstitutionID.String(),
-		candidate.ParentID.String(),
-	); err != nil {
-		return nil, err
-	}
-	row := newAcademicUnitRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO academic_units (
-			id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
-			name, display_name, description
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
-			:parent_id, :name, :display_name, :description
-		)`, &row); err != nil {
-		return nil, fmt.Errorf(
-			"create academic unit: %w",
-			translateError("academic_unit", candidate.ID.String(), err),
-		)
-	}
-	if _, err := completeAuditEvent(
-		ctx,
-		tx,
-		input.AuditEventID,
-		model.AuditStatusSuccess,
-		"",
-		result,
-		input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete academic unit creation audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit creation: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := validateAcademicUnitParent(
+			ctx, tx,
+			candidate.ID.String(),
+			candidate.InstitutionID.String(),
+			candidate.ParentID.String(),
+		); err != nil {
+			return nil, err
+		}
+		row := newAcademicUnitRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO academic_units (
+				id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
+				name, display_name, description
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
+				:parent_id, :name, :display_name, :description
+			)`, &row); err != nil {
+			return nil, fmt.Errorf(
+				"create academic unit: %w",
+				translateError("academic_unit", candidate.ID.String(), err),
+			)
+		}
+		if _, err := completeAuditEvent(
+			ctx,
+			tx,
+			input.AuditEventID,
+			model.AuditStatusSuccess,
+			"",
+			result,
+			input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete academic unit creation audit: %w", err)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {
@@ -146,41 +140,34 @@ func (s SQLAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(err)
 	}
 
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit save: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := validateAcademicUnitParent(
-		ctx, tx,
-		candidate.ID.String(),
-		candidate.InstitutionID.String(),
-		candidate.ParentID.String(),
-	); err != nil {
-		return nil, err
-	}
-	row := newAcademicUnitRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO academic_units (
-			id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
-			name, display_name, description
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
-			:parent_id, :name, :display_name, :description
-		)`, &row); err != nil {
-		return nil, fmt.Errorf(
-			"save academic unit: %w",
-			translateError("academic_unit", candidate.ID.String(), err),
-		)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit save: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := validateAcademicUnitParent(
+			ctx, tx,
+			candidate.ID.String(),
+			candidate.InstitutionID.String(),
+			candidate.ParentID.String(),
+		); err != nil {
+			return nil, err
+		}
+		row := newAcademicUnitRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO academic_units (
+				id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
+				name, display_name, description
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
+				:parent_id, :name, :display_name, :description
+			)`, &row); err != nil {
+			return nil, fmt.Errorf(
+				"save academic unit: %w",
+				translateError("academic_unit", candidate.ID.String(), err),
+			)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLAcademicUnitStore) Get(ctx context.Context, id string) (*model.AcademicUnit, error) {
@@ -333,67 +320,60 @@ func (s SQLAcademicUnitStore) updateAcademicUnit(
 	candidate *model.AcademicUnit,
 	audit *academicUnitAuditCompletion,
 ) (*model.AcademicUnit, error) {
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := validateAcademicUnitParent(
-		ctx, tx,
-		candidate.ID.String(),
-		candidate.InstitutionID.String(),
-		candidate.ParentID.String(),
-	); err != nil {
-		return nil, err
-	}
-	row := newAcademicUnitRow(candidate)
-	result, err := tx.NamedExec(ctx, `
-		UPDATE academic_units
-		   SET updated_at = :updated_at,
-		       revision = :revision,
-		       parent_id = :parent_id,
-		       name = :name,
-		       display_name = :display_name,
-		       description = :description
-		 WHERE id = :id AND institution_id = :institution_id AND archived_at IS NULL
-		   AND revision = :expected_revision`, map[string]any{
-		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
-		"revision": candidate.Revision, "institution_id": row.InstitutionID,
-		"parent_id": row.ParentID, "name": row.Name,
-		"display_name": row.DisplayName, "description": row.Description,
-		"expected_revision": candidate.Revision - 1,
-	})
-	if err != nil {
-		return nil, fmt.Errorf(
-			"update academic unit: %w",
-			translateError("academic_unit", candidate.ID.String(), err),
-		)
-	}
-	if err := requireOwnedRevisionAffected(
-		ctx, tx, result, "academic_unit", "academic_units", "institution_id",
-		candidate.ID.String(), candidate.InstitutionID.String(),
-	); err != nil {
-		return nil, err
-	}
-	if audit != nil {
-		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
-		if appErr != nil {
-			return nil, appErr
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return nil, err
 		}
-		if _, err := completeAuditEvent(
-			ctx, tx, audit.eventID, model.AuditStatusSuccess, "", encoded, audit.at,
+		if err := validateAcademicUnitParent(
+			ctx, tx,
+			candidate.ID.String(),
+			candidate.InstitutionID.String(),
+			candidate.ParentID.String(),
 		); err != nil {
-			return nil, fmt.Errorf("complete academic unit update audit: %w", err)
+			return nil, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit update: %w", err)
-	}
-	return candidate, nil
+		row := newAcademicUnitRow(candidate)
+		result, err := tx.NamedExec(ctx, `
+			UPDATE academic_units
+			   SET updated_at = :updated_at,
+			       revision = :revision,
+			       parent_id = :parent_id,
+			       name = :name,
+			       display_name = :display_name,
+			       description = :description
+			 WHERE id = :id AND institution_id = :institution_id AND archived_at IS NULL
+			   AND revision = :expected_revision`, map[string]any{
+			"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+			"revision": candidate.Revision, "institution_id": row.InstitutionID,
+			"parent_id": row.ParentID, "name": row.Name,
+			"display_name": row.DisplayName, "description": row.Description,
+			"expected_revision": candidate.Revision - 1,
+		})
+		if err != nil {
+			return nil, fmt.Errorf(
+				"update academic unit: %w",
+				translateError("academic_unit", candidate.ID.String(), err),
+			)
+		}
+		if err := requireOwnedRevisionAffected(
+			ctx, tx, result, "academic_unit", "academic_units", "institution_id",
+			candidate.ID.String(), candidate.InstitutionID.String(),
+		); err != nil {
+			return nil, err
+		}
+		if audit != nil {
+			encoded, appErr := model.EncodeAuditData(candidate.Auditable())
+			if appErr != nil {
+				return nil, appErr
+			}
+			if _, err := completeAuditEvent(
+				ctx, tx, audit.eventID, model.AuditStatusSuccess, "", encoded, audit.at,
+			); err != nil {
+				return nil, fmt.Errorf("complete academic unit update audit: %w", err)
+			}
+		}
+		return candidate, nil
+	})
 }
 
 func (s SQLAcademicUnitStore) ArchiveWithAudit(
@@ -427,62 +407,56 @@ func (s SQLAcademicUnitStore) archiveAcademicUnit(
 	archiveAt int64,
 	audit *academicUnitAuditCompletion,
 ) (*model.AcademicUnit, error) {
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit archive: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-		return nil, err
-	}
-	current, err := academicUnitFromExecutor(ctx, tx, id)
-	if err != nil {
-		return nil, err
-	}
-	var dependent bool
-	if err := tx.Get(ctx, &dependent, `
-		SELECT EXISTS (
-			SELECT 1 FROM academic_units WHERE parent_id = ? AND archived_at IS NULL
-			UNION ALL
-			SELECT 1 FROM programmes WHERE academic_unit_id = ? AND archived_at IS NULL
-			UNION ALL
-			SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND archived_at IS NULL AND end_at IS NULL
-			UNION ALL
-			SELECT 1 FROM role_bindings WHERE scope_type = 'academic_unit' AND scope_id = ? AND archived_at IS NULL AND end_at IS NULL
-		)`, id, id, id, id); err != nil {
-		return nil, fmt.Errorf("check academic unit archive dependencies: %w", err)
-	}
-	if dependent {
-		return nil, store.NewErrConflict("academic_unit", "academic_unit_has_active_dependents", nil)
-	}
-	result, err := tx.Exec(ctx, `
-		UPDATE academic_units SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
-	if err != nil {
-		return nil, fmt.Errorf("archive academic unit: %w", err)
-	}
-	if err := requireRevisionAffected(ctx, tx, result, "academic_unit", "academic_units", id); err != nil {
-		return nil, err
-	}
-	at := model.TimeFromMillis(archiveAt)
-	current.UpdatedAt = at
-	current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
-	current.Revision++
-	if audit != nil {
-		encoded, appErr := model.EncodeAuditData(current.Auditable())
-		if appErr != nil {
-			return nil, appErr
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return nil, err
 		}
-		if _, err := completeAuditEvent(
-			ctx, tx, audit.eventID, model.AuditStatusSuccess, "", encoded, audit.at,
-		); err != nil {
-			return nil, fmt.Errorf("complete academic unit archive audit: %w", err)
+		current, err := academicUnitFromExecutor(ctx, tx, id)
+		if err != nil {
+			return nil, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit archive: %w", err)
-	}
-	return current, nil
+		var dependent bool
+		if err := tx.Get(ctx, &dependent, `
+			SELECT EXISTS (
+				SELECT 1 FROM academic_units WHERE parent_id = ? AND archived_at IS NULL
+				UNION ALL
+				SELECT 1 FROM programmes WHERE academic_unit_id = ? AND archived_at IS NULL
+				UNION ALL
+				SELECT 1 FROM academic_unit_members WHERE academic_unit_id = ? AND archived_at IS NULL AND end_at IS NULL
+				UNION ALL
+				SELECT 1 FROM role_bindings WHERE scope_type = 'academic_unit' AND scope_id = ? AND archived_at IS NULL AND end_at IS NULL
+			)`, id, id, id, id); err != nil {
+			return nil, fmt.Errorf("check academic unit archive dependencies: %w", err)
+		}
+		if dependent {
+			return nil, store.NewErrConflict("academic_unit", "academic_unit_has_active_dependents", nil)
+		}
+		result, err := tx.Exec(ctx, `
+			UPDATE academic_units SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
+			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
+		if err != nil {
+			return nil, fmt.Errorf("archive academic unit: %w", err)
+		}
+		if err := requireRevisionAffected(ctx, tx, result, "academic_unit", "academic_units", id); err != nil {
+			return nil, err
+		}
+		at := model.TimeFromMillis(archiveAt)
+		current.UpdatedAt = at
+		current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
+		current.Revision++
+		if audit != nil {
+			encoded, appErr := model.EncodeAuditData(current.Auditable())
+			if appErr != nil {
+				return nil, appErr
+			}
+			if _, err := completeAuditEvent(
+				ctx, tx, audit.eventID, model.AuditStatusSuccess, "", encoded, audit.at,
+			); err != nil {
+				return nil, fmt.Errorf("complete academic unit archive audit: %w", err)
+			}
+		}
+		return current, nil
+	})
 }
 
 func academicUnitFromExecutor(
@@ -573,21 +547,17 @@ func newAcademicUnitRow(unit *model.AcademicUnit) academicUnitRow {
 }
 
 func (row academicUnitRow) model() (*model.AcademicUnit, error) {
-	id, err := model.ParseAcademicUnitID(row.ID)
+	id, err := parsePersistedID("academic_unit", "id", row.ID, model.ParseAcademicUnitID)
 	if err != nil {
-		return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, err)
+		return nil, err
 	}
-	institutionID, err := model.ParseInstitutionID(row.InstitutionID)
+	institutionID, err := parsePersistedID("academic_unit", "institution_id", row.InstitutionID, model.ParseInstitutionID)
 	if err != nil {
-		return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, err)
+		return nil, err
 	}
-	var parentID model.AcademicUnitID
-	if row.ParentID.Valid && row.ParentID.String != "" {
-		parsed, parseErr := model.ParseAcademicUnitID(row.ParentID.String)
-		if parseErr != nil {
-			return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, parseErr)
-		}
-		parentID = parsed
+	parentID, err := parseNullablePersistedID("academic_unit", "parent_id", row.ParentID, model.ParseAcademicUnitID)
+	if err != nil {
+		return nil, err
 	}
 	unit := &model.AcademicUnit{
 		ID:            id,
@@ -601,8 +571,8 @@ func (row academicUnitRow) model() (*model.AcademicUnit, error) {
 		DisplayName:   row.DisplayName,
 		Description:   row.Description,
 	}
-	if err := unit.Validate(); err != nil {
-		return nil, fmt.Errorf("rehydrate academic unit %q: %w", row.ID, err)
+	if err := validatePersistedModel("academic_unit", unit); err != nil {
+		return nil, err
 	}
 	return unit, nil
 }

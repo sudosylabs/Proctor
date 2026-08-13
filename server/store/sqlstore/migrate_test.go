@@ -79,9 +79,13 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	assertBaselineSchema(t, ctx, migrator)
 
 	truncateBaselineTables(t, ctx, migrator)
-	rolledBack, err := migrator.Down(1)
-	if err != nil || rolledBack != 1 {
-		t.Fatalf("Down(1) = %d, %v", rolledBack, err)
+	hardeningSteps := appliedMigrationCount(t, ctx, migrator) - 1
+	if hardeningSteps < 1 {
+		t.Fatalf("hardening migration count = %d, want at least 1", hardeningSteps)
+	}
+	rolledBack, err := migrator.Down(hardeningSteps)
+	if err != nil || rolledBack != hardeningSteps {
+		t.Fatalf("Down(%d) = %d, %v", hardeningSteps, rolledBack, err)
 	}
 	if version, err := migrator.SchemaVersion(ctx); err != nil || version != 1 {
 		t.Fatalf("SchemaVersion() after hardening rollback = %d, %v; want 1", version, err)
@@ -161,8 +165,12 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 		t.Fatalf("Pending() = %d, %v", len(pending), err)
 	}
 	version, err := migrator.SchemaVersion(ctx)
-	if err != nil || version != 12 {
-		t.Fatalf("SchemaVersion() = %d, %v; want 12", version, err)
+	localVersion, localErr := LocalSchemaVersion()
+	if localErr != nil {
+		t.Fatalf("LocalSchemaVersion() error = %v", localErr)
+	}
+	if err != nil || version != localVersion {
+		t.Fatalf("SchemaVersion() = %d, %v; want %d", version, err, localVersion)
 	}
 	assertAffiliationCanonicalConstraints(t, ctx, migrator, true)
 
@@ -283,21 +291,26 @@ func prepareVersionZero(t *testing.T, ctx context.Context, migrator *Migrator) {
 	if err != nil {
 		t.Fatalf("read initial schema version: %v", err)
 	}
-	steps := 0
-	switch version {
-	case 0:
+	if version == 0 {
 		return
-	case 1:
-		steps = 1
-	case 12:
-		steps = 2
-	default:
+	}
+	if version >= 2 && version <= 11 {
 		t.Fatalf("database schema version = %d; recreate unsupported pre-release development schemas", version)
 	}
+	steps := appliedMigrationCount(t, ctx, migrator)
 	truncateBaselineTables(t, ctx, migrator)
 	if rolledBack, err := migrator.Down(steps); err != nil || rolledBack != steps {
 		t.Fatalf("prepare version-zero database: Down(%d) = %d, %v", steps, rolledBack, err)
 	}
+}
+
+func appliedMigrationCount(t *testing.T, ctx context.Context, migrator *Migrator) int {
+	t.Helper()
+	var count int
+	if err := migrator.store.GetMaster().Get(ctx, &count, "SELECT count(*) FROM db_migrations"); err != nil {
+		t.Fatalf("count applied migrations: %v", err)
+	}
+	return count
 }
 
 func assertBaselineAbsent(t *testing.T, ctx context.Context, migrator *Migrator) {

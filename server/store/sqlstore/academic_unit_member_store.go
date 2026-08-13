@@ -64,35 +64,29 @@ func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	if appErr != nil {
 		return nil, appErr
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit member creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitID.String(), candidate.UserID.String()); err != nil {
-		return nil, err
-	}
-	if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
-		return nil, err
-	}
-	row := newAcademicUnitMemberRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `INSERT INTO academic_unit_members (
-		id, created_at, updated_at, archived_at, revision, academic_unit_id, user_id, start_at, end_at
-	) VALUES (
-		:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id, :user_id, :start_at, :end_at
-	)`, &row); err != nil {
-		return nil, fmt.Errorf("create academic unit member: %w", translateError("academic_unit_member", candidate.ID.String(), err))
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete academic unit member creation audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit member creation: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
+		if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitID.String(), candidate.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		row := newAcademicUnitMemberRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `INSERT INTO academic_unit_members (
+			id, created_at, updated_at, archived_at, revision, academic_unit_id, user_id, start_at, end_at
+		) VALUES (
+			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id, :user_id, :start_at, :end_at
+		)`, &row); err != nil {
+			return nil, fmt.Errorf("create academic unit member: %w", translateError("academic_unit_member", candidate.ID.String(), err))
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete academic unit member creation audit: %w", err)
+		}
+		return &candidate, nil
+	})
 }
 
 func newSQLAcademicUnitMemberStore(ss *SQLStore) store.AcademicUnitMemberStore {
@@ -123,37 +117,31 @@ func (s SQLAcademicUnitMemberStore) Save(
 		return nil, store.NewErrInvalidInput("academic_unit_member", "value", nil).Wrap(err)
 	}
 	row := newAcademicUnitMemberRow(&candidate)
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit member save: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitID.String(), candidate.UserID.String()); err != nil {
-		return nil, err
-	}
-	if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
-		return nil, err
-	}
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO academic_unit_members (
-			id, created_at, updated_at, archived_at, revision, academic_unit_id,
-			user_id, start_at, end_at
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
-			:user_id, :start_at, :end_at
-		)`, &row); err != nil {
-		return nil, fmt.Errorf(
-			"save academic unit member: %w",
-			translateError("academic_unit_member", candidate.ID.String(), err),
-		)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit member save: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
+		if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitID.String(), candidate.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO academic_unit_members (
+				id, created_at, updated_at, archived_at, revision, academic_unit_id,
+				user_id, start_at, end_at
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
+				:user_id, :start_at, :end_at
+			)`, &row); err != nil {
+			return nil, fmt.Errorf(
+				"save academic unit member: %w",
+				translateError("academic_unit_member", candidate.ID.String(), err),
+			)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLAcademicUnitMemberStore) Get(
@@ -167,7 +155,7 @@ func (s SQLAcademicUnitMemberStore) Get(
 	})); err != nil {
 		return nil, translateError("academic_unit_member", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLAcademicUnitMemberStore) ListByUser(
@@ -220,51 +208,35 @@ func (s SQLAcademicUnitMemberStore) End(
 	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit member end: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	ended, err := s.endAcademicUnitMember(ctx, tx, id, expectedRevision, endAt)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit member end: %w", err)
-	}
-	return ended, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
+		if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		return s.endAcademicUnitMember(ctx, tx, id, expectedRevision, endAt)
+	})
 }
 
 func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin academic unit member audited end: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	ended, err := s.endAcademicUnitMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
-	if err != nil {
-		return nil, err
-	}
-	encoded, appErr := model.EncodeAuditData(ended.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete academic unit member end audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit academic unit member audited end: %w", err)
-	}
-	return ended, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member audited end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
+		if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		ended, err := s.endAcademicUnitMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
+		if err != nil {
+			return nil, err
+		}
+		encoded, appErr := model.EncodeAuditData(ended.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete academic unit member end audit: %w", err)
+		}
+		return ended, nil
+	})
 }
 
 func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
@@ -272,7 +244,10 @@ func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.archived_at": nil})); err != nil {
 		return nil, translateError("academic_unit_member", id, err)
 	}
-	current := row.model()
+	current, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_changed", nil)
 	}
@@ -335,7 +310,11 @@ func (s SQLAcademicUnitMemberStore) selectMembers(
 	}
 	result := make([]*model.AcademicUnitMember, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, row.model())
+		member, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, member)
 	}
 	return result, nil
 }
@@ -354,20 +333,20 @@ func newAcademicUnitMemberRow(m *model.AcademicUnitMember) academicUnitMemberRow
 	}
 }
 
-func (r academicUnitMemberRow) model() *model.AcademicUnitMember {
-	id, err := model.ParseAcademicUnitMemberID(r.ID)
+func (r academicUnitMemberRow) model() (*model.AcademicUnitMember, error) {
+	id, err := parsePersistedID("academic_unit_member", "id", r.ID, model.ParseAcademicUnitMemberID)
 	if err != nil {
-		id = model.AcademicUnitMemberID(r.ID)
+		return nil, err
 	}
-	unitID, err := model.ParseAcademicUnitID(r.AcademicUnitID)
+	unitID, err := parsePersistedID("academic_unit_member", "academic_unit_id", r.AcademicUnitID, model.ParseAcademicUnitID)
 	if err != nil {
-		unitID = model.AcademicUnitID(r.AcademicUnitID)
+		return nil, err
 	}
-	userID, err := model.ParseUserID(r.UserID)
+	userID, err := parsePersistedID("academic_unit_member", "user_id", r.UserID, model.ParseUserID)
 	if err != nil {
-		userID = model.UserID(r.UserID)
+		return nil, err
 	}
-	return &model.AcademicUnitMember{
+	value := &model.AcademicUnitMember{
 		ID:             id,
 		CreatedAt:      r.CreatedAt.UTC(),
 		UpdatedAt:      r.UpdatedAt.UTC(),
@@ -378,6 +357,10 @@ func (r academicUnitMemberRow) model() *model.AcademicUnitMember {
 		StartsAt:       r.StartAt.UTC(),
 		EndsAt:         OptionalTimeFromNullTime(r.EndAt),
 	}
+	if err := validatePersistedModel("academic_unit_member", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.AcademicUnitMemberStore = (*SQLAcademicUnitMemberStore)(nil)

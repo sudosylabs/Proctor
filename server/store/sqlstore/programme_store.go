@@ -81,37 +81,31 @@ func (s SQLProgrammeStore) Create(
 	if appErr != nil {
 		return nil, appErr
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin programme creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
-		return nil, err
-	}
-	row := newProgrammeRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO programmes (
-			id, created_at, updated_at, archived_at, revision, academic_unit_id,
-			name, display_name, description
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
-			:name, :display_name, :description
-		)`, &row); err != nil {
-		return nil, fmt.Errorf("create programme: %w", translateError("programme", candidate.ID.String(), err))
-	}
-	if _, err := completeAuditEvent(
-		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete programme creation audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit programme creation: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
+			return nil, err
+		}
+		row := newProgrammeRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO programmes (
+				id, created_at, updated_at, archived_at, revision, academic_unit_id,
+				name, display_name, description
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
+				:name, :display_name, :description
+			)`, &row); err != nil {
+			return nil, fmt.Errorf("create programme: %w", translateError("programme", candidate.ID.String(), err))
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete programme creation audit: %w", err)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLProgrammeStore) Save(ctx context.Context, programme *model.Programme) (*model.Programme, error) {
@@ -132,32 +126,26 @@ func (s SQLProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
 	}
 
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin programme save: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
-		return nil, err
-	}
-	row := newProgrammeRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO programmes (
-			id, created_at, updated_at, archived_at, revision, academic_unit_id,
-			name, display_name, description
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
-			:name, :display_name, :description
-		)`, &row); err != nil {
-		return nil, fmt.Errorf("save programme: %w", translateError("programme", candidate.ID.String(), err))
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit programme save: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
+			return nil, err
+		}
+		row := newProgrammeRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO programmes (
+				id, created_at, updated_at, archived_at, revision, academic_unit_id,
+				name, display_name, description
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id,
+				:name, :display_name, :description
+			)`, &row); err != nil {
+			return nil, fmt.Errorf("save programme: %w", translateError("programme", candidate.ID.String(), err))
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLProgrammeStore) Get(ctx context.Context, id string) (*model.Programme, error) {
@@ -255,43 +243,37 @@ func (s SQLProgrammeStore) Update(ctx context.Context, programme *model.Programm
 		return nil, store.NewErrInvalidInput("programme", "value", nil).Wrap(err)
 	}
 
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin programme update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
-		return nil, err
-	}
-	row := newProgrammeRow(&candidate)
-	result, err := tx.NamedExec(ctx, `
-		UPDATE programmes
-		   SET updated_at = :updated_at,
-		       revision = :revision,
-		       academic_unit_id = :academic_unit_id,
-		       name = :name,
-		       display_name = :display_name,
-		       description = :description
-		 WHERE id = :id AND archived_at IS NULL
-		   AND revision = :expected_revision`, map[string]any{
-		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
-		"revision": candidate.Revision, "academic_unit_id": row.AcademicUnitID,
-		"name": row.Name, "display_name": row.DisplayName,
-		"description": row.Description, "expected_revision": candidate.Revision - 1,
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := validateActiveAcademicUnit(ctx, tx, candidate.AcademicUnitID.String()); err != nil {
+			return nil, err
+		}
+		row := newProgrammeRow(&candidate)
+		result, err := tx.NamedExec(ctx, `
+			UPDATE programmes
+			   SET updated_at = :updated_at,
+			       revision = :revision,
+			       academic_unit_id = :academic_unit_id,
+			       name = :name,
+			       display_name = :display_name,
+			       description = :description
+			 WHERE id = :id AND archived_at IS NULL
+			   AND revision = :expected_revision`, map[string]any{
+			"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+			"revision": candidate.Revision, "academic_unit_id": row.AcademicUnitID,
+			"name": row.Name, "display_name": row.DisplayName,
+			"description": row.Description, "expected_revision": candidate.Revision - 1,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
+		}
+		if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", candidate.ID.String()); err != nil {
+			return nil, err
+		}
+		return &candidate, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
-	}
-	if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", candidate.ID.String()); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit programme update: %w", err)
-	}
-	return &candidate, nil
 }
 
 func (s SQLProgrammeStore) UpdateWithAudit(
@@ -310,41 +292,35 @@ func (s SQLProgrammeStore) UpdateWithAudit(
 	if appErr != nil {
 		return nil, appErr
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin programme update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	row := newProgrammeRow(&candidate)
-	result, err := tx.NamedExec(ctx, `
-		UPDATE programmes
-		   SET updated_at = :updated_at, revision = :revision, name = :name,
-		       display_name = :display_name, description = :description
-		 WHERE id = :id AND academic_unit_id = :academic_unit_id AND archived_at IS NULL
-		   AND revision = :expected_revision`, map[string]any{
-		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
-		"revision": candidate.Revision, "academic_unit_id": row.AcademicUnitID,
-		"name": row.Name, "display_name": row.DisplayName,
-		"description": row.Description, "expected_revision": candidate.Revision - 1,
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
+		row := newProgrammeRow(&candidate)
+		result, err := tx.NamedExec(ctx, `
+			UPDATE programmes
+			   SET updated_at = :updated_at, revision = :revision, name = :name,
+			       display_name = :display_name, description = :description
+			 WHERE id = :id AND academic_unit_id = :academic_unit_id AND archived_at IS NULL
+			   AND revision = :expected_revision`, map[string]any{
+			"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
+			"revision": candidate.Revision, "academic_unit_id": row.AcademicUnitID,
+			"name": row.Name, "display_name": row.DisplayName,
+			"description": row.Description, "expected_revision": candidate.Revision - 1,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
+		}
+		if err := requireOwnedRevisionAffected(
+			ctx, tx, result, "programme", "programmes", "academic_unit_id",
+			candidate.ID.String(), candidate.AcademicUnitID.String(),
+		); err != nil {
+			return nil, err
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete programme update audit: %w", err)
+		}
+		return &candidate, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("update programme: %w", translateError("programme", candidate.ID.String(), err))
-	}
-	if err := requireOwnedRevisionAffected(
-		ctx, tx, result, "programme", "programmes", "academic_unit_id",
-		candidate.ID.String(), candidate.AcademicUnitID.String(),
-	); err != nil {
-		return nil, err
-	}
-	if _, err := completeAuditEvent(
-		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete programme update audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit programme update: %w", err)
-	}
-	return &candidate, nil
 }
 
 func (s SQLProgrammeStore) Archive(
@@ -355,51 +331,45 @@ func (s SQLProgrammeStore) Archive(
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "archived_at", archiveAt)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin programme archive: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	var row programmeRow
-	query := s.programmesQuery.Where(sq.Eq{"programmes.id": id, "programmes.archived_at": nil})
-	if err := tx.GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("programme", id, err)
-	}
-	current, err := row.model()
-	if err != nil {
-		return nil, err
-	}
-	var dependent bool
-	if err := tx.Get(ctx, &dependent, `
-		SELECT EXISTS (
-			SELECT 1 FROM programme_levels
-			 WHERE programme_id = ? AND archived_at IS NULL
-		)`, id); err != nil {
-		return nil, fmt.Errorf("check programme archive dependencies: %w", err)
-	}
-	if dependent {
-		return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
-	}
-	result, err := tx.Exec(ctx, `
-		UPDATE programmes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
-	if err != nil {
-		return nil, fmt.Errorf("archive programme: %w", err)
-	}
-	if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", id); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit programme archive: %w", err)
-	}
-	at := model.TimeFromMillis(archiveAt)
-	current.UpdatedAt = at
-	current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
-	current.Revision++
-	return current, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
+		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		var row programmeRow
+		query := s.programmesQuery.Where(sq.Eq{"programmes.id": id, "programmes.archived_at": nil})
+		if err := tx.GetBuilder(ctx, &row, query); err != nil {
+			return nil, translateError("programme", id, err)
+		}
+		current, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		var dependent bool
+		if err := tx.Get(ctx, &dependent, `
+			SELECT EXISTS (
+				SELECT 1 FROM programme_levels
+				 WHERE programme_id = ? AND archived_at IS NULL
+			)`, id); err != nil {
+			return nil, fmt.Errorf("check programme archive dependencies: %w", err)
+		}
+		if dependent {
+			return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
+		}
+		result, err := tx.Exec(ctx, `
+			UPDATE programmes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
+			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, current.Revision)
+		if err != nil {
+			return nil, fmt.Errorf("archive programme: %w", err)
+		}
+		if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", id); err != nil {
+			return nil, err
+		}
+		at := model.TimeFromMillis(archiveAt)
+		current.UpdatedAt = at
+		current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
+		current.Revision++
+		return current, nil
+	})
 }
 
 func (s SQLProgrammeStore) ArchiveWithAudit(
@@ -410,60 +380,54 @@ func (s SQLProgrammeStore) ArchiveWithAudit(
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "archive", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin programme archive: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockProgrammeLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	var row programmeRow
-	query := s.programmesQuery.Where(sq.Eq{
-		"programmes.id": input.ID, "programmes.archived_at": nil,
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
+		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		var row programmeRow
+		query := s.programmesQuery.Where(sq.Eq{
+			"programmes.id": input.ID, "programmes.archived_at": nil,
+		})
+		if err := tx.GetBuilder(ctx, &row, query); err != nil {
+			return nil, translateError("programme", input.ID, err)
+		}
+		var dependent bool
+		if err := tx.Get(ctx, &dependent, `
+			SELECT EXISTS (SELECT 1 FROM programme_levels
+			 WHERE programme_id = ? AND archived_at IS NULL)`, input.ID); err != nil {
+			return nil, fmt.Errorf("check programme archive dependencies: %w", err)
+		}
+		if dependent {
+			return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
+		}
+		result, err := tx.Exec(ctx, `
+			UPDATE programmes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
+			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
+		if err != nil {
+			return nil, fmt.Errorf("archive programme: %w", err)
+		}
+		if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", input.ID); err != nil {
+			return nil, err
+		}
+		programme, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		at := model.TimeFromMillis(input.ArchiveAt)
+		programme.UpdatedAt = at
+		programme.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
+		programme.Revision++
+		encoded, appErr := model.EncodeAuditData(programme.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(
+			ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
+		); err != nil {
+			return nil, fmt.Errorf("complete programme archive audit: %w", err)
+		}
+		return programme, nil
 	})
-	if err := tx.GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("programme", input.ID, err)
-	}
-	var dependent bool
-	if err := tx.Get(ctx, &dependent, `
-		SELECT EXISTS (SELECT 1 FROM programme_levels
-		 WHERE programme_id = ? AND archived_at IS NULL)`, input.ID); err != nil {
-		return nil, fmt.Errorf("check programme archive dependencies: %w", err)
-	}
-	if dependent {
-		return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
-	}
-	result, err := tx.Exec(ctx, `
-		UPDATE programmes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, row.Revision)
-	if err != nil {
-		return nil, fmt.Errorf("archive programme: %w", err)
-	}
-	if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", input.ID); err != nil {
-		return nil, err
-	}
-	programme, err := row.model()
-	if err != nil {
-		return nil, err
-	}
-	at := model.TimeFromMillis(input.ArchiveAt)
-	programme.UpdatedAt = at
-	programme.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
-	programme.Revision++
-	encoded, appErr := model.EncodeAuditData(programme.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(
-		ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt,
-	); err != nil {
-		return nil, fmt.Errorf("complete programme archive audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit programme archive: %w", err)
-	}
-	return programme, nil
 }
 
 func lockProgrammeLifecycle(ctx context.Context, tx sqlxExecutor) error {
@@ -512,13 +476,15 @@ func newProgrammeRow(programme *model.Programme) programmeRow {
 }
 
 func (row programmeRow) model() (*model.Programme, error) {
-	id, err := model.ParseProgrammeID(row.ID)
+	id, err := parsePersistedID("programme", "id", row.ID, model.ParseProgrammeID)
 	if err != nil {
-		return nil, fmt.Errorf("rehydrate programme %q: %w", row.ID, err)
+		return nil, err
 	}
-	academicUnitID, err := model.ParseAcademicUnitID(row.AcademicUnitID)
+	academicUnitID, err := parsePersistedID(
+		"programme", "academic_unit_id", row.AcademicUnitID, model.ParseAcademicUnitID,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("rehydrate programme %q: %w", row.ID, err)
+		return nil, err
 	}
 	programme := &model.Programme{
 		ID:             id,
@@ -531,8 +497,8 @@ func (row programmeRow) model() (*model.Programme, error) {
 		DisplayName:    row.DisplayName,
 		Description:    row.Description,
 	}
-	if err := programme.Validate(); err != nil {
-		return nil, fmt.Errorf("rehydrate programme %q: %w", row.ID, err)
+	if err := validatePersistedModel("programme", programme); err != nil {
+		return nil, err
 	}
 	return programme, nil
 }
