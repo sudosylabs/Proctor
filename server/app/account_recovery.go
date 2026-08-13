@@ -28,6 +28,30 @@ const (
 	auditPasswordResetComplete     = "authentication.password_reset.complete"
 )
 
+type accountRecoveryAttemptOperation uint8
+
+const (
+	accountRecoveryAttemptEmailVerificationRequest accountRecoveryAttemptOperation = iota + 1
+	accountRecoveryAttemptPasswordResetRequest
+	accountRecoveryAttemptEmailVerificationComplete
+	accountRecoveryAttemptPasswordResetComplete
+)
+
+func (operation accountRecoveryAttemptOperation) qualifier() (string, bool) {
+	switch operation {
+	case accountRecoveryAttemptEmailVerificationRequest:
+		return "email-verification-request", true
+	case accountRecoveryAttemptPasswordResetRequest:
+		return "password-reset-request", true
+	case accountRecoveryAttemptEmailVerificationComplete:
+		return "email-verification-complete", true
+	case accountRecoveryAttemptPasswordResetComplete:
+		return "password-reset-complete", true
+	default:
+		return "", false
+	}
+}
+
 // RequestEmailVerificationCommand issues a verification token for the caller.
 type RequestEmailVerificationCommand struct {
 	Source string
@@ -93,8 +117,11 @@ func (s *accountTokenService) RequestEmailVerification(
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	principal := invocation.Principal()
-	if err := s.rateLimiter.Allow(
-		ctx, "email-verification-request", principal.UserID.String(), command.Source,
+	if err := s.checkAccountRecoveryRateLimit(
+		ctx,
+		accountRecoveryAttemptEmailVerificationRequest,
+		principal.UserID.String(),
+		command.Source,
 	); err != nil {
 		return err
 	}
@@ -168,8 +195,11 @@ func (s *accountTokenService) RequestPasswordReset(
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	normalizedEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
-	if err := s.rateLimiter.Allow(
-		ctx, "password-reset-request", normalizedEmail, command.Source,
+	if err := s.checkAccountRecoveryRateLimit(
+		ctx,
+		accountRecoveryAttemptPasswordResetRequest,
+		normalizedEmail,
+		command.Source,
 	); err != nil {
 		return err
 	}
@@ -248,9 +278,9 @@ func (s *accountTokenService) CompleteEmailVerification(
 	invocation Invocation,
 	command CompleteEmailVerificationCommand,
 ) (*model.User, error) {
-	if err := s.rateLimiter.Allow(
+	if err := s.checkAccountRecoveryRateLimit(
 		ctx,
-		"email-verification-complete",
+		accountRecoveryAttemptEmailVerificationComplete,
 		recoveryCredentialRateIdentity(command.Token),
 		command.Source,
 	); err != nil {
@@ -291,9 +321,9 @@ func (s *accountTokenService) CompletePasswordReset(
 	invocation Invocation,
 	command CompletePasswordResetCommand,
 ) (*model.User, error) {
-	if err := s.rateLimiter.Allow(
+	if err := s.checkAccountRecoveryRateLimit(
 		ctx,
-		"password-reset-complete",
+		accountRecoveryAttemptPasswordResetComplete,
 		recoveryCredentialRateIdentity(command.Token),
 		command.Source,
 	); err != nil {
@@ -349,6 +379,43 @@ func (s *accountTokenService) accountRecoveryInstitution(ctx context.Context) (*
 		return nil, accountRecoveryStoreFailure(err)
 	}
 	return institution, nil
+}
+
+func (s *accountTokenService) checkAccountRecoveryRateLimit(
+	ctx context.Context,
+	operation accountRecoveryAttemptOperation,
+	identity string,
+	source string,
+) error {
+	qualifier, valid := operation.qualifier()
+	if !valid {
+		return rateLimitUnavailableAppError(fmt.Errorf("account recovery attempt operation is invalid"))
+	}
+	settings := s.policy.RateLimit
+	_, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
+		purpose:   authenticationAttemptPurposeAccountRecovery,
+		qualifier: qualifier,
+		window:    settings.Window,
+		limits: []authenticationAttemptLimit{
+			{
+				dimension: authenticationAttemptDimensionIdentity,
+				maximum:   settings.MaximumAttempts,
+				identity:  identity,
+			},
+			{
+				dimension: authenticationAttemptDimensionSource,
+				maximum:   settings.MaximumSourceAttempts,
+				source:    source,
+			},
+		},
+	})
+	if err != nil {
+		return rateLimitUnavailableAppError(err)
+	}
+	if limited {
+		return NewError("authentication.rate_limited")
+	}
+	return nil
 }
 
 func recoveryCredentialRateIdentity(rawToken string) string {

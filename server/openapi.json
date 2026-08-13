@@ -320,7 +320,7 @@
         "operationId": "listAcademicPeriods",
         "summary": "List or search institution-defined Academic Periods",
         "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "resource.not_found", "administration.unavailable"],
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": []}],
         "parameters": [
           {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
@@ -1908,8 +1908,9 @@
       "UpdateRoleRequest": {
         "type": "object", "additionalProperties": false,
         "properties": {
-          "display_name": {"type": "string"}, "description": {"type": "string"},
-          "permissions": {"type": "array", "items": {"type": "string"}}
+          "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+          "permissions": {"type": ["array", "null"], "description": "Omitted or null leaves the value unchanged. An empty array is present and subject to validation.", "items": {"type": "string"}}
         }
       },
       "RoleBindingResponse": {

@@ -23,6 +23,7 @@ import (
 	gwebsocket "github.com/gorilla/websocket"
 
 	"github.com/sudosylabs/proctor/server/app"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -161,7 +162,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	eventData := json.RawMessage(`{"version":1}`)
 	if appErr := helper.App.PublishRealtimeEvent(
 		context.Background(),
-		app.RealtimeEvent{
+		apprealtime.RealtimeEvent{
 			Name:   "institution.updated",
 			Action: subscription.Action,
 			Resource: model.Resource{
@@ -378,7 +379,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 
 	if appErr := nodeA.App.PublishRealtimeEvent(
 		context.Background(),
-		app.RealtimeEvent{
+		apprealtime.RealtimeEvent{
 			Name:   "institution.cluster_updated",
 			Action: subscription.Action,
 			Resource: model.Resource{

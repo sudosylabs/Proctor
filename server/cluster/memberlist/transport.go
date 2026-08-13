@@ -1,9 +1,6 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package memberlist implements Proctor's built-in multi-node cluster
-// transport using HashiCorp Memberlist for gossip membership and best-effort
-// direct messaging, with PostgreSQL discovery for bootstrap seeds.
 package memberlist
 
 import (
@@ -50,6 +47,7 @@ type state uint8
 const (
 	stateCreated state = iota
 	stateStarted
+	stateStopping
 	stateStopped
 )
 
@@ -69,9 +67,11 @@ type wireEnvelope struct {
 
 // Transport is the Memberlist-backed multi-node cluster adapter.
 type Transport struct {
-	cfg Config
+	cfg       Config
+	discovery *discoveryMaintenance
 
 	mu       sync.RWMutex
+	stopMu   sync.Mutex
 	state    state
 	handlers map[cluster.Event]cluster.Handler
 	list     *hashimemberlist.Memberlist
@@ -86,9 +86,10 @@ func New(cfg Config) (*Transport, error) {
 		return nil, err
 	}
 	return &Transport{
-		cfg:      cfg,
-		state:    stateCreated,
-		handlers: make(map[cluster.Event]cluster.Handler),
+		cfg:       cfg,
+		discovery: newSystemDiscoveryMaintenance(cfg),
+		state:     stateCreated,
+		handlers:  make(map[cluster.Event]cluster.Handler),
 	}, nil
 }
 
@@ -178,7 +179,7 @@ func (t *Transport) Start(ctx context.Context) error {
 	switch t.state {
 	case stateStarted:
 		return nil
-	case stateStopped:
+	case stateStopping, stateStopped:
 		return cluster.ErrStopped
 	}
 
@@ -215,13 +216,8 @@ func (t *Transport) Start(ctx context.Context) error {
 		return fmt.Errorf("create memberlist: %w", err)
 	}
 
-	if err := t.advertiseDiscovery(ctx); err != nil {
-		_ = list.Shutdown()
-		return err
-	}
-	seeds, err := t.collectSeeds(ctx)
+	seeds, err := t.discovery.prepare(ctx)
 	if err != nil {
-		_ = t.cfg.Discovery.Delete(context.Background(), t.cfg.NodeID)
 		_ = list.Shutdown()
 		return err
 	}
@@ -232,8 +228,8 @@ func (t *Transport) Start(ctx context.Context) error {
 			t.cfg.Logger.ErrorContext(ctx, "memberlist join incomplete", err)
 		}
 	}
-	if err := t.rejectDuplicateNodeIDs(list); err != nil {
-		_ = t.cfg.Discovery.Delete(context.Background(), t.cfg.NodeID)
+	if err := t.admitJoinedPeers(list.LocalNode(), list.Members()); err != nil {
+		t.discovery.rollback(ctx)
 		_ = list.Shutdown()
 		return err
 	}
@@ -243,134 +239,94 @@ func (t *Transport) Start(ctx context.Context) error {
 	t.cancel = cancel
 	t.done = make(chan struct{})
 	t.state = stateStarted
-	go t.maintainDiscovery(runCtx)
+	done := t.done
+	go func() {
+		defer close(done)
+		t.discovery.run(runCtx)
+	}()
 	return nil
-}
-
-func (t *Transport) advertiseDiscovery(ctx context.Context) error {
-	updatedAt, expiresAt, err := cluster.DiscoveryLease(time.Now().UTC(), t.cfg.DiscoveryTTL)
-	if err != nil {
-		return err
-	}
-	return t.cfg.Discovery.Upsert(ctx, cluster.DiscoveryNode{
-		NodeID:           t.cfg.NodeID,
-		AdvertiseAddress: t.cfg.AdvertiseAddress,
-		ServerVersion:    t.cfg.ServerVersion,
-		ProtocolMin:      t.cfg.ProtocolMin,
-		ProtocolMax:      t.cfg.ProtocolMax,
-		UpdatedAt:        updatedAt,
-		ExpiresAt:        expiresAt,
-	})
-}
-
-func (t *Transport) collectSeeds(ctx context.Context) ([]string, error) {
-	seeds := append([]string(nil), t.cfg.SeedAddresses...)
-	live, err := t.cfg.Discovery.ListLive(ctx, time.Now().UTC())
-	if err != nil {
-		return nil, fmt.Errorf("list discovery peers: %w", err)
-	}
-	for _, peer := range live {
-		if peer.NodeID == t.cfg.NodeID {
-			continue
-		}
-		if !protocolsCompatible(t.cfg.ProtocolMin, t.cfg.ProtocolMax, peer.ProtocolMin, peer.ProtocolMax) {
-			continue
-		}
-		seeds = append(seeds, peer.AdvertiseAddress)
-	}
-	return uniqueStrings(seeds), nil
-}
-
-func protocolsCompatible(localMin, localMax, peerMin, peerMax int) bool {
-	return localMin <= peerMax && peerMin <= localMax
-}
-
-func uniqueStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
-}
-
-func (t *Transport) rejectDuplicateNodeIDs(list *hashimemberlist.Memberlist) error {
-	for _, member := range list.Members() {
-		if member.Name == t.cfg.NodeID {
-			continue
-		}
-		meta, err := decodeNodeMeta(member.Meta)
-		if err != nil {
-			continue
-		}
-		if meta.NodeID == t.cfg.NodeID {
-			return fmt.Errorf("%w: %s", cluster.ErrNodeIDInUse, t.cfg.NodeID)
-		}
-	}
-	return nil
-}
-
-func (t *Transport) maintainDiscovery(ctx context.Context) {
-	defer close(t.done)
-	ticker := time.NewTicker(t.cfg.DiscoveryHeartbeat)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := t.advertiseDiscovery(ctx); err != nil {
-				t.cfg.Logger.ErrorContext(ctx, "cluster discovery heartbeat failed", err)
-			}
-			if _, err := t.cfg.Discovery.DeleteExpired(ctx, time.Now().UTC()); err != nil {
-				t.cfg.Logger.ErrorContext(ctx, "cluster discovery cleanup failed", err)
-			}
-		}
-	}
 }
 
 // Stop leaves the gossip mesh, removes discovery, and is idempotent.
 func (t *Transport) Stop(ctx context.Context) error {
+	t.stopMu.Lock()
+	defer t.stopMu.Unlock()
+
 	t.mu.Lock()
-	if t.state == stateStopped {
+	switch t.state {
+	case stateStopped:
 		t.mu.Unlock()
 		return nil
-	}
-	if t.state == stateCreated {
+	case stateCreated:
 		t.state = stateStopped
 		t.mu.Unlock()
 		return nil
+	case stateStarted:
+		t.state = stateStopping
 	}
 	cancel := t.cancel
-	list := t.list
 	done := t.done
-	t.state = stateStopped
-	t.list = nil
-	t.cancel = nil
+	if cancel != nil {
+		t.cancel = nil
+	}
 	t.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
 	}
 	if done != nil {
+		// DiscoveryStore operations receive the canceled maintenance context and
+		// must release it. Wait for the owned goroutine even when the caller's
+		// deadline expires so Platform can safely close persistence afterwards.
 		<-done
+		t.mu.Lock()
+		if t.done == done {
+			t.done = nil
+		}
+		t.mu.Unlock()
 	}
+
+	t.mu.Lock()
+	list := t.list
+	t.mu.Unlock()
 	if list != nil {
-		_ = list.Leave(time.Second)
+		if timeout, ok := memberlistLeaveTimeout(ctx); ok {
+			_ = list.Leave(timeout)
+		}
 		_ = list.Shutdown()
+		t.mu.Lock()
+		if t.list == list {
+			t.list = nil
+		}
+		t.mu.Unlock()
 	}
-	if err := t.cfg.Discovery.Delete(context.Background(), t.cfg.NodeID); err != nil {
-		t.cfg.Logger.ErrorContext(ctx, "cluster discovery delete failed", err)
+	if ctx.Err() == nil {
+		t.discovery.withdraw(ctx)
 	}
-	return nil
+	t.mu.Lock()
+	t.state = stateStopped
+	t.done = nil
+	t.cancel = nil
+	t.list = nil
+	t.mu.Unlock()
+	return ctx.Err()
+}
+
+func memberlistLeaveTimeout(ctx context.Context) (time.Duration, bool) {
+	if ctx.Err() != nil {
+		return 0, false
+	}
+	timeout := time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return 0, false
+		}
+		if remaining < timeout {
+			timeout = remaining
+		}
+	}
+	return timeout, true
 }
 
 // Ping reports whether the transport is still usable. Construction-time
@@ -382,7 +338,7 @@ func (t *Transport) Ping(ctx context.Context) error {
 	}
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	if t.state == stateStopped {
+	if t.state == stateStopping || t.state == stateStopped {
 		return cluster.ErrStopped
 	}
 	return nil
@@ -399,7 +355,7 @@ func (t *Transport) RegisterHandler(event cluster.Event, handler cluster.Handler
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.state == stateStopped {
+	if t.state == stateStopping || t.state == stateStopped {
 		return cluster.ErrStopped
 	}
 	if _, exists := t.handlers[event]; exists {
@@ -482,7 +438,7 @@ func (t *Transport) validateSend(ctx context.Context, message *cluster.Message) 
 	switch t.state {
 	case stateStarted:
 		return nil
-	case stateStopped:
+	case stateStopping, stateStopped:
 		return cluster.ErrStopped
 	default:
 		return cluster.ErrNotStarted

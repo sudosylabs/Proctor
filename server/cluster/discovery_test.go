@@ -4,7 +4,6 @@
 package cluster
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
@@ -13,6 +12,7 @@ func TestDiscoveryNodeValidateAndLiveness(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	ttl := 30 * time.Second
 	node := DiscoveryNode{
 		NodeID:           "node-a",
 		AdvertiseAddress: "10.0.0.1:7946",
@@ -20,7 +20,7 @@ func TestDiscoveryNodeValidateAndLiveness(t *testing.T) {
 		ProtocolMin:      1,
 		ProtocolMax:      1,
 		UpdatedAt:        now,
-		ExpiresAt:        now.Add(DefaultDiscoveryTTL),
+		ExpiresAt:        now.Add(ttl),
 	}
 	if err := node.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
@@ -55,33 +55,5 @@ func TestDiscoveryNodeValidateAndLiveness(t *testing.T) {
 		if err := candidate.Validate(); err == nil {
 			t.Fatalf("case %d: expected validation error", index)
 		}
-	}
-}
-
-func TestDiscoveryLease(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	updatedAt, expiresAt, err := DiscoveryLease(now, DefaultDiscoveryTTL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !updatedAt.Equal(now.UTC()) {
-		t.Fatalf("UpdatedAt = %v, want %v", updatedAt, now.UTC())
-	}
-	if !expiresAt.Equal(now.UTC().Add(DefaultDiscoveryTTL)) {
-		t.Fatalf("ExpiresAt = %v", expiresAt)
-	}
-	if _, _, err := DiscoveryLease(time.Time{}, time.Second); err == nil {
-		t.Fatal("expected empty now error")
-	}
-	if _, _, err := DiscoveryLease(now, 0); err == nil {
-		t.Fatal("expected non-positive ttl error")
-	}
-	if DefaultDiscoveryHeartbeat >= DefaultDiscoveryTTL {
-		t.Fatalf("heartbeat %s must be less than ttl %s", DefaultDiscoveryHeartbeat, DefaultDiscoveryTTL)
-	}
-	if strings.TrimSpace(DefaultDiscoveryTTL.String()) == "" {
-		t.Fatal("default ttl is empty")
 	}
 }

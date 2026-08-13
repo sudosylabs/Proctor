@@ -105,6 +105,10 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "domain cannot import PostgreSQL client", from: serverModule + "/model", imported: "github.com/jackc/pgx/v5"},
 		{name: "store contracts cannot import SQL adapters", from: serverModule + "/store", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import platform", from: serverModule + "/app", imported: serverModule + "/platform"},
+		{name: "Realtime child cannot import parent application", from: serverModule + "/app/realtime", imported: serverModule + "/app"},
+		{name: "Realtime child cannot import persistence", from: serverModule + "/app/realtime", imported: serverModule + "/store"},
+		{name: "Realtime child cannot import WebSocket", from: serverModule + "/app/realtime", imported: serverModule + "/websocket"},
+		{name: "Realtime child cannot import platform", from: serverModule + "/app/realtime", imported: serverModule + "/platform"},
 		{name: "application cannot import Redis client", from: serverModule + "/app", imported: "github.com/redis/go-redis/v9"},
 		{name: "Job engine descendants cannot import application", from: serverModule + "/app/job/internal", imported: serverModule + "/app"},
 		{name: "Job engine cannot import HTTP transport", from: serverModule + "/app/job", imported: serverModule + "/app/api"},
@@ -155,6 +159,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "store contracts may import domain", from: serverModule + "/store", imported: serverModule + "/model"},
 		{name: "application may import store contracts", from: serverModule + "/app", imported: serverModule + "/store"},
 		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},
+		{name: "application may import Realtime child", from: serverModule + "/app", imported: serverModule + "/app/realtime"},
+		{name: "Realtime child may import domain models", from: serverModule + "/app/realtime", imported: serverModule + "/model"},
 		{name: "Job engine may import store contracts", from: serverModule + "/app/job", imported: serverModule + "/store"},
 		{name: "File Content may import domain models", from: serverModule + "/filecontent", imported: serverModule + "/model"},
 		{name: "File Content may import application content contracts", from: serverModule + "/filecontent", imported: serverModule + "/app"},
@@ -163,6 +169,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "File Content may import bounded image transforms", from: serverModule + "/filecontent", imported: "github.com/disintegration/imaging"},
 		{name: "File Content may register supported image decoders", from: serverModule + "/filecontent", imported: "golang.org/x/image/webp"},
 		{name: "HTTP may import application", from: serverModule + "/app/api", imported: serverModule + "/app"},
+		{name: "WebSocket may import Realtime child", from: serverModule + "/websocket", imported: serverModule + "/app/realtime"},
 		{name: "HTTP may import router library", from: serverModule + "/app/api", imported: "github.com/gorilla/mux"},
 		{name: "SQL adapter may import store contracts", from: serverModule + "/store/sqlstore", imported: serverModule + "/store"},
 		{name: "cache store layer may import cache contract", from: serverModule + "/store/localcachelayer", imported: repositoryModule + "/packages/cache"},
@@ -263,6 +270,9 @@ func forbiddenImport(from, imported string) bool {
 	case packageOrBelow(from, serverModule+"/app/job"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
+	case packageOrBelow(from, serverModule+"/app/realtime"):
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			forbiddenProjectImportExcept(imported, serverModule+"/model")
 	case packageOrBelow(from, serverModule+"/filecontent"):
 		return standardInfrastructureImport(imported) ||
 			(thirdPartyImport(imported) && !fileContentCodecImport(imported)) ||
@@ -276,12 +286,13 @@ func forbiddenImport(from, imported string) bool {
 		return standardInfrastructureImport(imported) ||
 			(thirdPartyImport(imported) && imported != "golang.org/x/crypto/argon2") ||
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
-				imported != serverModule+"/model" && imported != serverModule+"/store" && imported != serverModule+"/app/job")
+				imported != serverModule+"/model" && imported != serverModule+"/store" &&
+				imported != serverModule+"/app/job" && imported != serverModule+"/app/realtime")
 	case httpOrWebSocketPackage(from):
 		return standardInfrastructureImportExceptHTTP(imported) ||
 			(thirdPartyImport(imported) && !strings.HasPrefix(imported, "github.com/gorilla/")) ||
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
-				imported != serverModule+"/app" && imported != serverModule+"/model")
+				imported != serverModule+"/app" && imported != serverModule+"/app/realtime" && imported != serverModule+"/model")
 	case packageOrBelow(from, serverModule+"/cluster"):
 		if from == serverModule+"/cluster" {
 			return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")

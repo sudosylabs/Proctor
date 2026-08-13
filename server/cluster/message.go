@@ -23,14 +23,11 @@ const (
 // Event is a typed inter-node event name.
 type Event string
 
-// Well-known server event names used for realtime fan-out and cache
-// invalidation. Additional events may be registered by transports and handlers
-// without extending this list.
+// Well-known cluster-owned event names. Application propagation names are
+// deliberately owned by their application modules and need no transport-level
+// duplicate declaration.
 const (
 	EventNone                      Event = "none"
-	EventWebSocketPublish          Event = "websocket.publish"
-	EventSessionRevoked            Event = "authentication.session_revoked"
-	EventAuthorizationInvalidated  Event = "authorization.invalidated"
 	EventAcademicPeriodInvalidated Event = "store.academic_period.invalidated"
 )
 

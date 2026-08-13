@@ -45,7 +45,19 @@ in the component-owned [HTTP API contract](../../server/app/api/CONTRACT.md).
 
 The sibling `websocket` package owns the hub, connection state, upgrade handler, wire DTOs, versioned errors, sequencing, replay, liveness, and backpressure. HTTP mounts its handler but does not own its protocol.
 
-WebSocket reuses stable application error codes and safe fields inside its own versioned envelope, not HTTP Problem Details. It maps transport-neutral application events into versioned wire events.
+The application Realtime child module owns transport-neutral events,
+connection-close reasons, local-first delivery, peer propagation codecs, and
+security invalidation propagation. WebSocket implements its narrow local sink
+and maps those contracts into versioned wire events; it does not own cluster
+fan-out or application invalidation policy. The parent application retains
+Principal validation and subscription authorization.
+
+WebSocket reuses stable application error codes and safe fields inside its own
+versioned envelope, not HTTP Problem Details. Ordinary publication failures
+cross the parent application facade as the established public application
+errors. Security invalidation propagation remains best effort and diagnostic;
+diagnostics identify the failed operation and error category without including
+event payloads, credentials, session identifiers, or other sensitive values.
 
 Each connection belongs to one node and maintains an immutable principal,
 connection ID, monotonic sequence, bounded outbound/replay queues, liveness,

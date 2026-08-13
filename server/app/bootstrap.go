@@ -42,27 +42,27 @@ type passwordHash interface {
 	Hash(string) (string, error)
 }
 
-type bootstrapRateLimiter interface {
-	Allow(context.Context, string) error
-}
-
 type bootstrapService struct {
-	installations installationStore
-	hasher        passwordHash
-	rateLimit     bootstrapRateLimiter
-	nodeID        string
-	now           func() time.Time
+	installations         installationStore
+	hasher                passwordHash
+	attempts              *authenticationAttemptAccounting
+	rateLimitWindow       time.Duration
+	maximumSourceAttempts int
+	nodeID                string
+	now                   func() time.Time
 }
 
 func newBootstrapService(
 	installations installationStore,
 	hasher passwordHash,
-	rateLimit bootstrapRateLimiter,
+	attempts *authenticationAttemptAccounting,
+	rateLimit LoginRateLimitPolicy,
 	nodeID string,
 	now func() time.Time,
 ) *bootstrapService {
 	return &bootstrapService{
-		installations: installations, hasher: hasher, rateLimit: rateLimit,
+		installations: installations, hasher: hasher, attempts: attempts,
+		rateLimitWindow: rateLimit.Window, maximumSourceAttempts: rateLimit.MaximumSourceAttempts,
 		nodeID: nodeID, now: now,
 	}
 }
@@ -101,7 +101,7 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 	if status.Initialized {
 		return nil, NewError("installation.already_initialized")
 	}
-	if err := s.rateLimit.Allow(ctx, command.Source); err != nil {
+	if err := s.checkRateLimit(ctx, command.Source); err != nil {
 		return nil, err
 	}
 	hash, err := s.hasher.Hash(command.Password)
@@ -153,23 +153,20 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 	return result, nil
 }
 
-type bootstrapCounterCache interface {
-	Add(context.Context, string, int64, time.Duration) (int64, error)
-}
-
-type bootstrapRateLimit struct {
-	cache                 bootstrapCounterCache
-	window                time.Duration
-	maximumSourceAttempts int
-}
-
-func (r bootstrapRateLimit) Allow(ctx context.Context, source string) error {
-	key := "authentication/bootstrap/source/" + digestCacheKey(normalizeLoginSource(source))
-	count, err := r.cache.Add(ctx, key, 1, r.window)
+func (s *bootstrapService) checkRateLimit(ctx context.Context, source string) error {
+	_, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
+		purpose: authenticationAttemptPurposeInstallationBootstrap,
+		window:  s.rateLimitWindow,
+		limits: []authenticationAttemptLimit{{
+			dimension: authenticationAttemptDimensionSource,
+			maximum:   s.maximumSourceAttempts,
+			source:    source,
+		}},
+	})
 	if err != nil {
 		return NewError("administration.unavailable").Wrap(err)
 	}
-	if count > int64(r.maximumSourceAttempts) {
+	if limited {
 		return NewError("authentication.rate_limited")
 	}
 	return nil

@@ -58,6 +58,12 @@ type trackedCluster struct {
 	stopped atomic.Bool
 }
 
+type blockingStopCluster struct {
+	trackedCluster
+	entered chan struct{}
+	release chan struct{}
+}
+
 func completeOwnedResources(t *testing.T, configuration *config.Store) OwnedResources {
 	t.Helper()
 	logger, err := mlog.New()
@@ -431,6 +437,13 @@ func (c *trackedCluster) Stop(ctx context.Context) error {
 	return nil
 }
 
+func (c *blockingStopCluster) Stop(ctx context.Context) error {
+	close(c.entered)
+	<-c.release
+	c.stopped.Store(true)
+	return ctx.Err()
+}
+
 func (c *trackedCluster) Ping(ctx context.Context) error {
 	return ctx.Err()
 }
@@ -687,4 +700,41 @@ func TestServiceOwnsClusterLifecycle(t *testing.T) {
 	}
 }
 
+func TestServiceDoesNotClosePersistenceBeforeClusterStopReturns(t *testing.T) {
+	t.Parallel()
+
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cluster := &blockingStopCluster{entered: make(chan struct{}), release: make(chan struct{})}
+	persistence := &trackedStore{}
+	settings := completeOwnedResources(t, configuration)
+	settings.Cluster = cluster
+	settings.Persistence = persistence
+	service, err := acceptForTest(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closed := make(chan error, 1)
+	go func() { closed <- service.Close() }()
+	<-cluster.entered
+	if persistence.closed.Load() {
+		t.Fatal("persistence closed while the owned cluster stop was still running")
+	}
+	close(cluster.release)
+	if err := <-closed; err != nil {
+		t.Fatal(err)
+	}
+	if !persistence.closed.Load() {
+		t.Fatal("persistence remained open after cluster stop completed")
+	}
+}
+
 var _ Cluster = (*trackedCluster)(nil)
+var _ Cluster = (*blockingStopCluster)(nil)

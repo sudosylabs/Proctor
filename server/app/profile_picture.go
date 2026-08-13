@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -318,7 +319,7 @@ func (e profilePictureRealtimeEffects) Changed(ctx context.Context, change profi
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, RealtimeEvent{Name: "user_profile_picture_changed", UserID: change.UserID.String(), Data: data})
+	return e.realtime.Publish(ctx, apprealtime.RealtimeEvent{Name: "user_profile_picture_changed", UserID: change.UserID.String(), Data: data})
 }
 
 type profilePictureEffectReporter struct{ realtime *realtimeService }

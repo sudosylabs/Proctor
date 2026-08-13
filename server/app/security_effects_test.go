@@ -56,6 +56,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		passwords          store.PasswordCredentialStore
 		sessions           store.SessionStore
 		sessionCredentials store.SessionCredentialStore
+		attempts           *authenticationAttemptAccounting
 		effects            authenticationSecurityEffects
 		mfa                authenticationMFAVerifier
 		personalTokens     authenticationPATResolver
@@ -64,8 +65,9 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 	valid := dependencies{
 		users: persistence.User(), passwords: persistence.PasswordCredential(),
 		sessions: persistence.Session(), sessionCredentials: persistence.SessionCredential(),
-		effects: discardAuthenticationSecurityEffects{},
-		mfa:     discardAuthenticationMFAVerifier{}, personalTokens: discardAuthenticationPATResolver{},
+		attempts: mustAuthenticationAttemptAccounting(t, cache),
+		effects:  discardAuthenticationSecurityEffects{},
+		mfa:      discardAuthenticationMFAVerifier{}, personalTokens: discardAuthenticationPATResolver{},
 		newCredential: model.NewCredentialToken,
 	}
 	construct := func(deps dependencies) error {
@@ -75,6 +77,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 			deps.sessions,
 			deps.sessionCredentials,
 			cache,
+			deps.attempts,
 			deps.effects,
 			hasher,
 			deps.mfa,
@@ -95,6 +98,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		{name: "passwords", mutate: func(deps *dependencies) { deps.passwords = nil }},
 		{name: "sessions", mutate: func(deps *dependencies) { deps.sessions = nil }},
 		{name: "session credentials", mutate: func(deps *dependencies) { deps.sessionCredentials = nil }},
+		{name: "attempt accounting", mutate: func(deps *dependencies) { deps.attempts = nil }},
 		{name: "effects", mutate: func(deps *dependencies) { deps.effects = nil }},
 		{name: "MFA verifier", mutate: func(deps *dependencies) { deps.mfa = nil }},
 		{name: "PAT resolver", mutate: func(deps *dependencies) { deps.personalTokens = nil }},
@@ -126,7 +130,7 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 		securityInstitutionStore{},
 		securityExternalIdentityStore{},
 		persistence.Session(),
-		newAuthenticationCacheFake(),
+		mustAuthenticationAttemptAccounting(t, newAuthenticationCacheFake()),
 		authentication,
 		nil,
 		audit,

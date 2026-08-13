@@ -55,21 +55,35 @@ To add or change a cohesive resource family:
    typed ordinary or reviewed protocol results, and the complete public-error
    allowlist;
 3. add the resource constructor once to the explicit production catalog;
-4. update the checked-in OpenAPI operation and focused kernel/agreement tests.
+4. update the checked-in OpenAPI operation and declare independently reviewed
+   operation, authentication, error, and ordinary DTO/schema expectations
+   through the shared agreement-test module; and
+5. keep exceptional protocol and compatibility assertions—including headers,
+   binary responses, query parameters, forbidden fields, and legacy response
+   shapes—explicit beside the owning resource suite.
+
+The agreement-test module owns portable document loading, runtime-path
+normalization, deterministic operation comparison, security, request and
+success references, public-error parity, Problem Details, and ordinary
+DTO/schema agreement. Runtime routes and OpenAPI never generate the expected
+contracts they are checked against.
 
 Package initialization, mutable router access, late registration, arbitrary
 path regular expressions, and direct persistence or platform access are not
 extension mechanisms. `API.Routes` is a defensive manifest projection for
 agreement and diagnostics; callers cannot mutate dispatch through it.
 
-Two Academic Unit shapes are frozen compatibility exceptions, not target
+These reviewed v1 shapes are frozen compatibility exceptions, not target
 patterns:
 
 - its v1 PATCH DTO uses pointers, so omitted and explicit `null` currently have
   the same meaning. Later slices must use the architecture's `Optional[T]`
   representation when those states differ; do not copy the pointer shape;
 - its v1 collection response is a bare JSON array. New collection contracts
-  use an object with non-null `items` and, where applicable, `next_cursor`.
+  use an object with non-null `items` and, where applicable, `next_cursor`;
+- Role PATCH uses pointers, so omitted and explicit `null` leave each mutable
+  field unchanged while empty strings or arrays are present and validated.
+  Later slices use `Optional[T]` when omission and null have different meaning.
 
 The agreement test records these exceptions so migration cannot silently
 change existing clients. It does not make them conventions for new endpoints.

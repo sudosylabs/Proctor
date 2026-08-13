@@ -25,6 +25,28 @@ used by recovery tests.
 6. **Discovery is not a message bus.** PostgreSQL discovery rows advertise join
    addresses and protocol ranges only; they never carry application event
    payloads.
+7. **Discovery is lifecycle-owned.** Memberlist advertises before seed
+   selection and join, combines configured seeds first with compatible live
+   leases, and starts periodic maintenance only after startup checks succeed.
+   The transport owns cancellation and waits for maintenance before its
+   persistence dependency can close. A failure after advertisement succeeds
+   withdraws the advertisement best-effort and shuts down the incomplete
+   Memberlist instance before returning the primary failure.
+8. **Discovery maintenance is best-effort.** Each heartbeat renews the local
+   lease before attempting idempotent expired-row cleanup. Either operation may
+   fail independently without changing readiness; failures are diagnosed and
+   later ticks continue.
+9. **Protocol admission fails closed.** A node does not become ready when a
+   joined peer has malformed metadata, an identity different from its
+   Memberlist name, a blank server version, a duplicate local or remote
+   identity, or an invalid or non-overlapping protocol range. An initial
+   Memberlist join failure itself remains nonfatal because discovery is
+   eventual.
+10. **Shutdown preserves ownership.** Stop first makes operations observe
+    terminal state, cancels and waits for maintenance, leaves and synchronously
+    shuts down Memberlist, then withdraws its lease while the stop context is
+    usable. The context bounds graceful leave and withdrawal; exhaustion is
+    observable after owned work is safe. Withdrawal failure is diagnostic-only.
 
 ## Authentication cache expiry
 
@@ -63,7 +85,7 @@ resolves active role bindings from PostgreSQL.
 | Missed session revocation message | Access credential resolution falls back to store after cache miss/TTL; revoked credentials are absent or sessions report revoked/expired. |
 | Missed authorization invalidation | Authorization is not session-cached; each decision resolves current roles from PostgreSQL. |
 | Missed realtime event | Clients fetch current state; local replay/resync covers connection-local loss only. |
-| Node stop/rejoin | Discovery heartbeats re-advertise seeds; Memberlist rejoins; subsequent best-effort messages resume. |
+| Node stop and later start | Graceful stop withdraws the lease best-effort; a newly constructed transport advertises and joins current seeds; subsequent best-effort messages resume. |
 | Duplicate invalidation | Cache deletes and connection closes are idempotent. |
 
 ## Tests

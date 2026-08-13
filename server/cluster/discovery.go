@@ -6,20 +6,12 @@ package cluster
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
 const (
-	// DefaultDiscoveryTTL is the recommended lease window for bootstrap records
-	// when operators do not override discovery settings.
-	DefaultDiscoveryTTL = 30 * time.Second
-	// DefaultDiscoveryHeartbeat is the recommended refresh interval and should
-	// remain strictly less than DefaultDiscoveryTTL.
-	DefaultDiscoveryHeartbeat = 10 * time.Second
-
 	maxDiscoveryNodeIDBytes           = 128
 	maxDiscoveryAdvertiseAddressBytes = 512
 	maxDiscoveryServerVersionBytes    = 128
@@ -77,19 +69,6 @@ type DiscoveryStore interface {
 	ListLive(context.Context, time.Time) ([]DiscoveryNode, error)
 	Delete(context.Context, string) error
 	DeleteExpired(context.Context, time.Time) (int64, error)
-}
-
-// DiscoveryLease computes UpdatedAt/ExpiresAt for a heartbeat at now.
-func DiscoveryLease(now time.Time, ttl time.Duration) (updatedAt, expiresAt time.Time, err error) {
-	if now.IsZero() {
-		return time.Time{}, time.Time{}, errors.New("discovery now is required")
-	}
-	if ttl <= 0 {
-		return time.Time{}, time.Time{}, fmt.Errorf("discovery ttl must be positive")
-	}
-	updatedAt = now.UTC()
-	expiresAt = updatedAt.Add(ttl)
-	return updatedAt, expiresAt, nil
 }
 
 func validDiscoveryNodeID(value string) bool {

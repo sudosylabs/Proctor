@@ -33,7 +33,7 @@ type Dependencies struct {
 	RecentAuthenticationTTL time.Duration
 
 	AuthenticationDiagnostics authenticationDiagnostics
-	RealtimeDiagnostics       RealtimeDiagnostics
+	RealtimeDiagnostics       realtimeDiagnostics
 	RecoveryDiagnostics       recoveryDiagnostics
 }
 

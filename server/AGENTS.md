@@ -21,8 +21,10 @@ Before changing the server, load the relevant architecture topic from
 
 ## Local rules
 
-- Preserve the inward production graph
-  `model ← store ← app ← {app/api, websocket} ← server ← cmd/proctor`.
+- Preserve the inward production graph documented in
+  [`docs/architecture/dependencies.md`](../docs/architecture/dependencies.md),
+  including the selective `app/job` and `app/realtime` child modules. Child
+  modules never import their parent package or concrete transports.
 - Keep concrete adapter selection in module-root package `server`.
 - Keep `platform.Service` out of application services and use narrow
   consumer-owned ports; store contracts are the deliberate grouped exception.

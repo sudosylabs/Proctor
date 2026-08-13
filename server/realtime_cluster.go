@@ -7,11 +7,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sudosylabs/proctor/server/app"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/cluster"
 )
 
-// realtimeClusterAdapter maps the application RealtimeClusterFanout port onto
+// realtimeClusterAdapter maps the Realtime child module's ClusterFanout port onto
 // the best-effort cluster.Transport contract.
 type realtimeClusterAdapter struct {
 	cluster borrowedCluster
@@ -56,4 +56,4 @@ func (a *realtimeClusterAdapter) Broadcast(
 	})
 }
 
-var _ app.RealtimeClusterFanout = (*realtimeClusterAdapter)(nil)
+var _ apprealtime.ClusterFanout = (*realtimeClusterAdapter)(nil)

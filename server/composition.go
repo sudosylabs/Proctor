@@ -12,6 +12,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/websocket"
@@ -29,7 +30,7 @@ var errDurableJobRuntimeUnavailable = errors.New("application Job runtime is una
 type composedWebSocket interface {
 	runtimeWebSocket
 	api.WebSocketTransport
-	app.RealtimeSink
+	apprealtime.Sink
 }
 
 // consumerConstructors is a package-private failure seam used by composition
@@ -39,10 +40,10 @@ type consumerConstructors struct {
 	fileContent    func(constructionCapabilities) (app.FileContent, error)
 	dependencies   func(constructionCapabilities, app.FileContent) (app.Dependencies, error)
 	application    func(app.Dependencies) (*app.App, error)
-	realtime       func(borrowedCluster) (app.RealtimeClusterFanout, error)
-	attachRealtime func(*app.App, app.RealtimeClusterFanout) error
+	realtime       func(borrowedCluster) (apprealtime.ClusterFanout, error)
+	attachRealtime func(*app.App, apprealtime.ClusterFanout) error
 	websocket      func(*app.App, runtimeLogger, string, string) (composedWebSocket, error)
-	attachSink     func(*app.App, app.RealtimeSink) error
+	attachSink     func(*app.App, apprealtime.Sink) error
 	http           func(api.Options) (runtimeTransport, http.Handler, error)
 	jobs           func(*app.App) runtimeJobs
 }
@@ -56,16 +57,16 @@ func defaultConsumerConstructors(snapshot config.Config) consumerConstructors {
 			return applicationDependencies(capabilities, snapshot, content)
 		},
 		application: app.New,
-		realtime: func(cluster borrowedCluster) (app.RealtimeClusterFanout, error) {
+		realtime: func(cluster borrowedCluster) (apprealtime.ClusterFanout, error) {
 			return newRealtimeClusterAdapter(cluster)
 		},
-		attachRealtime: func(application *app.App, fanout app.RealtimeClusterFanout) error {
+		attachRealtime: func(application *app.App, fanout apprealtime.ClusterFanout) error {
 			return application.AttachRealtimeClusterFanout(fanout)
 		},
 		websocket: func(application *app.App, logger runtimeLogger, publicURL, nodeID string) (composedWebSocket, error) {
 			return websocket.NewHub(application, websocketLogger{log: logger}, publicURL, nodeID)
 		},
-		attachSink: func(application *app.App, sink app.RealtimeSink) error {
+		attachSink: func(application *app.App, sink apprealtime.Sink) error {
 			return application.AttachRealtimeSink(sink)
 		},
 		http: func(options api.Options) (runtimeTransport, http.Handler, error) {

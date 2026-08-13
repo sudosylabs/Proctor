@@ -561,7 +561,7 @@ Corresponding Proctor paths:
 - server/platform/cluster.go
 - server/platform/service.go
 - server/app/app.go
-- server/app/realtime.go
+- server/app/realtime/
 - server/server.go
 - server/websocket/
 - server/app/api/websocket.go

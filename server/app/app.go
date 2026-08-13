@@ -9,6 +9,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -100,6 +101,10 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	attemptAccounting, err := newAuthenticationAttemptAccounting(deps.Cache)
+	if err != nil {
+		return nil, err
+	}
 	authenticationInvalidator, err := newAuthenticationCacheInvalidator(
 		deps.Cache,
 		deps.AuthenticationDiagnostics,
@@ -107,8 +112,15 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	realtime, err := newRealtimeService(
+	realtimeDelivery, err := apprealtime.New(
 		authenticationInvalidator,
+		deps.RealtimeDiagnostics,
+	)
+	if err != nil {
+		return nil, err
+	}
+	realtime, err := newRealtimeServiceWithDelivery(
+		realtimeDelivery,
 		deps.RealtimeDiagnostics,
 	)
 	if err != nil {
@@ -141,6 +153,7 @@ func New(deps Dependencies) (*App, error) {
 		deps.Store.Session(),
 		deps.Store.SessionCredential(),
 		deps.Cache,
+		attemptAccounting,
 		realtime,
 		hasher,
 		mfaApplication,
@@ -158,13 +171,9 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	recoveryRateLimiter, err := newCacheAccountTokenRateLimiter(deps.Cache, deps.AccountRecovery.RateLimit)
-	if err != nil {
-		return nil, err
-	}
 	accountTokens, err := newAccountTokenService(
 		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), deps.Store.Institution(),
-		deps.Mailer, recoveryRateLimiter, hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
+		deps.Mailer, attemptAccounting, hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
 		realtime, deps.RecoveryDiagnostics, deps.AccountRecovery, deps.PublicURL,
 		model.NewCredentialToken, time.Now,
 	)
@@ -195,7 +204,7 @@ func New(deps Dependencies) (*App, error) {
 		deps.Store.Institution(),
 		deps.Store.ExternalIdentity(),
 		deps.Store.Session(),
-		deps.Cache,
+		attemptAccounting,
 		authentication,
 		authenticationInvalidator,
 		audit,
@@ -369,11 +378,8 @@ func New(deps Dependencies) (*App, error) {
 	bootstrap := newBootstrapService(
 		deps.Store.Installation(),
 		authentication.hasher,
-		bootstrapRateLimit{
-			cache:                 deps.Cache,
-			window:                deps.LoginRateLimit.Window,
-			maximumSourceAttempts: deps.LoginRateLimit.MaximumSourceAttempts,
-		},
+		attemptAccounting,
+		deps.LoginRateLimit,
 		deps.NodeID,
 		time.Now,
 	)

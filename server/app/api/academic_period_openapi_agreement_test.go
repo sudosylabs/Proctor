@@ -5,11 +5,8 @@ package api
 
 import (
 	"encoding/json"
-	"net/http"
 	"reflect"
 	"sort"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -17,82 +14,50 @@ import (
 
 func TestAcademicPeriodOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
-	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
 	if err := runtimeAPI.collectResources(model.APIURLSuffix, academicPeriodResource(nil)); err != nil {
 		t.Fatal(err)
 	}
-	runtimeOperations := make(map[string]AuthRequirement)
-	for _, route := range runtimeAPI.Routes() {
-		path := strings.ReplaceAll(route.Path, "{academic_period_id:"+canonicalIDRoutePattern()+"}", "{academic_period_id}")
-		runtimeOperations[route.Method+" "+path] = route.Auth
+	suite := openAPIAgreementSuite{
+		Operations: []openAPIAgreementOperation{
+			{Key: "GET /api/v1/academic-periods", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicPeriodListOK", SuccessSchema: "AcademicPeriodListResponse", PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+			{Key: "POST /api/v1/academic-periods", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/CreateAcademicPeriod", RequestSchema: "CreateAcademicPeriodRequest", SuccessStatus: "201", SuccessRef: "#/components/responses/AcademicPeriodCreated", SuccessSchema: "AcademicPeriodResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable")},
+			{Key: "GET /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicPeriodOK", SuccessSchema: "AcademicPeriodResponse", PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
+			{Key: "PATCH /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/UpdateAcademicPeriod", RequestSchema: "UpdateAcademicPeriodRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/AcademicPeriodOK", SuccessSchema: "AcademicPeriodResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable")},
+			{Key: "DELETE /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, SuccessStatus: "204", SuccessRef: "#/components/responses/AcademicPeriodArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.conflict", "administration.unavailable")},
+		},
+		Schemas: []openAPIAgreementSchema{
+			{Name: "AcademicPeriodResponse", DTO: reflect.TypeOf(academicPeriodResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "institution_id", "name", "display_name", "description", "start_at", "end_at"}},
+			{Name: "CreateAcademicPeriodRequest", DTO: reflect.TypeOf(createAcademicPeriodRequest{}), Required: []string{"name", "display_name", "start_at", "end_at"}},
+			{Name: "UpdateAcademicPeriodRequest", DTO: reflect.TypeOf(updateAcademicPeriodRequest{})},
+		},
 	}
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/academic-periods":                         {successStatus: "200", successRef: "#/components/responses/AcademicPeriodListOK", successSchema: "AcademicPeriodListResponse", errorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
-		"POST /api/v1/academic-periods":                        {requestBodyRef: "#/components/requestBodies/CreateAcademicPeriod", requestSchema: "CreateAcademicPeriodRequest", successStatus: "201", successRef: "#/components/responses/AcademicPeriodCreated", successSchema: "AcademicPeriodResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable")},
-		"GET /api/v1/academic-periods/{academic_period_id}":    {successStatus: "200", successRef: "#/components/responses/AcademicPeriodOK", successSchema: "AcademicPeriodResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"PATCH /api/v1/academic-periods/{academic_period_id}":  {requestBodyRef: "#/components/requestBodies/UpdateAcademicPeriod", requestSchema: "UpdateAcademicPeriodRequest", successStatus: "200", successRef: "#/components/responses/AcademicPeriodOK", successSchema: "AcademicPeriodResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable")},
-		"DELETE /api/v1/academic-periods/{academic_period_id}": {successStatus: "204", successRef: "#/components/responses/AcademicPeriodArchived", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.conflict", "administration.unavailable")},
+	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
+
+	document := readOpenAPIDocument(t)
+	var listOperation openAPIOperation
+	if err := json.Unmarshal(document.Paths[model.APIURLSuffix+"/academic-periods"]["get"], &listOperation); err != nil {
+		t.Fatal(err)
 	}
-	statuses := ApplicationErrorStatuses()
-	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
-	statuses["authentication.csrf.invalid"] = http.StatusForbidden
-	documented := make(map[string]AuthRequirement)
-	for path, item := range document.Paths {
-		if !strings.HasPrefix(path, model.APIURLSuffix+"/academic-periods") {
-			continue
-		}
-		for method, raw := range item {
-			upper := strings.ToUpper(method)
-			if !isHTTPMethod(upper) {
-				continue
-			}
-			key := upper + " " + path
-			var operation openAPIOperation
-			if err := json.Unmarshal(raw, &operation); err != nil {
-				t.Fatal(err)
-			}
-			documented[key] = operation.Auth
-			contract, exists := expected[key]
-			if !exists {
-				t.Fatalf("unexpected operation %s", key)
-			}
-			assertPrincipalSecurity(t, key, upper, operation.Security)
-			if operation.RequestBody.Ref != contract.requestBodyRef || operation.Responses[contract.successStatus].Ref != contract.successRef {
-				t.Errorf("%s request/success refs do not agree", key)
-			}
-			assertOpenAPIRequestBody(t, document, key, contract)
-			assertOpenAPISuccessResponse(t, document, key, contract)
-			got, want := append([]string(nil), operation.ErrorCodes...), append([]string(nil), contract.errorCodes...)
-			sort.Strings(got)
-			sort.Strings(want)
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("%s error codes = %v, want %v", key, got, want)
-			}
-			for _, code := range operation.ErrorCodes {
-				status, exists := statuses[code]
-				if !exists {
-					t.Errorf("%s unmapped code %q", key, code)
-					continue
-				}
-				response := operation.Responses[strconv.Itoa(status)]
-				if response.Ref == "" {
-					t.Errorf("%s code %q has no %d response", key, code, status)
-					continue
-				}
-				assertOpenAPIProblemResponse(t, document, key, status, response)
-			}
-		}
+	if got := academicStructureQueryParameterNames(listOperation.Parameters); !reflect.DeepEqual(got, []string{"limit", "q"}) {
+		t.Fatalf("Academic Period list query parameters = %v, want [limit q]", got)
 	}
-	if !reflect.DeepEqual(documented, runtimeOperations) {
-		t.Fatalf("OpenAPI operations = %#v, runtime = %#v", documented, runtimeOperations)
-	}
-	fields := []string{"id", "create_at", "update_at", "delete_at", "institution_id", "name", "display_name", "description", "start_at", "end_at"}
-	assertOpenAPISchemaMatchesDTO(t, document, "AcademicPeriodResponse", reflect.TypeOf(academicPeriodResponse{}), fields)
-	assertOpenAPISchemaMatchesDTO(t, document, "CreateAcademicPeriodRequest", reflect.TypeOf(createAcademicPeriodRequest{}), []string{"name", "display_name", "start_at", "end_at"})
-	assertOpenAPISchemaMatchesDTO(t, document, "UpdateAcademicPeriodRequest", reflect.TypeOf(updateAcademicPeriodRequest{}), nil)
 	list := document.Components.Schemas["AcademicPeriodListResponse"]
 	if list.Type != "array" || list.Items.Ref != "#/components/schemas/AcademicPeriodResponse" {
 		t.Fatalf("AcademicPeriodListResponse = %#v", list)
 	}
+	if archived := document.Components.Responses["AcademicPeriodArchived"]; archived.Headers["Cache-Control"].Ref != "#/components/headers/NoStore" {
+		t.Fatalf("AcademicPeriodArchived does not require no-store: %#v", archived)
+	}
+}
+
+func academicStructureQueryParameterNames(parameters []openAPIParameter) []string {
+	names := make([]string, 0, len(parameters))
+	for _, parameter := range parameters {
+		if parameter.In == "query" {
+			names = append(names, parameter.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }

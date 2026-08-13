@@ -5,10 +5,7 @@ package api
 
 import (
 	"encoding/json"
-	"net/http"
 	"reflect"
-	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -23,88 +20,18 @@ func TestInstitutionOpenAPIAgreesWithRuntime(t *testing.T) {
 	if err := runtimeAPI.collectResources(model.APIURLSuffix, institutionResource(nil)); err != nil {
 		t.Fatal(err)
 	}
-	runtimeOperations := make(map[string]AuthRequirement)
-	for _, route := range runtimeAPI.Routes() {
-		runtimeOperations[route.Method+" "+route.Path] = route.Auth
+	suite := openAPIAgreementSuite{
+		Operations: []openAPIAgreementOperation{
+			{Key: "GET /api/v1/institution", Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/InstitutionOK", SuccessSchema: "InstitutionResponse", PublicErrorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
+			{Key: "PATCH /api/v1/institution", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/UpdateInstitution", RequestSchema: "UpdateInstitutionRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/InstitutionOK", SuccessSchema: "InstitutionResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "institution.invalid", "institution.conflict", "administration.unavailable")},
+		},
+		Schemas: []openAPIAgreementSchema{
+			{Name: "InstitutionResponse", DTO: reflect.TypeOf(institutionResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "name", "display_name", "description"}},
+			{Name: "UpdateInstitutionRequest", DTO: reflect.TypeOf(updateInstitutionRequest{})},
+		},
 	}
+	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/institution": {
-			successStatus: "200", successRef: "#/components/responses/InstitutionOK",
-			successSchema: "InstitutionResponse",
-			errorCodes: principalContractCodes(
-				"resource.not_found", "administration.unavailable",
-			),
-		},
-		"PATCH /api/v1/institution": {
-			requestBodyRef: "#/components/requestBodies/UpdateInstitution",
-			requestSchema:  "UpdateInstitutionRequest",
-			successStatus:  "200", successRef: "#/components/responses/InstitutionOK",
-			successSchema: "InstitutionResponse",
-			errorCodes: principalMutationContractCodes(
-				"request.invalid", "resource.not_found", "institution.invalid",
-				"institution.conflict", "administration.unavailable",
-			),
-		},
-	}
-	statuses := ApplicationErrorStatuses()
-	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
-	statuses["authentication.csrf.invalid"] = http.StatusForbidden
-	documented := make(map[string]AuthRequirement)
-	pathItem := document.Paths[model.APIURLSuffix+"/institution"]
-	for method, raw := range pathItem {
-		upperMethod := strings.ToUpper(method)
-		if !isHTTPMethod(upperMethod) {
-			continue
-		}
-		key := upperMethod + " " + model.APIURLSuffix + "/institution"
-		var operation openAPIOperation
-		if err := json.Unmarshal(raw, &operation); err != nil {
-			t.Fatal(err)
-		}
-		documented[key] = operation.Auth
-		contract, exists := expected[key]
-		if !exists {
-			t.Fatalf("unexpected operation %s", key)
-		}
-		assertPrincipalSecurity(t, key, upperMethod, operation.Security)
-		if operation.RequestBody.Ref != contract.requestBodyRef ||
-			operation.Responses[contract.successStatus].Ref != contract.successRef {
-			t.Errorf("%s request/success refs do not agree", key)
-		}
-		assertOpenAPIRequestBody(t, document, key, contract)
-		assertOpenAPISuccessResponse(t, document, key, contract)
-		gotCodes := append([]string(nil), operation.ErrorCodes...)
-		wantCodes := append([]string(nil), contract.errorCodes...)
-		sort.Strings(gotCodes)
-		sort.Strings(wantCodes)
-		if !reflect.DeepEqual(gotCodes, wantCodes) {
-			t.Errorf("%s error codes = %v, want %v", key, gotCodes, wantCodes)
-		}
-		for _, code := range operation.ErrorCodes {
-			status, exists := statuses[code]
-			if !exists {
-				t.Errorf("%s unmapped code %q", key, code)
-				continue
-			}
-			response := operation.Responses[strconv.Itoa(status)]
-			if response.Ref == "" {
-				t.Errorf("%s code %q has no %d response", key, code, status)
-				continue
-			}
-			assertOpenAPIProblemResponse(t, document, key, status, response)
-		}
-	}
-	if !reflect.DeepEqual(documented, runtimeOperations) {
-		t.Fatalf("OpenAPI operations = %#v, runtime = %#v", documented, runtimeOperations)
-	}
-	assertOpenAPISchemaMatchesDTO(
-		t, document, "InstitutionResponse", reflect.TypeOf(institutionResponse{}),
-		[]string{"id", "create_at", "update_at", "delete_at", "name", "display_name", "description"},
-	)
-	assertOpenAPISchemaMatchesDTO(
-		t, document, "UpdateInstitutionRequest", reflect.TypeOf(updateInstitutionRequest{}), nil,
-	)
 	patchSchema := document.Components.Schemas["UpdateInstitutionRequest"]
 	for _, propertyName := range []string{"name", "display_name", "description"} {
 		var property struct {

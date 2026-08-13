@@ -5,11 +5,7 @@ package api
 
 import (
 	"encoding/json"
-	"net/http"
 	"reflect"
-	"sort"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -17,7 +13,77 @@ import (
 
 func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
-	document := readOpenAPIDocument(t)
+	selectedPath := func(path string) bool {
+		switch path {
+		case model.APIURLSuffix + "/users",
+			model.APIURLSuffix + "/users/me",
+			model.APIURLSuffix + "/users/{user_id}",
+			model.APIURLSuffix + "/users/{user_id}/profile-picture",
+			model.APIURLSuffix + "/users/{user_id}/disable",
+			model.APIURLSuffix + "/users/{user_id}/enable":
+			return true
+		default:
+			return false
+		}
+	}
+	suite := openAPIAgreementSuite{
+		Operations: []openAPIAgreementOperation{
+			{
+				Key: "GET /api/v1/users", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileListOK", SuccessSchema: "UserProfileListResponse",
+				PublicErrorCodes: principalContractCodes("request.invalid", "user.invalid", "administration.unavailable"),
+			},
+			{
+				Key: "GET /api/v1/users/me", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
+				PublicErrorCodes: principalContractCodes("resource.not_found", "administration.unavailable"),
+			},
+			{
+				Key: "GET /api/v1/users/{user_id}", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
+				PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable"),
+			},
+			{
+				Key: "PATCH /api/v1/users/{user_id}", Auth: AuthPrincipalRequired,
+				RequestBodyRef: "#/components/requestBodies/UpdateUserProfile", RequestSchema: "UpdateUserProfileRequest",
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "administration.unavailable"),
+			},
+			{
+				Key: "GET /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ProfilePictureOK", ExceptionalSuccess: true,
+				PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable"),
+			},
+			{
+				Key: "PUT /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"),
+			},
+			{
+				Key: "DELETE /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"),
+			},
+			{
+				Key: "POST /api/v1/users/{user_id}/disable", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable"),
+			},
+			{
+				Key: "POST /api/v1/users/{user_id}/enable", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable"),
+			},
+		},
+		Schemas: []openAPIAgreementSchema{
+			{
+				Name: "UserProfileResponse", DTO: reflect.TypeOf(userProfileResponse{}),
+				Required: []string{"id", "create_at", "update_at", "delete_at", "username", "email", "email_verified", "display_name", "first_name", "last_name", "locale", "timezone", "profile_picture_url"},
+			},
+			{Name: "UpdateUserProfileRequest", DTO: reflect.TypeOf(updateUserProfileRequest{})},
+		},
+		OperationSelector: func(_ string, path string) bool { return selectedPath(path) },
+	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
 	if err := runtimeAPI.collectResources(
 		model.APIURLSuffix,
@@ -26,118 +92,79 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	runtimeOperations := make(map[string]AuthRequirement)
-	for _, route := range runtimeAPI.Routes() {
-		path := strings.ReplaceAll(route.Path, "{user_id:"+canonicalIDRoutePattern()+"}", "{user_id}")
-		if path != "/api/v1/users" && path != "/api/v1/users/me" && path != "/api/v1/users/{user_id}" && path != "/api/v1/users/{user_id}/profile-picture" && path != "/api/v1/users/{user_id}/disable" && path != "/api/v1/users/{user_id}/enable" {
-			continue
-		}
-		runtimeOperations[route.Method+" "+path] = route.Auth
+	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
+
+	// Binary download/upload and conditional request behavior are reviewed
+	// protocol exceptions, not ordinary JSON schema agreement.
+	document := readOpenAPIDocument(t)
+	picturePath := model.APIURLSuffix + "/users/{user_id}/profile-picture"
+	download := decodeOpenAPIOperationForProfile(t, document, picturePath, "get")
+	response := document.Components.Responses["ProfilePictureOK"]
+	shape := response.Content["image/webp"].Schema
+	_, hasETag := response.Headers["ETag"]
+	_, hasCacheControl := response.Headers["Cache-Control"]
+	if shape.Type != "string" || shape.Format != "binary" || !hasETag || !hasCacheControl {
+		t.Errorf("GET %s binary response = %#v", picturePath, response)
 	}
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/users":                              {successStatus: "200", successRef: "#/components/responses/UserProfileListOK", successSchema: "UserProfileListResponse", errorCodes: principalContractCodes("request.invalid", "user.invalid", "administration.unavailable")},
-		"GET /api/v1/users/me":                           {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("resource.not_found", "administration.unavailable")},
-		"GET /api/v1/users/{user_id}":                    {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"PATCH /api/v1/users/{user_id}":                  {requestBodyRef: "#/components/requestBodies/UpdateUserProfile", requestSchema: "UpdateUserProfileRequest", successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "administration.unavailable")},
-		"GET /api/v1/users/{user_id}/profile-picture":    {successStatus: "200", successRef: "#/components/responses/ProfilePictureOK", successSchema: "binary", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable")},
-		"PUT /api/v1/users/{user_id}/profile-picture":    {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict")},
-		"DELETE /api/v1/users/{user_id}/profile-picture": {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict")},
-		"POST /api/v1/users/{user_id}/disable":           {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
-		"POST /api/v1/users/{user_id}/enable":            {successStatus: "200", successRef: "#/components/responses/UserProfileOK", successSchema: "UserProfileResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "user.last_system_admin", "administration.unavailable")},
+	if !hasOpenAPIHeaderParameter(download, "If-None-Match") {
+		t.Errorf("GET %s does not document If-None-Match", picturePath)
 	}
-	statuses := ApplicationErrorStatuses()
-	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
-	statuses["authentication.csrf.invalid"] = http.StatusForbidden
-	documented := make(map[string]AuthRequirement)
-	for path, item := range document.Paths {
-		if path != "/api/v1/users" && path != "/api/v1/users/me" && path != "/api/v1/users/{user_id}" && path != "/api/v1/users/{user_id}/profile-picture" && path != "/api/v1/users/{user_id}/disable" && path != "/api/v1/users/{user_id}/enable" {
-			continue
-		}
-		for method, raw := range item {
-			upper := strings.ToUpper(method)
-			if !isHTTPMethod(upper) {
-				continue
-			}
-			key := upper + " " + path
-			var operation openAPIOperation
-			if err := json.Unmarshal(raw, &operation); err != nil {
-				t.Fatal(err)
-			}
-			documented[key] = operation.Auth
-			contract, exists := expected[key]
-			if !exists {
-				t.Fatalf("unexpected operation %s", key)
-			}
-			assertPrincipalSecurity(t, key, upper, operation.Security)
-			if operation.RequestBody.Ref != contract.requestBodyRef || operation.Responses[contract.successStatus].Ref != contract.successRef {
-				t.Errorf("%s request/success refs do not agree", key)
-			}
-			assertOpenAPIRequestBody(t, document, key, contract)
-			if contract.successSchema == "binary" {
-				response := document.Components.Responses["ProfilePictureOK"]
-				shape := response.Content["image/webp"].Schema
-				_, hasETag := response.Headers["ETag"]
-				_, hasCacheControl := response.Headers["Cache-Control"]
-				if shape.Type != "string" || shape.Format != "binary" || !hasETag || !hasCacheControl {
-					t.Errorf("%s binary response = %#v", key, response)
-				}
-				hasConditionalHeader := false
-				for _, parameter := range operation.Parameters {
-					hasConditionalHeader = hasConditionalHeader || (parameter.Name == "If-None-Match" && parameter.In == "header")
-				}
-				if !hasConditionalHeader {
-					t.Errorf("%s does not document If-None-Match", key)
-				}
-			} else {
-				assertOpenAPISuccessResponse(t, document, key, contract)
-			}
-			if key == "PUT /api/v1/users/{user_id}/profile-picture" {
-				for _, mediaType := range []string{"image/png", "image/jpeg", "image/webp"} {
-					shape := operation.RequestBody.Content[mediaType].Schema
-					if shape.Type != "string" || shape.Format != "binary" {
-						t.Errorf("%s request %s = %#v", key, mediaType, shape)
-					}
-				}
-			}
-			if key == "PUT /api/v1/users/{user_id}/profile-picture" || key == "DELETE /api/v1/users/{user_id}/profile-picture" {
-				hasIfMatch := false
-				for _, parameter := range operation.Parameters {
-					if parameter.Name == "If-Match" && parameter.In == "header" {
-						hasIfMatch = true
-						wantRequired := key == "DELETE /api/v1/users/{user_id}/profile-picture"
-						if parameter.Required != wantRequired {
-							t.Errorf("%s If-Match required = %v, want %v", key, parameter.Required, wantRequired)
-						}
-					}
-				}
-				if !hasIfMatch {
-					t.Errorf("%s does not document If-Match", key)
-				}
-			}
-			got, want := append([]string(nil), operation.ErrorCodes...), append([]string(nil), contract.errorCodes...)
-			sort.Strings(got)
-			sort.Strings(want)
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("%s error codes = %v, want %v", key, got, want)
-			}
-			for _, code := range operation.ErrorCodes {
-				status, exists := statuses[code]
-				if !exists {
-					t.Errorf("%s unmapped code %q", key, code)
-					continue
-				}
-				assertOpenAPIProblemResponse(t, document, key, status, operation.Responses[strconv.Itoa(status)])
-			}
+
+	upload := decodeOpenAPIOperationForProfile(t, document, picturePath, "put")
+	for _, mediaType := range []string{"image/png", "image/jpeg", "image/webp"} {
+		shape := upload.RequestBody.Content[mediaType].Schema
+		if shape.Type != "string" || shape.Format != "binary" {
+			t.Errorf("PUT %s request %s = %#v", picturePath, mediaType, shape)
 		}
 	}
-	if !reflect.DeepEqual(documented, runtimeOperations) {
-		t.Fatalf("OpenAPI operations = %#v, runtime = %#v", documented, runtimeOperations)
-	}
-	required := []string{"id", "create_at", "update_at", "delete_at", "username", "email", "email_verified", "display_name", "first_name", "last_name", "locale", "timezone", "profile_picture_url"}
-	assertOpenAPISchemaMatchesDTO(t, document, "UserProfileResponse", reflect.TypeOf(userProfileResponse{}), required)
-	assertOpenAPISchemaMatchesDTO(t, document, "UpdateUserProfileRequest", reflect.TypeOf(updateUserProfileRequest{}), nil)
+	assertOpenAPIIfMatchForProfile(t, "PUT "+picturePath, upload, false)
+
+	remove := decodeOpenAPIOperationForProfile(t, document, picturePath, "delete")
+	assertOpenAPIIfMatchForProfile(t, "DELETE "+picturePath, remove, true)
+
 	list := document.Components.Schemas["UserProfileListResponse"]
 	if list.Type != "array" || list.Items.Ref != "#/components/schemas/UserProfileResponse" {
 		t.Fatalf("UserProfileListResponse = %#v", list)
 	}
+}
+
+func decodeOpenAPIOperationForProfile(
+	t *testing.T,
+	document openAPIDocument,
+	path string,
+	method string,
+) openAPIOperation {
+	t.Helper()
+	var operation openAPIOperation
+	if err := json.Unmarshal(document.Paths[path][method], &operation); err != nil {
+		t.Fatalf("decode %s %s: %v", method, path, err)
+	}
+	return operation
+}
+
+func hasOpenAPIHeaderParameter(operation openAPIOperation, name string) bool {
+	for _, parameter := range operation.Parameters {
+		if parameter.Name == name && parameter.In == "header" {
+			return true
+		}
+	}
+	return false
+}
+
+func assertOpenAPIIfMatchForProfile(
+	t *testing.T,
+	key string,
+	operation openAPIOperation,
+	wantRequired bool,
+) {
+	t.Helper()
+	for _, parameter := range operation.Parameters {
+		if parameter.Name == "If-Match" && parameter.In == "header" {
+			if parameter.Required != wantRequired {
+				t.Errorf("%s If-Match required = %v, want %v", key, parameter.Required, wantRequired)
+			}
+			return
+		}
+	}
+	t.Errorf("%s does not document If-Match", key)
 }

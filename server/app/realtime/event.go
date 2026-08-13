@@ -1,7 +1,7 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package app
+package realtime
 
 import (
 	"encoding/json"
@@ -79,14 +79,6 @@ type ConnectionCloseReason string
 const (
 	ConnectionCloseSessionRevoked       ConnectionCloseReason = "session_revoked"
 	ConnectionCloseAuthorizationChanged ConnectionCloseReason = "authorization_changed"
-)
-
-// Stable cluster event names owned by application publication policy. The
-// composition adapter maps these onto cluster wire event identifiers.
-const (
-	realtimeClusterEventPublication              = "websocket.publish"
-	realtimeClusterEventSessionRevoked           = "authentication.session_revoked"
-	realtimeClusterEventAuthorizationInvalidated = "authorization.invalidated"
 )
 
 func validRealtimeName(value string) bool {

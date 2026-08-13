@@ -23,6 +23,24 @@ upstream reference.
   data workflows.
 - Test horizontal privilege escalation and cross-academic-unit isolation.
 
+## Authentication attempt accounting
+
+Login, account recovery, external-authentication initiation, and installation
+bootstrap share one private attempt-accounting implementation while retaining
+their distinct security policies and public errors. Fixed purpose and dimension
+names select domain-separated key spaces; identity, source, operation, and
+provider values contribute only to a cryptographic digest. User-controlled
+values never select arbitrary key namespaces.
+
+Attempt counters use the disposable cache with atomic per-key increments and a
+sliding inactivity window. Multi-dimension attempts increment each applicable
+counter sequentially before evaluating the combined limit. Cache failure fails
+closed, including a failure after an earlier dimension was incremented. A
+successful password login clears only its combined identity/source counter;
+the source-wide counter continues to protect against attempts spread across
+identities. Changing these dimensions, ordering, window semantics, or reset
+behavior is a security-policy change rather than an implementation refactor.
+
 ## Logging and observability
 
 The Proctor-owned `mlog` subsystem supports independently filtered text or JSON

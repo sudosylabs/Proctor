@@ -40,7 +40,7 @@ func TestAccountTokenServiceRequiresDependencies(t *testing.T) {
 		{"token store", func(a *accountTokenConstructorArgs) { a.tokens = nil }},
 		{"institution store", func(a *accountTokenConstructorArgs) { a.institutions = nil }},
 		{"mailer", func(a *accountTokenConstructorArgs) { a.mailer = nil }},
-		{"rate limiter", func(a *accountTokenConstructorArgs) { a.rateLimiter = nil }},
+		{"attempt accounting", func(a *accountTokenConstructorArgs) { a.attempts = nil }},
 		{"hasher", func(a *accountTokenConstructorArgs) { a.hasher = nil }},
 		{"audit", func(a *accountTokenConstructorArgs) { a.audit = nil }},
 		{"effects", func(a *accountTokenConstructorArgs) { a.effects = nil }},
@@ -58,6 +58,143 @@ func TestAccountTokenServiceRequiresDependencies(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAccountRecoveryAttemptAccountingIsolatesAndNormalizesOperations(t *testing.T) {
+	t.Parallel()
+
+	cache := newExpiringAuthenticationAttemptCache(time.Now)
+	service := &accountTokenService{
+		attempts: mustAuthenticationAttemptAccounting(t, cache),
+		policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
+			Window: time.Minute, MaximumAttempts: 10, MaximumSourceAttempts: 100,
+		}},
+	}
+	operations := []accountRecoveryAttemptOperation{
+		accountRecoveryAttemptEmailVerificationRequest,
+		accountRecoveryAttemptPasswordResetRequest,
+		accountRecoveryAttemptEmailVerificationComplete,
+		accountRecoveryAttemptPasswordResetComplete,
+	}
+	for _, operation := range operations {
+		if err := service.checkAccountRecoveryRateLimit(
+			context.Background(), operation, " Student@Example.EDU ", " Example.COM:443 ",
+		); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.checkAccountRecoveryRateLimit(
+			context.Background(), operation, "student@example.edu", "example.com:8443",
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	entries := cache.snapshot()
+	if len(entries) != len(operations)*2 {
+		t.Fatalf("recovery counters = %d, want %d", len(entries), len(operations)*2)
+	}
+	for key, entry := range entries {
+		if !strings.HasPrefix(key, "authentication/attempts/account-recovery/") {
+			t.Fatalf("counter key = %q", key)
+		}
+		if strings.Contains(strings.ToLower(key), "student") ||
+			strings.Contains(strings.ToLower(key), "example") ||
+			strings.Contains(key, "verification") || strings.Contains(key, "reset") {
+			t.Fatalf("counter key exposes recovery material: %q", key)
+		}
+		if entry.count != 2 {
+			t.Fatalf("counter %q = %d, want 2", key, entry.count)
+		}
+	}
+}
+
+func TestAccountRecoveryAttemptAccountingUsesExactThresholdForEveryOperation(t *testing.T) {
+	t.Parallel()
+
+	operations := []accountRecoveryAttemptOperation{
+		accountRecoveryAttemptEmailVerificationRequest,
+		accountRecoveryAttemptPasswordResetRequest,
+		accountRecoveryAttemptEmailVerificationComplete,
+		accountRecoveryAttemptPasswordResetComplete,
+	}
+	for _, operation := range operations {
+		operation := operation
+		t.Run(operationNameForTest(operation), func(t *testing.T) {
+			t.Parallel()
+			service := &accountTokenService{
+				attempts: mustAuthenticationAttemptAccounting(
+					t, newExpiringAuthenticationAttemptCache(time.Now),
+				),
+				policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
+					Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 100,
+				}},
+			}
+			if err := service.checkAccountRecoveryRateLimit(
+				context.Background(), operation, "student@example.edu", "192.0.2.10:443",
+			); err != nil {
+				t.Fatalf("attempt at maximum = %v", err)
+			}
+			if err := service.checkAccountRecoveryRateLimit(
+				context.Background(), operation, "student@example.edu", "192.0.2.10:443",
+			); !Is(err, "authentication.rate_limited") {
+				t.Fatalf("attempt beyond maximum = %v", err)
+			}
+		})
+	}
+}
+
+func TestAccountRecoveryAttemptAccountingFailsClosedWithoutCounterRollback(t *testing.T) {
+	t.Parallel()
+
+	for _, failAt := range []int{1, 2} {
+		failAt := failAt
+		t.Run(string(rune('0'+failAt)), func(t *testing.T) {
+			t.Parallel()
+			cache := &faultingAuthenticationAttemptCache{
+				expiringAuthenticationAttemptCache: newExpiringAuthenticationAttemptCache(time.Now),
+				failAt:                             failAt,
+			}
+			service := &accountTokenService{
+				attempts: mustAuthenticationAttemptAccounting(t, cache),
+				policy: AccountRecoveryPolicy{RateLimit: LoginRateLimitPolicy{
+					Window: time.Minute, MaximumAttempts: 10, MaximumSourceAttempts: 100,
+				}},
+			}
+			err := service.checkAccountRecoveryRateLimit(
+				context.Background(), accountRecoveryAttemptPasswordResetRequest,
+				"student@example.edu", "192.0.2.10:443",
+			)
+			if !Is(err, "authentication.rate_limit_unavailable") {
+				t.Fatalf("cache failure = %v", err)
+			}
+			if len(cache.calls) != failAt {
+				t.Fatalf("counter calls = %d, want %d", len(cache.calls), failAt)
+			}
+			if !strings.Contains(cache.calls[0], "/identity/") {
+				t.Fatalf("first counter = %q, want identity", cache.calls[0])
+			}
+			entries := cache.snapshot()
+			if failAt == 1 && len(entries) != 0 {
+				t.Fatalf("first-counter failure retained %d counters", len(entries))
+			}
+			if failAt == 2 {
+				if !strings.Contains(cache.calls[1], "/source/") {
+					t.Fatalf("second counter = %q, want source", cache.calls[1])
+				}
+				if len(entries) != 1 {
+					t.Fatalf("second-counter failure retained %d counters, want 1", len(entries))
+				}
+			}
+		})
+	}
+}
+
+func operationNameForTest(operation accountRecoveryAttemptOperation) string {
+	name, valid := operation.qualifier()
+	if !valid {
+		return "invalid"
+	}
+	return name
 }
 
 func TestRequestPasswordResetPreservesGenericResponseAndIssuedToken(t *testing.T) {
@@ -226,6 +363,8 @@ type accountTokenTestDependencies struct {
 	mailer      AccountMailer
 	effects     accountTokenEffects
 	hasher      accountTokenPasswordHasher
+	attempts    *authenticationAttemptAccounting
+	rateLimit   LoginRateLimitPolicy
 	now         func() time.Time
 }
 
@@ -237,6 +376,16 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 	if deps.hasher == nil {
 		deps.hasher = accountTokenHasherFake{hash: "encoded-password"}
 	}
+	if deps.attempts == nil {
+		deps.attempts = mustAuthenticationAttemptAccounting(
+			t, newExpiringAuthenticationAttemptCache(time.Now),
+		)
+	}
+	if deps.rateLimit == (LoginRateLimitPolicy{}) {
+		deps.rateLimit = LoginRateLimitPolicy{
+			Window: time.Minute, MaximumAttempts: 20, MaximumSourceAttempts: 100,
+		}
+	}
 	if deps.now == nil {
 		deps.now = func() time.Time { return time.UnixMilli(1) }
 	}
@@ -246,7 +395,7 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 		deps.tokens,
 		&accountTokenInstitutionStoreFake{institution: deps.institution},
 		deps.mailer,
-		accountTokenRateLimiterFake{},
+		deps.attempts,
 		deps.hasher,
 		accountTokenAuditRecorder{nodeID: "node-1"},
 		deps.effects,
@@ -254,6 +403,7 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 		AccountRecoveryPolicy{
 			EmailVerificationTTL: 24 * time.Hour,
 			PasswordResetTTL:     45 * time.Minute,
+			RateLimit:            deps.rateLimit,
 		},
 		"https://proctor.example.edu",
 		func() string { return accountTokenTestRawToken },
@@ -367,12 +517,6 @@ func (m *accountTokenMailerFake) SendCredentialMail(
 	return m.err
 }
 
-type accountTokenRateLimiterFake struct{ err error }
-
-func (f accountTokenRateLimiterFake) Allow(context.Context, string, string, string) error {
-	return f.err
-}
-
 type accountTokenHasherFake struct {
 	hash string
 	err  error
@@ -405,7 +549,7 @@ type accountTokenConstructorArgs struct {
 	tokens       store.UserTokenStore
 	institutions store.InstitutionStore
 	mailer       AccountMailer
-	rateLimiter  accountTokenRateLimiter
+	attempts     *authenticationAttemptAccounting
 	hasher       accountTokenPasswordHasher
 	audit        accountTokenAudit
 	effects      accountTokenEffects
@@ -420,7 +564,7 @@ func validAccountTokenConstructorArgs() accountTokenConstructorArgs {
 		tokens:       &accountTokenStoreFake{},
 		institutions: &accountTokenInstitutionStoreFake{},
 		mailer:       &accountTokenMailerFake{enabled: true},
-		rateLimiter:  accountTokenRateLimiterFake{},
+		attempts:     &authenticationAttemptAccounting{cache: newExpiringAuthenticationAttemptCache(time.Now)},
 		hasher:       accountTokenHasherFake{},
 		audit:        accountTokenAuditRecorder{nodeID: "node-1"},
 		effects:      &accountTokenEffectsFake{},
@@ -431,7 +575,7 @@ func validAccountTokenConstructorArgs() accountTokenConstructorArgs {
 
 func (a accountTokenConstructorArgs) build() (*accountTokenService, error) {
 	return newAccountTokenService(
-		a.users, a.passwords, a.tokens, a.institutions, a.mailer, a.rateLimiter,
+		a.users, a.passwords, a.tokens, a.institutions, a.mailer, a.attempts,
 		a.hasher, a.audit, a.effects, a.diagnostics, AccountRecoveryPolicy{},
 		"https://proctor.example.edu", a.newToken, time.Now,
 	)

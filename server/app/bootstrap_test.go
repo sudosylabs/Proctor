@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,14 +47,54 @@ func (h *passwordHasherFake) Hash(string) (string, error) {
 	return h.hash, h.err
 }
 
-type bootstrapRateLimiterFake struct {
+type bootstrapAttemptCacheFake struct {
+	mu     sync.Mutex
 	events *[]string
+	counts map[string]int64
 	err    error
 }
 
-func (r *bootstrapRateLimiterFake) Allow(context.Context, string) error {
-	*r.events = append(*r.events, "rate-limit")
-	return r.err
+func (c *bootstrapAttemptCacheFake) Add(_ context.Context, key string, delta int64, _ time.Duration) (int64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.events != nil {
+		*c.events = append(*c.events, "rate-limit")
+	}
+	if c.err != nil {
+		return 0, c.err
+	}
+	if c.counts == nil {
+		c.counts = make(map[string]int64)
+	}
+	c.counts[key] += delta
+	return c.counts[key], nil
+}
+
+func (c *bootstrapAttemptCacheFake) Delete(context.Context, string) error {
+	return nil
+}
+
+func (c *bootstrapAttemptCacheFake) snapshot() map[string]int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result := make(map[string]int64, len(c.counts))
+	for key, count := range c.counts {
+		result[key] = count
+	}
+	return result
+}
+
+func bootstrapAttemptAccounting(t *testing.T, cache authenticationAttemptCache) *authenticationAttemptAccounting {
+	t.Helper()
+	accounting, err := newAuthenticationAttemptAccounting(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return accounting
+}
+
+func bootstrapRateLimitPolicy(maximum int) LoginRateLimitPolicy {
+	return LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: maximum}
 }
 
 func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
@@ -61,7 +103,8 @@ func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 	service := newBootstrapService(
 		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
 		&passwordHasherFake{events: &events},
-		&bootstrapRateLimiterFake{events: &events},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
+		bootstrapRateLimitPolicy(10),
 		"node-a",
 		time.Now,
 	)
@@ -83,7 +126,8 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	service := newBootstrapService(
 		persistence,
 		&passwordHasherFake{events: &events, hash: "encoded"},
-		&bootstrapRateLimiterFake{events: &events},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
+		bootstrapRateLimitPolicy(10),
 		"node-a",
 		func() time.Time { return time.UnixMilli(500) },
 	)
@@ -119,7 +163,8 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 			InitializedAt: model.TimeFromMillis(1), InstitutionID: model.NewInstitutionID(), AdministratorUserID: model.NewUserID(),
 		}},
 		&passwordHasherFake{events: &events},
-		&bootstrapRateLimiterFake{events: &events},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
+		bootstrapRateLimitPolicy(10),
 		"node-a",
 		time.Now,
 	)
@@ -145,7 +190,8 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 			err: store.NewErrConflict("installation", "already", errors.New("race")),
 		},
 		&passwordHasherFake{events: &events, hash: "encoded"},
-		&bootstrapRateLimiterFake{events: &events},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
+		bootstrapRateLimitPolicy(10),
 		"node-a",
 		time.Now,
 	)
@@ -155,5 +201,104 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 	})
 	if !Is(err, "installation.already_initialized") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	cache := &bootstrapAttemptCacheFake{events: &events}
+	service := newBootstrapService(
+		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
+		&passwordHasherFake{events: &events, hash: "encoded"},
+		bootstrapAttemptAccounting(t, cache),
+		bootstrapRateLimitPolicy(2),
+		"node-a",
+		time.Now,
+	)
+	command := BootstrapInstallationCommand{
+		InstitutionName: "northbridge", AdministratorUsername: "admin",
+		AdministratorEmail: "admin@example.com", Password: "password-value",
+		Source: " 192.0.2.10:443 ",
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		if _, err := service.Bootstrap(context.Background(), Invocation{}, command); err != nil {
+			t.Fatalf("attempt %d error = %v", attempt, err)
+		}
+	}
+	if _, err := service.Bootstrap(context.Background(), Invocation{}, command); !Is(err, "authentication.rate_limited") {
+		t.Fatalf("attempt after maximum error = %v", err)
+	}
+
+	command.Source = "192.0.2.11:443"
+	if _, err := service.Bootstrap(context.Background(), Invocation{}, command); err != nil {
+		t.Fatalf("isolated source error = %v", err)
+	}
+
+	entries := cache.snapshot()
+	if len(entries) != 2 {
+		t.Fatalf("source counters = %d, want 2 isolated keys", len(entries))
+	}
+	for key := range entries {
+		if !strings.HasPrefix(key, "authentication/attempts/installation-bootstrap/source/") {
+			t.Fatalf("counter key = %q", key)
+		}
+		if strings.Contains(key, "192.0.2") {
+			t.Fatalf("counter key exposes source: %q", key)
+		}
+	}
+}
+
+func TestBootstrapRateLimitFailureIsAdministrationUnavailableBeforeHashing(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	cacheFailure := errors.New("cache unavailable")
+	service := newBootstrapService(
+		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
+		&passwordHasherFake{events: &events, hash: "encoded"},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events, err: cacheFailure}),
+		bootstrapRateLimitPolicy(2),
+		"node-a",
+		time.Now,
+	)
+	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
+		InstitutionName: "northbridge", AdministratorUsername: "admin",
+		AdministratorEmail: "admin@example.com", Password: "password-value",
+		Source: "192.0.2.10:443",
+	})
+	if !Is(err, "administration.unavailable") || !errors.Is(err, cacheFailure) {
+		t.Fatalf("error = %v", err)
+	}
+	want := []string{"get-status", "rate-limit"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	service := newBootstrapService(
+		&installationStoreFake{events: &events, getErr: store.NewErrNotFound("installation", "")},
+		&passwordHasherFake{events: &events, hash: "encoded"},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
+		LoginRateLimitPolicy{},
+		"node-a",
+		time.Now,
+	)
+	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
+		InstitutionName: "northbridge", AdministratorUsername: "admin",
+		AdministratorEmail: "admin@example.com", Password: "password-value",
+		Source: "192.0.2.10:443",
+	})
+	if !Is(err, "administration.unavailable") {
+		t.Fatalf("error = %v", err)
+	}
+	want := []string{"get-status"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -78,7 +79,7 @@ func (e academicUnitRealtimeEffects) publish(
 	event string,
 	unitID string,
 ) error {
-	return e.realtime.Publish(ctx, RealtimeEvent{
+	return e.realtime.Publish(ctx, apprealtime.RealtimeEvent{
 		Name:   event,
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{

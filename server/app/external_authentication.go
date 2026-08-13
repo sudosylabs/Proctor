@@ -84,7 +84,7 @@ type externalAuthenticationService struct {
 	institutions   store.InstitutionStore
 	identities     store.ExternalIdentityStore
 	sessions       store.SessionStore
-	cache          authenticationCache
+	attempts       *authenticationAttemptAccounting
 	authentication authenticationSessionIssuer
 	invalidator    authenticationInvalidator
 	audit          externalAuthenticationAudit
@@ -100,7 +100,7 @@ func newExternalAuthenticationService(
 	institutions store.InstitutionStore,
 	identities store.ExternalIdentityStore,
 	sessions store.SessionStore,
-	cache authenticationCache,
+	attempts *authenticationAttemptAccounting,
 	authentication authenticationSessionIssuer,
 	invalidator authenticationInvalidator,
 	audit externalAuthenticationAudit,
@@ -115,8 +115,8 @@ func newExternalAuthenticationService(
 	if loginStates == nil || institutions == nil || identities == nil || sessions == nil {
 		return nil, errors.New("external authentication persistence is required")
 	}
-	if cache == nil {
-		return nil, errors.New("external authentication cache is required")
+	if attempts == nil {
+		return nil, errors.New("external authentication attempt accounting is required")
 	}
 	if authentication == nil {
 		return nil, errors.New("authentication service is required")
@@ -138,7 +138,7 @@ func newExternalAuthenticationService(
 	}
 	return &externalAuthenticationService{
 		registry: registry, loginStates: loginStates, institutions: institutions,
-		identities: identities, sessions: sessions, cache: cache,
+		identities: identities, sessions: sessions, attempts: attempts,
 		authentication: authentication, invalidator: invalidator, audit: audit, policy: policy,
 		diagnostics: diagnostics, newCredential: newCredential, now: now,
 	}, nil
@@ -513,18 +513,20 @@ func (s *externalAuthenticationService) checkInitiationRateLimit(
 	source string,
 ) error {
 	settings := s.policy.LoginRateLimit
-	key := "authentication/external/source/" +
-		digestCacheKey(providerID+"\x00"+normalizeLoginSource(source))
-	count, err := s.cache.Add(
-		ctx,
-		key,
-		1,
-		settings.Window,
-	)
+	_, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
+		purpose:   authenticationAttemptPurposeExternalAuthentication,
+		qualifier: providerID,
+		window:    settings.Window,
+		limits: []authenticationAttemptLimit{{
+			dimension: authenticationAttemptDimensionSource,
+			maximum:   settings.MaximumSourceAttempts,
+			source:    source,
+		}},
+	})
 	if err != nil {
 		return rateLimitUnavailableAppError(err)
 	}
-	if count > int64(settings.MaximumSourceAttempts) {
+	if limited {
 		return NewError("authentication.rate_limited")
 	}
 	return nil

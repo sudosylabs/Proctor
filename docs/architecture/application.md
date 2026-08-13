@@ -23,6 +23,24 @@ typed, versioned documents and safe outcomes. The engine depends only on the
 domain Job records and `store.JobStore`; it never imports its parent package or
 selects infrastructure.
 
+The `app/realtime` child module owns transport-neutral realtime events and
+connection-close reasons, local-first delivery, peer propagation codecs,
+loop prevention, attachment synchronization, and propagation of session
+revocation and authentication or authorization invalidation. It is inert after
+construction: it owns no goroutine, queue, retry loop, or infrastructure
+lifecycle. The parent application retains use-case effect timing, Principal
+validation, WebSocket subscription authorization, and translation between
+delivery failures and public application errors.
+
+Realtime receives its required authentication invalidator and diagnostics at
+construction. Its sink and peer fan-out are attached once before readiness
+because the composition graph constructs the application before its WebSocket
+and cluster adapters. The child depends only on the domain model and narrow
+consumer-owned ports; it never imports its parent package or transport
+packages. The parent does not redeclare the child's event, close-reason, sink,
+fan-out, codec, or propagation contracts; its thin publication facade exists
+only to translate typed delivery failures into application errors.
+
 Operator Job use cases depend on the engine rather than a separate Job Store
 and descriptor catalog. They retain Principal authorization, resource
 resolution, durable audit ordering, and application-error translation; the

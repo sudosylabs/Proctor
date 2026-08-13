@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -15,10 +14,6 @@ import (
 
 type accountTokenPasswordHasher interface {
 	Hash(string) (string, error)
-}
-
-type accountTokenRateLimiter interface {
-	Allow(context.Context, string, string, string) error
 }
 
 type accountTokenAudit interface {
@@ -38,7 +33,7 @@ type accountTokenService struct {
 	tokens       store.UserTokenStore
 	institutions store.InstitutionStore
 	mailer       AccountMailer
-	rateLimiter  accountTokenRateLimiter
+	attempts     *authenticationAttemptAccounting
 	hasher       accountTokenPasswordHasher
 	audit        accountTokenAudit
 	effects      accountTokenEffects
@@ -55,7 +50,7 @@ func newAccountTokenService(
 	tokens store.UserTokenStore,
 	institutions store.InstitutionStore,
 	mailer AccountMailer,
-	rateLimiter accountTokenRateLimiter,
+	attempts *authenticationAttemptAccounting,
 	hasher accountTokenPasswordHasher,
 	audit accountTokenAudit,
 	effects accountTokenEffects,
@@ -74,7 +69,7 @@ func newAccountTokenService(
 		{tokens == nil, "user token store"},
 		{institutions == nil, "institution store"},
 		{mailer == nil, "account mailer"},
-		{rateLimiter == nil, "account recovery rate limiter"},
+		{attempts == nil, "authentication attempt accounting"},
 		{hasher == nil, "password hasher"},
 		{audit == nil, "account recovery audit"},
 		{effects == nil, "account recovery effects"},
@@ -89,50 +84,10 @@ func newAccountTokenService(
 	}
 	return &accountTokenService{
 		users: users, passwords: passwords, tokens: tokens,
-		institutions: institutions, mailer: mailer, rateLimiter: rateLimiter,
+		institutions: institutions, mailer: mailer, attempts: attempts,
 		hasher: hasher, audit: audit, effects: effects, diagnostics: diagnostics,
 		policy: policy, publicURL: publicURL, newToken: newToken, now: now,
 	}, nil
-}
-
-type cacheAccountTokenRateLimiter struct {
-	cache  authenticationCache
-	policy LoginRateLimitPolicy
-}
-
-func newCacheAccountTokenRateLimiter(
-	cache authenticationCache,
-	policy LoginRateLimitPolicy,
-) (*cacheAccountTokenRateLimiter, error) {
-	if cache == nil {
-		return nil, errors.New("account recovery cache is required")
-	}
-	return &cacheAccountTokenRateLimiter{cache: cache, policy: policy}, nil
-}
-
-func (l *cacheAccountTokenRateLimiter) Allow(
-	ctx context.Context,
-	operation string,
-	identity string,
-	source string,
-) error {
-	identityKey := "authentication/recovery/" + operation + "/identity/" +
-		digestCacheKey(strings.ToLower(strings.TrimSpace(identity)))
-	sourceKey := "authentication/recovery/" + operation + "/source/" +
-		digestCacheKey(normalizeLoginSource(source))
-	identityCount, err := l.cache.Add(ctx, identityKey, 1, l.policy.Window)
-	if err != nil {
-		return rateLimitUnavailableAppError(err)
-	}
-	sourceCount, err := l.cache.Add(ctx, sourceKey, 1, l.policy.Window)
-	if err != nil {
-		return rateLimitUnavailableAppError(err)
-	}
-	if identityCount > int64(l.policy.MaximumAttempts) ||
-		sourceCount > int64(l.policy.MaximumSourceAttempts) {
-		return NewError("authentication.rate_limited")
-	}
-	return nil
 }
 
 type accountTokenAuditRecorder struct{ nodeID string }
@@ -153,7 +108,6 @@ func (r accountTokenAuditRecorder) Success(
 
 var (
 	_ accountTokenPasswordHasher = (*passwordHasher)(nil)
-	_ accountTokenRateLimiter    = (*cacheAccountTokenRateLimiter)(nil)
 	_ accountTokenAudit          = accountTokenAuditRecorder{}
 	_ accountTokenEffects        = (*realtimeService)(nil)
 )

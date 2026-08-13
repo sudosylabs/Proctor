@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -275,7 +276,7 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 	}
 
 	unitID := model.NewId()
-	event := RealtimeEvent{
+	event := apprealtime.RealtimeEvent{
 		Name:   "academic_unit_created",
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
@@ -292,10 +293,14 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 	payload := cluster.broadcasts[0].data
 
 	// Duplicate peer deliveries (Memberlist non-guarantee).
-	if err := service.handlePeerPublication(context.Background(), payload); err != nil {
+	peerHandler := cluster.handlers["websocket.publish"]
+	if peerHandler == nil {
+		t.Fatal("ordinary publication peer handler was not registered")
+	}
+	if err := peerHandler(context.Background(), payload); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.handlePeerPublication(context.Background(), payload); err != nil {
+	if err := peerHandler(context.Background(), payload); err != nil {
 		t.Fatal(err)
 	}
 	if len(cluster.broadcasts) != 1 {

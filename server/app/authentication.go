@@ -12,11 +12,8 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net"
 	"strings"
 	"time"
 
@@ -101,6 +98,7 @@ type authenticationService struct {
 	sessions           store.SessionStore
 	sessionCredentials store.SessionCredentialStore
 	cache              authenticationCache
+	attempts           *authenticationAttemptAccounting
 	securityEffects    authenticationSecurityEffects
 	hasher             *passwordHasher
 	mfa                authenticationMFAVerifier
@@ -148,6 +146,7 @@ func newAuthenticationService(
 	sessions store.SessionStore,
 	sessionCredentials store.SessionCredentialStore,
 	cache authenticationCache,
+	attempts *authenticationAttemptAccounting,
 	securityEffects authenticationSecurityEffects,
 	hasher *passwordHasher,
 	mfa authenticationMFAVerifier,
@@ -173,6 +172,9 @@ func newAuthenticationService(
 	if cache == nil {
 		return nil, errors.New("authentication cache is required")
 	}
+	if attempts == nil {
+		return nil, errors.New("authentication attempt accounting is required")
+	}
 	if securityEffects == nil {
 		return nil, errors.New("authentication security effects are required")
 	}
@@ -196,7 +198,7 @@ func newAuthenticationService(
 	}
 	return &authenticationService{
 		users: users, passwords: passwords, sessions: sessions,
-		sessionCredentials: sessionCredentials, cache: cache,
+		sessionCredentials: sessionCredentials, cache: cache, attempts: attempts,
 		securityEffects: securityEffects, hasher: hasher, mfa: mfa,
 		personalTokens: personalTokens, sessionPolicy: sessionPolicy,
 		loginRateLimit: loginRateLimit, diagnostics: diagnostics,
@@ -256,7 +258,7 @@ func (s *authenticationService) login(
 	ctx context.Context,
 	command LoginCommand,
 ) (*LoginResult, error) {
-	identityRateKey, err := s.checkLoginRateLimit(ctx, command.LoginID, command.Source)
+	receipt, err := s.checkLoginRateLimit(ctx, command.LoginID, command.Source)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +323,7 @@ func (s *authenticationService) login(
 	if sessionErr != nil {
 		return nil, sessionErr
 	}
-	if err := s.cache.Delete(ctx, identityRateKey); err != nil {
+	if err := s.attempts.reset(ctx, receipt, authenticationAttemptDimensionIdentitySource); err != nil {
 		s.warn(ctx, "login rate-limit reset failed", err)
 	}
 	return &LoginResult{User: user, Session: savedSession, Tokens: tokens}, nil
@@ -428,51 +430,32 @@ func (s *authenticationService) checkLoginRateLimit(
 	ctx context.Context,
 	loginID string,
 	source string,
-) (string, error) {
+) (authenticationAttemptReceipt, error) {
 	settings := s.loginRateLimit
-	normalizedLogin := strings.ToLower(strings.TrimSpace(loginID))
-	normalizedSource := normalizeLoginSource(source)
-	identityKey := "authentication/login/identity/" + digestCacheKey(normalizedLogin+"\x00"+normalizedSource)
-	sourceKey := "authentication/login/source/" + digestCacheKey(normalizedSource)
-	identityCount, err := s.cache.Add(
-		ctx,
-		identityKey,
-		1,
-		settings.Window,
-	)
+	receipt, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
+		purpose: authenticationAttemptPurposeLocalLogin,
+		window:  settings.Window,
+		limits: []authenticationAttemptLimit{
+			{
+				dimension: authenticationAttemptDimensionIdentitySource,
+				maximum:   settings.MaximumAttempts,
+				identity:  loginID,
+				source:    source,
+			},
+			{
+				dimension: authenticationAttemptDimensionSource,
+				maximum:   settings.MaximumSourceAttempts,
+				source:    source,
+			},
+		},
+	})
 	if err != nil {
-		return "", rateLimitUnavailableAppError(err)
+		return authenticationAttemptReceipt{}, rateLimitUnavailableAppError(err)
 	}
-	sourceCount, err := s.cache.Add(
-		ctx,
-		sourceKey,
-		1,
-		settings.Window,
-	)
-	if err != nil {
-		return "", rateLimitUnavailableAppError(err)
+	if limited {
+		return authenticationAttemptReceipt{}, NewError("authentication.rate_limited")
 	}
-	if identityCount > int64(settings.MaximumAttempts) ||
-		sourceCount > int64(settings.MaximumSourceAttempts) {
-		return "", NewError("authentication.rate_limited")
-	}
-	return identityKey, nil
-}
-
-func normalizeLoginSource(source string) string {
-	source = strings.TrimSpace(source)
-	if host, _, err := net.SplitHostPort(source); err == nil {
-		return strings.ToLower(host)
-	}
-	if source == "" {
-		return "unknown"
-	}
-	return strings.ToLower(source)
-}
-
-func digestCacheKey(value string) string {
-	digest := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(digest[:])
+	return receipt, nil
 }
 
 func (s *authenticationService) findLoginUser(ctx context.Context, loginID string) (*model.User, error) {

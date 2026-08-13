@@ -60,6 +60,7 @@ func (c *authenticationCacheFake) Delete(_ context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.values, key)
+	delete(c.counters, key)
 	return nil
 }
 
@@ -443,6 +444,7 @@ func newTestAuthenticationServiceWithEffects(
 		persistence.Session(),
 		persistence.SessionCredential(),
 		cache,
+		mustAuthenticationAttemptAccounting(t, cache),
 		effects,
 		hasher,
 		mfa,
@@ -468,6 +470,18 @@ func newTestAuthenticationServiceWithEffects(
 		t.Fatal(err)
 	}
 	return service
+}
+
+func mustAuthenticationAttemptAccounting(
+	t *testing.T,
+	cache authenticationAttemptCache,
+) *authenticationAttemptAccounting {
+	t.Helper()
+	accounting, err := newAuthenticationAttemptAccounting(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return accounting
 }
 
 func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {

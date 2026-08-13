@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -340,8 +341,8 @@ func (h *Hub) unregister(connection *connectionRuntime) {
 	}
 }
 
-// PublishLocal implements app.RealtimeSink using transport-neutral events.
-func (h *Hub) PublishLocal(_ context.Context, event app.RealtimeEvent) {
+// PublishLocal implements realtime.Sink using transport-neutral events.
+func (h *Hub) PublishLocal(_ context.Context, event realtime.RealtimeEvent) {
 	h.publishWire(eventFromRealtime(event))
 }
 
@@ -379,29 +380,29 @@ func (h *Hub) publishWire(event *Event) {
 	}
 }
 
-// CloseSession implements app.RealtimeSink.
-func (h *Hub) CloseSession(sessionID string, reason app.ConnectionCloseReason) {
+// CloseSession implements realtime.Sink.
+func (h *Hub) CloseSession(sessionID string, reason realtime.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
 	h.closeMatching(code, text, func(connection *connectionRuntime) bool {
 		return connection.belongsToSession(sessionID)
 	})
 }
 
-// CloseUser implements app.RealtimeSink.
-func (h *Hub) CloseUser(userID string, reason app.ConnectionCloseReason) {
+// CloseUser implements realtime.Sink.
+func (h *Hub) CloseUser(userID string, reason realtime.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
 	h.closeMatching(code, text, func(connection *connectionRuntime) bool {
 		return connection.belongsToUser(userID)
 	})
 }
 
-// CloseAll implements app.RealtimeSink.
-func (h *Hub) CloseAll(reason app.ConnectionCloseReason) {
+// CloseAll implements realtime.Sink.
+func (h *Hub) CloseAll(reason realtime.ConnectionCloseReason) {
 	code, text := closeCodeForReason(reason)
 	h.closeMatching(code, text, func(*connectionRuntime) bool { return true })
 }
 
-func eventFromRealtime(event app.RealtimeEvent) *Event {
+func eventFromRealtime(event realtime.RealtimeEvent) *Event {
 	return &Event{
 		Id:       event.ID,
 		Event:    event.Name,
@@ -412,18 +413,18 @@ func eventFromRealtime(event app.RealtimeEvent) *Event {
 	}
 }
 
-func closeCodeForReason(reason app.ConnectionCloseReason) (int, string) {
+func closeCodeForReason(reason realtime.ConnectionCloseReason) (int, string) {
 	switch reason {
-	case app.ConnectionCloseSessionRevoked:
+	case realtime.ConnectionCloseSessionRevoked:
 		return CloseSessionRevoked, "session revoked"
-	case app.ConnectionCloseAuthorizationChanged:
+	case realtime.ConnectionCloseAuthorizationChanged:
 		return CloseAuthorizationChanged, "authorization changed"
 	default:
 		return CloseServer, "connection closed"
 	}
 }
 
-var _ app.RealtimeSink = (*Hub)(nil)
+var _ realtime.Sink = (*Hub)(nil)
 
 func (h *Hub) closeMatching(
 	code int,

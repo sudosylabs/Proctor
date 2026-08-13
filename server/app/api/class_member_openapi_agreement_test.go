@@ -5,11 +5,7 @@ package api
 
 import (
 	"encoding/json"
-	"net/http"
 	"reflect"
-	"sort"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -17,89 +13,50 @@ import (
 
 func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
-	document := readOpenAPIDocument(t)
-	expected := map[string]openAPIOperationContract{
-		"GET /api/v1/classes/{class_id}/members":         {successStatus: "200", successRef: "#/components/responses/ClassMemberListOK", successSchema: "ClassMemberListResponse", errorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable")},
-		"POST /api/v1/classes/{class_id}/members":        {requestBodyRef: "#/components/requestBodies/EnrollClassMember", requestSchema: "EnrollClassMemberRequest", successStatus: "201", successRef: "#/components/responses/ClassMemberEnrolled", successSchema: "ClassEnrollmentResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "administration.unavailable")},
-		"DELETE /api/v1/class-members/{class_member_id}": {successStatus: "200", successRef: "#/components/responses/ClassMemberEnded", successSchema: "ClassMemberResponse", errorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.enrollment_conflict", "administration.unavailable")},
+	suite := openAPIAgreementSuite{
+		Operations: []openAPIAgreementOperation{
+			{
+				Key: "GET /api/v1/classes/{class_id}/members", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ClassMemberListOK", SuccessSchema: "ClassMemberListResponse",
+				PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "administration.unavailable"),
+			},
+			{
+				Key: "POST /api/v1/classes/{class_id}/members", Auth: AuthPrincipalRequired,
+				RequestBodyRef: "#/components/requestBodies/EnrollClassMember", RequestSchema: "EnrollClassMemberRequest",
+				SuccessStatus: "201", SuccessRef: "#/components/responses/ClassMemberEnrolled", SuccessSchema: "ClassEnrollmentResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "administration.unavailable"),
+			},
+			{
+				Key: "DELETE /api/v1/class-members/{class_member_id}", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ClassMemberEnded", SuccessSchema: "ClassMemberResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.enrollment_conflict", "administration.unavailable"),
+			},
+		},
+		Schemas: []openAPIAgreementSchema{
+			{
+				Name: "ClassMemberResponse", DTO: reflect.TypeOf(classMemberResponse{}),
+				Required: []string{"id", "create_at", "update_at", "delete_at", "class_id", "academic_period_id", "user_id", "start_at"},
+			},
+			{
+				Name: "EnrollClassMemberRequest", DTO: reflect.TypeOf(enrollClassMemberRequest{}),
+				Required: []string{"user_id"},
+			},
+			{
+				Name: "ClassEnrollmentResponse", DTO: reflect.TypeOf(classEnrollmentResponse{}),
+				Required: []string{"membership"},
+			},
+		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
 	if err := runtimeAPI.collectResources(model.APIURLSuffix, classMemberResource(&classMemberHTTPApplication{})); err != nil {
 		t.Fatal(err)
 	}
-	runtimeOperations := make(map[string]AuthRequirement)
-	for _, route := range runtimeAPI.Routes() {
-		path := strings.ReplaceAll(route.Path, "{class_id:"+canonicalIDRoutePattern()+"}", "{class_id}")
-		path = strings.ReplaceAll(path, "{class_member_id:"+canonicalIDRoutePattern()+"}", "{class_member_id}")
-		key := route.Method + " " + path
-		runtimeOperations[key] = route.Auth
-		contract, exists := expected[key]
-		if !exists {
-			t.Fatalf("unexpected runtime operation %s", key)
-		}
-		got, want := append([]string(nil), route.ErrorCodes...), append([]string(nil), contract.errorCodes...)
-		sort.Strings(got)
-		sort.Strings(want)
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("%s runtime error codes = %v, want %v", key, got, want)
-		}
-	}
-	statuses := ApplicationErrorStatuses()
-	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
-	statuses["authentication.csrf.invalid"] = http.StatusForbidden
-	documented := make(map[string]AuthRequirement)
-	for path, item := range document.Paths {
-		if path != "/api/v1/classes/{class_id}/members" && !strings.HasPrefix(path, model.APIURLSuffix+"/class-members/") {
-			continue
-		}
-		for method, raw := range item {
-			upper := strings.ToUpper(method)
-			if !isHTTPMethod(upper) {
-				continue
-			}
-			key := upper + " " + path
-			var operation openAPIOperation
-			if err := json.Unmarshal(raw, &operation); err != nil {
-				t.Fatal(err)
-			}
-			documented[key] = operation.Auth
-			contract, exists := expected[key]
-			if !exists {
-				t.Fatalf("unexpected operation %s", key)
-			}
-			assertPrincipalSecurity(t, key, upper, operation.Security)
-			if operation.RequestBody.Ref != contract.requestBodyRef || operation.Responses[contract.successStatus].Ref != contract.successRef {
-				t.Errorf("%s request/success refs do not agree", key)
-			}
-			assertOpenAPIRequestBody(t, document, key, contract)
-			assertOpenAPISuccessResponse(t, document, key, contract)
-			got, want := append([]string(nil), operation.ErrorCodes...), append([]string(nil), contract.errorCodes...)
-			sort.Strings(got)
-			sort.Strings(want)
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("%s error codes = %v, want %v", key, got, want)
-			}
-			for _, code := range operation.ErrorCodes {
-				status, exists := statuses[code]
-				if !exists {
-					t.Errorf("%s unmapped code %q", key, code)
-					continue
-				}
-				assertOpenAPIProblemResponse(t, document, key, status, operation.Responses[strconv.Itoa(status)])
-			}
-		}
-	}
-	if !reflect.DeepEqual(documented, runtimeOperations) {
-		t.Fatalf("OpenAPI operations = %#v, runtime = %#v", documented, runtimeOperations)
-	}
-	required := []string{"id", "create_at", "update_at", "delete_at", "class_id", "academic_period_id", "user_id", "start_at"}
-	assertOpenAPISchemaMatchesDTO(t, document, "ClassMemberResponse", reflect.TypeOf(classMemberResponse{}), required)
-	assertOpenAPISchemaMatchesDTO(t, document, "EnrollClassMemberRequest", reflect.TypeOf(enrollClassMemberRequest{}), []string{"user_id"})
-	assertOpenAPISchemaMatchesDTO(t, document, "ClassEnrollmentResponse", reflect.TypeOf(classEnrollmentResponse{}), []string{"membership"})
-	list := document.Components.Schemas["ClassMemberListResponse"]
-	if list.Type != "array" || list.Items.Ref != "#/components/schemas/ClassMemberResponse" {
-		t.Fatalf("ClassMemberListResponse = %#v", list)
-	}
+	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
+
+	// Enrollment responses retain both the new membership and an optional
+	// historical membership; the ordinary DTO agreement above verifies both.
+	// Roster discovery also keeps its explicit point-in-time/history controls.
+	document := readOpenAPIDocument(t)
 	var listOperation struct {
 		Parameters []struct {
 			Name string `json:"name"`
@@ -117,5 +74,11 @@ func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 	}
 	if !queryParameters["active_at"] || !queryParameters["history"] {
 		t.Fatalf("list query parameters = %#v, want active_at and history", queryParameters)
+	}
+
+	// This v1 relationship collection remains a legacy bare array.
+	list := document.Components.Schemas["ClassMemberListResponse"]
+	if list.Type != "array" || list.Items.Ref != "#/components/schemas/ClassMemberResponse" {
+		t.Fatalf("ClassMemberListResponse = %#v", list)
 	}
 }

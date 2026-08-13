@@ -42,6 +42,23 @@ sequences. Clocks, secure generators, hashing, mail, rate limiting, provider
 registries, and diagnostics remain narrow explicit dependencies rather than a
 utility or environment object.
 
+Authentication attempt accounting is one private application module shared by
+local login, account recovery, external-authentication initiation, and
+installation bootstrap. It owns bounded source normalization, domain-separated
+hashed cache keys, sequential counter mechanics, sliding windows, and threshold
+evaluation. Each use case retains which identity, source, operation, or
+provider dimensions apply, its public error mapping, and any successful-action
+reset policy. The module is constructed once over the disposable cache and is
+not a cache locator or a public application capability.
+
+Every applicable counter is incremented before the combined decision. Counter
+increments are atomic per key but not across keys; a partial cache failure
+fails the request closed and does not roll back an earlier disposable
+increment. A successful local login resets only its combined identity/source
+counter, while the source-wide counter remains. Raw identities, sources,
+operations, and provider qualifiers never appear in cache keys, errors, logs,
+or diagnostics.
+
 Durable audit remains a cross-cutting application capability exposed through
 narrow consumer-owned ports. Critical success audit stays inside the named
 atomic store operation where required. Cache invalidation, realtime
