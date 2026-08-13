@@ -1,3 +1,6 @@
+-- Copyright 2026 SudoSylabs
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 ALTER TABLE mfa_credentials
     ADD CONSTRAINT mfa_credentials_id_canonical_check
         CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),

@@ -1,3 +1,6 @@
+-- Copyright 2026 SudoSylabs
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 ALTER TABLE personal_access_tokens
     DROP CONSTRAINT personal_access_tokens_academic_unit_id_canonical_check,
     DROP CONSTRAINT personal_access_tokens_user_id_canonical_check,
