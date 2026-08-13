@@ -320,7 +320,8 @@ func (s SQLPersonalAccessTokenStore) Revoke(
 	at := model.TimeFromMillis(now)
 	if err := s.GetMaster().Get(ctx, &row, `
 		UPDATE personal_access_tokens
-		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(updated_at, created_at, ?),
+		       revoked_at = GREATEST(created_at, ?)
 		 WHERE id = ?
 		   AND user_id = ?
 		   AND archived_at IS NULL
