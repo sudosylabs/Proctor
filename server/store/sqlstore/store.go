@@ -8,7 +8,6 @@
 // Proctor is PostgreSQL-only and omits replica, search, license, and transparent
 // store-layer machinery until those capabilities have an actual consumer.
 
-// Package sqlstore implements Proctor's PostgreSQL persistence adapter.
 package sqlstore
 
 import (

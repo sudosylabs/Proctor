@@ -64,35 +64,29 @@ func (s SQLAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 	if appErr != nil {
 		return nil, appErr
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin affiliation creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := lockAffiliationKind(ctx, tx, candidate.UserID.String(), candidate.Kind); err != nil {
-		return nil, err
-	}
-	if err := ensureAffiliationRangeAvailable(ctx, tx, &candidate); err != nil {
-		return nil, err
-	}
-	row := newAffiliationRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `INSERT INTO affiliations (
-		id, created_at, updated_at, archived_at, revision, user_id, kind, start_at, end_at
-	) VALUES (
-		:id, :created_at, :updated_at, :archived_at, :revision, :user_id, :kind, :start_at, :end_at
-	)`, &row); err != nil {
-		return nil, fmt.Errorf("create affiliation: %w", translateError("affiliation", candidate.ID.String(), err))
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete affiliation creation audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit affiliation creation: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
+		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := lockAffiliationKind(ctx, tx, candidate.UserID.String(), candidate.Kind); err != nil {
+			return nil, err
+		}
+		if err := ensureAffiliationRangeAvailable(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		row := newAffiliationRow(&candidate)
+		if _, err := tx.NamedExec(ctx, `INSERT INTO affiliations (
+			id, created_at, updated_at, archived_at, revision, user_id, kind, start_at, end_at
+		) VALUES (
+			:id, :created_at, :updated_at, :archived_at, :revision, :user_id, :kind, :start_at, :end_at
+		)`, &row); err != nil {
+			return nil, fmt.Errorf("create affiliation: %w", translateError("affiliation", candidate.ID.String(), err))
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete affiliation creation audit: %w", err)
+		}
+		return &candidate, nil
+	})
 }
 
 func newSQLAffiliationStore(ss *SQLStore) store.AffiliationStore {
@@ -121,35 +115,29 @@ func (s SQLAffiliationStore) Save(
 		return nil, store.NewErrInvalidInput("affiliation", "value", nil).Wrap(err)
 	}
 	row := newAffiliationRow(&candidate)
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin affiliation save: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := lockAffiliationKind(ctx, tx, candidate.UserID.String(), candidate.Kind); err != nil {
-		return nil, err
-	}
-	if err := ensureAffiliationRangeAvailable(ctx, tx, &candidate); err != nil {
-		return nil, err
-	}
-	if _, err := tx.NamedExec(ctx, `
-		INSERT INTO affiliations (
-			id, created_at, updated_at, archived_at, revision, user_id, kind, start_at, end_at
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :user_id, :kind, :start_at, :end_at
-		)`, &row); err != nil {
-		return nil, fmt.Errorf(
-			"save affiliation: %w",
-			translateError("affiliation", candidate.ID.String(), err),
-		)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit affiliation save: %w", err)
-	}
-	return &candidate, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
+		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err := lockAffiliationKind(ctx, tx, candidate.UserID.String(), candidate.Kind); err != nil {
+			return nil, err
+		}
+		if err := ensureAffiliationRangeAvailable(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO affiliations (
+				id, created_at, updated_at, archived_at, revision, user_id, kind, start_at, end_at
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :user_id, :kind, :start_at, :end_at
+			)`, &row); err != nil {
+			return nil, fmt.Errorf(
+				"save affiliation: %w",
+				translateError("affiliation", candidate.ID.String(), err),
+			)
+		}
+		return &candidate, nil
+	})
 }
 
 func (s SQLAffiliationStore) Get(ctx context.Context, id string) (*model.Affiliation, error) {
@@ -159,7 +147,7 @@ func (s SQLAffiliationStore) Get(ctx context.Context, id string) (*model.Affilia
 	})); err != nil {
 		return nil, translateError("affiliation", id, err)
 	}
-	return row.model(), nil
+	return row.model()
 }
 
 func (s SQLAffiliationStore) ListByUser(
@@ -193,51 +181,35 @@ func (s SQLAffiliationStore) End(
 	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin affiliation end: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	ended, err := s.endAffiliation(ctx, tx, id, expectedRevision, endAt)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit affiliation end: %w", err)
-	}
-	return ended, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
+		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		return s.endAffiliation(ctx, tx, id, expectedRevision, endAt)
+	})
 }
 
 func (s SQLAffiliationStore) EndWithAudit(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
-	tx, err := s.GetMaster().Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin affiliation end: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := lockAffiliationLifecycle(ctx, tx); err != nil {
-		return nil, err
-	}
-	current, err := s.endAffiliation(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
-	if err != nil {
-		return nil, err
-	}
-	encoded, appErr := model.EncodeAuditData(current.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-		return nil, fmt.Errorf("complete affiliation end audit: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit affiliation end: %w", err)
-	}
-	return current, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
+		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
+			return nil, err
+		}
+		current, err := s.endAffiliation(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
+		if err != nil {
+			return nil, err
+		}
+		encoded, appErr := model.EncodeAuditData(current.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete affiliation end audit: %w", err)
+		}
+		return current, nil
+	})
 }
 
 func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.Affiliation, error) {
@@ -245,7 +217,10 @@ func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.archived_at": nil})); err != nil {
 		return nil, translateError("affiliation", id, err)
 	}
-	current := row.model()
+	current, err := row.model()
+	if err != nil {
+		return nil, err
+	}
 	if current.Revision != expectedRevision {
 		return nil, store.NewErrConflict("affiliation", "affiliation_changed", nil)
 	}
@@ -317,7 +292,11 @@ func (s SQLAffiliationStore) selectAffiliations(
 	}
 	result := make([]*model.Affiliation, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, row.model())
+		value, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
 	}
 	return result, nil
 }
@@ -336,16 +315,16 @@ func newAffiliationRow(a *model.Affiliation) affiliationRow {
 	}
 }
 
-func (r affiliationRow) model() *model.Affiliation {
-	id, err := model.ParseAffiliationID(r.ID)
+func (r affiliationRow) model() (*model.Affiliation, error) {
+	id, err := parsePersistedID("affiliation", "id", r.ID, model.ParseAffiliationID)
 	if err != nil {
-		id = model.AffiliationID(r.ID)
+		return nil, err
 	}
-	userID, err := model.ParseUserID(r.UserID)
+	userID, err := parsePersistedID("affiliation", "user_id", r.UserID, model.ParseUserID)
 	if err != nil {
-		userID = model.UserID(r.UserID)
+		return nil, err
 	}
-	return &model.Affiliation{
+	value := &model.Affiliation{
 		ID:         id,
 		CreatedAt:  r.CreatedAt.UTC(),
 		UpdatedAt:  r.UpdatedAt.UTC(),
@@ -356,6 +335,10 @@ func (r affiliationRow) model() *model.Affiliation {
 		StartsAt:   r.StartAt.UTC(),
 		EndsAt:     OptionalTimeFromNullTime(r.EndAt),
 	}
+	if err := validatePersistedModel("affiliation", value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 var _ store.AffiliationStore = (*SQLAffiliationStore)(nil)

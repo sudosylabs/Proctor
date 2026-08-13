@@ -204,6 +204,7 @@ func (w *sqlxTxWrapper) queryContext(ctx context.Context) (context.Context, cont
 }
 
 var (
-	_ sqlxExecutor = (*sqlxDBWrapper)(nil)
-	_ sqlxExecutor = (*sqlxTxWrapper)(nil)
+	_ sqlxExecutor         = (*sqlxDBWrapper)(nil)
+	_ sqlxExecutor         = (*sqlxTxWrapper)(nil)
+	_ transactionFinalizer = (*sqlxTxWrapper)(nil)
 )
