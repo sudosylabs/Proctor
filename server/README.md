@@ -66,12 +66,11 @@ defaults use memory cache, disabled mail, and local VFS.
 
 ### Pre-release database reset
 
-The schema starts from the pre-release baseline at version 1 and applies
-supported hardening migrations beginning at version 12. Versions 2 through 11
-belong to retired development schemas with incompatible millisecond timestamp
-and lifecycle representations. There is intentionally no upgrade path from
-those versions: affected development databases must be discarded and
-recreated. Back up any data you need before resetting a database.
+The schema is currently a single pre-release baseline at version 1. Earlier
+development migrations used incompatible millisecond timestamp and lifecycle
+representations. There is intentionally no upgrade path from those development
+schemas: existing development databases must be discarded and recreated. Back
+up any data you need before resetting a database.
 
 The checked-in Docker PostgreSQL service stores its database on a temporary
 filesystem. Recreate it, apply the baseline, and run the PostgreSQL integration
@@ -88,9 +87,8 @@ make -C server integration-postgres
 For another development PostgreSQL instance, drop and recreate the dedicated
 Proctor database (or its isolated schema) with that instance's administration
 tools, then run `proctor migrate up` against the empty database. Do not point a
-new server build at a database reporting schema versions 2 through 11; those
-versions predate the reset baseline and are unsupported. A database at version
-1 can apply the supported hardening migrations normally.
+new server build at a database created from an earlier development migration
+set; those schemas predate the current squashed baseline and are unsupported.
 
 The default listener is `127.0.0.1:8065`. Available endpoints are:
 

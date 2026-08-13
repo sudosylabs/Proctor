@@ -1,9 +1,9 @@
 -- Copyright 2026 SudoSylabs
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- Pre-release schema baseline. Existing development databases must
--- be recreated; there is no upgrade path from earlier bigint-millisecond
--- migrations. Temporal columns use timestamptz. Soft archive uses nullable
+-- Pre-release schema baseline. Existing development databases must be
+-- recreated; there is no upgrade path from earlier development migration
+-- sets. Temporal columns use timestamptz. Soft archive uses nullable
 -- archived_at. Open-ended intervals and optional lifecycle instants use NULL
 -- rather than integer zero sentinels. Revision columns match domain optimistic
 -- concurrency where applicable.
@@ -656,3 +656,222 @@ CREATE INDEX cluster_discovery_nodes_expires_at_idx
 
 CREATE INDEX cluster_discovery_nodes_expires_at_node_id_idx
     ON cluster_discovery_nodes (expires_at, node_id);
+
+-- ---------------------------------------------------------------------------
+-- Canonical entity identifiers
+-- ---------------------------------------------------------------------------
+
+-- PostgreSQL varchar(26) limits length but does not enforce Proctor's exact
+-- 26-character z-base-32 representation. Keep that durable invariant in the
+-- pre-release baseline alongside the relationships it protects.
+
+ALTER TABLE institutions
+    ADD CONSTRAINT institutions_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE academic_units
+    ADD CONSTRAINT academic_units_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT academic_units_institution_id_canonical_check
+    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT academic_units_parent_id_canonical_check
+    CHECK (parent_id IS NULL OR parent_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE programmes
+    ADD CONSTRAINT programmes_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT programmes_academic_unit_id_canonical_check
+    CHECK (academic_unit_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE programme_levels
+    ADD CONSTRAINT programme_levels_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT programme_levels_programme_id_canonical_check
+    CHECK (programme_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE academic_periods
+    ADD CONSTRAINT academic_periods_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT academic_periods_institution_id_canonical_check
+    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE classes
+    ADD CONSTRAINT classes_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT classes_programme_level_id_canonical_check
+    CHECK (programme_level_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT classes_academic_period_id_canonical_check
+    CHECK (academic_period_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE jobs
+    ADD CONSTRAINT jobs_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE job_permanent_occurrences
+    ADD CONSTRAINT job_permanent_occurrences_job_id_canonical_check
+    CHECK (job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE job_attempts
+    ADD CONSTRAINT job_attempts_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT job_attempts_job_id_canonical_check
+    CHECK (job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+-- Checksums, object keys, media metadata, and external claim-owner metadata
+-- are not entity IDs and retain their distinct validation rules. Durable
+-- purge_claim_id is a Proctor entity identifier and is constrained here.
+ALTER TABLE file_entries
+    ADD CONSTRAINT file_entries_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT file_entries_current_revision_id_canonical_check
+    CHECK (current_revision_id IS NULL OR current_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE file_revisions
+    ADD CONSTRAINT file_revisions_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT file_revisions_file_entry_id_canonical_check
+    CHECK (file_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT file_revisions_purge_claim_id_canonical_check
+    CHECK (purge_claim_id IS NULL OR purge_claim_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE file_renditions
+    ADD CONSTRAINT file_renditions_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT file_renditions_file_revision_id_canonical_check
+    CHECK (file_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE users
+    ADD CONSTRAINT users_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT users_default_profile_picture_file_id_canonical_check
+    CHECK (default_profile_picture_file_id IS NULL OR default_profile_picture_file_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT users_custom_profile_picture_file_id_canonical_check
+    CHECK (custom_profile_picture_file_id IS NULL OR custom_profile_picture_file_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE upload_leases
+    ADD CONSTRAINT upload_leases_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT upload_leases_file_revision_id_canonical_check
+    CHECK (file_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT upload_leases_created_by_user_id_canonical_check
+    CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE file_legal_holds
+    ADD CONSTRAINT file_legal_holds_file_entry_id_canonical_check
+    CHECK (file_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE external_identities
+    ADD CONSTRAINT external_identities_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT external_identities_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE password_credentials
+    ADD CONSTRAINT password_credentials_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT password_credentials_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE affiliations
+    ADD CONSTRAINT affiliations_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT affiliations_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE academic_unit_members
+    ADD CONSTRAINT academic_unit_members_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT academic_unit_members_academic_unit_id_canonical_check
+    CHECK (academic_unit_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT academic_unit_members_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE class_members
+    ADD CONSTRAINT class_members_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT class_members_class_id_canonical_check
+    CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT class_members_academic_period_id_canonical_check
+    CHECK (academic_period_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT class_members_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE roles
+    ADD CONSTRAINT roles_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE role_bindings
+    ADD CONSTRAINT role_bindings_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT role_bindings_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT role_bindings_role_id_canonical_check
+    CHECK (role_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT role_bindings_scope_id_canonical_check
+    CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE sessions
+    ADD CONSTRAINT sessions_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT sessions_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE session_credentials
+    ADD CONSTRAINT session_credentials_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT session_credentials_session_id_canonical_check
+    CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT session_credentials_family_id_canonical_check
+    CHECK (family_id IS NULL OR family_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT session_credentials_parent_id_canonical_check
+    CHECK (parent_id IS NULL OR parent_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT session_credentials_replaced_by_id_canonical_check
+    CHECK (replaced_by_id IS NULL OR replaced_by_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE personal_access_tokens
+    ADD CONSTRAINT personal_access_tokens_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_tokens_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_tokens_academic_unit_id_canonical_check
+    CHECK (academic_unit_id IS NULL OR academic_unit_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE user_tokens
+    ADD CONSTRAINT user_tokens_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT user_tokens_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE mfa_credentials
+    ADD CONSTRAINT mfa_credentials_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT mfa_credentials_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE mfa_recovery_codes
+    ADD CONSTRAINT mfa_recovery_codes_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT mfa_recovery_codes_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE external_login_states
+    ADD CONSTRAINT external_login_states_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE audit_events
+    ADD CONSTRAINT audit_events_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT audit_events_actor_id_canonical_check
+    CHECK (actor_id IS NULL OR actor_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT audit_events_session_id_canonical_check
+    CHECK (session_id IS NULL OR session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT audit_events_resource_id_canonical_check
+    CHECK (resource_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT audit_events_scope_id_canonical_check
+    CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE installation_states
+    ADD CONSTRAINT installation_states_institution_id_canonical_check
+    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT installation_states_administrator_user_id_canonical_check
+    CHECK (administrator_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');

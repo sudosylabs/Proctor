@@ -7,17 +7,9 @@ package sqlstore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"testing"
-	"time"
-
-	"github.com/lib/pq"
-	"github.com/mattermost/morph/drivers"
-
-	"github.com/sudosylabs/proctor/server/model"
 )
 
 var baselineTables = []string{
@@ -68,9 +60,23 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	})
 
 	// Other integration tests share this disposable database and may have
-	// installed the baseline plus hardening migrations. Roll everything back so
-	// this test proves that version zero can be rebuilt from embedded assets.
-	prepareVersionZero(t, ctx, migrator)
+	// already installed the baseline. Roll it back first so this test always
+	// proves that version zero can be built solely from the squashed baseline.
+	version, err := migrator.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("read initial schema version: %v", err)
+	}
+	switch version {
+	case 0:
+	case 1:
+		truncateBaselineTables(t, ctx, migrator)
+		rolledBack, err := migrator.Down(1)
+		if err != nil || rolledBack != 1 {
+			t.Fatalf("prepare version-zero database: Down(1) = %d, %v", rolledBack, err)
+		}
+	default:
+		t.Fatalf("database schema version = %d; recreate this pre-release development database before testing baseline version 1", version)
+	}
 	assertBaselineAbsent(t, ctx, migrator)
 
 	if err := migrator.Up(); err != nil {
@@ -79,23 +85,9 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	assertBaselineSchema(t, ctx, migrator)
 
 	truncateBaselineTables(t, ctx, migrator)
-	hardeningSteps := appliedMigrationCount(t, ctx, migrator) - 1
-	if hardeningSteps < 1 {
-		t.Fatalf("hardening migration count = %d, want at least 1", hardeningSteps)
-	}
-	rolledBack, err := migrator.Down(hardeningSteps)
-	if err != nil || rolledBack != hardeningSteps {
-		t.Fatalf("Down(%d) = %d, %v", hardeningSteps, rolledBack, err)
-	}
-	if version, err := migrator.SchemaVersion(ctx); err != nil || version != 1 {
-		t.Fatalf("SchemaVersion() after hardening rollback = %d, %v; want 1", version, err)
-	}
-	assertBaselineTablesPresent(t, ctx, migrator)
-	assertAffiliationCanonicalConstraints(t, ctx, migrator, false)
-
-	rolledBack, err = migrator.Down(1)
+	rolledBack, err := migrator.Down(1)
 	if err != nil || rolledBack != 1 {
-		t.Fatalf("second Down(1) = %d, %v", rolledBack, err)
+		t.Fatalf("Down(1) = %d, %v", rolledBack, err)
 	}
 	assertBaselineAbsent(t, ctx, migrator)
 
@@ -103,58 +95,6 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		t.Fatalf("second Up() error = %v", err)
 	}
 	assertBaselineSchema(t, ctx, migrator)
-}
-
-func TestAffiliationCanonicalIDMigrationRejectsExistingCorruption(t *testing.T) {
-	ctx := context.Background()
-	migrator, err := NewMigrator(ctx, testSettings(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := migrator.Close(); err != nil {
-			t.Errorf("close migrator: %v", err)
-		}
-	})
-
-	prepareVersionZero(t, ctx, migrator)
-	if applied, err := migrator.engine.Apply(1); err != nil || applied != 1 {
-		t.Fatalf("apply baseline = %d, %v", applied, err)
-	}
-	now := time.Now().UTC()
-	userID := model.NewUserID().String()
-	if _, err := migrator.store.GetMaster().Exec(ctx, `INSERT INTO users (
-		id, created_at, updated_at, username, email, display_name, first_name,
-		last_name, locale, timezone, default_profile_picture_seed
-	) VALUES (?, ?, ?, ?, ?, '', '', '', 'en', 'UTC', ?)`,
-		userID, now, now, "migration-corruption", "migration-corruption@example.edu", strings.Repeat("a", 64),
-	); err != nil {
-		t.Fatalf("insert migration user: %v", err)
-	}
-	if _, err := migrator.store.GetMaster().Exec(ctx, `INSERT INTO affiliations (
-		id, created_at, updated_at, user_id, kind, start_at
-	) VALUES ('bad', ?, ?, ?, 'student', ?)`, now, now, userID, now); err != nil {
-		t.Fatalf("insert malformed baseline affiliation: %v", err)
-	}
-
-	err = migrator.Up()
-	var databaseErr *drivers.DatabaseError
-	if !errors.As(err, &databaseErr) {
-		t.Fatalf("migration error = %v, want database error", err)
-	}
-	var postgresErr *pq.Error
-	if !errors.As(databaseErr.OrigErr, &postgresErr) || string(postgresErr.Code) != "23514" || postgresErr.Constraint != "affiliations_id_canonical_check" {
-		t.Fatalf("PostgreSQL error = %#v", databaseErr.OrigErr)
-	}
-	if version, versionErr := migrator.SchemaVersion(ctx); versionErr != nil || version != 1 {
-		t.Fatalf("failed migration version = %d, %v; want 1", version, versionErr)
-	}
-	if _, err := migrator.store.GetMaster().Exec(ctx, "DELETE FROM affiliations WHERE id = 'bad'"); err != nil {
-		t.Fatalf("remove malformed baseline affiliation: %v", err)
-	}
-	if err := migrator.Up(); err != nil {
-		t.Fatalf("apply hardening after correction: %v", err)
-	}
 }
 
 func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator) {
@@ -165,14 +105,9 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 		t.Fatalf("Pending() = %d, %v", len(pending), err)
 	}
 	version, err := migrator.SchemaVersion(ctx)
-	localVersion, localErr := LocalSchemaVersion()
-	if localErr != nil {
-		t.Fatalf("LocalSchemaVersion() error = %v", localErr)
+	if err != nil || version != 1 {
+		t.Fatalf("SchemaVersion() = %d, %v; want 1", version, err)
 	}
-	if err != nil || version != localVersion {
-		t.Fatalf("SchemaVersion() = %d, %v; want %d", version, err, localVersion)
-	}
-	assertAffiliationCanonicalConstraints(t, ctx, migrator, true)
 
 	var tables []string
 	if err := migrator.store.GetMaster().Select(ctx, &tables, `
@@ -253,64 +188,6 @@ func assertBaselineSchema(t *testing.T, ctx context.Context, migrator *Migrator)
 			t.Errorf("%s.%s is_nullable = %q; want YES", column.table, column.name, nullable)
 		}
 	}
-}
-
-func assertAffiliationCanonicalConstraints(t *testing.T, ctx context.Context, migrator *Migrator, present bool) {
-	t.Helper()
-	var count int
-	if err := migrator.store.GetMaster().Get(ctx, &count, `
-		SELECT count(*) FROM pg_constraint
-		 WHERE conrelid = 'affiliations'::regclass
-		   AND conname = ANY(?)
-	`, pq.Array([]string{"affiliations_id_canonical_check", "affiliations_user_id_canonical_check"})); err != nil {
-		t.Fatalf("inspect Affiliation canonical constraints: %v", err)
-	}
-	want := 0
-	if present {
-		want = 2
-	}
-	if count != want {
-		t.Fatalf("Affiliation canonical constraint count = %d, want %d", count, want)
-	}
-}
-
-func assertBaselineTablesPresent(t *testing.T, ctx context.Context, migrator *Migrator) {
-	t.Helper()
-	for _, table := range baselineTables {
-		var present bool
-		query := fmt.Sprintf("SELECT to_regclass('public.%s') IS NOT NULL", table)
-		if err := migrator.store.GetMaster().Get(ctx, &present, query); err != nil || !present {
-			t.Errorf("table %s present after hardening rollback = %v, %v", table, present, err)
-		}
-	}
-}
-
-func prepareVersionZero(t *testing.T, ctx context.Context, migrator *Migrator) {
-	t.Helper()
-	version, err := migrator.SchemaVersion(ctx)
-	if err != nil {
-		t.Fatalf("read initial schema version: %v", err)
-	}
-	if version == 0 {
-		return
-	}
-	if version >= 2 && version <= 11 {
-		t.Fatalf("database schema version = %d; recreate unsupported pre-release development schemas", version)
-	}
-	steps := appliedMigrationCount(t, ctx, migrator)
-	truncateBaselineTables(t, ctx, migrator)
-	if rolledBack, err := migrator.Down(steps); err != nil || rolledBack != steps {
-		t.Fatalf("prepare version-zero database: Down(%d) = %d, %v", steps, rolledBack, err)
-	}
-}
-
-func appliedMigrationCount(t *testing.T, ctx context.Context, migrator *Migrator) int {
-	t.Helper()
-	var count int
-	if err := migrator.store.GetMaster().Get(ctx, &count, "SELECT count(*) FROM db_migrations"); err != nil {
-		t.Fatalf("count applied migrations: %v", err)
-	}
-	return count
 }
 
 func assertBaselineAbsent(t *testing.T, ctx context.Context, migrator *Migrator) {

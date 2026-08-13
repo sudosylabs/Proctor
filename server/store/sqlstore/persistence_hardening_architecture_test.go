@@ -4,12 +4,12 @@
 package sqlstore
 
 import (
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -76,18 +76,22 @@ func TestSQLStoreRowProjectionsCanReportCorruption(t *testing.T) {
 	}
 }
 
-func TestSQLStoreCanonicalIDMigrationsStayContiguous(t *testing.T) {
+func TestSQLStoreUsesSinglePreReleaseBaseline(t *testing.T) {
 	t.Parallel()
 
-	for version := 12; version <= 23; version++ {
-		pattern := filepath.Join("..", "..", "migrations", "postgres", fmt.Sprintf("%06d_*_canonical_ids.up.sql", version))
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			t.Fatal(err)
+	entries, err := os.ReadDir("../../migrations/postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			files = append(files, entry.Name())
 		}
-		if len(matches) != 1 {
-			t.Errorf("canonical-ID migration version %d has %d up migrations, want exactly one", version, len(matches))
-		}
+	}
+	want := []string{"000001_baseline.down.sql", "000001_baseline.up.sql"}
+	if !slices.Equal(files, want) {
+		t.Errorf("pre-release migration files = %v; want the single rewritable baseline %v", files, want)
 	}
 }
 
