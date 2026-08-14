@@ -421,6 +421,7 @@ type API struct {
 	routeMatchers           []routeMatcher
 	catalog                 *routeCatalogBuilder
 	webSocket               WebSocketTransport
+	maxBodyBytes            int64
 }
 
 func New(options Options) (*API, error) {

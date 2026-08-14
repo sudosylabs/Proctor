@@ -212,7 +212,7 @@ CREATE TABLE file_entries (
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     current_revision_id varchar(26),
     indexing_policy varchar(16) NOT NULL CHECK (indexing_policy IN ('none', 'metadata', 'content')),
-    purpose varchar(32) NOT NULL CHECK (purpose IN ('profile_picture_custom', 'profile_picture_default', 'submission')),
+    purpose varchar(32) NOT NULL CHECK (purpose IN ('profile_picture_custom', 'profile_picture_default', 'submission', 'exam_resource')),
     purge_claimed boolean NOT NULL DEFAULT false,
     UNIQUE (id, purge_claimed),
     CONSTRAINT file_entries_lifecycle_check CHECK (updated_at >= created_at)
@@ -243,10 +243,13 @@ CREATE TABLE file_renditions (
     name varchar(64) NOT NULL,
     media_type varchar(255) NOT NULL,
     size_bytes bigint NOT NULL CHECK (size_bytes >= 0),
-    width integer NOT NULL CHECK (width > 0),
-    height integer NOT NULL CHECK (height > 0),
+    width integer NOT NULL,
+    height integer NOT NULL,
     sha256 char(64) NOT NULL,
-    UNIQUE (file_revision_id, name)
+    UNIQUE (file_revision_id, name),
+    CONSTRAINT file_renditions_dimensions_check CHECK (
+        (width = 0 AND height = 0) OR (width > 0 AND height > 0)
+    )
 );
 
 CREATE TABLE users (
@@ -427,6 +430,113 @@ ALTER TABLE exams
     FOREIGN KEY (id, owner_user_id)
     REFERENCES exam_managers (exam_id, user_id)
     DEFERRABLE INITIALLY DEFERRED;
+
+CREATE TABLE exam_resources (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    file_entry_id varchar(26) NOT NULL REFERENCES file_entries(id),
+    selected_file_revision_id varchar(26) NOT NULL,
+    display_name text NOT NULL,
+    description_markdown text NOT NULL DEFAULT '',
+    position smallint NOT NULL CHECK (position >= 0),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    archived_at timestamptz,
+    UNIQUE (file_entry_id),
+    CONSTRAINT exam_resources_selected_revision_fkey
+        FOREIGN KEY (selected_file_revision_id, file_entry_id)
+        REFERENCES file_revisions(id, file_entry_id),
+    CONSTRAINT exam_resources_display_name_check
+        CHECK (char_length(display_name) BETWEEN 1 AND 255),
+    CONSTRAINT exam_resources_description_markdown_check
+        CHECK (octet_length(description_markdown) <= 16384),
+    CONSTRAINT exam_resources_lifecycle_check CHECK (
+        updated_at >= created_at AND
+        (archived_at IS NULL OR archived_at >= created_at)
+    )
+);
+
+CREATE UNIQUE INDEX exam_resources_active_position_key
+    ON exam_resources (exam_id, position) WHERE archived_at IS NULL;
+
+CREATE TABLE exam_starter_workspace_objects (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    created_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    state varchar(16) NOT NULL CHECK (state IN ('staged', 'current', 'reclaimable', 'claimed')),
+    content_version varchar(26),
+    media_type varchar(255),
+    size_bytes bigint,
+    sha256 char(64),
+    reclaim_after timestamptz,
+    claim_token varchar(128),
+    claimed_at timestamptz,
+    UNIQUE (exam_id, id),
+    CONSTRAINT exam_starter_workspace_objects_lifecycle_check CHECK (
+        updated_at >= created_at AND expires_at > created_at AND
+        (reclaim_after IS NULL OR reclaim_after >= created_at) AND
+        (claimed_at IS NULL OR claimed_at >= created_at)
+    ),
+    CONSTRAINT exam_starter_workspace_objects_content_check CHECK (
+        state = 'staged' OR (
+            content_version IS NOT NULL AND
+            content_version ~ '^[A-Za-z0-9_-]{26}$' AND
+            media_type IS NOT NULL AND char_length(btrim(media_type)) > 0 AND
+            size_bytes IS NOT NULL AND
+            size_bytes BETWEEN 0 AND 10485760 AND
+            sha256 IS NOT NULL AND
+            sha256 ~ '^[0-9a-f]{64}$'
+        )
+    ),
+    CONSTRAINT exam_starter_workspace_objects_reclaim_check CHECK (
+        (state IN ('reclaimable', 'claimed')) = (reclaim_after IS NOT NULL)
+    ),
+    CONSTRAINT exam_starter_workspace_objects_claim_check CHECK (
+        (claim_token IS NULL) = (claimed_at IS NULL) AND
+        (state = 'claimed') = (claim_token IS NOT NULL) AND
+        (claim_token IS NULL OR char_length(btrim(claim_token)) > 0)
+    )
+);
+
+CREATE INDEX exam_starter_workspace_objects_cleanup_idx
+    ON exam_starter_workspace_objects (state, reclaim_after, id)
+    WHERE state IN ('reclaimable', 'claimed');
+CREATE INDEX exam_starter_workspace_objects_expiry_idx
+    ON exam_starter_workspace_objects (expires_at, id) WHERE state = 'staged';
+
+CREATE TABLE exam_starter_workspace_entries (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    kind varchar(16) NOT NULL CHECK (kind IN ('file', 'directory')),
+    path text NOT NULL,
+    current_object_id varchar(26),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    archived_at timestamptz,
+    CONSTRAINT exam_starter_workspace_entries_current_object_fkey
+        FOREIGN KEY (exam_id, current_object_id)
+        REFERENCES exam_starter_workspace_objects(exam_id, id),
+    CONSTRAINT exam_starter_workspace_entries_kind_check CHECK (
+        (kind = 'file' AND current_object_id IS NOT NULL) OR
+        (kind = 'directory' AND current_object_id IS NULL)
+    ),
+    CONSTRAINT exam_starter_workspace_entries_path_check CHECK (
+        octet_length(path) BETWEEN 1 AND 1024
+    ),
+    CONSTRAINT exam_starter_workspace_entries_lifecycle_check CHECK (
+        updated_at >= created_at AND
+        (archived_at IS NULL OR archived_at >= created_at)
+    )
+);
+
+CREATE UNIQUE INDEX exam_starter_workspace_entries_active_path_key
+    ON exam_starter_workspace_entries (exam_id, path) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX exam_starter_workspace_entries_current_object_key
+    ON exam_starter_workspace_entries (current_object_id)
+    WHERE current_object_id IS NOT NULL;
 
 CREATE TABLE class_members (
     id varchar(26) PRIMARY KEY,
@@ -813,6 +923,32 @@ ALTER TABLE exam_managers
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_managers_granted_by_user_id_canonical_check
     CHECK (granted_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_resources
+    ADD CONSTRAINT exam_resources_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_resources_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_resources_file_entry_id_canonical_check
+    CHECK (file_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_resources_selected_file_revision_id_canonical_check
+    CHECK (selected_file_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_starter_workspace_objects
+    ADD CONSTRAINT exam_starter_workspace_objects_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_starter_workspace_objects_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_starter_workspace_objects_created_by_user_id_canonical_check
+    CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_starter_workspace_entries
+    ADD CONSTRAINT exam_starter_workspace_entries_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_starter_workspace_entries_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_starter_workspace_entries_current_object_id_canonical_check
+    CHECK (current_object_id IS NULL OR current_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE classes
     ADD CONSTRAINT classes_id_canonical_check

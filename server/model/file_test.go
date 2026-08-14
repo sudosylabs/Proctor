@@ -58,6 +58,65 @@ func TestFileRevisionCannotStartAvailableWithoutRenditions(t *testing.T) {
 	}
 }
 
+func TestExamResourceFilePurposeAndNonImageRendition(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
+	entry, err := model.NewFileEntryForPurpose(
+		model.NewFileEntryID(),
+		model.FilePurposeExamResource,
+		model.FileIndexingNone,
+		at,
+	)
+	if err != nil {
+		t.Fatalf("NewFileEntryForPurpose() error = %v", err)
+	}
+	if entry.Purpose != model.FilePurposeExamResource {
+		t.Fatalf("Purpose = %q", entry.Purpose)
+	}
+
+	revisionID := model.NewFileRevisionID()
+	rendering, err := model.NewFileRendition(
+		model.NewFileRenditionID(), revisionID, "original", "application/pdf",
+		1024, 0, 0, strings.Repeat("a", 64), at,
+	)
+	if err != nil {
+		t.Fatalf("NewFileRendition() non-image error = %v", err)
+	}
+	if rendering.Width != 0 || rendering.Height != 0 {
+		t.Fatalf("non-image dimensions = %dx%d", rendering.Width, rendering.Height)
+	}
+
+	if _, err := model.NewFileRendition(
+		model.NewFileRenditionID(), revisionID, "invalid", "application/pdf",
+		1024, 1, 0, strings.Repeat("a", 64), at,
+	); err == nil {
+		t.Fatal("NewFileRendition() accepted only one zero dimension")
+	}
+}
+
+func TestWorkspaceContentVersionIsOpaqueValidatedScalar(t *testing.T) {
+	t.Parallel()
+
+	generated := model.NewWorkspaceContentVersion()
+	if !generated.IsValid() {
+		t.Fatalf("NewWorkspaceContentVersion() = %q", generated)
+	}
+	const raw = "Abcdefghijklmnopqrstu_1234"
+	version, err := model.ParseWorkspaceContentVersion(raw)
+	if err != nil {
+		t.Fatalf("ParseWorkspaceContentVersion() error = %v", err)
+	}
+	if version.String() != raw || !version.IsValid() {
+		t.Fatalf("version = %q", version)
+	}
+	for _, invalid := range []string{"", "short", "abcdefghijklmnopqrstuvwxyz0", "abcdefghijklmnopqrstuvwx+!"} {
+		if _, err := model.ParseWorkspaceContentVersion(invalid); err == nil {
+			t.Errorf("ParseWorkspaceContentVersion(%q) succeeded", invalid)
+		}
+	}
+}
+
 func TestUploadLeaseRenewsAndConsumesWithoutSentinels(t *testing.T) {
 	t.Parallel()
 

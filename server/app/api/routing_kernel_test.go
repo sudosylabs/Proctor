@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -26,6 +27,40 @@ func TestRoutingKernelRejectsInvalidCatalogs(t *testing.T) {
 		resources []resource
 		wantError string
 	}{
+		{
+			name: "negative route body limit",
+			resources: []resource{
+				newResource("invalid", routeDefinition{
+					method: http.MethodPost, path: apiPath(literal("resources")), auth: AuthPublic,
+					maxBodyBytes: -1, operation: validOperation,
+				}),
+			},
+			wantError: "maximum body size",
+		},
+		{
+			name: "idempotent protocol requires principal",
+			resources: []resource{
+				newResource("invalid", idempotentProtocolRoute(
+					IdempotencyRequired, 1024, "streaming-upload", RouteProtocolStreamingUpload,
+					AuthPublic, http.MethodPost, apiPath(literal("resources")), nil,
+					func(operationRequest) (protocolResult, error) {
+						return streamingUploadProtocolResult(http.StatusCreated, struct{}{}), nil
+					},
+				)),
+			},
+			wantError: "idempotency requires a principal route",
+		},
+		{
+			name: "idempotent upgrade is forbidden",
+			resources: []resource{
+				newResource("invalid", idempotentProtocolRoute(
+					IdempotencyRequired, 1024, "invalid-upgrade", RouteProtocolUpgrade,
+					AuthPrincipalRequired, http.MethodPost, apiPath(literal("resources")), nil,
+					func(operationRequest) (protocolResult, error) { return protocolResult{}, nil },
+				)),
+			},
+			wantError: "upgrade requires the dedicated upgrade operation",
+		},
 		{
 			name: "duplicate normalized route",
 			resources: []resource{
@@ -99,6 +134,69 @@ func TestRoutingKernelRejectsInvalidCatalogs(t *testing.T) {
 				t.Fatalf("validateResourceCatalog() error = %v, want containing %q", err, test.wantError)
 			}
 		})
+	}
+}
+
+func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing.T) {
+	t.Parallel()
+
+	logger, _ := newTestLogger(t)
+	authenticator := classRouteAuthenticator{principal: model.Principal{
+		UserID:                 model.NewUserID(),
+		SessionID:              model.NewSessionID(),
+		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialType:         model.CredentialSessionAccess,
+		AuthenticationMethod:   "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType:             model.SessionClientCLI,
+		AuthenticatedAt:        time.Now(),
+	}}
+	readBody := func(request operationRequest) (protocolResult, error) {
+		body, err := io.ReadAll(request.request.Body)
+		if err != nil {
+			return streamingUploadProtocolResult(http.StatusCreated, map[string]bool{"read": false}), nil
+		}
+		return streamingUploadProtocolResult(http.StatusCreated, map[string]any{
+			"read": true, "bytes": len(body), "idempotency_key": request.idempotencyKey,
+		}), nil
+	}
+	resources := []resource{newResource(
+		"uploads",
+		idempotentProtocolRoute(
+			IdempotencyRequired, 8, "large-streaming-upload", RouteProtocolStreamingUpload,
+			AuthPrincipalRequired, http.MethodPost, apiPath(literal("large")), nil, readBody,
+		),
+		protocolRoute(
+			"default-streaming-upload", RouteProtocolStreamingUpload,
+			AuthPrincipalRequired, http.MethodPost, apiPath(literal("default")), nil, readBody,
+		),
+	)}
+	cookies, err := newBrowserCookies("http://localhost:8065")
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpAPI := &API{authenticator: authenticator, logger: logger, cookies: cookies, recentAuthenticationTTL: time.Minute}
+	if err := httpAPI.buildRoutingKernel(model.APIURLSuffix, 4, func() error {
+		return httpAPI.collectResources(model.APIURLSuffix, resources...)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	large := httptest.NewRequest(http.MethodPost, "/api/v1/large", strings.NewReader("12345678"))
+	large.Header.Set("Authorization", "Bearer test")
+	large.Header.Set(idempotencyHeader, "upload-1")
+	largeResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(largeResponse, large)
+	if largeResponse.Code != http.StatusCreated || !strings.Contains(largeResponse.Body.String(), `"bytes":8`) || !strings.Contains(largeResponse.Body.String(), `"idempotency_key":"upload-1"`) {
+		t.Fatalf("large upload = %d %s", largeResponse.Code, largeResponse.Body.String())
+	}
+
+	defaultLimited := httptest.NewRequest(http.MethodPost, "/api/v1/default", strings.NewReader("12345"))
+	defaultLimited.Header.Set("Authorization", "Bearer test")
+	defaultResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(defaultResponse, defaultLimited)
+	if defaultResponse.Code != http.StatusCreated || !strings.Contains(defaultResponse.Body.String(), `"read":false`) {
+		t.Fatalf("default upload = %d %s", defaultResponse.Code, defaultResponse.Body.String())
 	}
 }
 

@@ -204,6 +204,7 @@ type routeDefinition struct {
 	protocolOperation protocolOperation
 	upgradeOperation  upgradeOperation
 	idempotency       IdempotencyRequirement
+	maxBodyBytes      int64
 }
 
 // upgradeRoute is the sole raw response exception. A successful HTTP upgrade
@@ -244,6 +245,26 @@ func route(
 func idempotentPrincipalRoute(requirement IdempotencyRequirement, method string, path routePath, errorCodes []string, operation operation) routeDefinition {
 	definition := principalRoute(method, path, errorCodes, operation)
 	definition.idempotency = requirement
+	return definition
+}
+
+// idempotentProtocolRoute declares a bounded non-upgrade protocol operation
+// whose command key must reach the protocol handler. It is used for streaming
+// uploads that cannot be represented by the ordinary JSON operation shape.
+func idempotentProtocolRoute(
+	requirement IdempotencyRequirement,
+	maxBodyBytes int64,
+	name string,
+	kind RouteProtocolKind,
+	auth AuthRequirement,
+	method string,
+	path routePath,
+	errorCodes []string,
+	operation protocolOperation,
+) routeDefinition {
+	definition := protocolRoute(name, kind, auth, method, path, errorCodes, operation)
+	definition.idempotency = requirement
+	definition.maxBodyBytes = maxBodyBytes
 	return definition
 }
 
@@ -339,8 +360,12 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 			if !validIdempotencyRequirement(route.idempotency) {
 				return fmt.Errorf("resource %q %s idempotency requirement is invalid", resource.name, route.method)
 			}
-			if effectiveIdempotencyRequirement(route.idempotency) != IdempotencyNone && (route.auth != AuthPrincipalRequired || route.operation == nil) {
-				return fmt.Errorf("resource %q %s idempotency requires an ordinary principal route", resource.name, route.method)
+			if route.maxBodyBytes < 0 {
+				return fmt.Errorf("resource %q %s maximum body size must not be negative", resource.name, route.method)
+			}
+			if effectiveIdempotencyRequirement(route.idempotency) != IdempotencyNone &&
+				(route.auth != AuthPrincipalRequired || route.upgradeOperation != nil || route.operation == nil && route.protocolOperation == nil) {
+				return fmt.Errorf("resource %q %s idempotency requires a principal route", resource.name, route.method)
 			}
 			ordinary := route.operation != nil
 			protocol := route.protocolOperation != nil
@@ -502,6 +527,7 @@ func (a *API) buildRoutingKernel(
 		return errors.New("routing kernel is already built")
 	}
 	a.catalog = newRouteCatalogBuilder()
+	a.maxBodyBytes = maxBodyBytes
 	if err := collect(); err != nil {
 		a.catalog = nil
 		return err
@@ -510,11 +536,7 @@ func (a *API) buildRoutingKernel(
 		a.catalog = nil
 		return err
 	}
-	a.handler = withMiddleware(
-		http.HandlerFunc(a.serveRoutes),
-		a.logger,
-		maxBodyBytes,
-	)
+	a.handler = withMiddleware(http.HandlerFunc(a.serveRoutes), a.logger)
 	return nil
 }
 
@@ -545,6 +567,11 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 				definition.auth,
 				errorPolicy,
 			)
+			bodyLimit := a.maxBodyBytes
+			if definition.maxBodyBytes > 0 {
+				bodyLimit = definition.maxBodyBytes
+			}
+			handler = limitRequestBody(handler, bodyLimit)
 			probe := mux.NewRouter().NewRoute().Path(path).Methods(definition.method)
 			if err := probe.GetError(); err != nil {
 				return fmt.Errorf("compile resource %q %s %s: %w", resource.name, definition.method, path, err)
@@ -819,7 +846,7 @@ func (a *API) protocolOperationHandler(
 		result, err := definition.protocolOperation(operationRequest{
 			context: request.Context(), principal: principal,
 			metadata: RequestMetadata(request.Context()), params: params,
-			request: request,
+			request: request, idempotencyKey: idempotencyKeyFromContext(request.Context()),
 		})
 		if result.body != nil {
 			defer func() {
@@ -830,6 +857,12 @@ func (a *API) protocolOperationHandler(
 		}
 		if err != nil {
 			cause, headers := responseErrorParts(err)
+			if failure, ok := cause.(applicationFailure); ok && failure.Code() == "idempotency.in_progress" {
+				if headers == nil {
+					headers = make(http.Header)
+				}
+				headers.Set("Retry-After", "1")
+			}
 			if validateResponseHeaders(headers) != nil || !routeErrorAllowed(errorPolicy, cause) {
 				a.logInvalidRouteError(request, cause)
 				WriteProblem(writer, internalProblem(request))

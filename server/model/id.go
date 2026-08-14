@@ -40,6 +40,17 @@ type ExamID string
 // ExamRevisionID identifies one immutable published examination revision.
 type ExamRevisionID string
 
+// ExamResourceID identifies one supporting file attached to an Exam Draft.
+type ExamResourceID string
+
+// StarterWorkspaceEntryID identifies one logical file or directory in an Exam
+// Draft's Starter Workspace.
+type StarterWorkspaceEntryID string
+
+// StarterWorkspaceObjectID identifies one staged or current Starter Workspace
+// file object.
+type StarterWorkspaceObjectID string
+
 // UserID identifies a user account.
 type UserID string
 

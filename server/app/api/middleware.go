@@ -15,8 +15,8 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func withMiddleware(next http.Handler, logger Logger, maxBodyBytes int64) http.Handler {
-	handler := limitRequestBody(next, maxBodyBytes)
+func withMiddleware(next http.Handler, logger Logger) http.Handler {
+	handler := next
 	handler = recoverPanics(handler, logger)
 	handler = logRequests(handler, logger)
 	handler = securityHeaders(handler)

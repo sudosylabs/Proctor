@@ -258,7 +258,8 @@ const examAuthoringSelect = `SELECT
 	(SELECT COUNT(*) FROM exam_managers count_managers WHERE count_managers.exam_id = e.id) AS manager_count,
 	EXISTS (SELECT 1 FROM exam_managers actor_manager WHERE actor_manager.exam_id = e.id AND actor_manager.user_id = ?) AS actor_is_manager,
 	EXISTS (SELECT 1 FROM exam_managers owner_manager WHERE owner_manager.exam_id = e.id AND owner_manager.user_id = e.owner_user_id) AS owner_is_manager,
-	0 AS resource_count, false AS has_starter_workspace
+	(SELECT COUNT(*) FROM exam_resources resource WHERE resource.exam_id = e.id AND resource.archived_at IS NULL) AS resource_count,
+	EXISTS (SELECT 1 FROM exam_starter_workspace_entries entry WHERE entry.exam_id = e.id AND entry.archived_at IS NULL) AS has_starter_workspace
 FROM exams e JOIN exam_drafts d ON d.exam_id = e.id`
 
 func prepareExamAuthoringCreation(input *store.ExamAuthoringCreation) (*store.ExamAuthoringCreation, json.RawMessage, error) {

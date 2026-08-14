@@ -29,6 +29,15 @@ func NewExamID() ExamID { return ExamID(NewId()) }
 // NewExamRevisionID returns a freshly generated exam-revision identifier.
 func NewExamRevisionID() ExamRevisionID { return ExamRevisionID(NewId()) }
 
+// NewExamResourceID returns a freshly generated exam-resource identifier.
+func NewExamResourceID() ExamResourceID { return ExamResourceID(NewId()) }
+
+// NewStarterWorkspaceEntryID returns a freshly generated starter-workspace-entry identifier.
+func NewStarterWorkspaceEntryID() StarterWorkspaceEntryID { return StarterWorkspaceEntryID(NewId()) }
+
+// NewStarterWorkspaceObjectID returns a freshly generated starter-workspace-object identifier.
+func NewStarterWorkspaceObjectID() StarterWorkspaceObjectID { return StarterWorkspaceObjectID(NewId()) }
+
 // NewUserID returns a freshly generated user identifier.
 func NewUserID() UserID { return UserID(NewId()) }
 
@@ -127,6 +136,21 @@ func ParseExamID(value string) (ExamID, error) {
 // ParseExamRevisionID validates and converts the shared identifier representation.
 func ParseExamRevisionID(value string) (ExamRevisionID, error) {
 	return parseID[ExamRevisionID](value, "exam_revision_id")
+}
+
+// ParseExamResourceID validates and converts the shared identifier representation.
+func ParseExamResourceID(value string) (ExamResourceID, error) {
+	return parseID[ExamResourceID](value, "exam_resource_id")
+}
+
+// ParseStarterWorkspaceEntryID validates and converts the shared identifier representation.
+func ParseStarterWorkspaceEntryID(value string) (StarterWorkspaceEntryID, error) {
+	return parseID[StarterWorkspaceEntryID](value, "starter_workspace_entry_id")
+}
+
+// ParseStarterWorkspaceObjectID validates and converts the shared identifier representation.
+func ParseStarterWorkspaceObjectID(value string) (StarterWorkspaceObjectID, error) {
+	return parseID[StarterWorkspaceObjectID](value, "starter_workspace_object_id")
 }
 
 // ParseUserID validates and converts the shared identifier representation.
@@ -253,6 +277,15 @@ func (id ExamID) IsZero() bool { return id == "" }
 // IsZero reports whether the exam-revision is the empty zero value.
 func (id ExamRevisionID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the exam-resource is the empty zero value.
+func (id ExamResourceID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the starter-workspace-entry is the empty zero value.
+func (id StarterWorkspaceEntryID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the starter-workspace-object is the empty zero value.
+func (id StarterWorkspaceObjectID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the user is the empty zero value.
 func (id UserID) IsZero() bool { return id == "" }
 
@@ -336,6 +369,15 @@ func (id ExamID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the exam-revision is a canonical non-zero ID.
 func (id ExamRevisionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the exam-resource is a canonical non-zero ID.
+func (id ExamResourceID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the starter-workspace-entry is a canonical non-zero ID.
+func (id StarterWorkspaceEntryID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the starter-workspace-object is a canonical non-zero ID.
+func (id StarterWorkspaceObjectID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the user is a canonical non-zero ID.
 func (id UserID) IsValid() bool { return IsValidId(string(id)) }
@@ -421,6 +463,15 @@ func (id ExamID) String() string { return string(id) }
 // String returns the exam-revision wire/database representation.
 func (id ExamRevisionID) String() string { return string(id) }
 
+// String returns the exam-resource wire/database representation.
+func (id ExamResourceID) String() string { return string(id) }
+
+// String returns the starter-workspace-entry wire/database representation.
+func (id StarterWorkspaceEntryID) String() string { return string(id) }
+
+// String returns the starter-workspace-object wire/database representation.
+func (id StarterWorkspaceObjectID) String() string { return string(id) }
+
 // String returns the user wire/database representation.
 func (id UserID) String() string { return string(id) }
 
@@ -504,6 +555,15 @@ func (id ExamID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the exam-revision as its canonical string.
 func (id ExamRevisionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the exam-resource as its canonical string.
+func (id ExamResourceID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the starter-workspace-entry as its canonical string.
+func (id StarterWorkspaceEntryID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the starter-workspace-object as its canonical string.
+func (id StarterWorkspaceObjectID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the user as its canonical string.
 func (id UserID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -603,6 +663,21 @@ func (id *ExamID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the exam-revision when non-empty.
 func (id *ExamRevisionID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExamRevisionID)
+}
+
+// UnmarshalText decodes and validates the exam-resource when non-empty.
+func (id *ExamResourceID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamResourceID)
+}
+
+// UnmarshalText decodes and validates the starter-workspace-entry when non-empty.
+func (id *StarterWorkspaceEntryID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseStarterWorkspaceEntryID)
+}
+
+// UnmarshalText decodes and validates the starter-workspace-object when non-empty.
+func (id *StarterWorkspaceObjectID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseStarterWorkspaceObjectID)
 }
 
 // UnmarshalText decodes and validates the user when non-empty.
@@ -729,6 +804,15 @@ func (id ExamID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 // MarshalJSON encodes the exam-revision as a JSON string.
 func (id ExamRevisionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the exam-resource as a JSON string.
+func (id ExamResourceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the starter-workspace-entry as a JSON string.
+func (id StarterWorkspaceEntryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the starter-workspace-object as a JSON string.
+func (id StarterWorkspaceObjectID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the user as a JSON string.
 func (id UserID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -827,6 +911,21 @@ func (id *ExamID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the exam-revision.
 func (id *ExamRevisionID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExamRevisionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the exam-resource.
+func (id *ExamResourceID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamResourceID)
+}
+
+// UnmarshalJSON decodes a JSON string into the starter-workspace-entry.
+func (id *StarterWorkspaceEntryID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseStarterWorkspaceEntryID)
+}
+
+// UnmarshalJSON decodes a JSON string into the starter-workspace-object.
+func (id *StarterWorkspaceObjectID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseStarterWorkspaceObjectID)
 }
 
 // UnmarshalJSON decodes a JSON string into the user.

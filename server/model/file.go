@@ -6,6 +6,7 @@ package model
 import (
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -18,7 +19,32 @@ const (
 	FilePurposeProfilePictureCustom  FilePurpose = "profile_picture_custom"
 	FilePurposeProfilePictureDefault FilePurpose = "profile_picture_default"
 	FilePurposeSubmission            FilePurpose = "submission"
+	FilePurposeExamResource          FilePurpose = "exam_resource"
 )
+
+// WorkspaceContentVersion is an opaque comparison token for one acknowledged
+// Starter or Attempt Workspace file content state. It is deliberately not an
+// entity identifier and must not be used as a persistence relationship.
+type WorkspaceContentVersion string
+
+var workspaceContentVersionPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{26}$`)
+
+func NewWorkspaceContentVersion() WorkspaceContentVersion {
+	return WorkspaceContentVersion(NewId())
+}
+
+func ParseWorkspaceContentVersion(value string) (WorkspaceContentVersion, error) {
+	if !workspaceContentVersionPattern.MatchString(value) {
+		return "", fmt.Errorf("model: invalid workspace content version")
+	}
+	return WorkspaceContentVersion(value), nil
+}
+
+func (version WorkspaceContentVersion) IsValid() bool {
+	return workspaceContentVersionPattern.MatchString(string(version))
+}
+
+func (version WorkspaceContentVersion) String() string { return string(version) }
 
 // FileIndexingPolicy controls which server-maintained search material may be derived.
 type FileIndexingPolicy string
@@ -84,7 +110,7 @@ func (f *FileEntry) Validate() error {
 }
 
 func validFilePurpose(value FilePurpose) bool {
-	return value == FilePurposeProfilePictureCustom || value == FilePurposeProfilePictureDefault || value == FilePurposeSubmission
+	return value == FilePurposeProfilePictureCustom || value == FilePurposeProfilePictureDefault || value == FilePurposeSubmission || value == FilePurposeExamResource
 }
 
 // FileRevision is an immutable content generation below a FileEntry.
@@ -159,7 +185,8 @@ func NewFileRendition(id FileRenditionID, revisionID FileRevisionID, name, media
 }
 
 func (f *FileRendition) Validate() error {
-	if f == nil || !f.ID.IsValid() || !f.RevisionID.IsValid() || f.CreatedAt.IsZero() || strings.TrimSpace(f.Name) == "" || f.MediaType == "" || f.Size < 0 || f.Width <= 0 || f.Height <= 0 || len(f.SHA256) != 64 {
+	validDimensions := f != nil && ((f.Width == 0 && f.Height == 0) || (f.Width > 0 && f.Height > 0))
+	if f == nil || !f.ID.IsValid() || !f.RevisionID.IsValid() || f.CreatedAt.IsZero() || strings.TrimSpace(f.Name) == "" || f.MediaType == "" || f.Size < 0 || !validDimensions || len(f.SHA256) != 64 {
 		return fmt.Errorf("model: invalid file rendition")
 	}
 	if _, err := hex.DecodeString(f.SHA256); err != nil {
