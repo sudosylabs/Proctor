@@ -1242,6 +1242,28 @@
         }
       }
     },
+    "/api/v1/exams/{exam_id}/draft/policies/focus-loss": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "put": {
+        "operationId": "configureExamDraftFocusLoss",
+        "summary": "Replace the Focus Loss policy on the active Exam Draft",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ConfigureExamDraftFocusLoss"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/ExamOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "operationId": "listJobs", "summary": "List allowlisted durable Jobs",
@@ -1439,6 +1461,10 @@
       "EditExamDraftText": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EditExamDraftTextRequest"}}}
+      },
+      "ConfigureExamDraftFocusLoss": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConfigureExamDraftFocusLossRequest"}}}
       },
       "CreateAcademicUnit": {
         "required": true,
@@ -1673,6 +1699,19 @@
           "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
           "title": {"type": ["string", "null"], "minLength": 1, "maxLength": 200, "description": "Omitted or null leaves the title unchanged; a present value is trimmed and must remain non-empty."},
           "instructions_markdown": {"type": ["string", "null"], "description": "Omitted or null leaves the authored Markdown unchanged; an empty string clears it. Present UTF-8 content is limited to 65536 bytes."}
+        }
+      },
+      "ConfigureExamDraftFocusLossRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_draft_revision", "enabled", "minimum_duration_milliseconds", "incident_count", "window_milliseconds", "outcome"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "enabled": {"type": "boolean"},
+          "minimum_duration_milliseconds": {"type": "integer", "format": "int64", "minimum": 500, "maximum": 300000},
+          "incident_count": {"type": "integer", "minimum": 1, "maximum": 100},
+          "window_milliseconds": {"type": "integer", "format": "int64", "minimum": 10000, "maximum": 14400000, "description": "Must also be greater than or equal to minimum_duration_milliseconds."},
+          "outcome": {"type": "string", "enum": ["flag", "flag_and_warn", "flag_and_suspend"]}
         }
       },
       "ExamResponse": {

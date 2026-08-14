@@ -9,6 +9,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -85,6 +86,25 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil || editedReplay.Draft.Revision != edited.Draft.Revision {
 		t.Fatalf("edit replay = %#v, %v", editedReplay, appErr)
 	}
+	focusPolicy, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, application.ConfigureExamDraftFocusLossCommand{
+		ExamID: created.Exam.ID, ExpectedDraftRevision: edited.Draft.Revision,
+		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
+		Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlag, IdempotencyKey: "exam-focus-loss-once",
+	})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if focusPolicy.Draft.Revision != edited.Draft.Revision+1 || focusPolicy.Draft.Policy.ConnectionLoss != edited.Draft.Policy.ConnectionLoss || focusPolicy.Draft.Policy.FocusLoss.Enabled || focusPolicy.Draft.Policy.FocusLoss.MinimumDuration != 500*time.Millisecond || focusPolicy.Draft.Policy.FocusLoss.IncidentCount != 1 || focusPolicy.Draft.Policy.FocusLoss.Window != 10*time.Second || focusPolicy.Draft.Policy.FocusLoss.Outcome != model.IntegrityOutcomeFlag || focusPolicy.Draft.Title != editedTitle || focusPolicy.Exam.Revision != edited.Exam.Revision {
+		t.Fatalf("focus policy = %#v", focusPolicy)
+	}
+	focusReplay, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, application.ConfigureExamDraftFocusLossCommand{
+		ExamID: created.Exam.ID, ExpectedDraftRevision: edited.Draft.Revision,
+		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
+		Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlag, IdempotencyKey: "exam-focus-loss-once",
+	})
+	if appErr != nil || focusReplay.Draft.Revision != focusPolicy.Draft.Revision {
+		t.Fatalf("focus policy replay = %#v, %v", focusReplay, appErr)
+	}
 	staleTitle := "Operating Systems"
 	_, appErr = helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
@@ -97,7 +117,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
+	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || got.Draft.Policy != focusPolicy.Draft.Policy || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
 		t.Fatalf("get = %#v", got)
 	}
 	outsider, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, password)

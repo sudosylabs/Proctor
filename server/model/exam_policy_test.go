@@ -69,3 +69,67 @@ func TestExamPolicySetRejectsUnsafeDocuments(t *testing.T) {
 		t.Fatal("expected oversized document to fail")
 	}
 }
+
+func TestExamDraftApplyFocusLossPolicyHonorsExactBoundsAndPreservesConnectionLoss(t *testing.T) {
+	t.Parallel()
+	at := time.Now().UTC()
+	draft, err := NewExamDraft(NewExamID(), "Systems", "", DefaultExamPolicySet(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		policy FocusLossPolicy
+	}{
+		{name: "minimums", policy: FocusLossPolicy{Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1, Window: 10 * time.Second, Outcome: IntegrityOutcomeFlag}},
+		{name: "maximums", policy: FocusLossPolicy{Enabled: true, MinimumDuration: 5 * time.Minute, IncidentCount: 100, Window: 4 * time.Hour, Outcome: IntegrityOutcomeFlagAndSuspend}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := *draft
+			changed, applyErr := candidate.ApplyFocusLossPolicy(test.policy, at.Add(time.Minute))
+			if applyErr != nil || !changed {
+				t.Fatalf("ApplyFocusLossPolicy() = %v, %v", changed, applyErr)
+			}
+			if candidate.Policy.FocusLoss != test.policy || candidate.Policy.ConnectionLoss != draft.Policy.ConnectionLoss {
+				t.Fatalf("policy = %#v, original connection loss = %#v", candidate.Policy, draft.Policy.ConnectionLoss)
+			}
+			if candidate.Revision != draft.Revision+1 {
+				t.Fatalf("revision = %d, want %d", candidate.Revision, draft.Revision+1)
+			}
+		})
+	}
+}
+
+func TestExamDraftApplyFocusLossPolicyRejectsInvalidAndSkipsNoOp(t *testing.T) {
+	t.Parallel()
+	at := time.Now().UTC()
+	draft, err := NewExamDraft(NewExamID(), "Systems", "", DefaultExamPolicySet(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := []FocusLossPolicy{
+		{Enabled: true, MinimumDuration: 499 * time.Millisecond, IncidentCount: 1, Window: 10 * time.Second, Outcome: IntegrityOutcomeFlag},
+		{Enabled: true, MinimumDuration: 5*time.Minute + time.Millisecond, IncidentCount: 1, Window: 10 * time.Minute, Outcome: IntegrityOutcomeFlag},
+		{Enabled: true, MinimumDuration: time.Second, IncidentCount: 0, Window: 10 * time.Second, Outcome: IntegrityOutcomeFlag},
+		{Enabled: true, MinimumDuration: time.Second, IncidentCount: 101, Window: 10 * time.Second, Outcome: IntegrityOutcomeFlag},
+		{Enabled: true, MinimumDuration: time.Second, IncidentCount: 1, Window: 10*time.Second - time.Millisecond, Outcome: IntegrityOutcomeFlag},
+		{Enabled: true, MinimumDuration: time.Second, IncidentCount: 1, Window: 4*time.Hour + time.Millisecond, Outcome: IntegrityOutcomeFlag},
+		{Enabled: true, MinimumDuration: 20 * time.Second, IncidentCount: 1, Window: 10 * time.Second, Outcome: IntegrityOutcomeFlag},
+		{Enabled: true, MinimumDuration: time.Second, IncidentCount: 1, Window: time.Minute, Outcome: "warn_only"},
+	}
+	for _, policy := range invalid {
+		candidate := *draft
+		if changed, applyErr := candidate.ApplyFocusLossPolicy(policy, at.Add(time.Minute)); applyErr == nil || changed {
+			t.Fatalf("invalid policy accepted: %#v", policy)
+		}
+		if candidate != *draft {
+			t.Fatal("invalid policy mutated Draft")
+		}
+	}
+	changed, err := draft.ApplyFocusLossPolicy(draft.Policy.FocusLoss, at.Add(time.Minute))
+	if err != nil || changed || draft.Revision != 1 || !draft.UpdatedAt.Equal(at) {
+		t.Fatalf("no-op = %v, %v, draft=%#v", changed, err, draft)
+	}
+}

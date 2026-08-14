@@ -542,6 +542,12 @@ func (s *timedExamAuthoringStore) UpdateDraftText(arg0 context.Context, arg1 *st
 	})
 }
 
+func (s *timedExamAuthoringStore) UpdateDraftFocusLoss(arg0 context.Context, arg1 *store.ExamDraftFocusLossUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftFocusLoss), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftFocusLoss(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
 		return s.next.Access(arg0, arg1, arg2)

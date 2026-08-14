@@ -272,6 +272,7 @@ type ExamApplication interface {
 	CreateExam(context.Context, application.Invocation, application.CreateExamCommand) (application.ExamView, error)
 	GetExam(context.Context, application.Invocation, application.GetExamQuery) (application.ExamView, error)
 	EditExamDraftText(context.Context, application.Invocation, application.EditExamDraftTextCommand) (application.ExamView, error)
+	ConfigureExamDraftFocusLoss(context.Context, application.Invocation, application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error)
 }
 
 type AffiliationApplication interface {

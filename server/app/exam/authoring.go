@@ -36,6 +36,13 @@ type EditDraftTextCommand struct {
 	Idempotency           *store.CommandIdempotency
 }
 
+type ConfigureDraftFocusLossCommand struct {
+	ExamID                model.ExamID
+	ExpectedDraftRevision int64
+	FocusLoss             model.FocusLossPolicy
+	Idempotency           *store.CommandIdempotency
+}
+
 // Call is immutable security and safe audit context owned by this child
 // package. It prevents the child from importing the parent app package.
 type Call struct {
@@ -314,6 +321,87 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 	}
 	if result == nil || result.Value == nil || result.Value.Draft == nil {
 		return View{}, unavailable(errors.New("exam store returned no Draft update result"))
+	}
+	if !result.Replayed {
+		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		}
+	}
+	return project(result.Value), nil
+}
+
+// ConfigureDraftFocusLoss replaces only the supported Focus Loss rule. The
+// complete policy is reconstructed from authoritative Draft state so callers
+// cannot supply or weaken Connection Loss.
+func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, command ConfigureDraftFocusLossCommand) (View, error) {
+	principal := call.Principal()
+	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
+		return View{}, invalid("draft_revision")
+	}
+	if command.Idempotency == nil {
+		return View{}, &Fault{Code: "idempotency.key_required"}
+	}
+	policy := model.DefaultExamPolicySet()
+	policy.FocusLoss = command.FocusLoss
+	if err := policy.Validate(); err != nil {
+		return View{}, invalidCause("focus_loss", err)
+	}
+	at := model.TimeUTC(a.now())
+	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if access == nil || access.Exam == nil {
+		return View{}, unavailable(errors.New("exam store returned no access projection"))
+	}
+	action, err := a.actionForAccess(ctx, principal.UserID, access, at, model.ActionExamManage, model.ActionExamManageOverride)
+	if err != nil {
+		return View{}, err
+	}
+	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
+	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+		return View{}, err
+	}
+	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned an incomplete snapshot"))
+	}
+	candidate := *snapshot.Draft
+	changed, err := candidate.ApplyFocusLossPolicy(command.FocusLoss, at)
+	if err != nil {
+		return View{}, invalidCause("focus_loss", err)
+	}
+	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
+		return View{}, &Fault{Code: "exam.draft.no_changes"}
+	}
+	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_focus_loss", map[string]any{
+		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
+		"draft_revision": command.ExpectedDraftRevision + 1,
+	}, nil)
+	if err != nil {
+		return View{}, err
+	}
+	result, err := a.persistence.UpdateDraftFocusLoss(ctx, &store.ExamDraftFocusLossUpdate{
+		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
+		ExpectedRevision: command.ExpectedDraftRevision, FocusLoss: command.FocusLoss, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+	}, command.Idempotency)
+	if err != nil {
+		mapped := mapStoreError(err)
+		var fault *Fault
+		if !errors.As(mapped, &fault) {
+			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
+		}
+		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
+			return View{}, auditErr
+		}
+		return View{}, mapped
+	}
+	if result == nil || result.Value == nil || result.Value.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned no Focus Loss update result"))
 	}
 	if !result.Replayed {
 		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {

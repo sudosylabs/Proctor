@@ -152,6 +152,54 @@ func (s SQLExamAuthoringStore) UpdateDraftText(ctx context.Context, input *store
 	return &store.ExamAuthoringCommandResult{Value: result.Value, Replayed: result.Replayed}, nil
 }
 
+func (s SQLExamAuthoringStore) UpdateDraftFocusLoss(ctx context.Context, input *store.ExamDraftFocusLossUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	prepared, err := prepareExamDraftFocusLossUpdate(input)
+	if err != nil || command == nil {
+		if err != nil {
+			return nil, err
+		}
+		return nil, store.NewErrInvalidInput("exam_draft", "idempotency", nil)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam Draft Focus Loss update", idempotentMutation[*store.ExamAuthoringSnapshot]{
+		command: command, auditEventID: prepared.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
+			return updateExamDraftFocusLoss(ctx, tx, prepared)
+		},
+		encode: func(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
+			row, rowErr := newExamAuthoringRow(snapshot, true)
+			if rowErr != nil {
+				return nil, rowErr
+			}
+			return encodeCommandOutcome(row)
+		},
+		decode: func(version int, data []byte) (*store.ExamAuthoringSnapshot, error) {
+			if version != 1 {
+				return nil, fmt.Errorf("unsupported exam Draft Focus Loss outcome version %d", version)
+			}
+			var row examAuthoringRow
+			if decodeErr := decodeCommandOutcome(data, &row); decodeErr != nil {
+				return nil, decodeErr
+			}
+			return row.model()
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, snapshot *store.ExamAuthoringSnapshot, originalAuditID string) error {
+			encoded, encodeErr := model.EncodeAuditData(map[string]any{
+				"exam_id": snapshot.Exam.ID.String(), "draft_revision": snapshot.Draft.Revision,
+				"idempotency_replayed": true, "original_audit_event_id": originalAuditID,
+			})
+			if encodeErr != nil {
+				return encodeErr
+			}
+			_, completeErr := completeAuditEvent(ctx, tx, prepared.AuditEventID, model.AuditStatusSuccess, "", encoded, prepared.AuditAt)
+			return completeErr
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &store.ExamAuthoringCommandResult{Value: result.Value, Replayed: result.Replayed}, nil
+}
+
 func (s SQLExamAuthoringStore) Get(ctx context.Context, examID model.ExamID, actorID model.UserID) (*store.ExamAuthoringSnapshot, error) {
 	if !examID.IsValid() || !actorID.IsValid() {
 		return nil, store.NewErrInvalidInput("exam", "identity", nil)
@@ -248,6 +296,20 @@ func prepareExamDraftTextUpdate(input *store.ExamDraftTextUpdate) (*store.ExamDr
 	return &prepared, nil
 }
 
+func prepareExamDraftFocusLossUpdate(input *store.ExamDraftFocusLossUpdate) (*store.ExamDraftFocusLossUpdate, error) {
+	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
+		input.UpdatedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("exam_draft", "focus_loss_update", nil)
+	}
+	policy := model.DefaultExamPolicySet()
+	policy.FocusLoss = input.FocusLoss
+	if err := policy.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("exam_draft", "focus_loss", nil).Wrap(err)
+	}
+	prepared := *input
+	return &prepared, nil
+}
+
 func updateExamDraftText(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamDraftTextUpdate) (*store.ExamAuthoringSnapshot, error) {
 	var row examAuthoringRow
 	query := examAuthoringSelect + ` WHERE e.id = ? FOR UPDATE OF e, d`
@@ -300,6 +362,60 @@ func updateExamDraftText(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	}
 	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
 		return nil, fmt.Errorf("complete exam Draft text audit: %w", err)
+	}
+	return row.model()
+}
+
+func updateExamDraftFocusLoss(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamDraftFocusLossUpdate) (*store.ExamAuthoringSnapshot, error) {
+	var row examAuthoringRow
+	query := examAuthoringSelect + ` WHERE e.id = ? FOR UPDATE OF e, d`
+	if err := tx.Get(ctx, &row, query, input.ActorUserID.String(), input.ExamID.String()); err != nil {
+		return nil, translateError("exam", input.ExamID.String(), err)
+	}
+	snapshot, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	if !snapshot.ActorIsManager && !input.ManagerOverride {
+		return nil, store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if snapshot.Exam.IsArchived() {
+		return nil, store.NewErrConflict("exam", "exam_archived", nil)
+	}
+	if snapshot.Draft.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	candidate := *snapshot.Draft
+	changed, err := candidate.ApplyFocusLossPolicy(input.FocusLoss, model.TimeFromMillis(input.UpdatedAt))
+	if err != nil {
+		return nil, store.NewErrInvalidInput("exam_draft", "focus_loss", nil).Wrap(err)
+	}
+	if !changed {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_no_changes", nil)
+	}
+	policy, err := model.EncodeExamPolicySet(candidate.Policy)
+	if err != nil {
+		return nil, err
+	}
+	result, err := tx.Exec(ctx, `UPDATE exam_drafts SET policy = ?::jsonb, updated_at = ?, revision = ? WHERE exam_id = ? AND revision = ?`,
+		string(policy), candidate.UpdatedAt, candidate.Revision, input.ExamID.String(), input.ExpectedRevision)
+	if err != nil {
+		return nil, fmt.Errorf("update exam Draft Focus Loss: %w", translateError("exam_draft", input.ExamID.String(), err))
+	}
+	if affected, rowsErr := result.RowsAffected(); rowsErr != nil {
+		return nil, fmt.Errorf("inspect exam Draft Focus Loss update: %w", rowsErr)
+	} else if affected != 1 {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	row.Policy = jsonValue(policy)
+	row.DraftUpdatedAt = candidate.UpdatedAt
+	row.DraftRevision = candidate.Revision
+	auditData, err := model.EncodeAuditData(map[string]any{"exam_id": input.ExamID.String(), "draft_revision": candidate.Revision})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete exam Draft Focus Loss audit: %w", err)
 	}
 	return row.model()
 }

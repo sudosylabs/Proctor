@@ -251,6 +251,99 @@ func TestEditDraftTextUsesExplicitOverrideWithoutManagerMembership(t *testing.T)
 	}
 }
 
+func TestConfigureDraftFocusLossOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	focus := model.FocusLossPolicy{Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 100, Window: 4 * time.Hour, Outcome: model.IntegrityOutcomeFlagAndSuspend}
+	command := &store.CommandIdempotency{UserID: fixture.userID, Operation: "exam.draft.focus_loss.configure.v1"}
+	view, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.call, ConfigureDraftFocusLossCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, FocusLoss: focus, Idempotency: command,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Draft.Policy.FocusLoss != focus || view.Draft.Policy.ConnectionLoss.Outcome != model.IntegrityOutcomeFlagAndSuspend || view.Draft.Revision != 2 {
+		t.Fatalf("view = %#v", view)
+	}
+	if fixture.authorizer.action != model.ActionExamManage || fixture.persistence.focusLossUpdate == nil || fixture.persistence.focusLossUpdate.FocusLoss != focus || fixture.persistence.idempotency != command {
+		t.Fatalf("authorization/update = %s / %#v", fixture.authorizer.action, fixture.persistence.focusLossUpdate)
+	}
+	if len(fixture.auditor.value) != 3 || fixture.auditor.value["exam_id"] != fixture.examID.String() || fixture.auditor.value["expected_draft_revision"] != int64(1) || fixture.auditor.value["draft_revision"] != int64(2) || fixture.effects.updatedRevision != 2 {
+		t.Fatalf("unsafe audit/effect = %#v / %d", fixture.auditor.value, fixture.effects.updatedRevision)
+	}
+	want := []string{"store.access", "membership", "authorize", "store.get", "audit.begin", "store.update_focus_loss", "effect.updated"}
+	if !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
+func TestConfigureDraftFocusLossNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	_, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.call, ConfigureDraftFocusLossCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, FocusLoss: model.DefaultExamPolicySet().FocusLoss, Idempotency: &store.CommandIdempotency{},
+	})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.draft.no_changes" {
+		t.Fatalf("error = %v, want exam.draft.no_changes", err)
+	}
+	if want := []string{"store.access", "membership", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
+func TestConfigureDraftFocusLossArchivedNoOpAndStaleEditsReachAuditedStoreGuard(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name     string
+		archived bool
+		revision int64
+		want     string
+	}{
+		{name: "archived no-op", archived: true, revision: 1, want: "exam.archived"},
+		{name: "stale no-op", revision: 2, want: "exam.draft.revision_conflict"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newAuthoringFixture(t)
+			fixture.persistence.actorIsManager = true
+			fixture.persistence.archived = test.archived
+			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+			_, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.call, ConfigureDraftFocusLossCommand{
+				ExamID: fixture.examID, ExpectedDraftRevision: test.revision, FocusLoss: model.DefaultExamPolicySet().FocusLoss, Idempotency: &store.CommandIdempotency{},
+			})
+			var fault *Fault
+			if !errors.As(err, &fault) || fault.Code != test.want {
+				t.Fatalf("error = %v, want %s", err, test.want)
+			}
+			if fixture.persistence.focusLossUpdate == nil || fixture.auditor.failedCode != test.want || fixture.effects.updatedRevision != 0 {
+				t.Fatalf("guard effects: update=%#v failed=%s effect=%d", fixture.persistence.focusLossUpdate, fixture.auditor.failedCode, fixture.effects.updatedRevision)
+			}
+		})
+	}
+}
+
+func TestConfigureDraftFocusLossReplayDoesNotRepublish(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.persistence.archived = true
+	fixture.persistence.replayed = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	focus := model.FocusLossPolicy{Enabled: false, MinimumDuration: time.Second, IncidentCount: 2, Window: time.Minute, Outcome: model.IntegrityOutcomeFlag}
+	if _, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.call, ConfigureDraftFocusLossCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, FocusLoss: focus, Idempotency: &store.CommandIdempotency{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.persistence.focusLossUpdate == nil || fixture.effects.updatedRevision != 0 {
+		t.Fatalf("replay update/effect = %#v/%d", fixture.persistence.focusLossUpdate, fixture.effects.updatedRevision)
+	}
+}
+
 func TestAuthorizeViewSelectsCurrentManagerOrExplicitOverride(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -435,17 +528,18 @@ func (f *auditorFake) Fail(_ context.Context, _ string, code string) error {
 }
 
 type authoringStoreFake struct {
-	order          *[]string
-	examID         model.ExamID
-	unitID         model.AcademicUnitID
-	actorID        model.UserID
-	actorIsManager bool
-	archived       bool
-	replayed       bool
-	creation       *store.ExamAuthoringCreation
-	textUpdate     *store.ExamDraftTextUpdate
-	idempotency    *store.CommandIdempotency
-	err            error
+	order           *[]string
+	examID          model.ExamID
+	unitID          model.AcademicUnitID
+	actorID         model.UserID
+	actorIsManager  bool
+	archived        bool
+	replayed        bool
+	creation        *store.ExamAuthoringCreation
+	textUpdate      *store.ExamDraftTextUpdate
+	focusLossUpdate *store.ExamDraftFocusLossUpdate
+	idempotency     *store.CommandIdempotency
+	err             error
 }
 
 func (f *authoringStoreFake) Create(_ context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
@@ -483,6 +577,34 @@ func (f *authoringStoreFake) UpdateDraftText(_ context.Context, input *store.Exa
 		return nil, err
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: f.replayed}, nil
+}
+func (f *authoringStoreFake) UpdateDraftFocusLoss(_ context.Context, input *store.ExamDraftFocusLossUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	*f.order = append(*f.order, "store.update_focus_loss")
+	f.focusLossUpdate, f.idempotency = input, command
+	if f.err != nil {
+		return nil, f.err
+	}
+	snapshot, err := f.Get(context.Background(), input.ExamID, input.ActorUserID)
+	*f.order = (*f.order)[:len(*f.order)-1]
+	if err != nil {
+		return nil, err
+	}
+	if f.replayed {
+		return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: true}, nil
+	}
+	if !snapshot.ActorIsManager && !input.ManagerOverride {
+		return nil, store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if snapshot.Exam.IsArchived() {
+		return nil, store.NewErrConflict("exam", "exam_archived", nil)
+	}
+	if snapshot.Draft.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	if _, err := snapshot.Draft.ApplyFocusLossPolicy(input.FocusLoss, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+		return nil, err
+	}
+	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil
 }
 func (f *authoringStoreFake) Access(_ context.Context, examID model.ExamID, _ model.UserID) (*store.ExamAccessSnapshot, error) {
 	*f.order = append(*f.order, "store.access")

@@ -91,17 +91,32 @@ type ExamDraftTextUpdate struct {
 	AuditAt              int64
 }
 
+// ExamDraftFocusLossUpdate replaces only the typed Focus Loss rule. The Store
+// reconstructs and validates the complete policy so Connection Loss cannot be
+// supplied or weakened by a caller.
+type ExamDraftFocusLossUpdate struct {
+	ExamID           model.ExamID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	FocusLoss        model.FocusLossPolicy
+	UpdatedAt        int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
 // ExamAuthoringStore owns atomic Exam authoring mutations and bounded reads.
 // Create commits the Exam, its one Draft, creator-manager relation, audit
-// success, and retry outcome together. UpdateDraftText rechecks the current
-// manager relation unless an already-authorized override is explicit, rejects
-// archived or stale/no-op Drafts, and atomically commits only authored text,
-// the Draft revision, audit success, and retry outcome. Exact replays return
-// the committed projection without repeating the mutation. Reads remain
+// success, and retry outcome together. Draft updates recheck the current
+// manager relation unless an already-authorized override is explicit, reject
+// archived or stale/no-op Drafts, and atomically commit only their supported
+// fields, the Draft revision, audit success, and retry outcome. Exact replays
+// return the committed projection without repeating the mutation. Reads remain
 // bounded regardless of manager or future resource cardinality.
 type ExamAuthoringStore interface {
 	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	UpdateDraftFocusLoss(context.Context, *ExamDraftFocusLossUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	Access(context.Context, model.ExamID, model.UserID) (*ExamAccessSnapshot, error)
 	Get(context.Context, model.ExamID, model.UserID) (*ExamAuthoringSnapshot, error)
 	Resolve(context.Context, model.ExamID) (*model.Exam, error)

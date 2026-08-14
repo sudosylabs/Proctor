@@ -4,6 +4,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -22,6 +24,35 @@ type editExamDraftTextRequest struct {
 	ExpectedDraftRevision int64            `json:"expected_draft_revision"`
 	Title                 Optional[string] `json:"title"`
 	InstructionsMarkdown  Optional[string] `json:"instructions_markdown"`
+}
+
+type configureExamDraftFocusLossRequest struct {
+	ExpectedDraftRevision       int64  `json:"expected_draft_revision"`
+	Enabled                     bool   `json:"enabled"`
+	MinimumDurationMilliseconds int64  `json:"minimum_duration_milliseconds"`
+	IncidentCount               int    `json:"incident_count"`
+	WindowMilliseconds          int64  `json:"window_milliseconds"`
+	Outcome                     string `json:"outcome"`
+}
+
+func (r *configureExamDraftFocusLossRequest) UnmarshalJSON(data []byte) error {
+	type wire configureExamDraftFocusLossRequest
+	var decoded wire
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		return err
+	}
+	enabled, ok := members["enabled"]
+	if !ok || bytes.Equal(bytes.TrimSpace(enabled), []byte("null")) {
+		return errors.New("enabled must be provided and non-null")
+	}
+	*r = configureExamDraftFocusLossRequest(decoded)
+	return nil
 }
 
 type examResponse struct {
@@ -80,6 +111,7 @@ func examResource(exams ExamApplication) resource {
 	collection := apiPath(literal("exams"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"))
 	draft := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"))
+	focusLossPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("policies"), literal("focus-loss"))
 	return newResource(
 		"exams",
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, academicMutationErrorCodes(
@@ -92,6 +124,11 @@ func examResource(exams ExamApplication) resource {
 			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.editDraftText),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, focusLossPolicy, academicMutationErrorCodes(
+			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
+			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		), module.configureDraftFocusLoss),
 	)
 }
 
@@ -154,6 +191,49 @@ func (m examResourceModule) editDraftText(request operationRequest) (operationRe
 	view, err := m.exams.EditExamDraftText(request.context, request.invocation(), application.EditExamDraftTextCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision,
 		Title: title, InstructionsMarkdown: instructions, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examResponseFromView(view)), nil
+}
+
+func (m examResourceModule) configureDraftFocusLoss(request operationRequest) (operationResult, error) {
+	raw, err := request.params.RequireExamId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	examID, err := model.ParseExamID(raw)
+	if err != nil {
+		return operationResult{}, invalidRequestError("exam_id", err)
+	}
+	var body configureExamDraftFocusLossRequest
+	if err := request.decodeJSON(&body, "configureExamDraftFocusLoss"); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedDraftRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+	}
+	if body.MinimumDurationMilliseconds < 500 || body.MinimumDurationMilliseconds > 300_000 {
+		return operationResult{}, invalidRequestError("minimum_duration_milliseconds", errors.New("must be between 500 and 300000"))
+	}
+	if body.IncidentCount < 1 || body.IncidentCount > 100 {
+		return operationResult{}, invalidRequestError("incident_count", errors.New("must be between 1 and 100"))
+	}
+	if body.WindowMilliseconds < 10_000 || body.WindowMilliseconds > 14_400_000 || body.WindowMilliseconds < body.MinimumDurationMilliseconds {
+		return operationResult{}, invalidRequestError("window_milliseconds", errors.New("must be between 10000 and 14400000 and at least minimum_duration_milliseconds"))
+	}
+	outcome := model.IntegrityThresholdOutcome(body.Outcome)
+	switch outcome {
+	case model.IntegrityOutcomeFlag, model.IntegrityOutcomeFlagAndWarn, model.IntegrityOutcomeFlagAndSuspend:
+	default:
+		return operationResult{}, invalidRequestError("outcome", errors.New("is not supported"))
+	}
+	view, err := m.exams.ConfigureExamDraftFocusLoss(request.context, request.invocation(), application.ConfigureExamDraftFocusLossCommand{
+		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Enabled: body.Enabled,
+		MinimumDuration: time.Duration(body.MinimumDurationMilliseconds) * time.Millisecond,
+		IncidentCount:   body.IncidentCount, Window: time.Duration(body.WindowMilliseconds) * time.Millisecond,
+		Outcome: outcome, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
 		return operationResult{}, err

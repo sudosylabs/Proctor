@@ -102,6 +102,44 @@ func TestEditExamDraftTextFingerprintsNormalizedTitle(t *testing.T) {
 	}
 }
 
+func TestConfigureExamDraftFocusLossBuildsTypedIdempotentChildCommand(t *testing.T) {
+	t.Parallel()
+	userID := model.NewUserID()
+	child := &examUseCasesFake{}
+	application := &App{exams: child}
+	examID := model.NewExamID()
+	view, err := application.ConfigureExamDraftFocusLoss(context.Background(), NewInvocation(testExamPrincipal(userID), model.RequestMetadata{RequestID: "focus-policy"}), ConfigureExamDraftFocusLossCommand{
+		ExamID: examID, ExpectedDraftRevision: 4, Enabled: false,
+		MinimumDuration: 500*time.Millisecond + time.Nanosecond, IncidentCount: 100,
+		Window: 4*time.Hour + time.Nanosecond, Outcome: model.IntegrityOutcomeFlagAndSuspend,
+		IdempotencyKey: "configure-focus-once",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := child.focusLoss
+	if view != child.view || got.ExamID != examID || got.ExpectedDraftRevision != 4 || got.FocusLoss != (model.FocusLossPolicy{
+		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 100, Window: 4 * time.Hour, Outcome: model.IntegrityOutcomeFlagAndSuspend,
+	}) {
+		t.Fatalf("view/command = %#v / %#v", view, got)
+	}
+	if got.Idempotency == nil || got.Idempotency.Operation != "exam.draft.focus_loss.configure.v1" || got.Idempotency.UserID != userID {
+		t.Fatalf("idempotency = %#v", got.Idempotency)
+	}
+}
+
+func TestConfigureExamDraftFocusLossRequiresIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	application := &App{exams: &examUseCasesFake{}}
+	_, err := application.ConfigureExamDraftFocusLoss(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ConfigureExamDraftFocusLossCommand{
+		ExamID: model.NewExamID(), ExpectedDraftRevision: 1, Enabled: true, MinimumDuration: time.Second,
+		IncidentCount: 1, Window: time.Minute, Outcome: model.IntegrityOutcomeFlag,
+	})
+	if !Is(err, "idempotency.key_required") {
+		t.Fatalf("error = %v, want idempotency.key_required", err)
+	}
+}
+
 func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T) {
 	t.Parallel()
 	child := &examUseCasesFake{}
@@ -146,6 +184,7 @@ type examUseCasesFake struct {
 	call            examengine.Call
 	create          examengine.CreateCommand
 	edit            examengine.EditDraftTextCommand
+	focusLoss       examengine.ConfigureDraftFocusLossCommand
 	authorizeExamID model.ExamID
 	view            ExamView
 	err             error
@@ -168,6 +207,11 @@ func (f *examUseCasesFake) Get(_ context.Context, call examengine.Call, _ model.
 
 func (f *examUseCasesFake) EditDraftText(_ context.Context, call examengine.Call, command examengine.EditDraftTextCommand) (examengine.View, error) {
 	f.call, f.edit = call, command
+	return f.view, f.err
+}
+
+func (f *examUseCasesFake) ConfigureDraftFocusLoss(_ context.Context, call examengine.Call, command examengine.ConfigureDraftFocusLossCommand) (examengine.View, error) {
+	f.call, f.focusLoss = call, command
 	return f.view, f.err
 }
 

@@ -177,6 +177,30 @@ func (d *ExamDraft) ApplyTextPatch(title, instructionsMarkdown *string, at time.
 	return true, nil
 }
 
+// ApplyFocusLossPolicy replaces only the configurable Focus Loss rule. The
+// required Connection Loss rule and every other Draft field remain unchanged.
+// A validated no-op leaves revision and time untouched.
+func (d *ExamDraft) ApplyFocusLossPolicy(policy FocusLossPolicy, at time.Time) (bool, error) {
+	if d == nil {
+		return false, invalidModelError("ExamDraft.ApplyFocusLossPolicy", "exam_draft", "value", "is required", "")
+	}
+	if policy == d.Policy.FocusLoss {
+		return false, nil
+	}
+	candidate := *d
+	candidate.Policy.FocusLoss = policy
+	candidate.Revision++
+	candidate.UpdatedAt = TimeUTC(at)
+	if candidate.UpdatedAt.Before(d.UpdatedAt) {
+		candidate.UpdatedAt = d.UpdatedAt
+	}
+	if err := candidate.Validate(); err != nil {
+		return false, err
+	}
+	*d = candidate
+	return true, nil
+}
+
 // ExamManager grants authoring responsibility independently of role grants.
 type ExamManager struct {
 	ExamID          ExamID

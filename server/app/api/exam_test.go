@@ -121,6 +121,57 @@ func TestExamHTTPPatchDraftRequiresIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestExamHTTPConfigureDraftFocusLossUsesTypedApplicationCommand(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	fake := &examHTTPApplication{principal: principal, view: view}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/exams/"+view.Exam.ID.String()+"/draft/policies/focus-loss", bytes.NewReader([]byte(`{"expected_draft_revision":1,"enabled":false,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`)))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "focus-loss-policy")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("put status = %d: %s", response.Code, response.Body.String())
+	}
+	command := fake.configureFocusLoss
+	if command.ExamID != view.Exam.ID || command.ExpectedDraftRevision != 1 || command.Enabled || command.MinimumDuration != 500*time.Millisecond || command.IncidentCount != 1 || command.Window != 10*time.Second || command.Outcome != model.IntegrityOutcomeFlag || command.IdempotencyKey != "focus-loss-policy" {
+		t.Fatalf("configure focus loss command = %#v", command)
+	}
+}
+
+func TestExamHTTPConfigureDraftFocusLossRequiresExplicitEnabledAndRejectsRawPolicy(t *testing.T) {
+	t.Parallel()
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	for name, body := range map[string]string{
+		"enabled omitted":   `{"expected_draft_revision":1,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`,
+		"raw policy member": `{"expected_draft_revision":1,"enabled":true,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag","connection_loss":{"outcome":"flag"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			logger, _ := newTestLogger(t)
+			fake := &examHTTPApplication{principal: principal, view: view}
+			httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+			request := httptest.NewRequest(http.MethodPut, "/api/v1/exams/"+view.Exam.ID.String()+"/draft/policies/focus-loss", bytes.NewReader([]byte(body)))
+			request.Header.Set("Authorization", "Bearer credential")
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Idempotency-Key", "invalid-focus-loss-policy")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || !bytes.Contains(response.Body.Bytes(), []byte(`"code":"request.invalid"`)) {
+				t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+			}
+			if fake.configureFocusLoss.ExamID.IsValid() {
+				t.Fatalf("application received invalid request: %#v", fake.configureFocusLoss)
+			}
+		})
+	}
+}
+
 func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 	t.Parallel()
 	view := testExamHTTPView(t, model.NewUserID())
@@ -165,11 +216,12 @@ func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 
 type examHTTPApplication struct {
 	Application
-	principal model.Principal
-	view      application.ExamView
-	create    application.CreateExamCommand
-	edit      application.EditExamDraftTextCommand
-	get       application.GetExamQuery
+	principal          model.Principal
+	view               application.ExamView
+	create             application.CreateExamCommand
+	edit               application.EditExamDraftTextCommand
+	configureFocusLoss application.ConfigureExamDraftFocusLossCommand
+	get                application.GetExamQuery
 }
 
 func (a *examHTTPApplication) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
@@ -190,6 +242,10 @@ func (a *examHTTPApplication) GetExam(_ context.Context, _ application.Invocatio
 }
 func (a *examHTTPApplication) EditExamDraftText(_ context.Context, _ application.Invocation, command application.EditExamDraftTextCommand) (application.ExamView, error) {
 	a.edit = command
+	return a.view, nil
+}
+func (a *examHTTPApplication) ConfigureExamDraftFocusLoss(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error) {
+	a.configureFocusLoss = command
 	return a.view, nil
 }
 

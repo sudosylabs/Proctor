@@ -18,6 +18,7 @@ import (
 func TestExamAuthoringStore(t *testing.T, ss store.Store) {
 	t.Run("CreateGetAndReplay", func(t *testing.T) { testExamAuthoringCreateGetAndReplay(t, ss) })
 	t.Run("UpdateDraftTextAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftTextAndConflict(t, ss) })
+	t.Run("UpdateDraftFocusLossAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftFocusLossAndConflict(t, ss) })
 	t.Run("AuditAtomicity", func(t *testing.T) { testExamAuthoringAuditAtomicity(t, ss) })
 }
 
@@ -159,6 +160,63 @@ func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if current.Draft.Title != "Distributed Systems" || current.Draft.Revision != 2 {
 		t.Fatalf("stale update changed Draft: %#v", current.Draft)
+	}
+}
+
+func testExamAuthoringUpdateDraftFocusLossAndConflict(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "exam-focus-policy-unit")
+	creator := saveUser(t, ctx, ss)
+	createdAt := model.NowUTC()
+	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
+	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "focus-create", "focus-create-command"))
+	requireNoError(t, err)
+
+	focus := model.FocusLossPolicy{
+		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 100,
+		Window: 4 * time.Hour, Outcome: model.IntegrityOutcomeFlagAndSuspend,
+	}
+	updatedAt := createdAt.Add(time.Minute)
+	update := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, focus, updatedAt)
+	command := examCommand(creator.ID, "exam.draft.focus_loss.configure.v1", "focus-key", "focus-command")
+	updated, err := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, update, command)
+	requireNoError(t, err)
+	if updated.Replayed || updated.Value.Draft.Policy.FocusLoss != focus || updated.Value.Draft.Revision != 2 {
+		t.Fatalf("updated Draft = %#v", updated)
+	}
+	if updated.Value.Draft.Policy.ConnectionLoss != created.Value.Draft.Policy.ConnectionLoss || updated.Value.Draft.Title != created.Value.Draft.Title || updated.Value.Exam.Revision != created.Value.Exam.Revision {
+		t.Fatalf("Focus Loss update changed unrelated state: %#v", updated.Value)
+	}
+
+	replay := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, focus, updatedAt.Add(time.Second))
+	replayed, err := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, replay, command)
+	requireNoError(t, err)
+	if !replayed.Replayed || replayed.Value.Draft.Revision != 2 || replayed.Value.Draft.Policy.FocusLoss != focus {
+		t.Fatalf("replayed update = %#v", replayed)
+	}
+
+	staleFocus := model.DefaultExamPolicySet().FocusLoss
+	stale := newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, staleFocus, updatedAt.Add(2*time.Second))
+	_, err = ss.ExamAuthoring().UpdateDraftFocusLoss(ctx, stale, examCommand(creator.ID, "exam.draft.focus_loss.configure.v1", "focus-stale", "focus-stale-command"))
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) || conflict.Constraint != "exam_draft_revision" {
+		t.Fatalf("stale update error = %v, want exam_draft_revision conflict", err)
+	}
+}
+
+func newExamDraftFocusLossUpdate(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, expectedRevision int64, focus model.FocusLossPolicy, at time.Time) *store.ExamDraftFocusLossUpdate {
+	t.Helper()
+	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
+	requireNoError(t, err)
+	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		ActorID: actorID, Action: string(model.ActionExamManage), Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()},
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
+	})
+	requireNoError(t, err)
+	return &store.ExamDraftFocusLossUpdate{
+		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, FocusLoss: focus,
+		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
 	}
 }
 
