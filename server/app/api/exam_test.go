@@ -150,6 +150,8 @@ func TestExamHTTPConfigureDraftFocusLossRequiresExplicitEnabledAndRejectsRawPoli
 	for name, body := range map[string]string{
 		"enabled omitted":   `{"expected_draft_revision":1,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`,
 		"raw policy member": `{"expected_draft_revision":1,"enabled":true,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag","connection_loss":{"outcome":"flag"}}`,
+		"duplicate enabled": `{"expected_draft_revision":1,"enabled":true,"enabled":false,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag"}`,
+		"duplicate outcome": `{"expected_draft_revision":1,"enabled":true,"minimum_duration_milliseconds":500,"incident_count":1,"window_milliseconds":10000,"outcome":"flag","outcome":"flag_and_suspend"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

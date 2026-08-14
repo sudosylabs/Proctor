@@ -36,6 +36,9 @@ type configureExamDraftFocusLossRequest struct {
 }
 
 func (r *configureExamDraftFocusLossRequest) UnmarshalJSON(data []byte) error {
+	if err := rejectDuplicateExamPolicyRequestMembers(data); err != nil {
+		return err
+	}
 	type wire configureExamDraftFocusLossRequest
 	var decoded wire
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -53,6 +56,35 @@ func (r *configureExamDraftFocusLossRequest) UnmarshalJSON(data []byte) error {
 	}
 	*r = configureExamDraftFocusLossRequest(decoded)
 	return nil
+}
+
+func rejectDuplicateExamPolicyRequestMembers(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return errors.New("focus loss policy must be a JSON object")
+	}
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return errors.New("focus loss policy member is invalid")
+		}
+		if _, exists := seen[key]; exists {
+			return errors.New("focus loss policy contains a duplicate member")
+		}
+		seen[key] = struct{}{}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
 }
 
 type examResponse struct {
