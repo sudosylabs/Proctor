@@ -16,12 +16,13 @@
 // creator Manager, shipped policy defaults, presence-aware title and Markdown
 // editing, authorization, audit, atomic Store mutations, idempotent replay,
 // bounded exact retrieval and keyset-paginated catalog discovery, archive
-// lifecycle, and safe post-commit effects. Archived Exams remain readable but
+// lifecycle, immutable Revision publication, bounded Revision metadata
+// discovery, and safe post-commit effects. Archived Exams remain readable but
 // reject new authoring mutations.
 //
 // The package does not own HTTP or WebSocket contracts, SQL, file bytes,
-// publication, Sittings, Attempts, integrity evaluation, or lifecycle
-// processes yet, and never owns grading. It may depend inward on model and
+// Sittings, Attempts, integrity evaluation, or lifecycle processes yet, and
+// never owns grading. It may depend inward on model and
 // bounded store contracts plus consumer-owned ports implemented by the parent
 // application composition; it never imports its parent, transports, concrete
 // persistence, VFS, cluster adapters, or platform services.

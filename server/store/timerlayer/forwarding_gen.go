@@ -19,6 +19,8 @@ type timedStores struct {
 	clusterDiscoveryOnce     sync.Once
 	examResource             store.ExamResourceStore
 	examResourceOnce         sync.Once
+	examRevision             store.ExamRevisionStore
+	examRevisionOnce         sync.Once
 	examStarterWorkspace     store.ExamStarterWorkspaceStore
 	examStarterWorkspaceOnce sync.Once
 	examAuthoring            store.ExamAuthoringStore
@@ -83,6 +85,11 @@ type timedClusterDiscoveryStore struct {
 type timedExamResourceStore struct {
 	layer *Layer
 	next  store.ExamResourceStore
+}
+
+type timedExamRevisionStore struct {
+	layer *Layer
+	next  store.ExamRevisionStore
 }
 
 type timedExamStarterWorkspaceStore struct {
@@ -278,6 +285,16 @@ func (l *Layer) ExamAuthoring() store.ExamAuthoringStore {
 		}
 	})
 	return l.stores.examAuthoring
+}
+
+func (l *Layer) ExamRevision() store.ExamRevisionStore {
+	l.stores.examRevisionOnce.Do(func() {
+		next := l.next.ExamRevision()
+		if next != nil {
+			l.stores.examRevision = &timedExamRevisionStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examRevision
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -603,6 +620,30 @@ func (s *timedExamResourceStore) Reorder(arg0 context.Context, arg1 *store.ExamR
 func (s *timedExamResourceStore) Remove(arg0 context.Context, arg1 *store.ExamResourceRemoval, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodRemove), func() (*store.ExamResourceCommandResult, error) {
 		return s.next.Remove(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRevisionStore) Publish(arg0 context.Context, arg1 *store.ExamRevisionPublication, arg2 *store.CommandIdempotency) (*store.ExamRevisionPublicationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodPublish), func() (*store.ExamRevisionPublicationResult, error) {
+		return s.next.Publish(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRevisionStore) GetSummary(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*store.ExamRevisionSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSummary), func() (*store.ExamRevisionSummary, error) {
+		return s.next.GetSummary(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRevisionStore) List(arg0 context.Context, arg1 store.ExamRevisionListOptions) ([]store.ExamRevisionSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodList), func() ([]store.ExamRevisionSummary, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamRevisionStore) GetSnapshot(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*model.ExamRevision, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSnapshot), func() (*model.ExamRevision, error) {
+		return s.next.GetSnapshot(arg0, arg1, arg2)
 	})
 }
 
@@ -1852,6 +1893,7 @@ var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)
 	_ store.ExamResourceStore         = (*timedExamResourceStore)(nil)
+	_ store.ExamRevisionStore         = (*timedExamRevisionStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*timedExamStarterWorkspaceStore)(nil)
 	_ store.ExamAuthoringStore        = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*timedCommandOutcomeStore)(nil)

@@ -31,6 +31,8 @@ const (
 	ActionExamViewOverride         Action = "exam.view.override"
 	ActionExamManage               Action = "exam.manage"
 	ActionExamManageOverride       Action = "exam.manage.override"
+	ActionExamPublish              Action = "exam.publish"
+	ActionExamPublishOverride      Action = "exam.publish.override"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -131,6 +133,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionExamManageOverride: {
 		Action: ActionExamManageOverride, ResourceType: ResourceExam,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamPublish: {
+		Action: ActionExamPublish, ResourceType: ResourceExam,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamPublishOverride: {
+		Action: ActionExamPublishOverride, ResourceType: ResourceExam,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionAcademicUnitView: {

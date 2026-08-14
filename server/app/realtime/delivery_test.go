@@ -76,6 +76,20 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	if _, err := NewExamDraftUpdatedEvent(examID, 0); err == nil {
 		t.Fatal("accepted non-positive Draft revision")
 	}
+	revisionID := model.NewExamRevisionID()
+	policyDigest := strings.Repeat("a", 64)
+	publishedAt := time.Date(2026, 8, 14, 9, 10, 0, 123, time.UTC)
+	published, err := NewExamRevisionPublishedEvent(revisionID, examID, 3, policyDigest, model.ExamRevisionPublicationStandard, publishedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.Name != "exam_revision_published" || published.Action != model.ActionExamView ||
+		published.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
+		t.Fatalf("published Revision event = %#v", published)
+	}
+	if got := string(published.Data); got != `{"exam_id":"`+examID.String()+`","revision_id":"`+revisionID.String()+`","number":3,"policy_digest":"`+policyDigest+`","kind":"standard","published_at":"2026-08-14T09:10:00.000000123Z"}` {
+		t.Fatalf("published Revision data = %s", got)
+	}
 	workspaceEntryID := model.NewStarterWorkspaceEntryID()
 	workspaceChangedAt := time.Date(2026, 8, 14, 9, 15, 0, 123, time.UTC)
 	workspaceChanged, err := NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "file_replaced", workspaceChangedAt)

@@ -178,6 +178,24 @@ func (s *examAuthoringStore) Resolve(ctx context.Context, examID model.ExamID) (
 	})
 }
 
+func (s *examRevisionStore) GetSummary(ctx context.Context, examID model.ExamID, revisionID model.ExamRevisionID) (*store.ExamRevisionSummary, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamRevisionSummary, error) {
+		return s.ExamRevisionStore.GetSummary(ctx, examID, revisionID)
+	})
+}
+
+func (s *examRevisionStore) List(ctx context.Context, options store.ExamRevisionListOptions) ([]store.ExamRevisionSummary, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamRevisionSummary, error) {
+		return s.ExamRevisionStore.List(ctx, options)
+	})
+}
+
+func (s *examRevisionStore) GetSnapshot(ctx context.Context, examID model.ExamID, revisionID model.ExamRevisionID) (*model.ExamRevision, error) {
+	return retryCall1(ctx, s.layer, func() (*model.ExamRevision, error) {
+		return s.ExamRevisionStore.GetSnapshot(ctx, examID, revisionID)
+	})
+}
+
 func (s *examResourceStore) List(ctx context.Context, examID model.ExamID) ([]store.ExamResourceRecord, error) {
 	return retryCall1(ctx, s.layer, func() ([]store.ExamResourceRecord, error) {
 		return s.ExamResourceStore.List(ctx, examID)

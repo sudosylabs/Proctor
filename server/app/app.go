@@ -34,6 +34,7 @@ type App struct {
 	academicUnitMembers               *academicUnitMemberService
 	classMembers                      *classMemberService
 	exams                             examUseCases
+	examRevisions                     examRevisionUseCases
 	examResources                     examResourceUseCases
 	examStarterWorkspace              examStarterWorkspaceUseCases
 	userProfiles                      *userProfileService

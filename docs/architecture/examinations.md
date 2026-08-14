@@ -56,6 +56,13 @@ freezes title, instructions, policy, resource snapshots, Starter Workspace,
 publisher, publication time, optional base revision, and whether it is a
 standard publication or live correction.
 
+Manager-facing Revision discovery is a separate bounded metadata projection.
+It exposes immutable identity, ordering, provenance, digests and aggregate
+counts needed to select and compare Revisions, but not instructions, canonical
+policy bytes, resource details, Starter Workspace paths, opaque content
+identities, or source bytes. Exact authored snapshots remain an internal
+application input for later Sitting delivery rather than an HTTP read model.
+
 An open or paused Sitting may receive an urgent instructions/resource
 correction without changing identity or forcing students to rejoin. The named
 operation creates a live-correction Revision from that Sitting's current

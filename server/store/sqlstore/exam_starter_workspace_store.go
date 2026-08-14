@@ -233,10 +233,14 @@ func (s SQLExamStarterWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context
 	}
 	var rows []starterWorkspaceObjectRow
 	err := s.GetMaster().Select(ctx, &rows, `WITH candidates AS (
-		SELECT id FROM exam_starter_workspace_objects
-		WHERE (state = 'staged' AND expires_at + (? * interval '1 millisecond') <= CURRENT_TIMESTAMP)
+		SELECT objects.id FROM exam_starter_workspace_objects objects
+		WHERE ((state = 'staged' AND expires_at + (? * interval '1 millisecond') <= CURRENT_TIMESTAMP)
 		   OR (state = 'reclaimable' AND reclaim_after <= CURRENT_TIMESTAMP)
-		   OR (state = 'claimed' AND claimed_at + (? * interval '1 millisecond') <= CURRENT_TIMESTAMP)
+		   OR (state = 'claimed' AND claimed_at + (? * interval '1 millisecond') <= CURRENT_TIMESTAMP))
+		  AND NOT EXISTS (
+			SELECT 1 FROM exam_revision_starter_workspace_entries pinned
+			WHERE pinned.object_id = objects.id
+		  )
 		ORDER BY COALESCE(reclaim_after, expires_at), id
 		FOR UPDATE SKIP LOCKED LIMIT ?
 	) UPDATE exam_starter_workspace_objects AS objects
@@ -270,7 +274,12 @@ func (s SQLExamStarterWorkspaceStore) CompleteObjectCleanup(ctx context.Context,
 			WHERE current_object_id = ? AND archived_at IS NOT NULL`, objectID.String()); err != nil {
 			return struct{}{}, fmt.Errorf("clear archived Starter Workspace object reference: %w", err)
 		}
-		result, err := tx.Exec(ctx, `DELETE FROM exam_starter_workspace_objects WHERE id = ? AND state = 'claimed' AND claim_token = ?`, objectID.String(), claimToken)
+		result, err := tx.Exec(ctx, `DELETE FROM exam_starter_workspace_objects objects
+			WHERE id = ? AND state = 'claimed' AND claim_token = ?
+			AND NOT EXISTS (
+				SELECT 1 FROM exam_revision_starter_workspace_entries pinned
+				WHERE pinned.object_id = objects.id
+			)`, objectID.String(), claimToken)
 		if err != nil {
 			return struct{}{}, fmt.Errorf("complete Starter Workspace object cleanup: %w", translateError("exam_starter_workspace_object", objectID.String(), err))
 		}

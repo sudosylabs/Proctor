@@ -67,6 +67,28 @@ type examOwnerTransferredData struct {
 	ChangedAt    string `json:"changed_at"`
 }
 
+type examRevisionPublishedData struct {
+	ExamID       string `json:"exam_id"`
+	RevisionID   string `json:"revision_id"`
+	Number       int64  `json:"number"`
+	PolicyDigest string `json:"policy_digest"`
+	Kind         string `json:"kind"`
+	PublishedAt  string `json:"published_at"`
+}
+
+func NewExamRevisionPublishedEvent(revisionID model.ExamRevisionID, examID model.ExamID, number int64, policyDigest string, kind model.ExamRevisionPublicationKind, publishedAt time.Time) (RealtimeEvent, error) {
+	if !revisionID.IsValid() || !examID.IsValid() || number < 1 || len(policyDigest) != 64 || !kind.IsValid() || publishedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("Exam Revision published event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(examRevisionPublishedData{ExamID: examID.String(), RevisionID: revisionID.String(), Number: number,
+		PolicyDigest: policyDigest, Kind: string(kind), PublishedAt: model.TimeUTC(publishedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Exam Revision published event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_revision_published", Action: model.ActionExamView,
+		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
+}
+
 // NewExamCreatedEvent constructs the stable, content-free authoring event.
 func NewExamCreatedEvent(examID model.ExamID) (RealtimeEvent, error) {
 	if !examID.IsValid() {

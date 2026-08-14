@@ -96,6 +96,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"exam.conflict":                                        {status: http.StatusConflict},
 	"exam.archived":                                        {status: http.StatusConflict},
 	"exam.revision_conflict":                               {status: http.StatusConflict},
+	"exam.revision.no_changes":                             {status: http.StatusConflict},
 	"exam.draft.revision_conflict":                         {status: http.StatusConflict},
 	"exam.draft.no_changes":                                {status: http.StatusConflict},
 	"exam.manager.exists":                                  {status: http.StatusConflict},

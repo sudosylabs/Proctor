@@ -89,7 +89,13 @@ the code and component contracts for that detail.
   authoring mutations. Authorized Managers can list bounded relationship
   provenance, add and remove eligible Managers, and transfer ownership through
   revision-fenced idempotent commands; target eligibility and the protected
-  owner-manager invariant are rechecked atomically.
+  owner-manager invariant are rechecked atomically. Complete validated Drafts
+  can be published through one audited idempotent operation as immutable,
+  monotonically numbered Revisions that become the future default and rebase
+  the Draft. Bounded Revision Get/list HTTP projections expose publication
+  metadata and digests without exposing authored instructions, raw policy,
+  resource details, Starter Workspace paths, opaque object identities, or
+  source bytes.
 
 ## Architecture migration acceptance
 
@@ -152,8 +158,8 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: immutable publication;
-  Sitting delivery and live correction; Attempt admission and Participation;
+- Continue Examination Core as complete vertical slices: Sitting delivery and
+  live correction; Attempt admission and Participation;
   mutable Workspace and immutable Submission; then integrity policy, evidence,
   flags, and Submission Review.
 - Extend server-owned file handling for validated IDE preferences alongside

@@ -551,6 +551,184 @@ CREATE UNIQUE INDEX exam_starter_workspace_entries_current_object_key
     ON exam_starter_workspace_entries (current_object_id)
     WHERE current_object_id IS NOT NULL;
 
+-- Published Exam Revisions are immutable aggregate snapshots. Canonical policy
+-- bytes remain bytea because JSONB textual order is not a digest contract.
+ALTER TABLE exam_resources
+    ADD CONSTRAINT exam_resources_exam_id_id_file_entry_id_key UNIQUE (exam_id, id, file_entry_id);
+ALTER TABLE exam_starter_workspace_entries
+    ADD CONSTRAINT exam_starter_workspace_entries_exam_id_id_key UNIQUE (exam_id, id);
+ALTER TABLE file_renditions
+    ADD CONSTRAINT file_renditions_id_file_revision_id_key UNIQUE (id, file_revision_id);
+
+CREATE TABLE exam_revisions (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id),
+    number bigint NOT NULL CHECK (number > 0),
+    snapshot_schema_version integer NOT NULL CHECK (snapshot_schema_version = 1),
+    source_draft_revision bigint NOT NULL CHECK (source_draft_revision > 0),
+    title text NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
+    instructions_markdown text NOT NULL DEFAULT '' CHECK (octet_length(instructions_markdown) <= 65536),
+    policy_schema_version integer NOT NULL CHECK (policy_schema_version > 0),
+    policy_document jsonb NOT NULL,
+    policy_canonical bytea NOT NULL CHECK (octet_length(policy_canonical) BETWEEN 1 AND 65536),
+    policy_digest char(64) NOT NULL CHECK (policy_digest ~ '^[0-9a-f]{64}$'),
+    starter_workspace_digest char(64) NOT NULL CHECK (starter_workspace_digest ~ '^[0-9a-f]{64}$'),
+    content_digest char(64) NOT NULL CHECK (content_digest ~ '^[0-9a-f]{64}$'),
+    resource_count smallint NOT NULL CHECK (resource_count BETWEEN 0 AND 10),
+    starter_entry_count integer NOT NULL CHECK (starter_entry_count BETWEEN 0 AND 500),
+    starter_total_bytes bigint NOT NULL CHECK (starter_total_bytes BETWEEN 0 AND 52428800),
+    published_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    published_at timestamptz NOT NULL,
+    base_revision_id varchar(26),
+    publication_kind varchar(24) NOT NULL CHECK (publication_kind IN ('standard', 'live_correction')),
+    sealed boolean NOT NULL DEFAULT false,
+    UNIQUE (exam_id, id),
+    UNIQUE (exam_id, number),
+    CONSTRAINT exam_revisions_base_revision_fkey
+        FOREIGN KEY (exam_id, base_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_revisions_base_not_self_check CHECK (base_revision_id IS NULL OR base_revision_id <> id)
+);
+
+CREATE INDEX exam_revisions_exam_id_number_idx ON exam_revisions (exam_id, number DESC);
+
+CREATE TABLE exam_revision_resources (
+    exam_revision_id varchar(26) NOT NULL,
+    exam_id varchar(26) NOT NULL,
+    resource_id varchar(26) NOT NULL,
+    file_entry_id varchar(26) NOT NULL,
+    file_revision_id varchar(26) NOT NULL,
+    rendition_id varchar(26) NOT NULL,
+    display_name text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 255),
+    description_markdown text NOT NULL DEFAULT '' CHECK (octet_length(description_markdown) <= 16384),
+    position smallint NOT NULL CHECK (position BETWEEN 0 AND 9),
+    media_type varchar(255) NOT NULL,
+    size_bytes bigint NOT NULL CHECK (size_bytes BETWEEN 0 AND 10485760),
+    sha256 char(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    PRIMARY KEY (exam_revision_id, resource_id),
+    UNIQUE (exam_revision_id, position),
+    CONSTRAINT exam_revision_resources_revision_fkey
+        FOREIGN KEY (exam_id, exam_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_revision_resources_resource_fkey
+        FOREIGN KEY (exam_id, resource_id, file_entry_id) REFERENCES exam_resources(exam_id, id, file_entry_id),
+    CONSTRAINT exam_revision_resources_file_revision_fkey
+        FOREIGN KEY (file_revision_id, file_entry_id) REFERENCES file_revisions(id, file_entry_id),
+    CONSTRAINT exam_revision_resources_rendition_fkey
+        FOREIGN KEY (rendition_id, file_revision_id) REFERENCES file_renditions(id, file_revision_id)
+);
+
+CREATE TABLE exam_revision_starter_workspace_entries (
+    exam_revision_id varchar(26) NOT NULL,
+    exam_id varchar(26) NOT NULL,
+    entry_id varchar(26) NOT NULL,
+    kind varchar(16) NOT NULL CHECK (kind IN ('file', 'directory')),
+    path text NOT NULL CHECK (octet_length(path) BETWEEN 1 AND 1024),
+    object_id varchar(26),
+    content_version text,
+    media_type varchar(255),
+    size_bytes bigint,
+    sha256 char(64),
+    PRIMARY KEY (exam_revision_id, entry_id),
+    UNIQUE (exam_revision_id, path),
+    CONSTRAINT exam_revision_workspace_revision_fkey
+        FOREIGN KEY (exam_id, exam_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_revision_workspace_entry_fkey
+        FOREIGN KEY (exam_id, entry_id) REFERENCES exam_starter_workspace_entries(exam_id, id),
+    CONSTRAINT exam_revision_workspace_object_fkey
+        FOREIGN KEY (exam_id, object_id) REFERENCES exam_starter_workspace_objects(exam_id, id),
+    CONSTRAINT exam_revision_workspace_content_check CHECK (
+        (kind = 'directory' AND object_id IS NULL AND content_version IS NULL AND media_type IS NULL AND size_bytes IS NULL AND sha256 IS NULL) OR
+        (kind = 'file' AND object_id IS NOT NULL AND content_version ~ '^[A-Za-z0-9_-]{26}$' AND
+            media_type IS NOT NULL AND char_length(btrim(media_type)) > 0 AND
+            size_bytes BETWEEN 0 AND 10485760 AND sha256 ~ '^[0-9a-f]{64}$')
+    )
+);
+
+ALTER TABLE exams
+    ADD CONSTRAINT exams_default_revision_fkey
+    FOREIGN KEY (id, default_revision_id) REFERENCES exam_revisions(exam_id, id);
+ALTER TABLE exam_drafts
+    ADD CONSTRAINT exam_drafts_base_revision_fkey
+    FOREIGN KEY (exam_id, base_revision_id) REFERENCES exam_revisions(exam_id, id);
+
+CREATE FUNCTION guard_exam_revision_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND NOT OLD.sealed AND NEW.sealed AND
+       (to_jsonb(NEW) - 'sealed') = (to_jsonb(OLD) - 'sealed') THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'published Exam Revisions are immutable' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE FUNCTION reject_exam_revision_child_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'published Exam Revision children are immutable' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE FUNCTION reject_sealed_exam_revision_child_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    revision_sealed boolean;
+BEGIN
+    -- Publication already owns this Exam row. A concurrent insertion waits
+    -- until that transaction seals the Revision before it can inspect it.
+    PERFORM 1 FROM exams WHERE id = NEW.exam_id FOR KEY SHARE;
+    SELECT sealed INTO revision_sealed FROM exam_revisions
+        WHERE exam_id = NEW.exam_id AND id = NEW.exam_revision_id;
+    IF revision_sealed THEN
+        RAISE EXCEPTION 'published Exam Revision children are immutable' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION enforce_exam_revision_sealed() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    current_revision exam_revisions%ROWTYPE;
+    actual_resources integer;
+    actual_starter_entries integer;
+    actual_starter_bytes bigint;
+BEGIN
+    SELECT * INTO current_revision FROM exam_revisions WHERE id = NEW.id;
+    SELECT count(*) INTO actual_resources FROM exam_revision_resources
+        WHERE exam_revision_id = NEW.id;
+    SELECT count(*), COALESCE(sum(size_bytes), 0)
+        INTO actual_starter_entries, actual_starter_bytes
+        FROM exam_revision_starter_workspace_entries
+        WHERE exam_revision_id = NEW.id;
+    IF NOT current_revision.sealed OR current_revision.resource_count <> actual_resources OR
+       current_revision.starter_entry_count <> actual_starter_entries OR
+       current_revision.starter_total_bytes <> actual_starter_bytes THEN
+        RAISE EXCEPTION 'Exam Revision snapshot was not sealed completely' USING ERRCODE = '23514';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER exam_revisions_immutable
+    BEFORE UPDATE OR DELETE ON exam_revisions
+    FOR EACH ROW EXECUTE FUNCTION guard_exam_revision_mutation();
+CREATE TRIGGER exam_revision_resources_immutable
+    BEFORE UPDATE OR DELETE ON exam_revision_resources
+    FOR EACH ROW EXECUTE FUNCTION reject_exam_revision_child_mutation();
+CREATE TRIGGER exam_revision_workspace_immutable
+    BEFORE UPDATE OR DELETE ON exam_revision_starter_workspace_entries
+    FOR EACH ROW EXECUTE FUNCTION reject_exam_revision_child_mutation();
+CREATE TRIGGER exam_revision_resources_insert_guard
+    BEFORE INSERT ON exam_revision_resources
+    FOR EACH ROW EXECUTE FUNCTION reject_sealed_exam_revision_child_insert();
+CREATE TRIGGER exam_revision_workspace_insert_guard
+    BEFORE INSERT ON exam_revision_starter_workspace_entries
+    FOR EACH ROW EXECUTE FUNCTION reject_sealed_exam_revision_child_insert();
+CREATE CONSTRAINT TRIGGER exam_revision_sealed_check
+    AFTER INSERT OR UPDATE ON exam_revisions
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION enforce_exam_revision_sealed();
+
 CREATE TABLE class_members (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -962,6 +1140,30 @@ ALTER TABLE exam_starter_workspace_entries
     CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_starter_workspace_entries_current_object_id_canonical_check
     CHECK (current_object_id IS NULL OR current_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_revisions
+    ADD CONSTRAINT exam_revisions_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revisions_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revisions_published_by_user_id_canonical_check
+    CHECK (published_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revisions_base_revision_id_canonical_check
+    CHECK (base_revision_id IS NULL OR base_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_revision_resources
+    ADD CONSTRAINT exam_revision_resources_exam_revision_id_canonical_check CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_resources_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_resources_resource_id_canonical_check CHECK (resource_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_resources_file_entry_id_canonical_check CHECK (file_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_resources_file_revision_id_canonical_check CHECK (file_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_resources_rendition_id_canonical_check CHECK (rendition_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_revision_starter_workspace_entries
+    ADD CONSTRAINT exam_revision_starter_workspace_entries_exam_revision_id_canonical_check CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_starter_workspace_entries_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_starter_workspace_entries_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_starter_workspace_entries_object_id_canonical_check CHECK (object_id IS NULL OR object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE classes
     ADD CONSTRAINT classes_id_canonical_check

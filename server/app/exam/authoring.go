@@ -429,8 +429,12 @@ func cloneStringPointer(value *string) *string {
 }
 
 func (a *Authoring) actionForAccess(ctx context.Context, userID model.UserID, access *store.ExamAccessSnapshot, at time.Time, ordinaryAction, overrideAction model.Action) (model.Action, error) {
+	return actionForAccess(ctx, a.memberships, userID, access, at, ordinaryAction, overrideAction)
+}
+
+func actionForAccess(ctx context.Context, memberships memberships, userID model.UserID, access *store.ExamAccessSnapshot, at time.Time, ordinaryAction, overrideAction model.Action) (model.Action, error) {
 	if access.ActorIsManager {
-		ordinary, err := a.hasCurrentMembership(ctx, userID, access.Exam.AcademicUnitID, at)
+		ordinary, err := hasCurrentMembership(ctx, memberships, userID, access.Exam.AcademicUnitID, at)
 		if err != nil {
 			return "", unavailable(err)
 		}
@@ -442,7 +446,11 @@ func (a *Authoring) actionForAccess(ctx context.Context, userID model.UserID, ac
 }
 
 func (a *Authoring) hasCurrentMembership(ctx context.Context, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {
-	items, err := a.memberships.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(at))
+	return hasCurrentMembership(ctx, a.memberships, userID, unitID, at)
+}
+
+func hasCurrentMembership(ctx context.Context, memberships memberships, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {
+	items, err := memberships.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(at))
 	if err != nil {
 		return false, err
 	}
@@ -489,6 +497,8 @@ func mapStoreError(err error) error {
 			return &Fault{Code: "exam.revision_conflict", Cause: err}
 		case "exam_draft_no_changes":
 			return &Fault{Code: "exam.draft.no_changes", Cause: err}
+		case "exam_revision_no_changes":
+			return &Fault{Code: "exam.revision.no_changes", Cause: err}
 		case "exam_manager_exists":
 			return &Fault{Code: "exam.manager.exists", Cause: err}
 		case "exam_manager_missing":

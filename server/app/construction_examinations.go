@@ -23,6 +23,15 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
+	revisions, err := examengine.NewPublication(
+		deps.Store.ExamRevision(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		examAuthorizationAdapter{authorization: access.authorization},
+		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		effects, effects, time.Now, model.NewExamRevisionID,
+	)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
 	resources, err := examresource.New(
 		deps.Store.ExamResource(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examResourceAuthorizationAdapter{authorization: access.authorization},
@@ -48,5 +57,5 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{authoring: authoring, resources: resources, starterWorkspace: starterWorkspace}, nil
+	return examinationConstruction{authoring: authoring, revisions: revisions, resources: resources, starterWorkspace: starterWorkspace}, nil
 }

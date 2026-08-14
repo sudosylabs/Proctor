@@ -104,6 +104,18 @@ versioned grant-time and User-identity payload. It is ordered by grant time and
 User identity, returns relationship provenance and creator/owner indicators,
 and never expands User profiles.
 
+The Exam Revision catalog is ordered by immutable Revision number and identity,
+both descending. Its `next_cursor` is a versioned opaque URL-safe token carrying
+that tuple; clients return it unchanged, and malformed, trailing, versionless,
+or unsupported payloads are invalid requests. Publication uses
+`POST /api/v1/exams/{exam_id}/revisions`, requires `Idempotency-Key`, and accepts
+only the positive `expected_draft_revision` fence. Collection and exact reads
+return bounded publication metadata: identity, number, source Draft revision,
+title, policy and content digests, aggregate resource/Starter Workspace counts,
+publisher, time, base Revision, and publication kind. They never return
+instructions, canonical policy bytes, resource metadata or content identities,
+Starter Workspace paths, object identities, or source bytes.
+
 ## Exam resource and Starter Workspace content
 
 Exam Resource and Starter Workspace operations are purpose-specific authoring
