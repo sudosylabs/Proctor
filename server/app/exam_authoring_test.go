@@ -188,10 +188,31 @@ type examUseCasesFake struct {
 	list            examengine.ListQuery
 	catalog         examengine.CatalogPage
 	archive         examengine.ArchiveCommand
+	managerList     examengine.ListManagersQuery
+	managerCommand  examengine.AddManagerCommand
+	managerPage     examengine.ManagerPage
+	managerChange   examengine.ManagerChange
 	archived        model.Exam
 	authorizeExamID model.ExamID
 	view            ExamView
 	err             error
+}
+
+func (f *examUseCasesFake) ListManagers(_ context.Context, call examengine.Call, query examengine.ListManagersQuery) (examengine.ManagerPage, error) {
+	f.call, f.managerList = call, query
+	return f.managerPage, f.err
+}
+func (f *examUseCasesFake) AddManager(_ context.Context, call examengine.Call, command examengine.AddManagerCommand) (examengine.ManagerChange, error) {
+	f.call, f.managerCommand = call, command
+	return f.managerChange, f.err
+}
+func (f *examUseCasesFake) RemoveManager(_ context.Context, call examengine.Call, command examengine.RemoveManagerCommand) (examengine.ManagerChange, error) {
+	f.call, f.managerCommand = call, command
+	return f.managerChange, f.err
+}
+func (f *examUseCasesFake) TransferOwner(_ context.Context, call examengine.Call, command examengine.TransferOwnerCommand) (examengine.ManagerChange, error) {
+	f.call, f.managerCommand = call, command
+	return f.managerChange, f.err
 }
 
 func (f *examUseCasesFake) List(_ context.Context, call examengine.Call, query examengine.ListQuery) (examengine.CatalogPage, error) {

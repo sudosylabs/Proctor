@@ -49,12 +49,41 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamIdentityOK", SuccessSchema: "ExamIdentityResponse",
 				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
+			{
+				Key: "GET /api/v1/exams/{exam_id}/managers", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamManagerListOK", SuccessSchema: "ExamManagerListResponse",
+				PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "administration.unavailable"),
+			},
+			{
+				Key: "POST /api/v1/exams/{exam_id}/managers", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
+				RequestBodyRef: "#/components/requestBodies/AddExamManager", RequestSchema: "AddExamManagerRequest",
+				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamManagerChanged", SuccessSchema: "ExamManagerChangeResponse",
+				PublicErrorCodes: examManagerAdditionContractCodes(),
+			},
+			{
+				Key: "DELETE /api/v1/exams/{exam_id}/managers/{user_id}", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
+				RequestBodyRef: "#/components/requestBodies/RemoveExamManager", RequestSchema: "RemoveExamManagerRequest",
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamManagerChanged", SuccessSchema: "ExamManagerChangeResponse",
+				PublicErrorCodes: examManagerRemovalContractCodes(),
+			},
+			{
+				Key: "PUT /api/v1/exams/{exam_id}/owner", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
+				RequestBodyRef: "#/components/requestBodies/TransferExamOwnership", RequestSchema: "TransferExamOwnershipRequest",
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamManagerChanged", SuccessSchema: "ExamManagerChangeResponse",
+				PublicErrorCodes: examOwnerTransferContractCodes(),
+			},
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "CreateExamRequest", DTO: reflect.TypeOf(createExamRequest{}), Required: []string{"academic_unit_id", "title"}},
 			{Name: "EditExamDraftTextRequest", DTO: reflect.TypeOf(editExamDraftTextRequest{}), Required: []string{"expected_draft_revision"}},
 			{Name: "ConfigureExamDraftFocusLossRequest", DTO: reflect.TypeOf(configureExamDraftFocusLossRequest{}), Required: []string{"expected_draft_revision", "enabled", "minimum_duration_milliseconds", "incident_count", "window_milliseconds", "outcome"}},
 			{Name: "ArchiveExamRequest", DTO: reflect.TypeOf(archiveExamRequest{}), Required: []string{"expected_exam_revision"}},
+			{Name: "AddExamManagerRequest", DTO: reflect.TypeOf(addExamManagerRequest{}), Required: []string{"user_id", "expected_exam_revision"}},
+			{Name: "RemoveExamManagerRequest", DTO: reflect.TypeOf(removeExamManagerRequest{}), Required: []string{"expected_exam_revision"}},
+			{Name: "TransferExamOwnershipRequest", DTO: reflect.TypeOf(transferExamOwnershipRequest{}), Required: []string{"user_id", "expected_exam_revision"}},
+			{Name: "ExamManagerListResponse", DTO: reflect.TypeOf(examManagerListResponse{}), Required: []string{"items"}},
+			{Name: "ExamManagerResponse", DTO: reflect.TypeOf(examManagerResponse{}), Required: []string{"user_id", "granted_by_user_id", "granted_at", "is_creator", "is_owner"}},
+			{Name: "ExamManagerChangeResponse", DTO: reflect.TypeOf(examManagerChangeResponse{}), Required: []string{"exam", "manager"}, Nullable: []string{"exam.archived_at"}},
 			{Name: "ExamListResponse", DTO: reflect.TypeOf(examListResponse{}), Required: []string{"items"}, Nullable: []string{"items.archived_at"}},
 			{Name: "ExamSummaryResponse", DTO: reflect.TypeOf(examSummaryResponse{}), Required: []string{"id", "academic_unit_id", "creator_user_id", "owner_user_id", "title", "updated_at", "archived_at", "revision", "manager_count"}, Nullable: []string{"archived_at"}},
 			{Name: "ExamResponse", DTO: reflect.TypeOf(examResponse{}), Required: []string{"exam", "draft", "owner_user_id", "manager_count"}, Nullable: []string{"exam.archived_at"}},
@@ -70,6 +99,24 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
+}
+
+func examManagerAdditionContractCodes() []string {
+	return principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
+		"exam.manager.exists", "exam.manager.ineligible", "exam.unavailable",
+		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+}
+
+func examManagerRemovalContractCodes() []string {
+	return principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
+		"exam.manager.not_found", "exam.manager.owner_protected", "exam.unavailable",
+		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+}
+
+func examOwnerTransferContractCodes() []string {
+	return principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
+		"exam.manager.not_found", "exam.manager.ineligible", "exam.owner.no_changes", "exam.unavailable",
+		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 }
 
 func TestEditExamDraftTextOpenAPISchemaRequiresANonNullAuthoredValue(t *testing.T) {

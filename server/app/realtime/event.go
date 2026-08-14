@@ -44,6 +44,21 @@ type examArchivedData struct {
 	ArchivedAt   string `json:"archived_at"`
 }
 
+type examManagerChangedData struct {
+	ExamID       string `json:"exam_id"`
+	UserID       string `json:"user_id"`
+	Present      bool   `json:"present"`
+	ExamRevision int64  `json:"exam_revision"`
+	ChangedAt    string `json:"changed_at"`
+}
+
+type examOwnerTransferredData struct {
+	ExamID       string `json:"exam_id"`
+	OwnerUserID  string `json:"owner_user_id"`
+	ExamRevision int64  `json:"exam_revision"`
+	ChangedAt    string `json:"changed_at"`
+}
+
 // NewExamCreatedEvent constructs the stable, content-free authoring event.
 func NewExamCreatedEvent(examID model.ExamID) (RealtimeEvent, error) {
 	if !examID.IsValid() {
@@ -78,6 +93,32 @@ func NewExamArchivedEvent(examID model.ExamID, revision int64, archivedAt time.T
 		return RealtimeEvent{}, fmt.Errorf("encode exam archived event: %w", err)
 	}
 	return RealtimeEvent{Name: "exam_archived", Action: model.ActionExamView,
+		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
+}
+
+func NewExamManagerChangedEvent(examID model.ExamID, userID model.UserID, present bool, revision int64, changedAt time.Time) (RealtimeEvent, error) {
+	if !examID.IsValid() || !userID.IsValid() || revision < 1 || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("Exam Manager change event requires valid identities, revision, and time")
+	}
+	data, err := json.Marshal(examManagerChangedData{ExamID: examID.String(), UserID: userID.String(), Present: present,
+		ExamRevision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Exam Manager change event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_manager_changed", Action: model.ActionExamView,
+		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
+}
+
+func NewExamOwnerTransferredEvent(examID model.ExamID, ownerID model.UserID, revision int64, changedAt time.Time) (RealtimeEvent, error) {
+	if !examID.IsValid() || !ownerID.IsValid() || revision < 1 || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("Exam owner transfer event requires valid identities, revision, and time")
+	}
+	data, err := json.Marshal(examOwnerTransferredData{ExamID: examID.String(), OwnerUserID: ownerID.String(),
+		ExamRevision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Exam owner transfer event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_owner_transferred", Action: model.ActionExamView,
 		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
 }
 

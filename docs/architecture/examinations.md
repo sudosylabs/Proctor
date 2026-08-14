@@ -76,6 +76,19 @@ access without erasing the relationship. System-administrator override is an
 explicit permission path and never manager membership or an exception to
 structural invariants.
 
+Manager discovery is a bounded relationship-provenance projection ordered by
+grant time and User identity; it never hydrates User profiles. Adding a Manager
+and transferring ownership require the target to be an active User with a
+current membership in the Exam's exact Academic Unit, checked before the
+command and rechecked inside the locked transaction. Relationship, account,
+membership, or role loss removes ordinary authority without erasing immutable
+grant or creator provenance. Manager addition, removal, and ownership transfer
+are revision-fenced, audited, idempotent named operations. Ownership transfer
+changes only the owner, the previous owner remains a Manager, and a deferred
+database constraint protects the invariant that the owner is always a Manager.
+Explicit override bypasses only the actor relationship requirement, never
+target eligibility, owner protection, or revision and archive guards.
+
 Exam discovery is a bounded database projection, not an in-memory filter over
 unrestricted rows. Ordinary visibility requires the current Manager
 relationship, current membership in the Exam's exact Academic Unit, and an

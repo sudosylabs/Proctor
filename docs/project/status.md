@@ -86,7 +86,10 @@ the code and component contracts for that detail.
   scope; explicit override stays separate and audited. Revision-fenced,
   idempotent archive records an immutable archive time without deleting state;
   archived Exams remain available to authorized exact reads and reject new
-  authoring mutations.
+  authoring mutations. Authorized Managers can list bounded relationship
+  provenance, add and remove eligible Managers, and transfer ownership through
+  revision-fenced idempotent commands; target eligibility and the protected
+  owner-manager invariant are rechecked atomically.
 
 ## Architecture migration acceptance
 

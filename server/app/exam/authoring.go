@@ -97,6 +97,8 @@ type Effects interface {
 	Created(context.Context, model.ExamID) error
 	DraftUpdated(context.Context, model.ExamID, int64) error
 	Archived(context.Context, model.ExamID, int64, time.Time) error
+	ManagerChanged(context.Context, model.ExamID, model.UserID, bool, int64, time.Time) error
+	OwnerTransferred(context.Context, model.ExamID, model.UserID, int64, time.Time) error
 }
 type EffectFailures interface {
 	Report(context.Context, string, error)
@@ -106,9 +108,14 @@ type memberships interface {
 	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
 }
 
+type users interface {
+	Get(context.Context, string) (*model.User, error)
+}
+
 type Authoring struct {
 	persistence store.ExamAuthoringStore
 	memberships memberships
+	users       users
 	authorizer  Authorizer
 	auditor     Auditor
 	effects     Effects
@@ -117,11 +124,11 @@ type Authoring struct {
 	newID       func() model.ExamID
 }
 
-func NewAuthoring(persistence store.ExamAuthoringStore, memberships memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
-	if persistence == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
+func NewAuthoring(persistence store.ExamAuthoringStore, memberships memberships, users users, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
+	if persistence == nil || memberships == nil || users == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
 		return nil, errors.New("exam authoring dependencies are required")
 	}
-	return &Authoring{persistence: persistence, memberships: memberships, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
+	return &Authoring{persistence: persistence, memberships: memberships, users: users, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
 }
 
 func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand) (View, error) {
@@ -482,6 +489,16 @@ func mapStoreError(err error) error {
 			return &Fault{Code: "exam.revision_conflict", Cause: err}
 		case "exam_draft_no_changes":
 			return &Fault{Code: "exam.draft.no_changes", Cause: err}
+		case "exam_manager_exists":
+			return &Fault{Code: "exam.manager.exists", Cause: err}
+		case "exam_manager_missing":
+			return &Fault{Code: "exam.manager.not_found", Cause: err}
+		case "exam_manager_ineligible":
+			return &Fault{Code: "exam.manager.ineligible", Cause: err}
+		case "exam_owner_manager":
+			return &Fault{Code: "exam.manager.owner_protected", Cause: err}
+		case "exam_owner_no_changes":
+			return &Fault{Code: "exam.owner.no_changes", Cause: err}
 		default:
 			return &Fault{Code: "exam.conflict", Cause: err}
 		}

@@ -275,6 +275,10 @@ type ExamApplication interface {
 	ConfigureExamDraftFocusLoss(context.Context, application.Invocation, application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error)
 	ListExams(context.Context, application.Invocation, application.ListExamsQuery) (application.ExamCatalogPage, error)
 	ArchiveExam(context.Context, application.Invocation, application.ArchiveExamCommand) (model.Exam, error)
+	ListExamManagers(context.Context, application.Invocation, application.ListExamManagersQuery) (application.ExamManagerPage, error)
+	AddExamManager(context.Context, application.Invocation, application.AddExamManagerCommand) (application.ExamManagerChange, error)
+	RemoveExamManager(context.Context, application.Invocation, application.RemoveExamManagerCommand) (application.ExamManagerChange, error)
+	TransferExamOwnership(context.Context, application.Invocation, application.TransferExamOwnershipCommand) (application.ExamManagerChange, error)
 }
 
 type AffiliationApplication interface {

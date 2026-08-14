@@ -99,6 +99,11 @@ unsupported versions are invalid requests; versionless tokens emitted before
 the cursor version was added remain accepted during v1. Clients never
 construct or inspect the payload.
 
+The Exam Manager catalog follows the same opaque-cursor rule with its own
+versioned grant-time and User-identity payload. It is ordered by grant time and
+User identity, returns relationship provenance and creator/owner indicators,
+and never expands User profiles.
+
 ## Idempotent commands
 
 Routes declare `none`, `optional`, or `required` idempotency in the immutable
@@ -107,7 +112,9 @@ optional support; making the header required needs a new compatible contract.
 The initial optional operations are `POST /api/v1/academic-periods` and
 `POST /api/v1/academic-units`. New Exam creation, archive, Draft text editing,
 and Draft Focus Loss policy replacement require the header because their
-contracts are idempotent from introduction.
+contracts are idempotent from introduction. Adding or removing an Exam Manager
+and transferring Exam ownership also require it; every request carries the
+expected Exam revision in its strict JSON body, including DELETE.
 
 `Idempotency-Key` is one case-sensitive opaque value of 1–128 characters from
 letters, digits, `-`, `.`, `_`, and `~`. Transport rejects malformed values;

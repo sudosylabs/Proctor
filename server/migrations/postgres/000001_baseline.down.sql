@@ -21,6 +21,7 @@ DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS role_bindings;
 DROP TABLE IF EXISTS roles;
 DROP TABLE IF EXISTS class_members;
+ALTER TABLE IF EXISTS exams DROP CONSTRAINT IF EXISTS exams_owner_manager_fkey;
 DROP TABLE IF EXISTS exam_managers;
 DROP TABLE IF EXISTS exam_drafts;
 DROP TABLE IF EXISTS exams;

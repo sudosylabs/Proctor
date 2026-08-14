@@ -13,7 +13,7 @@ import (
 func constructExaminations(deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction) (examinationConstruction, error) {
 	effects := examRealtimeEffects{realtime: foundation.realtime}
 	authoring, err := examengine.NewAuthoring(
-		deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(), deps.Store.User(),
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		effects, effects, time.Now, model.NewExamID,

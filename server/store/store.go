@@ -112,6 +112,40 @@ type ExamSummary struct {
 	ManagerCount   int
 }
 
+// ExamManagerSummary is the bounded management projection. It deliberately
+// contains relationship provenance rather than a User profile.
+type ExamManagerSummary struct {
+	Manager   model.ExamManager
+	IsCreator bool
+	IsOwner   bool
+}
+
+type ExamManagerListOptions struct {
+	ExamID          model.ExamID
+	BeforeGrantedAt time.Time
+	BeforeUserID    model.UserID
+	Limit           int
+}
+
+// ExamManagerMutation carries the common revision fence, authorization result,
+// and audit attempt for one named relationship or ownership transition.
+type ExamManagerMutation struct {
+	ExamID           model.ExamID
+	ActorUserID      model.UserID
+	TargetUserID     model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	ChangedAt        int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
+type ExamManagerCommandResult struct {
+	Exam     *model.Exam
+	Manager  *model.ExamManager
+	Replayed bool
+}
+
 type ExamArchive struct {
 	ExamID           model.ExamID
 	ActorUserID      model.UserID
@@ -193,6 +227,19 @@ type ExamAuthoringStore interface {
 	// Concurrent new commands yield one commit; losers return a stable conflict.
 	// Transient effects are outside this operation and run only after commit.
 	Archive(context.Context, *ExamArchive, *CommandIdempotency) (*ExamArchiveCommandResult, error)
+	// ListManagers returns at most Limit provenance-only relationships in
+	// descending (GrantedAt, UserID) order, strictly before the optional complete
+	// cursor pair.
+	ListManagers(context.Context, ExamManagerListOptions) ([]ExamManagerSummary, error)
+	// AddManager, RemoveManager, and TransferOwner each lock the Exam and recheck
+	// its active state, revision, actor relationship unless override is explicit,
+	// and target eligibility where required. The relationship/owner transition,
+	// next Exam revision, successful audit, and replayable outcome commit in one
+	// transaction. Owner membership is also protected by a deferred database
+	// constraint. Exact replays do not repeat the transition.
+	AddManager(context.Context, *ExamManagerMutation, *CommandIdempotency) (*ExamManagerCommandResult, error)
+	RemoveManager(context.Context, *ExamManagerMutation, *CommandIdempotency) (*ExamManagerCommandResult, error)
+	TransferOwner(context.Context, *ExamManagerMutation, *CommandIdempotency) (*ExamManagerCommandResult, error)
 	Access(context.Context, model.ExamID, model.UserID) (*ExamAccessSnapshot, error)
 	Get(context.Context, model.ExamID, model.UserID) (*ExamAuthoringSnapshot, error)
 	Resolve(context.Context, model.ExamID) (*model.Exam, error)

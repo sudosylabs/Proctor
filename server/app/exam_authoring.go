@@ -53,6 +53,10 @@ type examUseCases interface {
 	ConfigureDraftFocusLoss(context.Context, examengine.Call, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
 	List(context.Context, examengine.Call, examengine.ListQuery) (examengine.CatalogPage, error)
 	Archive(context.Context, examengine.Call, examengine.ArchiveCommand) (model.Exam, error)
+	ListManagers(context.Context, examengine.Call, examengine.ListManagersQuery) (examengine.ManagerPage, error)
+	AddManager(context.Context, examengine.Call, examengine.AddManagerCommand) (examengine.ManagerChange, error)
+	RemoveManager(context.Context, examengine.Call, examengine.RemoveManagerCommand) (examengine.ManagerChange, error)
+	TransferOwner(context.Context, examengine.Call, examengine.TransferOwnerCommand) (examengine.ManagerChange, error)
 	AuthorizeView(context.Context, examengine.Call, model.ExamID) error
 }
 
@@ -238,6 +242,20 @@ func (e examRealtimeEffects) DraftUpdated(ctx context.Context, examID model.Exam
 }
 func (e examRealtimeEffects) Archived(ctx context.Context, examID model.ExamID, revision int64, archivedAt time.Time) error {
 	event, err := apprealtime.NewExamArchivedEvent(examID, revision, archivedAt)
+	if err != nil {
+		return err
+	}
+	return e.realtime.Publish(ctx, event)
+}
+func (e examRealtimeEffects) ManagerChanged(ctx context.Context, examID model.ExamID, userID model.UserID, present bool, revision int64, changedAt time.Time) error {
+	event, err := apprealtime.NewExamManagerChangedEvent(examID, userID, present, revision, changedAt)
+	if err != nil {
+		return err
+	}
+	return e.realtime.Publish(ctx, event)
+}
+func (e examRealtimeEffects) OwnerTransferred(ctx context.Context, examID model.ExamID, ownerID model.UserID, revision int64, changedAt time.Time) error {
+	event, err := apprealtime.NewExamOwnerTransferredEvent(examID, ownerID, revision, changedAt)
 	if err != nil {
 		return err
 	}

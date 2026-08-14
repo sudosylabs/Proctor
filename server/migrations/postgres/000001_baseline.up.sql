@@ -422,6 +422,12 @@ CREATE INDEX exam_managers_user_id_exam_id_idx ON exam_managers (user_id, exam_i
 CREATE INDEX exam_managers_exam_id_granted_at_user_id_idx
     ON exam_managers (exam_id, granted_at DESC, user_id DESC);
 
+ALTER TABLE exams
+    ADD CONSTRAINT exams_owner_manager_fkey
+    FOREIGN KEY (id, owner_user_id)
+    REFERENCES exam_managers (exam_id, user_id)
+    DEFERRABLE INITIALLY DEFERRED;
+
 CREATE TABLE class_members (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,

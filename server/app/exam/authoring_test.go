@@ -454,6 +454,7 @@ type authoringFixture struct {
 	order       *[]string
 	authorizer  *authorizerFake
 	memberships *membershipsFake
+	users       *usersFake
 	auditor     *auditorFake
 	persistence *authoringStoreFake
 	effects     *effectsFake
@@ -465,16 +466,17 @@ func newAuthoringFixture(t *testing.T) authoringFixture {
 	unitID, examID, userID := model.NewAcademicUnitID(), model.NewExamID(), model.NewUserID()
 	authorizer := &authorizerFake{order: &order}
 	memberships := &membershipsFake{order: &order}
+	users := &usersFake{order: &order, user: activeTestUser(userID)}
 	auditor := &auditorFake{order: &order}
 	persistence := &authoringStoreFake{order: &order, examID: examID, unitID: unitID, actorID: userID}
 	effects := &effectsFake{order: &order}
-	service, err := NewAuthoring(persistence, memberships, authorizer, auditor, effects, effects, func() time.Time {
+	service, err := NewAuthoring(persistence, memberships, users, authorizer, auditor, effects, effects, func() time.Time {
 		return time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
 	}, func() model.ExamID { return examID })
 	if err != nil {
 		t.Fatal(err)
 	}
-	return authoringFixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), unitID: unitID, examID: examID, userID: userID, order: &order, authorizer: authorizer, memberships: memberships, auditor: auditor, persistence: persistence, effects: effects}
+	return authoringFixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), unitID: unitID, examID: examID, userID: userID, order: &order, authorizer: authorizer, memberships: memberships, users: users, auditor: auditor, persistence: persistence, effects: effects}
 }
 
 func testPrincipal(userID model.UserID) model.Principal {
@@ -502,14 +504,29 @@ func (f *authorizerFake) Authorize(_ context.Context, _ Call, action model.Actio
 }
 
 type membershipsFake struct {
+	order       *[]string
+	items       []*model.AcademicUnitMember
+	itemsByUser map[string][]*model.AcademicUnitMember
+	err         error
+}
+
+func (f *membershipsFake) ListActiveByUser(_ context.Context, userID string, _ int64) ([]*model.AcademicUnitMember, error) {
+	*f.order = append(*f.order, "membership")
+	if items, ok := f.itemsByUser[userID]; ok {
+		return items, f.err
+	}
+	return f.items, f.err
+}
+
+type usersFake struct {
 	order *[]string
-	items []*model.AcademicUnitMember
+	user  *model.User
 	err   error
 }
 
-func (f *membershipsFake) ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error) {
-	*f.order = append(*f.order, "membership")
-	return f.items, f.err
+func (f *usersFake) Get(context.Context, string) (*model.User, error) {
+	*f.order = append(*f.order, "user.get")
+	return f.user, f.err
 }
 
 type auditorFake struct {
@@ -534,21 +551,58 @@ func (f *auditorFake) Fail(_ context.Context, _ string, code string) error {
 }
 
 type authoringStoreFake struct {
-	order           *[]string
-	examID          model.ExamID
-	unitID          model.AcademicUnitID
-	actorID         model.UserID
-	actorIsManager  bool
-	archived        bool
-	replayed        bool
-	creation        *store.ExamAuthoringCreation
-	textUpdate      *store.ExamDraftTextUpdate
-	focusLossUpdate *store.ExamDraftFocusLossUpdate
-	archive         *store.ExamArchive
-	listOptions     store.ExamListOptions
-	summaries       []store.ExamSummary
-	idempotency     *store.CommandIdempotency
-	err             error
+	order              *[]string
+	examID             model.ExamID
+	unitID             model.AcademicUnitID
+	actorID            model.UserID
+	actorIsManager     bool
+	archived           bool
+	replayed           bool
+	creation           *store.ExamAuthoringCreation
+	textUpdate         *store.ExamDraftTextUpdate
+	focusLossUpdate    *store.ExamDraftFocusLossUpdate
+	archive            *store.ExamArchive
+	listOptions        store.ExamListOptions
+	summaries          []store.ExamSummary
+	managerSummaries   []store.ExamManagerSummary
+	managerListOptions store.ExamManagerListOptions
+	managerMutation    *store.ExamManagerMutation
+	idempotency        *store.CommandIdempotency
+	err                error
+	managerErr         error
+}
+
+func (f *authoringStoreFake) ListManagers(_ context.Context, options store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
+	f.managerListOptions = options
+	return append([]store.ExamManagerSummary(nil), f.managerSummaries...), f.err
+}
+func (f *authoringStoreFake) AddManager(_ context.Context, input *store.ExamManagerMutation, command *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return f.managerResult(input, command, true, false)
+}
+func (f *authoringStoreFake) RemoveManager(_ context.Context, input *store.ExamManagerMutation, command *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return f.managerResult(input, command, false, false)
+}
+func (f *authoringStoreFake) TransferOwner(_ context.Context, input *store.ExamManagerMutation, command *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return f.managerResult(input, command, true, true)
+}
+func (f *authoringStoreFake) managerResult(input *store.ExamManagerMutation, command *store.CommandIdempotency, present, transfer bool) (*store.ExamManagerCommandResult, error) {
+	f.managerMutation, f.idempotency = input, command
+	if f.managerErr != nil {
+		return nil, f.managerErr
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	exam, _ := model.NewExam(input.ExamID, f.unitID, f.actorID, model.TimeFromMillis(input.ChangedAt).Add(-time.Minute))
+	if transfer {
+		exam.OwnerUserID = input.TargetUserID
+	}
+	exam.Revision = input.ExpectedRevision + 1
+	manager, _ := model.NewExamManager(input.ExamID, input.TargetUserID, input.ActorUserID, model.TimeFromMillis(input.ChangedAt))
+	if !present && manager == nil {
+		return nil, errors.New("manager result")
+	}
+	return &store.ExamManagerCommandResult{Exam: exam, Manager: manager, Replayed: f.replayed}, nil
 }
 
 func (f *authoringStoreFake) List(_ context.Context, options store.ExamListOptions) ([]store.ExamSummary, error) {
@@ -686,6 +740,12 @@ type effectsFake struct {
 func (f *effectsFake) Archived(_ context.Context, _ model.ExamID, revision int64, _ time.Time) error {
 	*f.order = append(*f.order, "effect.archived")
 	f.archivedRevision = revision
+	return f.err
+}
+func (f *effectsFake) ManagerChanged(context.Context, model.ExamID, model.UserID, bool, int64, time.Time) error {
+	return f.err
+}
+func (f *effectsFake) OwnerTransferred(context.Context, model.ExamID, model.UserID, int64, time.Time) error {
 	return f.err
 }
 

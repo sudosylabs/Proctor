@@ -90,6 +90,15 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	if _, err := NewExamArchivedEvent(examID, 0, archivedAt); err == nil {
 		t.Fatal("accepted non-positive Exam revision")
 	}
+	managerID := model.NewUserID()
+	managerChanged, err := NewExamManagerChangedEvent(examID, managerID, true, 9, archivedAt)
+	if err != nil || managerChanged.Name != "exam_manager_changed" || string(managerChanged.Data) != `{"exam_id":"`+examID.String()+`","user_id":"`+managerID.String()+`","present":true,"exam_revision":9,"changed_at":"2026-08-14T09:30:00Z"}` {
+		t.Fatalf("Manager event = %#v, %v", managerChanged, err)
+	}
+	ownerChanged, err := NewExamOwnerTransferredEvent(examID, managerID, 10, archivedAt)
+	if err != nil || ownerChanged.Name != "exam_owner_transferred" || string(ownerChanged.Data) != `{"exam_id":"`+examID.String()+`","owner_user_id":"`+managerID.String()+`","exam_revision":10,"changed_at":"2026-08-14T09:30:00Z"}` {
+		t.Fatalf("owner event = %#v, %v", ownerChanged, err)
+	}
 }
 
 func TestPublishClonesGeneratesIDAndDeliversLocalFirst(t *testing.T) {

@@ -99,6 +99,67 @@ func TestExamCatalogCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestExamManagerHTTPListAndMutationsUseStrictBoundedContracts(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	target := model.NewUserID()
+	grantedAt := time.Date(2026, 8, 14, 10, 0, 0, 0, time.UTC)
+	manager, err := model.NewExamManager(view.Exam.ID, target, principal.UserID, grantedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedExam := view.Exam
+	changedExam.Revision = 2
+	fake := &examHTTPApplication{principal: principal,
+		managerPage:   application.ExamManagerPage{Items: []application.ExamManagerSummary{{Manager: *manager}}},
+		managerChange: application.ExamManagerChange{Exam: &changedExam, Manager: manager},
+	}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+
+	list := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+view.Exam.ID.String()+"/managers?limit=1", nil)
+	list.Header.Set("Authorization", "Bearer credential")
+	listed := httptest.NewRecorder()
+	httpAPI.ServeHTTP(listed, list)
+	if listed.Code != http.StatusOK || fake.managerList.Limit != 1 || !bytes.Contains(listed.Body.Bytes(), []byte(target.String())) || bytes.Contains(listed.Body.Bytes(), []byte("display_name")) {
+		t.Fatalf("list = %d query=%#v body=%s", listed.Code, fake.managerList, listed.Body.String())
+	}
+
+	add := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+view.Exam.ID.String()+"/managers", bytes.NewReader([]byte(`{"user_id":"`+target.String()+`","expected_exam_revision":1}`)))
+	add.Header.Set("Authorization", "Bearer credential")
+	add.Header.Set("Content-Type", "application/json")
+	add.Header.Set("Idempotency-Key", "add-manager")
+	added := httptest.NewRecorder()
+	httpAPI.ServeHTTP(added, add)
+	if added.Code != http.StatusCreated || fake.managerCommand.UserID != target || fake.managerCommand.ExpectedExamRevision != 1 || fake.managerCommand.IdempotencyKey != "add-manager" {
+		t.Fatalf("add = %d command=%#v body=%s", added.Code, fake.managerCommand, added.Body.String())
+	}
+
+	invalidDelete := httptest.NewRequest(http.MethodDelete, "/api/v1/exams/"+view.Exam.ID.String()+"/managers/"+target.String(), bytes.NewReader([]byte(`{"expected_exam_revision":2,"unexpected":true}`)))
+	invalidDelete.Header.Set("Authorization", "Bearer credential")
+	invalidDelete.Header.Set("Content-Type", "application/json")
+	invalidDelete.Header.Set("Idempotency-Key", "remove-manager")
+	invalid := httptest.NewRecorder()
+	httpAPI.ServeHTTP(invalid, invalidDelete)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("strict DELETE = %d: %s", invalid.Code, invalid.Body.String())
+	}
+}
+
+func TestExamManagerCursorIsVersionedAndStrict(t *testing.T) {
+	t.Parallel()
+	cursor := examManagerCursor{Version: 1, GrantedAt: "2026-08-14T10:00:00Z", UserID: model.NewUserID().String()}
+	decoded, err := decodeExamManagerCursor(encodeExamManagerCursor(cursor))
+	if err != nil || decoded != cursor {
+		t.Fatalf("cursor = %#v, %v", decoded, err)
+	}
+	unsupported := []byte(`{"version":2,"granted_at":"2026-08-14T10:00:00Z","user_id":"` + cursor.UserID + `"}`)
+	if _, err := decodeExamManagerCursor(base64.RawURLEncoding.EncodeToString(unsupported)); err == nil {
+		t.Fatal("unsupported Manager cursor accepted")
+	}
+}
+
 func TestExamHTTPArchiveUsesRequiredIdempotentApplicationCommand(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
@@ -301,6 +362,27 @@ type examHTTPApplication struct {
 	archive            application.ArchiveExamCommand
 	archived           model.Exam
 	get                application.GetExamQuery
+	managerList        application.ListExamManagersQuery
+	managerCommand     application.AddExamManagerCommand
+	managerPage        application.ExamManagerPage
+	managerChange      application.ExamManagerChange
+}
+
+func (a *examHTTPApplication) ListExamManagers(_ context.Context, _ application.Invocation, query application.ListExamManagersQuery) (application.ExamManagerPage, error) {
+	a.managerList = query
+	return a.managerPage, nil
+}
+func (a *examHTTPApplication) AddExamManager(_ context.Context, _ application.Invocation, command application.AddExamManagerCommand) (application.ExamManagerChange, error) {
+	a.managerCommand = command
+	return a.managerChange, nil
+}
+func (a *examHTTPApplication) RemoveExamManager(_ context.Context, _ application.Invocation, command application.RemoveExamManagerCommand) (application.ExamManagerChange, error) {
+	a.managerCommand = command
+	return a.managerChange, nil
+}
+func (a *examHTTPApplication) TransferExamOwnership(_ context.Context, _ application.Invocation, command application.TransferExamOwnershipCommand) (application.ExamManagerChange, error) {
+	a.managerCommand = command
+	return a.managerChange, nil
 }
 
 func (a *examHTTPApplication) ListExams(_ context.Context, _ application.Invocation, query application.ListExamsQuery) (application.ExamCatalogPage, error) {

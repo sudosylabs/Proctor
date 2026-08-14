@@ -42,6 +42,17 @@ type archiveExamRequest struct {
 	ExpectedExamRevision int64 `json:"expected_exam_revision"`
 }
 
+type addExamManagerRequest struct {
+	UserID               string `json:"user_id"`
+	ExpectedExamRevision int64  `json:"expected_exam_revision"`
+}
+
+type removeExamManagerRequest struct {
+	ExpectedExamRevision int64 `json:"expected_exam_revision"`
+}
+
+type transferExamOwnershipRequest = addExamManagerRequest
+
 const examCatalogCursorVersion = 1
 
 type examCatalogCursor struct {
@@ -65,6 +76,30 @@ type examSummaryResponse struct {
 type examListResponse struct {
 	Items      []examSummaryResponse `json:"items"`
 	NextCursor string                `json:"next_cursor,omitempty"`
+}
+
+type examManagerResponse struct {
+	UserID          string `json:"user_id"`
+	GrantedByUserID string `json:"granted_by_user_id"`
+	GrantedAt       string `json:"granted_at"`
+	IsCreator       bool   `json:"is_creator"`
+	IsOwner         bool   `json:"is_owner"`
+}
+
+type examManagerListResponse struct {
+	Items      []examManagerResponse `json:"items"`
+	NextCursor string                `json:"next_cursor,omitempty"`
+}
+
+type examManagerChangeResponse struct {
+	Exam    examIdentityResponse `json:"exam"`
+	Manager examManagerResponse  `json:"manager"`
+}
+
+type examManagerCursor struct {
+	Version   int    `json:"version"`
+	GrantedAt string `json:"granted_at"`
+	UserID    string `json:"user_id"`
 }
 
 func (r *configureExamDraftFocusLossRequest) UnmarshalJSON(data []byte) error {
@@ -177,6 +212,9 @@ func examResource(exams ExamApplication) resource {
 	draft := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"))
 	focusLossPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("policies"), literal("focus-loss"))
 	archive := apiPath(literal("exams"), canonicalID("exam_id"), literal("archive"))
+	managers := apiPath(literal("exams"), canonicalID("exam_id"), literal("managers"))
+	manager := apiPath(literal("exams"), canonicalID("exam_id"), literal("managers"), canonicalID("user_id"))
+	owner := apiPath(literal("exams"), canonicalID("exam_id"), literal("owner"))
 	return newResource(
 		"exams",
 		principalRoute(http.MethodGet, collection, academicReadErrorCodes("request.invalid", "exam.invalid", "exam.unavailable"), module.list),
@@ -199,6 +237,22 @@ func examResource(exams ExamApplication) resource {
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.archive),
+		principalRoute(http.MethodGet, managers, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"), module.listManagers),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managers, academicMutationErrorCodes(
+			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
+			"exam.manager.exists", "exam.manager.ineligible", "exam.unavailable",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		), module.addManager),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodDelete, manager, academicMutationErrorCodes(
+			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
+			"exam.manager.not_found", "exam.manager.owner_protected", "exam.unavailable",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		), module.removeManager),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, owner, academicMutationErrorCodes(
+			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
+			"exam.manager.not_found", "exam.manager.ineligible", "exam.owner.no_changes", "exam.unavailable",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		), module.transferOwner),
 	)
 }
 
@@ -354,6 +408,178 @@ func (m examResourceModule) archive(request operationRequest) (operationResult, 
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, examIdentityResponseFromModel(exam)), nil
+}
+
+func (m examResourceModule) listManagers(request operationRequest) (operationResult, error) {
+	examID, err := examIDFromRequest(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	query := application.ListExamManagersQuery{ExamID: examID, Limit: 50}
+	values := request.request.URL.Query()
+	if raw := values.Get("limit"); raw != "" {
+		query.Limit, err = strconv.Atoi(raw)
+		if err != nil || query.Limit < 1 || query.Limit > 200 {
+			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+		}
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		cursor, decodeErr := decodeExamManagerCursor(raw)
+		if decodeErr != nil {
+			return operationResult{}, invalidRequestError("cursor", decodeErr)
+		}
+		query.BeforeGrantedAt, _ = time.Parse(time.RFC3339Nano, cursor.GrantedAt)
+		query.BeforeUserID = model.UserID(cursor.UserID)
+	}
+	page, err := m.exams.ListExamManagers(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := examManagerListResponse{Items: make([]examManagerResponse, 0, len(page.Items))}
+	for _, item := range page.Items {
+		response.Items = append(response.Items, examManagerResponseFromSummary(item))
+	}
+	if len(page.Items) == query.Limit {
+		last := page.Items[len(page.Items)-1].Manager
+		response.NextCursor = encodeExamManagerCursor(examManagerCursor{GrantedAt: model.TimeUTC(last.GrantedAt).Format(time.RFC3339Nano), UserID: last.UserID.String()})
+	}
+	return jsonResult(http.StatusOK, response), nil
+}
+
+func (m examResourceModule) addManager(request operationRequest) (operationResult, error) {
+	examID, err := examIDFromRequest(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body addExamManagerRequest
+	if err := request.decodeJSON(&body, "addExamManager"); err != nil {
+		return operationResult{}, err
+	}
+	userID, err := parseExamManagerRequest(body.UserID, body.ExpectedExamRevision)
+	if err != nil {
+		return operationResult{}, err
+	}
+	change, err := m.exams.AddExamManager(request.context, request.invocation(), application.AddExamManagerCommand{
+		ExamID: examID, UserID: userID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusCreated, examManagerChangeResponseFromApplication(change, true)), nil
+}
+
+func (m examResourceModule) removeManager(request operationRequest) (operationResult, error) {
+	examID, err := examIDFromRequest(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	rawUserID, err := request.params.RequireUserId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	userID, err := model.ParseUserID(rawUserID)
+	if err != nil {
+		return operationResult{}, invalidRequestError("user_id", err)
+	}
+	var body removeExamManagerRequest
+	if err := request.decodeJSON(&body, "removeExamManager"); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedExamRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_exam_revision", errors.New("must be positive"))
+	}
+	change, err := m.exams.RemoveExamManager(request.context, request.invocation(), application.RemoveExamManagerCommand{
+		ExamID: examID, UserID: userID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examManagerChangeResponseFromApplication(change, false)), nil
+}
+
+func (m examResourceModule) transferOwner(request operationRequest) (operationResult, error) {
+	examID, err := examIDFromRequest(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body transferExamOwnershipRequest
+	if err := request.decodeJSON(&body, "transferExamOwnership"); err != nil {
+		return operationResult{}, err
+	}
+	userID, err := parseExamManagerRequest(body.UserID, body.ExpectedExamRevision)
+	if err != nil {
+		return operationResult{}, err
+	}
+	change, err := m.exams.TransferExamOwnership(request.context, request.invocation(), application.TransferExamOwnershipCommand{
+		ExamID: examID, UserID: userID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examManagerChangeResponseFromApplication(change, true)), nil
+}
+
+func examIDFromRequest(request operationRequest) (model.ExamID, error) {
+	raw, err := request.params.RequireExamId()
+	if err != nil {
+		return "", err
+	}
+	examID, err := model.ParseExamID(raw)
+	if err != nil {
+		return "", invalidRequestError("exam_id", err)
+	}
+	return examID, nil
+}
+
+func parseExamManagerRequest(rawUserID string, revision int64) (model.UserID, error) {
+	userID, err := model.ParseUserID(rawUserID)
+	if err != nil {
+		return "", invalidRequestError("user_id", err)
+	}
+	if revision < 1 {
+		return "", invalidRequestError("expected_exam_revision", errors.New("must be positive"))
+	}
+	return userID, nil
+}
+
+func encodeExamManagerCursor(cursor examManagerCursor) string {
+	cursor.Version = 1
+	encoded, _ := json.Marshal(cursor)
+	return base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+func decodeExamManagerCursor(raw string) (examManagerCursor, error) {
+	var cursor examManagerCursor
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return cursor, errors.New("invalid Exam Manager cursor")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(decoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&cursor); err != nil || cursor.Version != 1 || !model.UserID(cursor.UserID).IsValid() {
+		return cursor, errors.New("invalid Exam Manager cursor")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, cursor.GrantedAt); err != nil {
+		return cursor, errors.New("invalid Exam Manager cursor")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return cursor, errors.New("invalid Exam Manager cursor")
+	}
+	return cursor, nil
+}
+
+func examManagerResponseFromSummary(summary application.ExamManagerSummary) examManagerResponse {
+	return examManagerResponse{UserID: summary.Manager.UserID.String(), GrantedByUserID: summary.Manager.GrantedByUserID.String(),
+		GrantedAt: model.TimeUTC(summary.Manager.GrantedAt).Format(time.RFC3339Nano), IsCreator: summary.IsCreator, IsOwner: summary.IsOwner}
+}
+
+func examManagerChangeResponseFromApplication(change application.ExamManagerChange, present bool) examManagerChangeResponse {
+	return examManagerChangeResponse{Exam: examIdentityResponseFromModel(*change.Exam), Manager: examManagerResponse{
+		UserID: change.Manager.UserID.String(), GrantedByUserID: change.Manager.GrantedByUserID.String(),
+		GrantedAt: model.TimeUTC(change.Manager.GrantedAt).Format(time.RFC3339Nano),
+		IsCreator: change.Manager.UserID == change.Exam.CreatorUserID, IsOwner: present && change.Manager.UserID == change.Exam.OwnerUserID,
+	}}
 }
 
 func examListQuery(request *http.Request) (application.ListExamsQuery, error) {

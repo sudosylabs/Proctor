@@ -560,6 +560,30 @@ func (s *timedExamAuthoringStore) Archive(arg0 context.Context, arg1 *store.Exam
 	})
 }
 
+func (s *timedExamAuthoringStore) ListManagers(arg0 context.Context, arg1 store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodListManagers), func() ([]store.ExamManagerSummary, error) {
+		return s.next.ListManagers(arg0, arg1)
+	})
+}
+
+func (s *timedExamAuthoringStore) AddManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAddManager), func() (*store.ExamManagerCommandResult, error) {
+		return s.next.AddManager(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) RemoveManager(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodRemoveManager), func() (*store.ExamManagerCommandResult, error) {
+		return s.next.RemoveManager(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) TransferOwner(arg0 context.Context, arg1 *store.ExamManagerMutation, arg2 *store.CommandIdempotency) (*store.ExamManagerCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodTransferOwner), func() (*store.ExamManagerCommandResult, error) {
+		return s.next.TransferOwner(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
 		return s.next.Access(arg0, arg1, arg2)
