@@ -38,6 +38,15 @@ The transport extracts and bounds idempotency keys, while the application
 command defines their meaning and persistence atomically records the outcome.
 This keeps retry behavior consistent across nodes and process restarts.
 
+Every route declares idempotency as `none`, `optional`, or `required`. The
+initial optional operations are root Academic Unit creation and Academic
+Period creation. `Idempotency-Key` accepts one case-sensitive opaque value of
+1–128 ASCII letters, digits, `-`, `.`, `_`, or `~`. Unsupported, missing,
+invalid, conflicting, and still-in-progress uses have stable
+`idempotency.*` Problem Details codes. Replays render the original
+application result through the current transport and do not repeat
+post-commit effects or expose whether execution occurred on this request.
+
 The exact route, authentication, DTO, error, and OpenAPI agreement rules live
 in the component-owned [HTTP API contract](../../server/app/api/CONTRACT.md).
 

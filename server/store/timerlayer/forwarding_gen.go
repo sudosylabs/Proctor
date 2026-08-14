@@ -17,6 +17,8 @@ import (
 type timedStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	commandOutcome          store.CommandOutcomeStore
+	commandOutcomeOnce      sync.Once
 	job                     store.JobStore
 	jobOnce                 sync.Once
 	file                    store.FileStore
@@ -70,6 +72,11 @@ type timedStores struct {
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedCommandOutcomeStore struct {
+	layer *Layer
+	next  store.CommandOutcomeStore
 }
 
 type timedJobStore struct {
@@ -442,6 +449,16 @@ func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 	return l.stores.clusterDiscovery
 }
 
+func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
+	l.stores.commandOutcomeOnce.Do(func() {
+		next := l.next.CommandOutcome()
+		if next != nil {
+			l.stores.commandOutcome = &timedCommandOutcomeStore{layer: l, next: next}
+		}
+	})
+	return l.stores.commandOutcome
+}
+
 func (l *Layer) Ping(arg0 context.Context) error {
 	return timeStoreCall0(l, storeOperation(aggregateStore, methodPing), func() error {
 		return l.next.Ping(arg0)
@@ -492,6 +509,12 @@ func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) e
 
 func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
+		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
+func (s *timedCommandOutcomeStore) DeleteExpired(arg0 context.Context, arg1 int) (int64, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodDeleteExpired), func() (int64, error) {
 		return s.next.DeleteExpired(arg0, arg1)
 	})
 }
@@ -694,6 +717,12 @@ func (s *timedAcademicUnitStore) Create(arg0 context.Context, arg1 *store.Academ
 	})
 }
 
+func (s *timedAcademicUnitStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicUnitCreation, arg2 *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodCreateIdempotently), func() (*store.AcademicUnitCommandResult, error) {
+		return s.next.CreateIdempotently(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedAcademicUnitStore) UpdateWithAudit(arg0 context.Context, arg1 *store.AcademicUnitUpdate) (*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodUpdateWithAudit), func() (*model.AcademicUnit, error) {
 		return s.next.UpdateWithAudit(arg0, arg1)
@@ -871,6 +900,12 @@ func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 string, ar
 func (s *timedAcademicPeriodStore) Create(arg0 context.Context, arg1 *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreate), func() (*model.AcademicPeriod, error) {
 		return s.next.Create(arg0, arg1)
+	})
+}
+
+func (s *timedAcademicPeriodStore) CreateIdempotently(arg0 context.Context, arg1 *store.AcademicPeriodCreation, arg2 *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodCreateIdempotently), func() (*store.AcademicPeriodCommandResult, error) {
+		return s.next.CreateIdempotently(arg0, arg1, arg2)
 	})
 }
 
@@ -1579,6 +1614,7 @@ func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.Ins
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*timedClusterDiscoveryStore)(nil)
+	_ store.CommandOutcomeStore      = (*timedCommandOutcomeStore)(nil)
 	_ store.JobStore                 = (*timedJobStore)(nil)
 	_ store.FileStore                = (*timedFileStore)(nil)
 	_ store.InstitutionStore         = (*timedInstitutionStore)(nil)

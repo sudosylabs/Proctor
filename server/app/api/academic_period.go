@@ -58,11 +58,12 @@ func academicPeriodResource(academicPeriods AcademicPeriodApplication) resource 
 			http.MethodGet, collection,
 			academicReadErrorCodes("request.invalid", "resource.not_found"), module.list,
 		),
-		principalRoute(
+		idempotentPrincipalRoute(
+			IdempotencyOptional,
 			http.MethodPost, collection,
 			academicMutationErrorCodes(
 				"request.invalid", "resource.not_found", "academic_period.invalid",
-				"academic_period.conflict",
+				"academic_period.conflict", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 			),
 			module.create,
 		),
@@ -121,6 +122,7 @@ func (module academicPeriodResourceModule) create(request operationRequest) (ope
 		application.CreateAcademicPeriodCommand{
 			Name: body.Name, DisplayName: body.DisplayName,
 			Description: body.Description, StartAt: body.StartAt, EndAt: body.EndAt,
+			IdempotencyKey: request.idempotencyKey,
 		},
 	)
 	if err != nil {

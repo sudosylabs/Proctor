@@ -70,6 +70,20 @@ type ErrConflict struct {
 	cause      error
 }
 
+// ErrIdempotencyConflict reports reuse of a live command key with different
+// semantic input.
+type ErrIdempotencyConflict struct{}
+
+func (*ErrIdempotencyConflict) Error() string {
+	return "idempotency key conflicts with another command"
+}
+
+// ErrIdempotencyInProgress reports that another transaction still owns the
+// same command namespace after the bounded wait.
+type ErrIdempotencyInProgress struct{}
+
+func (*ErrIdempotencyInProgress) Error() string { return "idempotent command is still in progress" }
+
 func NewErrConflict(resource, constraint string, cause error) *ErrConflict {
 	return &ErrConflict{Resource: resource, Constraint: constraint, cause: cause}
 }

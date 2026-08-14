@@ -6,11 +6,42 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+const (
+	CommandOutcomeMaxBytes = 64 * 1024
+)
+
+// CommandIdempotency is the bounded, transport-neutral identity of one
+// retryable application command. Raw client keys and commands never cross the
+// Store boundary.
+type CommandIdempotency struct {
+	UserID             model.UserID
+	Operation          string
+	KeyDigest          [sha256.Size]byte
+	FingerprintVersion int
+	Fingerprint        [sha256.Size]byte
+	OutcomeVersion     int
+	Retention          time.Duration
+	Wait               time.Duration
+}
+
+// AcademicUnitCommandResult and AcademicPeriodCommandResult report whether a
+// named mutation executed or returned its previously committed outcome.
+type AcademicUnitCommandResult struct {
+	Value    *model.AcademicUnit
+	Replayed bool
+}
+
+type AcademicPeriodCommandResult struct {
+	Value    *model.AcademicPeriod
+	Replayed bool
+}
 
 // Store is the root persistence contract used by the application and platform.
 // Concrete adapters expose each model store through this interface so callers
@@ -44,6 +75,7 @@ type Catalog interface {
 	Audit() AuditStore
 	Installation() InstallationStore
 	ClusterDiscovery() ClusterDiscoveryStore
+	CommandOutcome() CommandOutcomeStore
 }
 
 type Store interface {
@@ -72,12 +104,19 @@ type Store interface {
 	Audit() AuditStore
 	Installation() InstallationStore
 	ClusterDiscovery() ClusterDiscoveryStore
+	CommandOutcome() CommandOutcomeStore
 
 	Ping(context.Context) error
 	GetDBSchemaVersion(context.Context) (int, error)
 	GetLocalSchemaVersion() (int, error)
 	ValidateSchema(context.Context) error
 	Close() error
+}
+
+// CommandOutcomeStore owns bounded retention of completed client-command
+// outcomes. Creation and replay remain part of each named aggregate mutation.
+type CommandOutcomeStore interface {
+	DeleteExpired(context.Context, int) (int64, error)
 }
 
 type JobEnqueue struct {
@@ -420,6 +459,7 @@ type AcademicUnitArchive struct {
 // AcademicUnitStore persists nodes in the institution's academic-unit tree.
 type AcademicUnitStore interface {
 	Create(context.Context, *AcademicUnitCreation) (*model.AcademicUnit, error)
+	CreateIdempotently(context.Context, *AcademicUnitCreation, *CommandIdempotency) (*AcademicUnitCommandResult, error)
 	UpdateWithAudit(context.Context, *AcademicUnitUpdate) (*model.AcademicUnit, error)
 	ArchiveWithAudit(context.Context, *AcademicUnitArchive) (*model.AcademicUnit, error)
 	Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
@@ -519,6 +559,7 @@ type AcademicPeriodArchive struct {
 
 type AcademicPeriodStore interface {
 	Create(context.Context, *AcademicPeriodCreation) (*model.AcademicPeriod, error)
+	CreateIdempotently(context.Context, *AcademicPeriodCreation, *CommandIdempotency) (*AcademicPeriodCommandResult, error)
 	UpdateWithAudit(context.Context, *AcademicPeriodUpdate) (*model.AcademicPeriod, error)
 	ArchiveWithAudit(context.Context, *AcademicPeriodArchive) (*model.AcademicPeriod, error)
 	Save(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)

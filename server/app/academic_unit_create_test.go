@@ -14,10 +14,19 @@ import (
 )
 
 type academicUnitCreateStore struct {
-	events *[]string
-	input  *store.AcademicUnitCreation
-	result *model.AcademicUnit
-	err    error
+	events           *[]string
+	input            *store.AcademicUnitCreation
+	result           *model.AcademicUnit
+	err              error
+	idempotentResult *store.AcademicUnitCommandResult
+}
+
+func (s *academicUnitCreateStore) CreateIdempotently(_ context.Context, input *store.AcademicUnitCreation, _ *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
+	if s.events != nil {
+		*s.events = append(*s.events, "store-idempotent")
+	}
+	s.input = input
+	return s.idempotentResult, s.err
 }
 
 func (s *academicUnitCreateStore) Create(
@@ -213,6 +222,32 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 		t.Fatalf("published unit = %q, want %q", effects.unitID, saved.ID)
 	}
 	assertAcademicUnitCreateEvents(t, events, "authorize", "audit-begin", "store", "effect")
+}
+
+func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
+	institutionID := model.NewId()
+	saved := &model.AcademicUnit{ID: model.NewAcademicUnitID(), InstitutionID: model.InstitutionID(institutionID), Name: "engineering", DisplayName: "Engineering"}
+	events := []string{}
+	creator := &academicUnitCreateStore{events: &events, idempotentResult: &store.AcademicUnitCommandResult{Value: saved, Replayed: true}}
+	service := newAcademicUnitCommandService(
+		creator,
+		academicUnitAuthorizerStub{authorizeInstallation: func(context.Context, Invocation, model.Action) (model.Resource, error) {
+			return model.Resource{Type: model.ResourceInstitution, ID: institutionID}, nil
+		}},
+		&academicUnitCommandAuditor{events: &events, beginID: model.NewId()},
+		&academicUnitCommandEffectsFake{events: &events},
+		&academicUnitEffectFailureReporterFake{events: &events},
+		func() time.Time { return time.UnixMilli(500) }, model.NewId,
+	)
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	got, err := service.Create(context.Background(), invocation, CreateAcademicUnitCommand{Name: "engineering", DisplayName: "Engineering", IdempotencyKey: "retry-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != saved {
+		t.Fatalf("Create() = %#v, want replay %#v", got, saved)
+	}
+	assertAcademicUnitCreateEvents(t, events, "audit-begin", "store-idempotent")
 }
 
 func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {

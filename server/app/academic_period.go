@@ -21,6 +21,7 @@ type ListAcademicPeriodsQuery struct {
 type CreateAcademicPeriodCommand struct {
 	Name, DisplayName, Description string
 	StartAt, EndAt                 int64
+	IdempotencyKey                 string
 }
 type UpdateAcademicPeriodCommand struct {
 	ID                             string
@@ -122,7 +123,14 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_period.invalid", err)
 	}
-	return runAuditedMutation(
+	idempotency, err := newCommandIdempotency(invocation, "academic_period.create.v1", command.IdempotencyKey, struct {
+		Name, DisplayName, Description string
+		StartAt, EndAt                 int64
+	}{command.Name, command.DisplayName, command.Description, command.StartAt, command.EndAt})
+	if err != nil {
+		return nil, err
+	}
+	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
@@ -133,13 +141,33 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 			Value:      candidate.Auditable(),
 		},
 		s.now,
-		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
-			return s.store.Create(ctx, &store.AcademicPeriodCreation{
+		func(ctx context.Context, reference mutationAttemptReference) (*store.AcademicPeriodCommandResult, error) {
+			input := &store.AcademicPeriodCreation{
 				Period: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+			}
+			if idempotency == nil {
+				period, createErr := s.store.Create(ctx, input)
+				return &store.AcademicPeriodCommandResult{Value: period}, createErr
+			}
+			idempotentStore, ok := s.store.(interface {
+				CreateIdempotently(context.Context, *store.AcademicPeriodCreation, *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error)
 			})
+			if !ok {
+				return nil, errors.New("academic period store does not support idempotent creation")
+			}
+			return idempotentStore.CreateIdempotently(ctx, input, idempotency)
 		},
-		academicPeriodError,
+		func(err error) error {
+			if mapped := idempotencyError(err); mapped != nil {
+				return mapped
+			}
+			return academicPeriodError(err)
+		},
 	)
+	if err != nil {
+		return nil, err
+	}
+	return result.Value, nil
 }
 
 func (a *App) UpdateAcademicPeriod(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {

@@ -247,6 +247,11 @@ func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	// transport. Local-mode unit tests only need a no-op implementation.
 	return noopClusterDiscovery{}
 }
+func (s *LifecycleStore) CommandOutcome() store.CommandOutcomeStore { return noopCommandOutcomeStore{} }
+
+type noopCommandOutcomeStore struct{}
+
+func (noopCommandOutcomeStore) DeleteExpired(context.Context, int) (int64, error) { return 0, nil }
 
 type noopClusterDiscovery struct{}
 

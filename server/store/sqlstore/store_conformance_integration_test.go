@@ -83,6 +83,7 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"RoleBinding", storetest.TestRoleBindingStore},
 		{"Audit", storetest.TestAuditStore},
 		{"Installation", storetest.TestInstallationStore},
+		{"CommandOutcome", storetest.TestCommandOutcomeStore},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -186,4 +187,8 @@ func TestAuditStore(t *testing.T) {
 
 func TestInstallationStore(t *testing.T) {
 	StoreTest(t, storetest.TestInstallationStore)
+}
+
+func TestCommandOutcomeStore(t *testing.T) {
+	StoreTest(t, storetest.TestCommandOutcomeStore)
 }

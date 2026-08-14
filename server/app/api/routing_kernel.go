@@ -120,11 +120,12 @@ func (path routePath) compile(apiPrefix string) (string, string, error) {
 }
 
 type operationRequest struct {
-	context   context.Context
-	principal model.Principal
-	metadata  model.RequestMetadata
-	params    Params
-	request   *http.Request
+	context        context.Context
+	principal      model.Principal
+	metadata       model.RequestMetadata
+	params         Params
+	request        *http.Request
+	idempotencyKey string
 }
 
 type operationResult struct {
@@ -202,6 +203,7 @@ type routeDefinition struct {
 	protocolKind      RouteProtocolKind
 	protocolOperation protocolOperation
 	upgradeOperation  upgradeOperation
+	idempotency       IdempotencyRequirement
 }
 
 // upgradeRoute is the sole raw response exception. A successful HTTP upgrade
@@ -221,7 +223,7 @@ func upgradeRoute(
 		method: method, path: path, auth: auth,
 		errorCodes:   append([]string(nil), errorCodes...),
 		protocolName: name, protocolKind: RouteProtocolUpgrade,
-		upgradeOperation: operation,
+		upgradeOperation: operation, idempotency: IdempotencyNone,
 	}
 }
 
@@ -235,7 +237,14 @@ func route(
 	return routeDefinition{
 		method: method, path: path, auth: auth,
 		errorCodes: append([]string(nil), errorCodes...), operation: operation,
+		idempotency: IdempotencyNone,
 	}
+}
+
+func idempotentPrincipalRoute(requirement IdempotencyRequirement, method string, path routePath, errorCodes []string, operation operation) routeDefinition {
+	definition := principalRoute(method, path, errorCodes, operation)
+	definition.idempotency = requirement
+	return definition
 }
 
 func publicRoute(method string, path routePath, errorCodes []string, operation operation) routeDefinition {
@@ -288,6 +297,7 @@ func protocolRoute(
 		method: method, path: path, auth: auth,
 		errorCodes:   append([]string(nil), errorCodes...),
 		protocolName: name, protocolKind: kind, protocolOperation: operation,
+		idempotency: IdempotencyNone,
 	}
 }
 
@@ -325,6 +335,12 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 			}
 			if !validAuthRequirement(route.auth) {
 				return fmt.Errorf("resource %q authentication requirement is invalid", resource.name)
+			}
+			if !validIdempotencyRequirement(route.idempotency) {
+				return fmt.Errorf("resource %q %s idempotency requirement is invalid", resource.name, route.method)
+			}
+			if effectiveIdempotencyRequirement(route.idempotency) != IdempotencyNone && (route.auth != AuthPrincipalRequired || route.operation == nil) {
+				return fmt.Errorf("resource %q %s idempotency requires an ordinary principal route", resource.name, route.method)
 			}
 			ordinary := route.operation != nil
 			protocol := route.protocolOperation != nil
@@ -378,6 +394,17 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 		}
 	}
 	return nil
+}
+
+func validIdempotencyRequirement(requirement IdempotencyRequirement) bool {
+	return requirement == "" || requirement == IdempotencyNone || requirement == IdempotencyOptional || requirement == IdempotencyRequired
+}
+
+func effectiveIdempotencyRequirement(requirement IdempotencyRequirement) IdempotencyRequirement {
+	if requirement == "" {
+		return IdempotencyNone
+	}
+	return requirement
 }
 
 func validRouteProtocolKind(kind RouteProtocolKind) bool {
@@ -500,6 +527,7 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 	}
 	for _, resource := range resources {
 		for _, definition := range resource.routes {
+			definition.idempotency = effectiveIdempotencyRequirement(definition.idempotency)
 			path, _, err := definition.path.compile(apiPrefix)
 			if err != nil {
 				return fmt.Errorf("compile resource %q: %w", resource.name, err)
@@ -511,6 +539,7 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 			} else if definition.upgradeOperation != nil {
 				operationHandler = a.upgradeOperationHandler(definition, errorPolicy)
 			}
+			operationHandler = a.withIdempotency(operationHandler, definition.idempotency)
 			handler := a.newHandlerWithErrorPolicy(
 				operationHandler,
 				definition.auth,
@@ -539,6 +568,7 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 				ErrorCodes:   append([]string(nil), definition.errorCodes...),
 				ProtocolName: definition.protocolName,
 				ProtocolKind: definition.protocolKind,
+				Idempotency:  definition.idempotency,
 			}
 			sort.Strings(route.ErrorCodes)
 			a.catalog.routeKeys[key] = struct{}{}
@@ -708,10 +738,16 @@ func (a *API) operationHandler(
 		result, err := definition.operation(operationRequest{
 			context: request.Context(), principal: principal,
 			metadata: RequestMetadata(request.Context()), params: params,
-			request: request,
+			request: request, idempotencyKey: idempotencyKeyFromContext(request.Context()),
 		})
 		if err != nil {
 			cause, headers := responseErrorParts(err)
+			if failure, ok := cause.(applicationFailure); ok && failure.Code() == "idempotency.in_progress" {
+				if headers == nil {
+					headers = make(http.Header)
+				}
+				headers.Set("Retry-After", "1")
+			}
 			if validateResponseHeaders(headers) != nil || !routeErrorAllowed(errorPolicy, cause) {
 				a.logInvalidRouteError(request, cause)
 				WriteProblem(writer, internalProblem(request))

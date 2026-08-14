@@ -6,6 +6,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -83,19 +84,73 @@ func (s SQLAcademicUnitStore) Create(
 	}
 
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
-		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := validateAcademicUnitParent(
-			ctx, tx,
-			candidate.ID.String(),
-			candidate.InstitutionID.String(),
-			candidate.ParentID.String(),
-		); err != nil {
-			return nil, err
-		}
-		row := newAcademicUnitRow(&candidate)
-		if _, err := tx.NamedExec(ctx, `
+		return createAcademicUnit(ctx, tx, input, &candidate, result)
+	})
+}
+
+func (s SQLAcademicUnitStore) CreateIdempotently(ctx context.Context, input *store.AcademicUnitCreation, command *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
+	if input == nil || input.Unit == nil || command == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_unit", "idempotent_creation", nil)
+	}
+	candidate := *input.Unit
+	if !candidate.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("academic_unit", "id", candidate.ID.String())
+	}
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_unit", "value", nil).Wrap(err)
+	}
+	auditData, err := model.EncodeAuditData(candidate.Auditable())
+	if err != nil {
+		return nil, err
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent academic unit creation", idempotentMutation[*model.AcademicUnit]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnit, error) {
+			return createAcademicUnit(ctx, tx, input, &candidate, auditData)
+		},
+		encode: func(unit *model.AcademicUnit) ([]byte, error) { return encodeCommandOutcome(newAcademicUnitRow(unit)) },
+		decode: func(version int, data []byte) (*model.AcademicUnit, error) {
+			if version != 1 {
+				return nil, fmt.Errorf("unsupported academic unit outcome version %d", version)
+			}
+			var row academicUnitRow
+			if err := decodeCommandOutcome(data, &row); err != nil {
+				return nil, err
+			}
+			return row.model()
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, unit *model.AcademicUnit, originalAuditID string) error {
+			data := unit.Auditable()
+			data["idempotency_replayed"] = true
+			data["original_audit_event_id"] = originalAuditID
+			encoded, err := model.EncodeAuditData(data)
+			if err != nil {
+				return err
+			}
+			_, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt)
+			return err
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &store.AcademicUnitCommandResult{Value: result.Value, Replayed: result.Replayed}, nil
+}
+
+func createAcademicUnit(ctx context.Context, tx *sqlxTxWrapper, input *store.AcademicUnitCreation, candidate *model.AcademicUnit, result json.RawMessage) (*model.AcademicUnit, error) {
+	if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := validateAcademicUnitParent(
+		ctx, tx,
+		candidate.ID.String(),
+		candidate.InstitutionID.String(),
+		candidate.ParentID.String(),
+	); err != nil {
+		return nil, err
+	}
+	row := newAcademicUnitRow(candidate)
+	if _, err := tx.NamedExec(ctx, `
 			INSERT INTO academic_units (
 				id, created_at, updated_at, archived_at, revision, institution_id, parent_id,
 				name, display_name, description
@@ -103,24 +158,23 @@ func (s SQLAcademicUnitStore) Create(
 				:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
 				:parent_id, :name, :display_name, :description
 			)`, &row); err != nil {
-			return nil, fmt.Errorf(
-				"create academic unit: %w",
-				translateError("academic_unit", candidate.ID.String(), err),
-			)
-		}
-		if _, err := completeAuditEvent(
-			ctx,
-			tx,
-			input.AuditEventID,
-			model.AuditStatusSuccess,
-			"",
-			result,
-			input.AuditAt,
-		); err != nil {
-			return nil, fmt.Errorf("complete academic unit creation audit: %w", err)
-		}
-		return &candidate, nil
-	})
+		return nil, fmt.Errorf(
+			"create academic unit: %w",
+			translateError("academic_unit", candidate.ID.String(), err),
+		)
+	}
+	if _, err := completeAuditEvent(
+		ctx,
+		tx,
+		input.AuditEventID,
+		model.AuditStatusSuccess,
+		"",
+		result,
+		input.AuditAt,
+	); err != nil {
+		return nil, fmt.Errorf("complete academic unit creation audit: %w", err)
+	}
+	return candidate, nil
 }
 
 func (s SQLAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit) (*model.AcademicUnit, error) {

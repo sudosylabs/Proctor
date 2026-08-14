@@ -31,6 +31,7 @@ type openAPIOperation struct {
 	OperationID string                      `json:"operationId"`
 	Auth        AuthRequirement             `json:"x-proctor-auth"`
 	ErrorCodes  []string                    `json:"x-proctor-error-codes"`
+	Idempotency IdempotencyRequirement      `json:"x-proctor-idempotency"`
 	Security    []map[string][]string       `json:"security"`
 	Parameters  []openAPIParameter          `json:"parameters"`
 	RequestBody openAPIRequestBody          `json:"requestBody"`
@@ -38,6 +39,7 @@ type openAPIOperation struct {
 }
 
 type openAPIParameter struct {
+	Ref      string `json:"$ref"`
 	Name     string `json:"name"`
 	In       string `json:"in"`
 	Required bool   `json:"required"`
@@ -103,6 +105,7 @@ type openAPIAgreementOperation struct {
 	// agreement remain mandatory in the shared evaluator.
 	ExceptionalSuccess bool
 	PublicErrorCodes   []string
+	Idempotency        IdempotencyRequirement
 }
 
 type openAPIAgreementSchema struct {
@@ -249,6 +252,22 @@ func evaluateOpenAPIAgreement(
 		}
 		if operation.Auth != contract.Auth {
 			violations = appendAgreementViolation(violations, key, "document auth", fmt.Sprintf("got %q, want %q", operation.Auth, contract.Auth))
+		}
+		wantIdempotency := effectiveIdempotencyRequirement(contract.Idempotency)
+		if effectiveIdempotencyRequirement(route.Idempotency) != wantIdempotency {
+			violations = appendAgreementViolation(violations, key, "runtime idempotency", fmt.Sprintf("got %q, want %q", route.Idempotency, wantIdempotency))
+		}
+		if effectiveIdempotencyRequirement(operation.Idempotency) != wantIdempotency {
+			violations = appendAgreementViolation(violations, key, "document idempotency", fmt.Sprintf("got %q, want %q", operation.Idempotency, wantIdempotency))
+		}
+		if wantIdempotency != IdempotencyNone {
+			found := false
+			for _, parameter := range operation.Parameters {
+				found = found || parameter.Ref == "#/components/parameters/OptionalIdempotencyKey"
+			}
+			if !found {
+				violations = appendAgreementViolation(violations, key, "idempotency header", "optional Idempotency-Key parameter is missing")
+			}
 		}
 		wantSecurity, _ := securityForAuth(contract.Auth, contract.method())
 		if !reflect.DeepEqual(operation.Security, wantSecurity) {

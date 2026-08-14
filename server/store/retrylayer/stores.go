@@ -44,6 +44,14 @@ func (s *academicUnitStore) Search(ctx context.Context, institutionID, query str
 		return s.AcademicUnitStore.Search(ctx, institutionID, query, limit)
 	})
 }
+func (s *academicUnitStore) CreateIdempotently(ctx context.Context, input *store.AcademicUnitCreation, command *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
+	if command == nil {
+		return s.AcademicUnitStore.CreateIdempotently(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.AcademicUnitCommandResult, error) {
+		return s.AcademicUnitStore.CreateIdempotently(ctx, input, command)
+	})
+}
 
 func (s *programmeStore) Get(ctx context.Context, id string) (*model.Programme, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Programme, error) { return s.ProgrammeStore.Get(ctx, id) })
@@ -99,6 +107,14 @@ func (s *academicPeriodStore) ListByInstitution(ctx context.Context, institution
 func (s *academicPeriodStore) SearchByInstitution(ctx context.Context, institutionID, query string, limit int) ([]*model.AcademicPeriod, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicPeriod, error) {
 		return s.AcademicPeriodStore.SearchByInstitution(ctx, institutionID, query, limit)
+	})
+}
+func (s *academicPeriodStore) CreateIdempotently(ctx context.Context, input *store.AcademicPeriodCreation, command *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
+	if command == nil {
+		return s.AcademicPeriodStore.CreateIdempotently(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.AcademicPeriodCommandResult, error) {
+		return s.AcademicPeriodStore.CreateIdempotently(ctx, input, command)
 	})
 }
 

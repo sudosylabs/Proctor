@@ -32,8 +32,10 @@
         "operationId": "createRootAcademicUnit",
         "summary": "Create a root Academic Unit",
         "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "administration.unavailable", "academic_unit.invalid", "academic_unit.conflict"],
+        "x-proctor-idempotency": "optional",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "administration.unavailable", "academic_unit.invalid", "academic_unit.conflict", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/OptionalIdempotencyKey"}],
         "requestBody": {"$ref": "#/components/requestBodies/CreateAcademicUnit"},
         "responses": {
           "201": {"$ref": "#/components/responses/AcademicUnitCreated"},
@@ -339,8 +341,10 @@
         "operationId": "createAcademicPeriod",
         "summary": "Create an institution-defined Academic Period",
         "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable"],
+        "x-proctor-idempotency": "optional",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/OptionalIdempotencyKey"}],
         "requestBody": {"$ref": "#/components/requestBodies/CreateAcademicPeriod"},
         "responses": {
           "201": {"$ref": "#/components/responses/AcademicPeriodCreated"},
@@ -1265,6 +1269,13 @@
       }
     },
     "parameters": {
+      "OptionalIdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict.",
+        "schema": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._~-]+$"}
+      },
       "AcademicUnitID": {
         "name": "academic_unit_id",
         "in": "path",

@@ -14,6 +14,8 @@ import (
 type retryStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	commandOutcome          store.CommandOutcomeStore
+	commandOutcomeOnce      sync.Once
 	job                     store.JobStore
 	jobOnce                 sync.Once
 	file                    store.FileStore
@@ -66,6 +68,11 @@ type retryStores struct {
 
 type clusterDiscoveryStore struct {
 	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type commandOutcomeStore struct {
+	store.CommandOutcomeStore
 	layer *Layer
 }
 
@@ -439,9 +446,20 @@ func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 	return l.stores.clusterDiscovery
 }
 
+func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
+	l.stores.commandOutcomeOnce.Do(func() {
+		next := l.Store.CommandOutcome()
+		if next != nil {
+			l.stores.commandOutcome = &commandOutcomeStore{CommandOutcomeStore: next, layer: l}
+		}
+	})
+	return l.stores.commandOutcome
+}
+
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*clusterDiscoveryStore)(nil)
+	_ store.CommandOutcomeStore      = (*commandOutcomeStore)(nil)
 	_ store.JobStore                 = (*jobStore)(nil)
 	_ store.FileStore                = (*fileStore)(nil)
 	_ store.InstitutionStore         = (*institutionStore)(nil)

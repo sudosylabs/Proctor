@@ -31,6 +31,7 @@ func constructJobs(
 		defaultProfilePictureDescriptor(defaultHandler),
 		defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
 		filePurgeExpiredContentDescriptor(purgeHandler),
+		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
 	}
 	retentionPolicies := jobRetentionPolicies(descriptors)
 	cleanupHandler := jobHistoryCleanupHandler{jobs: deps.Store.Job(), policies: append(retentionPolicies, store.JobRetentionPolicy{
@@ -41,6 +42,7 @@ func constructJobs(
 		{Name: "profile-picture-default-reconciliation", Proposer: defaultProfilePictureReconciliationJobProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "file-purge-expired-content", Proposer: filePurgeExpiredContentProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
+		{Name: "command-outcome-cleanup", Proposer: commandOutcomeCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
 	}
 	runtime, err := jobengine.New(jobengine.Config{
 		Store: deps.Store.Job(), Descriptors: descriptors, NodeID: deps.NodeID,

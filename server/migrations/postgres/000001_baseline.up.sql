@@ -624,6 +624,26 @@ CREATE INDEX audit_events_resource_type_resource_id_created_at_id_idx
 CREATE INDEX audit_events_status_created_at_id_idx
     ON audit_events (created_at, id) WHERE status = 'attempt';
 
+CREATE TABLE command_outcomes (
+    user_id varchar(26) NOT NULL REFERENCES users(id),
+    operation varchar(128) NOT NULL,
+    key_digest bytea NOT NULL CHECK (octet_length(key_digest) = 32),
+    fingerprint_version integer NOT NULL CHECK (fingerprint_version > 0),
+    fingerprint bytea NOT NULL CHECK (octet_length(fingerprint) = 32),
+    outcome_version integer NOT NULL CHECK (outcome_version > 0),
+    outcome jsonb NOT NULL CHECK (octet_length(outcome::text) <= 65536),
+    original_audit_event_id varchar(26) NOT NULL REFERENCES audit_events(id),
+    created_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    PRIMARY KEY (user_id, operation, key_digest),
+    CONSTRAINT command_outcomes_lifecycle_check CHECK (expires_at > created_at),
+    CONSTRAINT command_outcomes_operation_check
+        CHECK (operation ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$')
+);
+
+CREATE INDEX command_outcomes_expires_at_idx
+    ON command_outcomes (expires_at, user_id, operation);
+
 CREATE TABLE installation_states (
     singleton smallint PRIMARY KEY CHECK (singleton = 1),
     initialized_at timestamptz NOT NULL,
@@ -668,6 +688,12 @@ CREATE INDEX cluster_discovery_nodes_expires_at_node_id_idx
 ALTER TABLE institutions
     ADD CONSTRAINT institutions_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE command_outcomes
+    ADD CONSTRAINT command_outcomes_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT command_outcomes_original_audit_event_id_canonical_check
+    CHECK (original_audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE academic_units
     ADD CONSTRAINT academic_units_id_canonical_check

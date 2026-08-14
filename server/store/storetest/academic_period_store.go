@@ -10,6 +10,7 @@ package storetest
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 )
 
 func TestAcademicPeriodStore(t *testing.T, ss store.Store) {
+	t.Run("IdempotentCreate", func(t *testing.T) { testAcademicPeriodStoreIdempotentCreate(t, ss) })
 	t.Run("MutationAuditAtomicity", func(t *testing.T) { testAcademicPeriodStoreMutationAuditAtomicity(t, ss) })
 	t.Run("AllowsInstitutionDefinedOverlap", func(t *testing.T) { testAcademicPeriodStoreAllowsInstitutionDefinedOverlap(t, ss) })
 	t.Run("Save", func(t *testing.T) { testAcademicPeriodStoreSave(t, ss) })
@@ -35,6 +37,47 @@ func TestAcademicPeriodStore(t *testing.T, ss store.Store) {
 	t.Run("SearchAndArchive", func(t *testing.T) {
 		testAcademicPeriodStoreSearchAndArchive(t, ss)
 	})
+}
+
+func testAcademicPeriodStoreIdempotentCreate(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	user := saveUser(t, ctx, ss)
+	candidate := &model.AcademicPeriod{InstitutionID: institution.ID, Name: "idempotent-period", DisplayName: "Idempotent Period", StartsAt: model.TimeFromMillis(1000), EndsAt: model.TimeFromMillis(2000)}
+	candidate.PrepareCreate(model.NewAcademicPeriodID(), model.NowUTC())
+	command := &store.CommandIdempotency{UserID: user.ID, Operation: "academic_period.create.v1", KeyDigest: sha256.Sum256([]byte("key")), FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("command")), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
+	firstAudit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
+	first, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: candidate, AuditEventID: firstAudit.ID.String(), AuditAt: model.GetMillis()}, command)
+	requireNoError(t, err)
+	if first.Replayed || first.Value.ID != candidate.ID {
+		t.Fatalf("first result = %#v", first)
+	}
+
+	retryCandidate := *candidate
+	retryCandidate.ID = model.NewAcademicPeriodID()
+	secondAudit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
+	second, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: &retryCandidate, AuditEventID: secondAudit.ID.String(), AuditAt: model.GetMillis()}, command)
+	requireNoError(t, err)
+	if !second.Replayed || second.Value.ID != first.Value.ID {
+		t.Fatalf("replay result = %#v, want %s", second, first.Value.ID)
+	}
+	completed, err := ss.Audit().Get(ctx, secondAudit.ID.String())
+	requireNoError(t, err)
+	if completed.Status != model.AuditStatusSuccess {
+		t.Fatalf("replay audit status = %q", completed.Status)
+	}
+
+	conflict := *command
+	conflict.Fingerprint = sha256.Sum256([]byte("different"))
+	conflictAudit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
+	if _, err = ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: &retryCandidate, AuditEventID: conflictAudit.ID.String(), AuditAt: model.GetMillis()}, &conflict); err == nil {
+		t.Fatal("different command reused the key")
+	} else {
+		var target *store.ErrIdempotencyConflict
+		if !errors.As(err, &target) {
+			t.Fatalf("conflict error = %v", err)
+		}
+	}
 }
 
 func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {

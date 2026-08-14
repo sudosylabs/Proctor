@@ -12,6 +12,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -82,8 +83,64 @@ func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 		return nil, appErr
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic period creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
-		row := newAcademicPeriodRow(&candidate)
-		if _, err := tx.NamedExec(ctx, `
+		return createAcademicPeriod(ctx, tx, input, &candidate, encoded)
+	})
+}
+
+func (s SQLAcademicPeriodStore) CreateIdempotently(ctx context.Context, input *store.AcademicPeriodCreation, command *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
+	if input == nil || input.Period == nil || command == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("academic_period", "idempotent_creation", nil)
+	}
+	candidate := *input.Period
+	if !candidate.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("academic_period", "id", candidate.ID.String())
+	}
+	if err := candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("academic_period", "value", nil).Wrap(err)
+	}
+	auditData, err := model.EncodeAuditData(candidate.Auditable())
+	if err != nil {
+		return nil, err
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent academic period creation", idempotentMutation[*model.AcademicPeriod]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
+			return createAcademicPeriod(ctx, tx, input, &candidate, auditData)
+		},
+		encode: func(period *model.AcademicPeriod) ([]byte, error) {
+			return encodeCommandOutcome(newAcademicPeriodRow(period))
+		},
+		decode: func(version int, data []byte) (*model.AcademicPeriod, error) {
+			if version != 1 {
+				return nil, fmt.Errorf("unsupported academic period outcome version %d", version)
+			}
+			var row academicPeriodRow
+			if err := decodeCommandOutcome(data, &row); err != nil {
+				return nil, err
+			}
+			return row.model()
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, period *model.AcademicPeriod, originalAuditID string) error {
+			data := period.Auditable()
+			data["idempotency_replayed"] = true
+			data["original_audit_event_id"] = originalAuditID
+			encoded, err := model.EncodeAuditData(data)
+			if err != nil {
+				return err
+			}
+			_, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt)
+			return err
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &store.AcademicPeriodCommandResult{Value: result.Value, Replayed: result.Replayed}, nil
+}
+
+func createAcademicPeriod(ctx context.Context, tx *sqlxTxWrapper, input *store.AcademicPeriodCreation, candidate *model.AcademicPeriod, encoded json.RawMessage) (*model.AcademicPeriod, error) {
+	row := newAcademicPeriodRow(candidate)
+	if _, err := tx.NamedExec(ctx, `
 			INSERT INTO academic_periods (
 				id, created_at, updated_at, archived_at, revision, institution_id,
 				name, display_name, description, start_at, end_at
@@ -91,13 +148,12 @@ func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 				:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
 				:name, :display_name, :description, :start_at, :end_at
 			)`, &row); err != nil {
-			return nil, fmt.Errorf("create academic period: %w", translateError("academic_period", candidate.ID.String(), err))
-		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete academic period creation audit: %w", err)
-		}
-		return &candidate, nil
-	})
+		return nil, fmt.Errorf("create academic period: %w", translateError("academic_period", candidate.ID.String(), err))
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete academic period creation audit: %w", err)
+	}
+	return candidate, nil
 }
 
 func (s SQLAcademicPeriodStore) Save(

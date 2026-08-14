@@ -96,6 +96,7 @@ type SQLStoreStores struct {
 	audit               store.AuditStore
 	installation        store.InstallationStore
 	clusterDiscovery    store.ClusterDiscoveryStore
+	commandOutcome      store.CommandOutcomeStore
 }
 
 // SQLStore owns PostgreSQL connections and all concrete model stores.
@@ -157,6 +158,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.audit = newSQLAuditStore(sqlStore)
 	sqlStore.stores.installation = newSQLInstallationStore(sqlStore)
 	sqlStore.stores.clusterDiscovery = newSQLClusterDiscoveryStore(sqlStore)
+	sqlStore.stores.commandOutcome = newSQLCommandOutcomeStore(sqlStore)
 	return sqlStore, nil
 }
 
@@ -270,6 +272,8 @@ func (ss *SQLStore) Installation() store.InstallationStore {
 func (ss *SQLStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	return ss.stores.clusterDiscovery
 }
+
+func (ss *SQLStore) CommandOutcome() store.CommandOutcomeStore { return ss.stores.commandOutcome }
 
 func (ss *SQLStore) GetMaster() *sqlxDBWrapper {
 	return ss.masterX

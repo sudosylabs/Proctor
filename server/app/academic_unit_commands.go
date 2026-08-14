@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -16,10 +17,11 @@ import (
 // CreateAcademicUnitCommand contains caller-controlled Academic Unit fields.
 // Installation ownership and persistence lifecycle fields are not inputs.
 type CreateAcademicUnitCommand struct {
-	ParentID    string
-	Name        string
-	DisplayName string
-	Description string
+	ParentID       string
+	Name           string
+	DisplayName    string
+	Description    string
+	IdempotencyKey string
 }
 
 type UpdateAcademicUnitCommand struct {
@@ -193,6 +195,12 @@ func (s *academicUnitCommandService) Create(
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit.invalid", err)
 	}
+	idempotency, err := newCommandIdempotency(invocation, "academic_unit.create.v1", command.IdempotencyKey, struct {
+		ParentID, Name, DisplayName, Description string
+	}{command.ParentID, command.Name, command.DisplayName, command.Description})
+	if err != nil {
+		return nil, err
+	}
 	saved, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -204,22 +212,40 @@ func (s *academicUnitCommandService) Create(
 			Value:      candidate.Auditable(),
 		},
 		s.now,
-		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
-			return s.store.Create(ctx, &store.AcademicUnitCreation{
+		func(ctx context.Context, reference mutationAttemptReference) (*store.AcademicUnitCommandResult, error) {
+			input := &store.AcademicUnitCreation{
 				Unit: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+			}
+			if idempotency == nil {
+				unit, createErr := s.store.Create(ctx, input)
+				return &store.AcademicUnitCommandResult{Value: unit}, createErr
+			}
+			idempotentStore, ok := s.store.(interface {
+				CreateIdempotently(context.Context, *store.AcademicUnitCreation, *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error)
 			})
+			if !ok {
+				return nil, errors.New("academic unit store does not support idempotent creation")
+			}
+			return idempotentStore.CreateIdempotently(ctx, input, idempotency)
 		},
-		func(err error) error { return academicUnitReadError("academic_unit", err) },
+		func(err error) error {
+			if mapped := idempotencyError(err); mapped != nil {
+				return mapped
+			}
+			return academicUnitReadError("academic_unit", err)
+		},
 	)
 	if err != nil {
 		return nil, err
 	}
 	// The unit and success audit are committed before transient fan-out.
 	// Publication remains best effort so callers do not retry committed work.
-	if err := s.effects.Created(ctx, saved.ID.String()); err != nil {
-		s.effectFailures.Report(ctx, "academic_unit_created", err)
+	if !saved.Replayed {
+		if err := s.effects.Created(ctx, saved.Value.ID.String()); err != nil {
+			s.effectFailures.Report(ctx, "academic_unit_created", err)
+		}
 	}
-	return saved, nil
+	return saved.Value, nil
 }
 
 func (a *App) UpdateAcademicUnit(

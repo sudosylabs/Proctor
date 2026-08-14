@@ -88,6 +88,22 @@ patterns:
 The agreement test records these exceptions so migration cannot silently
 change existing clients. It does not make them conventions for new endpoints.
 
+## Idempotent commands
+
+Routes declare `none`, `optional`, or `required` idempotency in the immutable
+catalog and repeat non-`none` policy in OpenAPI. Existing v1 operations may add
+optional support; making the header required needs a new compatible contract.
+The initial optional operations are `POST /api/v1/academic-periods` and
+`POST /api/v1/academic-units`.
+
+`Idempotency-Key` is one case-sensitive opaque value of 1–128 characters from
+letters, digits, `-`, `.`, `_`, and `~`. Transport rejects malformed values;
+the application fingerprints a versioned canonical command, and the named
+Store mutation atomically commits the successful application outcome. A
+matching replay repeats authentication, authorization, and audit but not the
+mutation or post-commit effects. Raw keys, fingerprints, commands, stored
+outcomes, and replay state never enter public fields or ordinary telemetry.
+
 Correct transport ownership:
 
 ```go

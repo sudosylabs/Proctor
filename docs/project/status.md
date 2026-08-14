@@ -61,6 +61,14 @@ the code and component contracts for that detail.
   around an idempotent commit, bounded shutdown, stale fencing, and retained
   Attempt history. Local and S3-compatible VFS gates exercise the same complete
   rendition and referenced-content cleanup boundaries.
+- Client-command idempotency is implemented as an explicit route capability.
+  Academic Period and root Academic Unit creation accept optional bounded
+  keys; PostgreSQL atomically records user-and-operation-scoped semantic
+  fingerprints, successful application outcomes, and audit identity. Matching
+  retries reauthorize and audit without repeating mutations or transient
+  publication, conflicting reuse fails closed, safe unknown commits may be
+  retried internally, and a permanently deduplicated daily Job removes bounded
+  pages after the 24-hour minimum replay window.
 
 ## Architecture migration acceptance
 

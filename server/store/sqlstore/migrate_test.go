@@ -21,6 +21,7 @@ var baselineTables = []string{
 	"class_members",
 	"classes",
 	"cluster_discovery_nodes",
+	"command_outcomes",
 	"external_identities",
 	"external_login_states",
 	"file_entries",

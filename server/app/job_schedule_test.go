@@ -43,8 +43,11 @@ func TestDailyMaintenanceProposalsUsePermanentDedupeAcrossNodes(t *testing.T) {
 	if err := (jobHistoryCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
 		t.Fatal(err)
 	}
-	if len(jobs.jobs) != 3 {
-		t.Fatalf("logical jobs = %d, want 3", len(jobs.jobs))
+	if err := (commandOutcomeCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs.jobs) != 4 {
+		t.Fatalf("logical jobs = %d, want 4", len(jobs.jobs))
 	}
 	for _, job := range jobs.jobs {
 		if job.DedupePolicy != model.JobDedupePermanent {

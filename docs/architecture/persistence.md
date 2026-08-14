@@ -60,4 +60,17 @@ Normal serving validates schema compatibility and never migrates. Deployments ru
 
 `Archive` is reversible removal from active use, `Disable` is reversible prevention from operating, and `Purge` is explicit irreversible removal. A soft archive is not named `Delete`.
 
-Idempotent command outcomes are persisted atomically: retryable client commands store principal, operation, request fingerprint, outcome, and expiry. Replaying identical input returns the recorded outcome; different input with the same key is a conflict.
+Idempotent command outcomes are persisted atomically: explicitly retryable
+client commands store the authenticated User, stable versioned operation,
+digests of the bounded key and semantic request fingerprint, a bounded
+versioned application outcome, the original audit identity, and expiry.
+PostgreSQL transaction-scoped coordination serializes the complete namespace;
+the named aggregate mutation, successful audit completion, and outcome insert
+commit together. Replaying identical input returns the recorded outcome after
+fresh authorization and audit; different input with the same live key is a
+conflict. Raw keys, commands, and HTTP envelopes are not persisted.
+
+The initial guarantee is at least 24 hours. Expired rows remain replayable
+until the daily permanently deduplicated cleanup Job removes bounded pages;
+only physical removal permits key reuse. Outcome cleanup is safe under
+multiple nodes and uses the PostgreSQL clock.

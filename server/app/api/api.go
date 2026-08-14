@@ -59,6 +59,7 @@ type Health interface {
 }
 
 type AuthRequirement string
+type IdempotencyRequirement string
 
 type RouteProtocolKind string
 
@@ -70,6 +71,12 @@ const (
 	AuthRecentSessionRequired       AuthRequirement = "recent_session_required"
 	AuthStrongRecentSessionRequired AuthRequirement = "strong_recent_session_required"
 	AuthRefreshCredentialRequired   AuthRequirement = "refresh_credential_required"
+)
+
+const (
+	IdempotencyNone     IdempotencyRequirement = "none"
+	IdempotencyOptional IdempotencyRequirement = "optional"
+	IdempotencyRequired IdempotencyRequirement = "required"
 )
 
 const (
@@ -86,6 +93,7 @@ type Route struct {
 	ErrorCodes   []string
 	ProtocolName string
 	ProtocolKind RouteProtocolKind
+	Idempotency  IdempotencyRequirement
 }
 
 type routeMatcher struct {

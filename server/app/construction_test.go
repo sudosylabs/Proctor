@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -117,11 +118,19 @@ func (catalog constructionCatalogWithJobs) File() store.FileStore { return catal
 func (catalog constructionCatalogWithJobs) Institution() store.InstitutionStore {
 	return catalog.institutions
 }
+func (catalog constructionCatalogWithJobs) CommandOutcome() store.CommandOutcomeStore {
+	return constructionCommandOutcomeStoreStub{}
+}
 
 type constructionJobStoreStub struct{ store.JobStore }
 type constructionUserStoreStub struct{ store.UserStore }
 type constructionFileStoreStub struct{ store.FileStore }
 type constructionInstitutionStoreStub struct{ store.InstitutionStore }
+type constructionCommandOutcomeStoreStub struct{}
+
+func (constructionCommandOutcomeStoreStub) DeleteExpired(context.Context, int) (int64, error) {
+	return 0, nil
+}
 
 func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 	t.Parallel()
