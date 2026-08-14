@@ -19,6 +19,8 @@ var entityIDs = []idSpec{
 	{typeName: "ProgrammeLevelID", fieldName: "programme_level_id", constructorSubject: "programme-level"},
 	{typeName: "ClassID", fieldName: "class_id", constructorSubject: "class"},
 	{typeName: "AcademicPeriodID", fieldName: "academic_period_id", constructorSubject: "academic-period"},
+	{typeName: "ExamID", fieldName: "exam_id", constructorSubject: "exam"},
+	{typeName: "ExamRevisionID", fieldName: "exam_revision_id", constructorSubject: "exam-revision"},
 	{typeName: "UserID", fieldName: "user_id", constructorSubject: "user"},
 	{typeName: "SessionID", fieldName: "session_id", constructorSubject: "session"},
 	{typeName: "SessionCredentialID", fieldName: "session_credential_id", constructorSubject: "session-credential"},

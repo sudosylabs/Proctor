@@ -160,7 +160,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 	}
 	application := assembleApplication(
 		Dependencies{}, applicationFoundation{}, identityConstruction{}, accessAcademicConstruction{},
-		profiles, jobs, administrationConstruction{},
+		examinationConstruction{}, profiles, jobs, administrationConstruction{},
 	)
 	if application.jobs != jobs.runtime || application.jobOperations != jobs.operations {
 		t.Fatal("assembled application did not retain the constructed Job runtime and operations")

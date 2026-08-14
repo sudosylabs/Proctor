@@ -170,6 +170,7 @@ type accessScopeResolver struct {
 	classes       store.ClassStore
 	users         store.UserStore
 	classMembers  store.ClassMemberStore
+	exams         store.ExamAuthoringStore
 }
 
 func newAccessScopeResolver(
@@ -178,13 +179,14 @@ func newAccessScopeResolver(
 	classes store.ClassStore,
 	users store.UserStore,
 	classMembers store.ClassMemberStore,
+	exams store.ExamAuthoringStore,
 ) (*accessScopeResolver, error) {
-	if institutions == nil || academicUnits == nil || classes == nil || users == nil || classMembers == nil {
+	if institutions == nil || academicUnits == nil || classes == nil || users == nil || classMembers == nil || exams == nil {
 		return nil, errors.New("access scope resolver persistence is required")
 	}
 	return &accessScopeResolver{
 		institutions: institutions, academicUnits: academicUnits,
-		classes: classes, users: users, classMembers: classMembers,
+		classes: classes, users: users, classMembers: classMembers, exams: exams,
 	}, nil
 }
 
@@ -231,6 +233,7 @@ func (r *accessScopeResolver) resolve(
 			return resolved, NewError("resource.not_found").WithField("resource", "academic_unit")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
+		resolved.targetAcademicUnitID = resource.ID
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
 				return resolved, NewError("resource.not_found").WithField("resource", "academic_unit")
@@ -258,9 +261,33 @@ func (r *accessScopeResolver) resolve(
 		}
 		resolved.classID = resource.ID
 		resolved.institutionID = units[0].InstitutionID.String()
+		resolved.targetAcademicUnitID = academicUnitID
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
 				return resolved, NewError("resource.not_found").WithField("resource", "class")
+			}
+			resolved.academicUnitID[unit.ID.String()] = struct{}{}
+		}
+	case model.ResourceExam:
+		if r.exams == nil {
+			return resolved, authorizationUnavailableError("accessScopeResolver.exam", errors.New("exam persistence is required"))
+		}
+		exam, err := r.exams.Resolve(ctx, model.ExamID(resource.ID))
+		if err != nil {
+			return resolved, authorizationResourceError("exam", err)
+		}
+		units, err := r.academicUnits.ListAncestors(ctx, exam.AcademicUnitID.String())
+		if err != nil {
+			return resolved, authorizationResourceError("exam_academic_unit", err)
+		}
+		if len(units) == 0 {
+			return resolved, NewError("resource.not_found").WithField("resource", "exam")
+		}
+		resolved.institutionID = units[0].InstitutionID.String()
+		resolved.targetAcademicUnitID = exam.AcademicUnitID.String()
+		for _, unit := range units {
+			if unit == nil || unit.IsArchived() {
+				return resolved, NewError("resource.not_found").WithField("resource", "exam")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}

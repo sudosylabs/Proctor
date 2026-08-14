@@ -17,6 +17,8 @@ import (
 type timedStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	examAuthoring           store.ExamAuthoringStore
+	examAuthoringOnce       sync.Once
 	commandOutcome          store.CommandOutcomeStore
 	commandOutcomeOnce      sync.Once
 	job                     store.JobStore
@@ -72,6 +74,11 @@ type timedStores struct {
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedExamAuthoringStore struct {
+	layer *Layer
+	next  store.ExamAuthoringStore
 }
 
 type timedCommandOutcomeStore struct {
@@ -247,6 +254,16 @@ func (l *Layer) AcademicPeriod() store.AcademicPeriodStore {
 		}
 	})
 	return l.stores.academicPeriod
+}
+
+func (l *Layer) ExamAuthoring() store.ExamAuthoringStore {
+	l.stores.examAuthoringOnce.Do(func() {
+		next := l.next.ExamAuthoring()
+		if next != nil {
+			l.stores.examAuthoring = &timedExamAuthoringStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examAuthoring
 }
 
 func (l *Layer) Class() store.ClassStore {
@@ -510,6 +527,36 @@ func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) e
 func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
 		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
+func (s *timedExamAuthoringStore) Create(arg0 context.Context, arg1 *store.ExamAuthoringCreation) (*store.ExamAuthoringSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreate), func() (*store.ExamAuthoringSnapshot, error) {
+		return s.next.Create(arg0, arg1)
+	})
+}
+
+func (s *timedExamAuthoringStore) CreateIdempotently(arg0 context.Context, arg1 *store.ExamAuthoringCreation, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreateIdempotently), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.CreateIdempotently(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
+		return s.next.Access(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAuthoringSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodGet), func() (*store.ExamAuthoringSnapshot, error) {
+		return s.next.Get(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) Resolve(arg0 context.Context, arg1 model.ExamID) (*model.Exam, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodResolve), func() (*model.Exam, error) {
+		return s.next.Resolve(arg0, arg1)
 	})
 }
 
@@ -1614,6 +1661,7 @@ func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.Ins
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*timedClusterDiscoveryStore)(nil)
+	_ store.ExamAuthoringStore       = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore      = (*timedCommandOutcomeStore)(nil)
 	_ store.JobStore                 = (*timedJobStore)(nil)
 	_ store.FileStore                = (*timedFileStore)(nil)

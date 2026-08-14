@@ -268,6 +268,11 @@ type ClassApplication interface {
 	ArchiveClass(context.Context, application.Invocation, application.ArchiveClassCommand) error
 }
 
+type ExamApplication interface {
+	CreateExam(context.Context, application.Invocation, application.CreateExamCommand) (application.ExamView, error)
+	GetExam(context.Context, application.Invocation, application.GetExamQuery) (application.ExamView, error)
+}
+
 type AffiliationApplication interface {
 	ListAffiliations(context.Context, application.Invocation, application.ListAffiliationsQuery) ([]*model.Affiliation, error)
 	CreateAffiliation(context.Context, application.Invocation, application.CreateAffiliationCommand) (*model.Affiliation, error)
@@ -393,6 +398,7 @@ type Application interface {
 	MFA
 	InstitutionApplication
 	JobOperationsApplication
+	ExamApplication
 	Realtime
 }
 
@@ -517,6 +523,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		personalAccessTokenResource(options.Application),
 		institutionResource(options.Institutions),
 		academicUnitResource(options.AcademicUnits),
+		examResource(options.Application),
 		programmeResource(options.Programmes),
 		programmeLevelResource(options.ProgrammeLevels),
 		academicPeriodResource(options.AcademicPeriods),

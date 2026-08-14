@@ -69,6 +69,13 @@ the code and component contracts for that detail.
   publication, conflicting reuse fails closed, safe unknown commits may be
   retried internally, and a permanently deduplicated daily Job removes bounded
   pages after the 24-hour minimum replay window.
+- Examination Core authoring now creates one Academic-Unit-owned Exam, its
+  single mutable Draft, creator Owner/Manager relationship, and strict typed
+  Proctor-shipped policy defaults in one audited idempotent PostgreSQL
+  operation. The parent application and explicit HTTP routes expose bounded
+  create/get views, authorize ordinary Academic Unit members and Exam Managers
+  separately from explicit administrator overrides, and never hydrate an
+  unbounded manager set.
 
 ## Architecture migration acceptance
 
@@ -81,13 +88,13 @@ uncompleted architecture migration.
 
 ## Accepted Examination Core design
 
-The Examination Core domain and architecture are decided but not yet
-implemented. An Exam belongs to one Academic Unit and has one mutable Draft and
-immutable published Revisions. Each Sitting selects one Revision and exactly
-one Class in that Academic Unit. Urgent instructions/resource correction
-creates another immutable Revision and atomically retargets only the affected
-open or paused Sitting; it does not introduce a Sitting Amendment entity or
-force candidates to rejoin.
+The Examination Core domain and architecture are decided, and its first Exam
+authoring slice is implemented. An Exam belongs to one Academic Unit and has
+one mutable Draft and immutable published Revisions. Each Sitting selects one
+Revision and exactly one Class in that Academic Unit. Urgent instructions or
+resource correction creates another immutable Revision and atomically
+retargets only the affected open or paused Sitting; it does not introduce a
+Sitting Amendment entity or force candidates to rejoin.
 
 Every candidate Attempt has a protected IDE Workspace. Attempts are created on
 first eligible connection, use sequential fenced Participation generations,
@@ -130,8 +137,8 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Implement Examination Core as complete vertical slices: Exam authoring and
-  managers; resources, Starter Workspace, and publication; Sitting delivery
+- Continue Examination Core as complete vertical slices: manager mutation;
+  resources, Starter Workspace, and publication; Sitting delivery
   and live correction; Attempt admission and Participation; mutable Workspace
   and immutable Submission; then integrity policy, evidence, flags, and
   Submission Review.

@@ -361,6 +361,55 @@ CREATE UNIQUE INDEX academic_unit_members_academic_unit_id_user_id_key
     ON academic_unit_members (academic_unit_id, user_id)
     WHERE archived_at IS NULL AND end_at IS NULL;
 
+-- ---------------------------------------------------------------------------
+-- Examination authoring
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE exams (
+    id varchar(26) PRIMARY KEY,
+    academic_unit_id varchar(26) NOT NULL REFERENCES academic_units(id),
+    creator_user_id varchar(26) NOT NULL REFERENCES users(id),
+    owner_user_id varchar(26) NOT NULL REFERENCES users(id),
+    default_revision_id varchar(26),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    archived_at timestamptz,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    CONSTRAINT exams_lifecycle_check CHECK (
+        updated_at >= created_at AND
+        (archived_at IS NULL OR archived_at >= created_at)
+    )
+);
+
+CREATE INDEX exams_academic_unit_id_updated_at_id_idx
+    ON exams (academic_unit_id, updated_at DESC, id DESC);
+
+CREATE TABLE exam_drafts (
+    exam_id varchar(26) PRIMARY KEY REFERENCES exams(id) ON DELETE CASCADE,
+    title text NOT NULL,
+    instructions_markdown text NOT NULL DEFAULT '',
+    policy jsonb NOT NULL,
+    base_revision_id varchar(26),
+    updated_at timestamptz NOT NULL,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    CONSTRAINT exam_drafts_title_check CHECK (char_length(title) BETWEEN 1 AND 200),
+    CONSTRAINT exam_drafts_instructions_markdown_check
+        CHECK (octet_length(instructions_markdown) <= 65536),
+    CONSTRAINT exam_drafts_policy_size_check CHECK (octet_length(policy::text) <= 65536)
+);
+
+CREATE TABLE exam_managers (
+    exam_id varchar(26) NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    user_id varchar(26) NOT NULL REFERENCES users(id),
+    granted_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    granted_at timestamptz NOT NULL,
+    PRIMARY KEY (exam_id, user_id)
+);
+
+CREATE INDEX exam_managers_user_id_exam_id_idx ON exam_managers (user_id, exam_id);
+CREATE INDEX exam_managers_exam_id_granted_at_user_id_idx
+    ON exam_managers (exam_id, granted_at DESC, user_id DESC);
+
 CREATE TABLE class_members (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -594,7 +643,7 @@ CREATE TABLE audit_events (
     session_id varchar(26) REFERENCES sessions(id),
     action varchar(128) NOT NULL,
     resource_type varchar(32) NOT NULL
-        CHECK (resource_type IN ('institution', 'academic_unit', 'class', 'user')),
+        CHECK (resource_type IN ('institution', 'academic_unit', 'class', 'user', 'exam')),
     resource_id varchar(26) NOT NULL,
     scope_type varchar(32) NOT NULL
         CHECK (scope_type IN ('institution', 'academic_unit', 'class')),
@@ -720,6 +769,32 @@ ALTER TABLE academic_periods
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT academic_periods_institution_id_canonical_check
     CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exams
+    ADD CONSTRAINT exams_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exams_academic_unit_id_canonical_check
+    CHECK (academic_unit_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exams_creator_user_id_canonical_check
+    CHECK (creator_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exams_owner_user_id_canonical_check
+    CHECK (owner_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exams_default_revision_id_canonical_check
+    CHECK (default_revision_id IS NULL OR default_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_drafts
+    ADD CONSTRAINT exam_drafts_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_drafts_base_revision_id_canonical_check
+    CHECK (base_revision_id IS NULL OR base_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_managers
+    ADD CONSTRAINT exam_managers_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_managers_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_managers_granted_by_user_id_canonical_check
+    CHECK (granted_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE classes
     ADD CONSTRAINT classes_id_canonical_check

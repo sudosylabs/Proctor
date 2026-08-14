@@ -34,6 +34,12 @@ type ClassID string
 // AcademicPeriodID identifies an academic enrollment period.
 type AcademicPeriodID string
 
+// ExamID identifies the stable authoring identity of an examination.
+type ExamID string
+
+// ExamRevisionID identifies one immutable published examination revision.
+type ExamRevisionID string
+
 // UserID identifies a user account.
 type UserID string
 

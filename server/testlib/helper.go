@@ -211,10 +211,13 @@ func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore     { return lif
 func (s *LifecycleStore) Programme() store.ProgrammeStore           { return nil }
 func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
 func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
-func (s *LifecycleStore) Class() store.ClassStore                   { return lifecycleClassStore{} }
-func (s *LifecycleStore) User() store.UserStore                     { return lifecycleUserStore{} }
-func (s *LifecycleStore) File() store.FileStore                     { return nil }
-func (s *LifecycleStore) Job() store.JobStore                       { return nil }
+func (s *LifecycleStore) ExamAuthoring() store.ExamAuthoringStore {
+	return lifecycleExamAuthoringStore{}
+}
+func (s *LifecycleStore) Class() store.ClassStore { return lifecycleClassStore{} }
+func (s *LifecycleStore) User() store.UserStore   { return lifecycleUserStore{} }
+func (s *LifecycleStore) File() store.FileStore   { return nil }
+func (s *LifecycleStore) Job() store.JobStore     { return nil }
 func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore {
 	return lifecycleExternalIdentityStore{}
 }
@@ -225,9 +228,11 @@ func (s *LifecycleStore) UserToken() store.UserTokenStore { return lifecycleUser
 func (s *LifecycleStore) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return lifecyclePersonalAccessTokenStore{}
 }
-func (s *LifecycleStore) MFA() store.MFAStore                               { return lifecycleMFAStore{} }
-func (s *LifecycleStore) Affiliation() store.AffiliationStore               { return nil }
-func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
+func (s *LifecycleStore) MFA() store.MFAStore                 { return lifecycleMFAStore{} }
+func (s *LifecycleStore) Affiliation() store.AffiliationStore { return nil }
+func (s *LifecycleStore) AcademicUnitMember() store.AcademicUnitMemberStore {
+	return lifecycleAcademicUnitMemberStore{}
+}
 func (s *LifecycleStore) ClassMember() store.ClassMemberStore {
 	return lifecycleClassMemberStore{}
 }
@@ -287,6 +292,8 @@ var _ store.Store = (*LifecycleStore)(nil)
 type lifecycleUserStore struct{ store.UserStore }
 type lifecycleInstitutionStore struct{ store.InstitutionStore }
 type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }
+type lifecycleAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
+type lifecycleExamAuthoringStore struct{ store.ExamAuthoringStore }
 type lifecycleClassStore struct{ store.ClassStore }
 type lifecycleClassMemberStore struct{ store.ClassMemberStore }
 type lifecycleExternalIdentityStore struct{ store.ExternalIdentityStore }

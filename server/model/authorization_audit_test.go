@@ -30,7 +30,14 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	if err := (Resource{Type: ResourceUser, ID: NewId()}).Validate(); err != nil {
 		t.Fatal("valid user resource was rejected")
 	}
-	if err := (Resource{Type: ResourceType("exam"), ID: NewId()}).Validate(); err == nil {
+	examDefinition, ok := DefinitionForAction(ActionExamView)
+	if !ok || examDefinition.ResourceType != ResourceExam || !examDefinition.InheritInstitutionScope || !examDefinition.InheritAcademicUnitScopes {
+		t.Fatalf("exam-view definition = %#v, %v", examDefinition, ok)
+	}
+	if err := (Resource{Type: ResourceExam, ID: NewId()}).Validate(); err != nil {
+		t.Fatalf("valid exam resource was rejected: %v", err)
+	}
+	if err := (Resource{Type: ResourceType("future"), ID: NewId()}).Validate(); err == nil {
 		t.Fatal("unimplemented resource type was accepted")
 	}
 }

@@ -25,6 +25,10 @@ const (
 	ActionSessionManage            Action = "session.manage"
 	ActionJobView                  Action = "job.view"
 	ActionJobManage                Action = "job.manage"
+	ActionExamCreate               Action = "exam.create"
+	ActionExamCreateOverride       Action = "exam.create.override"
+	ActionExamView                 Action = "exam.view"
+	ActionExamViewOverride         Action = "exam.view.override"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -42,6 +46,7 @@ const (
 	ResourceAcademicUnit ResourceType = "academic_unit"
 	ResourceClass        ResourceType = "class"
 	ResourceUser         ResourceType = "user"
+	ResourceExam         ResourceType = "exam"
 )
 
 // Resource identifies the concrete object against which an action is checked.
@@ -102,6 +107,22 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionJobManage, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true,
 	},
+	ActionExamCreate: {
+		Action: ActionExamCreate, ResourceType: ResourceAcademicUnit,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamCreateOverride: {
+		Action: ActionExamCreateOverride, ResourceType: ResourceAcademicUnit,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamView: {
+		Action: ActionExamView, ResourceType: ResourceExam,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamViewOverride: {
+		Action: ActionExamViewOverride, ResourceType: ResourceExam,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
 	ActionAcademicUnitView: {
 		Action: ActionAcademicUnitView, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
@@ -153,7 +174,7 @@ func (r Resource) Validate() error {
 		return invalidModelError(where, "resource", "id", "must be a valid identifier", "")
 	}
 	switch r.Type {
-	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser:
+	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser, ResourceExam:
 		return nil
 	default:
 		return invalidModelError(where, "resource", "type", "has an unknown value", "id="+r.ID)

@@ -22,6 +22,7 @@ const (
 	aggregateCommandOutcome      aggregateName = "command_outcome"
 	aggregateExternalIdentity    aggregateName = "external_identity"
 	aggregateExternalLoginState  aggregateName = "external_login_state"
+	aggregateExamAuthoring       aggregateName = "exam_authoring"
 	aggregateFile                aggregateName = "file"
 	aggregateInstallation        aggregateName = "installation"
 	aggregateInstitution         aggregateName = "institution"
@@ -40,6 +41,7 @@ const (
 )
 
 const (
+	methodAccess                        methodName = "access"
 	methodActivate                      methodName = "activate"
 	methodArchive                       methodName = "archive"
 	methodArchiveWithAudit              methodName = "archive_with_audit"

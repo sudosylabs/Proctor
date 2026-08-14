@@ -89,9 +89,10 @@ production `App.Store()` traversal.
 
 `app.New` remains the sole application constructor and exposes its fail-fast
 order directly: validate shared dependencies, construct shared mechanics,
-construct Identity, construct access and Academic Structure, construct profile
-and file behavior, construct optional Jobs, then construct administration and
-bootstrap behavior before assembling the facade. Private same-package recipes
+construct Identity, construct access and Academic Structure, construct
+Examination authoring, construct profile and file behavior, construct optional
+Jobs, then construct administration and bootstrap behavior before assembling
+the facade. Private same-package recipes
 retain the projection and wiring knowledge for those cohesive slices. Their
 result values exist only during construction and are not runtime locators or
 alternate application interfaces.

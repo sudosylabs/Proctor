@@ -14,6 +14,8 @@ import (
 type retryStores struct {
 	clusterDiscovery        store.ClusterDiscoveryStore
 	clusterDiscoveryOnce    sync.Once
+	examAuthoring           store.ExamAuthoringStore
+	examAuthoringOnce       sync.Once
 	commandOutcome          store.CommandOutcomeStore
 	commandOutcomeOnce      sync.Once
 	job                     store.JobStore
@@ -68,6 +70,11 @@ type retryStores struct {
 
 type clusterDiscoveryStore struct {
 	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type examAuthoringStore struct {
+	store.ExamAuthoringStore
 	layer *Layer
 }
 
@@ -244,6 +251,16 @@ func (l *Layer) AcademicPeriod() store.AcademicPeriodStore {
 		}
 	})
 	return l.stores.academicPeriod
+}
+
+func (l *Layer) ExamAuthoring() store.ExamAuthoringStore {
+	l.stores.examAuthoringOnce.Do(func() {
+		next := l.Store.ExamAuthoring()
+		if next != nil {
+			l.stores.examAuthoring = &examAuthoringStore{ExamAuthoringStore: next, layer: l}
+		}
+	})
+	return l.stores.examAuthoring
 }
 
 func (l *Layer) Class() store.ClassStore {
@@ -459,6 +476,7 @@ func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
 var (
 	_ store.Store                    = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore    = (*clusterDiscoveryStore)(nil)
+	_ store.ExamAuthoringStore       = (*examAuthoringStore)(nil)
 	_ store.CommandOutcomeStore      = (*commandOutcomeStore)(nil)
 	_ store.JobStore                 = (*jobStore)(nil)
 	_ store.FileStore                = (*fileStore)(nil)

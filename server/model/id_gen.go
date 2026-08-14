@@ -23,6 +23,12 @@ func NewClassID() ClassID { return ClassID(NewId()) }
 // NewAcademicPeriodID returns a freshly generated academic-period identifier.
 func NewAcademicPeriodID() AcademicPeriodID { return AcademicPeriodID(NewId()) }
 
+// NewExamID returns a freshly generated exam identifier.
+func NewExamID() ExamID { return ExamID(NewId()) }
+
+// NewExamRevisionID returns a freshly generated exam-revision identifier.
+func NewExamRevisionID() ExamRevisionID { return ExamRevisionID(NewId()) }
+
 // NewUserID returns a freshly generated user identifier.
 func NewUserID() UserID { return UserID(NewId()) }
 
@@ -111,6 +117,16 @@ func ParseClassID(value string) (ClassID, error) {
 // ParseAcademicPeriodID validates and converts the shared identifier representation.
 func ParseAcademicPeriodID(value string) (AcademicPeriodID, error) {
 	return parseID[AcademicPeriodID](value, "academic_period_id")
+}
+
+// ParseExamID validates and converts the shared identifier representation.
+func ParseExamID(value string) (ExamID, error) {
+	return parseID[ExamID](value, "exam_id")
+}
+
+// ParseExamRevisionID validates and converts the shared identifier representation.
+func ParseExamRevisionID(value string) (ExamRevisionID, error) {
+	return parseID[ExamRevisionID](value, "exam_revision_id")
 }
 
 // ParseUserID validates and converts the shared identifier representation.
@@ -231,6 +247,12 @@ func (id ClassID) IsZero() bool { return id == "" }
 // IsZero reports whether the academic-period is the empty zero value.
 func (id AcademicPeriodID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the exam is the empty zero value.
+func (id ExamID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the exam-revision is the empty zero value.
+func (id ExamRevisionID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the user is the empty zero value.
 func (id UserID) IsZero() bool { return id == "" }
 
@@ -308,6 +330,12 @@ func (id ClassID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the academic-period is a canonical non-zero ID.
 func (id AcademicPeriodID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the exam is a canonical non-zero ID.
+func (id ExamID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the exam-revision is a canonical non-zero ID.
+func (id ExamRevisionID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the user is a canonical non-zero ID.
 func (id UserID) IsValid() bool { return IsValidId(string(id)) }
@@ -387,6 +415,12 @@ func (id ClassID) String() string { return string(id) }
 // String returns the academic-period wire/database representation.
 func (id AcademicPeriodID) String() string { return string(id) }
 
+// String returns the exam wire/database representation.
+func (id ExamID) String() string { return string(id) }
+
+// String returns the exam-revision wire/database representation.
+func (id ExamRevisionID) String() string { return string(id) }
+
 // String returns the user wire/database representation.
 func (id UserID) String() string { return string(id) }
 
@@ -464,6 +498,12 @@ func (id ClassID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the academic-period as its canonical string.
 func (id AcademicPeriodID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the exam as its canonical string.
+func (id ExamID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the exam-revision as its canonical string.
+func (id ExamRevisionID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the user as its canonical string.
 func (id UserID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -553,6 +593,16 @@ func (id *ClassID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the academic-period when non-empty.
 func (id *AcademicPeriodID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseAcademicPeriodID)
+}
+
+// UnmarshalText decodes and validates the exam when non-empty.
+func (id *ExamID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamID)
+}
+
+// UnmarshalText decodes and validates the exam-revision when non-empty.
+func (id *ExamRevisionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamRevisionID)
 }
 
 // UnmarshalText decodes and validates the user when non-empty.
@@ -673,6 +723,12 @@ func (id ClassID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 // MarshalJSON encodes the academic-period as a JSON string.
 func (id AcademicPeriodID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the exam as a JSON string.
+func (id ExamID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the exam-revision as a JSON string.
+func (id ExamRevisionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the user as a JSON string.
 func (id UserID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -761,6 +817,16 @@ func (id *ClassID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the academic-period.
 func (id *AcademicPeriodID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseAcademicPeriodID)
+}
+
+// UnmarshalJSON decodes a JSON string into the exam.
+func (id *ExamID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamID)
+}
+
+// UnmarshalJSON decodes a JSON string into the exam-revision.
+func (id *ExamRevisionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamRevisionID)
 }
 
 // UnmarshalJSON decodes a JSON string into the user.

@@ -340,6 +340,7 @@ func (testStore) AcademicUnit() store.AcademicUnitStore     { return nil }
 func (testStore) Programme() store.ProgrammeStore           { return nil }
 func (testStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
 func (testStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
+func (testStore) ExamAuthoring() store.ExamAuthoringStore   { return nil }
 func (testStore) Class() store.ClassStore                   { return nil }
 func (testStore) User() store.UserStore                     { return nil }
 func (testStore) ExternalIdentity() store.ExternalIdentityStore {

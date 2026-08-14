@@ -10,6 +10,10 @@ import (
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 )
 
+type examinationConstruction struct {
+	authoring examUseCases
+}
+
 // applicationFoundation holds the shared mechanics constructed before any
 // focused application service. It is a private construction result, not a
 // runtime service locator.
@@ -148,6 +152,7 @@ func assembleApplication(
 	foundation applicationFoundation,
 	identity identityConstruction,
 	access accessAcademicConstruction,
+	examinations examinationConstruction,
 	profiles profileFileConstruction,
 	jobs jobConstruction,
 	administration administrationConstruction,
@@ -170,6 +175,7 @@ func assembleApplication(
 		affiliations:                      access.affiliations,
 		academicUnitMembers:               access.academicUnitMembers,
 		classMembers:                      access.classMembers,
+		exams:                             examinations.authoring,
 		userProfiles:                      profiles.userProfiles,
 		profilePictures:                   profiles.profilePictures,
 		accountStates:                     administration.accountStates,

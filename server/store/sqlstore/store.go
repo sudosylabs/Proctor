@@ -76,6 +76,7 @@ type SQLStoreStores struct {
 	programme           store.ProgrammeStore
 	programmeLevel      store.ProgrammeLevelStore
 	academicPeriod      store.AcademicPeriodStore
+	examAuthoring       store.ExamAuthoringStore
 	class               store.ClassStore
 	user                store.UserStore
 	file                store.FileStore
@@ -138,6 +139,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.programme = newSQLProgrammeStore(sqlStore)
 	sqlStore.stores.programmeLevel = newSQLProgrammeLevelStore(sqlStore)
 	sqlStore.stores.academicPeriod = newSQLAcademicPeriodStore(sqlStore)
+	sqlStore.stores.examAuthoring = newSQLExamAuthoringStore(sqlStore)
 	sqlStore.stores.class = newSQLClassStore(sqlStore)
 	sqlStore.stores.user = newSQLUserStore(sqlStore)
 	sqlStore.stores.file = newSQLFileStore(sqlStore)
@@ -195,6 +197,10 @@ func (ss *SQLStore) ProgrammeLevel() store.ProgrammeLevelStore {
 
 func (ss *SQLStore) AcademicPeriod() store.AcademicPeriodStore {
 	return ss.stores.academicPeriod
+}
+
+func (ss *SQLStore) ExamAuthoring() store.ExamAuthoringStore {
+	return ss.stores.examAuthoring
 }
 
 func (ss *SQLStore) Class() store.ClassStore {

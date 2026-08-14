@@ -32,9 +32,10 @@ type authorizationDecisionAudit interface {
 }
 
 type resolvedAuthorizationResource struct {
-	institutionID  string
-	academicUnitID map[string]struct{}
-	classID        string
+	institutionID        string
+	academicUnitID       map[string]struct{}
+	targetAcademicUnitID string
+	classID              string
 }
 
 func newAccessControlService(
@@ -148,7 +149,7 @@ func personalAccessTokenAllows(
 		return true
 	}
 	switch resource.Type {
-	case model.ResourceAcademicUnit, model.ResourceClass:
+	case model.ResourceAcademicUnit, model.ResourceClass, model.ResourceExam:
 		_, applies := resolved.academicUnitID[principal.AcademicUnitID.String()]
 		return applies
 	default:
@@ -301,6 +302,8 @@ func authorizationAuditScope(
 		return model.RoleScopeInstitution, resolved.institutionID
 	case model.ResourceAcademicUnit:
 		return model.RoleScopeAcademicUnit, resource.ID
+	case model.ResourceExam:
+		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
 	case model.ResourceClass:
 		return model.RoleScopeClass, resource.ID
 	case model.ResourceUser:

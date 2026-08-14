@@ -43,6 +43,51 @@ type AcademicPeriodCommandResult struct {
 	Replayed bool
 }
 
+// ExamAuthoringSnapshot is the bounded authoring view returned by the Exam
+// aggregate store. Managers are counted but never hydrated as an unbounded set.
+type ExamAuthoringSnapshot struct {
+	Exam                *model.Exam
+	Draft               *model.ExamDraft
+	OwnerUserID         model.UserID
+	ManagerCount        int
+	ActorIsManager      bool
+	ResourceCount       int
+	HasStarterWorkspace bool
+}
+
+// ExamAccessSnapshot is the minimal projection needed to authorize an Exam
+// operation before authored Draft content is loaded.
+type ExamAccessSnapshot struct {
+	Exam           *model.Exam
+	ActorIsManager bool
+}
+
+type ExamAuthoringCommandResult struct {
+	Value    *ExamAuthoringSnapshot
+	Replayed bool
+}
+
+// ExamAuthoringCreation is the complete first Exam aggregate and the durable
+// audit attempt that its successful transaction must complete.
+type ExamAuthoringCreation struct {
+	Exam         *model.Exam
+	Draft        *model.ExamDraft
+	Manager      *model.ExamManager
+	AuditEventID string
+	AuditAt      int64
+}
+
+// ExamAuthoringStore owns the atomic Exam, Draft, creator-manager, audit, and
+// retry-outcome creation boundary. Get remains bounded regardless of manager
+// or future resource cardinality.
+type ExamAuthoringStore interface {
+	Create(context.Context, *ExamAuthoringCreation) (*ExamAuthoringSnapshot, error)
+	CreateIdempotently(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	Access(context.Context, model.ExamID, model.UserID) (*ExamAccessSnapshot, error)
+	Get(context.Context, model.ExamID, model.UserID) (*ExamAuthoringSnapshot, error)
+	Resolve(context.Context, model.ExamID) (*model.Exam, error)
+}
+
 // Store is the root persistence contract used by the application and platform.
 // Concrete adapters expose each model store through this interface so callers
 // do not depend on PostgreSQL implementation types.
@@ -55,6 +100,7 @@ type Catalog interface {
 	Programme() ProgrammeStore
 	ProgrammeLevel() ProgrammeLevelStore
 	AcademicPeriod() AcademicPeriodStore
+	ExamAuthoring() ExamAuthoringStore
 	Class() ClassStore
 	User() UserStore
 	File() FileStore
@@ -84,6 +130,7 @@ type Store interface {
 	Programme() ProgrammeStore
 	ProgrammeLevel() ProgrammeLevelStore
 	AcademicPeriod() AcademicPeriodStore
+	ExamAuthoring() ExamAuthoringStore
 	Class() ClassStore
 	User() UserStore
 	File() FileStore

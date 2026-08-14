@@ -33,6 +33,7 @@ type App struct {
 	affiliations                      *affiliationService
 	academicUnitMembers               *academicUnitMemberService
 	classMembers                      *classMemberService
+	exams                             examUseCases
 	userProfiles                      *userProfileService
 	profilePictures                   *profilePictureService
 	accountStates                     *accountStateService
@@ -80,13 +81,17 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	examinations, err := constructExaminations(deps, foundation, access)
+	if err != nil {
+		return nil, err
+	}
 	profiles := constructProfilesAndFiles(deps, foundation, access)
 	jobs, err := constructJobs(deps, foundation, access, profiles)
 	if err != nil {
 		return nil, err
 	}
 	administration := constructAdministration(deps, foundation, access)
-	return assembleApplication(deps, foundation, identity, access, profiles, jobs, administration), nil
+	return assembleApplication(deps, foundation, identity, access, examinations, profiles, jobs, administration), nil
 }
 
 func (a *App) Can(

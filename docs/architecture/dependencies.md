@@ -5,6 +5,7 @@
 ~~~text
 model ← store ← app/job ← app
 model ← app/realtime ← {app, websocket}
+{model, store} ← app/exam ← app
 app ← app/api
 model ← filecontent
 packages/vfs ← filecontent
@@ -20,7 +21,8 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `store` | `model` | `sqlstore`, HTTP, application services |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, transports, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
-| `app` | `model`, `store`, `app/job`, `app/realtime`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
+| `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports | parent `app`, transports, platform, concrete adapters |
+| `app` | `model`, `store`, `app/job`, `app/realtime`, `app/exam`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `websocket` | `app`, `app/realtime`, `model`, WebSocket libraries | SQL and platform service location |

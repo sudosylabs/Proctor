@@ -26,6 +26,7 @@ type Params struct {
 	RoleId                string
 	RoleBindingId         string
 	JobID                 string
+	ExamID                string
 	UserID                string
 	AcademicUnitID        string
 	ProgrammeId           string
@@ -53,6 +54,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		RoleId:                strings.TrimSpace(variables["role_id"]),
 		RoleBindingId:         strings.TrimSpace(variables["role_binding_id"]),
 		JobID:                 strings.TrimSpace(variables["job_id"]),
+		ExamID:                strings.TrimSpace(variables["exam_id"]),
 		UserID:                strings.TrimSpace(variables["user_id"]),
 		AcademicUnitID:        strings.TrimSpace(variables["academic_unit_id"]),
 		ProgrammeId:           strings.TrimSpace(variables["programme_id"]),
@@ -147,6 +149,10 @@ func (p Params) RequireRoleBindingId() (string, error) {
 
 func (p Params) RequireJobId() (string, error) {
 	return requirePathId("job_id", p.JobID)
+}
+
+func (p Params) RequireExamId() (string, error) {
+	return requirePathId("exam_id", p.ExamID)
 }
 
 func requirePathId(name, id string) (string, error) {

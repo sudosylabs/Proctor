@@ -1181,6 +1181,45 @@
         "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/exams": {
+      "post": {
+        "operationId": "createExam",
+        "summary": "Create an Exam and its initial Draft",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "optional",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/OptionalIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateExam"},
+        "responses": {
+          "201": {"$ref": "#/components/responses/ExamCreated"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/exams/{exam_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "get": {
+        "operationId": "getExam",
+        "summary": "Get one bounded Exam authoring view",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ExamOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "operationId": "listJobs", "summary": "List allowlisted durable Jobs",
@@ -1300,6 +1339,12 @@
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "ExamID": {
+        "name": "exam_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "ClassID": {
         "name": "class_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -1358,6 +1403,10 @@
       }
     },
     "requestBodies": {
+      "CreateExam": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateExamRequest"}}}
+      },
       "CreateAcademicUnit": {
         "required": true,
         "content": {
@@ -1469,6 +1518,14 @@
       }
     },
     "responses": {
+      "ExamOK": {
+        "description": "Bounded Exam authoring view",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResponse"}}}
+      },
+      "ExamCreated": {
+        "description": "Exam and initial Draft created",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResponse"}}}
+      },
       "AcademicUnitOK": {
         "description": "Academic Unit",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicUnitResponse"}}}
@@ -1560,6 +1617,87 @@
       "ID": {
         "type": "string",
         "pattern": "^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$"
+      },
+      "CreateExamRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["academic_unit_id", "title"],
+        "properties": {
+          "academic_unit_id": {"$ref": "#/components/schemas/ID"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "instructions_markdown": {"type": "string", "maxLength": 65536, "description": "Optional authored Markdown; empty means absent."}
+        }
+      },
+      "ExamResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exam", "draft", "owner_user_id", "manager_count"],
+        "properties": {
+          "exam": {"$ref": "#/components/schemas/ExamIdentityResponse"},
+          "draft": {"$ref": "#/components/schemas/ExamDraftResponse"},
+          "owner_user_id": {"$ref": "#/components/schemas/ID"},
+          "manager_count": {"type": "integer", "minimum": 1}
+        }
+      },
+      "ExamIdentityResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "academic_unit_id", "creator_user_id", "owner_user_id", "create_at", "update_at", "delete_at", "revision"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "academic_unit_id": {"$ref": "#/components/schemas/ID"},
+          "creator_user_id": {"$ref": "#/components/schemas/ID"},
+          "owner_user_id": {"$ref": "#/components/schemas/ID"},
+          "default_revision_id": {"$ref": "#/components/schemas/ID"},
+          "create_at": {"type": "integer", "format": "int64"},
+          "update_at": {"type": "integer", "format": "int64"},
+          "delete_at": {"type": "integer", "format": "int64"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "ExamDraftResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exam_id", "title", "instructions_markdown", "policy", "update_at", "revision", "resource_count", "has_starter_workspace"],
+        "properties": {
+          "exam_id": {"$ref": "#/components/schemas/ID"},
+          "title": {"type": "string"},
+          "instructions_markdown": {"type": "string"},
+          "policy": {"$ref": "#/components/schemas/ExamPolicySet"},
+          "base_revision_id": {"$ref": "#/components/schemas/ID"},
+          "update_at": {"type": "integer", "format": "int64"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "resource_count": {"type": "integer", "minimum": 0},
+          "has_starter_workspace": {"type": "boolean"}
+        }
+      },
+      "ExamPolicySet": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "connection_loss", "focus_loss"],
+        "properties": {
+          "schema_version": {"type": "integer", "const": 1},
+          "connection_loss": {"$ref": "#/components/schemas/ConnectionLossPolicy"},
+          "focus_loss": {"$ref": "#/components/schemas/FocusLossPolicy"}
+        }
+      },
+      "ConnectionLossPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["outcome"],
+        "properties": {"outcome": {"type": "string", "const": "flag_and_suspend"}}
+      },
+      "FocusLossPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["enabled", "minimum_duration_milliseconds", "incident_count", "window_milliseconds", "outcome"],
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "minimum_duration_milliseconds": {"type": "integer", "format": "int64", "minimum": 500, "maximum": 300000},
+          "incident_count": {"type": "integer", "minimum": 1, "maximum": 100},
+          "window_milliseconds": {"type": "integer", "format": "int64", "minimum": 10000, "maximum": 14400000},
+          "outcome": {"type": "string", "enum": ["flag", "flag_and_warn", "flag_and_suspend"]}
+        }
       },
       "AcademicUnitResponse": {
         "type": "object",

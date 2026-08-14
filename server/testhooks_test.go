@@ -48,12 +48,15 @@ func (s *hookStore) AcademicUnit() store.AcademicUnitStore     { return hookAcad
 func (s *hookStore) Programme() store.ProgrammeStore           { return nil }
 func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
 func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
-func (s *hookStore) Class() store.ClassStore                   { return hookClassStore{} }
-func (s *hookStore) Affiliation() store.AffiliationStore       { return nil }
-func (s *hookStore) User() store.UserStore                     { return hookUserStore{} }
-func (s *hookStore) File() store.FileStore                     { return nil }
-func (s *hookStore) Job() store.JobStore                       { return nil }
-func (s *hookStore) Session() store.SessionStore               { return hookSessionStore{} }
+func (s *hookStore) ExamAuthoring() store.ExamAuthoringStore {
+	return hookExamAuthoringStore{}
+}
+func (s *hookStore) Class() store.ClassStore             { return hookClassStore{} }
+func (s *hookStore) Affiliation() store.AffiliationStore { return nil }
+func (s *hookStore) User() store.UserStore               { return hookUserStore{} }
+func (s *hookStore) File() store.FileStore               { return nil }
+func (s *hookStore) Job() store.JobStore                 { return nil }
+func (s *hookStore) Session() store.SessionStore         { return hookSessionStore{} }
 func (s *hookStore) SessionCredential() store.SessionCredentialStore {
 	return hookSessionCredentialStore{}
 }
@@ -70,14 +73,16 @@ func (s *hookStore) ExternalIdentity() store.ExternalIdentityStore {
 func (s *hookStore) ExternalLoginState() store.ExternalLoginStateStore {
 	return hookExternalLoginStateStore{}
 }
-func (s *hookStore) UserToken() store.UserTokenStore                   { return hookUserTokenStore{} }
-func (s *hookStore) Role() store.RoleStore                             { return hookRoleStore{} }
-func (s *hookStore) RoleBinding() store.RoleBindingStore               { return hookRoleBindingStore{} }
-func (s *hookStore) Audit() store.AuditStore                           { return hookAuditStore{} }
-func (s *hookStore) Installation() store.InstallationStore             { return nil }
-func (s *hookStore) ClusterDiscovery() store.ClusterDiscoveryStore     { return nil }
-func (s *hookStore) ClassMember() store.ClassMemberStore               { return hookClassMemberStore{} }
-func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore { return nil }
+func (s *hookStore) UserToken() store.UserTokenStore               { return hookUserTokenStore{} }
+func (s *hookStore) Role() store.RoleStore                         { return hookRoleStore{} }
+func (s *hookStore) RoleBinding() store.RoleBindingStore           { return hookRoleBindingStore{} }
+func (s *hookStore) Audit() store.AuditStore                       { return hookAuditStore{} }
+func (s *hookStore) Installation() store.InstallationStore         { return nil }
+func (s *hookStore) ClusterDiscovery() store.ClusterDiscoveryStore { return nil }
+func (s *hookStore) ClassMember() store.ClassMemberStore           { return hookClassMemberStore{} }
+func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore {
+	return hookAcademicUnitMemberStore{}
+}
 func (s *hookStore) Ping(context.Context) error {
 	attempt := s.pingAttempts.Add(1)
 	if s.ping != nil {
@@ -96,6 +101,9 @@ func (s *hookStore) Close() error {
 	}
 	return s.closeErr
 }
+
+type hookExamAuthoringStore struct{ store.ExamAuthoringStore }
+type hookAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 
 type hookUserStore struct{ store.UserStore }
 type hookInstitutionStore struct{ store.InstitutionStore }

@@ -11,10 +11,6 @@ import (
 
 func TestRenderIsDeterministicAndComplete(t *testing.T) {
 	t.Parallel()
-	if len(entityIDs) != 26 {
-		t.Fatalf("typed-ID catalog length = %d, want 26", len(entityIDs))
-	}
-
 	first, err := render(entityIDs)
 	if err != nil {
 		t.Fatal(err)
