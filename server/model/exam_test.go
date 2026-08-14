@@ -81,3 +81,53 @@ func TestExamAndDraftValidateIndependently(t *testing.T) {
 		t.Fatal("expected persisted untrimmed title to fail")
 	}
 }
+
+func TestExamDraftApplyTextPatchPreservesPresenceAndRevision(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	draft, err := NewExamDraft(NewExamID(), "Systems", "Use **Go**.", DefaultExamPolicySet(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	title := "  Distributed Systems  "
+	clearInstructions := ""
+	changed, err := draft.ApplyTextPatch(&title, &clearInstructions, at.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || draft.Title != "Distributed Systems" || draft.InstructionsMarkdown != "" || draft.Revision != 2 || !draft.UpdatedAt.Equal(at.Add(time.Minute)) {
+		t.Fatalf("patched draft = %#v", draft)
+	}
+
+	unchangedTitle := draft.Title
+	changed, err = draft.ApplyTextPatch(&unchangedTitle, nil, at.Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || draft.Revision != 2 || !draft.UpdatedAt.Equal(at.Add(time.Minute)) {
+		t.Fatalf("no-op changed draft = %#v", draft)
+	}
+}
+
+func TestExamDraftApplyTextPatchRejectsMissingOrInvalidFieldsAtomically(t *testing.T) {
+	t.Parallel()
+	draft, err := NewExamDraft(NewExamID(), "Systems", "Instructions", DefaultExamPolicySet(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := *draft
+	if _, err := draft.ApplyTextPatch(nil, nil, time.Now().UTC()); err == nil {
+		t.Fatal("ApplyTextPatch accepted no authored field")
+	}
+	invalidTitle := "   "
+	if _, err := draft.ApplyTextPatch(&invalidTitle, nil, time.Now().UTC()); err == nil {
+		t.Fatal("ApplyTextPatch accepted an empty title")
+	}
+	tooLarge := strings.Repeat("x", ExamInstructionsMarkdownMaxBytes+1)
+	if _, err := draft.ApplyTextPatch(nil, &tooLarge, time.Now().UTC()); err == nil {
+		t.Fatal("ApplyTextPatch accepted oversized instructions")
+	}
+	if *draft != original {
+		t.Fatalf("failed patch mutated draft: got %#v want %#v", draft, original)
+	}
+}

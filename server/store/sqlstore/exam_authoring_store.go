@@ -104,6 +104,54 @@ func (s SQLExamAuthoringStore) Create(ctx context.Context, input *store.ExamAuth
 	return &store.ExamAuthoringCommandResult{Value: result.Value, Replayed: result.Replayed}, nil
 }
 
+func (s SQLExamAuthoringStore) UpdateDraftText(ctx context.Context, input *store.ExamDraftTextUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	prepared, err := prepareExamDraftTextUpdate(input)
+	if err != nil || command == nil {
+		if err != nil {
+			return nil, err
+		}
+		return nil, store.NewErrInvalidInput("exam_draft", "idempotency", nil)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam Draft text update", idempotentMutation[*store.ExamAuthoringSnapshot]{
+		command: command, auditEventID: prepared.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
+			return updateExamDraftText(ctx, tx, prepared)
+		},
+		encode: func(snapshot *store.ExamAuthoringSnapshot) ([]byte, error) {
+			row, err := newExamAuthoringRow(snapshot, true)
+			if err != nil {
+				return nil, err
+			}
+			return encodeCommandOutcome(row)
+		},
+		decode: func(version int, data []byte) (*store.ExamAuthoringSnapshot, error) {
+			if version != 1 {
+				return nil, fmt.Errorf("unsupported exam Draft text outcome version %d", version)
+			}
+			var row examAuthoringRow
+			if err := decodeCommandOutcome(data, &row); err != nil {
+				return nil, err
+			}
+			return row.model()
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, snapshot *store.ExamAuthoringSnapshot, originalAuditID string) error {
+			encoded, err := model.EncodeAuditData(map[string]any{
+				"exam_id": snapshot.Exam.ID.String(), "draft_revision": snapshot.Draft.Revision,
+				"idempotency_replayed": true, "original_audit_event_id": originalAuditID,
+			})
+			if err != nil {
+				return err
+			}
+			_, err = completeAuditEvent(ctx, tx, prepared.AuditEventID, model.AuditStatusSuccess, "", encoded, prepared.AuditAt)
+			return err
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &store.ExamAuthoringCommandResult{Value: result.Value, Replayed: result.Replayed}, nil
+}
+
 func (s SQLExamAuthoringStore) Get(ctx context.Context, examID model.ExamID, actorID model.UserID) (*store.ExamAuthoringSnapshot, error) {
 	if !examID.IsValid() || !actorID.IsValid() {
 		return nil, store.NewErrInvalidInput("exam", "identity", nil)
@@ -186,6 +234,82 @@ func prepareExamAuthoringCreation(input *store.ExamAuthoringCreation) (*store.Ex
 		return nil, nil, err
 	}
 	return &store.ExamAuthoringCreation{Exam: &exam, Draft: &draft, Manager: &manager, AuditEventID: input.AuditEventID, AuditAt: input.AuditAt}, auditData, nil
+}
+
+func prepareExamDraftTextUpdate(input *store.ExamDraftTextUpdate) (*store.ExamDraftTextUpdate, error) {
+	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
+		input.Title == nil && input.InstructionsMarkdown == nil || input.UpdatedAt <= 0 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("exam_draft", "text_update", nil)
+	}
+	prepared := *input
+	prepared.Title = cloneSQLStringPointer(input.Title)
+	prepared.InstructionsMarkdown = cloneSQLStringPointer(input.InstructionsMarkdown)
+	return &prepared, nil
+}
+
+func updateExamDraftText(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamDraftTextUpdate) (*store.ExamAuthoringSnapshot, error) {
+	var row examAuthoringRow
+	query := examAuthoringSelect + ` WHERE e.id = ? FOR UPDATE OF e, d`
+	if err := tx.Get(ctx, &row, query, input.ActorUserID.String(), input.ExamID.String()); err != nil {
+		return nil, translateError("exam", input.ExamID.String(), err)
+	}
+	snapshot, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	if !snapshot.ActorIsManager && !input.ManagerOverride {
+		return nil, store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if snapshot.Exam.IsArchived() {
+		return nil, store.NewErrConflict("exam", "exam_archived", nil)
+	}
+	if snapshot.Draft.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	candidate := *snapshot.Draft
+	changed, err := candidate.ApplyTextPatch(input.Title, input.InstructionsMarkdown, model.TimeFromMillis(input.UpdatedAt))
+	if err != nil {
+		return nil, store.NewErrInvalidInput("exam_draft", "text", nil).Wrap(err)
+	}
+	if !changed {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_no_changes", nil)
+	}
+	result, err := tx.Exec(ctx, `UPDATE exam_drafts
+		SET title = ?, instructions_markdown = ?, updated_at = ?, revision = ?
+		WHERE exam_id = ? AND revision = ?`,
+		candidate.Title, candidate.InstructionsMarkdown, candidate.UpdatedAt, candidate.Revision,
+		input.ExamID.String(), input.ExpectedRevision)
+	if err != nil {
+		return nil, fmt.Errorf("update exam Draft text: %w", translateError("exam_draft", input.ExamID.String(), err))
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return nil, fmt.Errorf("inspect exam Draft text update: %w", err)
+	} else if affected != 1 {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	row.DraftTitle = candidate.Title
+	row.InstructionsMarkdown = candidate.InstructionsMarkdown
+	row.DraftUpdatedAt = candidate.UpdatedAt
+	row.DraftRevision = candidate.Revision
+	auditData, err := model.EncodeAuditData(map[string]any{
+		"exam_id": input.ExamID.String(), "draft_revision": candidate.Revision,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete exam Draft text audit: %w", err)
+	}
+	return row.model()
+}
+
+func cloneSQLStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func createExamAuthoring(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAuthoringCreation, auditData json.RawMessage) (*store.ExamAuthoringSnapshot, error) {

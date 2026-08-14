@@ -55,6 +55,7 @@ func (s *rootStub) PersonalAccessToken() store.PersonalAccessTokenStore {
 type examAuthoringStub struct {
 	store.ExamAuthoringStore
 	createAttempts  int
+	updateAttempts  int
 	accessAttempts  int
 	getAttempts     int
 	resolveAttempts int
@@ -63,6 +64,11 @@ type examAuthoringStub struct {
 
 func (s *examAuthoringStub) Create(context.Context, *store.ExamAuthoringCreation, *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
 	s.createAttempts++
+	return nil, s.err
+}
+
+func (s *examAuthoringStub) UpdateDraftText(context.Context, *store.ExamDraftTextUpdate, *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	s.updateAttempts++
 	return nil, s.err
 }
 
@@ -189,12 +195,13 @@ func TestRetryExamAuthoringIdempotentCreateAndReads(t *testing.T) {
 	}
 
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, &store.CommandIdempotency{})
+	_, _ = layer.ExamAuthoring().UpdateDraftText(context.Background(), &store.ExamDraftTextUpdate{}, &store.CommandIdempotency{})
 	_, _ = layer.ExamAuthoring().Access(context.Background(), model.NewExamID(), model.NewUserID())
 	_, _ = layer.ExamAuthoring().Get(context.Background(), model.NewExamID(), model.NewUserID())
 	_, _ = layer.ExamAuthoring().Resolve(context.Background(), model.NewExamID())
-	if stub.createAttempts != 3 || stub.accessAttempts != 3 || stub.getAttempts != 3 || stub.resolveAttempts != 3 {
-		t.Fatalf("attempts create/access/get/resolve = %d/%d/%d/%d, want 3/3/3/3",
-			stub.createAttempts, stub.accessAttempts, stub.getAttempts, stub.resolveAttempts)
+	if stub.createAttempts != 3 || stub.updateAttempts != 3 || stub.accessAttempts != 3 || stub.getAttempts != 3 || stub.resolveAttempts != 3 {
+		t.Fatalf("attempts create/update/access/get/resolve = %d/%d/%d/%d/%d, want 3/3/3/3/3",
+			stub.createAttempts, stub.updateAttempts, stub.accessAttempts, stub.getAttempts, stub.resolveAttempts)
 	}
 }
 
@@ -210,8 +217,12 @@ func TestRetryExamAuthoringDoesNotRetryCreateWithoutIdempotency(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, nil)
+	_, _ = layer.ExamAuthoring().UpdateDraftText(context.Background(), &store.ExamDraftTextUpdate{}, nil)
 	if stub.createAttempts != 1 {
 		t.Fatalf("Create() attempts = %d, want 1 without idempotency", stub.createAttempts)
+	}
+	if stub.updateAttempts != 1 {
+		t.Fatalf("UpdateDraftText() attempts = %d, want 1 without idempotency", stub.updateAttempts)
 	}
 }
 

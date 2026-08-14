@@ -4,6 +4,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -15,6 +16,12 @@ type createExamRequest struct {
 	AcademicUnitID       string `json:"academic_unit_id"`
 	Title                string `json:"title"`
 	InstructionsMarkdown string `json:"instructions_markdown"`
+}
+
+type editExamDraftTextRequest struct {
+	ExpectedDraftRevision int64            `json:"expected_draft_revision"`
+	Title                 Optional[string] `json:"title"`
+	InstructionsMarkdown  Optional[string] `json:"instructions_markdown"`
 }
 
 type examResponse struct {
@@ -72,6 +79,7 @@ func examResource(exams ExamApplication) resource {
 	module := examResourceModule{exams: exams}
 	collection := apiPath(literal("exams"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"))
+	draft := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"))
 	return newResource(
 		"exams",
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, academicMutationErrorCodes(
@@ -79,6 +87,11 @@ func examResource(exams ExamApplication) resource {
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.create),
 		principalRoute(http.MethodGet, member, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.unavailable"), module.get),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, draft, academicMutationErrorCodes(
+			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
+			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		), module.editDraftText),
 	)
 }
 
@@ -111,6 +124,37 @@ func (m examResourceModule) get(request operationRequest) (operationResult, erro
 		return operationResult{}, invalidRequestError("exam_id", err)
 	}
 	view, err := m.exams.GetExam(request.context, request.invocation(), application.GetExamQuery{ExamID: examID})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examResponseFromView(view)), nil
+}
+
+func (m examResourceModule) editDraftText(request operationRequest) (operationResult, error) {
+	raw, err := request.params.RequireExamId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	examID, err := model.ParseExamID(raw)
+	if err != nil {
+		return operationResult{}, invalidRequestError("exam_id", err)
+	}
+	var body editExamDraftTextRequest
+	if err := request.decodeJSON(&body, "editExamDraftText"); err != nil {
+		return operationResult{}, err
+	}
+	title := body.Title.ValuePointer()
+	instructions := body.InstructionsMarkdown.ValuePointer()
+	if title == nil && instructions == nil {
+		return operationResult{}, invalidRequestError("fields", errors.New("at least one authored field is required"))
+	}
+	if body.ExpectedDraftRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+	}
+	view, err := m.exams.EditExamDraftText(request.context, request.invocation(), application.EditExamDraftTextCommand{
+		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision,
+		Title: title, InstructionsMarkdown: instructions, IdempotencyKey: request.idempotencyKey,
+	})
 	if err != nil {
 		return operationResult{}, err
 	}

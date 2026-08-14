@@ -39,6 +39,28 @@ func (a mutationAuditAdapter) Begin(
 	return event.ID.String(), nil
 }
 
+func (a mutationAuditAdapter) BeginAtScope(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	operation string,
+	value map[string]any,
+	prior map[string]any,
+) (string, error) {
+	event, appErr := a.audit.BeginCriticalActionAtScope(
+		ctx, invocation.Principal(), action, resource, scopeType, scopeID,
+		invocation.RequestMetadata(),
+		map[string]any{"operation": operation, "value": value}, prior,
+	)
+	if appErr != nil {
+		return "", appErr
+	}
+	return event.ID.String(), nil
+}
+
 func (a mutationAuditAdapter) Fail(
 	ctx context.Context,
 	auditID string,

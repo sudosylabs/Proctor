@@ -148,6 +148,35 @@ func (d *ExamDraft) Validate() error {
 	return nil
 }
 
+// ApplyTextPatch updates only authored title and instructions fields. Nil
+// pointers preserve the current value; a non-nil empty instructions value
+// clears the Markdown. A validated no-op leaves revision and time untouched.
+func (d *ExamDraft) ApplyTextPatch(title, instructionsMarkdown *string, at time.Time) (bool, error) {
+	if d == nil || title == nil && instructionsMarkdown == nil {
+		return false, invalidModelError("ExamDraft.ApplyTextPatch", "exam_draft", "fields", "at least one authored field is required", "")
+	}
+	candidate := *d
+	if title != nil {
+		candidate.Title = strings.TrimSpace(*title)
+	}
+	if instructionsMarkdown != nil {
+		candidate.InstructionsMarkdown = *instructionsMarkdown
+	}
+	if candidate.Title == d.Title && candidate.InstructionsMarkdown == d.InstructionsMarkdown {
+		return false, nil
+	}
+	candidate.Revision++
+	candidate.UpdatedAt = TimeUTC(at)
+	if candidate.UpdatedAt.Before(d.UpdatedAt) {
+		candidate.UpdatedAt = d.UpdatedAt
+	}
+	if err := candidate.Validate(); err != nil {
+		return false, err
+	}
+	*d = candidate
+	return true, nil
+}
+
 // ExamManager grants authoring responsibility independently of role grants.
 type ExamManager struct {
 	ExamID          ExamID

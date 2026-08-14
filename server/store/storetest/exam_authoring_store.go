@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 func TestExamAuthoringStore(t *testing.T, ss store.Store) {
 	t.Run("CreateGetAndReplay", func(t *testing.T) { testExamAuthoringCreateGetAndReplay(t, ss) })
+	t.Run("UpdateDraftTextAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftTextAndConflict(t, ss) })
 	t.Run("AuditAtomicity", func(t *testing.T) { testExamAuthoringAuditAtomicity(t, ss) })
 }
 
@@ -106,6 +108,83 @@ func testExamAuthoringAuditAtomicity(t *testing.T, ss store.Store) {
 	}
 	if _, err := ss.ExamAuthoring().Get(ctx, creation.Exam.ID, creator.ID); !store.IsNotFound(err) {
 		t.Fatalf("exam survived audit rollback: %v", err)
+	}
+}
+
+func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "exam-edit-unit")
+	creator := saveUser(t, ctx, ss)
+	createdAt := model.NowUTC()
+	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
+	createCommand := examCommand(creator.ID, "exam.create.v1", "edit-create", "edit-create-command")
+	created, err := ss.ExamAuthoring().Create(ctx, creation, createCommand)
+	requireNoError(t, err)
+
+	title := "  Distributed Systems  "
+	clearInstructions := ""
+	updatedAt := createdAt.Add(time.Minute)
+	update := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &title, &clearInstructions, updatedAt)
+	updateCommand := examCommand(creator.ID, "exam.draft.text.edit.v1", "edit-key", "edit-command")
+	updated, err := ss.ExamAuthoring().UpdateDraftText(ctx, update, updateCommand)
+	requireNoError(t, err)
+	if updated.Replayed || updated.Value.Draft.Title != "Distributed Systems" || updated.Value.Draft.InstructionsMarkdown != "" || updated.Value.Draft.Revision != 2 {
+		t.Fatalf("updated Draft = %#v", updated)
+	}
+	if updated.Value.Exam.Revision != created.Value.Exam.Revision || updated.Value.Draft.Policy != created.Value.Draft.Policy {
+		t.Fatalf("text update changed unrelated state: %#v", updated.Value)
+	}
+
+	replay := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &title, &clearInstructions, updatedAt.Add(time.Second))
+	replayed, err := ss.ExamAuthoring().UpdateDraftText(ctx, replay, updateCommand)
+	requireNoError(t, err)
+	if !replayed.Replayed || replayed.Value.Draft.Revision != 2 {
+		t.Fatalf("replayed update = %#v", replayed)
+	}
+	replayAudit, err := ss.Audit().Get(ctx, replay.AuditEventID)
+	requireNoError(t, err)
+	if replayAudit.Status != model.AuditStatusSuccess {
+		t.Fatalf("replay audit status = %s", replayAudit.Status)
+	}
+
+	staleTitle := "Operating Systems"
+	stale := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, &staleTitle, nil, updatedAt.Add(2*time.Second))
+	_, err = ss.ExamAuthoring().UpdateDraftText(ctx, stale, examCommand(creator.ID, "exam.draft.text.edit.v1", "stale-key", "stale-command"))
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) || conflict.Constraint != "exam_draft_revision" {
+		t.Fatalf("stale update error = %v, want exam_draft_revision conflict", err)
+	}
+	current, err := ss.ExamAuthoring().Get(ctx, created.Value.Exam.ID, creator.ID)
+	requireNoError(t, err)
+	if current.Draft.Title != "Distributed Systems" || current.Draft.Revision != 2 {
+		t.Fatalf("stale update changed Draft: %#v", current.Draft)
+	}
+}
+
+func newExamDraftTextUpdate(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, expectedRevision int64, title, instructions *string, at time.Time) *store.ExamDraftTextUpdate {
+	t.Helper()
+	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
+	requireNoError(t, err)
+	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		ActorID: actorID, Action: string(model.ActionExamManage),
+		Resource:  model.Resource{Type: model.ResourceExam, ID: examID.String()},
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: exam.AcademicUnitID.String(),
+		Status: model.AuditStatusAttempt, NodeID: "test-node",
+	})
+	requireNoError(t, err)
+	return &store.ExamDraftTextUpdate{
+		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision,
+		Title: title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(at),
+		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+	}
+}
+
+func examCommand(userID model.UserID, operation, key, fingerprint string) *store.CommandIdempotency {
+	return &store.CommandIdempotency{
+		UserID: userID, Operation: operation, KeyDigest: sha256.Sum256([]byte(key)),
+		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte(fingerprint)), OutcomeVersion: 1,
+		Retention: time.Hour, Wait: time.Second,
 	}
 }
 

@@ -145,14 +145,6 @@ func (s *auditService) BeginCriticalAction(
 	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
-	encodedParameters, err := model.EncodeAuditData(parameters)
-	if err != nil {
-		return nil, domainInvalid("audit.event.invalid", err)
-	}
-	encodedPriorState, err := model.EncodeAuditData(priorState)
-	if err != nil {
-		return nil, domainInvalid("audit.event.invalid", err)
-	}
 	scopeType := model.RoleScopeType(resource.Type)
 	scopeID := resource.ID
 	if resource.Type == model.ResourceUser {
@@ -162,6 +154,52 @@ func (s *auditService) BeginCriticalAction(
 		}
 		scopeType = model.RoleScopeInstitution
 		scopeID = institution.ID.String()
+	}
+	return s.beginCriticalActionAtScope(ctx, principal, action, resource, scopeType, scopeID, metadata, parameters, priorState)
+}
+
+// BeginCriticalActionAtScope records a mutation against its domain resource
+// while retaining the independently resolved authorization scope. This is
+// required for resources such as Exams whose identity is not itself a role
+// binding scope.
+func (s *auditService) BeginCriticalActionAtScope(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	metadata model.RequestMetadata,
+	parameters any,
+	priorState any,
+) (*model.AuditEvent, error) {
+	if principal.Validate() != nil {
+		return nil, invalidTokenAppError()
+	}
+	if s.audits == nil {
+		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
+	}
+	return s.beginCriticalActionAtScope(ctx, principal, action, resource, scopeType, scopeID, metadata, parameters, priorState)
+}
+
+func (s *auditService) beginCriticalActionAtScope(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	metadata model.RequestMetadata,
+	parameters any,
+	priorState any,
+) (*model.AuditEvent, error) {
+	encodedParameters, err := model.EncodeAuditData(parameters)
+	if err != nil {
+		return nil, domainInvalid("audit.event.invalid", err)
+	}
+	encodedPriorState, err := model.EncodeAuditData(priorState)
+	if err != nil {
+		return nil, domainInvalid("audit.event.invalid", err)
 	}
 	event := &model.AuditEvent{
 		ActorID: principal.UserID, SessionID: principal.SessionID,

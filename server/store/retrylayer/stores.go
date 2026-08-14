@@ -127,6 +127,15 @@ func (s *examAuthoringStore) Create(ctx context.Context, input *store.ExamAuthor
 	})
 }
 
+func (s *examAuthoringStore) UpdateDraftText(ctx context.Context, input *store.ExamDraftTextUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	if command == nil {
+		return s.ExamAuthoringStore.UpdateDraftText(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamAuthoringCommandResult, error) {
+		return s.ExamAuthoringStore.UpdateDraftText(ctx, input, command)
+	})
+}
+
 func (s *examAuthoringStore) Access(ctx context.Context, examID model.ExamID, actorID model.UserID) (*store.ExamAccessSnapshot, error) {
 	return retryCall1(ctx, s.layer, func() (*store.ExamAccessSnapshot, error) {
 		return s.ExamAuthoringStore.Access(ctx, examID, actorID)

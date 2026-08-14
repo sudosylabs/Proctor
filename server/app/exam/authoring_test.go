@@ -111,6 +111,126 @@ func TestCreateFailureCompletesAuditAsFailed(t *testing.T) {
 	}
 }
 
+func TestEditDraftTextOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	title := "  Distributed Systems  "
+	instructions := "Use **Go** and submit all files."
+	command := &store.CommandIdempotency{UserID: fixture.userID, Operation: "exam.draft.text.edit.v1"}
+	view, err := fixture.service.EditDraftText(context.Background(), fixture.call, EditDraftTextCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1,
+		Title: &title, InstructionsMarkdown: &instructions, Idempotency: command,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Draft.Title != "Distributed Systems" || view.Draft.InstructionsMarkdown != instructions || view.Draft.Revision != 2 {
+		t.Fatalf("view = %#v", view)
+	}
+	if fixture.authorizer.action != model.ActionExamManage || fixture.persistence.textUpdate == nil || fixture.persistence.idempotency != command {
+		t.Fatalf("authorization/update = %s / %#v", fixture.authorizer.action, fixture.persistence.textUpdate)
+	}
+	if fixture.auditor.value["title"] != nil || fixture.auditor.value["instructions_markdown"] != nil ||
+		fixture.auditor.scopeType != model.RoleScopeAcademicUnit || fixture.auditor.scopeID != fixture.unitID.String() || fixture.effects.updatedRevision != 2 {
+		t.Fatalf("unsafe audit/scope/effect = %#v / %s:%s / %d", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID, fixture.effects.updatedRevision)
+	}
+	want := []string{"store.access", "membership", "authorize", "store.get", "audit.begin", "store.update_text", "effect.updated"}
+	if !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
+func TestEditDraftTextNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	title := "  Test  "
+	_, err := fixture.service.EditDraftText(context.Background(), fixture.call, EditDraftTextCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
+		Idempotency: &store.CommandIdempotency{},
+	})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.draft.no_changes" {
+		t.Fatalf("error = %v, want exam.draft.no_changes", err)
+	}
+	if want := []string{"store.access", "membership", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
+func TestEditDraftTextRejectsArchivedAndStaleDraftsWithoutPublishing(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name             string
+		archived         bool
+		expectedRevision int64
+		want             string
+	}{
+		{name: "archived", archived: true, expectedRevision: 1, want: "exam.archived"},
+		{name: "stale", expectedRevision: 2, want: "exam.draft.revision_conflict"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			fixture := newAuthoringFixture(t)
+			fixture.persistence.actorIsManager = true
+			fixture.persistence.archived = test.archived
+			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+			title := "Changed"
+			_, err := fixture.service.EditDraftText(context.Background(), fixture.call, EditDraftTextCommand{
+				ExamID: fixture.examID, ExpectedDraftRevision: test.expectedRevision, Title: &title,
+				Idempotency: &store.CommandIdempotency{},
+			})
+			var fault *Fault
+			if !errors.As(err, &fault) || fault.Code != test.want {
+				t.Fatalf("error = %v, want %s", err, test.want)
+			}
+			if fixture.auditor.value == nil || fixture.persistence.textUpdate == nil || fixture.effects.updatedRevision != 0 || fixture.auditor.failedCode != test.want {
+				t.Fatalf("rejected update effects: audit=%#v store=%#v effect=%d failed=%s", fixture.auditor.value, fixture.persistence.textUpdate, fixture.effects.updatedRevision, fixture.auditor.failedCode)
+			}
+		})
+	}
+}
+
+func TestEditDraftTextReplayDoesNotRepublish(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.persistence.replayed = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	title := "Changed"
+	if _, err := fixture.service.EditDraftText(context.Background(), fixture.call, EditDraftTextCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
+		Idempotency: &store.CommandIdempotency{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.effects.updatedRevision != 0 {
+		t.Fatalf("replay published revision %d", fixture.effects.updatedRevision)
+	}
+}
+
+func TestEditDraftTextUsesExplicitOverrideWithoutManagerMembership(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	title := "Changed"
+	if _, err := fixture.service.EditDraftText(context.Background(), fixture.call, EditDraftTextCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
+		Idempotency: &store.CommandIdempotency{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.authorizer.action != model.ActionExamManageOverride || fixture.persistence.textUpdate == nil || !fixture.persistence.textUpdate.ManagerOverride {
+		t.Fatalf("override action/update = %s / %#v", fixture.authorizer.action, fixture.persistence.textUpdate)
+	}
+	if want := []string{"store.access", "authorize", "store.get", "audit.begin", "store.update_text", "effect.updated"}; !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
 func TestGetSelectsManagerOrOverrideAuthorization(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -242,11 +362,16 @@ func (f *membershipsFake) ListActiveByUser(context.Context, string, int64) ([]*m
 type auditorFake struct {
 	order      *[]string
 	failedCode string
+	value      map[string]any
+	scopeType  model.RoleScopeType
+	scopeID    string
 	err        error
 }
 
-func (f *auditorFake) Begin(context.Context, Call, model.Action, model.Resource, string, map[string]any, map[string]any) (string, error) {
+func (f *auditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, scopeType model.RoleScopeType, scopeID, _ string, value map[string]any, _ map[string]any) (string, error) {
 	*f.order = append(*f.order, "audit.begin")
+	f.value = value
+	f.scopeType, f.scopeID = scopeType, scopeID
 	return model.NewId(), f.err
 }
 func (f *auditorFake) Fail(_ context.Context, _ string, code string) error {
@@ -261,8 +386,10 @@ type authoringStoreFake struct {
 	unitID         model.AcademicUnitID
 	actorID        model.UserID
 	actorIsManager bool
+	archived       bool
 	replayed       bool
 	creation       *store.ExamAuthoringCreation
+	textUpdate     *store.ExamDraftTextUpdate
 	idempotency    *store.CommandIdempotency
 	err            error
 }
@@ -275,12 +402,43 @@ func (f *authoringStoreFake) Create(_ context.Context, input *store.ExamAuthorin
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshotFromCreation(input, true), Replayed: f.replayed}, nil
 }
+func (f *authoringStoreFake) UpdateDraftText(_ context.Context, input *store.ExamDraftTextUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	*f.order = append(*f.order, "store.update_text")
+	f.textUpdate, f.idempotency = input, command
+	if f.err != nil {
+		return nil, f.err
+	}
+	snapshot, err := f.Get(context.Background(), input.ExamID, input.ActorUserID)
+	*f.order = (*f.order)[:len(*f.order)-1]
+	if err != nil {
+		return nil, err
+	}
+	if f.replayed {
+		return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: true}, nil
+	}
+	if !snapshot.ActorIsManager && !input.ManagerOverride {
+		return nil, store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if snapshot.Exam.IsArchived() {
+		return nil, store.NewErrConflict("exam", "exam_archived", nil)
+	}
+	if snapshot.Draft.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	if _, err := snapshot.Draft.ApplyTextPatch(input.Title, input.InstructionsMarkdown, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+		return nil, err
+	}
+	return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: f.replayed}, nil
+}
 func (f *authoringStoreFake) Access(_ context.Context, examID model.ExamID, _ model.UserID) (*store.ExamAccessSnapshot, error) {
 	*f.order = append(*f.order, "store.access")
 	if f.err != nil {
 		return nil, f.err
 	}
 	exam, _ := model.NewExam(examID, f.unitID, f.actorID, time.Now().UTC())
+	if f.archived {
+		exam.ArchivedAt = model.OptionalTimeFrom(time.Now().UTC())
+	}
 	return &store.ExamAccessSnapshot{Exam: exam, ActorIsManager: f.actorIsManager}, nil
 }
 func (f *authoringStoreFake) Get(_ context.Context, examID model.ExamID, _ model.UserID) (*store.ExamAuthoringSnapshot, error) {
@@ -290,6 +448,9 @@ func (f *authoringStoreFake) Get(_ context.Context, examID model.ExamID, _ model
 	}
 	at := time.Now().UTC()
 	exam, _ := model.NewExam(examID, f.unitID, f.actorID, at)
+	if f.archived {
+		exam.ArchivedAt = model.OptionalTimeFrom(at)
+	}
 	draft, _ := model.NewExamDraft(examID, "Test", "", model.DefaultExamPolicySet(), at)
 	return &store.ExamAuthoringSnapshot{Exam: exam, Draft: draft, OwnerUserID: f.actorID, ManagerCount: 1, ActorIsManager: f.actorIsManager}, nil
 }
@@ -301,14 +462,20 @@ func snapshotFromCreation(input *store.ExamAuthoringCreation, actor bool) *store
 }
 
 type effectsFake struct {
-	order *[]string
-	calls int
-	err   error
+	order           *[]string
+	calls           int
+	updatedRevision int64
+	err             error
 }
 
 func (f *effectsFake) Created(context.Context, model.ExamID) error {
 	*f.order = append(*f.order, "effect.created")
 	f.calls++
+	return f.err
+}
+func (f *effectsFake) DraftUpdated(_ context.Context, _ model.ExamID, revision int64) error {
+	*f.order = append(*f.order, "effect.updated")
+	f.updatedRevision = revision
 	return f.err
 }
 func (f *effectsFake) Report(context.Context, string, error) {}

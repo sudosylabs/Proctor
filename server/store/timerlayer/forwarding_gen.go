@@ -536,6 +536,12 @@ func (s *timedExamAuthoringStore) Create(arg0 context.Context, arg1 *store.ExamA
 	})
 }
 
+func (s *timedExamAuthoringStore) UpdateDraftText(arg0 context.Context, arg1 *store.ExamDraftTextUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftText), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftText(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
 		return s.next.Access(arg0, arg1, arg2)

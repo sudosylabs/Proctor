@@ -25,9 +25,16 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamOK", SuccessSchema: "ExamResponse",
 				PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "exam.unavailable", "administration.unavailable"),
 			},
+			{
+				Key: "PATCH /api/v1/exams/{exam_id}/draft", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
+				RequestBodyRef: "#/components/requestBodies/EditExamDraftText", RequestSchema: "EditExamDraftTextRequest",
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamOK", SuccessSchema: "ExamResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+			},
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "CreateExamRequest", DTO: reflect.TypeOf(createExamRequest{}), Required: []string{"academic_unit_id", "title"}},
+			{Name: "EditExamDraftTextRequest", DTO: reflect.TypeOf(editExamDraftTextRequest{}), Required: []string{"expected_draft_revision"}},
 			{Name: "ExamResponse", DTO: reflect.TypeOf(examResponse{}), Required: []string{"exam", "draft", "owner_user_id", "manager_count"}, Nullable: []string{"exam.archived_at"}},
 			{Name: "ExamIdentityResponse", DTO: reflect.TypeOf(examIdentityResponse{}), Required: []string{"id", "academic_unit_id", "creator_user_id", "owner_user_id", "created_at", "updated_at", "archived_at", "revision"}, Nullable: []string{"archived_at"}},
 			{Name: "ExamDraftResponse", DTO: reflect.TypeOf(examDraftResponse{}), Required: []string{"exam_id", "title", "instructions_markdown", "policy", "updated_at", "revision", "resource_count", "has_starter_workspace"}},

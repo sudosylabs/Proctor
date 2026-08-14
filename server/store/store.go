@@ -77,11 +77,26 @@ type ExamAuthoringCreation struct {
 	AuditAt      int64
 }
 
+// ExamDraftTextUpdate changes only the authored text fields of one Draft.
+// Presence is retained so later Draft fields remain outside this operation.
+type ExamDraftTextUpdate struct {
+	ExamID               model.ExamID
+	ActorUserID          model.UserID
+	ManagerOverride      bool
+	ExpectedRevision     int64
+	Title                *string
+	InstructionsMarkdown *string
+	UpdatedAt            int64
+	AuditEventID         string
+	AuditAt              int64
+}
+
 // ExamAuthoringStore owns the atomic Exam, Draft, creator-manager, audit, and
 // retry-outcome creation boundary. Get remains bounded regardless of manager
 // or future resource cardinality.
 type ExamAuthoringStore interface {
 	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	Access(context.Context, model.ExamID, model.UserID) (*ExamAccessSnapshot, error)
 	Get(context.Context, model.ExamID, model.UserID) (*ExamAuthoringSnapshot, error)
 	Resolve(context.Context, model.ExamID) (*model.Exam, error)

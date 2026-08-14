@@ -75,7 +75,10 @@ the code and component contracts for that detail.
   operation. The parent application and explicit HTTP routes expose bounded
   create/get views, authorize ordinary Academic Unit members and Exam Managers
   separately from explicit administrator overrides, and never hydrate an
-  unbounded manager set.
+  unbounded manager set. Authorized managers can edit the Draft title and
+  authored Markdown through presence-aware, revision-fenced, audited,
+  idempotent updates; unchanged edits do not mutate or publish, and archived
+  Exams reject new authoring mutations.
 
 ## Architecture migration acceptance
 
@@ -88,8 +91,9 @@ uncompleted architecture migration.
 
 ## Accepted Examination Core design
 
-The Examination Core domain and architecture are decided, and its first Exam
-authoring slice is implemented. An Exam belongs to one Academic Unit and has
+The Examination Core domain and architecture are decided, and its initial Exam
+creation, retrieval, and Draft text-authoring slices are implemented. An Exam
+belongs to one Academic Unit and has
 one mutable Draft and immutable published Revisions. Each Sitting selects one
 Revision and exactly one Class in that Academic Unit. Urgent instructions or
 resource correction creates another immutable Revision and atomically

@@ -44,7 +44,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
 		t.Fatal(err)
 	}
-	role, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-author", DisplayName: "Exam Author", Permissions: []string{string(model.ActionExamCreate), string(model.ActionExamView)}})
+	role, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-author", DisplayName: "Exam Author", Permissions: []string{string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,11 +66,38 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if replayed.Exam.ID != created.Exam.ID {
 		t.Fatalf("replay exam = %s, want %s", replayed.Exam.ID, created.Exam.ID)
 	}
+	editedTitle := "Distributed Systems"
+	clearInstructions := ""
+	edited, appErr := helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
+		Title: &editedTitle, InstructionsMarkdown: &clearInstructions, IdempotencyKey: "exam-edit-once",
+	})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if edited.Draft.Title != editedTitle || edited.Draft.InstructionsMarkdown != "" || edited.Draft.Revision != created.Draft.Revision+1 || edited.Exam.Revision != created.Exam.Revision {
+		t.Fatalf("edited = %#v", edited)
+	}
+	editedReplay, appErr := helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
+		Title: &editedTitle, InstructionsMarkdown: &clearInstructions, IdempotencyKey: "exam-edit-once",
+	})
+	if appErr != nil || editedReplay.Draft.Revision != edited.Draft.Revision {
+		t.Fatalf("edit replay = %#v, %v", editedReplay, appErr)
+	}
+	staleTitle := "Operating Systems"
+	_, appErr = helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
+		Title: &staleTitle, IdempotencyKey: "exam-edit-stale",
+	})
+	if !application.Is(appErr, "exam.draft.revision_conflict") {
+		t.Fatalf("stale edit error = %v", appErr)
+	}
 	got, appErr := helper.App.GetExam(ctx, invocation, application.GetExamQuery{ExamID: created.Exam.ID})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if got.Exam.ID != created.Exam.ID || got.Draft.Title != created.Draft.Title || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
+	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
 		t.Fatalf("get = %#v", got)
 	}
 	outsider, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, password)

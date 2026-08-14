@@ -65,6 +65,62 @@ func TestExamHTTPCreateRequiresIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestExamHTTPPatchDraftPreservesOmittedAndExplicitEmptyFields(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	fake := &examHTTPApplication{principal: principal, view: view}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_draft_revision":1,"instructions_markdown":""}`)))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "clear-instructions")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("patch status = %d: %s", response.Code, response.Body.String())
+	}
+	if fake.edit.ExamID != view.Exam.ID || fake.edit.ExpectedDraftRevision != 1 || fake.edit.Title != nil || fake.edit.InstructionsMarkdown == nil || *fake.edit.InstructionsMarkdown != "" || fake.edit.IdempotencyKey != "clear-instructions" {
+		t.Fatalf("edit command = %#v", fake.edit)
+	}
+}
+
+func TestExamHTTPPatchDraftTreatsNullAsUnchangedAndRequiresAValue(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	fake := &examHTTPApplication{principal: principal, view: view}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_draft_revision":1,"title":null,"instructions_markdown":null}`)))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "null-fields")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !bytes.Contains(response.Body.Bytes(), []byte(`"code":"request.invalid"`)) {
+		t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestExamHTTPPatchDraftRequiresIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	fake := &examHTTPApplication{principal: principal, view: view}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/exams/"+view.Exam.ID.String()+"/draft", bytes.NewReader([]byte(`{"expected_draft_revision":1,"title":"Algorithms"}`)))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !bytes.Contains(response.Body.Bytes(), []byte(`"code":"idempotency.key_required"`)) {
+		t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 	t.Parallel()
 	view := testExamHTTPView(t, model.NewUserID())
@@ -112,6 +168,7 @@ type examHTTPApplication struct {
 	principal model.Principal
 	view      application.ExamView
 	create    application.CreateExamCommand
+	edit      application.EditExamDraftTextCommand
 	get       application.GetExamQuery
 }
 
@@ -129,6 +186,10 @@ func (a *examHTTPApplication) CreateExam(_ context.Context, _ application.Invoca
 }
 func (a *examHTTPApplication) GetExam(_ context.Context, _ application.Invocation, query application.GetExamQuery) (application.ExamView, error) {
 	a.get = query
+	return a.view, nil
+}
+func (a *examHTTPApplication) EditExamDraftText(_ context.Context, _ application.Invocation, command application.EditExamDraftTextCommand) (application.ExamView, error) {
+	a.edit = command
 	return a.view, nil
 }
 

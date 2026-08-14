@@ -98,8 +98,8 @@ Routes declare `none`, `optional`, or `required` idempotency in the immutable
 catalog and repeat non-`none` policy in OpenAPI. Existing v1 operations may add
 optional support; making the header required needs a new compatible contract.
 The initial optional operations are `POST /api/v1/academic-periods` and
-`POST /api/v1/academic-units`. New Exam creation requires the header because
-its contract is idempotent from introduction.
+`POST /api/v1/academic-units`. New Exam creation and Draft text editing require
+the header because their contracts are idempotent from introduction.
 
 `Idempotency-Key` is one case-sensitive opaque value of 1–128 characters from
 letters, digits, `-`, `.`, `_`, and `~`. Transport rejects malformed values;

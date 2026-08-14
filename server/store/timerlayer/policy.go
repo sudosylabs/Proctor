@@ -133,6 +133,7 @@ const (
 	methodSetDisabled                   methodName = "set_disabled"
 	methodSetDisabledWithAudit          methodName = "set_disabled_with_audit"
 	methodUpdate                        methodName = "update"
+	methodUpdateDraftText               methodName = "update_draft_text"
 	methodUpdateActivity                methodName = "update_activity"
 	methodUpdateLastLogin               methodName = "update_last_login"
 	methodUpdateProfileWithAudit        methodName = "update_profile_with_audit"

@@ -28,6 +28,14 @@ type CreateCommand struct {
 	Idempotency          *store.CommandIdempotency
 }
 
+type EditDraftTextCommand struct {
+	ExamID                model.ExamID
+	ExpectedDraftRevision int64
+	Title                 *string
+	InstructionsMarkdown  *string
+	Idempotency           *store.CommandIdempotency
+}
+
 // Call is immutable security and safe audit context owned by this child
 // package. It prevents the child from importing the parent app package.
 type Call struct {
@@ -73,12 +81,13 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, string, map[string]any, map[string]any) (string, error)
+	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (string, error)
 	Fail(context.Context, string, string) error
 }
 
 type Effects interface {
 	Created(context.Context, model.ExamID) error
+	DraftUpdated(context.Context, model.ExamID, int64) error
 }
 type EffectFailures interface {
 	Report(context.Context, string, error)
@@ -146,7 +155,7 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
 		return View{}, err
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, "create", map[string]any{
+	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, command.AcademicUnitID.String(), "create", map[string]any{
 		"exam_id": examID.String(), "academic_unit_id": command.AcademicUnitID.String(),
 		"creator_user_id": principal.UserID.String(),
 	}, nil)
@@ -212,6 +221,106 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 	return project(snapshot), nil
 }
 
+func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDraftTextCommand) (View, error) {
+	principal := call.Principal()
+	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
+		return View{}, invalid("draft_revision")
+	}
+	if command.Idempotency == nil {
+		return View{}, &Fault{Code: "idempotency.key_required"}
+	}
+	if command.Title == nil && command.InstructionsMarkdown == nil {
+		return View{}, invalid("fields")
+	}
+	title := cloneStringPointer(command.Title)
+	instructions := cloneStringPointer(command.InstructionsMarkdown)
+	at := model.TimeUTC(a.now())
+
+	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if access == nil || access.Exam == nil {
+		return View{}, unavailable(errors.New("exam store returned no access projection"))
+	}
+	action := model.ActionExamManageOverride
+	if access.ActorIsManager {
+		ordinary, membershipErr := a.hasCurrentMembership(ctx, principal.UserID, access.Exam.AcademicUnitID, at)
+		if membershipErr != nil {
+			return View{}, unavailable(membershipErr)
+		}
+		if ordinary {
+			action = model.ActionExamManage
+		}
+	}
+	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
+	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+		return View{}, err
+	}
+	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned an incomplete snapshot"))
+	}
+	candidate := *snapshot.Draft
+	changed, err := candidate.ApplyTextPatch(title, instructions, at)
+	if err != nil {
+		return View{}, invalidCause("draft", err)
+	}
+	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision {
+		return View{}, &Fault{Code: "exam.draft.no_changes"}
+	}
+	if title != nil {
+		title = &candidate.Title
+	}
+	if instructions != nil {
+		instructions = &candidate.InstructionsMarkdown
+	}
+	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "edit_draft_text", map[string]any{
+		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
+		"draft_revision": command.ExpectedDraftRevision + 1,
+	}, nil)
+	if err != nil {
+		return View{}, err
+	}
+	result, err := a.persistence.UpdateDraftText(ctx, &store.ExamDraftTextUpdate{
+		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
+		ExpectedRevision: command.ExpectedDraftRevision,
+		Title:            title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+	}, command.Idempotency)
+	if err != nil {
+		mapped := mapStoreError(err)
+		var fault *Fault
+		if !errors.As(mapped, &fault) {
+			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
+		}
+		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
+			return View{}, auditErr
+		}
+		return View{}, mapped
+	}
+	if result == nil || result.Value == nil || result.Value.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned no Draft update result"))
+	}
+	if !result.Replayed {
+		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		}
+	}
+	return project(result.Value), nil
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func (a *Authoring) hasCurrentMembership(ctx context.Context, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {
 	items, err := a.memberships.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(at))
 	if err != nil {
@@ -242,6 +351,7 @@ func mapStoreError(err error) error {
 	var idempotencyConflict *store.ErrIdempotencyConflict
 	var idempotencyInProgress *store.ErrIdempotencyInProgress
 	var invalidInput *store.ErrInvalidInput
+	var conflict *store.ErrConflict
 	switch {
 	case errors.As(err, &idempotencyConflict):
 		return &Fault{Code: "idempotency.conflict", Cause: err}
@@ -249,8 +359,17 @@ func mapStoreError(err error) error {
 		return &Fault{Code: "idempotency.in_progress", Cause: err}
 	case store.IsNotFound(err):
 		return &Fault{Code: "exam.not_found", Cause: err}
-	case store.IsConflict(err):
-		return &Fault{Code: "exam.conflict", Cause: err}
+	case errors.As(err, &conflict):
+		switch conflict.Constraint {
+		case "exam_archived":
+			return &Fault{Code: "exam.archived", Cause: err}
+		case "exam_draft_revision":
+			return &Fault{Code: "exam.draft.revision_conflict", Cause: err}
+		case "exam_draft_no_changes":
+			return &Fault{Code: "exam.draft.no_changes", Cause: err}
+		default:
+			return &Fault{Code: "exam.conflict", Cause: err}
+		}
 	default:
 		if errors.As(err, &invalidInput) {
 			return &Fault{Code: "exam.invalid", Cause: err}
