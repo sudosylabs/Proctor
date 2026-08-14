@@ -12,6 +12,8 @@ change:
   configuration construction
 - [Domain](./domain.md) — academic invariants, model ownership, identifiers,
   time, and validation
+- [Examinations](./examinations.md) — authoring, publication, sittings,
+  participation, workspaces, integrity, and review
 - [Application](./application.md) — use cases, invocation, orchestration, and
   atomic operations
 - [Identity and authentication](./identity.md) — accounts, sessions, tokens,

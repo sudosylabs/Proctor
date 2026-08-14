@@ -41,6 +41,42 @@ the source-wide counter continues to protect against attempts spread across
 identities. Changing these dimensions, ordering, window semantics, or reset
 behavior is a security-policy change rather than an implementation refactor.
 
+## Examination containment and integrity
+
+The examination security boundary is defined in
+[Examinations](./examinations.md). Exam Resources, Starter Workspaces, Attempt
+Workspaces, and Submissions are available to candidates only through the
+protected application experience. Candidate routes do not provide public or
+signed object URLs, download or export operations, printing, external-open,
+drag-out, or local-folder projection. Rendering still transfers bounded bytes
+to the authorized client; the enforceable contract is export containment, not
+the false claim that content never reaches the device.
+
+Exam instructions and resource descriptions are untrusted authored Markdown.
+Presentation sanitizes active content, unsafe URLs, and automatic remote loads;
+the server does not moderate academic meaning. Workspace paths are logical
+PostgreSQL metadata and never VFS keys, authorization inputs, or evidence that
+a directory exists in object storage.
+
+Client security observations are authenticated, versioned, bounded,
+generation-fenced claims rather than authoritative verdicts. The server owns
+receipt time, connection-loss observation, policy evaluation, enforcement,
+Integrity Flags, and retained evidence. Raw instructions, resource bytes,
+workspace paths or contents, source code, private manager reasons, and review
+remarks do not enter ordinary logs, realtime events, or generic audit fields.
+Authorized managers may inspect sealed Submissions and bounded evidence only
+through their application permissions. The integrity review records decisions
+and remarks; it is not a grading or academic-outcome subsystem.
+
+Participation renewal is an application-level authenticated protocol separate
+from WebSocket liveness. PostgreSQL lease expiry is authoritative, permanently
+fences the old generation, and always creates neutral Connection Loss evidence,
+one Flag, and an automatic Attempt suspension. A candidate cannot resume until
+an authorized manager records a private reason and re-allows the Attempt, after
+which fresh admission creates a new generation. Candidate messages describe
+lost secure continuity without exposing credentials, internal generation
+vocabulary, or asserting guilt.
+
 ## Logging and observability
 
 The Proctor-owned `mlog` subsystem supports independently filtered text or JSON

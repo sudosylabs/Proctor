@@ -74,3 +74,41 @@ The initial guarantee is at least 24 hours. Expired rows remain replayable
 until the daily permanently deduplicated cleanup Job removes bounded pages;
 only physical removal permits key reuse. Outcome cleanup is safe under
 multiple nodes and uses the PostgreSQL clock.
+
+## Examination persistence
+
+The examination boundary is divided into cohesive Store contracts for Exam
+authoring/publication, Sittings, Attempts and Participation, Workspace and
+Submission, and Integrity and Review. They expose named atomic operations for
+publication, live correction, first connection, participation fencing,
+workspace mutation, submission sealing, Sitting closure, suspension/re-allow,
+and review finalization. The application never coordinates these guarantees
+through a raw transaction callback.
+
+PostgreSQL owns Exam and Sitting state, logical workspace hierarchy, current
+workspace-content selection, cursors and mutation journals, leases, policy
+documents, evidence metadata, reviews, idempotent outcomes, and retention
+eligibility. VFS owns opaque bytes only. Object keys are path-independent. A
+workspace write stages a new object before a conditional database pointer
+swap; losing and superseded objects are reclaimed only after unknown outcomes
+and durable references are resolved. A Submission pins the acknowledged
+entry/path/content-version manifest without copying the bytes.
+
+Exam Policy Sets are bounded, versioned, strictly decoded typed documents.
+Unknown kinds, versions, fields, duplicates, invalid combinations, and
+oversized documents fail closed rather than being preserved as arbitrary
+authoritative JSON. Publication stores a canonical typed serialization and its
+SHA-256 digest; JSONB field ordering is never used as the digest contract.
+
+Attempt Participation generations are retained under a unique Attempt and
+generation identity with a hashed continuity credential, authoritative lease,
+renewal sequence, start/end times, and end reason. PostgreSQL time decides
+renewal and expiry. One named conditional operation owns the race between a
+late renewal and any expiry worker and atomically completes the end,
+Connection Loss evidence and Flag, suspension, and audit result. An expired
+generation is unusable even while a failed completion is waiting for retry.
+
+Until the first supported release, examination tables and constraints extend
+the single version-1 PostgreSQL baseline. Development databases are recreated;
+the feature must not grow a chain of pre-release migrations. The general
+post-release append-only rule above remains unchanged.

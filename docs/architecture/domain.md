@@ -32,50 +32,39 @@ The durable invariants are:
 
 ## Examination structure
 
-An `Exam` is reusable authored content and configuration. An `Exam Sitting`
-binds that assessment to a schedule and eligible population; an `Exam Attempt`
-is one student's private participation. Class assignment and start time belong
-to the sitting rather than being mislabeled exam versions.
+An Exam is a reusable identity owned by one Academic Unit. Its one mutable
+Draft contains authored material and typed policy; publishing creates immutable
+Exam Revisions. An Exam Sitting delivers one selected Revision to one Class in
+that exact Academic Unit, and an Exam Attempt is one student's durable
+participation. Class, schedule, pause, and delivery state belong to the Sitting,
+never the reusable Exam or Revision.
 
-Copying an exam creates an independent draft. It copies the title,
-description, instructions, student resources, starter workspace, future
-execution-environment specification, and future grading structure. It resets
-ownership and manager access, targeting, schedule, proctors, accommodations,
-student exceptions, attempts, integrity flags, submissions, grades, audit
-history, and lifecycle state. The copying manager becomes the new creator, and
-later changes to the source do not propagate. This explicit copy operation
-avoids a template aggregate until centrally maintained reusable templates are
-a demonstrated requirement.
+An urgent correction after opening creates another immutable live-correction
+Revision and atomically retargets only the affected Sitting. It may change
+instructions and resources, but not starter workspace, policy, eligibility, or
+schedule. Other Sittings remain on their selected revisions and students retain
+their Attempt identities.
 
-The exact publication boundary, sitting eligibility rules, integrity policy,
-and grading lifecycle remain open product decisions. Canonical terms and their
+The Exam creator is immutable provenance; one current Owner is a protected Exam
+Manager. Ordinary management requires both the Exam Manager relationship and
+current scoped role permission. System administrators use an explicit override
+permission without becoming managers or bypassing structural invariants.
+
+Each Attempt has one mutable, remotely authoritative code workspace and may
+have sequential fenced Participation generations and transport Connections.
+Manual kick or automatic policy enforcement may suspend an active Attempt;
+authorized re-allow preserves evidence and resumes the same Attempt through a
+new generation where required. Submission is terminal: exactly one immutable
+manifest seals the final acknowledged workspace, with no reopen or resubmission.
+
+Integrity evidence and flags remain suspicion rather than guilt. A Submission
+Review records `Dismissed`, `Confirmed`, or `Inconclusive` integrity decisions
+and manager remarks. Grading, scores, rubrics, pass/fail, and academic outcomes
+are outside Proctor's domain model.
+
+The complete accepted authoring, lifecycle, workspace, integrity, authorization,
+and delivery contract is [Examinations](./examinations.md). Canonical terms and
 avoided synonyms live only in [`CONTEXT.md`](../../CONTEXT.md).
-
-After a sitting opens, student-visible description, instructions, and resources
-may be corrected only through a sitting amendment. The amendment preserves the
-before and after values, reason, author, and effective time and notifies every
-affected active student. Starter workspaces, execution configuration, grading
-structure, and eligibility cannot be changed through this mechanism. This
-permits urgent corrections without rewriting the exam revision or unrelated
-sittings.
-
-The creator is immutable provenance and the first exam manager. Every exam
-manager initially has equal authority, including copying and granting or
-removing managers. System administrators have exceptional access without
-becoming managers. A copied exam records the copier as its creator and sole
-initial manager.
-
-An attempt remains the lifecycle aggregate when submitted. Each submission is
-an immutable manifest of the exact sealed file revisions, not a duplicate copy
-of the workspace. Reopening preserves prior submissions; a later submission
-becomes the current grading target while earlier submissions remain history.
-
-Integrity detection, access control, review, and academic consequences are
-separate decisions. Approved detector rules may atomically create an integrity
-flag and suspend an attempt. Review records `Dismissed`, `Confirmed`, or
-`Inconclusive`; sanctions and grading consequences require their own
-authorized decisions. Reopening an attempt and resolving its flag remain
-distinct recorded transitions even when one UI action requests both.
 
 ## Model ownership
 

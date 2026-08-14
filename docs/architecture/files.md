@@ -25,13 +25,12 @@ while PostgreSQL records the application-visible identity and revision needed
 to resolve them. Backend revisions remain opaque storage concurrency tokens
 and are not exposed as domain meaning.
 
-The application model separates a stable `File Entry`, its immutable `File
-Revision` content generations, and the `Workspace Path` at which an entry is
-projected into an attempt workspace. Domain models reference file-entry IDs;
-they do not persist VFS `Info`, paths, or backend revisions as domain objects.
-This separation lets profile pictures, IDE preferences, exam resources, and
-code workspaces share storage mechanics without sharing authorization or
-lifecycle policy.
+The application model separates a stable `File Entry` and its immutable `File
+Revision` content generations for purposes such as profile pictures and Exam
+Resources. Attempt Workspace code uses a separate stable Workspace Entry,
+mutable logical Workspace Path, and opaque current Workspace Content Version;
+it does not create a retained File Revision for every save. Neither model
+persists VFS `Info`, storage paths, or backend revisions as domain meaning.
 
 A file revision may have several stored file renditions without pretending
 that each representation is a separate content change. Each rendition records
@@ -39,15 +38,17 @@ its own dimensions where applicable, media type, byte size, checksum, and
 opaque identity. Ordinary files normally have one primary rendition; one
 normalized profile-picture revision has 128, 256, and 512 pixel renditions.
 
-Domain-owned relationship records attach file entries to users, exams, and
-attempts with enforceable foreign keys. The generic file tables do not use a
+Domain-owned relationship records attach file entries to users and exams with
+enforceable foreign keys. Attempt-owned workspace relationships use their own
+typed tables. The generic file tables do not use a
 polymorphic `owner_type` and `owner_id`; such a pair would weaken referential
 integrity and invite authorization by unverified identifiers.
 
-Replacing content creates a revision rather than mutating a prior generation.
-The owning use case decides which revision is current and which history must be
-retained. This preserves acknowledged attempt work and provides stable inputs
-for search, submission, audit, and synchronization.
+For immutable-revision purposes, replacing content creates a File Revision
+rather than mutating a prior generation. The owning use case decides which
+revision is current and which history must be retained. Workspace replacement
+instead changes the one current opaque content version through the
+Attempt-specific acknowledgement protocol described below.
 
 ## Domain ownership and events
 
@@ -110,9 +111,10 @@ file revision separately records whether indexing is not required, pending,
 ready, or failed. This distinguishes permission to index from processing state
 and prevents an infrastructure result from broadening access.
 
-The first profile-picture slice does not introduce a search service. Metadata
-and extracted-content search begin with exam resources, where a concrete
-authorized search use case exists.
+The first profile-picture slice does not introduce a search service. Exam
+Resources are also initially limited to an authorized catalog of at most ten
+items, so metadata or content search remains deferred until a concrete use case
+justifies indexing them.
 
 ## Profile pictures
 
@@ -205,77 +207,70 @@ Publication and purge scheduling occur only after commit. Normalized content
 identical to the current picture is a no-op: it creates no revision, timestamp,
 audit event, or realtime event.
 
+## Exam resources and starter workspaces
+
+Exam Resources are a separately authorized read-only catalog outside an
+Attempt Workspace. A resource relationship pins a stable File Entry, one exact
+available File Revision, required display name, optional Markdown description,
+and order. A published Exam Revision retains that exact relationship even when
+the Draft later replaces or removes the resource. Candidates have protected
+in-application reads only—no public URL, download/export, print, local-folder,
+external-open, or drag-out capability.
+
+A Starter Workspace is code material rather than an Exam Resource. Mutable
+Draft entries are frozen directly into an Exam Revision as an immutable logical
+path/content hierarchy, then copied into new Attempt-owned Workspace Entries.
+It does not create a generic File Revision chain. Live instructions/resource
+correction cannot change the Starter Workspace of an open Sitting.
+
 ## Live attempt workspaces
 
-Each exam attempt has a private, isolated workspace. Shared exam material is a
-read-only input; students do not share writable paths or observe one another's
-changes. While an attempt is ongoing, only its student may read its working
-files through ordinary product access.
+Each Exam Attempt has one private, isolated, remotely authoritative workspace.
+Students do not share writable paths or observe one another's changes. Exam
+Resources remain read-only inputs outside it. A manager cannot inspect live
+workspace content; authorized access begins only to the immutable Submission
+after the Attempt becomes terminal.
 
-Workspace paths are normalized, bounded, case-sensitive POSIX-relative names.
-The initial portable contract supports ordinary files and explicit directories
-but rejects traversal, symbolic and hard links, devices, and sockets. The
-`.proctor/` namespace is reserved for synchronization metadata and other
-system-materialized content.
+A Workspace Entry is a stable logical file or directory identity. Its mutable
+Workspace Path is normalized, bounded, case-sensitive, POSIX-relative, and
+unique within the Attempt. Empty directories are PostgreSQL metadata and do not
+pretend that S3 or another object backend has directory objects. Traversal,
+symbolic and hard links, devices, sockets, and candidate writes beneath
+`.proctor/` are excluded. Opaque VFS object keys never encode a Workspace Path,
+so rename and subtree move change metadata rather than storage layout.
 
-Future execution environments, including Firecracker-backed terminals, are
-synchronized projections rather than durable authorities. File replacement is
-revision-conditional, conflicts are explicit, and a per-attempt ordered change
-journal supports bidirectional synchronization and reconnect recovery. Losing
-or disconnecting the execution environment must not discard an acknowledged
-change.
+A workspace file has one current mutable content state. Workspace Content
+Version is an opaque optimistic comparison token, not a retained File Revision.
+Replacement stages bytes under a new unguessable object, conditionally commits
+the authoritative pointer/version in PostgreSQL, and acknowledges only after
+that commit. Losing objects remain undiscoverable; superseded objects survive
+only through the bounded unknown-outcome/reference window and then become
+eligible for idempotent purge.
 
-Workspace Synchronization is a separate future responsibility from File
-Content. It will own ordered live projection, conflict handling, and reconnect
-recovery; it may consume File Content capabilities, but private storage layout
-and VFS access do not become its synchronization protocol.
+Each accepted mutation has one idempotency key and explicit expected entry,
+path, content version, and destination conditions. An Attempt-scoped ordered
+journal records identities, old/new paths, resulting content versions,
+mutation keys, and Workspace Cursors without retaining the complete body of
+every prior save. Reconnect applies ordered changes after the last acknowledged
+cursor or refreshes a complete manifest after a gap. Conflicted, rejected, or
+outcome-unknown client work remains protected until acknowledged replacement
+or explicit discard.
 
-Application clients initially stream uploads and downloads through the server.
-They see opaque file-entry IDs and purpose-specific routes, never storage keys
-or VFS paths. Future short-lived direct-transfer grants require a separate
-authorization design; execution environments never receive general VFS
-credentials.
+Future execution environments are synchronized projections rather than durable
+authorities. Losing a client, node, or execution environment cannot discard an
+acknowledged change. The client exposes the workspace only inside the protected
+Exam IDE; recovery storage is encrypted and opaque, and candidate export or
+ordinary local-folder access is prohibited. Execution environments never
+receive general VFS credentials.
 
-Each revision uses a distinct stored object even when its checksum matches
-another revision. Checksums prove integrity rather than cross-owner identity;
-avoiding cross-domain deduplication keeps deletion, retention, and access
-analysis explicit.
+Only acknowledged state at an expected Workspace Cursor may be submitted.
+Normal submission settles workspace changes and integrity source watermarks,
+then one named operation atomically creates the single immutable Submission,
+marks the Attempt terminal, ends Participation, and records audit/idempotent
+outcome. The manifest pins the final entry identities, paths, content versions,
+checksums, media types, and sizes without copying bytes. Sitting closure seals
+the last acknowledged state even when the client cannot cooperate. After
+submission no workspace mutation or reopening is possible.
 
-File Content derives the existing private revision-sharded storage key from
-each preallocated file-rendition ID. The extraction intentionally preserves
-that key format so local and S3 objects written before the module boundary
-remain readable and purgeable. Domain models and store contracts never carry
-the resulting path. This keeps backend layout replaceable while making
-incomplete uploads recoverable from their leases.
-
-Replacement requires the expected domain revision. PostgreSQL selects the one
-application-visible winner, while VFS conditions provide defense in depth.
-Removal atomically makes the entry inaccessible, then schedules unreferenced
-content for idempotent physical purge after its recovery window and any legal
-hold.
-
-Strict image decoding, bounds enforcement, normalization, and complete
-rendition creation are the initial synchronous inspection boundary. Passing
-them moves a pending upload to available; malformed content is rejected.
-Quarantine remains a real state for future inspection without introducing a
-no-op scanner.
-
-Attaching a generated default, setting or replacing a custom picture, and
-removing a custom picture increment the User revision. Attaching a persisted
-default does not change `ProfilePictureChangedAt` when its rendered fallback
-was already identical. A removed custom entry is archived; a later upload
-creates a new entry rather than resurrecting it.
-
-Network disconnection alone changes no durable attempt state. Suspected
-misconduct creates an integrity flag rather than a finding of guilt and may
-trigger a separate suspension policy. `Suspend` blocks writes, `Submit` seals
-the current workspace revisions, `Reopen` resumes the same retained workspace,
-and `Terminate` permanently ends participation. These transitions are
-authorized, revision-checked, and audited; reconnecting a client or execution
-environment cannot silently reopen an attempt.
-
-Ordinary proctor access during an attempt is limited to integrity signals, not
-the student's file content. Grader access begins only after submission or
-final termination and the sitting's configured grading-release point. Any
-future exceptional live-content access requires a distinct, audited emergency
-capability.
+The complete Examination Core lifecycle and candidate-containment contract is
+[Examinations](./examinations.md).

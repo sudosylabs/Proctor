@@ -29,6 +29,36 @@ conflict. Persistence makes the behavior consistent across nodes and restarts.
 Mutable aggregates use selective optimistic concurrency with explicit
 revisions. Timestamps are not concurrency tokens.
 
+## Examination runtime
+
+Exam scheduling, participation expiry, closing, workspace sealing, and
+integrity settlement follow the durable Job and effect rules above. Jobs open
+a Scheduled Sitting, enter Closing at its effective deadline, recover expired
+Participation leases, and resume bounded finalization after interruption.
+They call application use cases with fenced durable state; they do not infer
+authority from an in-memory connection or cluster notification.
+
+WebSocket liveness, authenticated Attempt Participation renewal, and native
+process health are separate signals. The privileged client coordinator renews
+one server-owned Participation generation through an explicit authenticated
+request and acknowledgement; transport ping does not renew it. The initial
+target is renewal every 5 seconds, a 20-second PostgreSQL-time lease, and a
+2-second expiry scan. A single failed request does not prove loss. A late
+renewal or bounded recurring Job instead claims an expired lease through the
+same idempotent operation, permanently fences the generation, records the
+Connection Loss Flag and automatic suspension, and only then publishes
+transport and manager effects. Exact close-work budgets remain owned by the
+implementing slice.
+
+Every committed Attempt Connection open or close and every created Integrity
+Flag produces a bounded manager-facing realtime fact after PostgreSQL commit.
+The event contains safe identifiers and state only. Delivery is best-effort;
+authorized managers refetch authoritative state after missed, duplicate, or
+resynchronization events. Live instruction/resource correction likewise
+commits the new immutable Revision and Sitting retarget before notifying
+candidates. The complete lifecycle and correction contract is
+[Examinations](./examinations.md).
+
 ## High availability
 
 Several active application processes sharing one installation form an

@@ -51,28 +51,57 @@ _Avoid_: Academic role, unit permission
 ## Examinations
 
 **Exam**:
-A reusable authored assessment containing the material and configuration that
-may be delivered through one or more exam sittings.
+A reusable assessment identity owned by one academic unit and delivered through
+one or more exam sittings.
 _Avoid_: Exam sitting, exam session
+
+**Exam Draft**:
+The one mutable authoring state of an exam before its contents and policy are
+published as an exam revision.
+_Avoid_: Mutable exam revision, unpublished sitting
 
 **Exam Revision**:
 An immutable published generation of an exam's authored content and delivery
 configuration.
 _Avoid_: Exam sitting, draft edit
 
-**Exam Sitting**:
-A scheduled delivery of an exam to a defined eligible population.
-_Avoid_: Exam version, exam session
+**Exam Policy Set**:
+The typed examination and integrity rules authored in an exam draft and frozen
+in an exam revision.
+_Avoid_: Deployment configuration, executable policy
 
-**Sitting Amendment**:
-An auditable correction to student-visible material for a specific sitting
-after its exam revision can no longer be changed.
-_Avoid_: Silent edit, exam revision
+**Exam Sitting**:
+A scheduled delivery of one exam revision to one class.
+_Avoid_: Exam version, exam session
 
 **Exam Attempt**:
 One student's private, durable body of work while participating in an exam;
 its acknowledged work survives interruption and submission.
 _Avoid_: Exam session, exam member
+
+**Attempt Participation**:
+One fenced, server-recognized period of continuous candidate participation in
+an exam attempt.
+_Avoid_: Exam attempt, connection, authentication session
+
+**Participation Generation**:
+The sequential identity of one attempt participation; once ended or expired,
+it can never authorize work again.
+_Avoid_: Connection number, retry count
+
+**Participation Lease**:
+The renewable server-authoritative deadline proving that one participation
+generation remains current.
+_Avoid_: WebSocket ping, authentication session, client timer
+
+**Attempt Connection**:
+One authenticated transport connection within an attempt participation.
+_Avoid_: Exam attempt, participation
+
+**Attempt Suspension**:
+One reversible episode in which manual or policy enforcement blocks an active
+exam attempt until an authorized re-allow decision.
+_Avoid_: Submission, guilt finding, disconnection
 
 **Exam Instructions**:
 The authored problem statement and directions presented to students for an
@@ -80,23 +109,59 @@ exam.
 _Avoid_: Subject
 
 **Exam Resource**:
-A file deliberately made available to students to support understanding or
-completion of an exam.
+A read-only file deliberately projected inside the protected exam client to
+support understanding or completion of an exam.
 _Avoid_: Subject file, attachment when its exam meaning matters
 
+**Starter Workspace**:
+The optional published hierarchy of initial code and directories copied into a
+new attempt workspace.
+_Avoid_: Exam resource, shared workspace
+
 **Attempt Workspace**:
-The isolated collection of working files belonging to one exam attempt.
-_Avoid_: Shared workspace, exam folder
+The isolated, remotely authoritative hierarchy of mutable working files
+belonging to one exam attempt.
+_Avoid_: Shared workspace, local folder
+
+**Workspace Entry**:
+A stable logical file or directory in one attempt workspace whose identity
+survives path changes.
+_Avoid_: File entry, storage object, path
+
+**Workspace Content Version**:
+An opaque comparison token for one acknowledged current content state of a
+workspace file; it is not a retained file revision.
+_Avoid_: File revision, timestamp
+
+**Integrity Evidence**:
+Bounded, purpose-specific material retained to support an integrity flag while
+preserving its provenance, uncertainty, and known gaps.
+_Avoid_: Audit log, cheating proof
 
 **Integrity Flag**:
 A recorded indication of suspected examination-rule violation; it is evidence
 for review, not a finding of guilt.
 _Avoid_: Cheating verdict, automatic violation
 
+**Connection Loss**:
+The server-confirmed expiry of the current participation lease for an active
+exam attempt.
+_Avoid_: One failed request, WebSocket ping failure, guilt finding
+
+**Focus Loss**:
+A bounded client observation that the protected exam experience lacked focus
+for a qualifying duration.
+_Avoid_: Cheating verdict, connection loss
+
 **Submission**:
-A sealed manifest of the exact attempt-workspace revisions presented for
-grading at one submission point.
-_Avoid_: Attempt, copied workspace
+A single immutable manifest sealing the exact acknowledged workspace state at
+the end of one exam attempt.
+_Avoid_: Attempt, copied workspace, grade
+
+**Submission Review**:
+The integrity decisions and manager remarks associated with one submission;
+it contains no structured academic grade or outcome.
+_Avoid_: Grade, rubric, submission
 
 **Exam Manager**:
 The exam creator or a teacher explicitly granted equal authority to manage one
@@ -128,8 +193,9 @@ several renditions do not represent separate content changes.
 _Avoid_: File revision, copy
 
 **Workspace Path**:
-The location at which a file entry appears within one attempt workspace.
-_Avoid_: VFS path, storage key
+The mutable, normalized, case-sensitive POSIX-relative location of a workspace
+entry within one attempt workspace.
+_Avoid_: Workspace identity, VFS path, object key
 
 **Default Profile Picture**:
 The system-generated, permanently retained fallback image belonging to one

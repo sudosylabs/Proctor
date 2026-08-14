@@ -96,6 +96,24 @@ Durable Job inspection uses institution-scoped `job.view`; cancellation and
 explicit retry use `job.manage`. These operator actions do not authorize a
 generic create operation or expose unfiltered payloads.
 
+Examination authorization begins with Exam, Exam Sitting, Exam Attempt, and
+Submission resources. Drafts and Revisions authorize through their Exam;
+supporting material, workspace state, flags, evidence, and reviews authorize
+through their owning Exam, Sitting, Attempt, or Submission path. The closed
+action vocabulary is introduced with each working vertical slice rather than
+invented from HTTP verbs.
+
+Ordinary Exam management requires both a current Exam Manager relationship and
+the appropriate role permission at the Exam's Academic Unit. The immutable
+creator is provenance; one current owner is protected, and ownership transfer
+is an audited operation. A system administrator may use an explicit permission
+override without becoming an Exam Manager, but no permission bypasses the
+exact Academic Unit/Class lineage, lifecycle, or immutable-publication rules.
+Candidate participation is decided from current exact-Class membership and
+Attempt/Sitting state on every connection; it is not a reusable role grant.
+Further lifecycle and visibility rules are in
+[Examinations](./examinations.md#authorization-effects-and-persistence).
+
 ## Audit
 
 Operational logs and audit records are separate. PostgreSQL audit events are

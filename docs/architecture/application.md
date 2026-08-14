@@ -32,6 +32,25 @@ lifecycle. The parent application retains use-case effect timing, Principal
 validation, WebSocket subscription authorization, and translation between
 delivery failures and public application errors.
 
+The planned examination capability begins as a cohesive `app/exam` boundary.
+It owns authoring and publication policy, manager relationships, Sitting and
+Attempt lifecycle, Participation fencing, Submission coordination, integrity
+evaluation, authorization timing, audit intent, and post-commit effects.
+Selective `app/exam/resource` and `app/exam/workspace` children are justified
+by their distinct stable mechanics: published read-only supporting material
+and mutable logical candidate workspaces over opaque VFS objects. Neither
+child imports the parent application package or selects SQL, VFS, WebSocket,
+Jobs, or other infrastructure.
+
+The package is introduced with the first working vertical slice, not as an
+empty architectural placeholder. Its `doc.go` must define the Exam, Draft,
+Revision, Sitting, Attempt, Participation, Resource, Starter Workspace,
+Workspace, Submission, Integrity, and Review vocabulary; state what the
+package owns and excludes; and state its allowed inward dependencies. The
+parent `app.App` remains the public facade and `app.New` remains the sole
+application constructor. Detailed examination boundaries are in
+[Examinations](./examinations.md).
+
 Realtime receives its required authentication invalidator and diagnostics at
 construction. Its sink and peer fan-out are attached once before readiness
 because the composition graph constructs the application before its WebSocket
