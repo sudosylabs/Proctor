@@ -104,6 +104,49 @@ versioned grant-time and User-identity payload. It is ordered by grant time and
 User identity, returns relationship provenance and creator/owner indicators,
 and never expands User profiles.
 
+## Exam resource and Starter Workspace content
+
+Exam Resource and Starter Workspace operations are purpose-specific authoring
+surfaces. Every route requires an authenticated principal and applies current
+Exam management authorization. Every mutation requires `Idempotency-Key` and
+the current `expected_draft_revision`; JSON bodies are closed objects and
+reject unknown fields.
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `GET /api/v1/exams/{exam_id}/draft/resources` | none | complete ordered resource catalog |
+| `POST /api/v1/exams/{exam_id}/draft/resources` | metadata-first multipart upload | `201` resource |
+| `PATCH /api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}` | strict metadata JSON | resource |
+| `PUT /api/v1/exams/{exam_id}/draft/resources/order` | strict complete-order JSON | ordered catalog |
+| `PUT /api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}/content` | metadata-first multipart replacement | resource |
+| `DELETE /api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}` | strict revision-fence JSON | `204` |
+| `GET /api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}/content` | optional `If-None-Match` | protected inline bytes or `304` |
+| `GET /api/v1/exams/{exam_id}/draft/starter-workspace` | none | complete manifest |
+| `POST /api/v1/exams/{exam_id}/draft/starter-workspace/directories` | strict path JSON | `201` directory |
+| `POST /api/v1/exams/{exam_id}/draft/starter-workspace/files` | metadata-first multipart upload | `201` file |
+| `PATCH /api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}` | strict destination-path JSON | moved entry |
+| `PUT /api/v1/exams/{exam_id}/draft/starter-workspace/files/{starter_workspace_entry_id}/content` | metadata-first multipart replacement | file |
+| `DELETE /api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}` | strict revision-fence JSON | `204` |
+| `GET /api/v1/exams/{exam_id}/draft/starter-workspace/files/{starter_workspace_entry_id}/content` | optional `If-None-Match` | protected inline bytes or `304` |
+
+Each multipart body contains exactly two parts in order: a non-file `metadata`
+part containing one strict JSON object of at most 32 KiB, followed by a
+`content` part. Duplicate metadata fields, trailing JSON, missing or reordered
+parts, and additional parts are invalid. `size` and lowercase hexadecimal
+`sha256` are required metadata. Starter Workspace replacements additionally
+require the exact current `expected_content_version`; a stale version is a
+conflict. A Workspace Content Version is an opaque 26-character URL-safe
+comparison token matching `[A-Za-z0-9_-]{26}`. It is not an entity ID and
+clients return it unchanged. The route body limit is 10 MiB plus 64 KiB of
+multipart overhead; the streamed content itself remains limited to 10 MiB.
+
+Protected content responses set a strong checksum ETag,
+`X-Content-Type-Options: nosniff`, and no `Content-Disposition` header. Exam
+Resources use `Cache-Control: private, max-age=300`; mutable Starter Workspace
+files use `Cache-Control: private, no-store`. These operations provide only an
+authorized in-application content stream. Metadata never exposes VFS paths,
+object keys, or public URLs, and the API defines no download/export operation.
+
 ## Idempotent commands
 
 Routes declare `none`, `optional`, or `required` idempotency in the immutable

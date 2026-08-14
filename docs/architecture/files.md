@@ -212,16 +212,34 @@ audit event, or realtime event.
 Exam Resources are a separately authorized read-only catalog outside an
 Attempt Workspace. A resource relationship pins a stable File Entry, one exact
 available File Revision, required display name, optional Markdown description,
-and order. A published Exam Revision retains that exact relationship even when
-the Draft later replaces or removes the resource. Candidates have protected
-in-application reads only—no public URL, download/export, print, local-folder,
-external-open, or drag-out capability.
+and order. A display name is trimmed UTF-8 with 1–255 Unicode scalar values and
+its Markdown description is limited to 16 KiB of UTF-8. A Draft has at most ten
+active resources in contiguous zero-based order, each at most 10 MiB. The
+accepted content types are verified PDF, PNG, JPEG, WebP, UTF-8 text, Markdown,
+CSV, and JSON. A published Exam Revision retains that exact relationship even
+when the Draft later replaces or removes the resource. Candidates have
+protected in-application reads only—no public URL, download/export, print,
+local-folder, external-open, or drag-out capability.
 
 A Starter Workspace is code material rather than an Exam Resource. Mutable
 Draft entries are frozen directly into an Exam Revision as an immutable logical
 path/content hierarchy, then copied into new Attempt-owned Workspace Entries.
 It does not create a generic File Revision chain. Live instructions/resource
-correction cannot change the Starter Workspace of an open Sitting.
+correction cannot change the Starter Workspace of an open Sitting. A Draft has
+at most 500 Starter Workspace entries and 50 MiB total file content; one file is
+at most 10 MiB. Its current content carries an opaque 26-character URL-safe
+Workspace Content Version for optimistic comparison; this token is not an
+entity identity. Canonical case-sensitive POSIX-relative paths have at most 16
+segments, 255 UTF-8 bytes per segment, and 1,024 UTF-8 bytes total. They reject
+absolute and empty paths, dot traversal, repeated/trailing separators,
+backslashes, NUL/control characters, and the reserved `.proctor` root. Empty
+directories are PostgreSQL metadata and non-empty directory removal is not
+recursive.
+
+The protected HTTP content operations return inline content only after current
+authorization, with a strong checksum ETag and `nosniff`; they never expose a
+VFS path, object key, or public URL. Exam Resources use private five-minute
+caching. Mutable Draft Starter Workspace files are private and `no-store`.
 
 ## Live attempt workspaces
 

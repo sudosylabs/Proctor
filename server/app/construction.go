@@ -11,7 +11,9 @@ import (
 )
 
 type examinationConstruction struct {
-	authoring examUseCases
+	authoring        examUseCases
+	resources        examResourceUseCases
+	starterWorkspace examStarterWorkspaceUseCases
 }
 
 // applicationFoundation holds the shared mechanics constructed before any
@@ -176,6 +178,8 @@ func assembleApplication(
 		academicUnitMembers:               access.academicUnitMembers,
 		classMembers:                      access.classMembers,
 		exams:                             examinations.authoring,
+		examResources:                     examinations.resources,
+		examStarterWorkspace:              examinations.starterWorkspace,
 		userProfiles:                      profiles.userProfiles,
 		profilePictures:                   profiles.profilePictures,
 		accountStates:                     administration.accountStates,

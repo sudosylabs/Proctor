@@ -214,6 +214,12 @@ func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore { return nil
 func (s *LifecycleStore) ExamAuthoring() store.ExamAuthoringStore {
 	return lifecycleExamAuthoringStore{}
 }
+func (s *LifecycleStore) ExamResource() store.ExamResourceStore {
+	return lifecycleExamResourceStore{}
+}
+func (s *LifecycleStore) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
+	return lifecycleExamStarterWorkspaceStore{}
+}
 func (s *LifecycleStore) Class() store.ClassStore { return lifecycleClassStore{} }
 func (s *LifecycleStore) User() store.UserStore   { return lifecycleUserStore{} }
 func (s *LifecycleStore) File() store.FileStore   { return nil }
@@ -294,6 +300,10 @@ type lifecycleInstitutionStore struct{ store.InstitutionStore }
 type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }
 type lifecycleAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 type lifecycleExamAuthoringStore struct{ store.ExamAuthoringStore }
+type lifecycleExamResourceStore struct{ store.ExamResourceStore }
+type lifecycleExamStarterWorkspaceStore struct {
+	store.ExamStarterWorkspaceStore
+}
 type lifecycleClassStore struct{ store.ClassStore }
 type lifecycleClassMemberStore struct{ store.ClassMemberStore }
 type lifecycleExternalIdentityStore struct{ store.ExternalIdentityStore }

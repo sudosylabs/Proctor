@@ -102,11 +102,12 @@ uncompleted architecture migration.
 
 ## Accepted Examination Core design
 
-The Examination Core domain and architecture are decided, and its initial Exam
-creation, retrieval, catalog, archive, Draft text-authoring, and Draft Focus
-Loss configuration slices are implemented. An Exam belongs to one Academic
-Unit and has one mutable Draft and immutable published Revisions. Each Sitting
-selects one Revision and exactly one Class in that Academic Unit. Urgent
+The Examination Core domain and architecture are decided. Its Exam creation,
+retrieval, catalog, archive, manager administration, Draft text and Focus Loss
+authoring, protected Exam Resources, and logical Starter Workspace slices are
+implemented. An Exam belongs to one Academic Unit and has one mutable Draft
+and immutable published Revisions. Each Sitting selects one Revision and
+exactly one Class in that Academic Unit. Urgent
 instructions or resource correction creates another immutable Revision and
 atomically retargets only the affected open or paused Sitting; it does not
 introduce a Sitting Amendment entity or force candidates to rejoin.
@@ -141,8 +142,7 @@ delivery order are in [Examinations](../architecture/examinations.md).
 - Define any dedicated proctor-assignment role beyond Exam Managers, candidate
   accommodations, review appeals, exact retention periods, and future
   manager-controlled export/deletion policy.
-- Set bounded workspace quotas and close-work budgets in their implementing
-  slices.
+- Set bounded close-work budgets in their implementing slices.
 - Decide whether cross-node WebSocket reconnection transfers bounded replay
   queues or always performs authoritative HTTP resynchronization.
 - Decide whether generated client SDKs belong in this monorepo and which
@@ -152,11 +152,10 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: manager mutation;
-  resources, Starter Workspace, and publication; Sitting delivery
-  and live correction; Attempt admission and Participation; mutable Workspace
-  and immutable Submission; then integrity policy, evidence, flags, and
-  Submission Review.
+- Continue Examination Core as complete vertical slices: immutable publication;
+  Sitting delivery and live correction; Attempt admission and Participation;
+  mutable Workspace and immutable Submission; then integrity policy, evidence,
+  flags, and Submission Review.
 - Extend server-owned file handling for validated IDE preferences alongside
   the examination-specific resource and workspace boundaries. Resource search
   is deferred because an Exam initially has at most ten active resources.

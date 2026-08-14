@@ -26,7 +26,7 @@ func constructJobs(
 	reconciliationHandler := defaultProfilePictureReconciliationHandler{
 		users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
 	}
-	purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent)
+	purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent, deps.Store.ExamStarterWorkspace(), deps.FileContent)
 	descriptors := []jobengine.Descriptor{
 		defaultProfilePictureDescriptor(defaultHandler),
 		defaultProfilePictureReconciliationDescriptor(reconciliationHandler),

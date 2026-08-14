@@ -7,8 +7,24 @@ import (
 	"context"
 	"time"
 
+	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
+	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/store"
 )
+
+// FileContent is the bounded composition contract. Each workflow receives a
+// narrower consumer-owned capability; only the application constructor needs
+// the complete concrete content adapter surface.
+type FileContent interface {
+	ProfilePictureUploadFiles
+	ProfilePictureReadFiles
+	DefaultProfilePictureRenderFiles
+	DefaultProfilePictureGenerationFiles
+	FileRevisionContentPurger
+	starterWorkspaceObjectPurger
+	examresource.FileContent
+	examworkspace.Content
+}
 
 // Dependencies are the explicit capabilities package app needs. The module-root
 // composition package builds these from deployment configuration and concrete

@@ -178,6 +178,100 @@ func (s *examAuthoringStore) Resolve(ctx context.Context, examID model.ExamID) (
 	})
 }
 
+func (s *examResourceStore) List(ctx context.Context, examID model.ExamID) ([]store.ExamResourceRecord, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamResourceRecord, error) {
+		return s.ExamResourceStore.List(ctx, examID)
+	})
+}
+
+func (s *examResourceStore) Get(ctx context.Context, examID model.ExamID, resourceID model.ExamResourceID) (*store.ExamResourceRecord, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamResourceRecord, error) {
+		return s.ExamResourceStore.Get(ctx, examID, resourceID)
+	})
+}
+
+func (s *examResourceStore) FinalizeUpload(ctx context.Context, input *store.ExamResourceUploadFinalization, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	if command == nil {
+		return s.ExamResourceStore.FinalizeUpload(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamResourceCommandResult, error) {
+		return s.ExamResourceStore.FinalizeUpload(ctx, input, command)
+	})
+}
+
+func (s *examResourceStore) UpdateMetadata(ctx context.Context, input *store.ExamResourceMetadataUpdate, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	if command == nil {
+		return s.ExamResourceStore.UpdateMetadata(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamResourceCommandResult, error) {
+		return s.ExamResourceStore.UpdateMetadata(ctx, input, command)
+	})
+}
+
+func (s *examResourceStore) Reorder(ctx context.Context, input *store.ExamResourceReorder, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	if command == nil {
+		return s.ExamResourceStore.Reorder(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamResourceCommandResult, error) {
+		return s.ExamResourceStore.Reorder(ctx, input, command)
+	})
+}
+
+func (s *examResourceStore) Remove(ctx context.Context, input *store.ExamResourceRemoval, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	if command == nil {
+		return s.ExamResourceStore.Remove(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamResourceCommandResult, error) {
+		return s.ExamResourceStore.Remove(ctx, input, command)
+	})
+}
+
+func (s *examStarterWorkspaceStore) List(ctx context.Context, examID model.ExamID) ([]store.ExamStarterWorkspaceItem, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamStarterWorkspaceItem, error) {
+		return s.ExamStarterWorkspaceStore.List(ctx, examID)
+	})
+}
+
+func (s *examStarterWorkspaceStore) GetFile(ctx context.Context, examID model.ExamID, entryID model.StarterWorkspaceEntryID) (*store.ExamStarterWorkspaceItem, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamStarterWorkspaceItem, error) {
+		return s.ExamStarterWorkspaceStore.GetFile(ctx, examID, entryID)
+	})
+}
+
+func (s *examStarterWorkspaceStore) CreateDirectory(ctx context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return s.retryMutation(ctx, input, command, s.ExamStarterWorkspaceStore.CreateDirectory)
+}
+
+func (s *examStarterWorkspaceStore) CreateFile(ctx context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return s.retryMutation(ctx, input, command, s.ExamStarterWorkspaceStore.CreateFile)
+}
+
+func (s *examStarterWorkspaceStore) MoveEntry(ctx context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return s.retryMutation(ctx, input, command, s.ExamStarterWorkspaceStore.MoveEntry)
+}
+
+func (s *examStarterWorkspaceStore) ReplaceFile(ctx context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return s.retryMutation(ctx, input, command, s.ExamStarterWorkspaceStore.ReplaceFile)
+}
+
+func (s *examStarterWorkspaceStore) RemoveEntry(ctx context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return s.retryMutation(ctx, input, command, s.ExamStarterWorkspaceStore.RemoveEntry)
+}
+
+func (s *examStarterWorkspaceStore) retryMutation(
+	ctx context.Context,
+	input *store.ExamStarterWorkspaceMutation,
+	command *store.CommandIdempotency,
+	operation func(context.Context, *store.ExamStarterWorkspaceMutation, *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error),
+) (*store.ExamStarterWorkspaceMutationResult, error) {
+	if command == nil {
+		return operation(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamStarterWorkspaceMutationResult, error) {
+		return operation(ctx, input, command)
+	})
+}
+
 func (s *classStore) Get(ctx context.Context, id string) (*model.Class, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Class, error) { return s.ClassStore.Get(ctx, id) })
 }

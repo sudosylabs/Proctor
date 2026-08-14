@@ -106,17 +106,31 @@ type FileRevisionContentPurger interface {
 	PurgeAbandonedFileRevision(context.Context, model.FileRevisionID) error
 	RemoveFileRevisionRenditions(context.Context, model.FileRevisionID, []model.FileRenditionID) error
 }
-type filePurgeExpiredContentHandler struct {
-	files   filePurgeStore
-	content FileRevisionContentPurger
+
+type starterWorkspaceCleanupStore interface {
+	ClaimObjectsForCleanup(context.Context, int, string) ([]model.StarterWorkspaceObject, error)
+	CompleteObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error
+	ReleaseObjectCleanup(context.Context, model.StarterWorkspaceObjectID, string) error
 }
 
-func newFilePurgeExpiredContentHandler(files filePurgeStore, content FileRevisionContentPurger) jobengine.Handler {
-	return filePurgeExpiredContentHandler{files: files, content: content}
+type starterWorkspaceObjectPurger interface {
+	RemoveStarterWorkspaceObject(context.Context, model.StarterWorkspaceObjectID) error
+}
+
+type filePurgeExpiredContentHandler struct {
+	files            filePurgeStore
+	content          FileRevisionContentPurger
+	starterWorkspace starterWorkspaceCleanupStore
+	workspaceContent starterWorkspaceObjectPurger
+}
+
+func newFilePurgeExpiredContentHandler(files filePurgeStore, content FileRevisionContentPurger, starterWorkspace starterWorkspaceCleanupStore, workspaceContent starterWorkspaceObjectPurger) jobengine.Handler {
+	return filePurgeExpiredContentHandler{files: files, content: content, starterWorkspace: starterWorkspace, workspaceContent: workspaceContent}
 }
 
 func (h filePurgeExpiredContentHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
-	if execution.Job == nil || h.files == nil || h.content == nil {
+	if execution.Job == nil || h.files == nil || h.content == nil || (h.starterWorkspace == nil) != (h.workspaceContent == nil) ||
+		(h.starterWorkspace != nil && (execution.Attempt == nil || !execution.Attempt.ClaimToken.IsValid())) {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid file purge dependencies"))
 	}
 	command, err := DecodeFilePurgeExpiredContentCommand(execution.Job.CommandVersion, execution.Job.Command)
@@ -185,8 +199,94 @@ func (h filePurgeExpiredContentHandler) Run(ctx context.Context, execution joben
 			return jobengine.RetryableFailure("database.unavailable", err)
 		}
 	}
+	if h.starterWorkspace != nil {
+		var failure *jobengine.Outcome
+		checkpoint, failure = h.purgeStarterWorkspaceObjects(ctx, execution, command, checkpoint)
+		if failure != nil {
+			return *failure
+		}
+	}
 	result, err := json.Marshal(FilePurgeExpiredContentResultV1{Examined: checkpoint.Examined, Purged: checkpoint.Purged})
 	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: result, Err: err}
+}
+
+// purgeStarterWorkspaceObjects runs only after the generic FileRevision phase.
+// On failure it returns the last durable checkpoint and a retryable outcome;
+// otherwise it returns the updated aggregate checkpoint.
+func (h filePurgeExpiredContentHandler) purgeStarterWorkspaceObjects(ctx context.Context, execution jobengine.Execution, command FilePurgeExpiredContentCommandV1, checkpoint FilePurgeExpiredContentCheckpointV1) (FilePurgeExpiredContentCheckpointV1, *jobengine.Outcome) {
+	remaining := command.BatchSize - int(checkpoint.Examined)
+	if reservedRemaining := command.BatchSize - execution.Job.WorkReserved; reservedRemaining < remaining {
+		remaining = reservedRemaining
+	}
+	if remaining <= 0 {
+		return checkpoint, nil
+	}
+	claimToken := string(execution.Attempt.ClaimToken)
+	objects, err := h.starterWorkspace.ClaimObjectsForCleanup(ctx, remaining, claimToken)
+	if err != nil {
+		failure := jobengine.RetryableFailure("database.unavailable", err)
+		return checkpoint, &failure
+	}
+	progressTotal := checkpoint.Examined + int64(len(objects))
+	for index := range objects {
+		object := objects[index]
+		reserved, reserveErr := execution.ReserveWork(ctx, 1, command.BatchSize)
+		if reserveErr != nil {
+			if releaseErr := h.releaseStarterWorkspaceClaims(ctx, objects[index:], claimToken); releaseErr != nil {
+				failure := jobengine.RetryableFailure("database.unavailable", releaseErr)
+				return checkpoint, &failure
+			}
+			failure := jobengine.RetryableFailure("database.unavailable", reserveErr)
+			return checkpoint, &failure
+		}
+		if !reserved {
+			if releaseErr := h.releaseStarterWorkspaceClaims(ctx, objects[index:], claimToken); releaseErr != nil {
+				failure := jobengine.RetryableFailure("database.unavailable", releaseErr)
+				return checkpoint, &failure
+			}
+			return checkpoint, nil
+		}
+		if err = h.workspaceContent.RemoveStarterWorkspaceObject(ctx, object.ID); err != nil {
+			// Removal errors have an unknown outcome. Keep this object fenced for
+			// stale-claim retry, but release every object never sent to storage.
+			if releaseErr := h.releaseStarterWorkspaceClaims(ctx, objects[index+1:], claimToken); releaseErr != nil {
+				failure := jobengine.RetryableFailure("database.unavailable", releaseErr)
+				return checkpoint, &failure
+			}
+			failure := jobengine.RetryableFailure("file.backend_unavailable", err)
+			return checkpoint, &failure
+		}
+		if err = h.starterWorkspace.CompleteObjectCleanup(ctx, object.ID, claimToken); err != nil {
+			// Physical removal is idempotent. Leave the current claim fenced so a
+			// stale-claim retry can safely repeat it and complete metadata cleanup.
+			if releaseErr := h.releaseStarterWorkspaceClaims(ctx, objects[index+1:], claimToken); releaseErr != nil {
+				failure := jobengine.RetryableFailure("database.unavailable", releaseErr)
+				return checkpoint, &failure
+			}
+			failure := jobengine.RetryableFailure("database.unavailable", err)
+			return checkpoint, &failure
+		}
+		checkpoint.Examined++
+		checkpoint.Purged++
+		if err = checkpointFilePurge(ctx, execution, checkpoint, progressTotal); err != nil {
+			if releaseErr := h.releaseStarterWorkspaceClaims(ctx, objects[index+1:], claimToken); releaseErr != nil {
+				failure := jobengine.RetryableFailure("database.unavailable", releaseErr)
+				return checkpoint, &failure
+			}
+			failure := jobengine.RetryableFailure("database.unavailable", err)
+			return checkpoint, &failure
+		}
+	}
+	return checkpoint, nil
+}
+
+func (h filePurgeExpiredContentHandler) releaseStarterWorkspaceClaims(ctx context.Context, objects []model.StarterWorkspaceObject, claimToken string) error {
+	for index := range objects {
+		if err := h.starterWorkspace.ReleaseObjectCleanup(ctx, objects[index].ID, claimToken); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func checkpointFilePurge(ctx context.Context, execution jobengine.Execution, checkpoint FilePurgeExpiredContentCheckpointV1, total int64) error {

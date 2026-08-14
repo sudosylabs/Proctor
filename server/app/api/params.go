@@ -22,56 +22,60 @@ type paramsContextKey struct{}
 // Params contains normalized variables selected by the matched route. Handlers
 // consume this object instead of reaching into mux or parsing URL paths.
 type Params struct {
-	ProviderId            string
-	RoleId                string
-	RoleBindingId         string
-	JobID                 string
-	ExamID                string
-	UserID                string
-	AcademicUnitID        string
-	ProgrammeId           string
-	ProgrammeLevelId      string
-	AcademicPeriodId      string
-	ClassId               string
-	AffiliationId         string
-	AcademicUnitMemberId  string
-	ClassMemberId         string
-	PersonalAccessTokenId string
-	SessionID             string
-	ReturnTo              string
-	ClientType            string
-	DeviceId              string
-	DeviceName            string
-	ConnectionId          string
-	SequenceNumber        string
+	ProviderId              string
+	RoleId                  string
+	RoleBindingId           string
+	JobID                   string
+	ExamID                  string
+	ExamResourceID          string
+	StarterWorkspaceEntryID string
+	UserID                  string
+	AcademicUnitID          string
+	ProgrammeId             string
+	ProgrammeLevelId        string
+	AcademicPeriodId        string
+	ClassId                 string
+	AffiliationId           string
+	AcademicUnitMemberId    string
+	ClassMemberId           string
+	PersonalAccessTokenId   string
+	SessionID               string
+	ReturnTo                string
+	ClientType              string
+	DeviceId                string
+	DeviceName              string
+	ConnectionId            string
+	SequenceNumber          string
 }
 
 func ParamsFromRequest(request *http.Request) Params {
 	variables := mux.Vars(request)
 	query := request.URL.Query()
 	return Params{
-		ProviderId:            strings.ToLower(strings.TrimSpace(variables["provider_id"])),
-		RoleId:                strings.TrimSpace(variables["role_id"]),
-		RoleBindingId:         strings.TrimSpace(variables["role_binding_id"]),
-		JobID:                 strings.TrimSpace(variables["job_id"]),
-		ExamID:                strings.TrimSpace(variables["exam_id"]),
-		UserID:                strings.TrimSpace(variables["user_id"]),
-		AcademicUnitID:        strings.TrimSpace(variables["academic_unit_id"]),
-		ProgrammeId:           strings.TrimSpace(variables["programme_id"]),
-		ProgrammeLevelId:      strings.TrimSpace(variables["programme_level_id"]),
-		AcademicPeriodId:      strings.TrimSpace(variables["academic_period_id"]),
-		ClassId:               strings.TrimSpace(variables["class_id"]),
-		AffiliationId:         strings.TrimSpace(variables["affiliation_id"]),
-		AcademicUnitMemberId:  strings.TrimSpace(variables["academic_unit_member_id"]),
-		ClassMemberId:         strings.TrimSpace(variables["class_member_id"]),
-		PersonalAccessTokenId: strings.TrimSpace(variables["personal_access_token_id"]),
-		SessionID:             strings.TrimSpace(variables["session_id"]),
-		ReturnTo:              strings.TrimSpace(query.Get("return_to")),
-		ClientType:            strings.TrimSpace(query.Get("client_type")),
-		DeviceId:              strings.TrimSpace(query.Get("device_id")),
-		DeviceName:            strings.TrimSpace(query.Get("device_name")),
-		ConnectionId:          strings.TrimSpace(query.Get("connection_id")),
-		SequenceNumber:        strings.TrimSpace(query.Get("sequence_number")),
+		ProviderId:              strings.ToLower(strings.TrimSpace(variables["provider_id"])),
+		RoleId:                  strings.TrimSpace(variables["role_id"]),
+		RoleBindingId:           strings.TrimSpace(variables["role_binding_id"]),
+		JobID:                   strings.TrimSpace(variables["job_id"]),
+		ExamID:                  strings.TrimSpace(variables["exam_id"]),
+		ExamResourceID:          strings.TrimSpace(variables["exam_resource_id"]),
+		StarterWorkspaceEntryID: strings.TrimSpace(variables["starter_workspace_entry_id"]),
+		UserID:                  strings.TrimSpace(variables["user_id"]),
+		AcademicUnitID:          strings.TrimSpace(variables["academic_unit_id"]),
+		ProgrammeId:             strings.TrimSpace(variables["programme_id"]),
+		ProgrammeLevelId:        strings.TrimSpace(variables["programme_level_id"]),
+		AcademicPeriodId:        strings.TrimSpace(variables["academic_period_id"]),
+		ClassId:                 strings.TrimSpace(variables["class_id"]),
+		AffiliationId:           strings.TrimSpace(variables["affiliation_id"]),
+		AcademicUnitMemberId:    strings.TrimSpace(variables["academic_unit_member_id"]),
+		ClassMemberId:           strings.TrimSpace(variables["class_member_id"]),
+		PersonalAccessTokenId:   strings.TrimSpace(variables["personal_access_token_id"]),
+		SessionID:               strings.TrimSpace(variables["session_id"]),
+		ReturnTo:                strings.TrimSpace(query.Get("return_to")),
+		ClientType:              strings.TrimSpace(query.Get("client_type")),
+		DeviceId:                strings.TrimSpace(query.Get("device_id")),
+		DeviceName:              strings.TrimSpace(query.Get("device_name")),
+		ConnectionId:            strings.TrimSpace(query.Get("connection_id")),
+		SequenceNumber:          strings.TrimSpace(query.Get("sequence_number")),
 	}
 }
 
@@ -153,6 +157,14 @@ func (p Params) RequireJobId() (string, error) {
 
 func (p Params) RequireExamId() (string, error) {
 	return requirePathId("exam_id", p.ExamID)
+}
+
+func (p Params) RequireExamResourceId() (string, error) {
+	return requirePathId("exam_resource_id", p.ExamResourceID)
+}
+
+func (p Params) RequireStarterWorkspaceEntryId() (string, error) {
+	return requirePathId("starter_workspace_entry_id", p.StarterWorkspaceEntryID)
 }
 
 func requirePathId(name, id string) (string, error) {

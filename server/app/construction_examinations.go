@@ -7,6 +7,8 @@ import (
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
+	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -21,5 +23,30 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{authoring: authoring}, nil
+	resources, err := examresource.New(
+		deps.Store.ExamResource(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		examResourceAuthorizationAdapter{authorization: access.authorization},
+		examResourceAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		examResourceRealtimeEffects{realtime: foundation.realtime},
+		examResourceRealtimeEffects{realtime: foundation.realtime},
+		deps.FileContent, time.Now, model.NewExamResourceID, model.NewFileEntryID,
+		model.NewFileRevisionID, model.NewUploadLeaseID,
+	)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
+	starterWorkspace, err := examworkspace.NewService(
+		deps.Store.ExamStarterWorkspace(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		examStarterWorkspaceAuthorizationAdapter{authorization: access.authorization},
+		examStarterWorkspaceAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		deps.FileContent,
+		examStarterWorkspaceRealtimeEffects{realtime: foundation.realtime},
+		examStarterWorkspaceRealtimeEffects{realtime: foundation.realtime},
+		time.Now, model.NewStarterWorkspaceEntryID, model.NewStarterWorkspaceObjectID,
+		model.NewWorkspaceContentVersion,
+	)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
+	return examinationConstruction{authoring: authoring, resources: resources, starterWorkspace: starterWorkspace}, nil
 }

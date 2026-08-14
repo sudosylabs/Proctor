@@ -111,16 +111,27 @@ mutations.
 An Exam Resource is read-only supporting material outside the Attempt
 Workspace. It uses a stable File Entry and immutable available File Revisions,
 with required display name, optional Markdown description, and explicit order.
-A Draft has at most ten active resources, each at most 10 MiB. The initial
+A display name is trimmed UTF-8 with 1–255 Unicode scalar values; its Markdown
+description is at most 16 KiB of UTF-8. A Draft has at most ten active
+resources in contiguous zero-based order, each at most 10 MiB. The initial
 allowlist is verified PDF, PNG, JPEG, WebP, UTF-8 text, Markdown, CSV, and JSON;
 executables, archives, macros, and disk images are excluded. Publication pins
 the exact metadata and File Revision. Replacing resource content creates a new
 File Revision without breaking published history.
 
-The Starter Workspace is a separate immutable hierarchy of initial code and
+The Starter Workspace is a separate logical hierarchy of initial code and
 directories frozen into an Exam Revision. It is copied into a new Attempt
 Workspace and is never an Exam Resource or generic File Revision chain. Live
-correction cannot alter starter material.
+correction cannot alter starter material. A Draft Starter Workspace contains
+at most 500 entries and 50 MiB total file content. Each file is at most 10 MiB.
+Its current content carries an opaque 26-character URL-safe Workspace Content
+Version for optimistic comparison; this token is not an entity identity.
+Paths are already-canonical case-sensitive POSIX-relative values with at most
+16 segments, 255 UTF-8 bytes per segment, and 1,024 UTF-8 bytes total. Empty,
+absolute, dot, dot-dot, repeated or trailing separators, backslashes,
+NUL/control characters, and the reserved `.proctor` root are invalid. Empty
+directories are metadata; removing a non-empty directory is rejected rather
+than recursive.
 
 Candidates receive no download, export, print, public URL, local-folder,
 drag-out, or external-open capability for Exam Resources, starter material,
@@ -130,6 +141,11 @@ prohibition rather than an impossible claim that bytes never reach the device.
 Authorized managers may inspect authored material and sealed submissions in
 application; any future bulk Submission export is a separately authorized,
 audited, retention-aware capability.
+
+Protected HTTP reads are authorization-checked on every request, return inline
+content with a strong checksum ETag and `nosniff`, and expose neither storage
+paths nor object keys. Exam Resources may be privately cached for five minutes;
+mutable Draft Starter Workspace files are private and `no-store`.
 
 ## Sitting lifecycle and eligibility
 

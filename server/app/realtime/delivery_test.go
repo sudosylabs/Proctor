@@ -76,6 +76,22 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	if _, err := NewExamDraftUpdatedEvent(examID, 0); err == nil {
 		t.Fatal("accepted non-positive Draft revision")
 	}
+	workspaceEntryID := model.NewStarterWorkspaceEntryID()
+	workspaceChangedAt := time.Date(2026, 8, 14, 9, 15, 0, 123, time.UTC)
+	workspaceChanged, err := NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "file_replaced", workspaceChangedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspaceChanged.Name != "exam_starter_workspace_changed" || workspaceChanged.Action != model.ActionExamView ||
+		workspaceChanged.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
+		t.Fatalf("Starter Workspace event = %#v", workspaceChanged)
+	}
+	if got := string(workspaceChanged.Data); got != `{"exam_id":"`+examID.String()+`","entry_id":"`+workspaceEntryID.String()+`","operation":"file_replaced","draft_revision":8,"changed_at":"2026-08-14T09:15:00.000000123Z"}` {
+		t.Fatalf("Starter Workspace data = %s", got)
+	}
+	if _, err = NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "path_and_checksum_changed", workspaceChangedAt); err == nil {
+		t.Fatal("accepted unbounded Starter Workspace operation")
+	}
 	archivedAt := time.Date(2026, 8, 14, 9, 30, 0, 0, time.UTC)
 	archived, err := NewExamArchivedEvent(examID, 8, archivedAt)
 	if err != nil {

@@ -12,64 +12,78 @@ import (
 )
 
 type retryStores struct {
-	clusterDiscovery        store.ClusterDiscoveryStore
-	clusterDiscoveryOnce    sync.Once
-	examAuthoring           store.ExamAuthoringStore
-	examAuthoringOnce       sync.Once
-	commandOutcome          store.CommandOutcomeStore
-	commandOutcomeOnce      sync.Once
-	job                     store.JobStore
-	jobOnce                 sync.Once
-	file                    store.FileStore
-	fileOnce                sync.Once
-	institution             store.InstitutionStore
-	institutionOnce         sync.Once
-	academicUnit            store.AcademicUnitStore
-	academicUnitOnce        sync.Once
-	programme               store.ProgrammeStore
-	programmeOnce           sync.Once
-	programmeLevel          store.ProgrammeLevelStore
-	programmeLevelOnce      sync.Once
-	academicPeriod          store.AcademicPeriodStore
-	academicPeriodOnce      sync.Once
-	class                   store.ClassStore
-	classOnce               sync.Once
-	user                    store.UserStore
-	userOnce                sync.Once
-	externalIdentity        store.ExternalIdentityStore
-	externalIdentityOnce    sync.Once
-	externalLoginState      store.ExternalLoginStateStore
-	externalLoginStateOnce  sync.Once
-	userToken               store.UserTokenStore
-	userTokenOnce           sync.Once
-	personalAccessToken     store.PersonalAccessTokenStore
-	personalAccessTokenOnce sync.Once
-	mfa                     store.MFAStore
-	mfaOnce                 sync.Once
-	affiliation             store.AffiliationStore
-	affiliationOnce         sync.Once
-	academicUnitMember      store.AcademicUnitMemberStore
-	academicUnitMemberOnce  sync.Once
-	classMember             store.ClassMemberStore
-	classMemberOnce         sync.Once
-	passwordCredential      store.PasswordCredentialStore
-	passwordCredentialOnce  sync.Once
-	session                 store.SessionStore
-	sessionOnce             sync.Once
-	sessionCredential       store.SessionCredentialStore
-	sessionCredentialOnce   sync.Once
-	role                    store.RoleStore
-	roleOnce                sync.Once
-	roleBinding             store.RoleBindingStore
-	roleBindingOnce         sync.Once
-	audit                   store.AuditStore
-	auditOnce               sync.Once
-	installation            store.InstallationStore
-	installationOnce        sync.Once
+	clusterDiscovery         store.ClusterDiscoveryStore
+	clusterDiscoveryOnce     sync.Once
+	examResource             store.ExamResourceStore
+	examResourceOnce         sync.Once
+	examStarterWorkspace     store.ExamStarterWorkspaceStore
+	examStarterWorkspaceOnce sync.Once
+	examAuthoring            store.ExamAuthoringStore
+	examAuthoringOnce        sync.Once
+	commandOutcome           store.CommandOutcomeStore
+	commandOutcomeOnce       sync.Once
+	job                      store.JobStore
+	jobOnce                  sync.Once
+	file                     store.FileStore
+	fileOnce                 sync.Once
+	institution              store.InstitutionStore
+	institutionOnce          sync.Once
+	academicUnit             store.AcademicUnitStore
+	academicUnitOnce         sync.Once
+	programme                store.ProgrammeStore
+	programmeOnce            sync.Once
+	programmeLevel           store.ProgrammeLevelStore
+	programmeLevelOnce       sync.Once
+	academicPeriod           store.AcademicPeriodStore
+	academicPeriodOnce       sync.Once
+	class                    store.ClassStore
+	classOnce                sync.Once
+	user                     store.UserStore
+	userOnce                 sync.Once
+	externalIdentity         store.ExternalIdentityStore
+	externalIdentityOnce     sync.Once
+	externalLoginState       store.ExternalLoginStateStore
+	externalLoginStateOnce   sync.Once
+	userToken                store.UserTokenStore
+	userTokenOnce            sync.Once
+	personalAccessToken      store.PersonalAccessTokenStore
+	personalAccessTokenOnce  sync.Once
+	mfa                      store.MFAStore
+	mfaOnce                  sync.Once
+	affiliation              store.AffiliationStore
+	affiliationOnce          sync.Once
+	academicUnitMember       store.AcademicUnitMemberStore
+	academicUnitMemberOnce   sync.Once
+	classMember              store.ClassMemberStore
+	classMemberOnce          sync.Once
+	passwordCredential       store.PasswordCredentialStore
+	passwordCredentialOnce   sync.Once
+	session                  store.SessionStore
+	sessionOnce              sync.Once
+	sessionCredential        store.SessionCredentialStore
+	sessionCredentialOnce    sync.Once
+	role                     store.RoleStore
+	roleOnce                 sync.Once
+	roleBinding              store.RoleBindingStore
+	roleBindingOnce          sync.Once
+	audit                    store.AuditStore
+	auditOnce                sync.Once
+	installation             store.InstallationStore
+	installationOnce         sync.Once
 }
 
 type clusterDiscoveryStore struct {
 	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type examResourceStore struct {
+	store.ExamResourceStore
+	layer *Layer
+}
+
+type examStarterWorkspaceStore struct {
+	store.ExamStarterWorkspaceStore
 	layer *Layer
 }
 
@@ -261,6 +275,26 @@ func (l *Layer) ExamAuthoring() store.ExamAuthoringStore {
 		}
 	})
 	return l.stores.examAuthoring
+}
+
+func (l *Layer) ExamResource() store.ExamResourceStore {
+	l.stores.examResourceOnce.Do(func() {
+		next := l.Store.ExamResource()
+		if next != nil {
+			l.stores.examResource = &examResourceStore{ExamResourceStore: next, layer: l}
+		}
+	})
+	return l.stores.examResource
+}
+
+func (l *Layer) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
+	l.stores.examStarterWorkspaceOnce.Do(func() {
+		next := l.Store.ExamStarterWorkspace()
+		if next != nil {
+			l.stores.examStarterWorkspace = &examStarterWorkspaceStore{ExamStarterWorkspaceStore: next, layer: l}
+		}
+	})
+	return l.stores.examStarterWorkspace
 }
 
 func (l *Layer) Class() store.ClassStore {
@@ -474,32 +508,34 @@ func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
 }
 
 var (
-	_ store.Store                    = (*Layer)(nil)
-	_ store.ClusterDiscoveryStore    = (*clusterDiscoveryStore)(nil)
-	_ store.ExamAuthoringStore       = (*examAuthoringStore)(nil)
-	_ store.CommandOutcomeStore      = (*commandOutcomeStore)(nil)
-	_ store.JobStore                 = (*jobStore)(nil)
-	_ store.FileStore                = (*fileStore)(nil)
-	_ store.InstitutionStore         = (*institutionStore)(nil)
-	_ store.AcademicUnitStore        = (*academicUnitStore)(nil)
-	_ store.ProgrammeStore           = (*programmeStore)(nil)
-	_ store.ProgrammeLevelStore      = (*programmeLevelStore)(nil)
-	_ store.AcademicPeriodStore      = (*academicPeriodStore)(nil)
-	_ store.ClassStore               = (*classStore)(nil)
-	_ store.UserStore                = (*userStore)(nil)
-	_ store.ExternalIdentityStore    = (*externalIdentityStore)(nil)
-	_ store.ExternalLoginStateStore  = (*externalLoginStateStore)(nil)
-	_ store.UserTokenStore           = (*userTokenStore)(nil)
-	_ store.PersonalAccessTokenStore = (*personalAccessTokenStore)(nil)
-	_ store.MFAStore                 = (*mfaStore)(nil)
-	_ store.AffiliationStore         = (*affiliationStore)(nil)
-	_ store.AcademicUnitMemberStore  = (*academicUnitMemberStore)(nil)
-	_ store.ClassMemberStore         = (*classMemberStore)(nil)
-	_ store.PasswordCredentialStore  = (*passwordCredentialStore)(nil)
-	_ store.SessionStore             = (*sessionStore)(nil)
-	_ store.SessionCredentialStore   = (*sessionCredentialStore)(nil)
-	_ store.RoleStore                = (*roleStore)(nil)
-	_ store.RoleBindingStore         = (*roleBindingStore)(nil)
-	_ store.AuditStore               = (*auditStore)(nil)
-	_ store.InstallationStore        = (*installationStore)(nil)
+	_ store.Store                     = (*Layer)(nil)
+	_ store.ClusterDiscoveryStore     = (*clusterDiscoveryStore)(nil)
+	_ store.ExamResourceStore         = (*examResourceStore)(nil)
+	_ store.ExamStarterWorkspaceStore = (*examStarterWorkspaceStore)(nil)
+	_ store.ExamAuthoringStore        = (*examAuthoringStore)(nil)
+	_ store.CommandOutcomeStore       = (*commandOutcomeStore)(nil)
+	_ store.JobStore                  = (*jobStore)(nil)
+	_ store.FileStore                 = (*fileStore)(nil)
+	_ store.InstitutionStore          = (*institutionStore)(nil)
+	_ store.AcademicUnitStore         = (*academicUnitStore)(nil)
+	_ store.ProgrammeStore            = (*programmeStore)(nil)
+	_ store.ProgrammeLevelStore       = (*programmeLevelStore)(nil)
+	_ store.AcademicPeriodStore       = (*academicPeriodStore)(nil)
+	_ store.ClassStore                = (*classStore)(nil)
+	_ store.UserStore                 = (*userStore)(nil)
+	_ store.ExternalIdentityStore     = (*externalIdentityStore)(nil)
+	_ store.ExternalLoginStateStore   = (*externalLoginStateStore)(nil)
+	_ store.UserTokenStore            = (*userTokenStore)(nil)
+	_ store.PersonalAccessTokenStore  = (*personalAccessTokenStore)(nil)
+	_ store.MFAStore                  = (*mfaStore)(nil)
+	_ store.AffiliationStore          = (*affiliationStore)(nil)
+	_ store.AcademicUnitMemberStore   = (*academicUnitMemberStore)(nil)
+	_ store.ClassMemberStore          = (*classMemberStore)(nil)
+	_ store.PasswordCredentialStore   = (*passwordCredentialStore)(nil)
+	_ store.SessionStore              = (*sessionStore)(nil)
+	_ store.SessionCredentialStore    = (*sessionCredentialStore)(nil)
+	_ store.RoleStore                 = (*roleStore)(nil)
+	_ store.RoleBindingStore          = (*roleBindingStore)(nil)
+	_ store.AuditStore                = (*auditStore)(nil)
+	_ store.InstallationStore         = (*installationStore)(nil)
 )

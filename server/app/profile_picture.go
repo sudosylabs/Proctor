@@ -47,16 +47,6 @@ type DefaultProfilePictureGenerationFiles interface {
 	GenerateAndStoreDefaultProfilePicture(context.Context, model.FileRevisionID, string, time.Time) ([]model.FileRendition, error)
 }
 
-// FileContent is the bounded composition contract. Individual workflows keep
-// only the narrower consumer-owned capabilities above and in file_purge_job.go.
-type FileContent interface {
-	ProfilePictureUploadFiles
-	ProfilePictureReadFiles
-	DefaultProfilePictureRenderFiles
-	DefaultProfilePictureGenerationFiles
-	FileRevisionContentPurger
-}
-
 type RenderedProfilePicture struct {
 	Body      io.ReadCloser
 	MediaType string

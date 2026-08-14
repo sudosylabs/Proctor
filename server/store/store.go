@@ -258,6 +258,8 @@ type Catalog interface {
 	ProgrammeLevel() ProgrammeLevelStore
 	AcademicPeriod() AcademicPeriodStore
 	ExamAuthoring() ExamAuthoringStore
+	ExamResource() ExamResourceStore
+	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore
 	User() UserStore
 	File() FileStore
@@ -288,6 +290,8 @@ type Store interface {
 	ProgrammeLevel() ProgrammeLevelStore
 	AcademicPeriod() AcademicPeriodStore
 	ExamAuthoring() ExamAuthoringStore
+	ExamResource() ExamResourceStore
+	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore
 	User() UserStore
 	File() FileStore

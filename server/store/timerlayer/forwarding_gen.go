@@ -15,65 +15,79 @@ import (
 )
 
 type timedStores struct {
-	clusterDiscovery        store.ClusterDiscoveryStore
-	clusterDiscoveryOnce    sync.Once
-	examAuthoring           store.ExamAuthoringStore
-	examAuthoringOnce       sync.Once
-	commandOutcome          store.CommandOutcomeStore
-	commandOutcomeOnce      sync.Once
-	job                     store.JobStore
-	jobOnce                 sync.Once
-	file                    store.FileStore
-	fileOnce                sync.Once
-	institution             store.InstitutionStore
-	institutionOnce         sync.Once
-	academicUnit            store.AcademicUnitStore
-	academicUnitOnce        sync.Once
-	programme               store.ProgrammeStore
-	programmeOnce           sync.Once
-	programmeLevel          store.ProgrammeLevelStore
-	programmeLevelOnce      sync.Once
-	academicPeriod          store.AcademicPeriodStore
-	academicPeriodOnce      sync.Once
-	class                   store.ClassStore
-	classOnce               sync.Once
-	user                    store.UserStore
-	userOnce                sync.Once
-	externalIdentity        store.ExternalIdentityStore
-	externalIdentityOnce    sync.Once
-	externalLoginState      store.ExternalLoginStateStore
-	externalLoginStateOnce  sync.Once
-	userToken               store.UserTokenStore
-	userTokenOnce           sync.Once
-	personalAccessToken     store.PersonalAccessTokenStore
-	personalAccessTokenOnce sync.Once
-	mfa                     store.MFAStore
-	mfaOnce                 sync.Once
-	affiliation             store.AffiliationStore
-	affiliationOnce         sync.Once
-	academicUnitMember      store.AcademicUnitMemberStore
-	academicUnitMemberOnce  sync.Once
-	classMember             store.ClassMemberStore
-	classMemberOnce         sync.Once
-	passwordCredential      store.PasswordCredentialStore
-	passwordCredentialOnce  sync.Once
-	session                 store.SessionStore
-	sessionOnce             sync.Once
-	sessionCredential       store.SessionCredentialStore
-	sessionCredentialOnce   sync.Once
-	role                    store.RoleStore
-	roleOnce                sync.Once
-	roleBinding             store.RoleBindingStore
-	roleBindingOnce         sync.Once
-	audit                   store.AuditStore
-	auditOnce               sync.Once
-	installation            store.InstallationStore
-	installationOnce        sync.Once
+	clusterDiscovery         store.ClusterDiscoveryStore
+	clusterDiscoveryOnce     sync.Once
+	examResource             store.ExamResourceStore
+	examResourceOnce         sync.Once
+	examStarterWorkspace     store.ExamStarterWorkspaceStore
+	examStarterWorkspaceOnce sync.Once
+	examAuthoring            store.ExamAuthoringStore
+	examAuthoringOnce        sync.Once
+	commandOutcome           store.CommandOutcomeStore
+	commandOutcomeOnce       sync.Once
+	job                      store.JobStore
+	jobOnce                  sync.Once
+	file                     store.FileStore
+	fileOnce                 sync.Once
+	institution              store.InstitutionStore
+	institutionOnce          sync.Once
+	academicUnit             store.AcademicUnitStore
+	academicUnitOnce         sync.Once
+	programme                store.ProgrammeStore
+	programmeOnce            sync.Once
+	programmeLevel           store.ProgrammeLevelStore
+	programmeLevelOnce       sync.Once
+	academicPeriod           store.AcademicPeriodStore
+	academicPeriodOnce       sync.Once
+	class                    store.ClassStore
+	classOnce                sync.Once
+	user                     store.UserStore
+	userOnce                 sync.Once
+	externalIdentity         store.ExternalIdentityStore
+	externalIdentityOnce     sync.Once
+	externalLoginState       store.ExternalLoginStateStore
+	externalLoginStateOnce   sync.Once
+	userToken                store.UserTokenStore
+	userTokenOnce            sync.Once
+	personalAccessToken      store.PersonalAccessTokenStore
+	personalAccessTokenOnce  sync.Once
+	mfa                      store.MFAStore
+	mfaOnce                  sync.Once
+	affiliation              store.AffiliationStore
+	affiliationOnce          sync.Once
+	academicUnitMember       store.AcademicUnitMemberStore
+	academicUnitMemberOnce   sync.Once
+	classMember              store.ClassMemberStore
+	classMemberOnce          sync.Once
+	passwordCredential       store.PasswordCredentialStore
+	passwordCredentialOnce   sync.Once
+	session                  store.SessionStore
+	sessionOnce              sync.Once
+	sessionCredential        store.SessionCredentialStore
+	sessionCredentialOnce    sync.Once
+	role                     store.RoleStore
+	roleOnce                 sync.Once
+	roleBinding              store.RoleBindingStore
+	roleBindingOnce          sync.Once
+	audit                    store.AuditStore
+	auditOnce                sync.Once
+	installation             store.InstallationStore
+	installationOnce         sync.Once
 }
 
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedExamResourceStore struct {
+	layer *Layer
+	next  store.ExamResourceStore
+}
+
+type timedExamStarterWorkspaceStore struct {
+	layer *Layer
+	next  store.ExamStarterWorkspaceStore
 }
 
 type timedExamAuthoringStore struct {
@@ -264,6 +278,26 @@ func (l *Layer) ExamAuthoring() store.ExamAuthoringStore {
 		}
 	})
 	return l.stores.examAuthoring
+}
+
+func (l *Layer) ExamResource() store.ExamResourceStore {
+	l.stores.examResourceOnce.Do(func() {
+		next := l.next.ExamResource()
+		if next != nil {
+			l.stores.examResource = &timedExamResourceStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examResource
+}
+
+func (l *Layer) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
+	l.stores.examStarterWorkspaceOnce.Do(func() {
+		next := l.next.ExamStarterWorkspace()
+		if next != nil {
+			l.stores.examStarterWorkspace = &timedExamStarterWorkspaceStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examStarterWorkspace
 }
 
 func (l *Layer) Class() store.ClassStore {
@@ -527,6 +561,120 @@ func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) e
 func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
 		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
+func (s *timedExamResourceStore) ReserveUpload(arg0 context.Context, arg1 *store.ExamResourceUploadReservation) (*store.FileUpload, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodReserveUpload), func() (*store.FileUpload, error) {
+		return s.next.ReserveUpload(arg0, arg1)
+	})
+}
+
+func (s *timedExamResourceStore) FinalizeUpload(arg0 context.Context, arg1 *store.ExamResourceUploadFinalization, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodFinalizeUpload), func() (*store.ExamResourceCommandResult, error) {
+		return s.next.FinalizeUpload(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamResourceStore) List(arg0 context.Context, arg1 model.ExamID) ([]store.ExamResourceRecord, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodList), func() ([]store.ExamResourceRecord, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamResourceStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamResourceID) (*store.ExamResourceRecord, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodGet), func() (*store.ExamResourceRecord, error) {
+		return s.next.Get(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamResourceStore) UpdateMetadata(arg0 context.Context, arg1 *store.ExamResourceMetadataUpdate, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodUpdateMetadata), func() (*store.ExamResourceCommandResult, error) {
+		return s.next.UpdateMetadata(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamResourceStore) Reorder(arg0 context.Context, arg1 *store.ExamResourceReorder, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodReorder), func() (*store.ExamResourceCommandResult, error) {
+		return s.next.Reorder(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamResourceStore) Remove(arg0 context.Context, arg1 *store.ExamResourceRemoval, arg2 *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamResource, methodRemove), func() (*store.ExamResourceCommandResult, error) {
+		return s.next.Remove(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) List(arg0 context.Context, arg1 model.ExamID) ([]store.ExamStarterWorkspaceItem, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodList), func() ([]store.ExamStarterWorkspaceItem, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) GetFile(arg0 context.Context, arg1 model.ExamID, arg2 model.StarterWorkspaceEntryID) (*store.ExamStarterWorkspaceItem, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodGetFile), func() (*store.ExamStarterWorkspaceItem, error) {
+		return s.next.GetFile(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) ReserveObject(arg0 context.Context, arg1 *store.ExamStarterWorkspaceReservation) (*model.StarterWorkspaceObject, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReserveObject), func() (*model.StarterWorkspaceObject, error) {
+		return s.next.ReserveObject(arg0, arg1)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) CreateDirectory(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodCreateDirectory), func() (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.CreateDirectory(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) CreateFile(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodCreateFile), func() (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.CreateFile(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) MoveEntry(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodMoveEntry), func() (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.MoveEntry(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) ReplaceFile(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReplaceFile), func() (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.ReplaceFile(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) RemoveEntry(arg0 context.Context, arg1 *store.ExamStarterWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodRemoveEntry), func() (*store.ExamStarterWorkspaceMutationResult, error) {
+		return s.next.RemoveEntry(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) MarkObjectReclaimable(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 time.Time) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodMarkObjectReclaimable), func() error {
+		return s.next.MarkObjectReclaimable(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 int, arg2 string) ([]model.StarterWorkspaceObject, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodClaimObjectsForCleanup), func() ([]model.StarterWorkspaceObject, error) {
+		return s.next.ClaimObjectsForCleanup(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 string) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodCompleteObjectCleanup), func() error {
+		return s.next.CompleteObjectCleanup(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamStarterWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 string) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReleaseObjectCleanup), func() error {
+		return s.next.ReleaseObjectCleanup(arg0, arg1, arg2)
 	})
 }
 
@@ -1701,32 +1849,34 @@ func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.Ins
 }
 
 var (
-	_ store.Store                    = (*Layer)(nil)
-	_ store.ClusterDiscoveryStore    = (*timedClusterDiscoveryStore)(nil)
-	_ store.ExamAuthoringStore       = (*timedExamAuthoringStore)(nil)
-	_ store.CommandOutcomeStore      = (*timedCommandOutcomeStore)(nil)
-	_ store.JobStore                 = (*timedJobStore)(nil)
-	_ store.FileStore                = (*timedFileStore)(nil)
-	_ store.InstitutionStore         = (*timedInstitutionStore)(nil)
-	_ store.AcademicUnitStore        = (*timedAcademicUnitStore)(nil)
-	_ store.ProgrammeStore           = (*timedProgrammeStore)(nil)
-	_ store.ProgrammeLevelStore      = (*timedProgrammeLevelStore)(nil)
-	_ store.AcademicPeriodStore      = (*timedAcademicPeriodStore)(nil)
-	_ store.ClassStore               = (*timedClassStore)(nil)
-	_ store.UserStore                = (*timedUserStore)(nil)
-	_ store.ExternalIdentityStore    = (*timedExternalIdentityStore)(nil)
-	_ store.ExternalLoginStateStore  = (*timedExternalLoginStateStore)(nil)
-	_ store.UserTokenStore           = (*timedUserTokenStore)(nil)
-	_ store.PersonalAccessTokenStore = (*timedPersonalAccessTokenStore)(nil)
-	_ store.MFAStore                 = (*timedMFAStore)(nil)
-	_ store.AffiliationStore         = (*timedAffiliationStore)(nil)
-	_ store.AcademicUnitMemberStore  = (*timedAcademicUnitMemberStore)(nil)
-	_ store.ClassMemberStore         = (*timedClassMemberStore)(nil)
-	_ store.PasswordCredentialStore  = (*timedPasswordCredentialStore)(nil)
-	_ store.SessionStore             = (*timedSessionStore)(nil)
-	_ store.SessionCredentialStore   = (*timedSessionCredentialStore)(nil)
-	_ store.RoleStore                = (*timedRoleStore)(nil)
-	_ store.RoleBindingStore         = (*timedRoleBindingStore)(nil)
-	_ store.AuditStore               = (*timedAuditStore)(nil)
-	_ store.InstallationStore        = (*timedInstallationStore)(nil)
+	_ store.Store                     = (*Layer)(nil)
+	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)
+	_ store.ExamResourceStore         = (*timedExamResourceStore)(nil)
+	_ store.ExamStarterWorkspaceStore = (*timedExamStarterWorkspaceStore)(nil)
+	_ store.ExamAuthoringStore        = (*timedExamAuthoringStore)(nil)
+	_ store.CommandOutcomeStore       = (*timedCommandOutcomeStore)(nil)
+	_ store.JobStore                  = (*timedJobStore)(nil)
+	_ store.FileStore                 = (*timedFileStore)(nil)
+	_ store.InstitutionStore          = (*timedInstitutionStore)(nil)
+	_ store.AcademicUnitStore         = (*timedAcademicUnitStore)(nil)
+	_ store.ProgrammeStore            = (*timedProgrammeStore)(nil)
+	_ store.ProgrammeLevelStore       = (*timedProgrammeLevelStore)(nil)
+	_ store.AcademicPeriodStore       = (*timedAcademicPeriodStore)(nil)
+	_ store.ClassStore                = (*timedClassStore)(nil)
+	_ store.UserStore                 = (*timedUserStore)(nil)
+	_ store.ExternalIdentityStore     = (*timedExternalIdentityStore)(nil)
+	_ store.ExternalLoginStateStore   = (*timedExternalLoginStateStore)(nil)
+	_ store.UserTokenStore            = (*timedUserTokenStore)(nil)
+	_ store.PersonalAccessTokenStore  = (*timedPersonalAccessTokenStore)(nil)
+	_ store.MFAStore                  = (*timedMFAStore)(nil)
+	_ store.AffiliationStore          = (*timedAffiliationStore)(nil)
+	_ store.AcademicUnitMemberStore   = (*timedAcademicUnitMemberStore)(nil)
+	_ store.ClassMemberStore          = (*timedClassMemberStore)(nil)
+	_ store.PasswordCredentialStore   = (*timedPasswordCredentialStore)(nil)
+	_ store.SessionStore              = (*timedSessionStore)(nil)
+	_ store.SessionCredentialStore    = (*timedSessionCredentialStore)(nil)
+	_ store.RoleStore                 = (*timedRoleStore)(nil)
+	_ store.RoleBindingStore          = (*timedRoleBindingStore)(nil)
+	_ store.AuditStore                = (*timedAuditStore)(nil)
+	_ store.InstallationStore         = (*timedInstallationStore)(nil)
 )

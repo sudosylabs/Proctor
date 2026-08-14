@@ -1353,6 +1353,155 @@
         "responses": {"200": {"$ref": "#/components/responses/ExamManagerChanged"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/exams/{exam_id}/draft/resources": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "get": {
+        "operationId": "listExamDraftResources", "summary": "List the ordered protected resources in an Exam Draft",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.resource.invalid", "exam.resource.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamResourceListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "post": {
+        "operationId": "createExamDraftResource", "summary": "Upload and append a protected resource to an Exam Draft",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.resource.invalid", "exam.resource.conflict", "exam.resource.unavailable", "exam.resource.invalid_content", "exam.resource.limit", "exam.resource.upload_invalid", "exam.resource.revision_conflict", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ExamResourceUploadMultipart"}, "encoding": {"metadata": {"contentType": "application/json"}, "content": {"contentType": "application/octet-stream"}}}}},
+        "responses": {"201": {"$ref": "#/components/responses/ExamResourceCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/resources/order": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "put": {
+        "operationId": "reorderExamDraftResources", "summary": "Replace the complete order of active Exam Draft resources",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.resource.invalid", "exam.resource.conflict", "exam.resource.unavailable", "exam.resource.no_changes", "exam.resource.order_invalid", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ReorderExamResources"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamResourceListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamResourceID"}],
+      "patch": {
+        "operationId": "editExamDraftResourceMetadata", "summary": "Edit one Exam Draft resource's authored metadata",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.resource.invalid", "exam.resource.conflict", "exam.resource.unavailable", "exam.resource.no_changes", "exam.resource.revision_conflict", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/EditExamResourceMetadata"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamResourceOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "delete": {
+        "operationId": "removeExamDraftResource", "summary": "Remove one resource from the active Exam Draft",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.resource.invalid", "exam.resource.conflict", "exam.resource.unavailable", "exam.resource.revision_conflict", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/RemoveExamResource"},
+        "responses": {"204": {"$ref": "#/components/responses/ExamResourceRemoved"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}/content": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamResourceID"}],
+      "get": {
+        "operationId": "getExamDraftResourceContent", "summary": "Render protected Exam resource content inline",
+        "description": "Returns only an authorized in-application content stream. This route is not a public URL or download/export capability and never exposes an object key.",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.resource.invalid", "exam.resource.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamResourceProtectedContent"}, "304": {"$ref": "#/components/responses/ExamProtectedContentNotModified"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "put": {
+        "operationId": "replaceExamDraftResourceContent", "summary": "Replace an Exam Draft resource's protected content",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.resource.invalid", "exam.resource.conflict", "exam.resource.unavailable", "exam.resource.invalid_content", "exam.resource.upload_invalid", "exam.resource.revision_conflict", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ExamResourceContentReplacementMultipart"}, "encoding": {"metadata": {"contentType": "application/json"}, "content": {"contentType": "application/octet-stream"}}}}},
+        "responses": {"200": {"$ref": "#/components/responses/ExamResourceOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/starter-workspace": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "get": {
+        "operationId": "listExamDraftStarterWorkspace", "summary": "List the complete Starter Workspace manifest for an Exam Draft",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.starter_workspace.invalid", "exam.starter_workspace.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamStarterWorkspaceListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/starter-workspace/directories": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "post": {
+        "operationId": "createExamDraftStarterWorkspaceDirectory", "summary": "Create an empty directory in an Exam Draft Starter Workspace",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found", "exam.starter_workspace.entry_limit", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/CreateExamStarterWorkspaceDirectory"},
+        "responses": {"201": {"$ref": "#/components/responses/ExamStarterWorkspaceEntryCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/starter-workspace/files": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "post": {
+        "operationId": "createExamDraftStarterWorkspaceFile", "summary": "Upload a file into an Exam Draft Starter Workspace",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found", "exam.starter_workspace.entry_limit", "exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired", "exam.starter_workspace.object_conflict", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ExamStarterWorkspaceFileUploadMultipart"}, "encoding": {"metadata": {"contentType": "application/json"}, "content": {"contentType": "application/octet-stream"}}}}},
+        "responses": {"201": {"$ref": "#/components/responses/ExamStarterWorkspaceEntryCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/StarterWorkspaceEntryID"}],
+      "patch": {
+        "operationId": "moveExamDraftStarterWorkspaceEntry", "summary": "Rename or move one Starter Workspace entry by logical path",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found", "exam.starter_workspace.no_changes", "exam.starter_workspace.invalid_move", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/MoveExamStarterWorkspaceEntry"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamStarterWorkspaceEntryOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "delete": {
+        "operationId": "removeExamDraftStarterWorkspaceEntry", "summary": "Remove one file or empty directory from a Starter Workspace",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "exam.starter_workspace.directory_not_empty", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/RemoveExamStarterWorkspaceEntry"},
+        "responses": {"204": {"$ref": "#/components/responses/ExamStarterWorkspaceEntryRemoved"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/draft/starter-workspace/files/{starter_workspace_entry_id}/content": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/StarterWorkspaceEntryID"}],
+      "get": {
+        "operationId": "getExamDraftStarterWorkspaceFileContent", "summary": "Render protected Starter Workspace file content inline",
+        "description": "Returns only an authorized in-application content stream. This route is not a public URL or download/export capability and never exposes an object key.",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.starter_workspace.invalid", "exam.starter_workspace.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamStarterWorkspaceProtectedContent"}, "304": {"$ref": "#/components/responses/ExamStarterWorkspaceContentNotModified"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "put": {
+        "operationId": "replaceExamDraftStarterWorkspaceFileContent", "summary": "Replace one Starter Workspace file's content",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable", "exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired", "exam.starter_workspace.object_conflict", "exam.starter_workspace.content_conflict", "exam.starter_workspace.entry_kind", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ExamStarterWorkspaceFileReplacementMultipart"}, "encoding": {"metadata": {"contentType": "application/json"}, "content": {"contentType": "application/octet-stream"}}}}},
+        "responses": {"200": {"$ref": "#/components/responses/ExamStarterWorkspaceEntryOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "operationId": "listJobs", "summary": "List allowlisted durable Jobs",
@@ -1485,6 +1634,18 @@
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "ExamResourceID": {
+        "name": "exam_resource_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "StarterWorkspaceEntryID": {
+        "name": "starter_workspace_entry_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "ClassID": {
         "name": "class_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -1570,6 +1731,30 @@
       "TransferExamOwnership": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TransferExamOwnershipRequest"}}}
+      },
+      "EditExamResourceMetadata": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EditExamResourceMetadataRequest"}}}
+      },
+      "ReorderExamResources": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReorderExamResourcesRequest"}}}
+      },
+      "RemoveExamResource": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RemoveExamResourceRequest"}}}
+      },
+      "CreateExamStarterWorkspaceDirectory": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateExamStarterWorkspaceDirectoryRequest"}}}
+      },
+      "MoveExamStarterWorkspaceEntry": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MoveExamStarterWorkspaceEntryRequest"}}}
+      },
+      "RemoveExamStarterWorkspaceEntry": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RemoveExamStarterWorkspaceEntryRequest"}}}
       },
       "CreateAcademicUnit": {
         "required": true,
@@ -1709,6 +1894,78 @@
         "description": "Exam management relationship or ownership changed",
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamManagerChangeResponse"}}}
+      },
+      "ExamResourceOK": {
+        "description": "Exam Draft resource changed",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResourceResponse"}}}
+      },
+      "ExamResourceCreated": {
+        "description": "Exam Draft resource created",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResourceResponse"}}}
+      },
+      "ExamResourceRemoved": {
+        "description": "Exam Draft resource removed",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}
+      },
+      "ExamResourceListOK": {
+        "description": "Complete ordered Exam Draft resource catalog",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResourceListResponse"}}}
+      },
+      "ExamResourceProtectedContent": {
+        "description": "Authorized inline Exam Resource content; not a public URL or export response",
+        "headers": {
+          "ETag": {"schema": {"type": "string"}},
+          "Cache-Control": {"schema": {"type": "string", "const": "private, max-age=300"}},
+          "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}}
+        },
+        "content": {"*/*": {"schema": {"type": "string", "format": "binary"}}}
+      },
+      "ExamStarterWorkspaceEntryOK": {
+        "description": "Exam Draft Starter Workspace entry changed",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamStarterWorkspaceEntryResponse"}}}
+      },
+      "ExamStarterWorkspaceEntryCreated": {
+        "description": "Exam Draft Starter Workspace entry created",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamStarterWorkspaceEntryResponse"}}}
+      },
+      "ExamStarterWorkspaceEntryRemoved": {
+        "description": "Exam Draft Starter Workspace entry removed",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}
+      },
+      "ExamStarterWorkspaceListOK": {
+        "description": "Complete Exam Draft Starter Workspace manifest",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamStarterWorkspaceListResponse"}}}
+      },
+      "ExamStarterWorkspaceProtectedContent": {
+        "description": "Authorized inline Starter Workspace file content; not a public URL or export response",
+        "headers": {
+          "ETag": {"schema": {"type": "string"}},
+          "Cache-Control": {"schema": {"type": "string", "const": "private, no-store"}},
+          "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}}
+        },
+        "content": {"*/*": {"schema": {"type": "string", "format": "binary"}}}
+      },
+      "ExamProtectedContentNotModified": {
+        "description": "Protected Exam content has not changed",
+        "headers": {
+          "ETag": {"schema": {"type": "string"}},
+          "Cache-Control": {"schema": {"type": "string", "const": "private, max-age=300"}},
+          "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}}
+        }
+      },
+      "ExamStarterWorkspaceContentNotModified": {
+        "description": "Protected Starter Workspace content has not changed",
+        "headers": {
+          "ETag": {"schema": {"type": "string"}},
+          "Cache-Control": {"schema": {"type": "string", "const": "private, no-store"}},
+          "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}}
+        }
       },
       "AcademicUnitOK": {
         "description": "Academic Unit",
@@ -1861,6 +2118,188 @@
         "type": "object", "additionalProperties": false,
         "required": ["user_id", "expected_exam_revision"],
         "properties": {"user_id": {"$ref": "#/components/schemas/ID"}, "expected_exam_revision": {"type": "integer", "format": "int64", "minimum": 1}}
+      },
+      "ExamResourceUploadMetadata": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_draft_revision", "display_name", "media_type", "size", "sha256"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "display_name": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Trimmed UTF-8 with at most 255 Unicode scalar values."},
+          "description_markdown": {"type": "string", "maxLength": 16384, "description": "Authored Markdown encoded as UTF-8 and limited to 16384 bytes."},
+          "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"}
+        }
+      },
+      "ExamResourceContentReplacementMetadata": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_draft_revision", "media_type", "size", "sha256"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"}
+        }
+      },
+      "ExamResourceUploadMultipart": {
+        "type": "object", "additionalProperties": false, "required": ["metadata", "content"],
+        "description": "Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.",
+        "properties": {"metadata": {"$ref": "#/components/schemas/ExamResourceUploadMetadata"}, "content": {"type": "string", "format": "binary"}}
+      },
+      "ExamResourceContentReplacementMultipart": {
+        "type": "object", "additionalProperties": false, "required": ["metadata", "content"],
+        "description": "Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.",
+        "properties": {"metadata": {"$ref": "#/components/schemas/ExamResourceContentReplacementMetadata"}, "content": {"type": "string", "format": "binary"}}
+      },
+      "EditExamResourceMetadataRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_draft_revision"],
+        "anyOf": [
+          {"required": ["display_name"], "properties": {"display_name": {"type": "string"}}},
+          {"required": ["description_markdown"], "properties": {"description_markdown": {"type": "string"}}}
+        ],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "display_name": {"type": ["string", "null"], "minLength": 1, "maxLength": 255, "description": "Omitted or null leaves the name unchanged; a present value is trimmed UTF-8 with at most 255 Unicode scalar values."},
+          "description_markdown": {"type": ["string", "null"], "maxLength": 16384, "description": "Omitted or null leaves the Markdown unchanged; a present value is UTF-8 limited to 16384 bytes."}
+        }
+      },
+      "ReorderExamResourcesRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_draft_revision", "resource_ids"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "resource_ids": {"type": "array", "maxItems": 10, "uniqueItems": true, "items": {"$ref": "#/components/schemas/ID"}}
+        }
+      },
+      "RemoveExamResourceRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_draft_revision"],
+        "properties": {"expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1}}
+      },
+      "ExamResourceMediaType": {
+        "type": "string", "enum": ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/markdown", "text/csv", "application/json"]
+      },
+      "ExamResourceResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "display_name", "description_markdown", "position", "content_revision_id", "media_type", "size", "sha256", "updated_at", "draft_revision"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "display_name": {"type": "string", "minLength": 1, "maxLength": 255},
+          "description_markdown": {"type": "string", "maxLength": 16384, "description": "Authored Markdown encoded as UTF-8 and limited to 16384 bytes."},
+          "position": {"type": "integer", "minimum": 0, "maximum": 9},
+          "content_revision_id": {"$ref": "#/components/schemas/ID"},
+          "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "draft_revision": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "ExamResourceListResponse": {
+        "type": "object", "additionalProperties": false, "required": ["items"],
+        "properties": {"items": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/ExamResourceResponse"}}}
+      },
+      "CreateExamStarterWorkspaceDirectoryRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_draft_revision", "path"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "path": {"$ref": "#/components/schemas/StarterWorkspacePath"}
+        }
+      },
+      "ExamStarterWorkspaceFileUploadMetadata": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_draft_revision", "path", "media_type", "size", "sha256"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
+          "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
+          "size": {"type": "integer", "format": "int64", "minimum": -1, "maximum": 10485760, "description": "A value of -1 means the client did not declare a size; the streamed body remains bounded to 10 MiB."},
+          "sha256": {"$ref": "#/components/schemas/SHA256"}
+        }
+      },
+      "ExamStarterWorkspaceFileReplacementMetadata": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_draft_revision", "expected_content_version", "media_type", "size", "sha256"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "expected_content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
+          "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
+          "size": {"type": "integer", "format": "int64", "minimum": -1, "maximum": 10485760, "description": "A value of -1 means the client did not declare a size; the streamed body remains bounded to 10 MiB."},
+          "sha256": {"$ref": "#/components/schemas/SHA256"}
+        }
+      },
+      "ExamStarterWorkspaceFileUploadMultipart": {
+        "type": "object", "additionalProperties": false, "required": ["metadata", "content"],
+        "description": "Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.",
+        "properties": {"metadata": {"$ref": "#/components/schemas/ExamStarterWorkspaceFileUploadMetadata"}, "content": {"type": "string", "format": "binary"}}
+      },
+      "ExamStarterWorkspaceFileReplacementMultipart": {
+        "type": "object", "additionalProperties": false, "required": ["metadata", "content"],
+        "description": "Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.",
+        "properties": {"metadata": {"$ref": "#/components/schemas/ExamStarterWorkspaceFileReplacementMetadata"}, "content": {"type": "string", "format": "binary"}}
+      },
+      "MoveExamStarterWorkspaceEntryRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_draft_revision", "path"],
+        "properties": {
+          "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "path": {"$ref": "#/components/schemas/StarterWorkspacePath"}
+        }
+      },
+      "RemoveExamStarterWorkspaceEntryRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_draft_revision"],
+        "properties": {"expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1}}
+      },
+      "StarterWorkspacePath": {
+        "type": "string", "minLength": 1, "maxLength": 1024,
+        "description": "An already-canonical, case-sensitive POSIX-relative path: at most 16 segments and 255 UTF-8 bytes per segment. Empty, absolute, dot, dot-dot, repeated/trailing separators, backslashes, NUL/control characters, and the reserved .proctor root are rejected."
+      },
+      "WorkspaceContentVersion": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{26}$",
+        "description": "Opaque comparison token for one acknowledged Workspace file content state. It is not an entity identifier and must be returned unchanged."
+      },
+      "SHA256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "ExamStarterWorkspaceEntryResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "kind", "path", "created_at", "updated_at", "draft_revision"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "kind": {"type": "string", "enum": ["file", "directory"]},
+          "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
+          "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
+          "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "draft_revision": {"type": "integer", "format": "int64", "minimum": 1}
+        },
+        "oneOf": [
+          {"properties": {"kind": {"const": "file"}}, "required": ["content_version", "media_type", "size", "sha256"]},
+          {"properties": {"kind": {"const": "directory"}}, "not": {"anyOf": [{"required": ["content_version"]}, {"required": ["media_type"]}, {"required": ["size"]}, {"required": ["sha256"]}]}}
+        ]
+      },
+      "ExamStarterWorkspaceListItemResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "kind", "path", "created_at", "updated_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "kind": {"type": "string", "enum": ["file", "directory"]},
+          "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
+          "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
+          "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"}
+        },
+        "oneOf": [
+          {"properties": {"kind": {"const": "file"}}, "required": ["content_version", "media_type", "size", "sha256"]},
+          {"properties": {"kind": {"const": "directory"}}, "not": {"anyOf": [{"required": ["content_version"]}, {"required": ["media_type"]}, {"required": ["size"]}, {"required": ["sha256"]}]}}
+        ]
+      },
+      "ExamStarterWorkspaceListResponse": {
+        "type": "object", "additionalProperties": false, "required": ["items"],
+        "properties": {"items": {"type": "array", "maxItems": 500, "items": {"$ref": "#/components/schemas/ExamStarterWorkspaceListItemResponse"}}}
       },
       "ExamManagerListResponse": {
         "type": "object", "additionalProperties": false, "required": ["items"],

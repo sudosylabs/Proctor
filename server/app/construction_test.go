@@ -115,6 +115,9 @@ type constructionCatalogWithJobs struct {
 func (catalog constructionCatalogWithJobs) Job() store.JobStore   { return catalog.jobs }
 func (catalog constructionCatalogWithJobs) User() store.UserStore { return catalog.users }
 func (catalog constructionCatalogWithJobs) File() store.FileStore { return catalog.files }
+func (constructionCatalogWithJobs) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
+	return nil
+}
 func (catalog constructionCatalogWithJobs) Institution() store.InstitutionStore {
 	return catalog.institutions
 }

@@ -71,33 +71,35 @@ func (s Settings) validate() error {
 // Keeping this registry separate from SQLStore mirrors Mattermost's composition
 // flow and makes future store decorators possible without changing callers.
 type SQLStoreStores struct {
-	institution         store.InstitutionStore
-	academicUnit        store.AcademicUnitStore
-	programme           store.ProgrammeStore
-	programmeLevel      store.ProgrammeLevelStore
-	academicPeriod      store.AcademicPeriodStore
-	examAuthoring       store.ExamAuthoringStore
-	class               store.ClassStore
-	user                store.UserStore
-	file                store.FileStore
-	job                 store.JobStore
-	externalIdentity    store.ExternalIdentityStore
-	externalLoginState  store.ExternalLoginStateStore
-	userToken           store.UserTokenStore
-	personalAccessToken store.PersonalAccessTokenStore
-	mfa                 store.MFAStore
-	affiliation         store.AffiliationStore
-	academicUnitMember  store.AcademicUnitMemberStore
-	classMember         store.ClassMemberStore
-	passwordCredential  store.PasswordCredentialStore
-	session             store.SessionStore
-	sessionCredential   store.SessionCredentialStore
-	role                store.RoleStore
-	roleBinding         store.RoleBindingStore
-	audit               store.AuditStore
-	installation        store.InstallationStore
-	clusterDiscovery    store.ClusterDiscoveryStore
-	commandOutcome      store.CommandOutcomeStore
+	institution          store.InstitutionStore
+	academicUnit         store.AcademicUnitStore
+	programme            store.ProgrammeStore
+	programmeLevel       store.ProgrammeLevelStore
+	academicPeriod       store.AcademicPeriodStore
+	examAuthoring        store.ExamAuthoringStore
+	examResource         store.ExamResourceStore
+	examStarterWorkspace store.ExamStarterWorkspaceStore
+	class                store.ClassStore
+	user                 store.UserStore
+	file                 store.FileStore
+	job                  store.JobStore
+	externalIdentity     store.ExternalIdentityStore
+	externalLoginState   store.ExternalLoginStateStore
+	userToken            store.UserTokenStore
+	personalAccessToken  store.PersonalAccessTokenStore
+	mfa                  store.MFAStore
+	affiliation          store.AffiliationStore
+	academicUnitMember   store.AcademicUnitMemberStore
+	classMember          store.ClassMemberStore
+	passwordCredential   store.PasswordCredentialStore
+	session              store.SessionStore
+	sessionCredential    store.SessionCredentialStore
+	role                 store.RoleStore
+	roleBinding          store.RoleBindingStore
+	audit                store.AuditStore
+	installation         store.InstallationStore
+	clusterDiscovery     store.ClusterDiscoveryStore
+	commandOutcome       store.CommandOutcomeStore
 }
 
 // SQLStore owns PostgreSQL connections and all concrete model stores.
@@ -140,6 +142,8 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.programmeLevel = newSQLProgrammeLevelStore(sqlStore)
 	sqlStore.stores.academicPeriod = newSQLAcademicPeriodStore(sqlStore)
 	sqlStore.stores.examAuthoring = newSQLExamAuthoringStore(sqlStore)
+	sqlStore.stores.examResource = newSQLExamResourceStore(sqlStore)
+	sqlStore.stores.examStarterWorkspace = NewSQLExamStarterWorkspaceStore(sqlStore)
 	sqlStore.stores.class = newSQLClassStore(sqlStore)
 	sqlStore.stores.user = newSQLUserStore(sqlStore)
 	sqlStore.stores.file = newSQLFileStore(sqlStore)
@@ -201,6 +205,14 @@ func (ss *SQLStore) AcademicPeriod() store.AcademicPeriodStore {
 
 func (ss *SQLStore) ExamAuthoring() store.ExamAuthoringStore {
 	return ss.stores.examAuthoring
+}
+
+func (ss *SQLStore) ExamResource() store.ExamResourceStore {
+	return ss.stores.examResource
+}
+
+func (ss *SQLStore) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
+	return ss.stores.examStarterWorkspace
 }
 
 func (ss *SQLStore) Class() store.ClassStore {

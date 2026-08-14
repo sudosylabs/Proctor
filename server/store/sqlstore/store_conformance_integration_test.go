@@ -65,6 +65,8 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"ProgrammeLevel", storetest.TestProgrammeLevelStore},
 		{"AcademicPeriod", storetest.TestAcademicPeriodStore},
 		{"ExamAuthoring", storetest.TestExamAuthoringStore},
+		{"ExamResource", storetest.TestExamResourceStore},
+		{"ExamStarterWorkspace", storetest.TestExamStarterWorkspaceStore},
 		{"Class", storetest.TestClassStore},
 		{"User", storetest.TestUserStore},
 		{"File", storetest.TestFileStore},
@@ -121,6 +123,14 @@ func TestExamAuthoringStore(t *testing.T) {
 		resetTestStore(t, persistence)
 		testExamCatalogBoundedPlan(t, persistence)
 	})
+}
+
+func TestExamResourceStore(t *testing.T) {
+	StoreTest(t, storetest.TestExamResourceStore)
+}
+
+func TestExamStarterWorkspaceStore(t *testing.T) {
+	StoreTest(t, storetest.TestExamStarterWorkspaceStore)
 }
 
 func TestClassStore(t *testing.T) {

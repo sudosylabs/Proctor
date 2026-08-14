@@ -51,6 +51,12 @@ func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
 func (s *hookStore) ExamAuthoring() store.ExamAuthoringStore {
 	return hookExamAuthoringStore{}
 }
+func (s *hookStore) ExamResource() store.ExamResourceStore {
+	return hookExamResourceStore{}
+}
+func (s *hookStore) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
+	return hookExamStarterWorkspaceStore{}
+}
 func (s *hookStore) Class() store.ClassStore             { return hookClassStore{} }
 func (s *hookStore) Affiliation() store.AffiliationStore { return nil }
 func (s *hookStore) User() store.UserStore               { return hookUserStore{} }
@@ -103,6 +109,10 @@ func (s *hookStore) Close() error {
 }
 
 type hookExamAuthoringStore struct{ store.ExamAuthoringStore }
+type hookExamResourceStore struct{ store.ExamResourceStore }
+type hookExamStarterWorkspaceStore struct {
+	store.ExamStarterWorkspaceStore
+}
 type hookAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 
 type hookUserStore struct{ store.UserStore }

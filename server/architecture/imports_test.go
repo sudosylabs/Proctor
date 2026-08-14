@@ -167,6 +167,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},
 		{name: "application may import Realtime child", from: serverModule + "/app", imported: serverModule + "/app/realtime"},
 		{name: "application may import Exam child", from: serverModule + "/app", imported: serverModule + "/app/exam"},
+		{name: "application may import Exam resource child", from: serverModule + "/app", imported: serverModule + "/app/exam/resource"},
+		{name: "application may import Exam workspace child", from: serverModule + "/app", imported: serverModule + "/app/exam/workspace"},
 		{name: "Exam child may import domain models", from: serverModule + "/app/exam", imported: serverModule + "/model"},
 		{name: "Exam child may import store contracts", from: serverModule + "/app/exam", imported: serverModule + "/store"},
 		{name: "Realtime child may import domain models", from: serverModule + "/app/realtime", imported: serverModule + "/model"},
@@ -177,6 +179,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "File Content may import the canonical encoder", from: serverModule + "/filecontent", imported: "github.com/HugoSmits86/nativewebp"},
 		{name: "File Content may import bounded image transforms", from: serverModule + "/filecontent", imported: "github.com/disintegration/imaging"},
 		{name: "File Content may register supported image decoders", from: serverModule + "/filecontent", imported: "golang.org/x/image/webp"},
+		{name: "File Content may structurally validate PDFs", from: serverModule + "/filecontent", imported: "github.com/pdfcpu/pdfcpu/pkg/api"},
+		{name: "File Content may use private temporary spools", from: serverModule + "/filecontent", imported: "os"},
 		{name: "HTTP may import application", from: serverModule + "/app/api", imported: serverModule + "/app"},
 		{name: "WebSocket may import Realtime child", from: serverModule + "/websocket", imported: serverModule + "/app/realtime"},
 		{name: "HTTP may import router library", from: serverModule + "/app/api", imported: "github.com/gorilla/mux"},
@@ -289,7 +293,7 @@ func forbiddenImport(from, imported string) bool {
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
 	case packageOrBelow(from, serverModule+"/filecontent"):
-		return standardInfrastructureImport(imported) ||
+		return standardInfrastructureImport(imported) && imported != "os" ||
 			(thirdPartyImport(imported) && !fileContentCodecImport(imported)) ||
 			forbiddenProjectImportExcept(
 				imported,
@@ -303,7 +307,7 @@ func forbiddenImport(from, imported string) bool {
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
 				imported != serverModule+"/model" && imported != serverModule+"/store" &&
 				imported != serverModule+"/app/job" && imported != serverModule+"/app/realtime" &&
-				imported != serverModule+"/app/exam")
+				!packageOrBelow(imported, serverModule+"/app/exam"))
 	case httpOrWebSocketPackage(from):
 		return standardInfrastructureImportExceptHTTP(imported) ||
 			(thirdPartyImport(imported) && !strings.HasPrefix(imported, "github.com/gorilla/")) ||
@@ -338,6 +342,7 @@ func forbiddenImport(from, imported string) bool {
 func fileContentCodecImport(importPath string) bool {
 	return importPath == "github.com/HugoSmits86/nativewebp" ||
 		importPath == "github.com/disintegration/imaging" ||
+		strings.HasPrefix(importPath, "github.com/pdfcpu/pdfcpu/") ||
 		importPath == "golang.org/x/image/webp"
 }
 

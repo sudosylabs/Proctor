@@ -467,7 +467,7 @@ CREATE TABLE exam_starter_workspace_objects (
     updated_at timestamptz NOT NULL,
     expires_at timestamptz NOT NULL,
     state varchar(16) NOT NULL CHECK (state IN ('staged', 'current', 'reclaimable', 'claimed')),
-    content_version varchar(26),
+    content_version text,
     media_type varchar(255),
     size_bytes bigint,
     sha256 char(64),
@@ -481,7 +481,10 @@ CREATE TABLE exam_starter_workspace_objects (
         (claimed_at IS NULL OR claimed_at >= created_at)
     ),
     CONSTRAINT exam_starter_workspace_objects_content_check CHECK (
-        state = 'staged' OR (
+        (state = 'staged' AND
+            content_version IS NULL AND media_type IS NULL AND
+            size_bytes IS NULL AND sha256 IS NULL
+        ) OR (state = 'current' AND
             content_version IS NOT NULL AND
             content_version ~ '^[A-Za-z0-9_-]{26}$' AND
             media_type IS NOT NULL AND char_length(btrim(media_type)) > 0 AND
@@ -489,7 +492,17 @@ CREATE TABLE exam_starter_workspace_objects (
             size_bytes BETWEEN 0 AND 10485760 AND
             sha256 IS NOT NULL AND
             sha256 ~ '^[0-9a-f]{64}$'
-        )
+        ) OR (state IN ('reclaimable', 'claimed') AND (
+            (content_version IS NULL AND media_type IS NULL AND
+                size_bytes IS NULL AND sha256 IS NULL) OR
+            (content_version IS NOT NULL AND
+                content_version ~ '^[A-Za-z0-9_-]{26}$' AND
+                media_type IS NOT NULL AND char_length(btrim(media_type)) > 0 AND
+                size_bytes IS NOT NULL AND
+                size_bytes BETWEEN 0 AND 10485760 AND
+                sha256 IS NOT NULL AND
+                sha256 ~ '^[0-9a-f]{64}$')
+        ))
     ),
     CONSTRAINT exam_starter_workspace_objects_reclaim_check CHECK (
         (state IN ('reclaimable', 'claimed')) = (reclaim_after IS NOT NULL)
@@ -519,8 +532,8 @@ CREATE TABLE exam_starter_workspace_entries (
     CONSTRAINT exam_starter_workspace_entries_current_object_fkey
         FOREIGN KEY (exam_id, current_object_id)
         REFERENCES exam_starter_workspace_objects(exam_id, id),
-    CONSTRAINT exam_starter_workspace_entries_kind_check CHECK (
-        (kind = 'file' AND current_object_id IS NOT NULL) OR
+    CONSTRAINT exam_starter_workspace_entries_content_check CHECK (
+        (kind = 'file' AND (archived_at IS NOT NULL OR current_object_id IS NOT NULL)) OR
         (kind = 'directory' AND current_object_id IS NULL)
     ),
     CONSTRAINT exam_starter_workspace_entries_path_check CHECK (

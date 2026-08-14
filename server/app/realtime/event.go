@@ -38,6 +38,14 @@ type examDraftUpdatedData struct {
 	DraftRevision int64  `json:"draft_revision"`
 }
 
+type examStarterWorkspaceChangedData struct {
+	ExamID        string `json:"exam_id"`
+	EntryID       string `json:"entry_id"`
+	Operation     string `json:"operation"`
+	DraftRevision int64  `json:"draft_revision"`
+	ChangedAt     string `json:"changed_at"`
+}
+
 type examArchivedData struct {
 	ExamID       string `json:"exam_id"`
 	ExamRevision int64  `json:"exam_revision"`
@@ -80,6 +88,31 @@ func NewExamDraftUpdatedEvent(examID model.ExamID, revision int64) (RealtimeEven
 	}
 	return RealtimeEvent{Name: "exam_draft_updated", Action: model.ActionExamView,
 		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
+}
+
+// NewExamStarterWorkspaceChangedEvent constructs the content-free fact emitted
+// after one Starter Workspace hierarchy/content mutation commits. Logical
+// paths, opaque object identities, checksums, and authored bytes are absent.
+func NewExamStarterWorkspaceChangedEvent(examID model.ExamID, entryID model.StarterWorkspaceEntryID, revision int64, operation string, changedAt time.Time) (RealtimeEvent, error) {
+	if !examID.IsValid() || !entryID.IsValid() || revision < 1 || !validExamStarterWorkspaceOperation(operation) || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("Starter Workspace change event requires valid identities, operation, revision, and time")
+	}
+	data, err := json.Marshal(examStarterWorkspaceChangedData{ExamID: examID.String(), EntryID: entryID.String(), Operation: operation,
+		DraftRevision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Starter Workspace change event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_starter_workspace_changed", Action: model.ActionExamView,
+		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
+}
+
+func validExamStarterWorkspaceOperation(operation string) bool {
+	switch operation {
+	case "directory_created", "file_created", "entry_moved", "file_replaced", "entry_removed":
+		return true
+	default:
+		return false
+	}
 }
 
 // NewExamArchivedEvent constructs the content-free Exam lifecycle event.
