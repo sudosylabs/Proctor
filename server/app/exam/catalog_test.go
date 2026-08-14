@@ -17,7 +17,7 @@ import (
 func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
-	visibility := store.ExamListVisibility{ActorUserID: fixture.userID, OrdinaryAcademicUnitRootIDs: []string{fixture.unitID.String()}}
+	visibility := store.ExamListVisibility{ActorUserID: fixture.userID, OrdinaryMembershipAt: time.Date(2026, 8, 14, 7, 0, 0, 0, time.UTC), OrdinaryAcademicUnitRootIDs: []string{fixture.unitID.String()}}
 	fixture.authorizer.listVisibility = visibility
 	updatedAt := time.Date(2026, 8, 14, 7, 0, 0, 0, time.UTC)
 	fixture.persistence.summaries = []store.ExamSummary{{ID: fixture.examID, AcademicUnitID: fixture.unitID, CreatorUserID: fixture.userID,

@@ -179,11 +179,12 @@ func (a examAuthorizationAdapter) Authorize(ctx context.Context, call examengine
 
 func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examengine.Call, _ model.AcademicUnitID) (store.ExamListVisibility, error) {
 	principal := call.Principal()
-	ordinary, err := a.authorization.authorizedScopes(ctx, principal, model.ActionExamView, model.ResourceExam)
+	decisionAt := model.TimeUTC(a.authorization.now())
+	ordinary, err := a.authorization.authorizedScopesAt(ctx, principal, model.ActionExamView, model.ResourceExam, decisionAt)
 	if err != nil {
 		return store.ExamListVisibility{}, err
 	}
-	override, err := a.authorization.authorizedScopes(ctx, principal, model.ActionExamViewOverride, model.ResourceExam)
+	override, err := a.authorization.authorizedScopesAt(ctx, principal, model.ActionExamViewOverride, model.ResourceExam, decisionAt)
 	if err != nil {
 		return store.ExamListVisibility{}, err
 	}
@@ -205,6 +206,7 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examen
 		return store.ExamListVisibility{}, authorizationDeniedError("examAuthorizationAdapter.AuthorizeList")
 	}
 	return store.ExamListVisibility{ActorUserID: principal.UserID,
+		OrdinaryMembershipAt:    decisionAt,
 		OrdinaryInstitutionWide: ordinary.InstitutionWide, OrdinaryAcademicUnitRootIDs: append([]string(nil), ordinary.AcademicUnitRootIDs...),
 		OverrideInstitutionWide: override.InstitutionWide, OverrideAcademicUnitRootIDs: append([]string(nil), override.AcademicUnitRootIDs...)}, nil
 }

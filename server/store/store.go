@@ -76,10 +76,13 @@ const (
 )
 
 // ExamListVisibility is the bounded, persistence-ready result of current role
-// authorization. Ordinary visibility still requires the actor's current Exam
-// Manager relationship; override visibility does not manufacture membership.
+// authorization. OrdinaryMembershipAt is the same authorization decision time
+// at which persistence must require the actor's current exact Academic Unit
+// membership and Exam Manager relationship. Override visibility requires
+// neither relationship and does not manufacture either one.
 type ExamListVisibility struct {
 	ActorUserID                 model.UserID
+	OrdinaryMembershipAt        time.Time
 	OrdinaryInstitutionWide     bool
 	OrdinaryAcademicUnitRootIDs []string
 	OverrideInstitutionWide     bool
@@ -174,7 +177,21 @@ type ExamAuthoringStore interface {
 	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftFocusLoss(context.Context, *ExamDraftFocusLossUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	// List returns at most Limit summaries in descending (UpdatedAt, ExamID)
+	// order, strictly before the optional complete cursor pair. The adapter must
+	// apply exact-unit, archive-state, role-scope, current exact Academic Unit
+	// membership, and current Manager predicates inside the same bounded query;
+	// override scope is a separate branch that requires neither relationship and
+	// never creates one. Manager counts and Draft titles are part of that query,
+	// not follow-up reads. List never returns an unrestricted intermediate set.
 	List(context.Context, ExamListOptions) ([]ExamSummary, error)
+	// Archive first resolves a matching committed idempotent outcome. Otherwise
+	// one transaction locks the Exam, rechecks Manager membership unless an
+	// explicit override was authorized, rejects archived or stale state, records
+	// the immutable archive time and next revision without deleting rows,
+	// completes the supplied audit attempt, and commits the replayable outcome.
+	// Concurrent new commands yield one commit; losers return a stable conflict.
+	// Transient effects are outside this operation and run only after commit.
 	Archive(context.Context, *ExamArchive, *CommandIdempotency) (*ExamArchiveCommandResult, error)
 	Access(context.Context, model.ExamID, model.UserID) (*ExamAccessSnapshot, error)
 	Get(context.Context, model.ExamID, model.UserID) (*ExamAuthoringSnapshot, error)

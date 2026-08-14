@@ -81,9 +81,12 @@ the code and component contracts for that detail.
   through the same guarded mutation path while Connection Loss remains fixed;
   unchanged updates do not mutate or publish. A visibility-aware, keyset-
   paginated catalog lists bounded active or archived Exam summaries without
-  hydrating authored content. Revision-fenced, idempotent archive records an
-  immutable archive time without deleting state; archived Exams remain
-  available to authorized exact reads and reject new authoring mutations.
+  hydrating authored content. Ordinary discovery requires current exact
+  Academic Unit membership, current Manager relationship, and applicable role
+  scope; explicit override stays separate and audited. Revision-fenced,
+  idempotent archive records an immutable archive time without deleting state;
+  archived Exams remain available to authorized exact reads and reject new
+  authoring mutations.
 
 ## Architecture migration acceptance
 
@@ -98,12 +101,12 @@ uncompleted architecture migration.
 
 The Examination Core domain and architecture are decided, and its initial Exam
 creation, retrieval, catalog, archive, Draft text-authoring, and Draft Focus
-Loss configuration slices are implemented. An Exam belongs to one Academic Unit and has
-one mutable Draft and immutable published Revisions. Each Sitting selects one
-Revision and exactly one Class in that Academic Unit. Urgent instructions or
-resource correction creates another immutable Revision and atomically
-retargets only the affected open or paused Sitting; it does not introduce a
-Sitting Amendment entity or force candidates to rejoin.
+Loss configuration slices are implemented. An Exam belongs to one Academic
+Unit and has one mutable Draft and immutable published Revisions. Each Sitting
+selects one Revision and exactly one Class in that Academic Unit. Urgent
+instructions or resource correction creates another immutable Revision and
+atomically retargets only the affected open or paused Sitting; it does not
+introduce a Sitting Amendment entity or force candidates to rejoin.
 
 Every candidate Attempt has a protected IDE Workspace. Attempts are created on
 first eligible connection, use sequential fenced Participation generations,

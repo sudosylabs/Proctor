@@ -42,7 +42,10 @@ type archiveExamRequest struct {
 	ExpectedExamRevision int64 `json:"expected_exam_revision"`
 }
 
+const examCatalogCursorVersion = 1
+
 type examCatalogCursor struct {
+	Version   int    `json:"version"`
 	UpdatedAt string `json:"updated_at"`
 	ExamID    string `json:"exam_id"`
 }
@@ -394,6 +397,7 @@ func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 }
 
 func encodeExamCatalogCursor(cursor examCatalogCursor) string {
+	cursor.Version = examCatalogCursorVersion
 	encoded, _ := json.Marshal(cursor)
 	return base64.RawURLEncoding.EncodeToString(encoded)
 }
@@ -406,7 +410,7 @@ func decodeExamCatalogCursor(raw string) (examCatalogCursor, error) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(decoded))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&cursor); err != nil || cursor.UpdatedAt == "" || !model.ExamID(cursor.ExamID).IsValid() {
+	if err := decoder.Decode(&cursor); err != nil || cursor.Version != 0 && cursor.Version != examCatalogCursorVersion || cursor.UpdatedAt == "" || !model.ExamID(cursor.ExamID).IsValid() {
 		return cursor, errors.New("invalid Exam catalog cursor")
 	}
 	var trailing any

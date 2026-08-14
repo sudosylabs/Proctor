@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -27,49 +28,21 @@ type examSummaryRow struct {
 	ManagerCount   int          `db:"manager_count"`
 }
 
+type examCatalogReader interface {
+	Select(context.Context, any, string, ...any) error
+}
+
 func (s SQLExamAuthoringStore) List(ctx context.Context, options store.ExamListOptions) ([]store.ExamSummary, error) {
 	if err := validateExamListOptions(options); err != nil {
 		return nil, err
 	}
-	ordinaryRoots := append([]string(nil), options.Visibility.OrdinaryAcademicUnitRootIDs...)
-	overrideRoots := append([]string(nil), options.Visibility.OverrideAcademicUnitRootIDs...)
-	query := `WITH RECURSIVE ordinary_units AS (
-		SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
-		UNION ALL SELECT child.id FROM academic_units child JOIN ordinary_units parent ON child.parent_id = parent.id WHERE child.archived_at IS NULL
-	), override_units AS (
-		SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
-		UNION ALL SELECT child.id FROM academic_units child JOIN override_units parent ON child.parent_id = parent.id WHERE child.archived_at IS NULL
-	), visible_exams AS (
-		SELECT managed.id FROM exam_managers actor_manager
-		JOIN exams managed ON managed.id = actor_manager.exam_id
-		WHERE actor_manager.user_id = ? AND (? OR managed.academic_unit_id IN (SELECT id FROM ordinary_units))
-		UNION
-		SELECT overridden.id FROM exams overridden
-		WHERE ? OR overridden.academic_unit_id IN (SELECT id FROM override_units)
-	)
-	SELECT e.id, e.academic_unit_id, e.creator_user_id, e.owner_user_id, d.title,
-		e.updated_at, e.archived_at, e.revision,
-		(SELECT COUNT(*) FROM exam_managers counted WHERE counted.exam_id = e.id) AS manager_count
-	FROM visible_exams visible JOIN exams e ON e.id = visible.id JOIN exam_drafts d ON d.exam_id = e.id
-	WHERE (? = '' OR e.academic_unit_id = ?)
-	`
-	args := []any{pq.Array(ordinaryRoots), pq.Array(overrideRoots), options.Visibility.ActorUserID.String(), options.Visibility.OrdinaryInstitutionWide,
-		options.Visibility.OverrideInstitutionWide, options.AcademicUnitID.String(), options.AcademicUnitID.String()}
-	switch options.ArchiveFilter {
-	case store.ExamArchiveActive:
-		query += ` AND e.archived_at IS NULL`
-	case store.ExamArchiveArchived:
-		query += ` AND e.archived_at IS NOT NULL`
-	case store.ExamArchiveAll:
-	}
-	if !options.BeforeUpdatedAt.IsZero() {
-		query += ` AND (e.updated_at < ? OR (e.updated_at = ? AND e.id < ?))`
-		args = append(args, model.TimeUTC(options.BeforeUpdatedAt), model.TimeUTC(options.BeforeUpdatedAt), options.BeforeExamID.String())
-	}
-	query += ` ORDER BY e.updated_at DESC, e.id DESC LIMIT ?`
-	args = append(args, options.Limit)
+	query, args := examCatalogQuery(options)
 	var rows []examSummaryRow
-	if err := s.GetMaster().Select(ctx, &rows, query, args...); err != nil {
+	reader := s.catalogReader
+	if reader == nil {
+		reader = s.GetMaster()
+	}
+	if err := reader.Select(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("list Exam catalog: %w", err)
 	}
 	result := make([]store.ExamSummary, 0, len(rows))
@@ -81,6 +54,64 @@ func (s SQLExamAuthoringStore) List(ctx context.Context, options store.ExamListO
 		result = append(result, summary)
 	}
 	return result, nil
+}
+
+func examCatalogQuery(options store.ExamListOptions) (string, []any) {
+	ordinaryRoots := append([]string(nil), options.Visibility.OrdinaryAcademicUnitRootIDs...)
+	overrideRoots := append([]string(nil), options.Visibility.OverrideAcademicUnitRootIDs...)
+	query := `WITH RECURSIVE ordinary_units AS (
+		SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
+		UNION ALL SELECT child.id FROM academic_units child JOIN ordinary_units parent ON child.parent_id = parent.id WHERE child.archived_at IS NULL
+	), override_units AS (
+		SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
+		UNION ALL SELECT child.id FROM academic_units child JOIN override_units parent ON child.parent_id = parent.id WHERE child.archived_at IS NULL
+	)
+	SELECT e.id, e.academic_unit_id, e.creator_user_id, e.owner_user_id, d.title,
+		e.updated_at, e.archived_at, e.revision,
+		(SELECT COUNT(*) FROM exam_managers counted WHERE counted.exam_id = e.id) AS manager_count
+	FROM exams e JOIN exam_drafts d ON d.exam_id = e.id
+	WHERE (? = '' OR e.academic_unit_id = ?)
+	`
+	args := []any{pq.Array(ordinaryRoots), pq.Array(overrideRoots), options.AcademicUnitID.String(), options.AcademicUnitID.String()}
+	switch options.ArchiveFilter {
+	case store.ExamArchiveActive:
+		query += ` AND e.archived_at IS NULL`
+	case store.ExamArchiveArchived:
+		query += ` AND e.archived_at IS NOT NULL`
+	case store.ExamArchiveAll:
+	}
+	if !options.BeforeUpdatedAt.IsZero() {
+		query += ` AND (e.updated_at, e.id) < (?, ?)`
+		args = append(args, model.TimeUTC(options.BeforeUpdatedAt), options.BeforeExamID.String())
+	}
+	var visibilityPredicates []string
+	if options.Visibility.OverrideInstitutionWide {
+		visibilityPredicates = append(visibilityPredicates, `TRUE`)
+	} else if len(overrideRoots) > 0 {
+		visibilityPredicates = append(visibilityPredicates, `e.academic_unit_id IN (SELECT id FROM override_units)`)
+	}
+	if options.Visibility.OrdinaryInstitutionWide || len(ordinaryRoots) > 0 {
+		visibilityPredicates = append(visibilityPredicates, `(
+			EXISTS (SELECT 1 FROM exam_managers actor_manager WHERE actor_manager.exam_id = e.id AND actor_manager.user_id = ?)
+			AND EXISTS (
+				SELECT 1 FROM academic_unit_members actor_member
+				WHERE actor_member.academic_unit_id = e.academic_unit_id AND actor_member.user_id = ?
+					AND actor_member.archived_at IS NULL AND actor_member.start_at <= ?
+					AND (actor_member.end_at IS NULL OR actor_member.end_at > ?)
+			)
+			AND (? OR e.academic_unit_id IN (SELECT id FROM ordinary_units))
+		)`)
+		membershipAt := model.TimeUTC(options.Visibility.OrdinaryMembershipAt)
+		args = append(args, options.Visibility.ActorUserID.String(), options.Visibility.ActorUserID.String(), membershipAt, membershipAt,
+			options.Visibility.OrdinaryInstitutionWide)
+	}
+	if len(visibilityPredicates) == 0 {
+		visibilityPredicates = append(visibilityPredicates, `FALSE`)
+	}
+	query += ` AND (` + strings.Join(visibilityPredicates, ` OR `) + `)`
+	query += ` ORDER BY e.updated_at DESC, e.id DESC LIMIT ?`
+	args = append(args, options.Limit)
+	return query, args
 }
 
 func (s SQLExamAuthoringStore) Archive(ctx context.Context, input *store.ExamArchive, command *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
@@ -126,7 +157,9 @@ func (s SQLExamAuthoringStore) Archive(ctx context.Context, input *store.ExamArc
 }
 
 func validateExamListOptions(options store.ExamListOptions) error {
+	hasOrdinary := options.Visibility.OrdinaryInstitutionWide || len(options.Visibility.OrdinaryAcademicUnitRootIDs) > 0
 	if options.Limit < 1 || options.Limit > 200 || !options.Visibility.ActorUserID.IsValid() ||
+		hasOrdinary && options.Visibility.OrdinaryMembershipAt.IsZero() ||
 		(options.BeforeUpdatedAt.IsZero() != options.BeforeExamID.IsZero()) ||
 		len(options.Visibility.OrdinaryAcademicUnitRootIDs)+len(options.Visibility.OverrideAcademicUnitRootIDs) > 256 ||
 		!validVisibilityIDs(options.Visibility.OrdinaryAcademicUnitRootIDs) || !validVisibilityIDs(options.Visibility.OverrideAcademicUnitRootIDs) {

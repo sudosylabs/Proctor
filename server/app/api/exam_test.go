@@ -77,13 +77,21 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 
 func TestExamCatalogCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-	cursor := examCatalogCursor{UpdatedAt: "2026-08-14T08:00:00.123456789Z", ExamID: model.NewExamID().String()}
+	cursor := examCatalogCursor{Version: 1, UpdatedAt: "2026-08-14T08:00:00.123456789Z", ExamID: model.NewExamID().String()}
 	got, err := decodeExamCatalogCursor(encodeExamCatalogCursor(cursor))
 	if err != nil || got != cursor {
 		t.Fatalf("cursor = %#v, %v", got, err)
 	}
 	if _, err := decodeExamCatalogCursor("not-a-cursor"); err == nil {
 		t.Fatal("invalid cursor accepted")
+	}
+	unsupported := []byte(`{"version":2,"updated_at":"2026-08-14T08:00:00Z","exam_id":"` + cursor.ExamID + `"}`)
+	if _, err := decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(unsupported)); err == nil {
+		t.Fatal("unsupported cursor version accepted")
+	}
+	legacy := []byte(`{"updated_at":"2026-08-14T08:00:00Z","exam_id":"` + cursor.ExamID + `"}`)
+	if decoded, err := decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(legacy)); err != nil || decoded.Version != 0 {
+		t.Fatalf("legacy versionless cursor = %#v, %v", decoded, err)
 	}
 	encoded, _ := json.Marshal(cursor)
 	if _, err := decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(append(encoded, []byte(`{}`)...))); err == nil {

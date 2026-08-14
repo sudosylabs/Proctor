@@ -77,14 +77,21 @@ explicit permission path and never manager membership or an exception to
 structural invariants.
 
 Exam discovery is a bounded database projection, not an in-memory filter over
-unrestricted rows. It combines current Manager relationships with applicable
-ordinary permissions and keeps explicit override scope separate. Results use
-descending update-time and Exam-ID keyset order, expose only safe identity,
-ownership, Draft title, archive/revision state, and manager count, and default
-to active Exams. Archiving is a revision-fenced, audited, idempotent lifecycle
-transition that records an immutable time without deleting authored or
-historical state. Archived Exams remain available to authorized exact reads
-but reject later authoring mutations.
+unrestricted rows. Ordinary visibility requires the current Manager
+relationship, current membership in the Exam's exact Academic Unit, and an
+applicable ordinary permission. Explicit override scope is separate and never
+manufactures either relationship. The query drives from archive-filtered Exam
+rows in descending update-time and Exam-ID index order, applies the complete
+keyset cursor and visibility predicates, and stops at the requested limit; its
+Draft title and manager count projections do not cause follow-up queries. The
+opaque HTTP cursor carries a private version and unsupported versions fail as
+invalid requests. Archiving is revision-fenced, audited, and idempotent: one
+transaction locks and rechecks the Exam and relationship, records its immutable
+archive time and next revision without deleting state, completes audit and the
+command outcome, and commits before transient effects. Concurrent new commands
+produce one winner and stable stale-or-archived conflicts. Archived Exams
+remain available to authorized exact reads but reject later authoring
+mutations.
 
 ## Resources and starter material
 

@@ -92,6 +92,13 @@ patterns:
 The agreement test records these exceptions so migration cannot silently
 change existing clients. It does not make them conventions for new endpoints.
 
+The Exam catalog's `next_cursor` is an opaque URL-safe token whose private
+payload includes a cursor version, exact update time, and Exam identity.
+Clients must return it unchanged. Malformed cursors, trailing payload, and
+unsupported versions are invalid requests; versionless tokens emitted before
+the cursor version was added remain accepted during v1. Clients never
+construct or inspect the payload.
+
 ## Idempotent commands
 
 Routes declare `none`, `optional`, or `required` idempotency in the immutable

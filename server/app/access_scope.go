@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -65,6 +66,16 @@ func (s *accessControlService) authorizedScopes(
 	action model.Action,
 	resourceType model.ResourceType,
 ) (authorizedScopeConstraint, error) {
+	return s.authorizedScopesAt(ctx, principal, action, resourceType, s.now())
+}
+
+func (s *accessControlService) authorizedScopesAt(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resourceType model.ResourceType,
+	at time.Time,
+) (authorizedScopeConstraint, error) {
 	var constraint authorizedScopeConstraint
 	if principal.Validate() != nil {
 		return constraint, invalidTokenAppError()
@@ -77,7 +88,7 @@ func (s *accessControlService) authorizedScopes(
 		!slices.Contains(principal.CredentialScopes, string(action)) {
 		return constraint, nil
 	}
-	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID.String(), s.now().UnixMilli())
+	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID.String(), model.MillisFromTime(at))
 	if err != nil {
 		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.bindings", err)
 	}

@@ -360,6 +360,9 @@ CREATE TABLE academic_unit_members (
 CREATE UNIQUE INDEX academic_unit_members_academic_unit_id_user_id_key
     ON academic_unit_members (academic_unit_id, user_id)
     WHERE archived_at IS NULL AND end_at IS NULL;
+CREATE INDEX academic_unit_members_current_exam_visibility_idx
+    ON academic_unit_members (academic_unit_id, user_id, start_at, end_at)
+    WHERE archived_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- Examination authoring

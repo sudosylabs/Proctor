@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -40,5 +41,18 @@ func TestArchiveExamBuildsIdempotentChildCommand(t *testing.T) {
 	}
 	if got.ID != examID || child.archive.ExamID != examID || child.archive.ExpectedExamRevision != 3 || child.archive.Idempotency == nil || child.archive.Idempotency.Operation != "exam.archive.v1" || child.archive.Idempotency.UserID != userID {
 		t.Fatalf("result/command = %#v / %#v", got, child.archive)
+	}
+}
+
+func TestArchiveExamConcealsUnauthorizedAndMissingTargets(t *testing.T) {
+	t.Parallel()
+	for _, failure := range []error{NewError("authorization.denied"), &examengine.Fault{Code: "exam.not_found", Cause: errors.New("missing")}} {
+		application := &App{exams: &examUseCasesFake{err: failure}}
+		_, err := application.ArchiveExam(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ArchiveExamCommand{
+			ExamID: model.NewExamID(), ExpectedExamRevision: 1, IdempotencyKey: "archive-concealed",
+		})
+		if !Is(err, "resource.not_found") {
+			t.Fatalf("ArchiveExam error = %v, want concealed resource.not_found", err)
+		}
 	}
 }

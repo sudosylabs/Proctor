@@ -116,6 +116,11 @@ func TestAcademicPeriodStore(t *testing.T) {
 
 func TestExamAuthoringStore(t *testing.T) {
 	StoreTest(t, storetest.TestExamAuthoringStore)
+	t.Run("bounded catalog plan", func(t *testing.T) {
+		persistence := openTestStore(t)
+		resetTestStore(t, persistence)
+		testExamCatalogBoundedPlan(t, persistence)
+	})
 }
 
 func TestClassStore(t *testing.T) {

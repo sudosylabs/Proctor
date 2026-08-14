@@ -14,7 +14,10 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SQLExamAuthoringStore struct{ *SQLStore }
+type SQLExamAuthoringStore struct {
+	*SQLStore
+	catalogReader examCatalogReader
+}
 
 type examAuthoringRow struct {
 	ID                   string         `db:"id" json:"id"`

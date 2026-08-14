@@ -20,10 +20,15 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "exam-catalog-unit")
 	creator := saveUser(t, ctx, ss)
 	firstAt := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
+	membershipBase := model.NowUTC()
+	membership, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: unit.ID, UserID: creator.ID, StartsAt: membershipBase.Add(-time.Minute),
+	})
+	requireNoError(t, err)
 	first := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt, "catalog-first")
 	second := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt.Add(time.Minute), "catalog-second")
 
-	visibility := store.ExamListVisibility{ActorUserID: creator.ID, OrdinaryInstitutionWide: true}
+	visibility := store.ExamListVisibility{ActorUserID: creator.ID, OrdinaryMembershipAt: membershipBase.Add(10 * time.Minute), OrdinaryInstitutionWide: true}
 	page, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{ArchiveFilter: store.ExamArchiveActive, Limit: 1, Visibility: visibility})
 	requireNoError(t, err)
 	if len(page) != 1 || page[0].ID != second.Value.Exam.ID || page[0].Title != second.Value.Draft.Title || page[0].ManagerCount != 1 || page[0].ArchivedAt.Valid {
@@ -40,7 +45,7 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 
 	outsider := saveUser(t, ctx, ss)
 	hidden, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{ArchiveFilter: store.ExamArchiveAll, Limit: 50,
-		Visibility: store.ExamListVisibility{ActorUserID: outsider.ID, OrdinaryInstitutionWide: true}})
+		Visibility: store.ExamListVisibility{ActorUserID: outsider.ID, OrdinaryMembershipAt: membershipBase.Add(10 * time.Minute), OrdinaryInstitutionWide: true}})
 	requireNoError(t, err)
 	if len(hidden) != 0 {
 		t.Fatalf("ordinary non-manager saw Exams: %#v", hidden)
@@ -58,6 +63,17 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	if len(exact) != 2 || exact[0].AcademicUnitID != unit.ID || exact[1].AcademicUnitID != unit.ID {
 		t.Fatalf("exact-unit list = %#v", exact)
 	}
+	_, err = ss.AcademicUnitMember().End(ctx, membership.ID.String(), membership.Revision, model.MillisFromTime(membershipBase.Add(5*time.Minute)))
+	requireNoError(t, err)
+	revokedMembership, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveAll, Limit: 50, Visibility: visibility})
+	requireNoError(t, err)
+	if len(revokedMembership) != 0 {
+		t.Fatalf("ended exact membership still exposed Exams: %#v", revokedMembership)
+	}
+	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: unit.ID, UserID: creator.ID, StartsAt: membershipBase.Add(6 * time.Minute),
+	})
+	requireNoError(t, err)
 
 	archiveAt := firstAt.Add(2 * time.Hour)
 	archive := newExamArchive(t, ctx, ss, first.Value.Exam.ID, creator.ID, 1, archiveAt)

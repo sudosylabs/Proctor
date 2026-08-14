@@ -13,6 +13,7 @@ import (
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -42,14 +43,16 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
+	membership, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
+	if err != nil {
 		t.Fatal(err)
 	}
 	role, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-author", DisplayName: "Exam Author", Permissions: []string{string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
+	binding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
+	if err != nil {
 		t.Fatal(err)
 	}
 	invocation := application.NewInvocation(*principal, model.RequestMetadata{RequestID: "exam-create-integration"})
@@ -127,6 +130,32 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if len(active.Items) != 1 || active.Items[0].ID != created.Exam.ID || active.Items[0].Title != editedTitle || active.Items[0].ArchivedAt.Valid || active.Items[0].ManagerCount != 1 {
 		t.Fatalf("active catalog = %#v", active)
 	}
+	membershipEndedAt := model.GetMillis() - 100
+	if _, err := persistence.AcademicUnitMember().End(ctx, membership.ID.String(), membership.Revision, membershipEndedAt); err != nil {
+		t.Fatal(err)
+	}
+	withoutMembership, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	if appErr != nil || len(withoutMembership.Items) != 0 {
+		t.Fatalf("catalog after exact membership ended = %#v, %v", withoutMembership, appErr)
+	}
+	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeFromMillis(membershipEndedAt),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bindingEndedAt := model.GetMillis() - 50
+	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), bindingEndedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID}); !application.Is(appErr, "authorization.denied") {
+		t.Fatalf("catalog after role ended error = %v", appErr)
+	}
+	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
+		ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(bindingEndedAt),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	outsider, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, password)
 	if appErr != nil {
 		t.Fatal(appErr)
@@ -136,11 +165,41 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	_, appErr = helper.App.GetExam(ctx, application.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"}), application.GetExamQuery{ExamID: created.Exam.ID})
+	outsiderInvocation := application.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"})
+	_, appErr = helper.App.GetExam(ctx, outsiderInvocation, application.GetExamQuery{ExamID: created.Exam.ID})
 	if !application.Is(appErr, "resource.not_found") {
 		t.Fatalf("outsider get error = %v, want concealed resource.not_found", appErr)
 	}
-	archived, appErr := helper.App.ArchiveExam(ctx, invocation, application.ArchiveExamCommand{
+	_, appErr = helper.App.ArchiveExam(ctx, outsiderInvocation, application.ArchiveExamCommand{
+		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-denied",
+	})
+	if !application.Is(appErr, "resource.not_found") {
+		t.Fatalf("outsider archive error = %v, want concealed resource.not_found", appErr)
+	}
+	overrideRole, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-system-override", DisplayName: "Exam System Override", Permissions: []string{
+		string(model.ActionExamViewOverride), string(model.ActionExamManageOverride),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: outsider.ID, RoleID: overrideRole.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	overridePage, appErr := helper.App.ListExams(ctx, outsiderInvocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	if appErr != nil || len(overridePage.Items) != 1 || overridePage.Items[0].ID != created.Exam.ID {
+		t.Fatalf("override catalog = %#v, %v", overridePage, appErr)
+	}
+	viewOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
+		ActorId: outsider.ID.String(), Action: string(model.ActionExamViewOverride),
+		Resource: &model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, Limit: 10,
+	})
+	if err != nil || len(viewOverrideAudits) != 1 || viewOverrideAudits[0].Status != model.AuditStatusSuccess || viewOverrideAudits[0].ScopeType != model.RoleScopeInstitution || viewOverrideAudits[0].ScopeID != institution.ID.String() {
+		t.Fatalf("override list audits = %#v, %v", viewOverrideAudits, err)
+	}
+	archived, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, application.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-once",
 	})
 	if appErr != nil {
@@ -149,7 +208,24 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if !archived.IsArchived() || archived.Revision != created.Exam.Revision+1 {
 		t.Fatalf("archived Exam = %#v", archived)
 	}
-	archiveReplay, appErr := helper.App.ArchiveExam(ctx, invocation, application.ArchiveExamCommand{
+	manageOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
+		ActorId: outsider.ID.String(), Action: string(model.ActionExamManageOverride),
+		Resource: &model.Resource{Type: model.ResourceExam, ID: created.Exam.ID.String()}, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manageStatuses := map[model.AuditStatus]int{}
+	for _, event := range manageOverrideAudits {
+		manageStatuses[event.Status]++
+		if event.ScopeType != model.RoleScopeAcademicUnit || event.ScopeID != unit.ID.String() {
+			t.Fatalf("override archive audit scope = %#v", event)
+		}
+	}
+	if len(manageOverrideAudits) != 3 || manageStatuses[model.AuditStatusSuccess] != 2 || manageStatuses[model.AuditStatusFail] != 1 {
+		t.Fatalf("override archive audits = %#v, %v", manageOverrideAudits, err)
+	}
+	archiveReplay, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, application.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-once",
 	})
 	if appErr != nil || archiveReplay.Revision != archived.Revision || !archiveReplay.ArchivedAt.Time.Equal(archived.ArchivedAt.Time) {
