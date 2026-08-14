@@ -117,6 +117,19 @@ func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T
 	}
 }
 
+func TestAuthorizeWebSocketExamSubscriptionConcealsMissingAndDeniedExams(t *testing.T) {
+	t.Parallel()
+	principal := testExamPrincipal(model.NewUserID())
+	resource := model.Resource{Type: model.ResourceExam, ID: model.NewExamID().String()}
+	for _, failure := range []error{&examengine.Fault{Code: "exam.not_found"}, NewError("authorization.denied")} {
+		application := &App{exams: &examUseCasesFake{err: failure}}
+		err := application.AuthorizeWebSocketSubscription(context.Background(), principal, model.RequestMetadata{}, model.ActionExamView, resource)
+		if !Is(err, "resource.not_found") {
+			t.Fatalf("error = %v, want concealed resource.not_found", err)
+		}
+	}
+}
+
 func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 	t.Parallel()
 	for _, failure := range []error{&examengine.Fault{Code: "exam.not_found"}, NewError("authorization.denied")} {

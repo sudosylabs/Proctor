@@ -423,6 +423,15 @@ func TestConnectionRuntimePreservesInboundErrorContract(t *testing.T) {
 			wantMessage: "WebSocket subscription failed.",
 		},
 		{
+			name: "concealed exam subscription",
+			request: func(t *testing.T) *Request {
+				return requestWithData(t, 27, "subscribe", validInboundSubscription())
+			},
+			authorize:   app.NewError("resource.not_found"),
+			wantCode:    "resource.not_found",
+			wantMessage: "WebSocket subscription failed.",
+		},
+		{
 			name: "unknown action",
 			request: func(*testing.T) *Request {
 				return &Request{Sequence: 26, Action: "future-command"}

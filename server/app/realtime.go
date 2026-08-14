@@ -162,7 +162,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 			return invalidRealtimeRequest("subscription")
 		}
 		if err := a.exams.AuthorizeView(ctx, examengine.NewCall(principal, metadata), examID); err != nil {
-			return examError(err, false)
+			return examError(err, true)
 		}
 		return nil
 	}
