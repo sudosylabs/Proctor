@@ -123,11 +123,22 @@ func TestExamDraftApplyTextPatchRejectsMissingOrInvalidFieldsAtomically(t *testi
 	if _, err := draft.ApplyTextPatch(&invalidTitle, nil, time.Now().UTC()); err == nil {
 		t.Fatal("ApplyTextPatch accepted an empty title")
 	}
+	invalidUTF8Title := string([]byte{0xff})
+	if _, err := draft.ApplyTextPatch(&invalidUTF8Title, nil, time.Now().UTC()); err == nil {
+		t.Fatal("ApplyTextPatch accepted an invalid UTF-8 title")
+	}
 	tooLarge := strings.Repeat("x", ExamInstructionsMarkdownMaxBytes+1)
 	if _, err := draft.ApplyTextPatch(nil, &tooLarge, time.Now().UTC()); err == nil {
 		t.Fatal("ApplyTextPatch accepted oversized instructions")
 	}
 	if *draft != original {
 		t.Fatalf("failed patch mutated draft: got %#v want %#v", draft, original)
+	}
+}
+
+func TestNewExamDraftRejectsInvalidUTF8Title(t *testing.T) {
+	t.Parallel()
+	if _, err := NewExamDraft(NewExamID(), string([]byte{0xff}), "", DefaultExamPolicySet(), time.Now().UTC()); err == nil {
+		t.Fatal("NewExamDraft accepted an invalid UTF-8 title")
 	}
 }

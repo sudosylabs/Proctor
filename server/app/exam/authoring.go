@@ -198,15 +198,9 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 	if access == nil || access.Exam == nil {
 		return View{}, unavailable(errors.New("exam store returned no access projection"))
 	}
-	action := model.ActionExamViewOverride
-	if access.ActorIsManager {
-		ordinary, membershipErr := a.hasCurrentMembership(ctx, principal.UserID, access.Exam.AcademicUnitID, model.TimeUTC(a.now()))
-		if membershipErr != nil {
-			return View{}, unavailable(membershipErr)
-		}
-		if ordinary {
-			action = model.ActionExamView
-		}
+	action, err := a.actionForAccess(ctx, principal.UserID, access, model.TimeUTC(a.now()), model.ActionExamView, model.ActionExamViewOverride)
+	if err != nil {
+		return View{}, err
 	}
 	if err := a.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
 		return View{}, err
@@ -219,6 +213,28 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 		return View{}, unavailable(errors.New("exam store returned an incomplete snapshot"))
 	}
 	return project(snapshot), nil
+}
+
+// AuthorizeView performs the same current relationship and role decision used
+// by Get without loading authored Draft content. Realtime subscriptions use it
+// so a scoped role alone cannot reveal Exam events to a non-manager.
+func (a *Authoring) AuthorizeView(ctx context.Context, call Call, examID model.ExamID) error {
+	principal := call.Principal()
+	if principal.Validate() != nil || !examID.IsValid() {
+		return invalid("exam_id")
+	}
+	access, err := a.persistence.Access(ctx, examID, principal.UserID)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if access == nil || access.Exam == nil {
+		return unavailable(errors.New("exam store returned no access projection"))
+	}
+	action, err := a.actionForAccess(ctx, principal.UserID, access, model.TimeUTC(a.now()), model.ActionExamView, model.ActionExamViewOverride)
+	if err != nil {
+		return err
+	}
+	return a.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }
 
 func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDraftTextCommand) (View, error) {
@@ -243,15 +259,9 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 	if access == nil || access.Exam == nil {
 		return View{}, unavailable(errors.New("exam store returned no access projection"))
 	}
-	action := model.ActionExamManageOverride
-	if access.ActorIsManager {
-		ordinary, membershipErr := a.hasCurrentMembership(ctx, principal.UserID, access.Exam.AcademicUnitID, at)
-		if membershipErr != nil {
-			return View{}, unavailable(membershipErr)
-		}
-		if ordinary {
-			action = model.ActionExamManage
-		}
+	action, err := a.actionForAccess(ctx, principal.UserID, access, at, model.ActionExamManage, model.ActionExamManageOverride)
+	if err != nil {
+		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
 	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
@@ -269,7 +279,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 	if err != nil {
 		return View{}, invalidCause("draft", err)
 	}
-	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision {
+	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, &Fault{Code: "exam.draft.no_changes"}
 	}
 	if title != nil {
@@ -319,6 +329,19 @@ func cloneStringPointer(value *string) *string {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func (a *Authoring) actionForAccess(ctx context.Context, userID model.UserID, access *store.ExamAccessSnapshot, at time.Time, ordinaryAction, overrideAction model.Action) (model.Action, error) {
+	if access.ActorIsManager {
+		ordinary, err := a.hasCurrentMembership(ctx, userID, access.Exam.AcademicUnitID, at)
+		if err != nil {
+			return "", unavailable(err)
+		}
+		if ordinary {
+			return ordinaryAction, nil
+		}
+	}
+	return overrideAction, nil
 }
 
 func (a *Authoring) hasCurrentMembership(ctx context.Context, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {

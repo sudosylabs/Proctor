@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 
+	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -154,6 +155,16 @@ func (a *App) AuthorizeWebSocketSubscription(
 	definition, ok := model.DefinitionForAction(action)
 	if !ok || resource.Validate() != nil || definition.ResourceType != resource.Type {
 		return invalidRealtimeRequest("subscription")
+	}
+	if action == model.ActionExamView && resource.Type == model.ResourceExam {
+		examID, err := model.ParseExamID(resource.ID)
+		if err != nil {
+			return invalidRealtimeRequest("subscription")
+		}
+		if err := a.exams.AuthorizeView(ctx, examengine.NewCall(principal, metadata), examID); err != nil {
+			return examError(err, false)
+		}
+		return nil
 	}
 	return a.Authorize(
 		ctx,

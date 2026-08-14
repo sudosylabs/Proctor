@@ -91,9 +91,14 @@ type ExamDraftTextUpdate struct {
 	AuditAt              int64
 }
 
-// ExamAuthoringStore owns the atomic Exam, Draft, creator-manager, audit, and
-// retry-outcome creation boundary. Get remains bounded regardless of manager
-// or future resource cardinality.
+// ExamAuthoringStore owns atomic Exam authoring mutations and bounded reads.
+// Create commits the Exam, its one Draft, creator-manager relation, audit
+// success, and retry outcome together. UpdateDraftText rechecks the current
+// manager relation unless an already-authorized override is explicit, rejects
+// archived or stale/no-op Drafts, and atomically commits only authored text,
+// the Draft revision, audit success, and retry outcome. Exact replays return
+// the committed projection without repeating the mutation. Reads remain
+// bounded regardless of manager or future resource cardinality.
 type ExamAuthoringStore interface {
 	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)

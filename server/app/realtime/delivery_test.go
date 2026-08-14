@@ -55,6 +55,28 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 	}
 }
 
+func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
+	t.Parallel()
+	examID := model.NewExamID()
+	created, err := NewExamCreatedEvent(examID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Name != "exam_created" || created.Action != model.ActionExamView || created.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) || len(created.Data) != 0 {
+		t.Fatalf("created event = %#v", created)
+	}
+	updated, err := NewExamDraftUpdatedEvent(examID, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(updated.Data); got != `{"exam_id":"`+examID.String()+`","draft_revision":7}` {
+		t.Fatalf("updated data = %s", got)
+	}
+	if _, err := NewExamDraftUpdatedEvent(examID, 0); err == nil {
+		t.Fatal("accepted non-positive Draft revision")
+	}
+}
+
 func TestPublishClonesGeneratesIDAndDeliversLocalFirst(t *testing.T) {
 	t.Parallel()
 

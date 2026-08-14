@@ -32,6 +32,34 @@ const (
 	maxRealtimeEventDataBytes = 256 << 10
 )
 
+type examDraftUpdatedData struct {
+	ExamID        string `json:"exam_id"`
+	DraftRevision int64  `json:"draft_revision"`
+}
+
+// NewExamCreatedEvent constructs the stable, content-free authoring event.
+func NewExamCreatedEvent(examID model.ExamID) (RealtimeEvent, error) {
+	if !examID.IsValid() {
+		return RealtimeEvent{}, errors.New("exam created event requires a valid Exam ID")
+	}
+	return RealtimeEvent{Name: "exam_created", Action: model.ActionExamView,
+		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}}, nil
+}
+
+// NewExamDraftUpdatedEvent owns the bounded wire projection for a Draft text
+// or policy change. Authored content and policy values are deliberately absent.
+func NewExamDraftUpdatedEvent(examID model.ExamID, revision int64) (RealtimeEvent, error) {
+	if !examID.IsValid() || revision < 1 {
+		return RealtimeEvent{}, errors.New("exam Draft update event requires a valid identity and revision")
+	}
+	data, err := json.Marshal(examDraftUpdatedData{ExamID: examID.String(), DraftRevision: revision})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode exam Draft update event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_draft_updated", Action: model.ActionExamView,
+		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
+}
+
 // Clone returns a deep copy safe for concurrent local and cluster delivery.
 func (e RealtimeEvent) Clone() RealtimeEvent {
 	cloned := e

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -36,6 +37,7 @@ type examUseCases interface {
 	Create(context.Context, examengine.Call, examengine.CreateCommand) (examengine.View, error)
 	Get(context.Context, examengine.Call, model.ExamID) (examengine.View, error)
 	EditDraftText(context.Context, examengine.Call, examengine.EditDraftTextCommand) (examengine.View, error)
+	AuthorizeView(context.Context, examengine.Call, model.ExamID) error
 }
 
 func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (ExamView, error) {
@@ -72,18 +74,23 @@ func (a *App) EditExamDraftText(ctx context.Context, invocation Invocation, comm
 	if command.IdempotencyKey == "" {
 		return ExamView{}, NewError("idempotency.key_required")
 	}
+	var normalizedTitle *string
+	if command.Title != nil {
+		value := strings.TrimSpace(*command.Title)
+		normalizedTitle = &value
+	}
 	idempotency, err := newCommandIdempotency(invocation, "exam.draft.text.edit.v1", command.IdempotencyKey, struct {
 		ExamID                string  `json:"exam_id"`
 		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
 		Title                 *string `json:"title"`
 		InstructionsMarkdown  *string `json:"instructions_markdown"`
-	}{command.ExamID.String(), command.ExpectedDraftRevision, command.Title, command.InstructionsMarkdown})
+	}{command.ExamID.String(), command.ExpectedDraftRevision, normalizedTitle, command.InstructionsMarkdown})
 	if err != nil {
 		return ExamView{}, err
 	}
 	view, err := a.exams.EditDraftText(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.EditDraftTextCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		Title: command.Title, InstructionsMarkdown: command.InstructionsMarkdown, Idempotency: idempotency,
+		Title: normalizedTitle, InstructionsMarkdown: command.InstructionsMarkdown, Idempotency: idempotency,
 	})
 	if err != nil {
 		return ExamView{}, examError(err, true)
@@ -133,16 +140,18 @@ func (a examAuditAdapter) Fail(ctx context.Context, id, code string) error {
 type examRealtimeEffects struct{ realtime *realtimeService }
 
 func (e examRealtimeEffects) Created(ctx context.Context, examID model.ExamID) error {
-	return e.realtime.Publish(ctx, apprealtime.RealtimeEvent{Name: "exam_created", Action: model.ActionExamView,
-		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}})
-}
-func (e examRealtimeEffects) DraftUpdated(ctx context.Context, examID model.ExamID, revision int64) error {
-	data, err := model.EncodeAuditData(map[string]any{"exam_id": examID.String(), "draft_revision": revision})
+	event, err := apprealtime.NewExamCreatedEvent(examID)
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, apprealtime.RealtimeEvent{Name: "exam_draft_updated", Action: model.ActionExamView,
-		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data})
+	return e.realtime.Publish(ctx, event)
+}
+func (e examRealtimeEffects) DraftUpdated(ctx context.Context, examID model.ExamID, revision int64) error {
+	event, err := apprealtime.NewExamDraftUpdatedEvent(examID, revision)
+	if err != nil {
+		return err
+	}
+	return e.realtime.Publish(ctx, event)
 }
 func (e examRealtimeEffects) Report(ctx context.Context, operation string, err error) {
 	e.realtime.reportTransientFailure(ctx, operation, err)

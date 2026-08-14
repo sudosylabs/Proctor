@@ -75,6 +75,48 @@ func TestEditExamDraftTextRequiresIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestEditExamDraftTextFingerprintsNormalizedTitle(t *testing.T) {
+	t.Parallel()
+	userID := model.NewUserID()
+	child := &examUseCasesFake{}
+	application := &App{exams: child}
+	invocation := NewInvocation(testExamPrincipal(userID), model.RequestMetadata{})
+	examID := model.NewExamID()
+	plain, padded := "Algorithms", "  Algorithms  "
+	var first [32]byte
+	for index, title := range []*string{&plain, &padded} {
+		if _, err := application.EditExamDraftText(context.Background(), invocation, EditExamDraftTextCommand{
+			ExamID: examID, ExpectedDraftRevision: 1, Title: title, IdempotencyKey: "same-key",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if child.edit.Title == nil || *child.edit.Title != plain {
+			t.Fatalf("child title = %#v", child.edit.Title)
+		}
+		if index == 0 {
+			first = child.edit.Idempotency.Fingerprint
+		}
+	}
+	if child.edit.Idempotency.Fingerprint != first {
+		t.Fatal("semantically identical titles produced different fingerprints")
+	}
+}
+
+func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T) {
+	t.Parallel()
+	child := &examUseCasesFake{}
+	application := &App{exams: child}
+	principal := testExamPrincipal(model.NewUserID())
+	examID := model.NewExamID()
+	err := application.AuthorizeWebSocketSubscription(context.Background(), principal, model.RequestMetadata{RequestID: "subscribe"}, model.ActionExamView, model.Resource{Type: model.ResourceExam, ID: examID.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.authorizeExamID != examID || child.call.Principal().UserID != principal.UserID {
+		t.Fatalf("authorization = %s %#v", child.authorizeExamID, child.call)
+	}
+}
+
 func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 	t.Parallel()
 	for _, failure := range []error{&examengine.Fault{Code: "exam.not_found"}, NewError("authorization.denied")} {
@@ -88,11 +130,17 @@ func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 }
 
 type examUseCasesFake struct {
-	call   examengine.Call
-	create examengine.CreateCommand
-	edit   examengine.EditDraftTextCommand
-	view   ExamView
-	err    error
+	call            examengine.Call
+	create          examengine.CreateCommand
+	edit            examengine.EditDraftTextCommand
+	authorizeExamID model.ExamID
+	view            ExamView
+	err             error
+}
+
+func (f *examUseCasesFake) AuthorizeView(_ context.Context, call examengine.Call, examID model.ExamID) error {
+	f.call, f.authorizeExamID = call, examID
+	return f.err
 }
 
 func (f *examUseCasesFake) Create(_ context.Context, call examengine.Call, command examengine.CreateCommand) (examengine.View, error) {

@@ -195,6 +195,26 @@ func TestEditDraftTextRejectsArchivedAndStaleDraftsWithoutPublishing(t *testing.
 	}
 }
 
+func TestEditDraftTextArchivedNoOpStillRejectsAsArchived(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.persistence.archived = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	title := "  Test  "
+	_, err := fixture.service.EditDraftText(context.Background(), fixture.call, EditDraftTextCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
+		Idempotency: &store.CommandIdempotency{},
+	})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.archived" {
+		t.Fatalf("error = %v, want exam.archived", err)
+	}
+	if fixture.auditor.value == nil || fixture.persistence.textUpdate == nil || fixture.effects.updatedRevision != 0 || fixture.auditor.failedCode != "exam.archived" {
+		t.Fatalf("archived no-op effects: audit=%#v store=%#v effect=%d failed=%s", fixture.auditor.value, fixture.persistence.textUpdate, fixture.effects.updatedRevision, fixture.auditor.failedCode)
+	}
+}
+
 func TestEditDraftTextReplayDoesNotRepublish(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
@@ -228,6 +248,40 @@ func TestEditDraftTextUsesExplicitOverrideWithoutManagerMembership(t *testing.T)
 	}
 	if want := []string{"store.access", "authorize", "store.get", "audit.begin", "store.update_text", "effect.updated"}; !reflect.DeepEqual(*fixture.order, want) {
 		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
+func TestAuthorizeViewSelectsCurrentManagerOrExplicitOverride(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		manager   bool
+		member    bool
+		want      model.Action
+		authorize error
+	}{
+		{name: "current manager", manager: true, member: true, want: model.ActionExamView},
+		{name: "non-manager override", want: model.ActionExamViewOverride},
+		{name: "revoked membership override", manager: true, want: model.ActionExamViewOverride},
+		{name: "denied non-manager", want: model.ActionExamViewOverride, authorize: errors.New("denied")},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			fixture := newAuthoringFixture(t)
+			fixture.persistence.actorIsManager = test.manager
+			if test.member {
+				fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+			}
+			fixture.authorizer.err = test.authorize
+			err := fixture.service.AuthorizeView(context.Background(), fixture.call, fixture.examID)
+			if !errors.Is(err, test.authorize) {
+				t.Fatalf("error = %v, want %v", err, test.authorize)
+			}
+			if fixture.authorizer.action != test.want || fixture.authorizer.resource != (model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}) {
+				t.Fatalf("authorization = %s %#v", fixture.authorizer.action, fixture.authorizer.resource)
+			}
+		})
 	}
 }
 

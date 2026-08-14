@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -48,4 +49,32 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
+}
+
+func TestEditExamDraftTextOpenAPISchemaRequiresANonNullAuthoredValue(t *testing.T) {
+	t.Parallel()
+	document, err := openapi3.NewLoader().LoadFromFile(openAPIDocumentPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := document.Components.Schemas["EditExamDraftTextRequest"]
+	if schema == nil || schema.Value == nil {
+		t.Fatal("EditExamDraftTextRequest schema is missing")
+	}
+	for _, invalid := range []map[string]any{
+		{"expected_draft_revision": float64(1)},
+		{"expected_draft_revision": float64(1), "title": nil, "instructions_markdown": nil},
+	} {
+		if err := schema.Value.VisitJSON(invalid); err == nil {
+			t.Fatalf("schema accepted %#v", invalid)
+		}
+	}
+	for _, valid := range []map[string]any{
+		{"expected_draft_revision": float64(1), "title": "Algorithms"},
+		{"expected_draft_revision": float64(1), "instructions_markdown": ""},
+	} {
+		if err := schema.Value.VisitJSON(valid); err != nil {
+			t.Fatalf("schema rejected %#v: %v", valid, err)
+		}
+	}
 }

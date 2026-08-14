@@ -127,7 +127,7 @@ func (d *ExamDraft) Validate() error {
 		return invalidModelError(where, "exam_draft", "exam_id", "must be a valid identifier", "")
 	}
 	details := "exam_id=" + d.ExamID.String()
-	if d.Title == "" || strings.TrimSpace(d.Title) != d.Title || utf8.RuneCountInString(d.Title) > ExamTitleMaxRunes {
+	if d.Title == "" || !utf8.ValidString(d.Title) || strings.TrimSpace(d.Title) != d.Title || utf8.RuneCountInString(d.Title) > ExamTitleMaxRunes {
 		return invalidModelError(where, "exam_draft", "title", "must contain 1 to 200 Unicode characters", details)
 	}
 	if !utf8.ValidString(d.InstructionsMarkdown) || len(d.InstructionsMarkdown) > ExamInstructionsMarkdownMaxBytes {
