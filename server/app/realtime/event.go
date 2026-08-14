@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -37,6 +38,12 @@ type examDraftUpdatedData struct {
 	DraftRevision int64  `json:"draft_revision"`
 }
 
+type examArchivedData struct {
+	ExamID       string `json:"exam_id"`
+	ExamRevision int64  `json:"exam_revision"`
+	ArchivedAt   string `json:"archived_at"`
+}
+
 // NewExamCreatedEvent constructs the stable, content-free authoring event.
 func NewExamCreatedEvent(examID model.ExamID) (RealtimeEvent, error) {
 	if !examID.IsValid() {
@@ -57,6 +64,20 @@ func NewExamDraftUpdatedEvent(examID model.ExamID, revision int64) (RealtimeEven
 		return RealtimeEvent{}, fmt.Errorf("encode exam Draft update event: %w", err)
 	}
 	return RealtimeEvent{Name: "exam_draft_updated", Action: model.ActionExamView,
+		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
+}
+
+// NewExamArchivedEvent constructs the content-free Exam lifecycle event.
+func NewExamArchivedEvent(examID model.ExamID, revision int64, archivedAt time.Time) (RealtimeEvent, error) {
+	if !examID.IsValid() || revision < 1 || archivedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("exam archived event requires a valid identity, revision, and time")
+	}
+	data, err := json.Marshal(examArchivedData{ExamID: examID.String(), ExamRevision: revision,
+		ArchivedAt: model.TimeUTC(archivedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode exam archived event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_archived", Action: model.ActionExamView,
 		Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()}, Data: data}, nil
 }
 

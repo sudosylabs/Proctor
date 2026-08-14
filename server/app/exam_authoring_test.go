@@ -185,9 +185,23 @@ type examUseCasesFake struct {
 	create          examengine.CreateCommand
 	edit            examengine.EditDraftTextCommand
 	focusLoss       examengine.ConfigureDraftFocusLossCommand
+	list            examengine.ListQuery
+	catalog         examengine.CatalogPage
+	archive         examengine.ArchiveCommand
+	archived        model.Exam
 	authorizeExamID model.ExamID
 	view            ExamView
 	err             error
+}
+
+func (f *examUseCasesFake) List(_ context.Context, call examengine.Call, query examengine.ListQuery) (examengine.CatalogPage, error) {
+	f.call, f.list = call, query
+	return f.catalog, f.err
+}
+
+func (f *examUseCasesFake) Archive(_ context.Context, call examengine.Call, command examengine.ArchiveCommand) (model.Exam, error) {
+	f.call, f.archive = call, command
+	return f.archived, f.err
 }
 
 func (f *examUseCasesFake) AuthorizeView(_ context.Context, call examengine.Call, examID model.ExamID) error {

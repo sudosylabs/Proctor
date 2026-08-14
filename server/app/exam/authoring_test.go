@@ -483,10 +483,16 @@ func testPrincipal(userID model.UserID) model.Principal {
 }
 
 type authorizerFake struct {
-	order    *[]string
-	action   model.Action
-	resource model.Resource
-	err      error
+	order          *[]string
+	action         model.Action
+	resource       model.Resource
+	err            error
+	listVisibility store.ExamListVisibility
+}
+
+func (f *authorizerFake) AuthorizeList(_ context.Context, _ Call, _ model.AcademicUnitID) (store.ExamListVisibility, error) {
+	*f.order = append(*f.order, "authorize.list")
+	return f.listVisibility, f.err
 }
 
 func (f *authorizerFake) Authorize(_ context.Context, _ Call, action model.Action, resource model.Resource) error {
@@ -538,8 +544,40 @@ type authoringStoreFake struct {
 	creation        *store.ExamAuthoringCreation
 	textUpdate      *store.ExamDraftTextUpdate
 	focusLossUpdate *store.ExamDraftFocusLossUpdate
+	archive         *store.ExamArchive
+	listOptions     store.ExamListOptions
+	summaries       []store.ExamSummary
 	idempotency     *store.CommandIdempotency
 	err             error
+}
+
+func (f *authoringStoreFake) List(_ context.Context, options store.ExamListOptions) ([]store.ExamSummary, error) {
+	*f.order = append(*f.order, "store.list")
+	f.listOptions = options
+	return append([]store.ExamSummary(nil), f.summaries...), f.err
+}
+func (f *authoringStoreFake) Archive(_ context.Context, input *store.ExamArchive, command *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
+	*f.order = append(*f.order, "store.archive")
+	f.archive, f.idempotency = input, command
+	if f.err != nil {
+		return nil, f.err
+	}
+	exam, _ := model.NewExam(input.ExamID, f.unitID, f.actorID, model.TimeFromMillis(input.ArchivedAt).Add(-time.Minute))
+	if f.replayed {
+		_ = exam.Archive(model.TimeFromMillis(input.ArchivedAt))
+		return &store.ExamArchiveCommandResult{Value: exam, Replayed: true}, nil
+	}
+	if !f.actorIsManager && !input.ManagerOverride {
+		return nil, store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if f.archived {
+		return nil, store.NewErrConflict("exam", "exam_archived", nil)
+	}
+	if input.ExpectedRevision != 1 {
+		return nil, store.NewErrConflict("exam", "exam_revision", nil)
+	}
+	_ = exam.Archive(model.TimeFromMillis(input.ArchivedAt))
+	return &store.ExamArchiveCommandResult{Value: exam}, nil
 }
 
 func (f *authoringStoreFake) Create(_ context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
@@ -638,10 +676,17 @@ func snapshotFromCreation(input *store.ExamAuthoringCreation, actor bool) *store
 }
 
 type effectsFake struct {
-	order           *[]string
-	calls           int
-	updatedRevision int64
-	err             error
+	order            *[]string
+	calls            int
+	updatedRevision  int64
+	archivedRevision int64
+	err              error
+}
+
+func (f *effectsFake) Archived(_ context.Context, _ model.ExamID, revision int64, _ time.Time) error {
+	*f.order = append(*f.order, "effect.archived")
+	f.archivedRevision = revision
+	return f.err
 }
 
 func (f *effectsFake) Created(context.Context, model.ExamID) error {

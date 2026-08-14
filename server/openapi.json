@@ -1182,6 +1182,26 @@
       }
     },
     "/api/v1/exams": {
+      "get": {
+        "operationId": "listExams",
+        "summary": "List Exams visible to the current principal",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "exam.invalid", "exam.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "academic_unit_id", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/ID"}},
+          {"name": "archive_state", "in": "query", "required": false, "schema": {"type": "string", "enum": ["active", "archived", "all"], "default": "active"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
+          {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ExamListOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
       "post": {
         "operationId": "createExam",
         "summary": "Create an Exam and its initial Draft",
@@ -1255,6 +1275,28 @@
         "requestBody": {"$ref": "#/components/requestBodies/ConfigureExamDraftFocusLoss"},
         "responses": {
           "200": {"$ref": "#/components/responses/ExamOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/exams/{exam_id}/archive": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "post": {
+        "operationId": "archiveExam",
+        "summary": "Archive an active Exam",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ArchiveExam"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/ExamIdentityOK"},
           "400": {"$ref": "#/components/responses/BadRequest"},
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
@@ -1466,6 +1508,10 @@
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConfigureExamDraftFocusLossRequest"}}}
       },
+      "ArchiveExam": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ArchiveExamRequest"}}}
+      },
       "CreateAcademicUnit": {
         "required": true,
         "content": {
@@ -1584,6 +1630,16 @@
       "ExamCreated": {
         "description": "Exam and initial Draft created",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResponse"}}}
+      },
+      "ExamListOK": {
+        "description": "Visible Exam collection",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamListResponse"}}}
+      },
+      "ExamIdentityOK": {
+        "description": "Exam identity",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamIdentityResponse"}}}
       },
       "AcademicUnitOK": {
         "description": "Academic Unit",
@@ -1712,6 +1768,39 @@
           "incident_count": {"type": "integer", "minimum": 1, "maximum": 100},
           "window_milliseconds": {"type": "integer", "format": "int64", "minimum": 10000, "maximum": 14400000, "description": "Must also be greater than or equal to minimum_duration_milliseconds."},
           "outcome": {"type": "string", "enum": ["flag", "flag_and_warn", "flag_and_suspend"]}
+        }
+      },
+      "ArchiveExamRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_exam_revision"],
+        "properties": {
+          "expected_exam_revision": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "ExamListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items"],
+        "properties": {
+          "items": {"type": "array", "items": {"$ref": "#/components/schemas/ExamSummaryResponse"}},
+          "next_cursor": {"type": "string"}
+        }
+      },
+      "ExamSummaryResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "academic_unit_id", "creator_user_id", "owner_user_id", "title", "updated_at", "archived_at", "revision", "manager_count"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "academic_unit_id": {"$ref": "#/components/schemas/ID"},
+          "creator_user_id": {"$ref": "#/components/schemas/ID"},
+          "owner_user_id": {"$ref": "#/components/schemas/ID"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "archived_at": {"type": ["string", "null"], "format": "date-time"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "manager_count": {"type": "integer", "minimum": 1}
         }
       },
       "ExamResponse": {

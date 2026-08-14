@@ -145,6 +145,21 @@ func (s *examAuthoringStore) UpdateDraftFocusLoss(ctx context.Context, input *st
 	})
 }
 
+func (s *examAuthoringStore) List(ctx context.Context, options store.ExamListOptions) ([]store.ExamSummary, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamSummary, error) {
+		return s.ExamAuthoringStore.List(ctx, options)
+	})
+}
+
+func (s *examAuthoringStore) Archive(ctx context.Context, input *store.ExamArchive, command *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
+	if command == nil {
+		return s.ExamAuthoringStore.Archive(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamArchiveCommandResult, error) {
+		return s.ExamAuthoringStore.Archive(ctx, input, command)
+	})
+}
+
 func (s *examAuthoringStore) Access(ctx context.Context, examID model.ExamID, actorID model.UserID) (*store.ExamAccessSnapshot, error) {
 	return retryCall1(ctx, s.layer, func() (*store.ExamAccessSnapshot, error) {
 		return s.ExamAuthoringStore.Access(ctx, examID, actorID)

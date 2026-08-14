@@ -67,6 +67,63 @@ type ExamAuthoringCommandResult struct {
 	Replayed bool
 }
 
+type ExamArchiveFilter string
+
+const (
+	ExamArchiveActive   ExamArchiveFilter = "active"
+	ExamArchiveArchived ExamArchiveFilter = "archived"
+	ExamArchiveAll      ExamArchiveFilter = "all"
+)
+
+// ExamListVisibility is the bounded, persistence-ready result of current role
+// authorization. Ordinary visibility still requires the actor's current Exam
+// Manager relationship; override visibility does not manufacture membership.
+type ExamListVisibility struct {
+	ActorUserID                 model.UserID
+	OrdinaryInstitutionWide     bool
+	OrdinaryAcademicUnitRootIDs []string
+	OverrideInstitutionWide     bool
+	OverrideAcademicUnitRootIDs []string
+}
+
+type ExamListOptions struct {
+	AcademicUnitID  model.AcademicUnitID
+	ArchiveFilter   ExamArchiveFilter
+	BeforeUpdatedAt time.Time
+	BeforeExamID    model.ExamID
+	Limit           int
+	Visibility      ExamListVisibility
+}
+
+// ExamSummary is the bounded catalog projection. Authored Markdown, policy,
+// resources, and Starter Workspace state are deliberately absent.
+type ExamSummary struct {
+	ID             model.ExamID
+	AcademicUnitID model.AcademicUnitID
+	CreatorUserID  model.UserID
+	OwnerUserID    model.UserID
+	Title          string
+	UpdatedAt      time.Time
+	ArchivedAt     model.OptionalTime
+	Revision       int64
+	ManagerCount   int
+}
+
+type ExamArchive struct {
+	ExamID           model.ExamID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	ArchivedAt       int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
+type ExamArchiveCommandResult struct {
+	Value    *model.Exam
+	Replayed bool
+}
+
 // ExamAuthoringCreation is the complete first Exam aggregate and the durable
 // audit attempt that its successful transaction must complete.
 type ExamAuthoringCreation struct {
@@ -117,6 +174,8 @@ type ExamAuthoringStore interface {
 	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftFocusLoss(context.Context, *ExamDraftFocusLossUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	List(context.Context, ExamListOptions) ([]ExamSummary, error)
+	Archive(context.Context, *ExamArchive, *CommandIdempotency) (*ExamArchiveCommandResult, error)
 	Access(context.Context, model.ExamID, model.UserID) (*ExamAccessSnapshot, error)
 	Get(context.Context, model.ExamID, model.UserID) (*ExamAuthoringSnapshot, error)
 	Resolve(context.Context, model.ExamID) (*model.Exam, error)

@@ -134,7 +134,7 @@ func evaluateOpenAPIShapeAgreement(
 		if shape.Items == nil {
 			return appendAgreementViolation(violations, target, "items", "array item schema is missing")
 		}
-		return evaluateOpenAPIShapeAgreement(violations, document, target+"[]", *shape.Items, goType.Elem(), requestSchema, false, false, nil)
+		return evaluateOpenAPIShapeAgreement(violations, document, target+"[]", *shape.Items, goType.Elem(), requestSchema, false, false, nullablePaths)
 	}
 	if goType.Kind() == reflect.Map {
 		var additional openAPISchemaShape

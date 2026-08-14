@@ -6,6 +6,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,70 @@ func TestExamHTTPCreateAndGetUseApplicationFacade(t *testing.T) {
 		t.Fatalf("get = %d query=%#v body=%s", got.Code, fake.get, got.Body.String())
 	}
 	assertExamHTTPResponse(t, got.Body.Bytes(), view)
+}
+
+func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	unitID, examID := model.NewAcademicUnitID(), model.NewExamID()
+	fake := &examHTTPApplication{principal: principal, catalog: application.ExamCatalogPage{Items: []application.ExamSummary{{
+		ID: examID, AcademicUnitID: unitID, CreatorUserID: principal.UserID, OwnerUserID: principal.UserID,
+		Title: "Systems", UpdatedAt: time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC), Revision: 2, ManagerCount: 1,
+	}}}}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/exams?academic_unit_id="+unitID.String()+"&archive_state=all&limit=25", nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", response.Code, response.Body.String())
+	}
+	if fake.list.AcademicUnitID != unitID || fake.list.ArchiveFilter != application.ExamArchiveAll || fake.list.Limit != 25 {
+		t.Fatalf("list query = %#v", fake.list)
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"title":"Systems"`)) || bytes.Contains(response.Body.Bytes(), []byte("instructions_markdown")) || bytes.Contains(response.Body.Bytes(), []byte("policy")) {
+		t.Fatalf("unsafe list response = %s", response.Body.String())
+	}
+}
+
+func TestExamCatalogCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+	cursor := examCatalogCursor{UpdatedAt: "2026-08-14T08:00:00.123456789Z", ExamID: model.NewExamID().String()}
+	got, err := decodeExamCatalogCursor(encodeExamCatalogCursor(cursor))
+	if err != nil || got != cursor {
+		t.Fatalf("cursor = %#v, %v", got, err)
+	}
+	if _, err := decodeExamCatalogCursor("not-a-cursor"); err == nil {
+		t.Fatal("invalid cursor accepted")
+	}
+	encoded, _ := json.Marshal(cursor)
+	if _, err := decodeExamCatalogCursor(base64.RawURLEncoding.EncodeToString(append(encoded, []byte(`{}`)...))); err == nil {
+		t.Fatal("cursor with trailing JSON accepted")
+	}
+}
+
+func TestExamHTTPArchiveUsesRequiredIdempotentApplicationCommand(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	archived := view.Exam
+	_ = archived.Archive(time.Now().UTC().Add(time.Minute))
+	fake := &examHTTPApplication{principal: principal, archived: archived}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+view.Exam.ID.String()+"/archive", bytes.NewReader([]byte(`{"expected_exam_revision":1}`)))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "archive-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("archive status = %d: %s", response.Code, response.Body.String())
+	}
+	if fake.archive.ExamID != view.Exam.ID || fake.archive.ExpectedExamRevision != 1 || fake.archive.IdempotencyKey != "archive-once" {
+		t.Fatalf("archive command = %#v", fake.archive)
+	}
 }
 
 func TestExamHTTPCreateRequiresIdempotencyKey(t *testing.T) {
@@ -223,7 +288,20 @@ type examHTTPApplication struct {
 	create             application.CreateExamCommand
 	edit               application.EditExamDraftTextCommand
 	configureFocusLoss application.ConfigureExamDraftFocusLossCommand
+	list               application.ListExamsQuery
+	catalog            application.ExamCatalogPage
+	archive            application.ArchiveExamCommand
+	archived           model.Exam
 	get                application.GetExamQuery
+}
+
+func (a *examHTTPApplication) ListExams(_ context.Context, _ application.Invocation, query application.ListExamsQuery) (application.ExamCatalogPage, error) {
+	a.list = query
+	return a.catalog, nil
+}
+func (a *examHTTPApplication) ArchiveExam(_ context.Context, _ application.Invocation, command application.ArchiveExamCommand) (model.Exam, error) {
+	a.archive = command
+	return a.archived, nil
 }
 
 func (a *examHTTPApplication) AuthenticateAccess(context.Context, string) (*model.Principal, error) {

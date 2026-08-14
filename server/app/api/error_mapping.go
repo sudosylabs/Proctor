@@ -95,6 +95,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"exam.invalid":                                         {status: http.StatusBadRequest},
 	"exam.conflict":                                        {status: http.StatusConflict},
 	"exam.archived":                                        {status: http.StatusConflict},
+	"exam.revision_conflict":                               {status: http.StatusConflict},
 	"exam.draft.revision_conflict":                         {status: http.StatusConflict},
 	"exam.draft.no_changes":                                {status: http.StatusConflict},
 	"exam.unavailable":                                     {status: http.StatusInternalServerError},

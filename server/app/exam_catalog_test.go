@@ -1,0 +1,44 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
+)
+
+func TestListExamsNormalizesDefaultsAndMapsBoundedSummaries(t *testing.T) {
+	t.Parallel()
+	userID, examID := model.NewUserID(), model.NewExamID()
+	child := &examUseCasesFake{}
+	child.catalog = examengine.CatalogPage{Items: []store.ExamSummary{{ID: examID, Title: "Systems", Revision: 2, ManagerCount: 1}}}
+	application := &App{exams: child}
+	page, err := application.ListExams(context.Background(), NewInvocation(testExamPrincipal(userID), model.RequestMetadata{}), ListExamsQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.list.Limit != 50 || child.list.ArchiveFilter != store.ExamArchiveActive || len(page.Items) != 1 || page.Items[0].ID != examID {
+		t.Fatalf("query/page = %#v / %#v", child.list, page)
+	}
+}
+
+func TestArchiveExamBuildsIdempotentChildCommand(t *testing.T) {
+	t.Parallel()
+	userID, examID := model.NewUserID(), model.NewExamID()
+	archivedAt := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
+	child := &examUseCasesFake{archived: model.Exam{ID: examID, ArchivedAt: model.OptionalTimeFrom(archivedAt), Revision: 4}}
+	application := &App{exams: child}
+	got, err := application.ArchiveExam(context.Background(), NewInvocation(testExamPrincipal(userID), model.RequestMetadata{}), ArchiveExamCommand{ExamID: examID, ExpectedExamRevision: 3, IdempotencyKey: "archive-once"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != examID || child.archive.ExamID != examID || child.archive.ExpectedExamRevision != 3 || child.archive.Idempotency == nil || child.archive.Idempotency.Operation != "exam.archive.v1" || child.archive.Idempotency.UserID != userID {
+		t.Fatalf("result/command = %#v / %#v", got, child.archive)
+	}
+}

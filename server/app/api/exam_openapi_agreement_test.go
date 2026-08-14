@@ -16,6 +16,11 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{
+				Key: "GET /api/v1/exams", Auth: AuthPrincipalRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamListOK", SuccessSchema: "ExamListResponse",
+				PublicErrorCodes: principalContractCodes("request.invalid", "exam.invalid", "exam.unavailable", "administration.unavailable"),
+			},
+			{
 				Key: "POST /api/v1/exams", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/CreateExam", RequestSchema: "CreateExamRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamCreated", SuccessSchema: "ExamResponse",
@@ -38,11 +43,20 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamOK", SuccessSchema: "ExamResponse",
 				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
+			{
+				Key: "POST /api/v1/exams/{exam_id}/archive", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
+				RequestBodyRef: "#/components/requestBodies/ArchiveExam", RequestSchema: "ArchiveExamRequest",
+				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamIdentityOK", SuccessSchema: "ExamIdentityResponse",
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+			},
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "CreateExamRequest", DTO: reflect.TypeOf(createExamRequest{}), Required: []string{"academic_unit_id", "title"}},
 			{Name: "EditExamDraftTextRequest", DTO: reflect.TypeOf(editExamDraftTextRequest{}), Required: []string{"expected_draft_revision"}},
 			{Name: "ConfigureExamDraftFocusLossRequest", DTO: reflect.TypeOf(configureExamDraftFocusLossRequest{}), Required: []string{"expected_draft_revision", "enabled", "minimum_duration_milliseconds", "incident_count", "window_milliseconds", "outcome"}},
+			{Name: "ArchiveExamRequest", DTO: reflect.TypeOf(archiveExamRequest{}), Required: []string{"expected_exam_revision"}},
+			{Name: "ExamListResponse", DTO: reflect.TypeOf(examListResponse{}), Required: []string{"items"}, Nullable: []string{"items.archived_at"}},
+			{Name: "ExamSummaryResponse", DTO: reflect.TypeOf(examSummaryResponse{}), Required: []string{"id", "academic_unit_id", "creator_user_id", "owner_user_id", "title", "updated_at", "archived_at", "revision", "manager_count"}, Nullable: []string{"archived_at"}},
 			{Name: "ExamResponse", DTO: reflect.TypeOf(examResponse{}), Required: []string{"exam", "draft", "owner_user_id", "manager_count"}, Nullable: []string{"exam.archived_at"}},
 			{Name: "ExamIdentityResponse", DTO: reflect.TypeOf(examIdentityResponse{}), Required: []string{"id", "academic_unit_id", "creator_user_id", "owner_user_id", "created_at", "updated_at", "archived_at", "revision"}, Nullable: []string{"archived_at"}},
 			{Name: "ExamDraftResponse", DTO: reflect.TypeOf(examDraftResponse{}), Required: []string{"exam_id", "title", "instructions_markdown", "policy", "updated_at", "revision", "resource_count", "has_starter_workspace"}},

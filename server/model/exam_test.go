@@ -47,6 +47,29 @@ func TestNewExamAuthoringState(t *testing.T) {
 	}
 }
 
+func TestExamArchiveRecordsImmutableTimeAndAdvancesRevision(t *testing.T) {
+	t.Parallel()
+	createdAt := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
+	exam, err := NewExam(NewExamID(), NewAcademicUnitID(), NewUserID(), createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archivedAt := createdAt.Add(time.Hour)
+	if err := exam.Archive(archivedAt); err != nil {
+		t.Fatal(err)
+	}
+	if !exam.ArchivedAt.Valid || !exam.ArchivedAt.Time.Equal(archivedAt) || !exam.UpdatedAt.Equal(archivedAt) || exam.Revision != 2 {
+		t.Fatalf("archived Exam = %#v", exam)
+	}
+	first := *exam
+	if err := exam.Archive(archivedAt.Add(time.Hour)); err == nil {
+		t.Fatal("second Archive succeeded")
+	}
+	if *exam != first {
+		t.Fatalf("second Archive mutated Exam: %#v", exam)
+	}
+}
+
 func TestExamAndDraftValidateIndependently(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)

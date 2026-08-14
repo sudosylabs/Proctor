@@ -383,6 +383,15 @@ CREATE TABLE exams (
 
 CREATE INDEX exams_academic_unit_id_updated_at_id_idx
     ON exams (academic_unit_id, updated_at DESC, id DESC);
+CREATE INDEX exams_updated_at_id_idx ON exams (updated_at DESC, id DESC);
+CREATE INDEX exams_active_academic_unit_updated_at_id_idx
+    ON exams (academic_unit_id, updated_at DESC, id DESC) WHERE archived_at IS NULL;
+CREATE INDEX exams_archived_academic_unit_updated_at_id_idx
+    ON exams (academic_unit_id, updated_at DESC, id DESC) WHERE archived_at IS NOT NULL;
+CREATE INDEX exams_active_updated_at_id_idx
+    ON exams (updated_at DESC, id DESC) WHERE archived_at IS NULL;
+CREATE INDEX exams_archived_updated_at_id_idx
+    ON exams (updated_at DESC, id DESC) WHERE archived_at IS NOT NULL;
 
 CREATE TABLE exam_drafts (
     exam_id varchar(26) PRIMARY KEY REFERENCES exams(id) ON DELETE CASCADE,

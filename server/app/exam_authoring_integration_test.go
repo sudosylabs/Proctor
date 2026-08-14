@@ -120,6 +120,13 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || got.Draft.Policy != focusPolicy.Draft.Policy || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
 		t.Fatalf("get = %#v", got)
 	}
+	active, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if len(active.Items) != 1 || active.Items[0].ID != created.Exam.ID || active.Items[0].Title != editedTitle || active.Items[0].ArchivedAt.Valid || active.Items[0].ManagerCount != 1 {
+		t.Fatalf("active catalog = %#v", active)
+	}
 	outsider, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, password)
 	if appErr != nil {
 		t.Fatal(appErr)
@@ -132,5 +139,40 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	_, appErr = helper.App.GetExam(ctx, application.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"}), application.GetExamQuery{ExamID: created.Exam.ID})
 	if !application.Is(appErr, "resource.not_found") {
 		t.Fatalf("outsider get error = %v, want concealed resource.not_found", appErr)
+	}
+	archived, appErr := helper.App.ArchiveExam(ctx, invocation, application.ArchiveExamCommand{
+		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-once",
+	})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if !archived.IsArchived() || archived.Revision != created.Exam.Revision+1 {
+		t.Fatalf("archived Exam = %#v", archived)
+	}
+	archiveReplay, appErr := helper.App.ArchiveExam(ctx, invocation, application.ArchiveExamCommand{
+		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-once",
+	})
+	if appErr != nil || archiveReplay.Revision != archived.Revision || !archiveReplay.ArchivedAt.Time.Equal(archived.ArchivedAt.Time) {
+		t.Fatalf("archive replay = %#v, %v", archiveReplay, appErr)
+	}
+	active, appErr = helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})
+	if appErr != nil || len(active.Items) != 0 {
+		t.Fatalf("active catalog after archive = %#v, %v", active, appErr)
+	}
+	archivedPage, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID, ArchiveFilter: application.ExamArchiveArchived})
+	if appErr != nil || len(archivedPage.Items) != 1 || archivedPage.Items[0].ID != archived.ID || !archivedPage.Items[0].ArchivedAt.Valid || archivedPage.Items[0].Revision != archived.Revision {
+		t.Fatalf("archived catalog = %#v, %v", archivedPage, appErr)
+	}
+	archivedView, appErr := helper.App.GetExam(ctx, invocation, application.GetExamQuery{ExamID: created.Exam.ID})
+	if appErr != nil || !archivedView.Exam.IsArchived() || archivedView.Draft.Title != editedTitle {
+		t.Fatalf("archived exact Get = %#v, %v", archivedView, appErr)
+	}
+	postArchiveTitle := "Cannot edit archived Exam"
+	_, appErr = helper.App.EditExamDraftText(ctx, invocation, application.EditExamDraftTextCommand{
+		ExamID: created.Exam.ID, ExpectedDraftRevision: focusPolicy.Draft.Revision,
+		Title: &postArchiveTitle, IdempotencyKey: "exam-edit-after-archive",
+	})
+	if !application.Is(appErr, "exam.archived") {
+		t.Fatalf("post-archive edit error = %v", appErr)
 	}
 }

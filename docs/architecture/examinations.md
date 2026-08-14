@@ -76,6 +76,16 @@ access without erasing the relationship. System-administrator override is an
 explicit permission path and never manager membership or an exception to
 structural invariants.
 
+Exam discovery is a bounded database projection, not an in-memory filter over
+unrestricted rows. It combines current Manager relationships with applicable
+ordinary permissions and keeps explicit override scope separate. Results use
+descending update-time and Exam-ID keyset order, expose only safe identity,
+ownership, Draft title, archive/revision state, and manager count, and default
+to active Exams. Archiving is a revision-fenced, audited, idempotent lifecycle
+transition that records an immutable time without deleting authored or
+historical state. Archived Exams remain available to authorized exact reads
+but reject later authoring mutations.
+
 ## Resources and starter material
 
 An Exam Resource is read-only supporting material outside the Attempt

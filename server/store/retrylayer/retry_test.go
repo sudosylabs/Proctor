@@ -57,6 +57,8 @@ type examAuthoringStub struct {
 	createAttempts  int
 	updateAttempts  int
 	focusAttempts   int
+	listAttempts    int
+	archiveAttempts int
 	accessAttempts  int
 	getAttempts     int
 	resolveAttempts int
@@ -75,6 +77,16 @@ func (s *examAuthoringStub) UpdateDraftText(context.Context, *store.ExamDraftTex
 
 func (s *examAuthoringStub) UpdateDraftFocusLoss(context.Context, *store.ExamDraftFocusLossUpdate, *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
 	s.focusAttempts++
+	return nil, s.err
+}
+
+func (s *examAuthoringStub) List(context.Context, store.ExamListOptions) ([]store.ExamSummary, error) {
+	s.listAttempts++
+	return nil, s.err
+}
+
+func (s *examAuthoringStub) Archive(context.Context, *store.ExamArchive, *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
+	s.archiveAttempts++
 	return nil, s.err
 }
 
@@ -203,12 +215,14 @@ func TestRetryExamAuthoringIdempotentCreateAndReads(t *testing.T) {
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, &store.CommandIdempotency{})
 	_, _ = layer.ExamAuthoring().UpdateDraftText(context.Background(), &store.ExamDraftTextUpdate{}, &store.CommandIdempotency{})
 	_, _ = layer.ExamAuthoring().UpdateDraftFocusLoss(context.Background(), &store.ExamDraftFocusLossUpdate{}, &store.CommandIdempotency{})
+	_, _ = layer.ExamAuthoring().List(context.Background(), store.ExamListOptions{})
+	_, _ = layer.ExamAuthoring().Archive(context.Background(), &store.ExamArchive{}, &store.CommandIdempotency{})
 	_, _ = layer.ExamAuthoring().Access(context.Background(), model.NewExamID(), model.NewUserID())
 	_, _ = layer.ExamAuthoring().Get(context.Background(), model.NewExamID(), model.NewUserID())
 	_, _ = layer.ExamAuthoring().Resolve(context.Background(), model.NewExamID())
-	if stub.createAttempts != 3 || stub.updateAttempts != 3 || stub.focusAttempts != 3 || stub.accessAttempts != 3 || stub.getAttempts != 3 || stub.resolveAttempts != 3 {
-		t.Fatalf("attempts create/update/focus/access/get/resolve = %d/%d/%d/%d/%d/%d, want all 3",
-			stub.createAttempts, stub.updateAttempts, stub.focusAttempts, stub.accessAttempts, stub.getAttempts, stub.resolveAttempts)
+	if stub.createAttempts != 3 || stub.updateAttempts != 3 || stub.focusAttempts != 3 || stub.listAttempts != 3 || stub.archiveAttempts != 3 || stub.accessAttempts != 3 || stub.getAttempts != 3 || stub.resolveAttempts != 3 {
+		t.Fatalf("attempts create/update/focus/list/archive/access/get/resolve = %d/%d/%d/%d/%d/%d/%d/%d, want all 3",
+			stub.createAttempts, stub.updateAttempts, stub.focusAttempts, stub.listAttempts, stub.archiveAttempts, stub.accessAttempts, stub.getAttempts, stub.resolveAttempts)
 	}
 }
 
@@ -226,6 +240,7 @@ func TestRetryExamAuthoringDoesNotRetryCreateWithoutIdempotency(t *testing.T) {
 	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, nil)
 	_, _ = layer.ExamAuthoring().UpdateDraftText(context.Background(), &store.ExamDraftTextUpdate{}, nil)
 	_, _ = layer.ExamAuthoring().UpdateDraftFocusLoss(context.Background(), &store.ExamDraftFocusLossUpdate{}, nil)
+	_, _ = layer.ExamAuthoring().Archive(context.Background(), &store.ExamArchive{}, nil)
 	if stub.createAttempts != 1 {
 		t.Fatalf("Create() attempts = %d, want 1 without idempotency", stub.createAttempts)
 	}
@@ -234,6 +249,9 @@ func TestRetryExamAuthoringDoesNotRetryCreateWithoutIdempotency(t *testing.T) {
 	}
 	if stub.focusAttempts != 1 {
 		t.Fatalf("UpdateDraftFocusLoss() attempts = %d, want 1 without idempotency", stub.focusAttempts)
+	}
+	if stub.archiveAttempts != 1 {
+		t.Fatalf("Archive() attempts = %d, want 1 without idempotency", stub.archiveAttempts)
 	}
 }
 

@@ -85,6 +85,7 @@ func (f *Fault) Unwrap() error {
 
 type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
+	AuthorizeList(context.Context, Call, model.AcademicUnitID) (store.ExamListVisibility, error)
 }
 
 type Auditor interface {
@@ -95,6 +96,7 @@ type Auditor interface {
 type Effects interface {
 	Created(context.Context, model.ExamID) error
 	DraftUpdated(context.Context, model.ExamID, int64) error
+	Archived(context.Context, model.ExamID, int64, time.Time) error
 }
 type EffectFailures interface {
 	Report(context.Context, string, error)
@@ -476,6 +478,8 @@ func mapStoreError(err error) error {
 			return &Fault{Code: "exam.archived", Cause: err}
 		case "exam_draft_revision":
 			return &Fault{Code: "exam.draft.revision_conflict", Cause: err}
+		case "exam_revision":
+			return &Fault{Code: "exam.revision_conflict", Cause: err}
 		case "exam_draft_no_changes":
 			return &Fault{Code: "exam.draft.no_changes", Cause: err}
 		default:

@@ -19,6 +19,7 @@ func TestExamAuthoringStore(t *testing.T, ss store.Store) {
 	t.Run("CreateGetAndReplay", func(t *testing.T) { testExamAuthoringCreateGetAndReplay(t, ss) })
 	t.Run("UpdateDraftTextAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftTextAndConflict(t, ss) })
 	t.Run("UpdateDraftFocusLossAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftFocusLossAndConflict(t, ss) })
+	t.Run("ListCatalogAndArchive", func(t *testing.T) { testExamCatalogListAndArchive(t, ss) })
 	t.Run("AuditAtomicity", func(t *testing.T) { testExamAuthoringAuditAtomicity(t, ss) })
 }
 

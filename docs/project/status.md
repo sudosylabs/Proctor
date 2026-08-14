@@ -79,8 +79,11 @@ the code and component contracts for that detail.
   authored Markdown through presence-aware, revision-fenced, audited,
   idempotent updates. They can also replace only the typed Focus Loss policy
   through the same guarded mutation path while Connection Loss remains fixed;
-  unchanged updates do not mutate or publish, and archived Exams reject new
-  authoring mutations.
+  unchanged updates do not mutate or publish. A visibility-aware, keyset-
+  paginated catalog lists bounded active or archived Exam summaries without
+  hydrating authored content. Revision-fenced, idempotent archive records an
+  immutable archive time without deleting state; archived Exams remain
+  available to authorized exact reads and reject new authoring mutations.
 
 ## Architecture migration acceptance
 
@@ -94,8 +97,8 @@ uncompleted architecture migration.
 ## Accepted Examination Core design
 
 The Examination Core domain and architecture are decided, and its initial Exam
-creation, retrieval, Draft text-authoring, and Draft Focus Loss configuration
-slices are implemented. An Exam belongs to one Academic Unit and has
+creation, retrieval, catalog, archive, Draft text-authoring, and Draft Focus
+Loss configuration slices are implemented. An Exam belongs to one Academic Unit and has
 one mutable Draft and immutable published Revisions. Each Sitting selects one
 Revision and exactly one Class in that Academic Unit. Urgent instructions or
 resource correction creates another immutable Revision and atomically

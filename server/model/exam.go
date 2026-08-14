@@ -76,6 +76,30 @@ func (e *Exam) Validate() error {
 
 func (e *Exam) IsArchived() bool { return e != nil && e.ArchivedAt.Valid }
 
+// Archive retires an active Exam without deleting its authored or historical
+// state. Archive time is immutable and advances the Exam's optimistic revision.
+func (e *Exam) Archive(at time.Time) error {
+	if e == nil {
+		return invalidModelError("Exam.Archive", "exam", "value", "is required", "")
+	}
+	if e.IsArchived() {
+		return invalidModelError("Exam.Archive", "exam", "archived_at", "is already set", "id="+e.ID.String())
+	}
+	candidate := *e
+	candidate.ArchivedAt = OptionalTimeFrom(at)
+	candidate.UpdatedAt = TimeUTC(at)
+	if candidate.UpdatedAt.Before(e.UpdatedAt) {
+		candidate.UpdatedAt = e.UpdatedAt
+		candidate.ArchivedAt = OptionalTimeFrom(e.UpdatedAt)
+	}
+	candidate.Revision++
+	if err := candidate.Validate(); err != nil {
+		return err
+	}
+	*e = candidate
+	return nil
+}
+
 func (e *Exam) Auditable() map[string]any {
 	if e == nil {
 		return map[string]any{}

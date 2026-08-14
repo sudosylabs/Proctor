@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -74,6 +75,20 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	}
 	if _, err := NewExamDraftUpdatedEvent(examID, 0); err == nil {
 		t.Fatal("accepted non-positive Draft revision")
+	}
+	archivedAt := time.Date(2026, 8, 14, 9, 30, 0, 0, time.UTC)
+	archived, err := NewExamArchivedEvent(examID, 8, archivedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if archived.Name != "exam_archived" || archived.Action != model.ActionExamView || archived.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
+		t.Fatalf("archived event = %#v", archived)
+	}
+	if got := string(archived.Data); got != `{"exam_id":"`+examID.String()+`","exam_revision":8,"archived_at":"2026-08-14T09:30:00Z"}` {
+		t.Fatalf("archived data = %s", got)
+	}
+	if _, err := NewExamArchivedEvent(examID, 0, archivedAt); err == nil {
+		t.Fatal("accepted non-positive Exam revision")
 	}
 }
 

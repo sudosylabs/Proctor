@@ -43,7 +43,6 @@ const (
 const (
 	methodAccess                        methodName = "access"
 	methodActivate                      methodName = "activate"
-	methodArchive                       methodName = "archive"
 	methodArchiveWithAudit              methodName = "archive_with_audit"
 	methodBootstrap                     methodName = "bootstrap"
 	methodCheckpoint                    methodName = "checkpoint"
@@ -135,6 +134,7 @@ const (
 	methodUpdate                        methodName = "update"
 	methodUpdateDraftFocusLoss          methodName = "update_draft_focus_loss"
 	methodUpdateDraftText               methodName = "update_draft_text"
+	methodArchive                       methodName = "archive"
 	methodUpdateActivity                methodName = "update_activity"
 	methodUpdateLastLogin               methodName = "update_last_login"
 	methodUpdateProfileWithAudit        methodName = "update_profile_with_audit"

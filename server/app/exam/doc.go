@@ -15,7 +15,9 @@
 // The currently implemented slices coordinate Exam identity, its Draft and
 // creator Manager, shipped policy defaults, presence-aware title and Markdown
 // editing, authorization, audit, atomic Store mutations, idempotent replay,
-// bounded retrieval, and safe post-commit effects.
+// bounded exact retrieval and keyset-paginated catalog discovery, archive
+// lifecycle, and safe post-commit effects. Archived Exams remain readable but
+// reject new authoring mutations.
 //
 // The package does not own HTTP or WebSocket contracts, SQL, file bytes,
 // publication, Sittings, Attempts, integrity evaluation, or lifecycle

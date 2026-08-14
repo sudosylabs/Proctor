@@ -548,6 +548,18 @@ func (s *timedExamAuthoringStore) UpdateDraftFocusLoss(arg0 context.Context, arg
 	})
 }
 
+func (s *timedExamAuthoringStore) List(arg0 context.Context, arg1 store.ExamListOptions) ([]store.ExamSummary, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodList), func() ([]store.ExamSummary, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamAuthoringStore) Archive(arg0 context.Context, arg1 *store.ExamArchive, arg2 *store.CommandIdempotency) (*store.ExamArchiveCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodArchive), func() (*store.ExamArchiveCommandResult, error) {
+		return s.next.Archive(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamAuthoringStore) Access(arg0 context.Context, arg1 model.ExamID, arg2 model.UserID) (*store.ExamAccessSnapshot, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodAccess), func() (*store.ExamAccessSnapshot, error) {
 		return s.next.Access(arg0, arg1, arg2)

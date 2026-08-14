@@ -13,6 +13,7 @@ import (
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type ExamView = examengine.View
@@ -50,6 +51,8 @@ type examUseCases interface {
 	Get(context.Context, examengine.Call, model.ExamID) (examengine.View, error)
 	EditDraftText(context.Context, examengine.Call, examengine.EditDraftTextCommand) (examengine.View, error)
 	ConfigureDraftFocusLoss(context.Context, examengine.Call, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
+	List(context.Context, examengine.Call, examengine.ListQuery) (examengine.CatalogPage, error)
+	Archive(context.Context, examengine.Call, examengine.ArchiveCommand) (model.Exam, error)
 	AuthorizeView(context.Context, examengine.Call, model.ExamID) error
 }
 
@@ -174,6 +177,38 @@ func (a examAuthorizationAdapter) Authorize(ctx context.Context, call examengine
 	return a.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
 }
 
+func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examengine.Call, _ model.AcademicUnitID) (store.ExamListVisibility, error) {
+	principal := call.Principal()
+	ordinary, err := a.authorization.authorizedScopes(ctx, principal, model.ActionExamView, model.ResourceExam)
+	if err != nil {
+		return store.ExamListVisibility{}, err
+	}
+	override, err := a.authorization.authorizedScopes(ctx, principal, model.ActionExamViewOverride, model.ResourceExam)
+	if err != nil {
+		return store.ExamListVisibility{}, err
+	}
+	hasOrdinary := ordinary.InstitutionWide || len(ordinary.AcademicUnitRootIDs) > 0
+	hasOverride := override.InstitutionWide || len(override.AcademicUnitRootIDs) > 0
+	institution, err := a.authorization.resolver.institutions.GetSingleton(ctx)
+	if err != nil {
+		return store.ExamListVisibility{}, authorizationResourceError("institution", err)
+	}
+	action := model.ActionExamView
+	if hasOverride {
+		action = model.ActionExamViewOverride
+	}
+	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
+	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, principal, action, resource, model.RoleScopeInstitution, institution.ID.String(), call.RequestMetadata(), hasOrdinary || hasOverride); err != nil {
+		return store.ExamListVisibility{}, err
+	}
+	if !hasOrdinary && !hasOverride {
+		return store.ExamListVisibility{}, authorizationDeniedError("examAuthorizationAdapter.AuthorizeList")
+	}
+	return store.ExamListVisibility{ActorUserID: principal.UserID,
+		OrdinaryInstitutionWide: ordinary.InstitutionWide, OrdinaryAcademicUnitRootIDs: append([]string(nil), ordinary.AcademicUnitRootIDs...),
+		OverrideInstitutionWide: override.InstitutionWide, OverrideAcademicUnitRootIDs: append([]string(nil), override.AcademicUnitRootIDs...)}, nil
+}
+
 type examAuditAdapter struct{ audit mutationAuditAdapter }
 
 func (a examAuditAdapter) Begin(ctx context.Context, call examengine.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (string, error) {
@@ -194,6 +229,13 @@ func (e examRealtimeEffects) Created(ctx context.Context, examID model.ExamID) e
 }
 func (e examRealtimeEffects) DraftUpdated(ctx context.Context, examID model.ExamID, revision int64) error {
 	event, err := apprealtime.NewExamDraftUpdatedEvent(examID, revision)
+	if err != nil {
+		return err
+	}
+	return e.realtime.Publish(ctx, event)
+}
+func (e examRealtimeEffects) Archived(ctx context.Context, examID model.ExamID, revision int64, archivedAt time.Time) error {
+	event, err := apprealtime.NewExamArchivedEvent(examID, revision, archivedAt)
 	if err != nil {
 		return err
 	}
