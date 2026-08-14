@@ -33,6 +33,24 @@ func TestOpenAPIAgreementEvaluatorAcceptsNormalizedRouteWithoutMutatingInputs(t 
 	}
 }
 
+func TestOpenAPISchemaAgreementAllowsNullForRequiredResponsePointer(t *testing.T) {
+	t.Parallel()
+	violations := evaluateOpenAPIShapeAgreement(
+		nil,
+		openAPIDocument{},
+		"schema Response.archived_at",
+		openAPISchemaShape{Type: []any{"string", "null"}},
+		reflect.TypeOf((*string)(nil)),
+		false,
+		false,
+		true,
+		nil,
+	)
+	if len(violations) != 0 {
+		t.Fatalf("violations = %v", violations)
+	}
+}
+
 func TestOpenAPIAgreementEvaluatorRejectsMalformedDocument(t *testing.T) {
 	t.Parallel()
 

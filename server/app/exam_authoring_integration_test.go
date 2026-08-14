@@ -73,4 +73,17 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if got.Exam.ID != created.Exam.ID || got.Draft.Title != created.Draft.Title || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
 		t.Fatalf("get = %#v", got)
 	}
+	outsider, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	outsiderLogin := loginIntegrationUser(t, helper.Handler(), outsider.Username, password, model.SessionClientCLI, "exam-outsider-cli")
+	outsiderPrincipal, appErr := helper.App.AuthenticateAccess(ctx, outsiderLogin.Tokens.AccessToken)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	_, appErr = helper.App.GetExam(ctx, application.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"}), application.GetExamQuery{ExamID: created.Exam.ID})
+	if !application.Is(appErr, "resource.not_found") {
+		t.Fatalf("outsider get error = %v, want concealed resource.not_found", appErr)
+	}
 }

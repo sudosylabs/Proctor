@@ -16,7 +16,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		effects, effects, time.Now, model.NewId,
+		effects, effects, time.Now, model.NewExamID,
 	)
 	if err != nil {
 		return examinationConstruction{}, err

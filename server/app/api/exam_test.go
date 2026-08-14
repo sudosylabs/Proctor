@@ -49,6 +49,22 @@ func TestExamHTTPCreateAndGetUseApplicationFacade(t *testing.T) {
 	assertExamHTTPResponse(t, got.Body.Bytes(), view)
 }
 
+func TestExamHTTPCreateRequiresIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	fake := &examHTTPApplication{principal: principal, view: testExamHTTPView(t, principal.UserID)}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/exams", bytes.NewReader([]byte(`{"academic_unit_id":"`+model.NewAcademicUnitID().String()+`","title":"Systems"}`)))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !bytes.Contains(response.Body.Bytes(), []byte(`"code":"idempotency.key_required"`)) {
+		t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 	t.Parallel()
 	view := testExamHTTPView(t, model.NewUserID())
@@ -63,7 +79,28 @@ func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 	if _, exists := document["managers"]; exists {
 		t.Fatal("bounded view exposed manager collection")
 	}
+	exam := document["exam"].(map[string]any)
+	for _, field := range []string{"created_at", "updated_at"} {
+		value, ok := exam[field].(string)
+		if !ok {
+			t.Fatalf("%s = %#v, want RFC3339 string", field, exam[field])
+		}
+		if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+			t.Fatalf("parse %s: %v", field, err)
+		}
+	}
+	if exam["archived_at"] != nil {
+		t.Fatalf("archived_at = %#v, want null for active exam", exam["archived_at"])
+	}
+	for _, legacy := range []string{"create_at", "update_at", "delete_at"} {
+		if _, exists := exam[legacy]; exists {
+			t.Fatalf("response exposed legacy timestamp field %q", legacy)
+		}
+	}
 	draft := document["draft"].(map[string]any)
+	if _, err := time.Parse(time.RFC3339Nano, draft["updated_at"].(string)); err != nil {
+		t.Fatalf("parse draft updated_at: %v", err)
+	}
 	policy := draft["policy"].(map[string]any)
 	if policy["schema_version"] != float64(1) || document["manager_count"] != float64(1) || draft["resource_count"] != float64(0) || draft["has_starter_workspace"] != false {
 		t.Fatalf("response = %s", encoded)

@@ -56,17 +56,7 @@ func newSQLExamAuthoringStore(sqlStore *SQLStore) store.ExamAuthoringStore {
 	return &SQLExamAuthoringStore{SQLStore: sqlStore}
 }
 
-func (s SQLExamAuthoringStore) Create(ctx context.Context, input *store.ExamAuthoringCreation) (*store.ExamAuthoringSnapshot, error) {
-	prepared, auditData, err := prepareExamAuthoringCreation(input)
-	if err != nil {
-		return nil, err
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "exam creation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
-		return createExamAuthoring(ctx, tx, prepared, auditData)
-	})
-}
-
-func (s SQLExamAuthoringStore) CreateIdempotently(ctx context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+func (s SQLExamAuthoringStore) Create(ctx context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
 	prepared, auditData, err := prepareExamAuthoringCreation(input)
 	if err != nil || command == nil {
 		if err != nil {
@@ -74,7 +64,7 @@ func (s SQLExamAuthoringStore) CreateIdempotently(ctx context.Context, input *st
 		}
 		return nil, store.NewErrInvalidInput("exam", "idempotency", nil)
 	}
-	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent exam creation", idempotentMutation[*store.ExamAuthoringSnapshot]{
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam creation", idempotentMutation[*store.ExamAuthoringSnapshot]{
 		command: command, auditEventID: prepared.AuditEventID,
 		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAuthoringSnapshot, error) {
 			return createExamAuthoring(ctx, tx, prepared, auditData)
@@ -254,23 +244,7 @@ func newExamAuthoringRow(snapshot *store.ExamAuthoringSnapshot, actorIsManager b
 }
 
 func (r examAuthoringRow) model() (*store.ExamAuthoringSnapshot, error) {
-	examID, err := parsePersistedID[model.ExamID]("exam", "id", r.ID, model.ParseExamID)
-	if err != nil {
-		return nil, err
-	}
-	unitID, err := parsePersistedID[model.AcademicUnitID]("exam", "academic_unit_id", r.AcademicUnitID, model.ParseAcademicUnitID)
-	if err != nil {
-		return nil, err
-	}
-	creatorID, err := parsePersistedID[model.UserID]("exam", "creator_user_id", r.CreatorUserID, model.ParseUserID)
-	if err != nil {
-		return nil, err
-	}
-	ownerID, err := parsePersistedID[model.UserID]("exam", "owner_user_id", r.OwnerUserID, model.ParseUserID)
-	if err != nil {
-		return nil, err
-	}
-	defaultRevisionID, err := parseNullablePersistedID[model.ExamRevisionID]("exam", "default_revision_id", r.DefaultRevisionID, model.ParseExamRevisionID)
+	exam, err := r.accessRow().model()
 	if err != nil {
 		return nil, err
 	}
@@ -282,13 +256,7 @@ func (r examAuthoringRow) model() (*store.ExamAuthoringSnapshot, error) {
 	if err != nil {
 		return nil, invalidPersistedState("exam_draft", "policy", err)
 	}
-	exam := &model.Exam{ID: examID, AcademicUnitID: unitID, CreatorUserID: creatorID, OwnerUserID: ownerID,
-		DefaultRevisionID: defaultRevisionID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		ArchivedAt: OptionalTimeFromNullTime(r.ArchivedAt), Revision: r.ExamRevision}
-	if err := validatePersistedModel("exam", exam); err != nil {
-		return nil, err
-	}
-	draft := &model.ExamDraft{ExamID: examID, Title: r.DraftTitle, InstructionsMarkdown: r.InstructionsMarkdown,
+	draft := &model.ExamDraft{ExamID: exam.ID, Title: r.DraftTitle, InstructionsMarkdown: r.InstructionsMarkdown,
 		Policy: policy, BaseRevisionID: baseRevisionID, UpdatedAt: r.DraftUpdatedAt, Revision: r.DraftRevision}
 	if err := validatePersistedModel("exam_draft", draft); err != nil {
 		return nil, err
@@ -296,8 +264,17 @@ func (r examAuthoringRow) model() (*store.ExamAuthoringSnapshot, error) {
 	if r.ManagerCount < 1 || !r.OwnerIsManager || r.ResourceCount < 0 {
 		return nil, invalidPersistedState("exam", "aggregate", fmt.Errorf("invalid aggregate counts"))
 	}
-	return &store.ExamAuthoringSnapshot{Exam: exam, Draft: draft, OwnerUserID: ownerID, ManagerCount: r.ManagerCount,
+	return &store.ExamAuthoringSnapshot{Exam: exam, Draft: draft, OwnerUserID: exam.OwnerUserID, ManagerCount: r.ManagerCount,
 		ActorIsManager: r.ActorIsManager, ResourceCount: r.ResourceCount, HasStarterWorkspace: r.HasStarterWorkspace}, nil
+}
+
+func (r examAuthoringRow) accessRow() examAccessRow {
+	return examAccessRow{
+		ID: r.ID, AcademicUnitID: r.AcademicUnitID, CreatorUserID: r.CreatorUserID,
+		OwnerUserID: r.OwnerUserID, DefaultRevisionID: r.DefaultRevisionID,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ArchivedAt: r.ArchivedAt,
+		Revision: r.ExamRevision, ActorIsManager: r.ActorIsManager,
+	}
 }
 
 func (r examAccessRow) model() (*model.Exam, error) {

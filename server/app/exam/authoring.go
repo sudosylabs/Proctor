@@ -96,10 +96,10 @@ type Authoring struct {
 	effects     Effects
 	failures    EffectFailures
 	now         func() time.Time
-	newID       func() string
+	newID       func() model.ExamID
 }
 
-func NewAuthoring(persistence store.ExamAuthoringStore, memberships memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, now func() time.Time, newID func() string) (*Authoring, error) {
+func NewAuthoring(persistence store.ExamAuthoringStore, memberships memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
 	if persistence == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
 		return nil, errors.New("exam authoring dependencies are required")
 	}
@@ -114,9 +114,12 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 	if !command.AcademicUnitID.IsValid() {
 		return View{}, invalid("academic_unit_id")
 	}
+	if command.Idempotency == nil {
+		return View{}, &Fault{Code: "idempotency.key_required"}
+	}
 	at := model.TimeUTC(a.now())
-	examID, err := model.ParseExamID(a.newID())
-	if err != nil {
+	examID := a.newID()
+	if !examID.IsValid() {
 		return View{}, invalid("exam_id")
 	}
 	exam, err := model.NewExam(examID, command.AcademicUnitID, principal.UserID, at)
@@ -151,14 +154,7 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 		return View{}, err
 	}
 	creation := &store.ExamAuthoringCreation{Exam: exam, Draft: draft, Manager: manager, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}
-	var result *store.ExamAuthoringCommandResult
-	if command.Idempotency == nil {
-		snapshot, createErr := a.persistence.Create(ctx, creation)
-		result = &store.ExamAuthoringCommandResult{Value: snapshot}
-		err = createErr
-	} else {
-		result, err = a.persistence.CreateIdempotently(ctx, creation, command.Idempotency)
-	}
+	result, err := a.persistence.Create(ctx, creation, command.Idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		var fault *Fault
@@ -195,7 +191,13 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 	}
 	action := model.ActionExamViewOverride
 	if access.ActorIsManager {
-		action = model.ActionExamView
+		ordinary, membershipErr := a.hasCurrentMembership(ctx, principal.UserID, access.Exam.AcademicUnitID, model.TimeUTC(a.now()))
+		if membershipErr != nil {
+			return View{}, unavailable(membershipErr)
+		}
+		if ordinary {
+			action = model.ActionExamView
+		}
 	}
 	if err := a.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
 		return View{}, err

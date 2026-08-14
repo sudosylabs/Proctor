@@ -20,6 +20,7 @@ func TestCreateOwnsAuthorizationAuditPersistenceAndEffects(t *testing.T) {
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	got, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{
 		AcademicUnitID: fixture.unitID, Title: "  Algorithms  ", InstructionsMarkdown: "Use **Go**.",
+		Idempotency: &store.CommandIdempotency{},
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -45,7 +46,7 @@ func TestCreateOwnsAuthorizationAuditPersistenceAndEffects(t *testing.T) {
 func TestCreateUsesExplicitOverrideWithoutMembership(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
-	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks"})
+	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", Idempotency: &store.CommandIdempotency{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +55,23 @@ func TestCreateUsesExplicitOverrideWithoutMembership(t *testing.T) {
 	}
 }
 
+func TestCreateRequiresIdempotencyBeforeResolutionOrAuthorization(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks"})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "idempotency.key_required" {
+		t.Fatalf("error = %v, want idempotency.key_required", err)
+	}
+	if len(*fixture.order) != 0 {
+		t.Fatalf("side effects before required idempotency validation: %v", *fixture.order)
+	}
+}
+
 func TestCreateRejectsInvalidDraftBeforeResolutionOrAuthorization(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
-	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "   "})
+	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "   ", Idempotency: &store.CommandIdempotency{}})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.invalid" {
 		t.Fatalf("error = %v", err)
@@ -87,7 +101,7 @@ func TestCreateFailureCompletesAuditAsFailed(t *testing.T) {
 	fixture := newAuthoringFixture(t)
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	fixture.persistence.err = store.NewErrConflict("exam", "exams_pkey", errors.New("duplicate"))
-	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks"})
+	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", Idempotency: &store.CommandIdempotency{}})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.conflict" {
 		t.Fatalf("error = %v", err)
@@ -109,6 +123,9 @@ func TestGetSelectsManagerOrOverrideAuthorization(t *testing.T) {
 			t.Parallel()
 			fixture := newAuthoringFixture(t)
 			fixture.persistence.actorIsManager = test.manager
+			if test.manager {
+				fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+			}
 			view, err := fixture.service.Get(context.Background(), fixture.call, fixture.examID)
 			if err != nil {
 				t.Fatal(err)
@@ -116,10 +133,31 @@ func TestGetSelectsManagerOrOverrideAuthorization(t *testing.T) {
 			if view.Exam.ID != fixture.examID || fixture.authorizer.action != test.action || fixture.authorizer.resource.Type != model.ResourceExam {
 				t.Fatalf("view/auth = %#v / %s %#v", view, fixture.authorizer.action, fixture.authorizer.resource)
 			}
-			if want := []string{"store.access", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
+			want := []string{"store.access", "authorize", "store.get"}
+			if test.manager {
+				want = []string{"store.access", "membership", "authorize", "store.get"}
+			}
+			if !reflect.DeepEqual(*fixture.order, want) {
 				t.Fatalf("order = %v, want %v", *fixture.order, want)
 			}
 		})
+	}
+}
+
+func TestGetRequiresOverrideWhenManagerMembershipWasRevoked(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	denied := errors.New("override denied")
+	fixture.authorizer.err = denied
+	if _, err := fixture.service.Get(context.Background(), fixture.call, fixture.examID); !errors.Is(err, denied) {
+		t.Fatalf("error = %v, want override denial", err)
+	}
+	if fixture.authorizer.action != model.ActionExamViewOverride {
+		t.Fatalf("action = %s, want override after membership revocation", fixture.authorizer.action)
+	}
+	if want := []string{"store.access", "membership", "authorize"}; !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
 	}
 }
 
@@ -161,11 +199,11 @@ func newAuthoringFixture(t *testing.T) authoringFixture {
 	authorizer := &authorizerFake{order: &order}
 	memberships := &membershipsFake{order: &order}
 	auditor := &auditorFake{order: &order}
-	persistence := &authoringStoreFake{order: &order, examID: examID, actorID: userID}
+	persistence := &authoringStoreFake{order: &order, examID: examID, unitID: unitID, actorID: userID}
 	effects := &effectsFake{order: &order}
 	service, err := NewAuthoring(persistence, memberships, authorizer, auditor, effects, effects, func() time.Time {
 		return time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
-	}, func() string { return examID.String() })
+	}, func() model.ExamID { return examID })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +258,7 @@ func (f *auditorFake) Fail(_ context.Context, _ string, code string) error {
 type authoringStoreFake struct {
 	order          *[]string
 	examID         model.ExamID
+	unitID         model.AcademicUnitID
 	actorID        model.UserID
 	actorIsManager bool
 	replayed       bool
@@ -228,15 +267,7 @@ type authoringStoreFake struct {
 	err            error
 }
 
-func (f *authoringStoreFake) Create(_ context.Context, input *store.ExamAuthoringCreation) (*store.ExamAuthoringSnapshot, error) {
-	*f.order = append(*f.order, "store.create")
-	f.creation = input
-	if f.err != nil {
-		return nil, f.err
-	}
-	return snapshotFromCreation(input, true), nil
-}
-func (f *authoringStoreFake) CreateIdempotently(_ context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+func (f *authoringStoreFake) Create(_ context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
 	*f.order = append(*f.order, "store.create")
 	f.creation, f.idempotency = input, command
 	if f.err != nil {
@@ -249,7 +280,7 @@ func (f *authoringStoreFake) Access(_ context.Context, examID model.ExamID, _ mo
 	if f.err != nil {
 		return nil, f.err
 	}
-	exam, _ := model.NewExam(examID, model.NewAcademicUnitID(), f.actorID, time.Now().UTC())
+	exam, _ := model.NewExam(examID, f.unitID, f.actorID, time.Now().UTC())
 	return &store.ExamAccessSnapshot{Exam: exam, ActorIsManager: f.actorIsManager}, nil
 }
 func (f *authoringStoreFake) Get(_ context.Context, examID model.ExamID, _ model.UserID) (*store.ExamAuthoringSnapshot, error) {
@@ -258,7 +289,7 @@ func (f *authoringStoreFake) Get(_ context.Context, examID model.ExamID, _ model
 		return nil, f.err
 	}
 	at := time.Now().UTC()
-	exam, _ := model.NewExam(examID, model.NewAcademicUnitID(), f.actorID, at)
+	exam, _ := model.NewExam(examID, f.unitID, f.actorID, at)
 	draft, _ := model.NewExamDraft(examID, "Test", "", model.DefaultExamPolicySet(), at)
 	return &store.ExamAuthoringSnapshot{Exam: exam, Draft: draft, OwnerUserID: f.actorID, ManagerCount: 1, ActorIsManager: f.actorIsManager}, nil
 }

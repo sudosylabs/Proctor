@@ -5,6 +5,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -24,15 +25,15 @@ type examResponse struct {
 }
 
 type examIdentityResponse struct {
-	ID                string `json:"id"`
-	AcademicUnitID    string `json:"academic_unit_id"`
-	CreatorUserID     string `json:"creator_user_id"`
-	OwnerUserID       string `json:"owner_user_id"`
-	DefaultRevisionID string `json:"default_revision_id,omitempty"`
-	CreateAt          int64  `json:"create_at"`
-	UpdateAt          int64  `json:"update_at"`
-	DeleteAt          int64  `json:"delete_at"`
-	Revision          int64  `json:"revision"`
+	ID                string  `json:"id"`
+	AcademicUnitID    string  `json:"academic_unit_id"`
+	CreatorUserID     string  `json:"creator_user_id"`
+	OwnerUserID       string  `json:"owner_user_id"`
+	DefaultRevisionID string  `json:"default_revision_id,omitempty"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
+	ArchivedAt        *string `json:"archived_at"`
+	Revision          int64   `json:"revision"`
 }
 
 type examDraftResponse struct {
@@ -41,7 +42,7 @@ type examDraftResponse struct {
 	InstructionsMarkdown string             `json:"instructions_markdown"`
 	Policy               examPolicyResponse `json:"policy"`
 	BaseRevisionID       string             `json:"base_revision_id,omitempty"`
-	UpdateAt             int64              `json:"update_at"`
+	UpdatedAt            string             `json:"updated_at"`
 	Revision             int64              `json:"revision"`
 	ResourceCount        int                `json:"resource_count"`
 	HasStarterWorkspace  bool               `json:"has_starter_workspace"`
@@ -73,9 +74,9 @@ func examResource(exams ExamApplication) resource {
 	member := apiPath(literal("exams"), canonicalID("exam_id"))
 	return newResource(
 		"exams",
-		idempotentPrincipalRoute(IdempotencyOptional, http.MethodPost, collection, academicMutationErrorCodes(
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, academicMutationErrorCodes(
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable",
-			"idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.create),
 		principalRoute(http.MethodGet, member, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.unavailable"), module.get),
 	)
@@ -118,12 +119,17 @@ func (m examResourceModule) get(request operationRequest) (operationResult, erro
 
 func examResponseFromView(view application.ExamView) examResponse {
 	policy := view.Draft.Policy
+	var archivedAt *string
+	if view.Exam.ArchivedAt.Valid {
+		formatted := model.TimeUTC(view.Exam.ArchivedAt.Time).Format(time.RFC3339Nano)
+		archivedAt = &formatted
+	}
 	return examResponse{
 		Exam: examIdentityResponse{
 			ID: view.Exam.ID.String(), AcademicUnitID: view.Exam.AcademicUnitID.String(),
 			CreatorUserID: view.Exam.CreatorUserID.String(), OwnerUserID: view.Exam.OwnerUserID.String(),
-			DefaultRevisionID: view.Exam.DefaultRevisionID.String(), CreateAt: model.MillisFromTime(view.Exam.CreatedAt),
-			UpdateAt: model.MillisFromTime(view.Exam.UpdatedAt), DeleteAt: view.Exam.ArchivedAt.Millis(), Revision: view.Exam.Revision,
+			DefaultRevisionID: view.Exam.DefaultRevisionID.String(), CreatedAt: model.TimeUTC(view.Exam.CreatedAt).Format(time.RFC3339Nano),
+			UpdatedAt: model.TimeUTC(view.Exam.UpdatedAt).Format(time.RFC3339Nano), ArchivedAt: archivedAt, Revision: view.Exam.Revision,
 		},
 		Draft: examDraftResponse{
 			ExamID: view.Draft.ExamID.String(), Title: view.Draft.Title,
@@ -135,7 +141,7 @@ func examResponseFromView(view application.ExamView) examResponse {
 					MinimumDurationMilliseconds: policy.FocusLoss.MinimumDuration.Milliseconds(), IncidentCount: policy.FocusLoss.IncidentCount,
 					WindowMilliseconds: policy.FocusLoss.Window.Milliseconds(), Outcome: string(policy.FocusLoss.Outcome)},
 			},
-			BaseRevisionID: view.Draft.BaseRevisionID.String(), UpdateAt: model.MillisFromTime(view.Draft.UpdatedAt),
+			BaseRevisionID: view.Draft.BaseRevisionID.String(), UpdatedAt: model.TimeUTC(view.Draft.UpdatedAt).Format(time.RFC3339Nano),
 			Revision: view.Draft.Revision, ResourceCount: view.ResourceCount, HasStarterWorkspace: view.HasStarterWorkspace,
 		},
 		OwnerUserID: view.OwnerUserID.String(), ManagerCount: view.ManagerCount,

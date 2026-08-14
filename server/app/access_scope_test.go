@@ -102,6 +102,40 @@ func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
 	}
 }
 
+func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing.T) {
+	t.Parallel()
+	institutionID := model.NewInstitutionID()
+	unitID, userID, roleID := model.NewAcademicUnitID(), model.NewUserID(), model.NewRoleID()
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{},
+		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
+			unitID.String(): {{ID: unitID, InstitutionID: institutionID}},
+		}},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := newAccessControlService(
+		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionExamCreateOverride)}}}},
+		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String()}}},
+		resolver, accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
+	}
+	allowed, err := access.Can(context.Background(), principal, model.ActionExamCreateOverride, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()})
+	if err != nil || !allowed {
+		t.Fatalf("exam create override = %v, %v", allowed, err)
+	}
+}
+
 func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	t.Parallel()
 

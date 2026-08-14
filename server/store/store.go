@@ -81,8 +81,7 @@ type ExamAuthoringCreation struct {
 // retry-outcome creation boundary. Get remains bounded regardless of manager
 // or future resource cardinality.
 type ExamAuthoringStore interface {
-	Create(context.Context, *ExamAuthoringCreation) (*ExamAuthoringSnapshot, error)
-	CreateIdempotently(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	Access(context.Context, model.ExamID, model.UserID) (*ExamAccessSnapshot, error)
 	Get(context.Context, model.ExamID, model.UserID) (*ExamAuthoringSnapshot, error)
 	Resolve(context.Context, model.ExamID) (*model.Exam, error)

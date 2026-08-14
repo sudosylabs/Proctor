@@ -112,6 +112,10 @@ type openAPIAgreementSchema struct {
 	Name     string
 	DTO      reflect.Type
 	Required []string
+	// Nullable names fields, or dot-separated nested fields, whose response
+	// representation deliberately emits JSON null. Request pointer/null
+	// semantics remain inferred automatically.
+	Nullable []string
 }
 
 type openAPIAgreementViolation struct {
@@ -261,12 +265,16 @@ func evaluateOpenAPIAgreement(
 			violations = appendAgreementViolation(violations, key, "document idempotency", fmt.Sprintf("got %q, want %q", operation.Idempotency, wantIdempotency))
 		}
 		if wantIdempotency != IdempotencyNone {
+			parameterRef := "#/components/parameters/OptionalIdempotencyKey"
+			if wantIdempotency == IdempotencyRequired {
+				parameterRef = "#/components/parameters/RequiredIdempotencyKey"
+			}
 			found := false
 			for _, parameter := range operation.Parameters {
-				found = found || parameter.Ref == "#/components/parameters/OptionalIdempotencyKey"
+				found = found || parameter.Ref == parameterRef
 			}
 			if !found {
-				violations = appendAgreementViolation(violations, key, "idempotency header", "optional Idempotency-Key parameter is missing")
+				violations = appendAgreementViolation(violations, key, "idempotency header", fmt.Sprintf("%s Idempotency-Key parameter is missing", wantIdempotency))
 			}
 		}
 		wantSecurity, _ := securityForAuth(contract.Auth, contract.method())

@@ -530,15 +530,9 @@ func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 in
 	})
 }
 
-func (s *timedExamAuthoringStore) Create(arg0 context.Context, arg1 *store.ExamAuthoringCreation) (*store.ExamAuthoringSnapshot, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreate), func() (*store.ExamAuthoringSnapshot, error) {
-		return s.next.Create(arg0, arg1)
-	})
-}
-
-func (s *timedExamAuthoringStore) CreateIdempotently(arg0 context.Context, arg1 *store.ExamAuthoringCreation, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreateIdempotently), func() (*store.ExamAuthoringCommandResult, error) {
-		return s.next.CreateIdempotently(arg0, arg1, arg2)
+func (s *timedExamAuthoringStore) Create(arg0 context.Context, arg1 *store.ExamAuthoringCreation, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodCreate), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.Create(arg0, arg1, arg2)
 	})
 }
 

@@ -39,13 +39,46 @@ func (s *institutionStub) Save(context.Context, *model.Institution) (*model.Inst
 type rootStub struct {
 	store.Store
 	institution         store.InstitutionStore
+	examAuthoring       store.ExamAuthoringStore
 	personalAccessToken store.PersonalAccessTokenStore
 }
 
 func (s *rootStub) Institution() store.InstitutionStore   { return s.institution }
 func (s *rootStub) AcademicUnit() store.AcademicUnitStore { return nil }
+func (s *rootStub) ExamAuthoring() store.ExamAuthoringStore {
+	return s.examAuthoring
+}
 func (s *rootStub) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return s.personalAccessToken
+}
+
+type examAuthoringStub struct {
+	store.ExamAuthoringStore
+	createAttempts  int
+	accessAttempts  int
+	getAttempts     int
+	resolveAttempts int
+	err             error
+}
+
+func (s *examAuthoringStub) Create(context.Context, *store.ExamAuthoringCreation, *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	s.createAttempts++
+	return nil, s.err
+}
+
+func (s *examAuthoringStub) Access(context.Context, model.ExamID, model.UserID) (*store.ExamAccessSnapshot, error) {
+	s.accessAttempts++
+	return nil, s.err
+}
+
+func (s *examAuthoringStub) Get(context.Context, model.ExamID, model.UserID) (*store.ExamAuthoringSnapshot, error) {
+	s.getAttempts++
+	return nil, s.err
+}
+
+func (s *examAuthoringStub) Resolve(context.Context, model.ExamID) (*model.Exam, error) {
+	s.resolveAttempts++
+	return nil, s.err
 }
 
 type personalAccessTokenStub struct {
@@ -139,6 +172,46 @@ func TestRetryDoesNotTreatMutatingResolveAsARead(t *testing.T) {
 	}
 	if stub.attempts != 1 {
 		t.Fatalf("Resolve() attempts = %d, want 1", stub.attempts)
+	}
+}
+
+func TestRetryExamAuthoringIdempotentCreateAndReads(t *testing.T) {
+	t.Parallel()
+
+	transientErr := errors.New("serialization failure")
+	stub := &examAuthoringStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{examAuthoring: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(err error) bool { return err == transientErr },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, &store.CommandIdempotency{})
+	_, _ = layer.ExamAuthoring().Access(context.Background(), model.NewExamID(), model.NewUserID())
+	_, _ = layer.ExamAuthoring().Get(context.Background(), model.NewExamID(), model.NewUserID())
+	_, _ = layer.ExamAuthoring().Resolve(context.Background(), model.NewExamID())
+	if stub.createAttempts != 3 || stub.accessAttempts != 3 || stub.getAttempts != 3 || stub.resolveAttempts != 3 {
+		t.Fatalf("attempts create/access/get/resolve = %d/%d/%d/%d, want 3/3/3/3",
+			stub.createAttempts, stub.accessAttempts, stub.getAttempts, stub.resolveAttempts)
+	}
+}
+
+func TestRetryExamAuthoringDoesNotRetryCreateWithoutIdempotency(t *testing.T) {
+	t.Parallel()
+
+	stub := &examAuthoringStub{err: errors.New("serialization failure")}
+	layer, err := retrylayer.New(&rootStub{examAuthoring: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = layer.ExamAuthoring().Create(context.Background(), &store.ExamAuthoringCreation{}, nil)
+	if stub.createAttempts != 1 {
+		t.Fatalf("Create() attempts = %d, want 1 without idempotency", stub.createAttempts)
 	}
 }
 

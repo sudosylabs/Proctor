@@ -1186,10 +1186,10 @@
         "operationId": "createExam",
         "summary": "Create an Exam and its initial Draft",
         "x-proctor-auth": "principal_required",
-        "x-proctor-idempotency": "optional",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
-        "parameters": [{"$ref": "#/components/parameters/OptionalIdempotencyKey"}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
         "requestBody": {"$ref": "#/components/requestBodies/CreateExam"},
         "responses": {
           "201": {"$ref": "#/components/responses/ExamCreated"},
@@ -1313,6 +1313,13 @@
         "in": "header",
         "required": false,
         "description": "Opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict.",
+        "schema": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._~-]+$"}
+      },
+      "RequiredIdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict.",
         "schema": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._~-]+$"}
       },
       "AcademicUnitID": {
@@ -1625,7 +1632,7 @@
         "properties": {
           "academic_unit_id": {"$ref": "#/components/schemas/ID"},
           "title": {"type": "string", "minLength": 1, "maxLength": 200},
-          "instructions_markdown": {"type": "string", "maxLength": 65536, "description": "Optional authored Markdown; empty means absent."}
+          "instructions_markdown": {"type": "string", "description": "Optional authored Markdown encoded as UTF-8 and limited to 65536 bytes; empty means absent."}
         }
       },
       "ExamResponse": {
@@ -1642,30 +1649,30 @@
       "ExamIdentityResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "academic_unit_id", "creator_user_id", "owner_user_id", "create_at", "update_at", "delete_at", "revision"],
+        "required": ["id", "academic_unit_id", "creator_user_id", "owner_user_id", "created_at", "updated_at", "archived_at", "revision"],
         "properties": {
           "id": {"$ref": "#/components/schemas/ID"},
           "academic_unit_id": {"$ref": "#/components/schemas/ID"},
           "creator_user_id": {"$ref": "#/components/schemas/ID"},
           "owner_user_id": {"$ref": "#/components/schemas/ID"},
           "default_revision_id": {"$ref": "#/components/schemas/ID"},
-          "create_at": {"type": "integer", "format": "int64"},
-          "update_at": {"type": "integer", "format": "int64"},
-          "delete_at": {"type": "integer", "format": "int64"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "archived_at": {"type": ["string", "null"], "format": "date-time"},
           "revision": {"type": "integer", "format": "int64", "minimum": 1}
         }
       },
       "ExamDraftResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["exam_id", "title", "instructions_markdown", "policy", "update_at", "revision", "resource_count", "has_starter_workspace"],
+        "required": ["exam_id", "title", "instructions_markdown", "policy", "updated_at", "revision", "resource_count", "has_starter_workspace"],
         "properties": {
           "exam_id": {"$ref": "#/components/schemas/ID"},
           "title": {"type": "string"},
-          "instructions_markdown": {"type": "string"},
+          "instructions_markdown": {"type": "string", "description": "Authored Markdown encoded as UTF-8 and limited to 65536 bytes."},
           "policy": {"$ref": "#/components/schemas/ExamPolicySet"},
           "base_revision_id": {"$ref": "#/components/schemas/ID"},
-          "update_at": {"type": "integer", "format": "int64"},
+          "updated_at": {"type": "string", "format": "date-time"},
           "revision": {"type": "integer", "format": "int64", "minimum": 1},
           "resource_count": {"type": "integer", "minimum": 0},
           "has_starter_workspace": {"type": "boolean"}

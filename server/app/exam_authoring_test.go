@@ -33,6 +33,15 @@ func TestCreateExamBuildsChildCallAndIdempotency(t *testing.T) {
 	}
 }
 
+func TestCreateExamRequiresIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	application := &App{exams: &examUseCasesFake{}}
+	_, err := application.CreateExam(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), CreateExamCommand{AcademicUnitID: model.NewAcademicUnitID(), Title: "Algorithms"})
+	if !Is(err, "idempotency.key_required") {
+		t.Fatalf("error = %v, want idempotency.key_required", err)
+	}
+}
+
 func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 	t.Parallel()
 	for _, failure := range []error{&examengine.Fault{Code: "exam.not_found"}, NewError("authorization.denied")} {

@@ -63,6 +63,8 @@ func evaluateOpenAPISchemaAgreement(
 			field.Type,
 			strings.HasSuffix(contract.Name, "Request"),
 			!stringSliceContains(contract.Required, name),
+			stringSliceContains(contract.Nullable, name),
+			nestedAgreementPaths(contract.Nullable, name),
 		)
 	}
 	return violations
@@ -76,8 +78,10 @@ func evaluateOpenAPIShapeAgreement(
 	goType reflect.Type,
 	requestSchema bool,
 	fieldOptional bool,
+	forceNullable bool,
+	nullablePaths []string,
 ) []openAPIAgreementViolation {
-	nullable := false
+	nullable := forceNullable
 	for goType.Kind() == reflect.Pointer {
 		nullable = nullable || requestSchema && fieldOptional
 		goType = goType.Elem()
@@ -130,7 +134,7 @@ func evaluateOpenAPIShapeAgreement(
 		if shape.Items == nil {
 			return appendAgreementViolation(violations, target, "items", "array item schema is missing")
 		}
-		return evaluateOpenAPIShapeAgreement(violations, document, target+"[]", *shape.Items, goType.Elem(), requestSchema, false)
+		return evaluateOpenAPIShapeAgreement(violations, document, target+"[]", *shape.Items, goType.Elem(), requestSchema, false, false, nil)
 	}
 	if goType.Kind() == reflect.Map {
 		var additional openAPISchemaShape
@@ -139,7 +143,7 @@ func evaluateOpenAPIShapeAgreement(
 			json.Unmarshal(shape.AdditionalProperties, &additional) != nil {
 			return appendAgreementViolation(violations, target, "additional properties", "map schema does not declare string-keyed values")
 		}
-		return evaluateOpenAPIShapeAgreement(violations, document, target+"{}", additional, goType.Elem(), requestSchema, false)
+		return evaluateOpenAPIShapeAgreement(violations, document, target+"{}", additional, goType.Elem(), requestSchema, false, false, nil)
 	}
 	if goType.Kind() != reflect.Struct {
 		return violations
@@ -178,6 +182,8 @@ func evaluateOpenAPIShapeAgreement(
 			field.Type,
 			requestSchema,
 			!stringSliceContains(shape.Required, name),
+			stringSliceContains(nullablePaths, name),
+			nestedAgreementPaths(nullablePaths, name),
 		)
 	}
 	return violations
@@ -245,6 +251,17 @@ func stringSliceContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func nestedAgreementPaths(values []string, field string) []string {
+	prefix := field + "."
+	var nested []string
+	for _, value := range values {
+		if strings.HasPrefix(value, prefix) {
+			nested = append(nested, strings.TrimPrefix(value, prefix))
+		}
+	}
+	return nested
 }
 
 func openAPITypesEqual(value any, want []string) bool {

@@ -2,7 +2,11 @@
 
 [`../../openapi.json`](../../openapi.json) is the reviewed public HTTP contract.
 Its coverage began with the migrated Academic Unit reference slice and now
-includes Institution, Programme, Programme Level, Academic Period, Class, Affiliation, Academic Unit Member, Class Member enrollment, User profiles, account enablement, administrative Session operations, Role administration, Role Binding administration, Audit listing, and installation bootstrap without weakening existing contracts.
+includes Institution, Programme, Programme Level, Academic Period, Class,
+Affiliation, Academic Unit Member, Class Member enrollment, Exam authoring,
+User profiles, account enablement, administrative Session operations, Role
+administration, Role Binding administration, Audit listing, and installation
+bootstrap without weakening existing contracts.
 
 Use the Academic Unit slice as the conceptual pattern for later capabilities:
 
@@ -94,7 +98,8 @@ Routes declare `none`, `optional`, or `required` idempotency in the immutable
 catalog and repeat non-`none` policy in OpenAPI. Existing v1 operations may add
 optional support; making the header required needs a new compatible contract.
 The initial optional operations are `POST /api/v1/academic-periods` and
-`POST /api/v1/academic-units`.
+`POST /api/v1/academic-units`. New Exam creation requires the header because
+its contract is idempotent from introduction.
 
 `Idempotency-Key` is one case-sensitive opaque value of 1–128 characters from
 letters, digits, `-`, `.`, `_`, and `~`. Transport rejects malformed values;

@@ -118,6 +118,33 @@ func (s *academicPeriodStore) CreateIdempotently(ctx context.Context, input *sto
 	})
 }
 
+func (s *examAuthoringStore) Create(ctx context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	if command == nil {
+		return s.ExamAuthoringStore.Create(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamAuthoringCommandResult, error) {
+		return s.ExamAuthoringStore.Create(ctx, input, command)
+	})
+}
+
+func (s *examAuthoringStore) Access(ctx context.Context, examID model.ExamID, actorID model.UserID) (*store.ExamAccessSnapshot, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamAccessSnapshot, error) {
+		return s.ExamAuthoringStore.Access(ctx, examID, actorID)
+	})
+}
+
+func (s *examAuthoringStore) Get(ctx context.Context, examID model.ExamID, actorID model.UserID) (*store.ExamAuthoringSnapshot, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamAuthoringSnapshot, error) {
+		return s.ExamAuthoringStore.Get(ctx, examID, actorID)
+	})
+}
+
+func (s *examAuthoringStore) Resolve(ctx context.Context, examID model.ExamID) (*model.Exam, error) {
+	return retryCall1(ctx, s.layer, func() (*model.Exam, error) {
+		return s.ExamAuthoringStore.Resolve(ctx, examID)
+	})
+}
+
 func (s *classStore) Get(ctx context.Context, id string) (*model.Class, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Class, error) { return s.ClassStore.Get(ctx, id) })
 }

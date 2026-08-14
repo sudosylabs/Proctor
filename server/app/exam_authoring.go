@@ -30,6 +30,9 @@ type examUseCases interface {
 }
 
 func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (ExamView, error) {
+	if command.IdempotencyKey == "" {
+		return ExamView{}, NewError("idempotency.key_required")
+	}
 	idempotency, err := newCommandIdempotency(invocation, "exam.create.v1", command.IdempotencyKey, struct {
 		AcademicUnitID       string `json:"academic_unit_id"`
 		Title                string `json:"title"`

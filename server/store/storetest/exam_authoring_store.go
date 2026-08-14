@@ -6,6 +6,7 @@ package storetest
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 		Retention: time.Hour, Wait: time.Second,
 	}
 
-	first, err := ss.ExamAuthoring().CreateIdempotently(ctx, creation, command)
+	first, err := ss.ExamAuthoring().Create(ctx, creation, command)
 	requireNoError(t, err)
 	if first.Replayed || first.Value.ManagerCount != 1 || !first.Value.ActorIsManager || first.Value.OwnerUserID != creator.ID {
 		t.Fatalf("first create = %#v", first)
@@ -51,10 +52,22 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	replayCreation.Exam.ID = creation.Exam.ID
 	replayCreation.Draft.ExamID = creation.Exam.ID
 	replayCreation.Manager.ExamID = creation.Exam.ID
-	replayed, err := ss.ExamAuthoring().CreateIdempotently(ctx, replayCreation, command)
+	replayed, err := ss.ExamAuthoring().Create(ctx, replayCreation, command)
 	requireNoError(t, err)
 	if !replayed.Replayed || replayed.Value.Exam.ID != first.Value.Exam.ID {
 		t.Fatalf("replay = %#v", replayed)
+	}
+	replayAudit, err := ss.Audit().Get(ctx, replayCreation.AuditEventID)
+	requireNoError(t, err)
+	if replayAudit.Status != model.AuditStatusSuccess {
+		t.Fatalf("replay audit status = %q, want success", replayAudit.Status)
+	}
+	var replayResult map[string]any
+	if err := json.Unmarshal(replayAudit.Result, &replayResult); err != nil {
+		t.Fatalf("decode replay audit result: %v", err)
+	}
+	if replayResult["idempotency_replayed"] != true || replayResult["original_audit_event_id"] != creation.AuditEventID {
+		t.Fatalf("replay audit result = %#v", replayResult)
 	}
 
 	managerView, err := ss.ExamAuthoring().Get(ctx, first.Value.Exam.ID, creator.ID)
@@ -83,7 +96,12 @@ func testExamAuthoringAuditAtomicity(t *testing.T, ss store.Store) {
 	creator := saveUser(t, ctx, ss)
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, model.NowUTC())
 	creation.AuditEventID = model.NewId()
-	if _, err := ss.ExamAuthoring().Create(ctx, creation); err == nil {
+	command := &store.CommandIdempotency{
+		UserID: creator.ID, Operation: "exam.create.v1", KeyDigest: sha256.Sum256([]byte("rollback-key")),
+		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("rollback-command")), OutcomeVersion: 1,
+		Retention: time.Hour, Wait: time.Second,
+	}
+	if _, err := ss.ExamAuthoring().Create(ctx, creation, command); err == nil {
 		t.Fatal("Create succeeded without its audit attempt")
 	}
 	if _, err := ss.ExamAuthoring().Get(ctx, creation.Exam.ID, creator.ID); !store.IsNotFound(err) {
