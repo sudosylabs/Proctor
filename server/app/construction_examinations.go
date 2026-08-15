@@ -8,6 +8,7 @@ import (
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
+	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -28,6 +29,17 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		effects, effects, time.Now, model.NewExamRevisionID,
+	)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
+	sittings, err := examsitting.New(
+		deps.Store.ExamSitting(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		examSittingAuthorizationAdapter{authorization: access.authorization},
+		examSittingAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		examSittingRealtimeEffects{realtime: foundation.realtime},
+		examSittingRealtimeEffects{realtime: foundation.realtime},
+		time.Now, model.NewExamSittingID,
 	)
 	if err != nil {
 		return examinationConstruction{}, err
@@ -57,5 +69,5 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{authoring: authoring, revisions: revisions, resources: resources, starterWorkspace: starterWorkspace}, nil
+	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, resources: resources, starterWorkspace: starterWorkspace}, nil
 }

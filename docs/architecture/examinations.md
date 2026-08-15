@@ -157,24 +157,34 @@ mutable Draft Starter Workspace files are private and `no-store`.
 ## Sitting lifecycle and eligibility
 
 Each Exam Sitting selects one Exam Revision and exactly one Class whose
-Programme belongs to the Exam's exact Academic Unit. Scheduling and opening
-validate the active Class lineage and require the half-open Sitting interval to
-fit within its Academic Period. Authorization never bypasses those structural
+Programme belongs to the Exam's exact Academic Unit. Scheduling validates the
+active Class lineage, requires a sealed Revision of the same Exam, and requires
+the half-open Sitting interval to fit within the Class's Academic Period. A new
+or changed schedule must start strictly after PostgreSQL's decision time while
+the relevant rows are locked. Authorization never bypasses those structural
 rules.
+
+The implemented pre-open slice owns bounded exact and keyset-paginated
+discovery plus audited, revision-fenced, idempotent scheduling, rescheduling,
+and cancellation. Only a `Scheduled` Sitting may be rescheduled or canceled.
+The lifecycle slice adds opening and deadline Jobs; opening revalidates the
+current academic structure so an administrative lineage or period change after
+scheduling cannot admit an ineligible Sitting.
 
 ~~~text
 Scheduled -> Open <-> Paused -> Closing -> Closed
 Scheduled -> Canceled
 ~~~
 
-Durable Jobs open at the scheduled start and enter Closing at the effective
-deadline. Recovery before the scheduled end opens late without moving the
-deadline; recovery after the whole window elapsed cancels with
+Durable Jobs open at the scheduled start and enter Closing at
+`ScheduledEndAt`. Recovery before the scheduled end opens late without moving
+the deadline; recovery after the whole window elapsed cancels with
 `schedule_elapsed`. Managers may close early with a reason. Schedule fields may
 change before opening; after opening the end may only be extended. Pause blocks
 new Attempts, workspace mutation, execution, and submission while retaining
-read-only candidate presentation and integrity monitoring. Its accumulated
-duration extends the deadline only when the frozen Sitting policy permits it.
+read-only candidate presentation and integrity monitoring. In version 1,
+`ScheduledEndAt` is the sole delivery deadline: paused duration does not extend
+it and there is no separate effective-deadline field or pause-extension policy.
 
 Closing immediately denies new participation and workspace mutation. Resumable
 bounded work seals every unfinished Attempt's last acknowledged workspace,
@@ -391,7 +401,8 @@ The initial authorization resources are Exam, Exam Sitting, Exam Attempt, and
 Submission. Drafts/Revisions authorize through Exam; resources through their
 owning Exam/Sitting/Attempt path; flags and reviews through Submission/Attempt.
 Closed actions cover creation, view, management, publication, manager changes,
-Sitting management, Attempt control, and Submission view/review/release.
+Sitting scheduling/view/management, Attempt control, and Submission
+view/review/release.
 Student participation is a current relationship-and-state decision rather than
 a reusable role permission.
 

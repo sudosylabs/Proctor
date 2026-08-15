@@ -15,24 +15,30 @@ import "sort"
 type Action string
 
 const (
-	ActionInstitutionManage        Action = "institution.manage"
-	ActionRoleManage               Action = "role.manage"
-	ActionAuditView                Action = "audit.view"
-	ActionUserView                 Action = "user.view"
-	ActionUserManage               Action = "user.manage"
-	ActionUserProfilePictureManage Action = "user.profile_picture.manage"
-	ActionSessionView              Action = "session.view"
-	ActionSessionManage            Action = "session.manage"
-	ActionJobView                  Action = "job.view"
-	ActionJobManage                Action = "job.manage"
-	ActionExamCreate               Action = "exam.create"
-	ActionExamCreateOverride       Action = "exam.create.override"
-	ActionExamView                 Action = "exam.view"
-	ActionExamViewOverride         Action = "exam.view.override"
-	ActionExamManage               Action = "exam.manage"
-	ActionExamManageOverride       Action = "exam.manage.override"
-	ActionExamPublish              Action = "exam.publish"
-	ActionExamPublishOverride      Action = "exam.publish.override"
+	ActionInstitutionManage         Action = "institution.manage"
+	ActionRoleManage                Action = "role.manage"
+	ActionAuditView                 Action = "audit.view"
+	ActionUserView                  Action = "user.view"
+	ActionUserManage                Action = "user.manage"
+	ActionUserProfilePictureManage  Action = "user.profile_picture.manage"
+	ActionSessionView               Action = "session.view"
+	ActionSessionManage             Action = "session.manage"
+	ActionJobView                   Action = "job.view"
+	ActionJobManage                 Action = "job.manage"
+	ActionExamCreate                Action = "exam.create"
+	ActionExamCreateOverride        Action = "exam.create.override"
+	ActionExamView                  Action = "exam.view"
+	ActionExamViewOverride          Action = "exam.view.override"
+	ActionExamManage                Action = "exam.manage"
+	ActionExamManageOverride        Action = "exam.manage.override"
+	ActionExamPublish               Action = "exam.publish"
+	ActionExamPublishOverride       Action = "exam.publish.override"
+	ActionExamSittingCreate         Action = "exam.sitting.create"
+	ActionExamSittingCreateOverride Action = "exam.sitting.create.override"
+	ActionExamSittingView           Action = "exam.sitting.view"
+	ActionExamSittingViewOverride   Action = "exam.sitting.view.override"
+	ActionExamSittingManage         Action = "exam.sitting.manage"
+	ActionExamSittingManageOverride Action = "exam.sitting.manage.override"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -51,6 +57,7 @@ const (
 	ResourceClass        ResourceType = "class"
 	ResourceUser         ResourceType = "user"
 	ResourceExam         ResourceType = "exam"
+	ResourceExamSitting  ResourceType = "exam_sitting"
 )
 
 // Resource identifies the concrete object against which an action is checked.
@@ -143,6 +150,30 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionExamPublishOverride, ResourceType: ResourceExam,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
+	ActionExamSittingCreate: {
+		Action: ActionExamSittingCreate, ResourceType: ResourceExam,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamSittingCreateOverride: {
+		Action: ActionExamSittingCreateOverride, ResourceType: ResourceExam,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamSittingView: {
+		Action: ActionExamSittingView, ResourceType: ResourceExamSitting,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamSittingViewOverride: {
+		Action: ActionExamSittingViewOverride, ResourceType: ResourceExamSitting,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamSittingManage: {
+		Action: ActionExamSittingManage, ResourceType: ResourceExamSitting,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamSittingManageOverride: {
+		Action: ActionExamSittingManageOverride, ResourceType: ResourceExamSitting,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
 	ActionAcademicUnitView: {
 		Action: ActionAcademicUnitView, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
@@ -194,7 +225,7 @@ func (r Resource) Validate() error {
 		return invalidModelError(where, "resource", "id", "must be a valid identifier", "")
 	}
 	switch r.Type {
-	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser, ResourceExam:
+	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser, ResourceExam, ResourceExamSitting:
 		return nil
 	default:
 		return invalidModelError(where, "resource", "type", "has an unknown value", "id="+r.ID)

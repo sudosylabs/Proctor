@@ -80,10 +80,21 @@ multiple nodes and uses the PostgreSQL clock.
 The examination boundary is divided into cohesive Store contracts for Exam
 authoring/publication, Sittings, Attempts and Participation, Workspace and
 Submission, and Integrity and Review. They expose named atomic operations for
-publication, live correction, first connection, participation fencing,
-workspace mutation, submission sealing, Sitting closure, suspension/re-allow,
-and review finalization. The application never coordinates these guarantees
-through a raw transaction callback.
+publication, Sitting scheduling/rescheduling/cancellation, live correction,
+first connection, participation fencing, workspace mutation, submission
+sealing, Sitting closure, suspension/re-allow, and review finalization. The
+application never coordinates these guarantees through a raw transaction
+callback.
+
+Fresh Sitting schedule mutations lock and recheck the active Exam, current
+Manager relationship unless an explicit override was authorized, same-Exam
+sealed Revision, active Class lineage, and full Academic Period containment.
+PostgreSQL `statement_timestamp()` decides whether a new or changed start is
+strictly future. The Sitting transition, audit completion, and small
+idempotent outcome commit atomically; an exact replay resolves before stale or
+current-relationship guards. Private cancellation rationale is retained in a
+dedicated private column and is excluded from ordinary audit, event, and public
+Sitting projections.
 
 PostgreSQL owns Exam and Sitting state, logical workspace hierarchy, current
 workspace-content selection, cursors and mutation journals, leases, policy

@@ -16,6 +16,7 @@ func constructAccessAndAcademics(
 	scopeResolver, err := newAccessScopeResolver(
 		deps.Store.Institution(), deps.Store.AcademicUnit(), deps.Store.Class(), deps.Store.User(), deps.Store.ClassMember(),
 		deps.Store.ExamAuthoring(),
+		deps.Store.ExamSitting(),
 	)
 	if err != nil {
 		return accessAcademicConstruction{}, err

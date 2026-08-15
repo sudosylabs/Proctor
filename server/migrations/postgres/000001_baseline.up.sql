@@ -583,6 +583,7 @@ CREATE TABLE exam_revisions (
     publication_kind varchar(24) NOT NULL CHECK (publication_kind IN ('standard', 'live_correction')),
     sealed boolean NOT NULL DEFAULT false,
     UNIQUE (exam_id, id),
+    UNIQUE (exam_id, id, sealed),
     UNIQUE (exam_id, number),
     CONSTRAINT exam_revisions_base_revision_fkey
         FOREIGN KEY (exam_id, base_revision_id) REFERENCES exam_revisions(exam_id, id),
@@ -728,6 +729,75 @@ CREATE CONSTRAINT TRIGGER exam_revision_sealed_check
     AFTER INSERT OR UPDATE ON exam_revisions
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION enforce_exam_revision_sealed();
+
+-- One Sitting delivers one sealed Exam Revision to one exact Class. The
+-- constant boolean in the composite foreign key makes the sealed-only rule a
+-- database invariant, rather than a convention of the scheduling adapter.
+CREATE TABLE exam_sittings (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id),
+    exam_revision_id varchar(26) NOT NULL,
+    exam_revision_sealed boolean NOT NULL DEFAULT true CHECK (exam_revision_sealed),
+    class_id varchar(26) NOT NULL REFERENCES classes(id),
+    scheduled_start_at timestamptz NOT NULL,
+    scheduled_end_at timestamptz NOT NULL,
+    state varchar(16) NOT NULL CHECK (state IN ('scheduled', 'open', 'paused', 'closing', 'closed', 'canceled')),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    opened_at timestamptz,
+    paused_at timestamptz,
+    closing_at timestamptz,
+    closed_at timestamptz,
+    canceled_at timestamptz,
+    reason_code varchar(32),
+    canceled_by_user_id varchar(26) REFERENCES users(id),
+    cancellation_private_reason text,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    CONSTRAINT exam_sittings_revision_fkey
+        FOREIGN KEY (exam_id, exam_revision_id, exam_revision_sealed)
+        REFERENCES exam_revisions(exam_id, id, sealed),
+    CONSTRAINT exam_sittings_schedule_check CHECK (scheduled_start_at < scheduled_end_at),
+    CONSTRAINT exam_sittings_timestamps_check CHECK (
+        updated_at >= created_at AND
+        (opened_at IS NULL OR opened_at BETWEEN created_at AND updated_at) AND
+        (paused_at IS NULL OR paused_at BETWEEN created_at AND updated_at) AND
+        (closing_at IS NULL OR closing_at BETWEEN created_at AND updated_at) AND
+        (closed_at IS NULL OR closed_at BETWEEN created_at AND updated_at) AND
+        (canceled_at IS NULL OR canceled_at BETWEEN created_at AND updated_at)
+    ),
+    CONSTRAINT exam_sittings_lifecycle_check CHECK (
+        (state = 'scheduled' AND opened_at IS NULL AND paused_at IS NULL AND closing_at IS NULL AND
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
+            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+        (state = 'open' AND opened_at IS NOT NULL AND paused_at IS NULL AND closing_at IS NULL AND
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
+            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+        (state = 'paused' AND opened_at IS NOT NULL AND paused_at IS NOT NULL AND closing_at IS NULL AND
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
+            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+        (state = 'closing' AND opened_at IS NOT NULL AND paused_at IS NULL AND closing_at IS NOT NULL AND
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
+            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+        (state = 'closed' AND opened_at IS NOT NULL AND paused_at IS NULL AND closing_at IS NOT NULL AND
+            closed_at IS NOT NULL AND canceled_at IS NULL AND reason_code IS NULL AND
+            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+        (state = 'canceled' AND opened_at IS NULL AND paused_at IS NULL AND closing_at IS NULL AND
+            closed_at IS NULL AND canceled_at IS NOT NULL AND (
+                (reason_code = 'manager_canceled' AND canceled_by_user_id IS NOT NULL AND
+                    cancellation_private_reason = btrim(cancellation_private_reason) AND
+                    char_length(cancellation_private_reason) BETWEEN 1 AND 1000 AND
+                    octet_length(cancellation_private_reason) <= 4000) OR
+                (reason_code = 'schedule_elapsed' AND canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL)
+            ))
+    )
+);
+
+CREATE INDEX exam_sittings_exam_schedule_idx
+    ON exam_sittings (exam_id, scheduled_start_at DESC, id DESC);
+CREATE INDEX exam_sittings_exam_class_schedule_idx
+    ON exam_sittings (exam_id, class_id, scheduled_start_at DESC, id DESC);
+CREATE INDEX exam_sittings_exam_state_schedule_idx
+    ON exam_sittings (exam_id, state, scheduled_start_at DESC, id DESC);
 
 CREATE TABLE class_members (
     id varchar(26) PRIMARY KEY,
@@ -1164,6 +1234,18 @@ ALTER TABLE exam_revision_starter_workspace_entries
     ADD CONSTRAINT exam_revision_starter_workspace_entries_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_revision_starter_workspace_entries_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_revision_starter_workspace_entries_object_id_canonical_check CHECK (object_id IS NULL OR object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_sittings
+    ADD CONSTRAINT exam_sittings_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sittings_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sittings_exam_revision_id_canonical_check
+    CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sittings_class_id_canonical_check
+    CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sittings_canceled_by_user_id_canonical_check
+    CHECK (canceled_by_user_id IS NULL OR canceled_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE classes
     ADD CONSTRAINT classes_id_canonical_check

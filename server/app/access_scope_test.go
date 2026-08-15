@@ -20,7 +20,7 @@ func TestAccessScopeResolverRejectsArchivedAndIncompatibleResources(t *testing.T
 	resolver, err := newAccessScopeResolver(
 		&accessInstitutionStoreFake{institution: institution},
 		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
-		&accessExamAuthoringStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
 		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{unitID.String(): {
 			{ID: unitID, InstitutionID: institutionID}, {ID: rootID, InstitutionID: institutionID},
 		}}},
-		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{exam: exam},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{exam: exam}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +60,40 @@ func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
 		t.Fatalf("resolved = %#v", resolved)
 	}
 	if scope, id := authorizationAuditScope(model.Resource{Type: model.ResourceExam, ID: examID.String()}, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
+		t.Fatalf("audit scope = %s/%s", scope, id)
+	}
+}
+
+func TestAccessScopeResolverMapsExamSittingThroughOwningExam(t *testing.T) {
+	t.Parallel()
+	institutionID, unitID := model.NewInstitutionID(), model.NewAcademicUnitID()
+	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
+	exam, err := model.NewExam(examID, unitID, model.NewUserID(), model.NowUTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sitting, err := model.NewExamSitting(sittingID, examID, model.NewExamRevisionID(), model.NewClassID(), model.NowUTC().Add(time.Hour), model.NowUTC().Add(2*time.Hour), model.NowUTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{},
+		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{unitID.String(): {{ID: unitID, InstitutionID: institutionID}}}},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{exam: exam}, &accessExamSittingStoreFake{snapshot: &store.ExamSittingSnapshot{Sitting: sitting}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
+	resolved, err := resolver.resolve(context.Background(), resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.institutionID != institutionID.String() || resolved.targetAcademicUnitID != unitID.String() {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
 		t.Fatalf("audit scope = %s/%s", scope, id)
 	}
 }
@@ -77,7 +111,7 @@ func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
 		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
 			unitID.String(): {{ID: unitID, InstitutionID: institutionID}},
 		}},
-		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{exam: exam},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{exam: exam}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +145,7 @@ func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing
 		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
 			unitID.String(): {{ID: unitID, InstitutionID: institutionID}},
 		}},
-		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +184,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
 			childID.String(): {{ID: rootID, InstitutionID: institutionID}, {ID: childID, InstitutionID: institutionID}},
 		}},
-		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -196,7 +230,7 @@ func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
 	resolver, err := newAccessScopeResolver(
 		&accessInstitutionStoreFake{err: errors.New("database unavailable")},
 		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
-		&accessExamAuthoringStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -219,7 +253,7 @@ func TestAccessControlPreservesIntrinsicSelfRead(t *testing.T) {
 		&accessInstitutionStoreFake{institution: institution},
 		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{},
 		&accessUserStoreFake{user: user}, &accessClassMemberStoreFake{},
-		&accessExamAuthoringStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -292,6 +326,18 @@ type accessExamAuthoringStoreFake struct {
 
 func (s *accessExamAuthoringStoreFake) Resolve(context.Context, model.ExamID) (*model.Exam, error) {
 	return s.exam, nil
+}
+
+type accessExamSittingStoreFake struct {
+	store.ExamSittingStore
+	snapshot *store.ExamSittingSnapshot
+}
+
+func (s *accessExamSittingStoreFake) Resolve(context.Context, model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	if s.snapshot == nil {
+		return nil, store.NewErrNotFound("exam_sitting", "")
+	}
+	return s.snapshot, nil
 }
 
 type accessRoleStoreFake struct {

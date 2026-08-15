@@ -29,6 +29,9 @@ func NewExamID() ExamID { return ExamID(NewId()) }
 // NewExamRevisionID returns a freshly generated exam-revision identifier.
 func NewExamRevisionID() ExamRevisionID { return ExamRevisionID(NewId()) }
 
+// NewExamSittingID returns a freshly generated exam-sitting identifier.
+func NewExamSittingID() ExamSittingID { return ExamSittingID(NewId()) }
+
 // NewExamResourceID returns a freshly generated exam-resource identifier.
 func NewExamResourceID() ExamResourceID { return ExamResourceID(NewId()) }
 
@@ -136,6 +139,11 @@ func ParseExamID(value string) (ExamID, error) {
 // ParseExamRevisionID validates and converts the shared identifier representation.
 func ParseExamRevisionID(value string) (ExamRevisionID, error) {
 	return parseID[ExamRevisionID](value, "exam_revision_id")
+}
+
+// ParseExamSittingID validates and converts the shared identifier representation.
+func ParseExamSittingID(value string) (ExamSittingID, error) {
+	return parseID[ExamSittingID](value, "exam_sitting_id")
 }
 
 // ParseExamResourceID validates and converts the shared identifier representation.
@@ -277,6 +285,9 @@ func (id ExamID) IsZero() bool { return id == "" }
 // IsZero reports whether the exam-revision is the empty zero value.
 func (id ExamRevisionID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the exam-sitting is the empty zero value.
+func (id ExamSittingID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the exam-resource is the empty zero value.
 func (id ExamResourceID) IsZero() bool { return id == "" }
 
@@ -369,6 +380,9 @@ func (id ExamID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the exam-revision is a canonical non-zero ID.
 func (id ExamRevisionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the exam-sitting is a canonical non-zero ID.
+func (id ExamSittingID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the exam-resource is a canonical non-zero ID.
 func (id ExamResourceID) IsValid() bool { return IsValidId(string(id)) }
@@ -463,6 +477,9 @@ func (id ExamID) String() string { return string(id) }
 // String returns the exam-revision wire/database representation.
 func (id ExamRevisionID) String() string { return string(id) }
 
+// String returns the exam-sitting wire/database representation.
+func (id ExamSittingID) String() string { return string(id) }
+
 // String returns the exam-resource wire/database representation.
 func (id ExamResourceID) String() string { return string(id) }
 
@@ -555,6 +572,9 @@ func (id ExamID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the exam-revision as its canonical string.
 func (id ExamRevisionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the exam-sitting as its canonical string.
+func (id ExamSittingID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the exam-resource as its canonical string.
 func (id ExamResourceID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -663,6 +683,11 @@ func (id *ExamID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the exam-revision when non-empty.
 func (id *ExamRevisionID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExamRevisionID)
+}
+
+// UnmarshalText decodes and validates the exam-sitting when non-empty.
+func (id *ExamSittingID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamSittingID)
 }
 
 // UnmarshalText decodes and validates the exam-resource when non-empty.
@@ -804,6 +829,9 @@ func (id ExamID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 // MarshalJSON encodes the exam-revision as a JSON string.
 func (id ExamRevisionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the exam-sitting as a JSON string.
+func (id ExamSittingID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the exam-resource as a JSON string.
 func (id ExamResourceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -911,6 +939,11 @@ func (id *ExamID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the exam-revision.
 func (id *ExamRevisionID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExamRevisionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the exam-sitting.
+func (id *ExamSittingID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamSittingID)
 }
 
 // UnmarshalJSON decodes a JSON string into the exam-resource.

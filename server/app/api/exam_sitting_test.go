@@ -1,0 +1,288 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
+)
+
+func TestExamSittingHTTPScheduleUsesStrictIdempotentCommandAndSafeResponse(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	fake := newExamSittingHTTPFake(t)
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+	body := `{"exam_revision_id":"` + fake.sitting.ExamRevisionID.String() + `","class_id":"` + fake.sitting.ClassID.String() + `","scheduled_start_at":"2026-08-15T12:30:00+02:00","scheduled_end_at":"2026-08-15T14:30:00+02:00"}`
+	request := httptest.NewRequest(http.MethodPost, examSittingCollectionPath(fake.sitting.ExamID), strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Idempotency-Key", "schedule-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if fake.schedule.ExamID != fake.sitting.ExamID || fake.schedule.ExamRevisionID != fake.sitting.ExamRevisionID ||
+		fake.schedule.ClassID != fake.sitting.ClassID || fake.schedule.IdempotencyKey != "schedule-once" ||
+		fake.schedule.ScheduledStartAt.Location() != time.UTC || fake.schedule.ScheduledStartAt.Hour() != 10 ||
+		fake.schedule.ScheduledEndAt.Location() != time.UTC || fake.schedule.ScheduledEndAt.Hour() != 12 {
+		t.Fatalf("command = %#v", fake.schedule)
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	wantKeys := []string{"id", "exam_id", "exam_revision_id", "class_id", "scheduled_start_at", "scheduled_end_at", "state", "created_at", "updated_at", "revision"}
+	if len(payload) != len(wantKeys) {
+		t.Fatalf("response fields = %v, body = %s", payload, response.Body.String())
+	}
+	for _, key := range wantKeys {
+		if _, ok := payload[key]; !ok {
+			t.Errorf("response omitted %q", key)
+		}
+	}
+	for _, forbidden := range []string{"private_reason", "actor_user_id", "manager_override", "audit_event_id", "content", "path"} {
+		if _, ok := payload[forbidden]; ok {
+			t.Errorf("response exposed %q", forbidden)
+		}
+	}
+}
+
+func TestExamSittingHTTPMutationBodiesAreClosedDuplicateFreeAndPresenceAware(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		body func(*examSittingHTTPFake) string
+	}{
+		{name: "unknown create field", body: func(fake *examSittingHTTPFake) string {
+			return `{"exam_revision_id":"` + fake.sitting.ExamRevisionID.String() + `","class_id":"` + fake.sitting.ClassID.String() + `","scheduled_start_at":"2026-08-15T10:00:00Z","scheduled_end_at":"2026-08-15T11:00:00Z","extra":true}`
+		}},
+		{name: "duplicate create field", body: func(fake *examSittingHTTPFake) string {
+			return `{"exam_revision_id":"` + fake.sitting.ExamRevisionID.String() + `","exam_revision_id":"` + fake.sitting.ExamRevisionID.String() + `","class_id":"` + fake.sitting.ClassID.String() + `","scheduled_start_at":"2026-08-15T10:00:00Z","scheduled_end_at":"2026-08-15T11:00:00Z"}`
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logger, _ := newTestLogger(t)
+			fake := newExamSittingHTTPFake(t)
+			httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+			request := httptest.NewRequest(http.MethodPost, examSittingCollectionPath(fake.sitting.ExamID), strings.NewReader(test.body(fake)))
+			request.Header.Set("Authorization", "Bearer credential")
+			request.Header.Set("Idempotency-Key", "schedule-once")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || fake.schedule.ExamID.IsValid() {
+				t.Fatalf("status = %d command = %#v body = %s", response.Code, fake.schedule, response.Body.String())
+			}
+		})
+	}
+
+	logger, _ := newTestLogger(t)
+	fake := newExamSittingHTTPFake(t)
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+	path := examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)
+	patch := `{"expected_revision":1,"class_id":"` + model.NewClassID().String() + `","scheduled_start_at":"2026-08-16T09:00:00Z"}`
+	request := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(patch))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Idempotency-Key", "reschedule-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || fake.update.ClassID == nil || fake.update.ScheduledStartAt == nil || fake.update.ExamRevisionID != nil || fake.update.ScheduledEndAt != nil {
+		t.Fatalf("status = %d command = %#v body = %s", response.Code, fake.update, response.Body.String())
+	}
+	for name, body := range map[string]string{
+		"no change":     `{"expected_revision":1}`,
+		"explicit null": `{"expected_revision":1,"class_id":null}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(body))
+			bad.Header = request.Header.Clone()
+			got := httptest.NewRecorder()
+			httpAPI.ServeHTTP(got, bad)
+			if got.Code != http.StatusBadRequest || fake.updateCalls != 1 {
+				t.Fatalf("status = %d calls = %d body = %s", got.Code, fake.updateCalls, got.Body.String())
+			}
+		})
+	}
+}
+
+func TestExamSittingHTTPCancelKeepsPrivateReasonOutOfResponse(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	fake := newExamSittingHTTPFake(t)
+	canceled := *fake.sitting
+	canceled.State = model.ExamSittingCanceled
+	canceled.CanceledAt = model.OptionalTimeFrom(canceled.UpdatedAt.Add(time.Minute))
+	canceled.UpdatedAt = canceled.CanceledAt.Time
+	canceled.ReasonCode = model.ExamSittingReasonManagerCanceled
+	canceled.Revision = 2
+	fake.cancelResult = application.ExamSittingView{Sitting: &canceled}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+	request := httptest.NewRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/cancel", strings.NewReader(`{"expected_revision":1,"reason":"Suspected identity substitution"}`))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Idempotency-Key", "cancel-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || fake.cancel.PrivateReason != "Suspected identity substitution" || fake.cancel.IdempotencyKey != "cancel-once" {
+		t.Fatalf("status = %d command = %#v body = %s", response.Code, fake.cancel, response.Body.String())
+	}
+	if bytes.Contains(response.Body.Bytes(), []byte("Suspected identity substitution")) || !bytes.Contains(response.Body.Bytes(), []byte(`"reason_code":"manager_canceled"`)) {
+		t.Fatalf("unsafe or incomplete response = %s", response.Body.String())
+	}
+}
+
+func TestExamSittingHTTPListNormalizesFiltersAndUsesVersionedDescendingTupleCursor(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	fake := newExamSittingHTTPFake(t)
+	older := *fake.sitting
+	older.ID = model.NewExamSittingID()
+	older.ScheduledStartAt = older.ScheduledStartAt.Add(-time.Hour)
+	older.ScheduledEndAt = older.ScheduledEndAt.Add(-time.Hour)
+	fake.page = application.ExamSittingPage{Items: []application.ExamSittingView{{Sitting: fake.sitting}, {Sitting: &older}}, HasMore: true}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+	cursor := encodeExamSittingCursor(examSittingCursor{StartAt: fake.sitting.ScheduledStartAt, ID: model.NewExamSittingID()})
+	query := url.Values{}
+	query.Set("class_id", fake.sitting.ClassID.String())
+	query.Add("state", "scheduled")
+	query.Add("state", "scheduled")
+	query.Add("state", "paused")
+	query.Set("ends_after", "2026-08-15T09:00:00+02:00")
+	query.Set("starts_before", "2026-08-15T18:00:00+02:00")
+	query.Set("limit", "2")
+	query.Set("cursor", cursor)
+	request := httptest.NewRequest(http.MethodGet, examSittingCollectionPath(fake.sitting.ExamID)+"?"+query.Encode(), nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || fake.list.Limit != 2 || fake.list.ClassID != fake.sitting.ClassID || len(fake.list.States) != 2 ||
+		fake.list.OverlapStartAt.Hour() != 7 || fake.list.OverlapEndAt.Hour() != 16 || fake.list.BeforeScheduledStartAt != fake.sitting.ScheduledStartAt || !fake.list.BeforeSittingID.IsValid() {
+		t.Fatalf("status = %d query = %#v body = %s", response.Code, fake.list, response.Body.String())
+	}
+	var page examSittingListResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeExamSittingCursor(page.NextCursor)
+	if err != nil || decoded.StartAt != older.ScheduledStartAt || decoded.ID != older.ID {
+		t.Fatalf("cursor = %#v err = %v", decoded, err)
+	}
+}
+
+func TestExamSittingHTTPListRejectsPartialOverlapAndMalformedCursor(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	fake := newExamSittingHTTPFake(t)
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+	unsupported, _ := json.Marshal(map[string]any{"version": 2, "start_at": fake.sitting.ScheduledStartAt.Format(time.RFC3339Nano), "id": fake.sitting.ID.String()})
+	for name, query := range map[string]string{
+		"partial overlap":         "ends_after=2026-08-15T09%3A00%3A00Z",
+		"bad interval":            "ends_after=2026-08-15T12%3A00%3A00Z&starts_before=2026-08-15T11%3A00%3A00Z",
+		"bad state":               "state=unknown",
+		"unsupported state count": "state=scheduled&state=open&state=paused&state=closing&state=closed&state=canceled&state=extra",
+		"malformed cursor":        "cursor=not-a-cursor",
+		"cursor version":          "cursor=" + url.QueryEscape(base64.RawURLEncoding.EncodeToString(unsupported)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, examSittingCollectionPath(fake.sitting.ExamID)+"?"+query, nil)
+			request.Header.Set("Authorization", "Bearer credential")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestExamSittingHTTPGetUsesBothExactIdentities(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	fake := newExamSittingHTTPFake(t)
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+	request := httptest.NewRequest(http.MethodGet, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID), nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || fake.get.ExamID != fake.sitting.ExamID || fake.get.SittingID != fake.sitting.ID {
+		t.Fatalf("status = %d query = %#v body = %s", response.Code, fake.get, response.Body.String())
+	}
+}
+
+type examSittingHTTPFake struct {
+	Application
+	principal    model.Principal
+	sitting      *model.ExamSitting
+	schedule     application.ScheduleExamSittingCommand
+	get          application.GetExamSittingQuery
+	list         application.ListExamSittingsQuery
+	page         application.ExamSittingPage
+	update       application.UpdateExamSittingScheduleCommand
+	updateCalls  int
+	cancel       application.CancelExamSittingCommand
+	cancelResult application.ExamSittingView
+}
+
+func newExamSittingHTTPFake(t *testing.T) *examSittingHTTPFake {
+	t.Helper()
+	at := time.Date(2026, time.August, 15, 9, 30, 0, 123456789, time.UTC)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(), at.Add(time.Hour), at.Add(3*time.Hour), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &examSittingHTTPFake{principal: testExamHTTPPrincipal(), sitting: sitting, cancelResult: application.ExamSittingView{Sitting: sitting}}
+}
+
+func (f *examSittingHTTPFake) AuthenticateAccess(context.Context, string) (*model.Principal, error) {
+	principal := f.principal
+	return &principal, nil
+}
+
+func (f *examSittingHTTPFake) AuthenticateBearer(context.Context, string) (*model.Principal, error) {
+	principal := f.principal
+	return &principal, nil
+}
+
+func (f *examSittingHTTPFake) ScheduleExamSitting(_ context.Context, _ application.Invocation, command application.ScheduleExamSittingCommand) (application.ExamSittingView, error) {
+	f.schedule = command
+	return application.ExamSittingView{Sitting: f.sitting}, nil
+}
+
+func (f *examSittingHTTPFake) GetExamSitting(_ context.Context, _ application.Invocation, query application.GetExamSittingQuery) (application.ExamSittingView, error) {
+	f.get = query
+	return application.ExamSittingView{Sitting: f.sitting}, nil
+}
+
+func (f *examSittingHTTPFake) ListExamSittings(_ context.Context, _ application.Invocation, query application.ListExamSittingsQuery) (application.ExamSittingPage, error) {
+	f.list = query
+	return f.page, nil
+}
+
+func (f *examSittingHTTPFake) UpdateExamSittingSchedule(_ context.Context, _ application.Invocation, command application.UpdateExamSittingScheduleCommand) (application.ExamSittingView, error) {
+	f.update, f.updateCalls = command, f.updateCalls+1
+	return application.ExamSittingView{Sitting: f.sitting}, nil
+}
+
+func (f *examSittingHTTPFake) CancelExamSitting(_ context.Context, _ application.Invocation, command application.CancelExamSittingCommand) (application.ExamSittingView, error) {
+	f.cancel = command
+	return f.cancelResult, nil
+}
+
+func examSittingCollectionPath(examID model.ExamID) string {
+	return "/api/v1/exams/" + examID.String() + "/sittings"
+}
+
+func examSittingMemberPath(examID model.ExamID, sittingID model.ExamSittingID) string {
+	return examSittingCollectionPath(examID) + "/" + sittingID.String()
+}

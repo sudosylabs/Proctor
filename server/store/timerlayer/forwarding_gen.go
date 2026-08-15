@@ -21,6 +21,8 @@ type timedStores struct {
 	examResourceOnce         sync.Once
 	examRevision             store.ExamRevisionStore
 	examRevisionOnce         sync.Once
+	examSitting              store.ExamSittingStore
+	examSittingOnce          sync.Once
 	examStarterWorkspace     store.ExamStarterWorkspaceStore
 	examStarterWorkspaceOnce sync.Once
 	examAuthoring            store.ExamAuthoringStore
@@ -90,6 +92,11 @@ type timedExamResourceStore struct {
 type timedExamRevisionStore struct {
 	layer *Layer
 	next  store.ExamRevisionStore
+}
+
+type timedExamSittingStore struct {
+	layer *Layer
+	next  store.ExamSittingStore
 }
 
 type timedExamStarterWorkspaceStore struct {
@@ -295,6 +302,16 @@ func (l *Layer) ExamRevision() store.ExamRevisionStore {
 		}
 	})
 	return l.stores.examRevision
+}
+
+func (l *Layer) ExamSitting() store.ExamSittingStore {
+	l.stores.examSittingOnce.Do(func() {
+		next := l.next.ExamSitting()
+		if next != nil {
+			l.stores.examSitting = &timedExamSittingStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examSitting
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -644,6 +661,42 @@ func (s *timedExamRevisionStore) List(arg0 context.Context, arg1 store.ExamRevis
 func (s *timedExamRevisionStore) GetSnapshot(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamRevisionID) (*model.ExamRevision, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamRevision, methodGetSnapshot), func() (*model.ExamRevision, error) {
 		return s.next.GetSnapshot(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Resolve(arg0 context.Context, arg1 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResolve), func() (*store.ExamSittingSnapshot, error) {
+		return s.next.Resolve(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) Get(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGet), func() (*store.ExamSittingSnapshot, error) {
+		return s.next.Get(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) List(arg0 context.Context, arg1 store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodList), func() ([]store.ExamSittingSnapshot, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) Schedule(arg0 context.Context, arg1 *store.ExamSittingSchedule, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodSchedule), func() (*store.ExamSittingCommandResult, error) {
+		return s.next.Schedule(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) UpdateSchedule(arg0 context.Context, arg1 *store.ExamSittingScheduleUpdate, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodUpdateSchedule), func() (*store.ExamSittingCommandResult, error) {
+		return s.next.UpdateSchedule(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Cancel(arg0 context.Context, arg1 *store.ExamSittingCancellation, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCancel), func() (*store.ExamSittingCommandResult, error) {
+		return s.next.Cancel(arg0, arg1, arg2)
 	})
 }
 
@@ -1894,6 +1947,7 @@ var (
 	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)
 	_ store.ExamResourceStore         = (*timedExamResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*timedExamRevisionStore)(nil)
+	_ store.ExamSittingStore          = (*timedExamSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*timedExamStarterWorkspaceStore)(nil)
 	_ store.ExamAuthoringStore        = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*timedCommandOutcomeStore)(nil)

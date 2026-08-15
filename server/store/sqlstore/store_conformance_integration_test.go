@@ -78,6 +78,7 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"AcademicPeriod", storetest.TestAcademicPeriodStore},
 		{"ExamAuthoring", storetest.TestExamAuthoringStore},
 		{"ExamRevision", storetest.TestExamRevisionStore},
+		{"ExamSitting", storetest.TestExamSittingStore},
 		{"ExamResource", storetest.TestExamResourceStore},
 		{"ExamStarterWorkspace", storetest.TestExamStarterWorkspaceStore},
 		{"Class", storetest.TestClassStore},

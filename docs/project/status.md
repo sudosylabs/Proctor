@@ -95,7 +95,18 @@ the code and component contracts for that detail.
   the Draft. Bounded Revision Get/list HTTP projections expose publication
   metadata and digests without exposing authored instructions, raw policy,
   resource details, Starter Workspace paths, opaque object identities, or
-  source bytes.
+  source bytes. Authorized Managers can now schedule a sealed same-Exam
+  Revision for one eligible Class, retrieve and list bounded Sitting
+  projections, change the complete pre-open selection, and cancel a Scheduled
+  Sitting through audited, revision-fenced, idempotent commands. PostgreSQL
+  atomically rechecks the current Manager relationship, exact Academic
+  Unit/Class lineage, Academic Period containment, and a strictly future start
+  at its own decision time; application authorization separately requires the
+  current scoped permission, and administrator overrides remain distinct and
+  audited.
+  Version 1 uses `ScheduledEndAt` as the sole delivery deadline and does not
+  extend it for paused time. Opening, lifecycle Jobs, and opening-time academic
+  structure revalidation belong to the next slice.
 
 ## Architecture migration acceptance
 
@@ -158,8 +169,9 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: Sitting delivery and
-  live correction; Attempt admission and Participation;
+- Continue Examination Core as complete vertical slices: Sitting lifecycle
+  Jobs, opening-time eligibility revalidation, and live correction; Attempt
+  admission and Participation;
   mutable Workspace and immutable Submission; then integrity policy, evidence,
   flags, and Submission Review.
 - Extend server-owned file handling for validated IDE preferences alongside

@@ -57,6 +57,9 @@ func (s *hookStore) ExamResource() store.ExamResourceStore {
 func (s *hookStore) ExamRevision() store.ExamRevisionStore {
 	return hookExamRevisionStore{}
 }
+func (s *hookStore) ExamSitting() store.ExamSittingStore {
+	return hookExamSittingStore{}
+}
 func (s *hookStore) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
 	return hookExamStarterWorkspaceStore{}
 }
@@ -114,6 +117,7 @@ func (s *hookStore) Close() error {
 type hookExamAuthoringStore struct{ store.ExamAuthoringStore }
 type hookExamResourceStore struct{ store.ExamResourceStore }
 type hookExamRevisionStore struct{ store.ExamRevisionStore }
+type hookExamSittingStore struct{ store.ExamSittingStore }
 type hookExamStarterWorkspaceStore struct {
 	store.ExamStarterWorkspaceStore
 }

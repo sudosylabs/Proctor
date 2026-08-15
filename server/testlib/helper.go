@@ -220,6 +220,9 @@ func (s *LifecycleStore) ExamResource() store.ExamResourceStore {
 func (s *LifecycleStore) ExamRevision() store.ExamRevisionStore {
 	return lifecycleExamRevisionStore{}
 }
+func (s *LifecycleStore) ExamSitting() store.ExamSittingStore {
+	return lifecycleExamSittingStore{}
+}
 func (s *LifecycleStore) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
 	return lifecycleExamStarterWorkspaceStore{}
 }
@@ -305,6 +308,7 @@ type lifecycleAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 type lifecycleExamAuthoringStore struct{ store.ExamAuthoringStore }
 type lifecycleExamResourceStore struct{ store.ExamResourceStore }
 type lifecycleExamRevisionStore struct{ store.ExamRevisionStore }
+type lifecycleExamSittingStore struct{ store.ExamSittingStore }
 type lifecycleExamStarterWorkspaceStore struct {
 	store.ExamStarterWorkspaceStore
 }

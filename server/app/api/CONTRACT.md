@@ -116,6 +116,42 @@ publisher, time, base Revision, and publication kind. They never return
 instructions, canonical policy bytes, resource metadata or content identities,
 Starter Workspace paths, object identities, or source bytes.
 
+## Exam Sitting schedule
+
+An Exam Sitting delivers one immutable Exam Revision to one exact Class over a
+half-open scheduled interval. The manager surface is intentionally limited to
+schedule, exact read, bounded list, scheduled-only update, and scheduled-only
+cancellation:
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `POST /api/v1/exams/{exam_id}/sittings` | exact Revision, Class, start, and end | `201` Sitting |
+| `GET /api/v1/exams/{exam_id}/sittings` | optional bounded filters and cursor | bounded Sitting page |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}` | none | exact Sitting |
+| `PATCH /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}` | expected Sitting revision and at least one non-null schedule field | updated Sitting |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/cancel` | expected Sitting revision and private reason | canceled Sitting |
+
+Every route requires an authenticated principal. The three mutations require
+`Idempotency-Key`; their bodies are closed, duplicate-free JSON objects.
+Schedule instants are RFC 3339 values and start must precede end. PATCH
+distinguishes omission from presence and rejects explicit `null` for Revision,
+Class, start, and end.
+The private cancellation reason must be valid UTF-8, already trimmed, between
+1 and 1,000 Unicode scalar values, and at most 4,000 encoded bytes.
+
+The list defaults to 50 items and accepts at most 200. It can filter by one
+`class_id`, repeated deduplicated `state` values (at most the six defined
+states), and a paired `ends_after`/`starts_before` overlap interval. Results are
+ordered by scheduled start then Sitting identity, both descending. Its opaque
+Raw URL-safe cursor is versioned and carries that exact tuple; clients return
+it unchanged.
+
+Responses expose only the Sitting identity, Exam/Revision/Class identities,
+schedule, state, lifecycle times, candidate-safe reason code, and optimistic
+revision. A cancellation's private manager reason, authorization decisions,
+audit provenance, and authored Exam content are never returned. All JSON
+responses are `no-store`; there is no delete operation.
+
 ## Exam resource and Starter Workspace content
 
 Exam Resource and Starter Workspace operations are purpose-specific authoring

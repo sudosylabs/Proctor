@@ -1,0 +1,303 @@
+//go:build integration
+
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app_test
+
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib"
+)
+
+func TestExamSittingIntegration(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	helper := testlib.Setup(t, testlib.WithStore(persistence))
+	ctx := context.Background()
+
+	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "sitting-university", DisplayName: "Sitting University"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+		InstitutionID: institution.ID, Name: "sitting-computing", DisplayName: "Sitting Computing",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	programme, err := persistence.Programme().Save(ctx, &model.Programme{
+		AcademicUnitID: unit.ID, Name: "sitting-computer-science", DisplayName: "Sitting Computer Science",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	level, err := persistence.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{
+		ProgrammeID: programme.ID, Name: "sitting-year-one", DisplayName: "Sitting Year One",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
+		InstitutionID: institution.ID, Name: "sitting-period", DisplayName: "Sitting Period",
+		StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	class, err := persistence.Class().Save(ctx, &model.Class{
+		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
+		Name: "sitting-class-a", DisplayName: "Sitting Class A",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const password = "correct horse battery staple"
+	manager, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+		Username: "sitting-manager", Email: "sitting-manager@example.edu", DisplayName: "Sitting Manager",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	managerLogin := loginIntegrationUser(t, helper.Handler(), manager.Username, password, model.SessionClientCLI, "sitting-manager-cli")
+	managerPrincipal, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	managerInvocation := application.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-sitting-manager-integration"})
+	managerMembership, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: unit.ID, UserID: manager.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerRole, err := persistence.Role().Save(ctx, &model.Role{
+		Name: "exam-sitting-manager", DisplayName: "Exam Sitting Manager",
+		Permissions: []string{
+			string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage),
+			string(model.ActionExamPublish), string(model.ActionExamSittingCreate),
+			string(model.ActionExamSittingView), string(model.ActionExamSittingManage),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerBinding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: manager.ID, RoleID: managerRole.ID, ScopeType: model.RoleScopeAcademicUnit,
+		ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	created, appErr := helper.App.CreateExam(ctx, managerInvocation, application.CreateExamCommand{
+		AcademicUnitID: unit.ID, Title: "Concurrent Systems", InstructionsMarkdown: "Write **Go**.", IdempotencyKey: "sitting-exam-create",
+	})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	published, appErr := helper.App.PublishExamRevision(ctx, managerInvocation, application.PublishExamRevisionCommand{
+		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision, IdempotencyKey: "sitting-exam-publish",
+	})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+
+	startAt := now.Add(2 * time.Hour).Truncate(time.Millisecond)
+	endAt := startAt.Add(2 * time.Hour)
+	schedule := application.ScheduleExamSittingCommand{
+		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
+		ScheduledStartAt: startAt, ScheduledEndAt: endAt, IdempotencyKey: "sitting-schedule-once",
+	}
+	scheduled, appErr := helper.App.ScheduleExamSitting(ctx, managerInvocation, schedule)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if scheduled.Sitting == nil || scheduled.Sitting.ExamID != created.Exam.ID || scheduled.Sitting.ExamRevisionID != published.ID ||
+		scheduled.Sitting.ClassID != class.ID || scheduled.Sitting.State != model.ExamSittingScheduled || scheduled.Sitting.Revision != 1 {
+		t.Fatalf("scheduled Sitting = %#v", scheduled)
+	}
+	scheduledReplay, appErr := helper.App.ScheduleExamSitting(ctx, managerInvocation, schedule)
+	if appErr != nil || scheduledReplay.Sitting == nil || scheduledReplay.Sitting.ID != scheduled.Sitting.ID || scheduledReplay.Sitting.Revision != 1 {
+		t.Fatalf("schedule replay = %#v, %v", scheduledReplay, appErr)
+	}
+
+	got, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
+		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
+	})
+	if appErr != nil || got.Sitting == nil || got.Sitting.ID != scheduled.Sitting.ID {
+		t.Fatalf("get Sitting = %#v, %v", got, appErr)
+	}
+	page, appErr := helper.App.ListExamSittings(ctx, managerInvocation, application.ListExamSittingsQuery{
+		ExamID: created.Exam.ID, ClassID: class.ID, States: []model.ExamSittingState{model.ExamSittingScheduled}, Limit: 50,
+	})
+	if appErr != nil || page.HasMore || len(page.Items) != 1 || page.Items[0].Sitting == nil || page.Items[0].Sitting.ID != scheduled.Sitting.ID {
+		t.Fatalf("list Sittings = %#v, %v", page, appErr)
+	}
+
+	updatedEndAt := endAt.Add(30 * time.Minute)
+	update := application.UpdateExamSittingScheduleCommand{
+		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID, ExpectedRevision: scheduled.Sitting.Revision,
+		ScheduledEndAt: &updatedEndAt, IdempotencyKey: "sitting-update-once",
+	}
+	updated, appErr := helper.App.UpdateExamSittingSchedule(ctx, managerInvocation, update)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if updated.Sitting == nil || updated.Sitting.Revision != 2 || !updated.Sitting.ScheduledEndAt.Equal(updatedEndAt) {
+		t.Fatalf("updated Sitting = %#v", updated)
+	}
+	updatedReplay, appErr := helper.App.UpdateExamSittingSchedule(ctx, managerInvocation, update)
+	if appErr != nil || updatedReplay.Sitting == nil || updatedReplay.Sitting.Revision != updated.Sitting.Revision ||
+		!updatedReplay.Sitting.UpdatedAt.Equal(updated.Sitting.UpdatedAt) {
+		t.Fatalf("update replay = %#v, %v", updatedReplay, appErr)
+	}
+
+	cancel := application.CancelExamSittingCommand{
+		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID, ExpectedRevision: updated.Sitting.Revision,
+		PrivateReason: "Schedule superseded by the department", IdempotencyKey: "sitting-cancel-once",
+	}
+	canceled, appErr := helper.App.CancelExamSitting(ctx, managerInvocation, cancel)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if canceled.Sitting == nil || canceled.Sitting.State != model.ExamSittingCanceled || canceled.Sitting.Revision != 3 ||
+		canceled.Sitting.ReasonCode != model.ExamSittingReasonManagerCanceled || !canceled.Sitting.CanceledAt.Valid {
+		t.Fatalf("canceled Sitting = %#v", canceled)
+	}
+	canceledReplay, appErr := helper.App.CancelExamSitting(ctx, managerInvocation, cancel)
+	if appErr != nil || canceledReplay.Sitting == nil || canceledReplay.Sitting.Revision != canceled.Sitting.Revision ||
+		!canceledReplay.Sitting.CanceledAt.Time.Equal(canceled.Sitting.CanceledAt.Time) {
+		t.Fatalf("cancel replay = %#v, %v", canceledReplay, appErr)
+	}
+
+	if _, err := persistence.AcademicUnitMember().End(ctx, managerMembership.ID.String(), managerMembership.Revision, model.GetMillis()-100); err != nil {
+		t.Fatal(err)
+	}
+	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
+		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
+	}); !application.Is(appErr, "resource.not_found") {
+		t.Fatalf("get after membership revocation error = %v", appErr)
+	}
+	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, *managerPrincipal, model.RequestMetadata{},
+		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !application.Is(appErr, "resource.not_found") {
+		t.Fatalf("subscription after membership revocation error = %v", appErr)
+	}
+	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: unit.ID, UserID: manager.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 50),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.RoleBinding().End(ctx, managerBinding.ID.String(), model.GetMillis()-25); err != nil {
+		t.Fatal(err)
+	}
+	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
+		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
+	}); !application.Is(appErr, "resource.not_found") {
+		t.Fatalf("get after permission revocation error = %v", appErr)
+	}
+	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, *managerPrincipal, model.RequestMetadata{},
+		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !application.Is(appErr, "resource.not_found") {
+		t.Fatalf("subscription after permission revocation error = %v", appErr)
+	}
+
+	overrideUser, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+		Username: "sitting-override", Email: "sitting-override@example.edu", DisplayName: "Sitting Override",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	overrideLogin := loginIntegrationUser(t, helper.Handler(), overrideUser.Username, password, model.SessionClientCLI, "sitting-override-cli")
+	overridePrincipal, appErr := helper.App.AuthenticateAccess(ctx, overrideLogin.Tokens.AccessToken)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	overrideInvocation := application.NewInvocation(*overridePrincipal, model.RequestMetadata{RequestID: "exam-sitting-override-integration"})
+	overrideRole, err := persistence.Role().Save(ctx, &model.Role{
+		Name: "exam-sitting-override", DisplayName: "Exam Sitting Override",
+		Permissions: []string{
+			string(model.ActionExamViewOverride), string(model.ActionExamSittingCreateOverride),
+			string(model.ActionExamSittingViewOverride), string(model.ActionExamSittingManageOverride),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: overrideUser.ID, RoleID: overrideRole.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	overrideSchedule := application.ScheduleExamSittingCommand{
+		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
+		ScheduledStartAt: now.Add(6 * time.Hour).Truncate(time.Millisecond),
+		ScheduledEndAt:   now.Add(8 * time.Hour).Truncate(time.Millisecond),
+		IdempotencyKey:   "sitting-override-schedule",
+	}
+	overrideScheduled, appErr := helper.App.ScheduleExamSitting(ctx, overrideInvocation, overrideSchedule)
+	if appErr != nil || overrideScheduled.Sitting == nil {
+		t.Fatalf("override schedule = %#v, %v", overrideScheduled, appErr)
+	}
+	if _, appErr := helper.App.GetExamSitting(ctx, overrideInvocation, application.GetExamSittingQuery{
+		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID,
+	}); appErr != nil {
+		t.Fatalf("override get error = %v", appErr)
+	}
+	overridePage, appErr := helper.App.ListExamSittings(ctx, overrideInvocation, application.ListExamSittingsQuery{
+		ExamID: created.Exam.ID, Limit: 50,
+	})
+	if appErr != nil || len(overridePage.Items) != 2 {
+		t.Fatalf("override list = %#v, %v", overridePage, appErr)
+	}
+	overrideEndAt := overrideSchedule.ScheduledEndAt.Add(30 * time.Minute)
+	overrideUpdated, appErr := helper.App.UpdateExamSittingSchedule(ctx, overrideInvocation, application.UpdateExamSittingScheduleCommand{
+		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID, ExpectedRevision: 1,
+		ScheduledEndAt: &overrideEndAt, IdempotencyKey: "sitting-override-update",
+	})
+	if appErr != nil || overrideUpdated.Sitting == nil || overrideUpdated.Sitting.Revision != 2 {
+		t.Fatalf("override update = %#v, %v", overrideUpdated, appErr)
+	}
+	if _, appErr := helper.App.CancelExamSitting(ctx, overrideInvocation, application.CancelExamSittingCommand{
+		ExamID: created.Exam.ID, SittingID: overrideScheduled.Sitting.ID, ExpectedRevision: 2,
+		PrivateReason: "Administrator canceled the delivery", IdempotencyKey: "sitting-override-cancel",
+	}); appErr != nil {
+		t.Fatalf("override cancel error = %v", appErr)
+	}
+
+	assertExamSittingOverrideAudit(t, ctx, persistence, overrideUser.ID, model.ActionExamSittingCreateOverride,
+		model.Resource{Type: model.ResourceExam, ID: created.Exam.ID.String()}, unit.ID)
+	assertExamSittingOverrideAudit(t, ctx, persistence, overrideUser.ID, model.ActionExamSittingManageOverride,
+		model.Resource{Type: model.ResourceExamSitting, ID: overrideScheduled.Sitting.ID.String()}, unit.ID)
+}
+
+func assertExamSittingOverrideAudit(t *testing.T, ctx context.Context, persistence store.Store, actorID model.UserID,
+	action model.Action, resource model.Resource, unitID model.AcademicUnitID,
+) {
+	t.Helper()
+	events, err := persistence.Audit().List(ctx, store.AuditListOptions{
+		ActorId: actorID.String(), Action: string(action), Resource: &resource, Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Status == model.AuditStatusSuccess && event.ScopeType == model.RoleScopeAcademicUnit && event.ScopeID == unitID.String() {
+			return
+		}
+	}
+	t.Fatalf("no successful %s audit for %s in Academic Unit %s: %#v", action, resource.ID, unitID, events)
+}

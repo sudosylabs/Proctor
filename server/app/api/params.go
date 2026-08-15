@@ -28,6 +28,7 @@ type Params struct {
 	JobID                   string
 	ExamID                  string
 	ExamRevisionID          string
+	ExamSittingID           string
 	ExamResourceID          string
 	StarterWorkspaceEntryID string
 	UserID                  string
@@ -59,6 +60,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		JobID:                   strings.TrimSpace(variables["job_id"]),
 		ExamID:                  strings.TrimSpace(variables["exam_id"]),
 		ExamRevisionID:          strings.TrimSpace(variables["exam_revision_id"]),
+		ExamSittingID:           strings.TrimSpace(variables["exam_sitting_id"]),
 		ExamResourceID:          strings.TrimSpace(variables["exam_resource_id"]),
 		StarterWorkspaceEntryID: strings.TrimSpace(variables["starter_workspace_entry_id"]),
 		UserID:                  strings.TrimSpace(variables["user_id"]),
@@ -163,6 +165,10 @@ func (p Params) RequireExamId() (string, error) {
 
 func (p Params) RequireExamRevisionId() (string, error) {
 	return requirePathId("exam_revision_id", p.ExamRevisionID)
+}
+
+func (p Params) RequireExamSittingId() (string, error) {
+	return requirePathId("exam_sitting_id", p.ExamSittingID)
 }
 
 func (p Params) RequireExamResourceId() (string, error) {

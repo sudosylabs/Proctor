@@ -18,6 +18,8 @@ type localCacheStores struct {
 	examResourceOnce         sync.Once
 	examRevision             store.ExamRevisionStore
 	examRevisionOnce         sync.Once
+	examSitting              store.ExamSittingStore
+	examSittingOnce          sync.Once
 	examStarterWorkspace     store.ExamStarterWorkspaceStore
 	examStarterWorkspaceOnce sync.Once
 	examAuthoring            store.ExamAuthoringStore
@@ -86,6 +88,11 @@ type examResourceStore struct {
 
 type examRevisionStore struct {
 	store.ExamRevisionStore
+	layer *Layer
+}
+
+type examSittingStore struct {
+	store.ExamSittingStore
 	layer *Layer
 }
 
@@ -292,6 +299,16 @@ func (l *Layer) ExamRevision() store.ExamRevisionStore {
 		}
 	})
 	return l.stores.examRevision
+}
+
+func (l *Layer) ExamSitting() store.ExamSittingStore {
+	l.stores.examSittingOnce.Do(func() {
+		next := l.Store.ExamSitting()
+		if next != nil {
+			l.stores.examSitting = &examSittingStore{ExamSittingStore: next, layer: l}
+		}
+	})
+	return l.stores.examSitting
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -529,6 +546,7 @@ var (
 	_ store.ClusterDiscoveryStore     = (*clusterDiscoveryStore)(nil)
 	_ store.ExamResourceStore         = (*examResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*examRevisionStore)(nil)
+	_ store.ExamSittingStore          = (*examSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*examStarterWorkspaceStore)(nil)
 	_ store.ExamAuthoringStore        = (*examAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*commandOutcomeStore)(nil)

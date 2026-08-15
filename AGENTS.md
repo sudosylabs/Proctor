@@ -86,8 +86,12 @@ The detailed dependency graph and rationale live in
   progression and transfers retain history.
 - Affiliations describe relationships. Roles and scoped bindings grant
   permissions. Membership alone grants no unrestricted access.
-- The exact exam ownership, targeting, lifecycle, proctor assignment, and
-  violation-review model remain open decisions. Do not invent them.
+- Read [`CONTEXT.md`](CONTEXT.md) and
+  [`docs/architecture/examinations.md`](docs/architecture/examinations.md)
+  before changing Exam ownership, targeting, lifecycle, participation,
+  integrity, or review behavior. Those documents own the settled model and
+  identify any decisions that remain open; implement neither stale summaries
+  nor unspecified behavior.
 
 ## Licensing and provenance
 

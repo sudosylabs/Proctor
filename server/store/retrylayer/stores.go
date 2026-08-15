@@ -196,6 +196,49 @@ func (s *examRevisionStore) GetSnapshot(ctx context.Context, examID model.ExamID
 	})
 }
 
+func (s *examSittingStore) Resolve(ctx context.Context, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamSittingSnapshot, error) {
+		return s.ExamSittingStore.Resolve(ctx, sittingID)
+	})
+}
+
+func (s *examSittingStore) Get(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamSittingSnapshot, error) {
+		return s.ExamSittingStore.Get(ctx, examID, sittingID)
+	})
+}
+
+func (s *examSittingStore) List(ctx context.Context, options store.ExamSittingListOptions) ([]store.ExamSittingSnapshot, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamSittingSnapshot, error) {
+		return s.ExamSittingStore.List(ctx, options)
+	})
+}
+
+func (s *examSittingStore) Schedule(ctx context.Context, input *store.ExamSittingSchedule, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return s.retryMutation(ctx, command, func() (*store.ExamSittingCommandResult, error) {
+		return s.ExamSittingStore.Schedule(ctx, input, command)
+	})
+}
+
+func (s *examSittingStore) UpdateSchedule(ctx context.Context, input *store.ExamSittingScheduleUpdate, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return s.retryMutation(ctx, command, func() (*store.ExamSittingCommandResult, error) {
+		return s.ExamSittingStore.UpdateSchedule(ctx, input, command)
+	})
+}
+
+func (s *examSittingStore) Cancel(ctx context.Context, input *store.ExamSittingCancellation, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
+	return s.retryMutation(ctx, command, func() (*store.ExamSittingCommandResult, error) {
+		return s.ExamSittingStore.Cancel(ctx, input, command)
+	})
+}
+
+func (s *examSittingStore) retryMutation(ctx context.Context, command *store.CommandIdempotency, operation func() (*store.ExamSittingCommandResult, error)) (*store.ExamSittingCommandResult, error) {
+	if command == nil {
+		return operation()
+	}
+	return retryCall1(ctx, s.layer, operation)
+}
+
 func (s *examResourceStore) List(ctx context.Context, examID model.ExamID) ([]store.ExamResourceRecord, error) {
 	return retryCall1(ctx, s.layer, func() ([]store.ExamResourceRecord, error) {
 		return s.ExamResourceStore.List(ctx, examID)

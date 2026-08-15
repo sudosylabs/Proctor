@@ -64,7 +64,9 @@ func evaluateOpenAPISchemaAgreement(
 			strings.HasSuffix(contract.Name, "Request"),
 			!stringSliceContains(contract.Required, name),
 			stringSliceContains(contract.Nullable, name),
+			stringSliceContains(contract.NonNullable, name),
 			nestedAgreementPaths(contract.Nullable, name),
+			nestedAgreementPaths(contract.NonNullable, name),
 		)
 	}
 	return violations
@@ -79,7 +81,9 @@ func evaluateOpenAPIShapeAgreement(
 	requestSchema bool,
 	fieldOptional bool,
 	forceNullable bool,
+	forceNonNullable bool,
 	nullablePaths []string,
+	nonNullablePaths []string,
 ) []openAPIAgreementViolation {
 	nullable := forceNullable
 	for goType.Kind() == reflect.Pointer {
@@ -90,6 +94,9 @@ func evaluateOpenAPIShapeAgreement(
 		strings.HasPrefix(goType.Name(), "Optional[") {
 		nullable = true
 		goType = goType.Field(0).Type
+	}
+	if forceNonNullable {
+		nullable = false
 	}
 	if shape.Ref != "" {
 		const prefix = "#/components/schemas/"
@@ -134,7 +141,7 @@ func evaluateOpenAPIShapeAgreement(
 		if shape.Items == nil {
 			return appendAgreementViolation(violations, target, "items", "array item schema is missing")
 		}
-		return evaluateOpenAPIShapeAgreement(violations, document, target+"[]", *shape.Items, goType.Elem(), requestSchema, false, false, nullablePaths)
+		return evaluateOpenAPIShapeAgreement(violations, document, target+"[]", *shape.Items, goType.Elem(), requestSchema, false, false, false, nullablePaths, nonNullablePaths)
 	}
 	if goType.Kind() == reflect.Map {
 		var additional openAPISchemaShape
@@ -143,7 +150,7 @@ func evaluateOpenAPIShapeAgreement(
 			json.Unmarshal(shape.AdditionalProperties, &additional) != nil {
 			return appendAgreementViolation(violations, target, "additional properties", "map schema does not declare string-keyed values")
 		}
-		return evaluateOpenAPIShapeAgreement(violations, document, target+"{}", additional, goType.Elem(), requestSchema, false, false, nil)
+		return evaluateOpenAPIShapeAgreement(violations, document, target+"{}", additional, goType.Elem(), requestSchema, false, false, false, nil, nil)
 	}
 	if goType.Kind() != reflect.Struct {
 		return violations
@@ -183,7 +190,9 @@ func evaluateOpenAPIShapeAgreement(
 			requestSchema,
 			!stringSliceContains(shape.Required, name),
 			stringSliceContains(nullablePaths, name),
+			stringSliceContains(nonNullablePaths, name),
 			nestedAgreementPaths(nullablePaths, name),
+			nestedAgreementPaths(nonNullablePaths, name),
 		)
 	}
 	return violations

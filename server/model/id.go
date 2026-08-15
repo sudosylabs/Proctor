@@ -40,6 +40,9 @@ type ExamID string
 // ExamRevisionID identifies one immutable published examination revision.
 type ExamRevisionID string
 
+// ExamSittingID identifies one scheduled delivery of an Exam Revision to one Class.
+type ExamSittingID string
+
 // ExamResourceID identifies one supporting file attached to an Exam Draft.
 type ExamResourceID string
 

@@ -13,6 +13,7 @@ import (
 type examinationConstruction struct {
 	authoring        examUseCases
 	revisions        examRevisionUseCases
+	sittings         examSittingUseCases
 	resources        examResourceUseCases
 	starterWorkspace examStarterWorkspaceUseCases
 }
@@ -180,6 +181,7 @@ func assembleApplication(
 		classMembers:                      access.classMembers,
 		exams:                             examinations.authoring,
 		examRevisions:                     examinations.revisions,
+		examSittings:                      examinations.sittings,
 		examResources:                     examinations.resources,
 		examStarterWorkspace:              examinations.starterWorkspace,
 		userProfiles:                      profiles.userProfiles,

@@ -76,6 +76,48 @@ type examRevisionPublishedData struct {
 	PublishedAt  string `json:"published_at"`
 }
 
+type examSittingChangedData struct {
+	ExamID        string `json:"exam_id"`
+	ExamSittingID string `json:"exam_sitting_id"`
+	State         string `json:"state"`
+	Revision      int64  `json:"revision"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+func NewExamSittingScheduledEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, changedAt time.Time) (RealtimeEvent, error) {
+	if state != model.ExamSittingScheduled {
+		return RealtimeEvent{}, errors.New("scheduled Exam Sitting event requires Scheduled state")
+	}
+	return newExamSittingChangedEvent("exam_sitting_scheduled", examID, sittingID, state, revision, changedAt)
+}
+
+func NewExamSittingScheduleUpdatedEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, changedAt time.Time) (RealtimeEvent, error) {
+	if state != model.ExamSittingScheduled {
+		return RealtimeEvent{}, errors.New("Exam Sitting schedule update event requires Scheduled state")
+	}
+	return newExamSittingChangedEvent("exam_sitting_schedule_updated", examID, sittingID, state, revision, changedAt)
+}
+
+func NewExamSittingCanceledEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, changedAt time.Time) (RealtimeEvent, error) {
+	if state != model.ExamSittingCanceled {
+		return RealtimeEvent{}, errors.New("canceled Exam Sitting event requires Canceled state")
+	}
+	return newExamSittingChangedEvent("exam_sitting_canceled", examID, sittingID, state, revision, changedAt)
+}
+
+func newExamSittingChangedEvent(name string, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, changedAt time.Time) (RealtimeEvent, error) {
+	if !examID.IsValid() || !sittingID.IsValid() || !state.IsValid() || revision < 1 || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("Exam Sitting event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(examSittingChangedData{ExamID: examID.String(), ExamSittingID: sittingID.String(), State: string(state),
+		Revision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting event: %w", err)
+	}
+	return RealtimeEvent{Name: name, Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
 func NewExamRevisionPublishedEvent(revisionID model.ExamRevisionID, examID model.ExamID, number int64, policyDigest string, kind model.ExamRevisionPublicationKind, publishedAt time.Time) (RealtimeEvent, error) {
 	if !revisionID.IsValid() || !examID.IsValid() || number < 1 || len(policyDigest) != 64 || !kind.IsValid() || publishedAt.IsZero() {
 		return RealtimeEvent{}, errors.New("Exam Revision published event requires valid bounded metadata")

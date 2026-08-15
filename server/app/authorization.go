@@ -302,7 +302,7 @@ func authorizationAuditScope(
 		return model.RoleScopeInstitution, resolved.institutionID
 	case model.ResourceAcademicUnit:
 		return model.RoleScopeAcademicUnit, resource.ID
-	case model.ResourceExam:
+	case model.ResourceExam, model.ResourceExamSitting:
 		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
 	case model.ResourceClass:
 		return model.RoleScopeClass, resource.ID

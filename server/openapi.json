@@ -1299,6 +1299,72 @@
         }
       }
     },
+    "/api/v1/exams/{exam_id}/sittings": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}],
+      "get": {
+        "operationId": "listExamSittings",
+        "summary": "List bounded Exam Sittings ordered by scheduled start and identity descending",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "class_id", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/ID"}},
+          {"name": "state", "in": "query", "required": false, "description": "Repeated values are accepted and deduplicated before applying the filter.", "style": "form", "explode": true, "schema": {"type": "array", "maxItems": 6, "items": {"$ref": "#/components/schemas/ExamSittingState"}}},
+          {"name": "ends_after", "in": "query", "required": false, "description": "Paired with starts_before; selects half-open Sittings whose end is after this instant.", "schema": {"type": "string", "format": "date-time"}},
+          {"name": "starts_before", "in": "query", "required": false, "description": "Paired with ends_after; selects half-open Sittings whose start is before this instant.", "schema": {"type": "string", "format": "date-time"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
+          {"name": "cursor", "in": "query", "required": false, "description": "Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged.", "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "post": {
+        "operationId": "scheduleExamSitting",
+        "summary": "Schedule one immutable Exam Revision for one Class",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "exam.sitting.schedule_not_future", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ScheduleExamSitting"},
+        "responses": {"201": {"$ref": "#/components/responses/ExamSittingCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "get": {
+        "operationId": "getExamSitting",
+        "summary": "Get one bounded Exam Sitting",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "patch": {
+        "operationId": "updateExamSittingSchedule",
+        "summary": "Change the pre-open Exam Revision, Class, or schedule",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.no_changes", "exam.sitting.state_conflict", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "exam.sitting.schedule_not_future", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateExamSittingSchedule"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/cancel": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "post": {
+        "operationId": "cancelExamSitting",
+        "summary": "Cancel a Scheduled Exam Sitting with a private manager reason",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/CancelExamSitting"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/exams/{exam_id}/draft": {
       "parameters": [{"$ref": "#/components/parameters/ExamID"}],
       "patch": {
@@ -1699,6 +1765,12 @@
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "ExamSittingID": {
+        "name": "exam_sitting_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "ExamResourceID": {
         "name": "exam_resource_id",
         "in": "path",
@@ -1776,6 +1848,18 @@
       "PublishExamRevision": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishExamRevisionRequest"}}}
+      },
+      "ScheduleExamSitting": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ScheduleExamSittingRequest"}}}
+      },
+      "UpdateExamSittingSchedule": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateExamSittingScheduleRequest"}}}
+      },
+      "CancelExamSitting": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CancelExamSittingRequest"}}}
       },
       "EditExamDraftText": {
         "required": true,
@@ -1958,6 +2042,21 @@
         "description": "Bounded immutable Exam Revision metadata collection",
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamRevisionListResponse"}}}
+      },
+      "ExamSittingOK": {
+        "description": "Bounded Exam Sitting state",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingResponse"}}}
+      },
+      "ExamSittingCreated": {
+        "description": "Exam Sitting scheduled",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingResponse"}}}
+      },
+      "ExamSittingListOK": {
+        "description": "Bounded Exam Sitting collection",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingListResponse"}}}
       },
       "ExamListOK": {
         "description": "Visible Exam collection",
@@ -2159,6 +2258,79 @@
         "required": ["expected_draft_revision"],
         "properties": {
           "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "ScheduleExamSittingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exam_revision_id", "class_id", "scheduled_start_at", "scheduled_end_at"],
+        "properties": {
+          "exam_revision_id": {"$ref": "#/components/schemas/ID"},
+          "class_id": {"$ref": "#/components/schemas/ID"},
+          "scheduled_start_at": {"type": "string", "format": "date-time"},
+          "scheduled_end_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "UpdateExamSittingScheduleRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_revision"],
+        "anyOf": [{"required": ["exam_revision_id"]}, {"required": ["class_id"]}, {"required": ["scheduled_start_at"]}, {"required": ["scheduled_end_at"]}],
+        "properties": {
+          "expected_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "exam_revision_id": {"$ref": "#/components/schemas/ID"},
+          "class_id": {"$ref": "#/components/schemas/ID"},
+          "scheduled_start_at": {"type": "string", "format": "date-time"},
+          "scheduled_end_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "CancelExamSittingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_revision", "reason"],
+        "properties": {
+          "expected_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes."}
+        }
+      },
+      "ExamSittingState": {
+        "type": "string",
+        "enum": ["scheduled", "open", "paused", "closing", "closed", "canceled"]
+      },
+      "ExamSittingReasonCode": {
+        "type": "string",
+        "enum": ["manager_canceled", "schedule_elapsed"]
+      },
+      "ExamSittingResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "exam_id", "exam_revision_id", "class_id", "scheduled_start_at", "scheduled_end_at", "state", "created_at", "updated_at", "revision"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "exam_id": {"$ref": "#/components/schemas/ID"},
+          "exam_revision_id": {"$ref": "#/components/schemas/ID"},
+          "class_id": {"$ref": "#/components/schemas/ID"},
+          "scheduled_start_at": {"type": "string", "format": "date-time"},
+          "scheduled_end_at": {"type": "string", "format": "date-time"},
+          "state": {"$ref": "#/components/schemas/ExamSittingState"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "opened_at": {"type": "string", "format": "date-time"},
+          "paused_at": {"type": "string", "format": "date-time"},
+          "closing_at": {"type": "string", "format": "date-time"},
+          "closed_at": {"type": "string", "format": "date-time"},
+          "canceled_at": {"type": "string", "format": "date-time"},
+          "reason_code": {"$ref": "#/components/schemas/ExamSittingReasonCode"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "ExamSittingListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items"],
+        "properties": {
+          "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamSittingResponse"}},
+          "next_cursor": {"type": "string", "description": "Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged."}
         }
       },
       "EditExamDraftTextRequest": {

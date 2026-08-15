@@ -259,6 +259,7 @@ type Catalog interface {
 	AcademicPeriod() AcademicPeriodStore
 	ExamAuthoring() ExamAuthoringStore
 	ExamRevision() ExamRevisionStore
+	ExamSitting() ExamSittingStore
 	ExamResource() ExamResourceStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore
@@ -292,6 +293,7 @@ type Store interface {
 	AcademicPeriod() AcademicPeriodStore
 	ExamAuthoring() ExamAuthoringStore
 	ExamRevision() ExamRevisionStore
+	ExamSitting() ExamSittingStore
 	ExamResource() ExamResourceStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore

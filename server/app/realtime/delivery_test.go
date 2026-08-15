@@ -76,6 +76,29 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	if _, err := NewExamDraftUpdatedEvent(examID, 0); err == nil {
 		t.Fatal("accepted non-positive Draft revision")
 	}
+	sittingID := model.NewExamSittingID()
+	sittingChangedAt := time.Date(2026, 8, 14, 9, 5, 0, 123, time.UTC)
+	sittingScheduled, err := NewExamSittingScheduledEvent(examID, sittingID, model.ExamSittingScheduled, 1, sittingChangedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sittingScheduled.Name != "exam_sitting_scheduled" || sittingScheduled.Action != model.ActionExamSittingView ||
+		sittingScheduled.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
+		t.Fatalf("scheduled Sitting event = %#v", sittingScheduled)
+	}
+	if got := string(sittingScheduled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"scheduled","revision":1,"changed_at":"2026-08-14T09:05:00.000000123Z"}` {
+		t.Fatalf("scheduled Sitting data = %s", got)
+	}
+	sittingCanceled, err := NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingCanceled, 2, sittingChangedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(sittingCanceled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"canceled","revision":2,"changed_at":"2026-08-14T09:05:00.000000123Z"}` {
+		t.Fatalf("canceled Sitting data = %s", got)
+	}
+	if _, err := NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingScheduled, 2, sittingChangedAt); err == nil {
+		t.Fatal("accepted a cancellation event with non-canceled state")
+	}
 	revisionID := model.NewExamRevisionID()
 	policyDigest := strings.Repeat("a", 64)
 	publishedAt := time.Date(2026, 8, 14, 9, 10, 0, 123, time.UTC)

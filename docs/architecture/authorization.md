@@ -109,6 +109,15 @@ creator is provenance; one current owner is protected, and ownership transfer
 is an audited operation. A system administrator may use an explicit permission
 override without becoming an Exam Manager, but no permission bypasses the
 exact Academic Unit/Class lineage, lifecycle, or immutable-publication rules.
+Sitting creation authorizes `exam.sitting.create` on the owning Exam; exact
+Sitting reads and pre-open schedule/cancel mutations authorize
+`exam.sitting.view` and `exam.sitting.manage` on the Exam Sitting. Sitting lists
+use the owning Exam's view decision. Each ordinary path also rechecks the
+current Exam Manager relationship and exact Academic Unit membership. The
+corresponding `.override` actions are explicit administrator paths, remain
+audited, and bypass neither Revision ownership nor Class lineage, Academic
+Period, archive, state, or optimistic-revision constraints. Unauthorized exact
+Sitting access is concealed as not found.
 Candidate participation is decided from current exact-Class membership and
 Attempt/Sitting state on every connection; it is not a reusable role grant.
 Further lifecycle and visibility rules are in

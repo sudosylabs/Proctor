@@ -152,7 +152,7 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	}
 	resolver, err := newAccessScopeResolver(
 		root.Institution(), recoveryAccessAcademicUnitStore{}, recoveryAccessClassStore{}, recoveryAccessUserStore{}, recoveryAccessClassMemberStore{},
-		&accessExamAuthoringStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)

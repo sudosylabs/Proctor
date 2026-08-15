@@ -408,6 +408,7 @@ type Application interface {
 	JobOperationsApplication
 	ExamApplication
 	ExamRevisionApplication
+	ExamSittingApplication
 	ExamResourceApplication
 	ExamStarterWorkspaceApplication
 	Realtime
@@ -537,6 +538,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		academicUnitResource(options.AcademicUnits),
 		examResource(options.Application),
 		examRevisionResource(options.Application),
+		examSittingResource(options.Application),
 		examResourceHTTPResource(options.Application),
 		examStarterWorkspaceHTTPResource(options.Application),
 		programmeResource(options.Programmes),

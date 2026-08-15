@@ -109,12 +109,14 @@ type openAPIAgreementOperation struct {
 }
 
 type openAPIAgreementSchema struct {
-	Name     string
-	DTO      reflect.Type
-	Required []string
+	Name        string
+	DTO         reflect.Type
+	Required    []string
+	NonNullable []string
 	// Nullable names fields, or dot-separated nested fields, whose response
 	// representation deliberately emits JSON null. Request pointer/null
-	// semantics remain inferred automatically.
+	// semantics remain inferred automatically unless NonNullable explicitly
+	// records a presence-aware request field that rejects JSON null.
 	Nullable []string
 }
 

@@ -44,6 +44,28 @@ func TestOpenAPISchemaAgreementAllowsNullForRequiredResponsePointer(t *testing.T
 		false,
 		false,
 		true,
+		false,
+		nil,
+		nil,
+	)
+	if len(violations) != 0 {
+		t.Fatalf("violations = %v", violations)
+	}
+}
+
+func TestOpenAPISchemaAgreementAllowsPresenceAwareNonNullRequestField(t *testing.T) {
+	t.Parallel()
+	violations := evaluateOpenAPIShapeAgreement(
+		nil,
+		openAPIDocument{},
+		"schema Request.class_id",
+		openAPISchemaShape{Type: "string"},
+		reflect.TypeOf(Optional[string]{}),
+		true,
+		true,
+		false,
+		true,
+		nil,
 		nil,
 	)
 	if len(violations) != 0 {
