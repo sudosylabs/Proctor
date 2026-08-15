@@ -107,6 +107,24 @@ func TestValidateExamSittingLifecycleJob(t *testing.T) {
 			t.Errorf("mutation[%d] error=%v", index, err)
 		}
 	}
+	finalizeKey, err := model.ExamSittingLifecycleDedupeKey(sittingID, model.ExamSittingLifecycleJobFinalize, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalize, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command,
+		finalizeKey, model.JobDedupeActive, model.NowUTC(), availableAt, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = validateExamSittingLifecycleJob(finalize, sittingID, model.ExamSittingLifecycleJobFinalize, 3, availableAt); err != nil {
+		t.Fatalf("valid sealing Job: %v", err)
+	}
+	wrongType := *finalize
+	wrongType.Type = model.JobTypeExamSittingLifecycle
+	var invalid *store.ErrInvalidInput
+	if err = validateExamSittingLifecycleJob(&wrongType, sittingID, model.ExamSittingLifecycleJobFinalize, 3, availableAt); !errors.As(err, &invalid) {
+		t.Fatalf("finalize lifecycle Job error = %v", err)
+	}
 }
 
 func TestPrepareExamSittingManagerTransitionRequiresPhaseSpecificFinalizeJob(t *testing.T) {
@@ -149,7 +167,7 @@ func TestStaleExamSittingFinalizeJobIsRevisionConflictCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stale, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command, staleKey,
+	stale, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command, staleKey,
 		model.JobDedupeActive, now, sitting.ScheduledEndAt, 8)
 	if err != nil {
 		t.Fatal(err)

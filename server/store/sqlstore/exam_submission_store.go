@@ -612,8 +612,12 @@ func completeExamSubmissionAudit(ctx context.Context, tx *sqlxTxWrapper, outcome
 		"workspace_cursor": outcome.Receipt.WorkspaceCursor, "manifest_digest": outcome.Receipt.ManifestDigest,
 		"state": string(outcome.Receipt.State), "submitted_at": outcome.Receipt.SubmittedAt}
 	if replayed {
-		data["idempotency_replayed"] = true
-		data["original_audit_event_id"] = originalAuditID
+		if originalAuditID == "" {
+			data["replayed"] = true
+		} else {
+			data["idempotency_replayed"] = true
+			data["original_audit_event_id"] = originalAuditID
+		}
 	}
 	encoded, err := model.EncodeAuditData(data)
 	if err != nil {

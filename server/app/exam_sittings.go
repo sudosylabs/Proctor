@@ -22,6 +22,18 @@ type ExamSittingPage struct {
 	HasMore bool
 }
 
+type ExamSittingNoShowPage struct {
+	Items   []store.ExamSittingNoShow
+	HasMore bool
+}
+
+type ListExamSittingNoShowsQuery struct {
+	ExamID               model.ExamID
+	SittingID            model.ExamSittingID
+	AfterCandidateUserID model.UserID
+	Limit                int
+}
+
 type ScheduleExamSittingCommand struct {
 	ExamID           model.ExamID
 	ExamRevisionID   model.ExamRevisionID
@@ -100,7 +112,8 @@ type examSittingUseCases interface {
 	Extend(context.Context, examsitting.Call, examsitting.ExtendCommand) (store.ExamSittingSnapshot, error)
 	EarlyClose(context.Context, examsitting.Call, examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error)
 	AdvanceDue(context.Context, examsitting.SystemCall, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
-	CloseIfNoAttempts(context.Context, examsitting.SystemCall, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
+	FinishSealing(context.Context, examsitting.SystemCall, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
+	ListNoShows(context.Context, examsitting.Call, model.ExamID, model.ExamSittingID, model.UserID, int) (examsitting.NoShowPage, error)
 	ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
@@ -143,6 +156,17 @@ func (a *App) ListExamSittings(ctx context.Context, invocation Invocation, query
 		return ExamSittingPage{}, examSittingError(err, true)
 	}
 	return ExamSittingPage{Items: page.Items, HasMore: page.HasMore}, nil
+}
+
+func (a *App) ListExamSittingNoShows(ctx context.Context, invocation Invocation,
+	query ListExamSittingNoShowsQuery,
+) (ExamSittingNoShowPage, error) {
+	page, err := a.examSittings.ListNoShows(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		query.ExamID, query.SittingID, query.AfterCandidateUserID, query.Limit)
+	if err != nil {
+		return ExamSittingNoShowPage{}, examSittingError(err, true)
+	}
+	return ExamSittingNoShowPage{Items: page.Items, HasMore: page.HasMore}, nil
 }
 
 func (a *App) UpdateExamSittingSchedule(ctx context.Context, invocation Invocation, command UpdateExamSittingScheduleCommand) (ExamSittingView, error) {
@@ -260,13 +284,6 @@ func (useCases examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFro
 	result, err := useCases.sittings.AdvanceDue(ctx, call, sittingID)
 	if err != nil {
 		return nil, err
-	}
-	if result.Value != nil && result.Value.Sitting != nil && result.Value.Sitting.State == model.ExamSittingClosing {
-		closed, closeErr := useCases.sittings.CloseIfNoAttempts(ctx, call, sittingID)
-		if closeErr != nil {
-			return nil, closeErr
-		}
-		return &closed, nil
 	}
 	return &result, nil
 }

@@ -134,14 +134,27 @@ audit retention remains independent.
 
 ## Initial consumers and lifecycle
 
-The first registered types are:
+The initial registered work covers:
 
 - `profile_picture.generate_default`, deduplicated by user ID;
 - `profile_picture.reconcile_defaults`, a bounded recovery/backfill batch;
 - `file.purge_expired_content`, a bounded cleanup of expired Upload Leases,
-  partial renditions, and retention-eligible archived content; and
+  partial renditions, and retention-eligible archived content;
+- delayed and recovery-driven Exam Sitting lifecycle work, plus bounded
+  non-cancelable sealing of Closing Sittings; and
 - `job.cleanup`, a daily bounded retention pass that cannot delete queued,
   running, or its own active work.
+
+Entering Closing atomically queues the sealing Job with the Sitting mutation.
+Its command contains only the Sitting identity, its checkpoint contains a
+stable Attempt cursor plus safe counts, and each claimed Attempt is sealed in a
+separate idempotent aggregate transaction before checkpointing. Work
+reservations are occurrence-wide and survive lease loss. A reservation ahead
+of the checkpoint is therefore burned as uncertain work on retry; it is never
+reused to exceed the cap. A permanently deduplicated successor continues after
+1,000 units, while the ordinary daily lifecycle recovery occurrence recreates
+missing or failed Closing work. Job history follows the same bounded retention
+rules as the other lifecycle types.
 
 User-creation transactions enqueue individual generation atomically;
 reconciliation remains the safety net. The engine starts after its mandatory

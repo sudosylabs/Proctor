@@ -266,10 +266,6 @@ func (s *examSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSitt
 	return s.ExamSittingStore.AdvanceDue(ctx, input)
 }
 
-func (s *examSittingStore) CloseIfNoAttempts(ctx context.Context, input *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
-	return s.ExamSittingStore.CloseIfNoAttempts(ctx, input)
-}
-
 func (s *examSittingStore) retryLifecycleMutation(ctx context.Context, command *store.CommandIdempotency, operation func() (*store.ExamSittingLifecycleResult, error)) (*store.ExamSittingLifecycleResult, error) {
 	if command == nil {
 		return operation()

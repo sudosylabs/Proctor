@@ -1421,6 +1421,21 @@
         "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/no-shows": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "get": {
+        "operationId": "listExamSittingNoShows",
+        "summary": "List candidates who were Class members at actual start but never created an Attempt",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable", "exam.sitting.state_conflict", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
+          {"name": "cursor", "in": "query", "schema": {"type": "string"}, "description": "Opaque versioned cursor over candidate identity; return unchanged."}
+        ],
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingNoShowListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/correction-resource-stages": {
       "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
       "post": {
@@ -2432,6 +2447,11 @@
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingListResponse"}}}
       },
+      "ExamSittingNoShowListOK": {
+        "description": "Bounded candidates with no Attempt, derived from membership active at actual Sitting start",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingNoShowListResponse"}}}
+      },
       "ExamAttemptManagerOK": {
         "description": "Bounded manager-safe Exam Attempt state",
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
@@ -2823,6 +2843,17 @@
         "properties": {
           "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamSittingResponse"}},
           "next_cursor": {"type": "string", "description": "Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged."}
+        }
+      },
+      "ExamSittingNoShowResponse": {
+        "type": "object", "additionalProperties": false, "required": ["candidate_user_id"],
+        "properties": {"candidate_user_id": {"$ref": "#/components/schemas/ID"}}
+      },
+      "ExamSittingNoShowListResponse": {
+        "type": "object", "additionalProperties": false, "required": ["items"],
+        "properties": {
+          "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamSittingNoShowResponse"}},
+          "next_cursor": {"type": "string", "description": "Opaque versioned candidate-identity cursor; clients return it unchanged."}
         }
       },
       "ExamAttemptState": {"type": "string", "enum": ["active", "suspended", "submitted"]},

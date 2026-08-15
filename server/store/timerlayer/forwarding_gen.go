@@ -966,9 +966,15 @@ func (s *timedExamSittingStore) AdvanceDue(arg0 context.Context, arg1 *store.Exa
 	})
 }
 
-func (s *timedExamSittingStore) CloseIfNoAttempts(arg0 context.Context, arg1 *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCloseIfNoAttempts), func() (*store.ExamSittingLifecycleResult, error) {
-		return s.next.CloseIfNoAttempts(arg0, arg1)
+func (s *timedExamSittingStore) FinishSealing(arg0 context.Context, arg1 *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodFinishSealing), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.FinishSealing(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ListNoShows(arg0 context.Context, arg1 store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListNoShows), func() ([]store.ExamSittingNoShow, error) {
+		return s.next.ListNoShows(arg0, arg1)
 	})
 }
 
@@ -1053,6 +1059,18 @@ func (s *timedExamSubmissionStore) ResolveSealTarget(arg0 context.Context, arg1 
 func (s *timedExamSubmissionStore) Seal(arg0 context.Context, arg1 *store.ExamSubmissionSeal, arg2 *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSeal), func() (*store.ExamSubmissionSealResult, error) {
 		return s.next.Seal(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSubmissionStore) ListAutomaticSealTargets(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListAutomaticSealTargets), func() ([]store.ExamSubmissionAutomaticSealTarget, error) {
+		return s.next.ListAutomaticSealTargets(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) SealForSittingClose(arg0 context.Context, arg1 *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSealForSittingClose), func() (*store.ExamSubmissionAutomaticSealResult, error) {
+		return s.next.SealForSittingClose(arg0, arg1)
 	})
 }
 

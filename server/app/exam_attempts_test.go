@@ -279,6 +279,47 @@ func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactCo
 	}
 }
 
+func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConnection(t *testing.T) {
+	t.Parallel()
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	sink := &recordingRealtimeSink{}
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+	result := examattempt.AutomaticSubmissionResult{SubmissionResult: examattempt.SubmissionResult{
+		Receipt: store.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(),
+			State: model.ExamAttemptSubmitted, WorkspaceCursor: 21, ManifestDigest: strings.Repeat("e", 64),
+			SubmittedAt: time.Date(2026, time.August, 22, 11, 0, 0, 0, time.UTC)},
+		SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), ConnectionID: model.NewAttemptConnectionID()},
+		ConnectionClosed: true}
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSealedForSittingClose(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
+	sink.mu.Unlock()
+	if len(events) != 3 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
+		events[1].Name != "exam_attempt_submitted" || events[1].UserID != result.CandidateUserID.String() ||
+		events[2].Name != "exam_attempt_connection_closed" || len(unbound) != 1 || unbound[0] != result.ConnectionID {
+		t.Fatalf("events=%#v unbound=%#v", events, unbound)
+	}
+	if encoded := string(events[2].Data); !strings.Contains(encoded, `"close_reason":"sitting_closed"`) {
+		t.Fatalf("automatic close event = %s", encoded)
+	}
+	for _, event := range events {
+		encoded := strings.ToLower(string(event.Data))
+		for _, forbidden := range []string{"path", "content", "source", "evidence", "sequence", "credential", "session", "private"} {
+			if strings.Contains(encoded, forbidden) {
+				t.Fatalf("automatic Submission event contains %q: %s", forbidden, event.Data)
+			}
+		}
+	}
+}
+
 func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWarning(t *testing.T) {
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
@@ -505,6 +546,18 @@ func (fake *examAttemptUseCasesFake) OpenSubmissionFile(context.Context, examatt
 	examattempt.OpenSubmissionFileQuery,
 ) (*examattempt.OpenedContent, error) {
 	return nil, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) ListAutomaticSealTargets(context.Context, model.ExamSittingID,
+	model.ExamAttemptID, int,
+) ([]store.ExamSubmissionAutomaticSealTarget, error) {
+	return nil, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) SealForSittingClose(context.Context, examattempt.SystemCall,
+	store.ExamSubmissionAutomaticSealTarget,
+) (examattempt.AutomaticSubmissionResult, error) {
+	return examattempt.AutomaticSubmissionResult{}, fake.err
 }
 
 var _ examAttemptUseCases = (*examAttemptUseCasesFake)(nil)

@@ -17,6 +17,7 @@ import (
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestExamSittingHTTPScheduleUsesStrictIdempotentCommandAndSafeResponse(t *testing.T) {
@@ -296,6 +297,46 @@ func TestExamSittingHTTPGetUsesBothExactIdentities(t *testing.T) {
 	}
 }
 
+func TestExamSittingHTTPListsNoShowsWithOpaqueUserCursor(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	fake := newExamSittingHTTPFake(t)
+	first, second := model.NewUserID(), model.NewUserID()
+	fake.noShowPage = application.ExamSittingNoShowPage{Items: []store.ExamSittingNoShow{
+		{CandidateUserID: first}, {CandidateUserID: second}}, HasMore: true}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+	request := httptest.NewRequest(http.MethodGet, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/no-shows?limit=2", nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		fake.noShows.ExamID != fake.sitting.ExamID ||
+		fake.noShows.SittingID != fake.sitting.ID || fake.noShows.Limit != 2 {
+		t.Fatalf("status=%d query=%#v body=%s", response.Code, fake.noShows, response.Body.String())
+	}
+	var body examSittingNoShowListResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || len(body.Items) != 2 ||
+		body.Items[1].CandidateUserID != second.String() || body.NextCursor == "" {
+		t.Fatalf("body=%#v err=%v", body, err)
+	}
+	decoded, err := decodeExamSittingNoShowCursor(body.NextCursor)
+	if err != nil || decoded != second || strings.Contains(body.NextCursor, second.String()) {
+		t.Fatalf("cursor=%q decoded=%s err=%v", body.NextCursor, decoded, err)
+	}
+	invalid := []string{
+		"not-base64",
+		base64.RawURLEncoding.EncodeToString([]byte(`{"version":2,"candidate_user_id":"` + second.String() + `"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"version":1,"candidate_user_id":"` + second.String() + `"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"candidate_user_id":"` + second.String() + `","extra":true}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"candidate_user_id":"` + second.String() + `"}{}`)),
+	}
+	for _, raw := range invalid {
+		if _, decodeErr := decodeExamSittingNoShowCursor(raw); decodeErr == nil {
+			t.Errorf("decodeExamSittingNoShowCursor(%q) succeeded", raw)
+		}
+	}
+}
+
 type examSittingHTTPFake struct {
 	Application
 	principal    model.Principal
@@ -312,6 +353,8 @@ type examSittingHTTPFake struct {
 	resume       application.ResumeExamSittingCommand
 	extend       application.ExtendExamSittingCommand
 	close        application.CloseExamSittingCommand
+	noShows      application.ListExamSittingNoShowsQuery
+	noShowPage   application.ExamSittingNoShowPage
 }
 
 func newExamSittingHTTPFake(t *testing.T) *examSittingHTTPFake {
@@ -377,6 +420,13 @@ func (f *examSittingHTTPFake) ExtendExamSitting(_ context.Context, _ application
 func (f *examSittingHTTPFake) CloseExamSitting(_ context.Context, _ application.Invocation, command application.CloseExamSittingCommand) (application.ExamSittingView, error) {
 	f.close = command
 	return application.ExamSittingView{Sitting: f.sitting}, nil
+}
+
+func (f *examSittingHTTPFake) ListExamSittingNoShows(_ context.Context, _ application.Invocation,
+	query application.ListExamSittingNoShowsQuery,
+) (application.ExamSittingNoShowPage, error) {
+	f.noShows = query
+	return f.noShowPage, nil
 }
 
 func examSittingCollectionPath(examID model.ExamID) string {

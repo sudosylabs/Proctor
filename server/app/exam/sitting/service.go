@@ -633,12 +633,56 @@ func (service *Service) AdvanceDue(ctx context.Context, call SystemCall, sitting
 		})
 }
 
-func (service *Service) CloseIfNoAttempts(ctx context.Context, call SystemCall, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
-	return service.runSystemLifecycle(ctx, call, sittingID, "close_if_no_attempts", false,
+func (service *Service) FinishSealing(ctx context.Context, call SystemCall, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+	return service.runSystemLifecycle(ctx, call, sittingID, "finish_sealing", false,
 		func(ctx context.Context, input systemLifecycleInput) (*store.ExamSittingLifecycleResult, error) {
-			return service.persistence.CloseIfNoAttempts(ctx, &store.ExamSittingCloseIfNoAttempts{SittingID: input.sittingID,
+			return service.persistence.FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: input.sittingID,
 				AuditEventID: input.auditID, AuditAt: input.auditAt})
 		})
+}
+
+type NoShowPage struct {
+	Items   []store.ExamSittingNoShow
+	HasMore bool
+}
+
+func (service *Service) ListNoShows(ctx context.Context, call Call, examID model.ExamID, sittingID model.ExamSittingID,
+	after model.UserID, limit int,
+) (NoShowPage, error) {
+	if !examID.IsValid() || !sittingID.IsValid() || (!after.IsZero() && !after.IsValid()) || limit < 1 || limit > 200 {
+		return NoShowPage{}, invalid("no_show_list")
+	}
+	snapshot, err := service.Get(ctx, call, examID, sittingID)
+	if err != nil {
+		return NoShowPage{}, err
+	}
+	if snapshot.Sitting == nil || (snapshot.Sitting.State != model.ExamSittingClosing && snapshot.Sitting.State != model.ExamSittingClosed) {
+		return NoShowPage{}, &Fault{Code: "exam.sitting.state_conflict"}
+	}
+	items, err := service.persistence.ListNoShows(ctx, store.ExamSittingNoShowListOptions{
+		SittingID: sittingID, AfterCandidateUserID: after, Limit: limit + 1,
+	})
+	if err != nil {
+		return NoShowPage{}, mapStoreError(err)
+	}
+	if len(items) > limit+1 {
+		return NoShowPage{}, unavailable(errors.New("Exam Sitting Store returned an oversized no-show page"))
+	}
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	previous := after
+	for _, item := range items {
+		if !item.CandidateUserID.IsValid() || (!previous.IsZero() && item.CandidateUserID.String() <= previous.String()) {
+			return NoShowPage{}, unavailable(errors.New("Exam Sitting Store returned an invalid no-show page"))
+		}
+		previous = item.CandidateUserID
+	}
+	if items == nil {
+		items = []store.ExamSittingNoShow{}
+	}
+	return NoShowPage{Items: items, HasMore: hasMore}, nil
 }
 
 type systemLifecycleInput struct {
@@ -666,7 +710,11 @@ func (service *Service) runSystemLifecycle(ctx context.Context, call SystemCall,
 	}
 	var finalizeJob *model.Job
 	if prepareFinalize {
-		finalizeJob, err = service.jobs.FinalizeJob(sittingID, snapshot.Sitting.Revision+1, snapshot.Sitting.ScheduledEndAt)
+		resultingRevision, availableAt := snapshot.Sitting.Revision+1, snapshot.Sitting.ScheduledEndAt
+		if snapshot.Sitting.State == model.ExamSittingClosing && snapshot.Sitting.ClosingAt.Valid {
+			resultingRevision, availableAt = snapshot.Sitting.Revision, snapshot.Sitting.ClosingAt.Time
+		}
+		finalizeJob, err = service.jobs.FinalizeJob(sittingID, resultingRevision, availableAt)
 		if err != nil || finalizeJob == nil {
 			return store.ExamSittingLifecycleResult{}, jobFactoryUnavailable("construct Exam Sitting finalize Job", err)
 		}
@@ -744,7 +792,8 @@ func validLifecycleTransition(value store.ExamSittingLifecycleTransitionCode) bo
 	case store.ExamSittingTransitionOpened, store.ExamSittingTransitionManagerPaused, store.ExamSittingTransitionManagerResumed,
 		store.ExamSittingTransitionManagerExtended, store.ExamSittingTransitionManagerClosed,
 		store.ExamSittingTransitionAcademicStructureInvalid, store.ExamSittingTransitionScheduleElapsed,
-		store.ExamSittingTransitionScheduledEndReached, store.ExamSittingTransitionClosedNoAttempts:
+		store.ExamSittingTransitionScheduledEndReached, store.ExamSittingTransitionClosedNoAttempts,
+		store.ExamSittingTransitionSealingCompleted:
 		return true
 	default:
 		return false

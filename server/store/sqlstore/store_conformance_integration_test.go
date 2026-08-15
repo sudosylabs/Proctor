@@ -265,6 +265,15 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 			if !strings.Contains(auditResourceConstraint, "'submission'") {
 				t.Fatalf("audit Submission resource constraint = %q", auditResourceConstraint)
 			}
+			var indexes []string
+			if err := persistence.GetMaster().Select(ctx, &indexes, `SELECT indexname FROM pg_indexes
+				WHERE schemaname=current_schema() AND indexname IN (
+				'class_members_class_user_history_idx','exam_attempts_sitting_unfinished_id_idx') ORDER BY indexname`); err != nil {
+				t.Fatal(err)
+			}
+			if len(indexes) != 2 {
+				t.Fatalf("automatic sealing/no-show indexes = %#v", indexes)
+			}
 		},
 		AssertRetentionFence: func(t *testing.T, ctx context.Context, submissionID model.SubmissionID) {
 			t.Helper()

@@ -86,7 +86,17 @@ type Effects interface {
 	WorkspaceChanged(context.Context, WorkspaceMutationResult) error
 	FocusLossEvaluated(context.Context, FocusLossEvaluation) error
 	AttemptSubmitted(context.Context, SubmissionResult) error
+	AttemptSealedForSittingClose(context.Context, AutomaticSubmissionResult) error
 }
+
+// SystemCall identifies the durable Job execution responsible for one
+// actor-less automatic seal. IDs enter only bounded audit metadata.
+type SystemCall struct {
+	JobID     model.JobID
+	AttemptID model.JobAttemptID
+}
+
+func (call SystemCall) valid() bool { return call.JobID.IsValid() && call.AttemptID.IsValid() }
 
 type EffectFailures interface {
 	Report(context.Context, string, error)

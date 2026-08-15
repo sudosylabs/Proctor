@@ -1179,6 +1179,11 @@ func (fake *effectsFake) AttemptSubmitted(context.Context, SubmissionResult) err
 	fake.submitted++
 	return nil
 }
+func (fake *effectsFake) AttemptSealedForSittingClose(context.Context, AutomaticSubmissionResult) error {
+	fake.f.order = append(fake.f.order, "effect.automatic_submit")
+	fake.submitted++
+	return nil
+}
 func (*effectsFake) Report(context.Context, string, error) {}
 
 type contentFake struct {

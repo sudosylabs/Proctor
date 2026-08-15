@@ -206,6 +206,69 @@ func TestSubmitExamAttemptAppliesCoordinatedTerminalLifecycle(t *testing.T) {
 	}
 }
 
+func TestSealExamAttemptForSittingClosePreservesPriorFences(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Unix(200, 0).UTC()
+	sealedAt := startedAt.Add(2 * time.Second)
+	newAggregate := func(t *testing.T) (*ExamAttempt, *AttemptParticipation, *AttemptConnection) {
+		t.Helper()
+		attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, 1, HashToken(NewCredentialToken()), startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, NewSessionID(), startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return attempt, participation, connection
+	}
+
+	active, activeParticipation, activeConnection := newAggregate(t)
+	if err := SealExamAttemptForSittingClose(active, activeParticipation, activeConnection, sealedAt); err != nil {
+		t.Fatal(err)
+	}
+	if active.State != ExamAttemptSubmitted || !active.SubmittedAt.Valid || !active.SubmittedAt.Time.Equal(sealedAt) ||
+		activeParticipation.State != AttemptParticipationEnded || activeParticipation.EndReason != AttemptParticipationEndSittingClosed ||
+		activeConnection.State != AttemptConnectionClosed || activeConnection.CloseReason != AttemptConnectionCloseSittingClosed {
+		t.Fatalf("active automatic seal = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	}
+
+	suspended, endedParticipation, closedConnection := newAggregate(t)
+	policyAt := startedAt.Add(time.Second)
+	if err := suspended.Suspend(policyAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := endedParticipation.End(AttemptParticipationEndPolicySuspended, policyAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := closedConnection.Close(AttemptConnectionClosePolicySuspended, policyAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := SealExamAttemptForSittingClose(suspended, endedParticipation, closedConnection, sealedAt); err != nil {
+		t.Fatal(err)
+	}
+	if suspended.State != ExamAttemptSubmitted || suspended.Revision != 3 ||
+		endedParticipation.EndReason != AttemptParticipationEndPolicySuspended ||
+		closedConnection.CloseReason != AttemptConnectionClosePolicySuspended {
+		t.Fatalf("suspended automatic seal = %#v / %#v / %#v", suspended, endedParticipation, closedConnection)
+	}
+
+	invalid, invalidParticipation, invalidConnection := newAggregate(t)
+	invalidConnection.AttemptID = NewExamAttemptID()
+	beforeAttempt, beforeParticipation, beforeConnection := *invalid, *invalidParticipation, *invalidConnection
+	if err := SealExamAttemptForSittingClose(invalid, invalidParticipation, invalidConnection, sealedAt); err == nil {
+		t.Fatal("automatic seal accepted a foreign Connection")
+	}
+	if *invalid != beforeAttempt || *invalidParticipation != beforeParticipation || *invalidConnection != beforeConnection {
+		t.Fatalf("failed automatic seal partially mutated aggregate = %#v / %#v / %#v", invalid, invalidParticipation, invalidConnection)
+	}
+}
+
 func modelSubmissionID(character string) SubmissionID {
 	return SubmissionID(strings.Repeat(character, IdLength))
 }

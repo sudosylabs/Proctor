@@ -110,6 +110,7 @@ const (
 	ExamSittingTransitionScheduleElapsed          ExamSittingLifecycleTransitionCode = "schedule_elapsed"
 	ExamSittingTransitionScheduledEndReached      ExamSittingLifecycleTransitionCode = "scheduled_end_reached"
 	ExamSittingTransitionClosedNoAttempts         ExamSittingLifecycleTransitionCode = "closed_no_attempts"
+	ExamSittingTransitionSealingCompleted         ExamSittingLifecycleTransitionCode = "sealing_completed"
 )
 
 type ExamSittingLifecycleResult struct {
@@ -137,10 +138,25 @@ type ExamSittingDueAdvance struct {
 	AuditAt      int64
 }
 
-type ExamSittingCloseIfNoAttempts struct {
+// ExamSittingFinishSealing closes only when every created Attempt is terminal
+// and owns a sealed Submission. It is safe to invoke after every bounded pass;
+// incomplete work leaves the Sitting visibly Closing.
+type ExamSittingFinishSealing struct {
 	SittingID    model.ExamSittingID
 	AuditEventID string
 	AuditAt      int64
+}
+
+type ExamSittingNoShowListOptions struct {
+	SittingID            model.ExamSittingID
+	AfterCandidateUserID model.UserID
+	Limit                int
+}
+
+// ExamSittingNoShow is derived from Class membership active at the Sitting's
+// actual OpenedAt and absence of an Attempt. It contains no profile data.
+type ExamSittingNoShow struct {
+	CandidateUserID model.UserID
 }
 
 // ExamSittingCancellation cancels one Scheduled Sitting. PrivateReason is
@@ -190,5 +206,6 @@ type ExamSittingStore interface {
 	Extend(context.Context, *ExamSittingExtension, *CommandIdempotency) (*ExamSittingLifecycleResult, error)
 	EarlyClose(context.Context, *ExamSittingManagerTransition, *CommandIdempotency) (*ExamSittingLifecycleResult, error)
 	AdvanceDue(context.Context, *ExamSittingDueAdvance) (*ExamSittingLifecycleResult, error)
-	CloseIfNoAttempts(context.Context, *ExamSittingCloseIfNoAttempts) (*ExamSittingLifecycleResult, error)
+	FinishSealing(context.Context, *ExamSittingFinishSealing) (*ExamSittingLifecycleResult, error)
+	ListNoShows(context.Context, ExamSittingNoShowListOptions) ([]ExamSittingNoShow, error)
 }

@@ -302,8 +302,12 @@ func validateExamSittingLifecycleJob(job *model.Job, sittingID model.ExamSitting
 	}
 	command, decodeErr := model.DecodeExamSittingLifecycleCommand(job.CommandVersion, job.Command)
 	validateErr := job.Validate()
+	wantType := model.JobTypeExamSittingLifecycle
+	if phase == model.ExamSittingLifecycleJobFinalize {
+		wantType = model.JobTypeExamSittingSealing
+	}
 	if validateErr != nil || decodeErr != nil || command.ExamSittingID != sittingID ||
-		job.Type != model.JobTypeExamSittingLifecycle || job.Status != model.JobStatusQueued ||
+		job.Type != wantType || job.Status != model.JobStatusQueued ||
 		job.DedupePolicy != model.JobDedupeActive || job.DedupeKey != wantKey || job.AttemptCount != 0 ||
 		job.Revision != 1 || job.WorkReserved != 0 || job.StartedAt.Valid || job.CompletedAt.Valid || job.Progress != nil ||
 		job.CheckpointVersion != 0 || len(job.Checkpoint) != 0 || job.ResultVersion != 0 || len(job.Result) != 0 ||
@@ -883,6 +887,14 @@ func (s sqlExamSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSi
 			err = current.EnterClosing(model.ExamSittingReasonScheduledEndReached, now)
 			transition = store.ExamSittingTransitionScheduledEndReached
 			changed = true
+		case model.ExamSittingClosing:
+			if input.FinalizeJob == nil || !current.ClosingAt.Valid {
+				return nil, store.NewErrInvalidInput("exam_sitting", "finalize_job", nil)
+			}
+			if err = validateExamSittingLifecycleJob(input.FinalizeJob, current.ID,
+				model.ExamSittingLifecycleJobFinalize, current.Revision, current.ClosingAt.Time); err != nil {
+				return nil, err
+			}
 		}
 		if err != nil {
 			return nil, invalidPersistedState("exam_sitting", "lifecycle_transition", err)
@@ -895,6 +907,11 @@ func (s sqlExamSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSi
 				if err = insertExamSittingLifecycleJob(ctx, tx, input.FinalizeJob); err != nil {
 					return nil, err
 				}
+			}
+		}
+		if !changed && current.State == model.ExamSittingClosing {
+			if err = insertExamSittingLifecycleJob(ctx, tx, input.FinalizeJob); err != nil {
+				return nil, err
 			}
 		}
 		if err = completeExamSittingLifecycleAudit(ctx, tx, current, transition, changed, false, "", input.AuditEventID, input.AuditAt); err != nil {
@@ -912,7 +929,7 @@ func (s sqlExamSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSi
 }
 
 func isStaleExamSittingFinalizeJob(job *model.Job, current *model.ExamSitting) bool {
-	if job == nil || current == nil || job.Validate() != nil || job.Type != model.JobTypeExamSittingLifecycle ||
+	if job == nil || current == nil || job.Validate() != nil || job.Type != model.JobTypeExamSittingSealing ||
 		job.Status != model.JobStatusQueued || job.DedupePolicy != model.JobDedupeActive || job.AttemptCount != 0 ||
 		job.Revision != 1 || job.WorkReserved != 0 || job.StartedAt.Valid || job.CompletedAt.Valid || job.Progress != nil ||
 		job.CheckpointVersion != 0 || len(job.Checkpoint) != 0 || job.ResultVersion != 0 || len(job.Result) != 0 ||
@@ -931,11 +948,11 @@ func isStaleExamSittingFinalizeJob(job *model.Job, current *model.ExamSitting) b
 	return err == nil && preparedRevision > 0 && preparedRevision != current.Revision+1
 }
 
-func (s sqlExamSittingStore) CloseIfNoAttempts(ctx context.Context, input *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
+func (s sqlExamSittingStore) FinishSealing(ctx context.Context, input *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
 	if input == nil || !input.SittingID.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
-		return nil, store.NewErrInvalidInput("exam_sitting", "close_if_no_attempts", nil)
+		return nil, store.NewErrInvalidInput("exam_sitting", "finish_sealing", nil)
 	}
-	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "close no-Attempt Exam Sitting", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamSittingLifecycleResult, error) {
+	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "finish sealed Exam Sitting", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamSittingLifecycleResult, error) {
 		examID, err := resolveExamSittingExamID(ctx, tx, input.SittingID)
 		if err != nil {
 			return nil, err
@@ -950,30 +967,39 @@ func (s sqlExamSittingStore) CloseIfNoAttempts(ctx context.Context, input *store
 		if err != nil {
 			return nil, err
 		}
-		changed := false
+		changed, hasAttempts := false, false
 		if current.State == model.ExamSittingClosing {
-			var hasAttempts bool
-			if err = tx.Get(ctx, &hasAttempts, `SELECT EXISTS (
-				SELECT 1 FROM exam_attempts WHERE exam_sitting_id=? LIMIT 1
-			)`, input.SittingID.String()); err != nil {
-				return nil, fmt.Errorf("inspect Closing Exam Sitting Attempts: %w", err)
+			var status struct {
+				HasAttempts   bool `db:"has_attempts"`
+				HasUnfinished bool `db:"has_unfinished"`
 			}
-			changed = !hasAttempts
+			if err = tx.Get(ctx, &status, `SELECT
+				EXISTS (SELECT 1 FROM exam_attempts a WHERE a.exam_sitting_id=? LIMIT 1) AS has_attempts,
+				EXISTS (SELECT 1 FROM exam_attempts a
+					LEFT JOIN exam_submissions sub ON sub.exam_attempt_id=a.id AND sub.sealed=true
+					WHERE a.exam_sitting_id=? AND (a.state<>'submitted' OR sub.id IS NULL) LIMIT 1) AS has_unfinished`,
+				input.SittingID.String(), input.SittingID.String()); err != nil {
+				return nil, fmt.Errorf("inspect Closing Exam Sitting sealing: %w", err)
+			}
+			hasAttempts, changed = status.HasAttempts, !status.HasUnfinished
 		}
 		transition := store.ExamSittingLifecycleTransitionCode("")
 		if changed {
 			expected := current.Revision
 			var now time.Time
 			if err = tx.Get(ctx, &now, `SELECT statement_timestamp()`); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("read Exam Sitting sealing completion time: %w", err)
 			}
-			if err = current.Close(now); err != nil {
-				return nil, invalidPersistedState("exam_sitting", "close", err)
+			if err = current.Close(model.TimeUTC(now)); err != nil {
+				return nil, invalidPersistedState("exam_sitting", "finish_sealing", err)
 			}
 			if err = persistExamSittingLifecycle(ctx, tx, current, expected); err != nil {
 				return nil, err
 			}
-			transition = store.ExamSittingTransitionClosedNoAttempts
+			transition = store.ExamSittingTransitionSealingCompleted
+			if !hasAttempts {
+				transition = store.ExamSittingTransitionClosedNoAttempts
+			}
 		}
 		if err = completeExamSittingLifecycleAudit(ctx, tx, current, transition, changed, false, "", input.AuditEventID, input.AuditAt); err != nil {
 			return nil, err
@@ -983,8 +1009,34 @@ func (s sqlExamSittingStore) CloseIfNoAttempts(ctx context.Context, input *store
 	if err != nil {
 		return nil, err
 	}
-	if err := s.completeCommittedSnapshot(ctx, result.Value); err != nil {
+	if err = s.completeCommittedSnapshot(ctx, result.Value); err != nil {
 		return nil, err
+	}
+	return result, nil
+}
+
+func (s sqlExamSittingStore) ListNoShows(ctx context.Context, options store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
+	if !options.SittingID.IsValid() || (!options.AfterCandidateUserID.IsZero() && !options.AfterCandidateUserID.IsValid()) ||
+		options.Limit < 1 || options.Limit > 201 {
+		return nil, store.NewErrInvalidInput("exam_sitting", "no_show_list", nil)
+	}
+	var rows []string
+	if err := s.GetMaster().Select(ctx, &rows, `SELECT DISTINCT cm.user_id
+		FROM exam_sittings s JOIN class_members cm ON cm.class_id=s.class_id
+		WHERE s.id=? AND s.state IN ('closing','closed') AND s.opened_at IS NOT NULL
+		AND cm.start_at<=s.opened_at AND (cm.end_at IS NULL OR cm.end_at>s.opened_at)
+		AND (cm.archived_at IS NULL OR cm.archived_at>s.opened_at) AND cm.user_id>?
+		AND NOT EXISTS (SELECT 1 FROM exam_attempts a WHERE a.exam_sitting_id=s.id AND a.candidate_user_id=cm.user_id)
+		ORDER BY cm.user_id LIMIT ?`, options.SittingID.String(), options.AfterCandidateUserID.String(), options.Limit); err != nil {
+		return nil, fmt.Errorf("list Exam Sitting no-shows: %w", err)
+	}
+	result := make([]store.ExamSittingNoShow, 0, len(rows))
+	for _, raw := range rows {
+		candidateID, err := model.ParseUserID(raw)
+		if err != nil {
+			return nil, invalidPersistedState("exam_sitting_no_show", "candidate_user_id", err)
+		}
+		result = append(result, store.ExamSittingNoShow{CandidateUserID: candidateID})
 	}
 	return result, nil
 }

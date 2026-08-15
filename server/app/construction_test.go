@@ -205,6 +205,19 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if handler, ok := lifecycle.Handler.(examSittingLifecycleHandler); !ok || handler.reconciler == nil {
 		t.Fatalf("lifecycle handler = %#v", lifecycle.Handler)
 	}
+	sealing, exists := descriptors[model.JobTypeExamSittingSealing]
+	if !exists {
+		t.Fatal("Exam Sitting sealing descriptor is absent from the application Job graph")
+	}
+	handler, ok := sealing.Handler.(examSittingSealingHandler)
+	if !ok || handler.service == nil {
+		t.Fatalf("sealing handler = %#v", sealing.Handler)
+	}
+	sealingUseCases, ok := handler.service.(examSittingSealingJobUseCases)
+	if !ok || sealingUseCases.sittings == nil || sealingUseCases.attempts == nil || sealingUseCases.jobs == nil ||
+		sealingUseCases.now == nil || sealingUseCases.newID == nil {
+		t.Fatalf("sealing use cases = %#v", handler.service)
+	}
 	recovery, exists := descriptors[model.JobTypeExamSittingLifecycleRecovery]
 	if !exists {
 		t.Fatal("Exam Sitting lifecycle recovery descriptor is absent from the application Job graph")
@@ -250,7 +263,8 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	for _, policy := range cleanupHandler.policies {
 		retained[policy.Type] = true
 	}
-	if !retained[model.JobTypeExamSittingLifecycle] || !retained[model.JobTypeExamSittingLifecycleRecovery] {
+	if !retained[model.JobTypeExamSittingLifecycle] || !retained[model.JobTypeExamSittingLifecycleRecovery] ||
+		!retained[model.JobTypeExamSittingSealing] {
 		t.Fatalf("cleanup retention types = %#v", retained)
 	}
 }

@@ -146,10 +146,13 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "renew Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationRenewalResult, error) {
 		var attempt struct {
-			CandidateID string `db:"candidate_user_id"`
-			State       string `db:"state"`
+			CandidateID  string `db:"candidate_user_id"`
+			State        string `db:"state"`
+			SittingState string `db:"sitting_state"`
 		}
-		if err := tx.Get(ctx, &attempt, `SELECT candidate_user_id,state FROM exam_attempts WHERE id=? FOR UPDATE`, input.AttemptID.String()); err != nil {
+		if err := tx.Get(ctx, &attempt, `SELECT a.candidate_user_id,a.state,s.state AS sitting_state
+			FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
+			WHERE a.id=? FOR UPDATE OF a FOR SHARE OF s`, input.AttemptID.String()); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 			}
@@ -193,6 +196,9 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 		}
 		if connection.SessionID != input.SessionID.String() || connection.State != string(model.AttemptConnectionOpen) {
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+		}
+		if attempt.SittingState != string(model.ExamSittingOpen) && attempt.SittingState != string(model.ExamSittingPaused) {
+			return nil, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 		}
 		if err := tx.Get(ctx, &row.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read Attempt Participation renewal decision time: %w", err)

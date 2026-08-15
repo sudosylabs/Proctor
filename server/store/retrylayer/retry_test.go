@@ -122,7 +122,7 @@ type personalAccessTokenStub struct {
 type examSittingUnsafeMutationStub struct {
 	store.ExamSittingStore
 	advanceAttempts int
-	closeAttempts   int
+	finishAttempts  int
 	err             error
 }
 
@@ -225,8 +225,8 @@ func (stub *examSittingUnsafeMutationStub) AdvanceDue(context.Context, *store.Ex
 	return nil, stub.err
 }
 
-func (stub *examSittingUnsafeMutationStub) CloseIfNoAttempts(context.Context, *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
-	stub.closeAttempts++
+func (stub *examSittingUnsafeMutationStub) FinishSealing(context.Context, *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
+	stub.finishAttempts++
 	return nil, stub.err
 }
 
@@ -307,11 +307,11 @@ func TestRetryNeverRetriesSystemSittingMutationsWithoutCommandOutcomes(t *testin
 	if _, got := layer.ExamSitting().AdvanceDue(context.Background(), &store.ExamSittingDueAdvance{}); got != transientErr {
 		t.Fatalf("AdvanceDue() error = %v", got)
 	}
-	if _, got := layer.ExamSitting().CloseIfNoAttempts(context.Background(), &store.ExamSittingCloseIfNoAttempts{}); got != transientErr {
-		t.Fatalf("CloseIfNoAttempts() error = %v", got)
+	if _, got := layer.ExamSitting().FinishSealing(context.Background(), &store.ExamSittingFinishSealing{}); got != transientErr {
+		t.Fatalf("FinishSealing() error = %v", got)
 	}
-	if stub.advanceAttempts != 1 || stub.closeAttempts != 1 {
-		t.Fatalf("system mutation attempts = advance %d close %d", stub.advanceAttempts, stub.closeAttempts)
+	if stub.advanceAttempts != 1 || stub.finishAttempts != 1 {
+		t.Fatalf("system mutation attempts = advance %d finish %d", stub.advanceAttempts, stub.finishAttempts)
 	}
 }
 

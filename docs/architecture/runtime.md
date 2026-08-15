@@ -33,9 +33,15 @@ revisions. Timestamps are not concurrency tokens.
 
 Exam scheduling, closing, workspace sealing, and integrity settlement follow
 the durable Job and effect rules above. Jobs open a Scheduled Sitting, enter
-Closing at its effective deadline, and resume bounded finalization after
-interruption. Participation expiry instead uses a bounded, non-durable periodic
-runtime task owned by the application Job engine lifecycle. It creates no Job
+Closing at `ScheduledEndAt`, and resume bounded finalization after
+interruption. A sealing occurrence pages 100 Attempt identities at a time and
+reserves at most 1,000 units; a permanent successor continues a larger Sitting.
+The checkpoint records the stable Attempt cursor and bounded counts after each
+seal. A durable reservation observed ahead of its checkpoint is consumed as
+uncertain work on retry rather than reused, preserving the hard occurrence cap
+across process loss. Daily lifecycle recovery also recreates missing Closing
+work. Participation expiry instead uses a bounded, non-durable periodic runtime
+task owned by the application Job engine lifecycle. It creates no Job
 occurrence or permanent deduplication ledger. Both mechanisms call application
 use cases with fenced durable state; neither infers authority from an in-memory
 connection or cluster notification.
@@ -51,8 +57,7 @@ expiry scan. A single failed request does not prove loss. A late renewal or the
 bounded periodic runtime task instead claims an expired lease through the same
 idempotent operation, permanently fences the generation, records the Connection
 Loss Flag and automatic suspension, and only then publishes transport and
-manager effects. Exact close-work budgets remain owned by the implementing
-slice.
+manager effects.
 
 Every committed Attempt Connection open or close and every created Integrity
 Flag produces a bounded manager-facing realtime fact after PostgreSQL commit.

@@ -80,7 +80,8 @@ func validExamSittingLifecycleTransition(value store.ExamSittingLifecycleTransit
 		store.ExamSittingTransitionAcademicStructureInvalid,
 		store.ExamSittingTransitionScheduleElapsed,
 		store.ExamSittingTransitionScheduledEndReached,
-		store.ExamSittingTransitionClosedNoAttempts:
+		store.ExamSittingTransitionClosedNoAttempts,
+		store.ExamSittingTransitionSealingCompleted:
 		return true
 	default:
 		return false
@@ -132,10 +133,16 @@ func (factory examSittingLifecycleJobFactory) DeadlineJob(sittingID model.ExamSi
 }
 
 func (factory examSittingLifecycleJobFactory) FinalizeJob(sittingID model.ExamSittingID, resultingRevision int64, availableAt time.Time) (*model.Job, error) {
-	return factory.job(sittingID, model.ExamSittingLifecycleJobFinalize, resultingRevision, availableAt)
+	return factory.jobOfType(sittingID, model.ExamSittingLifecycleJobFinalize, resultingRevision, availableAt, model.JobTypeExamSittingSealing)
 }
 
 func (factory examSittingLifecycleJobFactory) job(sittingID model.ExamSittingID, phase model.ExamSittingLifecycleJobPhase, resultingRevision int64, availableAt time.Time) (*model.Job, error) {
+	return factory.jobOfType(sittingID, phase, resultingRevision, availableAt, model.JobTypeExamSittingLifecycle)
+}
+
+func (factory examSittingLifecycleJobFactory) jobOfType(sittingID model.ExamSittingID, phase model.ExamSittingLifecycleJobPhase,
+	resultingRevision int64, availableAt time.Time, jobType model.JobType,
+) (*model.Job, error) {
 	if factory.now == nil || factory.newID == nil {
 		return nil, errors.New("Exam Sitting lifecycle Job dependencies are required")
 	}
@@ -148,5 +155,5 @@ func (factory examSittingLifecycleJobFactory) job(sittingID model.ExamSittingID,
 		return nil, err
 	}
 	at := model.TimeUTC(factory.now())
-	return model.NewJob(factory.newID(), model.JobTypeExamSittingLifecycle, 1, command, dedupeKey, at, model.TimeUTC(availableAt), 8)
+	return model.NewJob(factory.newID(), jobType, 1, command, dedupeKey, at, model.TimeUTC(availableAt), 8)
 }

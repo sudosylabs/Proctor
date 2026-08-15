@@ -880,6 +880,8 @@ CREATE INDEX class_members_class_id_idx
 CREATE INDEX class_members_current_class_user_idx
     ON class_members (class_id, user_id, start_at, end_at)
     WHERE archived_at IS NULL;
+CREATE INDEX class_members_class_user_history_idx
+    ON class_members (class_id, user_id, start_at, end_at, archived_at);
 
 CREATE TABLE roles (
     id varchar(26) PRIMARY KEY,
@@ -981,6 +983,9 @@ CREATE TABLE exam_attempts (
 
 CREATE INDEX exam_attempts_sitting_state_created_id_idx
     ON exam_attempts (exam_sitting_id, state, created_at DESC, id DESC);
+CREATE INDEX exam_attempts_sitting_unfinished_id_idx
+    ON exam_attempts (exam_sitting_id, id)
+    WHERE state IN ('active', 'suspended');
 CREATE INDEX exam_attempts_sitting_created_id_idx
     ON exam_attempts (exam_sitting_id, created_at DESC, id DESC);
 CREATE INDEX exam_attempts_candidate_created_id_idx

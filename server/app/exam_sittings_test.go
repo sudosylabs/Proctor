@@ -218,7 +218,7 @@ func TestExamSittingManagerTransitionsConcealTargetsAndMapChildFaults(t *testing
 	}
 }
 
-func TestExamSittingLifecycleJobReconcileClosesAZeroAttemptSitting(t *testing.T) {
+func TestExamSittingLifecycleJobReconcileLeavesClosingToDedicatedSealingJob(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
@@ -238,29 +238,27 @@ func TestExamSittingLifecycleJobReconcileClosesAZeroAttemptSitting(t *testing.T)
 	jobID, attemptID := model.NewJobID(), model.NewJobAttemptID()
 	fake := &examSittingUseCasesFake{
 		advance: store.ExamSittingLifecycleResult{Value: &store.ExamSittingSnapshot{Sitting: &closing}, Changed: true, Transition: store.ExamSittingTransitionScheduledEndReached},
-		closed:  store.ExamSittingLifecycleResult{Value: &store.ExamSittingSnapshot{Sitting: sitting}, Changed: true, Transition: store.ExamSittingTransitionClosedNoAttempts},
 	}
 	result, err := (examSittingLifecycleJobUseCases{sittings: fake}).ReconcileExamSittingLifecycleFromJob(context.Background(), sitting.ID, jobID, attemptID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result == nil || result.Value.Sitting.State != model.ExamSittingClosed || fake.closeCalls != 1 ||
-		fake.advanceCall != (examsitting.SystemCall{JobID: jobID, AttemptID: attemptID}) || fake.closeCall != fake.advanceCall {
-		t.Fatalf("result/calls = %#v / %d / %#v / %#v", result, fake.closeCalls, fake.advanceCall, fake.closeCall)
+	if result == nil || result.Value.Sitting.State != model.ExamSittingClosing ||
+		fake.advanceCall != (examsitting.SystemCall{JobID: jobID, AttemptID: attemptID}) {
+		t.Fatalf("result/call = %#v / %#v", result, fake.advanceCall)
 	}
 
-	// Another node may close after AdvanceDue observes Closing but before this
-	// execution reaches CloseIfNoAttempts. Reconciliation must report the
-	// latter authoritative snapshot even though that close is a no-op.
+	// Another node may close before the lifecycle read. The dedicated sealing
+	// handler still owns any closure work, so this adapter returns AdvanceDue's
+	// authoritative value and never invokes the legacy zero-Attempt closer.
 	racing := &examSittingUseCasesFake{
 		advance: store.ExamSittingLifecycleResult{Value: &store.ExamSittingSnapshot{Sitting: &closing}},
-		closed:  store.ExamSittingLifecycleResult{Value: &store.ExamSittingSnapshot{Sitting: sitting}},
 	}
 	result, err = (examSittingLifecycleJobUseCases{sittings: racing}).ReconcileExamSittingLifecycleFromJob(context.Background(), sitting.ID, jobID, attemptID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result == nil || result.Value.Sitting.State != model.ExamSittingClosed {
+	if result == nil || result.Value.Sitting.State != model.ExamSittingClosing {
 		t.Fatalf("racing close result = %#v", result)
 	}
 }
@@ -304,10 +302,7 @@ type examSittingUseCasesFake struct {
 	extend      examsitting.ExtendCommand
 	close       examsitting.EarlyCloseCommand
 	advance     store.ExamSittingLifecycleResult
-	closed      store.ExamSittingLifecycleResult
 	advanceCall examsitting.SystemCall
-	closeCall   examsitting.SystemCall
-	closeCalls  int
 	err         error
 }
 
@@ -339,10 +334,4 @@ func (fake *examSittingUseCasesFake) EarlyClose(_ context.Context, _ examsitting
 func (fake *examSittingUseCasesFake) AdvanceDue(_ context.Context, call examsitting.SystemCall, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
 	fake.advanceCall = call
 	return fake.advance, fake.err
-}
-
-func (fake *examSittingUseCasesFake) CloseIfNoAttempts(_ context.Context, call examsitting.SystemCall, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
-	fake.closeCalls++
-	fake.closeCall = call
-	return fake.closed, fake.err
 }

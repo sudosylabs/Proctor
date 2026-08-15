@@ -75,12 +75,15 @@ func buildApplicationJobDefinitions(
 		deps.Store.ExamStarterWorkspace(), deps.FileContent,
 		deps.Store.ExamAttemptWorkspace(), deps.FileContent)
 	lifecycleUseCases := examSittingLifecycleJobUseCases{sittings: examinations.sittings}
+	sealingUseCases := examSittingSealingJobUseCases{sittings: examinations.sittings, attempts: examinations.attempts,
+		jobs: deps.Store.Job(), now: time.Now, newID: model.NewJobID}
 	descriptors := []jobengine.Descriptor{
 		defaultProfilePictureDescriptor(defaultHandler),
 		defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
 		filePurgeExpiredContentDescriptor(purgeHandler),
 		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
+		examSittingSealingDescriptor(examSittingSealingHandler{service: sealingUseCases}),
 		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: lifecycleUseCases}),
 	}
 	retentionPolicies := jobRetentionPolicies(descriptors)

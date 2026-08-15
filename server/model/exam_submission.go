@@ -253,6 +253,48 @@ func SubmitExamAttempt(attempt *ExamAttempt, participation *AttemptParticipation
 	return nil
 }
 
+// SealExamAttemptForSittingClose applies the coordinated terminal lifecycle
+// when bounded Sitting finalization seals an unfinished Attempt without a
+// cooperative candidate. Existing Participation and Connection fences retain
+// their original causes; only still-active/open records receive the
+// sitting_closed cause. No input is mutated unless the complete aggregate is
+// valid and every required transition succeeds.
+func SealExamAttemptForSittingClose(attempt *ExamAttempt, participation *AttemptParticipation,
+	connection *AttemptConnection, at time.Time,
+) error {
+	if attempt == nil || participation == nil || connection == nil || attempt.Validate() != nil ||
+		participation.Validate() != nil || connection.Validate() != nil || participation.AttemptID != attempt.ID ||
+		connection.AttemptID != attempt.ID || connection.ParticipationID != participation.ID ||
+		(attempt.State != ExamAttemptActive && attempt.State != ExamAttemptSuspended) ||
+		(participation.State == AttemptParticipationEnded && connection.State != AttemptConnectionClosed) {
+		return errors.New("model: invalid automatic Exam Submission lifecycle aggregate")
+	}
+	at = TimeUTC(at)
+	if at.IsZero() || at.Before(attempt.UpdatedAt) || at.Before(participation.UpdatedAt) || at.Before(connection.OpenedAt) {
+		return errors.New("model: invalid automatic Exam Submission time")
+	}
+	attemptCandidate, participationCandidate, connectionCandidate := *attempt, *participation, *connection
+	attemptCandidate.State = ExamAttemptSubmitted
+	attemptCandidate.SubmittedAt = OptionalTimeFrom(at)
+	attemptCandidate.UpdatedAt = at
+	attemptCandidate.Revision++
+	if err := attemptCandidate.Validate(); err != nil {
+		return err
+	}
+	if participationCandidate.State == AttemptParticipationActive {
+		if err := participationCandidate.End(AttemptParticipationEndSittingClosed, at); err != nil {
+			return err
+		}
+	}
+	if connectionCandidate.State == AttemptConnectionOpen {
+		if err := connectionCandidate.Close(AttemptConnectionCloseSittingClosed, at); err != nil {
+			return err
+		}
+	}
+	*attempt, *participation, *connection = attemptCandidate, participationCandidate, connectionCandidate
+	return nil
+}
+
 func computeExamSubmissionManifestDigest(manifest ExamSubmissionManifest) string {
 	digest := sha256.New()
 	writeSubmissionDigestFrame(digest, []byte(examSubmissionManifestDigestDomain))

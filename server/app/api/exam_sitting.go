@@ -32,6 +32,7 @@ type ExamSittingApplication interface {
 	ResumeExamSitting(context.Context, application.Invocation, application.ResumeExamSittingCommand) (application.ExamSittingView, error)
 	ExtendExamSitting(context.Context, application.Invocation, application.ExtendExamSittingCommand) (application.ExamSittingView, error)
 	CloseExamSitting(context.Context, application.Invocation, application.CloseExamSittingCommand) (application.ExamSittingView, error)
+	ListExamSittingNoShows(context.Context, application.Invocation, application.ListExamSittingNoShowsQuery) (application.ExamSittingNoShowPage, error)
 }
 
 type scheduleExamSittingRequest struct {
@@ -146,6 +147,9 @@ func decodeDuplicateFreeExamSittingObject(encoded []byte, target any) error {
 	if _, err = decoder.Token(); err != nil {
 		return err
 	}
+	if _, err = decoder.Token(); err != io.EOF {
+		return errors.New("Exam Sitting request contains trailing JSON")
+	}
 	strict := json.NewDecoder(bytes.NewReader(encoded))
 	strict.DisallowUnknownFields()
 	return strict.Decode(target)
@@ -175,6 +179,20 @@ type examSittingListResponse struct {
 	NextCursor string                `json:"next_cursor,omitempty"`
 }
 
+type examSittingNoShowResponse struct {
+	CandidateUserID string `json:"candidate_user_id"`
+}
+
+type examSittingNoShowListResponse struct {
+	Items      []examSittingNoShowResponse `json:"items"`
+	NextCursor string                      `json:"next_cursor,omitempty"`
+}
+
+type examSittingNoShowCursorWire struct {
+	Version         int    `json:"version"`
+	CandidateUserID string `json:"candidate_user_id"`
+}
+
 type examSittingCursor struct {
 	StartAt time.Time
 	ID      model.ExamSittingID
@@ -197,7 +215,9 @@ func examSittingResource(app ExamSittingApplication) resource {
 	resume := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("resume"))
 	extend := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("extend"))
 	closeSitting := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("close"))
+	noShows := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("no-shows"))
 	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable")
+	noShowErrors := append(append([]string(nil), readErrors...), "exam.sitting.state_conflict")
 	return newResource(
 		"exam-sittings",
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, collection, examSittingScheduleErrorCodes(), module.schedule),
@@ -209,7 +229,63 @@ func examSittingResource(app ExamSittingApplication) resource {
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, resume, examSittingResumeErrorCodes(), module.resume),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, extend, examSittingExtendErrorCodes(), module.extend),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, closeSitting, examSittingCloseErrorCodes(), module.close),
+		principalRoute(http.MethodGet, noShows, noShowErrors, module.listNoShows),
 	)
+}
+
+func (module examSittingHTTPModule) listNoShows(request operationRequest) (operationResult, error) {
+	examID, sittingID, err := examSittingIDs(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	query := application.ListExamSittingNoShowsQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
+	values := request.request.URL.Query()
+	if raw := values.Get("limit"); raw != "" {
+		query.Limit, err = strconv.Atoi(raw)
+		if err != nil || query.Limit < 1 || query.Limit > 200 {
+			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+		}
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		query.AfterCandidateUserID, err = decodeExamSittingNoShowCursor(raw)
+		if err != nil {
+			return operationResult{}, invalidRequestError("cursor", err)
+		}
+	}
+	page, err := module.application.ListExamSittingNoShows(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := examSittingNoShowListResponse{Items: make([]examSittingNoShowResponse, 0, len(page.Items))}
+	for _, item := range page.Items {
+		response.Items = append(response.Items, examSittingNoShowResponse{CandidateUserID: item.CandidateUserID.String()})
+	}
+	if page.HasMore && len(page.Items) != 0 {
+		response.NextCursor = encodeExamSittingNoShowCursor(page.Items[len(page.Items)-1].CandidateUserID)
+	}
+	return jsonResult(http.StatusOK, response), nil
+}
+
+func encodeExamSittingNoShowCursor(id model.UserID) string {
+	document, _ := json.Marshal(examSittingNoShowCursorWire{Version: 1, CandidateUserID: id.String()})
+	return base64.RawURLEncoding.EncodeToString(document)
+}
+
+func decodeExamSittingNoShowCursor(raw string) (model.UserID, error) {
+	var zero model.UserID
+	document, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil || len(document) == 0 || len(document) > 256 {
+		return zero, errors.New("invalid no-show cursor")
+	}
+	var wire examSittingNoShowCursorWire
+	if err = decodeDuplicateFreeExamSittingObject(document, &wire); err != nil || wire.Version != 1 {
+		return zero, errors.New("invalid no-show cursor")
+	}
+	id, err := model.ParseUserID(wire.CandidateUserID)
+	if err != nil {
+		return zero, errors.New("invalid no-show cursor")
+	}
+	return id, nil
 }
 
 func examSittingMutationErrorCodes(specific ...string) []string {

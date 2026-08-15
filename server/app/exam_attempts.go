@@ -167,6 +167,8 @@ type examAttemptUseCases interface {
 	GetSubmission(context.Context, examattempt.Call, examattempt.GetSubmissionQuery) (*examattempt.ManagedSubmission, error)
 	ListSubmissionManifest(context.Context, examattempt.Call, examattempt.ListSubmissionManifestQuery) (examattempt.SubmissionManifestPage, error)
 	OpenSubmissionFile(context.Context, examattempt.Call, examattempt.OpenSubmissionFileQuery) (*examattempt.OpenedContent, error)
+	ListAutomaticSealTargets(context.Context, model.ExamSittingID, model.ExamAttemptID, int) ([]store.ExamSubmissionAutomaticSealTarget, error)
+	SealForSittingClose(context.Context, examattempt.SystemCall, store.ExamSubmissionAutomaticSealTarget) (examattempt.AutomaticSubmissionResult, error)
 }
 
 func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation Invocation,
@@ -610,20 +612,46 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 }
 
 func (effects examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, result examattempt.SubmissionResult) error {
+	publishErr, constructionErr := effects.publishExamAttemptSubmittedFacts(ctx, result)
+	if constructionErr != nil {
+		return constructionErr
+	}
+	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
+}
+
+func (effects examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx context.Context,
+	result examattempt.SubmissionResult,
+) (publishErr, constructionErr error) {
 	managerEvent, err := apprealtime.NewExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
 		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
 		result.Receipt.ManifestDigest, result.Receipt.SubmittedAt)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	candidateEvent, err := apprealtime.NewCandidateExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
 		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
 		result.Receipt.ManifestDigest, result.Receipt.SubmittedAt)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
-		effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
+	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent)), nil
+}
+
+func (effects examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx context.Context, result examattempt.AutomaticSubmissionResult) error {
+	publishErr, constructionErr := effects.publishExamAttemptSubmittedFacts(ctx, result.SubmissionResult)
+	if constructionErr != nil {
+		return constructionErr
+	}
+	if result.ConnectionClosed {
+		connectionEvent, eventErr := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID,
+			result.Receipt.AttemptID, result.CandidateUserID, result.ConnectionID,
+			model.AttemptConnectionCloseSittingClosed, result.Receipt.SubmittedAt)
+		if eventErr != nil {
+			return eventErr
+		}
+		publishErr = errors.Join(publishErr, effects.realtime.Publish(ctx, connectionEvent))
+	}
+	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {

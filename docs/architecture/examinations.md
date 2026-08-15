@@ -211,9 +211,35 @@ capability, while resume and extension remain unavailable after archive.
 Closing immediately denies new participation and workspace mutation. Resumable
 bounded work seals every unfinished Attempt's last acknowledged workspace,
 skips already submitted Attempts, and marks the Sitting Closed only after all
-created Attempts are terminal. No Attempt or Submission is fabricated for a
-student who never entered; the no-show view uses Class membership active at the
-Sitting's actual start.
+created Attempts are terminal and own sealed Submissions. Entering Closing
+atomically queues a non-cancelable sealing Job. It reads Attempt-ID-ordered
+pages of at most 100 and reserves at most 1,000 work units per occurrence;
+larger populations continue through a permanently deduplicated successor.
+Per-Attempt sealing and the following cursor/count checkpoint are separate
+durable steps. If a process stops between reservation, domain commit, and
+checkpoint, retry conservatively consumes the uncertain reservation and
+relies on the Attempt's natural one-Submission invariant before continuing.
+The daily lifecycle recovery scan also sees Closing Sittings and recreates
+missing or terminally failed sealing work, so transient cluster ownership is
+never the completion authority.
+
+Automatic sealing accepts Active or Suspended Attempts, snapshots the same
+authoritative Workspace manifest as voluntary submission, retains immutable
+VFS object references, and records unresolved Focus Loss uncertainty as
+Gapped. It ends only still-active Participation and still-open Connection
+records with `sitting_closed`; earlier expiry, policy-suspension, or transport
+causes remain intact. Each Attempt transaction completes actorless audit before
+commit, and only a fresh commit publishes bounded Submission/Connection facts
+and removes the exact live Connection binding. The Sitting remains visibly
+Closing when any Attempt is unfinished and closes with database time only when
+the bounded completion check finds none. A Sitting with no Attempts closes
+through the same check. Manager early-close provenance and the scheduled end
+remain unchanged by sealing.
+
+No Attempt or Submission is fabricated for a student who never entered. The
+bounded manager no-show view derives candidate identities from Class
+membership active at the Sitting's authoritative `OpenedAt`, excludes every
+candidate with an Attempt, and pages by opaque candidate identity.
 
 Current membership in the exact Class is checked on every candidate connection.
 Missing membership denies that connection without deleting an existing

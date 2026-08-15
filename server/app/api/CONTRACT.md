@@ -133,6 +133,7 @@ and the explicit live lifecycle transitions:
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/resume` | expected Sitting revision and private reason | resumed Sitting |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/extend` | expected Sitting revision, later RFC 3339 end, and private reason | extended Sitting |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/close` | expected Sitting revision and private reason | Closing Sitting |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/no-shows` | optional bounded limit and opaque cursor | candidate identities with no Attempt |
 
 Every route requires an authenticated principal. All seven mutations require
 `Idempotency-Key`; their bodies are closed, duplicate-free JSON objects.
@@ -145,6 +146,14 @@ Pause, resume, extension, and early close lose to the PostgreSQL deadline fence
 at or after the scheduled end. Extension must move the end later and remain
 inside the current Class Academic Period. Archived Exams still permit pause
 and early close to reduce capability, but reject resume and extension.
+
+The no-show view is available only while the Sitting is Closing or Closed and
+uses the same current manager/override authorization as the Sitting read. It is
+derived from Class membership active at the Sitting's authoritative
+`opened_at`, excludes every candidate who created an Attempt, and never creates
+an Attempt or Submission. Results contain only `candidate_user_id`, default to
+50, accept at most 200, are ordered by that stable identity, and use an opaque
+versioned cursor. The response is `no-store`.
 
 The list defaults to 50 items and accepts at most 200. It can filter by one
 `class_id`, repeated deduplicated `state` values (at most the six defined

@@ -26,15 +26,25 @@ func TestExamSittingLifecycleJobFactoryFencesEachBoundaryByRevision(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertExamSittingLifecycleJob(t, openJob, sittingID, model.ExamSittingLifecycleJobOpen, 4, at, startAt)
-	assertExamSittingLifecycleJob(t, deadlineJob, sittingID, model.ExamSittingLifecycleJobDeadline, 4, at, endAt)
+	assertExamSittingLifecycleJob(t, openJob, model.JobTypeExamSittingLifecycle, sittingID,
+		model.ExamSittingLifecycleJobOpen, 4, at, startAt)
+	assertExamSittingLifecycleJob(t, deadlineJob, model.JobTypeExamSittingLifecycle, sittingID,
+		model.ExamSittingLifecycleJobDeadline, 4, at, endAt)
 
 	nextDeadline := endAt.Add(time.Hour)
 	extended, err := factory.DeadlineJob(sittingID, 5, nextDeadline)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertExamSittingLifecycleJob(t, extended, sittingID, model.ExamSittingLifecycleJobDeadline, 5, at, nextDeadline)
+	assertExamSittingLifecycleJob(t, extended, model.JobTypeExamSittingLifecycle, sittingID,
+		model.ExamSittingLifecycleJobDeadline, 5, at, nextDeadline)
+
+	finalize, err := factory.FinalizeJob(sittingID, 6, nextDeadline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertExamSittingLifecycleJob(t, finalize, model.JobTypeExamSittingSealing, sittingID,
+		model.ExamSittingLifecycleJobFinalize, 6, at, nextDeadline)
 }
 
 func TestExamSittingLifecycleHandlerReconcilesAndTreatsStaleWorkAsSuccess(t *testing.T) {
@@ -145,9 +155,12 @@ func lifecycleJobResult(t *testing.T, sittingID model.ExamSittingID, changed boo
 	return result
 }
 
-func assertExamSittingLifecycleJob(t *testing.T, job *model.Job, sittingID model.ExamSittingID, phase model.ExamSittingLifecycleJobPhase, revision int64, createdAt, availableAt time.Time) {
+func assertExamSittingLifecycleJob(t *testing.T, job *model.Job, wantType model.JobType,
+	sittingID model.ExamSittingID, phase model.ExamSittingLifecycleJobPhase, revision int64,
+	createdAt, availableAt time.Time,
+) {
 	t.Helper()
-	if job == nil || job.Type != model.JobTypeExamSittingLifecycle || job.DedupePolicy != model.JobDedupeActive ||
+	if job == nil || job.Type != wantType || job.DedupePolicy != model.JobDedupeActive ||
 		job.Status != model.JobStatusQueued || job.CommandVersion != 1 || job.MaximumAttempts != 8 || job.CreatedAt != createdAt || job.AvailableAt != availableAt {
 		t.Fatalf("lifecycle Job = %#v", job)
 	}

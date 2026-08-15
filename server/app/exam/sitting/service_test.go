@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -573,6 +574,32 @@ func (fixture fixture) sitting(t *testing.T) *model.ExamSitting {
 	return sitting
 }
 
+func TestListNoShowsAuthorizesClosingSittingAndReturnsBoundedPage(t *testing.T) {
+	t.Parallel()
+	fixture := newFixture(t)
+	sitting, err := model.NewExamSitting(fixture.sittingID, fixture.examID, fixture.revisionID, fixture.classID,
+		testNow.Add(-2*time.Hour), testNow.Add(-time.Hour), testNow.Add(-3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sitting.Open(testNow.Add(-2 * time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err = sitting.EnterClosing(model.ExamSittingReasonScheduledEndReached, testNow.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: sitting, AcademicUnitID: fixture.unitID}
+	ids := []model.UserID{model.NewUserID(), model.NewUserID(), model.NewUserID()}
+	slices.SortFunc(ids, func(left, right model.UserID) int { return strings.Compare(left.String(), right.String()) })
+	fixture.persistence.noShows = []store.ExamSittingNoShow{{CandidateUserID: ids[0]}, {CandidateUserID: ids[1]}, {CandidateUserID: ids[2]}}
+	page, err := fixture.service.ListNoShows(context.Background(), fixture.call, fixture.examID, fixture.sittingID,
+		model.UserID(""), 2)
+	if err != nil || len(page.Items) != 2 || !page.HasMore || page.Items[1].CandidateUserID != ids[1] ||
+		fixture.persistence.noShowOptions.Limit != 3 {
+		t.Fatalf("page=%#v options=%#v err=%v", page, fixture.persistence.noShowOptions, err)
+	}
+}
+
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 	userID, unitID := model.NewUserID(), model.NewAcademicUnitID()
@@ -614,28 +641,30 @@ func testPrincipal(userID model.UserID) model.Principal {
 
 type sittingStoreFake struct {
 	store.ExamSittingStore
-	schedule     *store.ExamSittingSchedule
-	command      *store.CommandIdempotency
-	result       *store.ExamSittingCommandResult
-	update       *store.ExamSittingScheduleUpdate
-	cancel       *store.ExamSittingCancellation
-	pause        *store.ExamSittingManagerTransition
-	resume       *store.ExamSittingManagerTransition
-	extend       *store.ExamSittingExtension
-	earlyClose   *store.ExamSittingManagerTransition
-	advance      *store.ExamSittingDueAdvance
-	closeEmpty   *store.ExamSittingCloseIfNoAttempts
-	lifecycle    *store.ExamSittingLifecycleResult
-	dueOptions   store.ExamSittingLifecycleDueOptions
-	due          []store.ExamSittingLifecycleDue
-	snapshot     *store.ExamSittingSnapshot
-	getExamID    model.ExamID
-	getSittingID model.ExamSittingID
-	resolveID    model.ExamSittingID
-	listOptions  store.ExamSittingListOptions
-	items        []store.ExamSittingSnapshot
-	err          error
-	getErr       error
+	schedule      *store.ExamSittingSchedule
+	command       *store.CommandIdempotency
+	result        *store.ExamSittingCommandResult
+	update        *store.ExamSittingScheduleUpdate
+	cancel        *store.ExamSittingCancellation
+	pause         *store.ExamSittingManagerTransition
+	resume        *store.ExamSittingManagerTransition
+	extend        *store.ExamSittingExtension
+	earlyClose    *store.ExamSittingManagerTransition
+	advance       *store.ExamSittingDueAdvance
+	finish        *store.ExamSittingFinishSealing
+	lifecycle     *store.ExamSittingLifecycleResult
+	dueOptions    store.ExamSittingLifecycleDueOptions
+	due           []store.ExamSittingLifecycleDue
+	noShowOptions store.ExamSittingNoShowListOptions
+	noShows       []store.ExamSittingNoShow
+	snapshot      *store.ExamSittingSnapshot
+	getExamID     model.ExamID
+	getSittingID  model.ExamSittingID
+	resolveID     model.ExamSittingID
+	listOptions   store.ExamSittingListOptions
+	items         []store.ExamSittingSnapshot
+	err           error
+	getErr        error
 }
 
 func (fake *sittingStoreFake) Resolve(_ context.Context, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {
@@ -702,14 +731,19 @@ func (fake *sittingStoreFake) AdvanceDue(_ context.Context, input *store.ExamSit
 	return fake.lifecycle, fake.err
 }
 
-func (fake *sittingStoreFake) CloseIfNoAttempts(_ context.Context, input *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
-	fake.closeEmpty = input
+func (fake *sittingStoreFake) FinishSealing(_ context.Context, input *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
+	fake.finish = input
 	return fake.lifecycle, fake.err
 }
 
 func (fake *sittingStoreFake) ListLifecycleDue(_ context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	fake.dueOptions = options
 	return fake.due, fake.err
+}
+
+func (fake *sittingStoreFake) ListNoShows(_ context.Context, options store.ExamSittingNoShowListOptions) ([]store.ExamSittingNoShow, error) {
+	fake.noShowOptions = options
+	return fake.noShows, fake.err
 }
 
 type accessFake struct {

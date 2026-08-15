@@ -10,7 +10,10 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const ExamSubmissionSealOperation = "exam.attempt.submit.v1"
+const (
+	ExamSubmissionSealOperation          = "exam.attempt.submit.v1"
+	ExamSubmissionAutomaticSealOperation = "exam.attempt.seal_for_sitting_close.v1"
+)
 
 // ExamSubmissionSealAccess is the complete hash-only causal selector for a
 // voluntary candidate seal. Persistence rechecks the current exact-Class
@@ -77,6 +80,51 @@ type ExamSubmissionSealResult struct {
 	Generation      int64
 	ConnectionID    model.AttemptConnectionID
 	Replayed        bool
+}
+
+// ExamSubmissionAutomaticSealListOptions selects one deterministic bounded
+// page of unfinished Attempts for a Closing Sitting. AttemptID is the complete
+// keyset cursor; paths, credentials, and candidate-authored content never
+// leave persistence.
+type ExamSubmissionAutomaticSealListOptions struct {
+	SittingID      model.ExamSittingID
+	AfterAttemptID model.ExamAttemptID
+	Limit          int
+}
+
+// ExamSubmissionAutomaticSealTarget is the safe system-work identity for one
+// already-created Attempt. Persistence resolves the latest Participation and
+// Connection so active and previously suspended/disconnected work share the
+// same terminal sealing operation.
+type ExamSubmissionAutomaticSealTarget struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	ClassID         model.ClassID
+	AcademicUnitID  model.AcademicUnitID
+	CandidateUserID model.UserID
+	AttemptID       model.ExamAttemptID
+	WorkspaceID     model.ExamAttemptWorkspaceID
+	ParticipationID model.AttemptParticipationID
+	Generation      int64
+	ConnectionID    model.AttemptConnectionID
+}
+
+// ExamSubmissionAutomaticSeal supplies a server-proposed Submission identity
+// and actor-less audit attempt. AttemptID is the natural idempotency key: a
+// concurrent or crash replay returns the one retained Submission and completes
+// the new audit without duplicating the immutable manifest.
+type ExamSubmissionAutomaticSeal struct {
+	Target       ExamSubmissionAutomaticSealTarget
+	SubmissionID model.SubmissionID
+	AuditEventID string
+	AuditAt      int64
+}
+
+// ExamSubmissionAutomaticSealResult is the safe post-commit projection used
+// for progress, realtime publication, and exact Connection unbinding.
+type ExamSubmissionAutomaticSealResult struct {
+	ExamSubmissionSealResult
+	ConnectionClosed bool
 }
 
 // ExamSubmissionAuthorization is the minimal immutable ownership projection
@@ -171,6 +219,8 @@ type ExamSubmissionFileSelector struct {
 type ExamSubmissionStore interface {
 	ResolveSealTarget(context.Context, ExamSubmissionSealAccess) (*ExamSubmissionSealTarget, error)
 	Seal(context.Context, *ExamSubmissionSeal, *CommandIdempotency) (*ExamSubmissionSealResult, error)
+	ListAutomaticSealTargets(context.Context, ExamSubmissionAutomaticSealListOptions) ([]ExamSubmissionAutomaticSealTarget, error)
+	SealForSittingClose(context.Context, *ExamSubmissionAutomaticSeal) (*ExamSubmissionAutomaticSealResult, error)
 	Resolve(context.Context, model.SubmissionID) (*ExamSubmissionAuthorization, error)
 	Get(context.Context, model.SubmissionID) (*model.ExamSubmission, error)
 	ListManifest(context.Context, ExamSubmissionManifestListOptions) (*ExamSubmissionManifestPage, error)

@@ -111,8 +111,9 @@ the code and component contracts for that detail.
   converge on the scheduled-end cause, archive still permits pause and early
   close to reduce capability, and committed non-replay transitions publish
   bounded lifecycle events. Version 1 uses `ScheduledEndAt` as the sole
-  delivery deadline and does not extend it for paused time. Zero-Attempt
-  Sittings close directly; resumable Attempt sealing remains a later slice.
+  delivery deadline and does not extend it for paused time. Closing now queues
+  durable bounded Attempt sealing; zero-Attempt Sittings close through the same
+  authoritative completion check.
 
 ## Architecture migration acceptance
 
@@ -203,6 +204,21 @@ content through purpose-specific Submission authorization. Unknown-commit,
 multi-node, manifest-integrity, retained-content, HTTP/OpenAPI, race, and full
 PostgreSQL gates are verified.
 
+Resumable Sitting sealing is implemented. Entering Closing immediately fences
+candidate mutation and queues durable work that pages unfinished Attempts by
+stable identity, seals each Active or Suspended Attempt in its own actorless-
+audited transaction, checkpoints after every unit, and continues large rosters
+under a 1,000-unit occurrence cap. Natural one-Submission convergence, durable
+reservation recovery, permanent successor work, and the daily lifecycle scan
+recover process loss and terminal Job failure without an unbounded transaction.
+Already submitted Attempts are skipped; automatic sealing retains acknowledged
+Workspace/VFS references, preserves prior suspension or disconnection causes,
+and records unresolved integrity as Gapped. A Sitting closes only after every
+created Attempt is Submitted with a sealed Submission. The manager no-show
+view separately derives membership active at `OpenedAt` and never fabricates an
+Attempt or Submission. PostgreSQL multi-node, mixed lifecycle, crash-recovery,
+Job-history, HTTP/OpenAPI, realtime, race, and bounded-index gates are verified.
+
 Exam Resources and Starter Workspaces are distinct from mutable Attempt
 Workspace files. PostgreSQL owns their logical identity and hierarchy while
 VFS owns opaque bytes. Candidate access is protected in-application use, with
@@ -220,7 +236,6 @@ delivery order are in [Examinations](../architecture/examinations.md).
 - Define any dedicated proctor-assignment role beyond Exam Managers, candidate
   accommodations, review appeals, exact retention periods, and future
   manager-controlled export/deletion policy.
-- Set bounded close-work budgets in their implementing slices.
 - Decide whether cross-node WebSocket reconnection transfers bounded replay
   queues or always performs authoritative HTTP resynchronization.
 - Decide whether generated client SDKs belong in this monorepo and which
@@ -230,8 +245,8 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: resumable Sitting
-  sealing and integrity evidence review with Student Result release.
+- Continue Examination Core as complete vertical slices: integrity evidence
+  review and Student Result release.
 - Extend server-owned file handling for validated IDE preferences alongside
   the examination-specific resource and workspace boundaries. Resource search
   is deferred because an Exam initially has at most ten active resources.

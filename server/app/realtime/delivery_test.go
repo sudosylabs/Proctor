@@ -123,6 +123,15 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	if got := string(opened.Data); !strings.Contains(got, `"reason_code":"scheduled_start_reached"`) {
 		t.Fatalf("opening lifecycle data = %s", got)
 	}
+	sealed, err := NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingClosed, 6,
+		"sealing_completed", sittingChangedAt.Add(2*time.Hour), sittingChangedAt)
+	if err != nil {
+		t.Fatalf("sealing-completed lifecycle event: %v", err)
+	}
+	if got := string(sealed.Data); !strings.Contains(got, `"state":"closed"`) ||
+		!strings.Contains(got, `"reason_code":"sealing_completed"`) {
+		t.Fatalf("sealing-completed lifecycle data = %s", got)
+	}
 	previousRevisionID, correctedRevisionID := model.NewExamRevisionID(), model.NewExamRevisionID()
 	correctedAt := time.Date(2026, 8, 14, 9, 5, 0, 123, time.UTC)
 	corrected, err := NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, correctedRevisionID, 7, correctedAt)

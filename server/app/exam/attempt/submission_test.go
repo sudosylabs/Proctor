@@ -92,6 +92,46 @@ func TestSubmitReplayReturnsRetainedReceiptAndSuppressesEffects(t *testing.T) {
 	}
 }
 
+func TestAutomaticSealUsesBoundedSystemAuditAndPublishesOnlyFreshResult(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	target := store.ExamSubmissionAutomaticSealTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		ClassID: f.sitting.ClassID, AcademicUnitID: model.NewAcademicUnitID(), CandidateUserID: f.userID,
+		AttemptID: f.attemptID, WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		Generation: 2, ConnectionID: f.connectionID}
+	retained := model.NewSubmissionID()
+	f.submissionID = retained
+	f.submissions.automaticTargets = []store.ExamSubmissionAutomaticSealTarget{target}
+	f.submissions.automaticResult = &store.ExamSubmissionAutomaticSealResult{ExamSubmissionSealResult: store.ExamSubmissionSealResult{
+		Receipt: store.ExamSubmissionReceipt{SubmissionID: retained, AttemptID: target.AttemptID,
+			State: model.ExamAttemptSubmitted, WorkspaceCursor: 4, ManifestDigest: strings.Repeat("a", 64), SubmittedAt: f.at},
+		ExamID: target.ExamID, SittingID: target.SittingID, ClassID: target.ClassID, CandidateUserID: target.CandidateUserID,
+		ParticipationID: target.ParticipationID, Generation: target.Generation, ConnectionID: target.ConnectionID},
+		ConnectionClosed: true}
+	items, err := f.service.ListAutomaticSealTargets(context.Background(), target.SittingID, model.ExamAttemptID(""), 20)
+	if err != nil || len(items) != 1 || items[0] != target || f.submissions.automaticOptions.Limit != 20 {
+		t.Fatalf("targets=%#v options=%#v err=%v", items, f.submissions.automaticOptions, err)
+	}
+	jobID, jobAttemptID := model.NewJobID(), model.NewJobAttemptID()
+	result, err := f.service.SealForSittingClose(context.Background(), SystemCall{JobID: jobID, AttemptID: jobAttemptID}, target)
+	if err != nil || result.Receipt.SubmissionID != retained || !result.ConnectionClosed || f.effects.submitted != 1 ||
+		f.submissions.automaticInput == nil || f.submissions.automaticInput.Target != target {
+		t.Fatalf("result=%#v input=%#v effects=%d err=%v", result, f.submissions.automaticInput, f.effects.submitted, err)
+	}
+	if f.systemAudit.values["job_id"] != jobID.String() || f.systemAudit.values["job_attempt_id"] != jobAttemptID.String() ||
+		f.systemAudit.values["exam_attempt_id"] != target.AttemptID.String() {
+		t.Fatalf("system audit=%#v", f.systemAudit.values)
+	}
+	f.submissions.automaticResult.Replayed = true
+	f.submissions.automaticResult.ConnectionClosed = false
+	if _, err = f.service.SealForSittingClose(context.Background(), SystemCall{JobID: jobID, AttemptID: jobAttemptID}, target); err != nil {
+		t.Fatal(err)
+	}
+	if f.effects.submitted != 1 {
+		t.Fatalf("replay duplicated effects: %d", f.effects.submitted)
+	}
+}
+
 func TestManagedSubmissionNestedOwnershipMismatchIsConcealed(t *testing.T) {
 	t.Parallel()
 
@@ -257,17 +297,31 @@ func submissionFixture(t *testing.T, f *fixture, cursor int64) *model.ExamSubmis
 }
 
 type submissionStoreFake struct {
-	f               *fixture
-	resolvedAccess  store.ExamSubmissionSealAccess
-	target          *store.ExamSubmissionSealTarget
-	seal            *store.ExamSubmissionSeal
-	sealResult      *store.ExamSubmissionSealResult
-	err             error
-	authorization   *store.ExamSubmissionAuthorization
-	submission      *model.ExamSubmission
-	manifest        *store.ExamSubmissionManifestPage
-	manifestOptions store.ExamSubmissionManifestListOptions
-	file            *store.ExamSubmissionFileSelector
+	f                *fixture
+	resolvedAccess   store.ExamSubmissionSealAccess
+	target           *store.ExamSubmissionSealTarget
+	seal             *store.ExamSubmissionSeal
+	sealResult       *store.ExamSubmissionSealResult
+	err              error
+	authorization    *store.ExamSubmissionAuthorization
+	submission       *model.ExamSubmission
+	manifest         *store.ExamSubmissionManifestPage
+	manifestOptions  store.ExamSubmissionManifestListOptions
+	file             *store.ExamSubmissionFileSelector
+	automaticTargets []store.ExamSubmissionAutomaticSealTarget
+	automaticOptions store.ExamSubmissionAutomaticSealListOptions
+	automaticInput   *store.ExamSubmissionAutomaticSeal
+	automaticResult  *store.ExamSubmissionAutomaticSealResult
+}
+
+func (fake *submissionStoreFake) ListAutomaticSealTargets(_ context.Context, options store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
+	fake.automaticOptions = options
+	return fake.automaticTargets, fake.err
+}
+
+func (fake *submissionStoreFake) SealForSittingClose(_ context.Context, input *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
+	fake.automaticInput = input
+	return fake.automaticResult, fake.err
 }
 
 func (fake *submissionStoreFake) ResolveSealTarget(_ context.Context, access store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {

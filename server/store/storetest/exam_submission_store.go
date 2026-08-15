@@ -214,6 +214,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 	testExamSubmissionIntegrityGap(t, ctx, ss, submissions, probes...)
 	testExamSubmissionHistoricalIntegrityGap(t, ctx, ss, submissions)
 	testExamSubmissionAccessFences(t, ctx, ss, submissions)
+	testAutomaticExamSubmissionSealing(t, ctx, ss, submissions, probes...)
 
 	if len(probes) != 0 {
 		probe := probes[0]
@@ -234,6 +235,242 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 			}
 		}
 	}
+}
+
+func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss store.Store,
+	submissions store.ExamSubmissionStore, probes ...ExamSubmissionSQLProbe,
+) {
+	t.Helper()
+	t.Run("Closing Sitting sealing and no-shows", func(t *testing.T) {
+		policy := model.FocusLossPolicy{Enabled: true, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
+			Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlagAndSuspend}
+		fixture := newExamAttemptFixtureWithFocusLoss(t, ctx, ss, &policy)
+		active, activeAccess := connectFocusLossFixture(t, ctx, ss, fixture, "automatic-active-connect")
+
+		suspendedFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(-time.Minute))
+		suspended, suspendedAccess := connectFocusLossFixture(t, ctx, ss, suspendedFixture, "automatic-suspended-connect")
+		suspension := recordFocusLoss(t, ctx, ss, suspendedFixture, suspendedAccess, 1, 500,
+			model.FocusLossSourceApplicationBackgrounded)
+		if suspension.Attempt == nil || suspension.Attempt.State != model.ExamAttemptSuspended ||
+			suspension.Participation == nil || suspension.Participation.EndReason != model.AttemptParticipationEndPolicySuspended {
+			t.Fatalf("Focus Loss suspension fixture = %#v", suspension)
+		}
+
+		submittedFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(-time.Minute))
+		submitted, submittedAccess := connectFocusLossFixture(t, ctx, ss, submittedFixture, "automatic-submitted-connect")
+		submittedSealAccess := submissionAccess(submittedAccess, submitted.Workspace.Cursor, 0)
+		submittedInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: submittedSealAccess,
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, submittedFixture).ID.String(), AuditAt: model.GetMillis()}
+		alreadySubmitted, err := submissions.Seal(ctx, submittedInput,
+			examCommand(submittedFixture.candidate.ID, store.ExamSubmissionSealOperation,
+				"automatic-existing-submission", "automatic-existing-submission"))
+		requireNoError(t, err)
+
+		noShowFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(-time.Minute))
+		lateFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(time.Minute))
+		closeAt := model.NowUTC()
+		closing, err := ss.ExamSitting().EarlyClose(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
+			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
+			FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, fixture.sitting.Revision+1, closeAt),
+			PrivateReason: "finish every acknowledged Attempt", ChangedAt: closeAt,
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(),
+			AuditAt:      model.GetMillis()},
+			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "automatic-close", "automatic-close"))
+		requireNoError(t, err)
+		if !closing.Changed || closing.Value.Sitting.State != model.ExamSittingClosing {
+			t.Fatalf("EarlyClose() = %#v", closing)
+		}
+		_, err = ss.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{
+			AttemptID: active.Attempt.ID, ParticipationID: active.Participation.ID, ConnectionID: active.Connection.ID,
+			CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Generation: active.Participation.Generation,
+			Sequence: 1, ContinuityCredentialHash: activeAccess.ContinuityCredentialHash,
+		})
+		assertExamAttemptConflict(t, err, "exam_sitting_state")
+
+		unfinished, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
+			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID.String(),
+			AuditAt:      model.GetMillis()})
+		requireNoError(t, err)
+		if unfinished.Changed || unfinished.Value.Sitting.State != model.ExamSittingClosing {
+			t.Fatalf("FinishSealing(with unfinished Attempts) = %#v", unfinished)
+		}
+
+		page, err := submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
+			SittingID: fixture.sitting.ID, Limit: 1})
+		requireNoError(t, err)
+		if len(page) != 1 {
+			t.Fatalf("ListAutomaticSealTargets(first page) = %#v", page)
+		}
+		secondPage, err := submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
+			SittingID: fixture.sitting.ID, AfterAttemptID: page[0].AttemptID, Limit: 2})
+		requireNoError(t, err)
+		allTargets := append(append([]store.ExamSubmissionAutomaticSealTarget(nil), page...), secondPage...)
+		if len(allTargets) != 2 || allTargets[0].AttemptID.String() >= allTargets[1].AttemptID.String() {
+			t.Fatalf("automatic seal target pages = %#v / %#v", page, secondPage)
+		}
+		wantAttempts := map[model.ExamAttemptID]bool{active.Attempt.ID: true, suspended.Attempt.ID: true}
+		for _, target := range allTargets {
+			if !wantAttempts[target.AttemptID] || target.AttemptID == submitted.Attempt.ID {
+				t.Fatalf("automatic seal target = %#v, submitted=%s", target, submitted.Attempt.ID)
+			}
+		}
+
+		var activeTarget, suspendedTarget store.ExamSubmissionAutomaticSealTarget
+		for _, target := range allTargets {
+			if target.AttemptID == active.Attempt.ID {
+				activeTarget = target
+			} else {
+				suspendedTarget = target
+			}
+		}
+		activeResult := raceAutomaticExamSubmissionSeal(t, ctx, ss, submissions, activeTarget, probes...)
+		if !activeResult.ConnectionClosed {
+			t.Fatalf("active automatic seal did not close Connection: %#v", activeResult)
+		}
+		suspendedAudit := saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID)
+		suspendedResult, err := submissions.SealForSittingClose(ctx, &store.ExamSubmissionAutomaticSeal{
+			Target: suspendedTarget, SubmissionID: model.NewSubmissionID(), AuditEventID: suspendedAudit.ID.String(),
+			AuditAt: model.GetMillis()})
+		requireNoError(t, err)
+		if suspendedResult.Replayed || suspendedResult.ConnectionClosed {
+			t.Fatalf("suspended automatic seal = %#v", suspendedResult)
+		}
+		requireSuccessfulAudit(t, ctx, ss, suspendedAudit.ID.String())
+
+		for _, result := range []*store.ExamSubmissionAutomaticSealResult{activeResult, suspendedResult} {
+			header, getErr := submissions.Get(ctx, result.Receipt.SubmissionID)
+			requireNoError(t, getErr)
+			if header.IntegrityState != model.SubmissionIntegrityGapped || header.UnresolvedIntegrityCount < 1 ||
+				header.WorkspaceCursor != result.Receipt.WorkspaceCursor || header.ManifestDigest != result.Receipt.ManifestDigest {
+				t.Fatalf("automatic Submission header = %#v", header)
+			}
+			manifest, listErr := submissions.ListManifest(ctx, store.ExamSubmissionManifestListOptions{
+				SubmissionID: header.ID, Limit: model.ExamSubmissionManifestReadMaximum})
+			requireNoError(t, listErr)
+			if len(manifest.Items) != 2 || manifest.ManifestDigest != header.ManifestDigest {
+				t.Fatalf("automatic Submission manifest = %#v", manifest)
+			}
+		}
+
+		activeManager, err := ss.ExamAttempt().Get(ctx, fixture.examID, active.Attempt.ID)
+		requireNoError(t, err)
+		if activeManager.Attempt.State != model.ExamAttemptSubmitted || activeManager.LatestParticipation == nil ||
+			activeManager.LatestParticipation.EndReason != model.AttemptParticipationEndSittingClosed {
+			t.Fatalf("active automatically sealed Attempt = %#v", activeManager)
+		}
+		suspendedManager, err := ss.ExamAttempt().Get(ctx, fixture.examID, suspended.Attempt.ID)
+		requireNoError(t, err)
+		if suspendedManager.Attempt.State != model.ExamAttemptSubmitted || suspendedManager.LatestParticipation == nil ||
+			suspendedManager.LatestParticipation.EndReason != model.AttemptParticipationEndPolicySuspended {
+			t.Fatalf("suspended automatically sealed Attempt = %#v", suspendedManager)
+		}
+
+		remaining, err := submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
+			SittingID: fixture.sitting.ID, Limit: 200})
+		requireNoError(t, err)
+		if len(remaining) != 0 {
+			t.Fatalf("remaining automatic seal targets = %#v", remaining)
+		}
+		closed, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
+			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID.String(),
+			AuditAt:      model.GetMillis()})
+		requireNoError(t, err)
+		if !closed.Changed || closed.Transition != store.ExamSittingTransitionSealingCompleted ||
+			closed.Value.Sitting.State != model.ExamSittingClosed {
+			t.Fatalf("FinishSealing() = %#v", closed)
+		}
+
+		noShows, err := ss.ExamSitting().ListNoShows(ctx, store.ExamSittingNoShowListOptions{
+			SittingID: fixture.sitting.ID, Limit: 200})
+		requireNoError(t, err)
+		if len(noShows) != 1 || noShows[0].CandidateUserID != noShowFixture.candidate.ID {
+			t.Fatalf("ListNoShows() = %#v; want=%s late=%s", noShows, noShowFixture.candidate.ID, lateFixture.candidate.ID)
+		}
+		if existing, getErr := submissions.Get(ctx, alreadySubmitted.Receipt.SubmissionID); getErr != nil ||
+			existing.ID != alreadySubmitted.Receipt.SubmissionID {
+			t.Fatalf("existing Submission after automatic sealing = %#v, %v", existing, getErr)
+		}
+	})
+}
+
+func addExamAttemptCandidate(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture,
+	startsAt time.Time,
+) examAttemptFixture {
+	t.Helper()
+	candidate := saveUser(t, ctx, ss)
+	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: startsAt.Add(-time.Hour)})
+	requireNoError(t, err)
+	enrollment, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: fixture.class.ID,
+		UserID: candidate.ID, StartsAt: startsAt})
+	requireNoError(t, err)
+	session, _, _ := saveSession(t, ctx, ss, candidate.ID.String(), 10)
+	fixture.candidate, fixture.session, fixture.membership = candidate, session, enrollment.Membership
+	return fixture
+}
+
+func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store.Store,
+	primary store.ExamSubmissionStore, target store.ExamSubmissionAutomaticSealTarget, probes ...ExamSubmissionSQLProbe,
+) *store.ExamSubmissionAutomaticSealResult {
+	t.Helper()
+	peer := primary
+	if len(probes) != 0 && probes[0].ConcurrentPeer != nil {
+		peer = probes[0].ConcurrentPeer
+	}
+	inputs := [2]*store.ExamSubmissionAutomaticSeal{}
+	for index := range inputs {
+		audit := saveExamSittingSystemAudit(t, ctx, ss, target.SittingID, target.AcademicUnitID)
+		inputs[index] = &store.ExamSubmissionAutomaticSeal{Target: target, SubmissionID: model.NewSubmissionID(),
+			AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}
+	}
+	adapters := [2]store.ExamSubmissionStore{primary, peer}
+	start := make(chan struct{})
+	results := make(chan *store.ExamSubmissionAutomaticSealResult, 2)
+	errorsFound := make(chan error, 2)
+	var wait sync.WaitGroup
+	for index := range inputs {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			result, err := adapters[index].SealForSittingClose(ctx, inputs[index])
+			results <- result
+			errorsFound <- err
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	close(errorsFound)
+	for err := range errorsFound {
+		requireNoError(t, err)
+	}
+	values := make([]*store.ExamSubmissionAutomaticSealResult, 0, 2)
+	for result := range results {
+		values = append(values, result)
+	}
+	if len(values) != 2 || values[0] == nil || values[1] == nil || values[0].Replayed == values[1].Replayed ||
+		values[0].Receipt != values[1].Receipt || values[0].ConnectionClosed == values[1].ConnectionClosed {
+		t.Fatalf("concurrent automatic Seals = %#v", values)
+	}
+	for _, input := range inputs {
+		requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
+		audit, err := ss.Audit().Get(ctx, input.AuditEventID)
+		requireNoError(t, err)
+		if !audit.ActorID.IsZero() || audit.SessionID.IsValid() {
+			t.Fatalf("automatic Submission audit invented an actor or Session: %#v", audit)
+		}
+		encoded := bytes.ToLower(audit.Result)
+		for _, forbidden := range []string{"path", "content", "credential", "session", "private_reason"} {
+			if bytes.Contains(encoded, []byte(forbidden)) {
+				t.Fatalf("automatic Submission audit contains %q: %s", forbidden, audit.Result)
+			}
+		}
+	}
+	if values[0].Replayed {
+		return values[1]
+	}
+	return values[0]
 }
 
 func validStoretestDigest(value string) bool {

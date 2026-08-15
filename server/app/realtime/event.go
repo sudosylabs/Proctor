@@ -487,7 +487,7 @@ func newExamSittingLifecycleChangedEvent(action model.Action, examID model.ExamI
 func validExamSittingLifecycleEventReason(value string) bool {
 	switch value {
 	case "scheduled_start_reached", "manager_paused", "manager_resumed", "manager_extended", "manager_closed",
-		"scheduled_end_reached", "schedule_elapsed", "academic_structure_invalid", "closed_no_attempts":
+		"scheduled_end_reached", "schedule_elapsed", "academic_structure_invalid", "closed_no_attempts", "sealing_completed":
 		return true
 	default:
 		return false

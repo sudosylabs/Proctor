@@ -324,11 +324,11 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		t.Fatalf("ListLifecycleDue() omitted Closing recovery row: %#v", closingDue)
 	}
 	closedAudit := saveExamSittingSystemAudit(t, ctx, ss, active.Value.Sitting.ID, fixture.unitID)
-	closed, err := ss.ExamSitting().CloseIfNoAttempts(ctx, &store.ExamSittingCloseIfNoAttempts{SittingID: active.Value.Sitting.ID,
+	closed, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: active.Value.Sitting.ID,
 		AuditEventID: closedAudit.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if !closed.Changed || closed.Value.Sitting.State != model.ExamSittingClosed || closed.Value.Sitting.Revision != 7 {
-		t.Fatalf("CloseIfNoAttempts()=%#v", closed)
+		t.Fatalf("FinishSealing(no Attempts)=%#v", closed)
 	}
 
 	actions := probe.PrivateActions(t, ctx, active.Value.Sitting.ID)
@@ -739,7 +739,7 @@ func newExamSittingFinalizeJob(t *testing.T, sittingID model.ExamSittingID, revi
 	requireNoError(t, err)
 	key, err := model.ExamSittingLifecycleDedupeKey(sittingID, model.ExamSittingLifecycleJobFinalize, revision)
 	requireNoError(t, err)
-	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command, key,
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command, key,
 		model.JobDedupeActive, model.NowUTC(), availableAt, 8)
 	requireNoError(t, err)
 	return job

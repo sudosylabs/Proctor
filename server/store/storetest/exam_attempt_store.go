@@ -332,11 +332,11 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	closingReplayInput.AuditEventID, closingReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
 	_, err = ss.ExamAttempt().Connect(ctx, &closingReplayInput, command)
 	assertExamAttemptConflict(t, err, "exam_sitting_state")
-	closeEmpty, err := ss.ExamSitting().CloseIfNoAttempts(ctx, &store.ExamSittingCloseIfNoAttempts{SittingID: fixture.sitting.ID,
+	unfinished, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
 		AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
-	if closeEmpty.Changed || closeEmpty.Value.Sitting.State != model.ExamSittingClosing || closing.Value.Sitting.State != model.ExamSittingClosing {
-		t.Fatalf("CloseIfNoAttempts(with Attempt) = %#v", closeEmpty)
+	if unfinished.Changed || unfinished.Value.Sitting.State != model.ExamSittingClosing || closing.Value.Sitting.State != model.ExamSittingClosing {
+		t.Fatalf("FinishSealing(with unfinished Attempt) = %#v", unfinished)
 	}
 	if len(probes) != 0 && probes[0].FocusLossPersistence != nil {
 		testExamAttemptFocusLossPolicies(t, ctx, ss, probes[0])

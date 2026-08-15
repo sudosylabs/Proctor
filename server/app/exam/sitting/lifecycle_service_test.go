@@ -261,11 +261,11 @@ func TestSystemCloseAndDueListingUseBoundedSystemSeam(t *testing.T) {
 	fixture.persistence.lifecycle = lifecycleResult(closed, store.ExamSittingTransitionClosedNoAttempts, true, false)
 	call := SystemCall{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
 
-	if _, err := fixture.service.CloseIfNoAttempts(context.Background(), call, fixture.sittingID); err != nil {
+	if _, err := fixture.service.FinishSealing(context.Background(), call, fixture.sittingID); err != nil {
 		t.Fatal(err)
 	}
-	if fixture.persistence.closeEmpty == nil || len(fixture.effects.events) != 1 {
-		t.Fatalf("close input/effects = %#v %#v", fixture.persistence.closeEmpty, fixture.effects.events)
+	if fixture.persistence.finish == nil || len(fixture.effects.events) != 1 {
+		t.Fatalf("finish input/effects = %#v %#v", fixture.persistence.finish, fixture.effects.events)
 	}
 
 	dueAt := testNow.Add(-time.Minute)
