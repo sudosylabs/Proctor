@@ -28,6 +28,7 @@ var entityIDs = []idSpec{
 	{typeName: "ExamAttemptWorkspaceID", fieldName: "exam_attempt_workspace_id", constructorSubject: "exam-attempt-workspace"},
 	{typeName: "AttemptParticipationID", fieldName: "attempt_participation_id", constructorSubject: "attempt-participation"},
 	{typeName: "AttemptConnectionID", fieldName: "attempt_connection_id", constructorSubject: "attempt-connection"},
+	{typeName: "FocusLossSignalID", fieldName: "focus_loss_signal_id", constructorSubject: "focus-loss-signal"},
 	{typeName: "IntegrityEvidenceID", fieldName: "integrity_evidence_id", constructorSubject: "integrity-evidence"},
 	{typeName: "IntegrityFlagID", fieldName: "integrity_flag_id", constructorSubject: "integrity-flag"},
 	{typeName: "AttemptSuspensionID", fieldName: "attempt_suspension_id", constructorSubject: "attempt-suspension"},

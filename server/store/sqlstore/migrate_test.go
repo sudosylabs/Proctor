@@ -23,6 +23,8 @@ var baselineTables = []string{
 	"cluster_discovery_nodes",
 	"command_outcomes",
 	"exam_attempt_connections",
+	"exam_attempt_focus_loss_evaluations",
+	"exam_attempt_focus_loss_pending",
 	"exam_attempt_participations",
 	"exam_attempt_suspensions",
 	"exam_attempt_workspace_entries",

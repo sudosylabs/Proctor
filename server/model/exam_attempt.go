@@ -117,16 +117,17 @@ const (
 type AttemptParticipationEndReason string
 
 const (
-	AttemptParticipationEndInterrupted   AttemptParticipationEndReason = "interrupted"
-	AttemptParticipationEndLeaseExpired  AttemptParticipationEndReason = "lease_expired"
-	AttemptParticipationEndKicked        AttemptParticipationEndReason = "kicked"
-	AttemptParticipationEndSubmitted     AttemptParticipationEndReason = "submitted"
-	AttemptParticipationEndSittingClosed AttemptParticipationEndReason = "sitting_closed"
+	AttemptParticipationEndInterrupted     AttemptParticipationEndReason = "interrupted"
+	AttemptParticipationEndLeaseExpired    AttemptParticipationEndReason = "lease_expired"
+	AttemptParticipationEndPolicySuspended AttemptParticipationEndReason = "policy_suspended"
+	AttemptParticipationEndKicked          AttemptParticipationEndReason = "kicked"
+	AttemptParticipationEndSubmitted       AttemptParticipationEndReason = "submitted"
+	AttemptParticipationEndSittingClosed   AttemptParticipationEndReason = "sitting_closed"
 )
 
 func (reason AttemptParticipationEndReason) isValid() bool {
 	switch reason {
-	case AttemptParticipationEndInterrupted, AttemptParticipationEndLeaseExpired, AttemptParticipationEndKicked,
+	case AttemptParticipationEndInterrupted, AttemptParticipationEndLeaseExpired, AttemptParticipationEndPolicySuspended, AttemptParticipationEndKicked,
 		AttemptParticipationEndSubmitted, AttemptParticipationEndSittingClosed:
 		return true
 	default:
@@ -243,19 +244,20 @@ const (
 type AttemptConnectionCloseReason string
 
 const (
-	AttemptConnectionCloseTransport     AttemptConnectionCloseReason = "transport_closed"
-	AttemptConnectionCloseInterrupted   AttemptConnectionCloseReason = "interrupted"
-	AttemptConnectionCloseLeaseExpired  AttemptConnectionCloseReason = "lease_expired"
-	AttemptConnectionCloseKicked        AttemptConnectionCloseReason = "kicked"
-	AttemptConnectionCloseSubmitted     AttemptConnectionCloseReason = "submitted"
-	AttemptConnectionCloseSittingClosed AttemptConnectionCloseReason = "sitting_closed"
+	AttemptConnectionCloseTransport       AttemptConnectionCloseReason = "transport_closed"
+	AttemptConnectionCloseInterrupted     AttemptConnectionCloseReason = "interrupted"
+	AttemptConnectionCloseLeaseExpired    AttemptConnectionCloseReason = "lease_expired"
+	AttemptConnectionClosePolicySuspended AttemptConnectionCloseReason = "policy_suspended"
+	AttemptConnectionCloseKicked          AttemptConnectionCloseReason = "kicked"
+	AttemptConnectionCloseSubmitted       AttemptConnectionCloseReason = "submitted"
+	AttemptConnectionCloseSittingClosed   AttemptConnectionCloseReason = "sitting_closed"
 )
 
 // IsValid reports whether reason is one of the closed Connection states owned
 // by the domain model.
 func (reason AttemptConnectionCloseReason) IsValid() bool {
 	switch reason {
-	case AttemptConnectionCloseTransport, AttemptConnectionCloseInterrupted, AttemptConnectionCloseLeaseExpired,
+	case AttemptConnectionCloseTransport, AttemptConnectionCloseInterrupted, AttemptConnectionCloseLeaseExpired, AttemptConnectionClosePolicySuspended,
 		AttemptConnectionCloseKicked, AttemptConnectionCloseSubmitted, AttemptConnectionCloseSittingClosed:
 		return true
 	default:
@@ -323,22 +325,32 @@ func (connection *AttemptConnection) Close(reason AttemptConnectionCloseReason, 
 // evidence and a flag. It is not a verdict or severity supplied by a client.
 type IntegrityPolicyKind string
 
-const IntegrityPolicyConnectionLoss IntegrityPolicyKind = "connection_loss"
+const (
+	IntegrityPolicyConnectionLoss IntegrityPolicyKind = "connection_loss"
+	IntegrityPolicyFocusLoss      IntegrityPolicyKind = "focus_loss"
+)
 
-func (kind IntegrityPolicyKind) isValid() bool { return kind == IntegrityPolicyConnectionLoss }
+func (kind IntegrityPolicyKind) isValid() bool {
+	return kind == IntegrityPolicyConnectionLoss || kind == IntegrityPolicyFocusLoss
+}
 
 // IntegrityEvidence is neutral server-owned evidence for one policy flag.
 // Connection Loss evidence intentionally has no accusation, free-form text,
 // client time, credential, Session identity, or transport payload.
 type IntegrityEvidence struct {
-	ID              IntegrityEvidenceID
-	AttemptID       ExamAttemptID
-	ParticipationID AttemptParticipationID
-	FlagID          IntegrityFlagID
-	Generation      int64
-	Kind            IntegrityPolicyKind
-	ObservedAt      time.Time
-	RecordedAt      time.Time
+	ID                   IntegrityEvidenceID
+	AttemptID            ExamAttemptID
+	ParticipationID      AttemptParticipationID
+	FlagID               IntegrityFlagID
+	Generation           int64
+	Kind                 IntegrityPolicyKind
+	SignalID             FocusLossSignalID
+	Sequence             int64
+	DurationMilliseconds int64
+	Source               FocusLossSource
+	MissingBefore        int64
+	ObservedAt           time.Time
+	RecordedAt           time.Time
 }
 
 func NewConnectionLossEvidence(id IntegrityEvidenceID, attemptID ExamAttemptID, participationID AttemptParticipationID,
@@ -352,11 +364,40 @@ func NewConnectionLossEvidence(id IntegrityEvidenceID, attemptID ExamAttemptID, 
 	return evidence, nil
 }
 
+// NewFocusLossEvidence converts one qualifying episode from the consumed
+// evaluation bucket into bounded evidence associated with its generation Flag.
+// Pending bucket rows are not Integrity Evidence and remain Store-internal.
+func NewFocusLossEvidence(id IntegrityEvidenceID, signal FocusLossSignal, flagID IntegrityFlagID,
+	missingBefore int64, recordedAt time.Time,
+) (*IntegrityEvidence, error) {
+	evidence := &IntegrityEvidence{ID: id, AttemptID: signal.AttemptID, ParticipationID: signal.ParticipationID,
+		FlagID: flagID, Generation: signal.Generation, Kind: IntegrityPolicyFocusLoss, SignalID: signal.ID,
+		Sequence: signal.Sequence, DurationMilliseconds: signal.DurationMilliseconds, Source: signal.Source,
+		MissingBefore: missingBefore, ObservedAt: signal.ReceivedAt, RecordedAt: TimeUTC(recordedAt)}
+	if err := evidence.Validate(); err != nil {
+		return nil, err
+	}
+	return evidence, nil
+}
+
 func (evidence *IntegrityEvidence) Validate() error {
 	if evidence == nil || !evidence.ID.IsValid() || !evidence.AttemptID.IsValid() || !evidence.ParticipationID.IsValid() ||
-		!evidence.FlagID.IsValid() || evidence.Generation < 1 || !evidence.Kind.isValid() || evidence.ObservedAt.IsZero() ||
+		evidence.Generation < 1 || !evidence.Kind.isValid() || evidence.ObservedAt.IsZero() ||
 		evidence.RecordedAt.IsZero() || evidence.RecordedAt.Before(evidence.ObservedAt) {
 		return fmt.Errorf("model: invalid Integrity Evidence")
+	}
+	switch evidence.Kind {
+	case IntegrityPolicyConnectionLoss:
+		if !evidence.FlagID.IsValid() || !evidence.SignalID.IsZero() || evidence.Sequence != 0 ||
+			evidence.DurationMilliseconds != 0 || evidence.Source != "" || evidence.MissingBefore != 0 {
+			return fmt.Errorf("model: invalid Connection Loss evidence")
+		}
+	case IntegrityPolicyFocusLoss:
+		if !evidence.FlagID.IsValid() || !evidence.SignalID.IsValid() || evidence.Sequence < 1 ||
+			evidence.DurationMilliseconds < 1 || evidence.DurationMilliseconds > FocusLossMaximumDurationMilliseconds ||
+			!evidence.Source.IsValid() || evidence.MissingBefore < 0 {
+			return fmt.Errorf("model: invalid Focus Loss evidence")
+		}
 	}
 	return nil
 }
@@ -407,6 +448,7 @@ type AttemptSuspensionCandidateReason string
 
 const (
 	AttemptSuspensionCandidateReasonSecureContinuityLost AttemptSuspensionCandidateReason = "secure_connectivity_lost"
+	AttemptSuspensionCandidateReasonFocusLossPolicy      AttemptSuspensionCandidateReason = "focus_policy_review_required"
 	AttemptSuspensionPrivateReasonMaximumRunes                                            = 1000
 )
 
@@ -442,7 +484,8 @@ func NewPolicyAttemptSuspension(id AttemptSuspensionID, attemptID ExamAttemptID,
 func (suspension *AttemptSuspension) Validate() error {
 	if suspension == nil || !suspension.ID.IsValid() || !suspension.AttemptID.IsValid() || !suspension.ParticipationID.IsValid() ||
 		!suspension.FlagID.IsValid() || suspension.Generation < 1 || suspension.Source != AttemptSuspensionSourcePolicy ||
-		suspension.CandidateReason != AttemptSuspensionCandidateReasonSecureContinuityLost || suspension.StartedAt.IsZero() {
+		(suspension.CandidateReason != AttemptSuspensionCandidateReasonSecureContinuityLost &&
+			suspension.CandidateReason != AttemptSuspensionCandidateReasonFocusLossPolicy) || suspension.StartedAt.IsZero() {
 		return fmt.Errorf("model: invalid Attempt Suspension")
 	}
 	switch suspension.State {

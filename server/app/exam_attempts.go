@@ -20,6 +20,7 @@ import (
 type ExamAttemptConnection = examattempt.ConnectionResult
 type ExamAttemptConnectionClosed = examattempt.ConnectionClosedResult
 type ExamAttemptParticipationRenewal = examattempt.ParticipationRenewal
+type ExamAttemptFocusLossEvaluation = examattempt.FocusLossEvaluation
 type ExamAttemptReallowResult = examattempt.ReallowResult
 type CandidateExamAttemptAccess = examattempt.CandidateAccess
 type CandidateExamPresentation = examattempt.Presentation
@@ -39,6 +40,8 @@ type ConnectExamAttemptCommand struct {
 type CloseExamAttemptConnectionCommand = examattempt.CloseConnectionCommand
 
 type RenewExamAttemptParticipationCommand = examattempt.RenewParticipationCommand
+
+type EvaluateExamAttemptFocusLossCommand = examattempt.FocusLossCommand
 
 type ReallowExamAttemptCommand struct {
 	ExamID                  model.ExamID
@@ -144,6 +147,7 @@ type ExamAttemptManagerPage struct {
 type examAttemptUseCases interface {
 	Connect(context.Context, examattempt.Call, examattempt.ConnectCommand) (examattempt.ConnectionResult, error)
 	RenewParticipation(context.Context, examattempt.Call, examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error)
+	EvaluateFocusLoss(context.Context, examattempt.Call, examattempt.FocusLossCommand) (examattempt.FocusLossEvaluation, error)
 	Reallow(context.Context, examattempt.Call, examattempt.ReallowCommand) (examattempt.ReallowResult, error)
 	ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error)
 	CloseConnection(context.Context, examattempt.Call, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error)
@@ -309,6 +313,17 @@ func (a *App) RenewExamAttemptParticipation(ctx context.Context, invocation Invo
 	result, err := a.examAttempts.RenewParticipation(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamAttemptParticipationRenewal{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invocation,
+	command EvaluateExamAttemptFocusLossCommand,
+) (ExamAttemptFocusLossEvaluation, error) {
+	result, err := a.examAttempts.EvaluateFocusLoss(ctx,
+		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return ExamAttemptFocusLossEvaluation{}, examAttemptError(err, true)
 	}
 	return result, nil
 }
@@ -516,6 +531,54 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 		return err
 	}
 	return effects.realtime.Publish(ctx, event)
+}
+
+func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, result examattempt.FocusLossEvaluation) error {
+	events := make([]apprealtime.RealtimeEvent, 0, 5)
+	if result.ConnectionClosed {
+		event, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.AttemptID,
+			result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
+		if err != nil {
+			return err
+		}
+		events = append(events, event)
+	}
+	if result.ManagerNotificationRequired {
+		event, err := apprealtime.NewExamAttemptIntegrityFlaggedEvent(result.SittingID, result.AttemptID,
+			result.CandidateUserID, result.Flag.ID, result.PolicyOutcome, result.RetainedEvidenceCount,
+			result.EvidenceOverflowCount, result.ReceivedAt)
+		if err != nil {
+			return err
+		}
+		events = append(events, event)
+	}
+	if result.SuspensionCreated {
+		managerEvent, err := apprealtime.NewExamAttemptSuspendedEvent(result.SittingID, result.AttemptID,
+			result.CandidateUserID, result.Connection.ID, result.Flag.ID, result.Suspension.ID,
+			result.Attempt.Revision, result.ReceivedAt)
+		if err != nil {
+			return err
+		}
+		candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.AttemptID,
+			result.CandidateUserID, result.Suspension.CandidateReason, result.ReceivedAt)
+		if err != nil {
+			return err
+		}
+		events = append(events, managerEvent, candidateEvent)
+	}
+	if result.CandidateWarningCreated {
+		event, err := apprealtime.NewCandidateExamAttemptFocusLossWarningEvent(result.SittingID, result.AttemptID,
+			result.CandidateUserID, result.ReceivedAt)
+		if err != nil {
+			return err
+		}
+		events = append(events, event)
+	}
+	var joined error
+	for _, event := range events {
+		joined = errors.Join(joined, effects.realtime.Publish(ctx, event))
+	}
+	return joined
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {

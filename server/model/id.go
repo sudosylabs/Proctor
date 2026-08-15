@@ -62,6 +62,9 @@ type AttemptParticipationID string
 // AttemptConnectionID identifies one transport connection admitted to an Attempt Participation.
 type AttemptConnectionID string
 
+// FocusLossSignalID identifies one durably accepted Focus Loss claim and its outcome.
+type FocusLossSignalID string
+
 // IntegrityEvidenceID identifies one retained integrity observation episode.
 type IntegrityEvidenceID string
 

@@ -58,9 +58,13 @@ Every committed Attempt Connection open or close and every created Integrity
 Flag produces a bounded manager-facing realtime fact after PostgreSQL commit.
 The event contains safe identifiers and state only. Delivery is best-effort;
 authorized managers refetch authoritative state after missed, duplicate, or
-resynchronization events. Live instruction/resource correction likewise
-commits the new immutable Revision and Sitting retarget before notifying
-candidates. The complete lifecycle and correction contract is
+resynchronization events. A newly committed Focus Loss warning targets only the
+candidate; a policy suspension additionally publishes the durable Connection
+close and separate manager/candidate suspension facts. Replayed Focus Loss
+outcomes publish nothing, and transient publication failure cannot roll back or
+repeat the committed policy decision. Live instruction/resource correction
+likewise commits the new immutable Revision and Sitting retarget before
+notifying candidates. The complete lifecycle and correction contract is
 [Examinations](./examinations.md).
 
 ## High availability

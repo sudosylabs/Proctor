@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package attempt owns candidate admission, Participation and Connection
-// fencing, authenticated renewal, database-time expiry enforcement, policy
-// suspension and manager re-allow, correction-aware protected presentation,
-// and the acknowledged mutable Attempt Workspace. Workspace use cases own
+// fencing, authenticated renewal, database-time expiry enforcement, bounded
+// Focus Loss evaluation, policy suspension and manager re-allow,
+// correction-aware protected presentation, and the acknowledged mutable
+// Attempt Workspace. Workspace use cases own
 // path-safe manifest and journal recovery, selective entry fences, staged
 // content coordination, Attempt-scoped idempotency, audit intent, and safe
 // post-commit refetch hints. It does not own HTTP or WebSocket wire contracts,

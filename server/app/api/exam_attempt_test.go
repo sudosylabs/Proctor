@@ -41,7 +41,8 @@ func TestCandidateExamPresentationRequiresBoundHeadersAndNeverEchoesSecrets(t *t
 		t.Fatalf("candidate response leaked protected internals: %s", response.Body.String())
 	}
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 7 {
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 8 ||
+		string(payload["focus_loss_collection_enabled"]) != "true" {
 		t.Fatalf("presentation shape = %v, %v", payload, err)
 	}
 }
@@ -501,7 +502,8 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		credential: model.NewCredentialToken(), resourceID: resourceID,
 		presentation: application.CandidateExamPresentation{AttemptID: attempt.ID, SittingID: attempt.SittingID,
 			AdmissionRevisionID: attempt.AdmissionRevisionID, CurrentRevisionID: model.NewExamRevisionID(), Title: "Algorithms",
-			InstructionsMarkdown: "Solve safely.", Resources: []examattempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
+			FocusLossCollectionEnabled: true,
+			InstructionsMarkdown:       "Solve safely.", Resources: []examattempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
 				DescriptionMarkdown: "Read this.", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 9, SHA256: strings.Repeat("b", 64)}}},
 		workspacePage: application.CandidateExamWorkspacePage{WorkspaceID: workspace.ID, Cursor: 4,
 			Items: []application.CandidateExamWorkspaceItem{workspaceItem}},

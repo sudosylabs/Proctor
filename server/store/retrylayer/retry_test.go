@@ -130,6 +130,8 @@ type examAttemptRetryStub struct {
 	store.ExamAttemptStore
 	connectAttempts       int
 	renewAttempts         int
+	resolveFocusAttempts  int
+	recordFocusAttempts   int
 	resolveExpiryAttempts int
 	listExpiryAttempts    int
 	expireAttempts        int
@@ -185,6 +187,16 @@ func (stub *examAttemptRetryStub) CloseConnection(context.Context, *store.ExamAt
 
 func (stub *examAttemptRetryStub) RenewParticipation(context.Context, *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
 	stub.renewAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) ResolveFocusLossTarget(context.Context, store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
+	stub.resolveFocusAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) RecordFocusLoss(context.Context, *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
+	stub.recordFocusAttempts++
 	return nil, stub.err
 }
 
@@ -351,6 +363,25 @@ func TestRetryExamAttemptRenewalExpiryAndReallowUseTheirDurableFences(t *testing
 	_, _ = layer.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{}, nil)
 	if stub.reallowAttempts != 4 {
 		t.Fatalf("ReallowAttempt() attempts without command = %d, want one additional call", stub.reallowAttempts)
+	}
+}
+
+func TestRetryReadsButDoesNotAutomaticallyRetryAuditedFocusLossMutation(t *testing.T) {
+	t.Parallel()
+	transientErr := errors.New("unknown focus loss outcome")
+	stub := &examAttemptRetryStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{examAttempt: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	_, _ = layer.ExamAttempt().ResolveFocusLossTarget(ctx, store.ExamAttemptFocusLossAccess{})
+	_, _ = layer.ExamAttempt().RecordFocusLoss(ctx, &store.ExamAttemptFocusLossSignal{})
+	if stub.resolveFocusAttempts != 3 || stub.recordFocusAttempts != 1 {
+		t.Fatalf("Focus Loss attempts resolve/record = %d/%d, want 3/1", stub.resolveFocusAttempts, stub.recordFocusAttempts)
 	}
 }
 

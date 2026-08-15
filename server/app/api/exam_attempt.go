@@ -236,13 +236,14 @@ type examAttemptReallowResponse struct {
 }
 
 type candidateExamPresentationResponse struct {
-	AttemptID            string                          `json:"attempt_id"`
-	SittingID            string                          `json:"exam_sitting_id"`
-	AdmissionRevisionID  string                          `json:"admission_revision_id"`
-	CurrentRevisionID    string                          `json:"current_revision_id"`
-	Title                string                          `json:"title"`
-	InstructionsMarkdown string                          `json:"instructions_markdown"`
-	Resources            []candidateExamResourceResponse `json:"resources"`
+	AttemptID                  string                          `json:"attempt_id"`
+	SittingID                  string                          `json:"exam_sitting_id"`
+	AdmissionRevisionID        string                          `json:"admission_revision_id"`
+	CurrentRevisionID          string                          `json:"current_revision_id"`
+	Title                      string                          `json:"title"`
+	InstructionsMarkdown       string                          `json:"instructions_markdown"`
+	FocusLossCollectionEnabled bool                            `json:"focus_loss_collection_enabled"`
+	Resources                  []candidateExamResourceResponse `json:"resources"`
 }
 
 type candidateExamResourceResponse struct {
@@ -519,7 +520,8 @@ func (module examAttemptHTTPModule) presentation(request operationRequest) (oper
 	}
 	response := candidateExamPresentationResponse{AttemptID: view.AttemptID.String(), SittingID: view.SittingID.String(),
 		AdmissionRevisionID: view.AdmissionRevisionID.String(), CurrentRevisionID: view.CurrentRevisionID.String(), Title: view.Title,
-		InstructionsMarkdown: view.InstructionsMarkdown, Resources: make([]candidateExamResourceResponse, 0, len(view.Resources))}
+		InstructionsMarkdown: view.InstructionsMarkdown, FocusLossCollectionEnabled: view.FocusLossCollectionEnabled,
+		Resources: make([]candidateExamResourceResponse, 0, len(view.Resources))}
 	for _, resource := range view.Resources {
 		response.Resources = append(response.Resources, candidateExamResourceResponse{ID: resource.ResourceID.String(), DisplayName: resource.DisplayName,
 			DescriptionMarkdown: resource.DescriptionMarkdown, Position: resource.Position, MediaType: string(resource.MediaType), Size: resource.SizeBytes, SHA256: resource.SHA256})

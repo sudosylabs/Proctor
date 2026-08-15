@@ -39,12 +39,13 @@ evaluation, authorization timing, audit intent, and post-commit effects.
 Selective `app/exam/resource`, `app/exam/workspace`, `app/exam/attempt`, and
 `app/exam/correction` children are justified by their distinct stable
 mechanics: published read-only supporting material, Draft Starter Workspace
-authoring, Attempt admission/continuity plus acknowledged live Workspace
-coordination over opaque VFS objects, and bounded live-correction staging plus
-atomic application policy. `app/exam/attempt` consumes separate bounded Store
-contracts for the Attempt lifecycle and mutable Workspace aggregate and narrow
-audit, content, and realtime ports. None imports the parent application package
-or selects SQL, VFS, WebSocket, Jobs, or other infrastructure.
+authoring, Attempt admission/continuity, bounded Focus Loss evaluation, and
+acknowledged live Workspace coordination over opaque VFS objects, plus bounded
+live-correction staging and atomic application policy. `app/exam/attempt`
+consumes separate bounded Store contracts for the Attempt lifecycle and mutable
+Workspace aggregate and narrow audit, content, and realtime ports. None imports
+the parent application package or selects SQL, VFS, WebSocket, Jobs, or other
+infrastructure.
 
 The package is introduced with the first working vertical slice, not as an
 empty architectural placeholder. Its `doc.go` must define the Exam, Draft,

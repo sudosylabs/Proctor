@@ -140,6 +140,8 @@ const (
 	methodResolveCandidateResource      methodName = "resolve_candidate_resource"
 	methodConnect                       methodName = "connect"
 	methodRenewParticipation            methodName = "renew_participation"
+	methodResolveFocusLossTarget        methodName = "resolve_focus_loss_target"
+	methodRecordFocusLoss               methodName = "record_focus_loss"
 	methodResolveParticipationExpiry    methodName = "resolve_participation_expiry"
 	methodResolveFile                   methodName = "resolve_file"
 	methodResolveMutationTarget         methodName = "resolve_mutation_target"

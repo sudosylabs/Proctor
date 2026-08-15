@@ -59,7 +59,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Now: time.Now, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
 		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: model.NewIntegrityFlagID,
-		NewSuspension: model.NewAttemptSuspensionID,
+		NewSuspension: model.NewAttemptSuspensionID, NewFocusLossSignal: model.NewFocusLossSignalID,
 		NewWorkspaceEntry: model.NewAttemptWorkspaceEntryID, NewWorkspaceObject: model.NewAttemptWorkspaceObjectID,
 		NewWorkspaceVersion: model.NewWorkspaceContentVersion,
 	})

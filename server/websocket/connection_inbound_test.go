@@ -35,6 +35,9 @@ type inboundTestApplication struct {
 	renewErr        error
 	renewResult     app.ExamAttemptParticipationRenewal
 	renewCalls      []app.RenewExamAttemptParticipationCommand
+	focusLossErr    error
+	focusLossResult app.ExamAttemptFocusLossEvaluation
+	focusLossCalls  []app.EvaluateExamAttemptFocusLossCommand
 	closeCalls      []app.CloseExamAttemptConnectionCommand
 	closeContextErr error
 	closePrincipal  model.Principal
@@ -48,6 +51,15 @@ func (a *inboundTestApplication) RenewExamAttemptParticipation(_ context.Context
 	defer a.mu.Unlock()
 	a.renewCalls = append(a.renewCalls, command)
 	return a.renewResult, a.renewErr
+}
+
+func (a *inboundTestApplication) EvaluateExamAttemptFocusLoss(_ context.Context, _ app.Invocation,
+	command app.EvaluateExamAttemptFocusLossCommand,
+) (app.ExamAttemptFocusLossEvaluation, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.focusLossCalls = append(a.focusLossCalls, command)
+	return a.focusLossResult, a.focusLossErr
 }
 
 func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ app.Invocation, command app.ConnectExamAttemptCommand) (app.ExamAttemptConnection, error) {
@@ -632,6 +644,97 @@ func TestConnectionRuntimeRenewalUsesStrictPayloadAndSafeConnectionLossMessage(t
 	}
 	if strings.Contains(string(encoded), credential) || strings.Contains(string(encoded), model.HashToken(credential)) {
 		t.Fatalf("connection-loss response exposed credential material: %s", encoded)
+	}
+}
+
+func TestConnectionRuntimeSubmitsBoundFocusLossAndClearsPolicySuspendedBinding(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC)
+	sittingID := model.NewExamSittingID()
+	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	participationID, connectionID := model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
+	connection, err := model.NewAttemptConnection(connectionID, attempt.ID, participationID, model.NewSessionID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receivedAt := at.Add(2 * time.Second)
+	application := &inboundTestApplication{connectResult: app.ExamAttemptConnection{Attempt: *attempt, Workspace: *workspace,
+		Participation: store.ExamAttemptParticipationView{ID: participationID, AttemptID: attempt.ID,
+			State: model.AttemptParticipationActive, Generation: 4, StartedAt: at, UpdatedAt: at,
+			LeaseExpiresAt: at.Add(model.AttemptParticipationInitialLease)}, Connection: *connection, ClassID: model.NewClassID()},
+		focusLossResult: app.ExamAttemptFocusLossEvaluation{AttemptID: attempt.ID, ParticipationID: participationID,
+			Generation: 4, AcceptedSequence: 3, ReceivedAt: receivedAt, Qualified: true,
+			FlagCreated: true, SuspensionCreated: true, ConnectionClosed: true}}
+	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
+	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
+	credential := model.NewCredentialToken()
+	runtime.handleRequest(context.Background(), requestWithData(t, 60, examAttemptConnectAction, examAttemptConnectRequest{
+		ExamSittingID: sittingID.String(), IdempotencyKey: "connect", ContinuityCredential: credential,
+	}))
+	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
+		t.Fatalf("connect response=%#v", response)
+	}
+	runtime.handleRequest(context.Background(), requestWithData(t, 61, examAttemptFocusLossAction, examAttemptFocusLossRequest{
+		SchemaVersion: model.FocusLossSignalSchemaVersion,
+		Generation:    4, Sequence: 3, DurationMilliseconds: 2500, Source: "fullscreen_exited",
+		ContinuityCredential: credential,
+	}))
+	response := nextInboundResponse(t, runtime)
+	if response.Status != "ok" || response.Error != nil {
+		t.Fatalf("Focus Loss response=%#v", response)
+	}
+	var body examAttemptFocusLossResponse
+	if err = json.Unmarshal(response.Data, &body); err != nil || body.Generation != 4 || body.AcceptedSequence != 3 ||
+		body.ReceivedAt != receivedAt.Format(time.RFC3339Nano) || !body.SuspensionCreated {
+		t.Fatalf("Focus Loss body=%#v error=%v", body, err)
+	}
+	encoded := string(response.Data)
+	for _, forbidden := range []string{credential, model.HashToken(credential), "duration", "source", "outcome", "threshold", "qualified", "flag_created", "session"} {
+		if strings.Contains(strings.ToLower(encoded), strings.ToLower(forbidden)) {
+			t.Fatalf("Focus Loss response exposed %q: %s", forbidden, encoded)
+		}
+	}
+	application.mu.Lock()
+	calls := append([]app.EvaluateExamAttemptFocusLossCommand(nil), application.focusLossCalls...)
+	application.mu.Unlock()
+	if len(calls) != 1 || calls[0].SchemaVersion != model.FocusLossSignalSchemaVersion ||
+		calls[0].AttemptID != attempt.ID || calls[0].ParticipationID != participationID ||
+		calls[0].ConnectionID != connectionID || calls[0].Generation != 4 || calls[0].Sequence != 3 ||
+		calls[0].DurationMilliseconds != 2500 || calls[0].Source != model.FocusLossSourceFullscreenExited ||
+		calls[0].ContinuityCredential != credential {
+		t.Fatalf("Focus Loss calls=%#v", calls)
+	}
+
+	runtime.handleRequest(context.Background(), requestWithData(t, 62, examAttemptRenewAction, examAttemptRenewRequest{
+		Generation: 4, Sequence: 4, ContinuityCredential: credential,
+	}))
+	if rejected := nextInboundResponse(t, runtime); rejected.Status != "error" || rejected.Error == nil ||
+		rejected.Error.Code != "exam.attempt.connection_closed" {
+		t.Fatalf("post-suspension renewal=%#v", rejected)
+	}
+	runtime.handleRequest(context.Background(), requestWithData(t, 63, examAttemptFocusLossAction, examAttemptFocusLossRequest{
+		SchemaVersion: model.FocusLossSignalSchemaVersion,
+		Generation:    4, Sequence: 4, DurationMilliseconds: 2500, ContinuityCredential: credential,
+	}))
+	if rejected := nextInboundResponse(t, runtime); rejected.Status != "error" || rejected.Error == nil ||
+		rejected.Error.Code != "exam.attempt.connection_closed" {
+		t.Fatalf("post-suspension Focus Loss signal=%#v", rejected)
+	}
+	runtime.mu.Lock()
+	binding, subscriptions := runtime.attempt, len(runtime.subscriptions)
+	runtime.mu.Unlock()
+	application.mu.Lock()
+	defer application.mu.Unlock()
+	if len(application.renewCalls) != 0 || len(application.focusLossCalls) != 1 || binding != nil || subscriptions != 0 {
+		t.Fatalf("post-suspension renewals=%#v Focus Loss calls=%#v binding=%#v",
+			application.renewCalls, application.focusLossCalls, binding)
 	}
 }
 

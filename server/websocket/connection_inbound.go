@@ -123,6 +123,8 @@ func (c *connectionRuntime) handleRequest(
 		c.handleExamAttemptConnect(ctx, request)
 	case examAttemptRenewAction:
 		c.handleExamAttemptRenew(ctx, request)
+	case examAttemptFocusLossAction:
+		c.handleExamAttemptFocusLoss(ctx, request)
 	default:
 		c.enqueueError(request.Sequence, "websocket.action.unknown", "Unknown WebSocket action.")
 	}
@@ -234,6 +236,63 @@ func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request 
 	if err != nil {
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt renewal failed.")
 		return
+	}
+	c.enqueueResponse(request.Sequence, encoded)
+}
+
+func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, request *Request) {
+	decoded, err := decodeExamAttemptFocusLossRequest(request.Data)
+	if err != nil {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Focus Loss signal.")
+		return
+	}
+	c.mu.Lock()
+	if c.attempt == nil || decoded.Generation != c.attempt.generation {
+		c.mu.Unlock()
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		return
+	}
+	binding := *c.attempt
+	c.mu.Unlock()
+	attempts, ok := c.application.(examAttemptApplication)
+	if !ok {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Focus Loss signal could not be accepted.")
+		return
+	}
+	metadata := c.metadata
+	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
+	result, err := attempts.EvaluateExamAttemptFocusLoss(ctx, app.NewInvocation(c.principal, metadata),
+		app.EvaluateExamAttemptFocusLossCommand{SchemaVersion: decoded.SchemaVersion,
+			AttemptID: binding.attemptID, ParticipationID: binding.participationID,
+			ConnectionID: binding.connectionID, Generation: decoded.Generation, Sequence: decoded.Sequence,
+			DurationMilliseconds: decoded.DurationMilliseconds, Source: model.FocusLossSource(decoded.Source),
+			ContinuityCredential: decoded.ContinuityCredential})
+	if err != nil {
+		code, message := examAttemptFocusLossError(err)
+		c.enqueueError(request.Sequence, code, message)
+		return
+	}
+	if result.AttemptID != binding.attemptID || result.ParticipationID != binding.participationID ||
+		result.Generation != binding.generation || result.AcceptedSequence != decoded.Sequence || result.ReceivedAt.IsZero() ||
+		(result.SuspensionCreated && !result.ConnectionClosed) {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Focus Loss signal could not be accepted.")
+		return
+	}
+	encoded, err := json.Marshal(examAttemptFocusLossResponse{Generation: result.Generation,
+		AcceptedSequence: result.AcceptedSequence, ReceivedAt: result.ReceivedAt.Format(time.RFC3339Nano),
+		Duplicate: result.Duplicate, GapDetected: result.GapDetected, PolicyDisabled: result.PolicyDisabled,
+		WarningCreated: result.CandidateWarningCreated, SuspensionCreated: result.SuspensionCreated})
+	if err != nil {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Focus Loss signal could not be accepted.")
+		return
+	}
+	if result.ConnectionClosed || result.SuspensionCreated {
+		c.mu.Lock()
+		if c.attempt != nil && *c.attempt == binding {
+			delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
+			c.attempt = nil
+		}
+		c.mu.Unlock()
 	}
 	c.enqueueResponse(request.Sequence, encoded)
 }

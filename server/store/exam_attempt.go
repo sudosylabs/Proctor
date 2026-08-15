@@ -14,6 +14,7 @@ const (
 	ExamAttemptConnectOperation             = "exam.attempt.connect.v1"
 	ExamAttemptExpireParticipationOperation = "exam.attempt.expire_participation.v1"
 	ExamAttemptReallowOperation             = "exam.attempt.reallow.v1"
+	ExamAttemptFocusLossOperation           = "exam.attempt.focus_loss.record.v1"
 )
 
 // ExamAttemptConnect carries proposed identities for an atomic first
@@ -96,6 +97,109 @@ type ExamAttemptParticipationRenewalResult struct {
 	DatabaseTime     time.Time
 	LeaseExpiresAt   time.Time
 	Duplicate        bool
+}
+
+// ExamAttemptFocusLossAccess is the complete hash-only selector for one
+// trusted-client Focus Loss claim. Persistence rechecks the established
+// Attempt/candidate, an Open or Paused Sitting, the exact active unexpired
+// Participation generation, and owning Session-bound open Connection before
+// accepting a new sequence or disabled-policy diagnostic. Established Focus
+// monitoring does not continuously re-poll Class membership; connect/reconnect
+// owns that check. The sole closed-selector exception is an exact retry of the
+// accepted claim whose own FlagAndSuspend transition closed this causal
+// Participation and Connection; that retry must still prove the retained
+// generation, hash, candidate, Session, Connection, and scope.
+type ExamAttemptFocusLossAccess struct {
+	AttemptID                model.ExamAttemptID
+	ParticipationID          model.AttemptParticipationID
+	Generation               int64
+	CandidateUserID          model.UserID
+	SessionID                model.SessionID
+	ConnectionID             model.AttemptConnectionID
+	ContinuityCredentialHash string
+}
+
+// ExamAttemptFocusLossTarget is the bounded preflight projection used to begin
+// one Class-scoped audit. It carries no credential, Session, client source,
+// duration, policy document, evidence, or private state. It may resolve the
+// exact retained policy_suspended causal selector solely so the caller can
+// begin audit for a possible duplicate; RecordFocusLoss decides that only the
+// identical retained claim may pass that exception and otherwise rechecks the
+// complete selector and scope under its transaction locks.
+type ExamAttemptFocusLossTarget struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	ClassID         model.ClassID
+	CandidateUserID model.UserID
+	AttemptID       model.ExamAttemptID
+	ParticipationID model.AttemptParticipationID
+	Generation      int64
+}
+
+// ExamAttemptFocusLossSignal carries one bounded claim plus server-proposed
+// append identities. The client supplies only schema version, sequence,
+// duration, and optional closed source classification; it cannot select an
+// outcome, severity, receipt time, flag state, or guilt finding. Unused
+// proposed identities are harmless. Sequence is the natural idempotency key.
+type ExamAttemptFocusLossSignal struct {
+	Access               ExamAttemptFocusLossAccess
+	SchemaVersion        int
+	SignalID             model.FocusLossSignalID
+	EvidenceID           model.IntegrityEvidenceID
+	FlagID               model.IntegrityFlagID
+	SuspensionID         model.AttemptSuspensionID
+	Sequence             int64
+	DurationMilliseconds int64
+	Source               model.FocusLossSource
+	AuditEventID         string
+	AuditAt              int64
+}
+
+// ExamAttemptFocusLossResult is the safe retained decision for one accepted
+// sequence. Duplicate is true only for an exact same-sequence duration/source
+// repeat; the remaining fields reproduce the prior result so callers can
+// acknowledge it while suppressing transient effects. MissingBefore records a
+// forward gap without inventing observations. DiagnosticCount is the bounded
+// generation aggregate used only while collection is disabled.
+//
+// A qualifying signal enters the receipt-time rolling bucket. A crossing
+// consumes the whole bucket immediately and resets WindowIncidentCount to zero.
+// The first crossing creates the one open Focus Loss Flag for this
+// Attempt/generation; later crossings retain evidence without another Flag.
+// CandidateWarningCreated is possible once per generation only for
+// FlagAndWarn. ManagerNotificationRequired is true only when the Flag is first
+// created. FlagAndSuspend atomically ends Participation and Connection as
+// policy_suspended, suspends the Attempt, and returns the safe episode views.
+type ExamAttemptFocusLossResult struct {
+	ExamID                      model.ExamID
+	SittingID                   model.ExamSittingID
+	ClassID                     model.ClassID
+	CandidateUserID             model.UserID
+	AttemptID                   model.ExamAttemptID
+	ParticipationID             model.AttemptParticipationID
+	Generation                  int64
+	Signal                      *model.FocusLossSignal
+	AcceptedSequence            int64
+	DatabaseTime                time.Time
+	CollectionEnabled           bool
+	Qualified                   bool
+	MissingBefore               int64
+	WindowIncidentCount         int
+	ThresholdCrossed            bool
+	PolicyOutcome               model.IntegrityThresholdOutcome
+	RetainedEvidenceCount       int
+	Overflow                    *model.FocusLossEvidenceOverflow
+	DiagnosticCount             int64
+	Flag                        *model.IntegrityFlag
+	FlagCreated                 bool
+	CandidateWarningCreated     bool
+	ManagerNotificationRequired bool
+	Attempt                     *model.ExamAttempt
+	Participation               *ExamAttemptParticipationView
+	Connection                  *ExamAttemptManagerConnection
+	ConnectionClosed            bool
+	Suspension                  *ExamAttemptSuspensionView
+	Duplicate                   bool
 }
 
 // ExamAttemptParticipationExpiryDue is a bounded, hash-free candidate from
@@ -192,7 +296,12 @@ type ExamAttemptReallowResult struct {
 	CandidateUserID model.UserID
 	Attempt         *model.ExamAttempt
 	Suspension      *ExamAttemptSuspensionView
-	Replayed        bool
+	// FocusLossWindowReset is true when this decision closed a Focus Loss
+	// suspension and atomically consumed only that generation's pending causal
+	// evaluation bucket. Flags, evidence, diagnostics, and sequence history are
+	// append-preserving; later admission creates a new generation.
+	FocusLossWindowReset bool
+	Replayed             bool
 }
 
 type ExamAttemptConnectionClose struct {
@@ -247,6 +356,10 @@ type CandidateExamPresentation struct {
 	Title                string
 	InstructionsMarkdown string
 	Resources            []CandidateExamResource
+	// FocusLossCollectionEnabled is the only Focus Loss policy detail exposed
+	// to candidates. It comes from the Sitting's current frozen Revision and
+	// tells the client whether it may collect and transmit Focus Loss signals.
+	FocusLossCollectionEnabled bool
 }
 
 // CandidateAttemptWorkspaceItem is safe logical metadata; it exposes neither
@@ -350,6 +463,25 @@ type ExamAttemptStore interface {
 	// attempt_participation_credential, attempt_participation_generation,
 	// attempt_participation_sequence, and attempt_participation_expired.
 	RenewParticipation(context.Context, *ExamAttemptParticipationRenewal) (*ExamAttemptParticipationRenewalResult, error)
+	// ResolveFocusLossTarget resolves safe audit/effect scope after checking the
+	// established access selector. It also resolves the exact retained
+	// policy_suspended causal selector for duplicate-audit preflight only; it
+	// performs no evaluation or mutation and grants no new-claim authority.
+	ResolveFocusLossTarget(context.Context, ExamAttemptFocusLossAccess) (*ExamAttemptFocusLossTarget, error)
+	// RecordFocusLoss is the single PostgreSQL-time evaluation operation. It
+	// atomically accepts the next sequence, records gap uncertainty, evaluates and
+	// consumes the rolling bucket, bounds evidence/overflow or disabled-policy
+	// diagnostics, creates at most one Flag and warning per generation, applies
+	// the configured suspension fence, and completes the supplied safe audit.
+	// Equal latest sequence is a duplicate only when duration and source match;
+	// changed equal-sequence or lower sequence conflicts as focus_loss_sequence.
+	// Exact duplicates reauthorize and complete their new audit before returning
+	// the retained result. A threshold-crossing FlagAndSuspend duplicate remains
+	// replayable through its exact retained causal selector after that transition
+	// closed the Participation and Connection; it cannot admit any different or
+	// later claim through the closed selector. Stable access conflicts retain the
+	// existing Attempt/Participation/Connection constraint vocabulary.
+	RecordFocusLoss(context.Context, *ExamAttemptFocusLossSignal) (*ExamAttemptFocusLossResult, error)
 	// ResolveParticipationExpiry returns the exact active generation only when
 	// expires_at <= PostgreSQL current time, with the same safe scope projection
 	// produced by the scanner. A late renewal uses it to begin actorless scoped

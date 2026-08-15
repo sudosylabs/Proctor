@@ -1132,10 +1132,11 @@ CREATE TABLE exam_attempt_participations (
     lease_expires_at timestamptz NOT NULL,
     ended_at timestamptz,
     end_reason varchar(24) CHECK (end_reason IN (
-        'interrupted', 'lease_expired', 'kicked', 'submitted', 'sitting_closed'
+        'interrupted', 'lease_expired', 'policy_suspended', 'kicked', 'submitted', 'sitting_closed'
     )),
     UNIQUE (exam_attempt_id, generation),
     UNIQUE (id, exam_attempt_id),
+    UNIQUE (id, exam_attempt_id, generation),
     CONSTRAINT exam_attempt_participations_time_check CHECK (
         updated_at >= started_at AND lease_expires_at > started_at AND
         (renewal_sequence <> 0 OR lease_expires_at = started_at + INTERVAL '20 seconds')
@@ -1161,8 +1162,9 @@ CREATE TABLE exam_attempt_connections (
     opened_at timestamptz NOT NULL,
     closed_at timestamptz,
     close_reason varchar(24) CHECK (close_reason IN (
-        'transport_closed', 'interrupted', 'lease_expired', 'kicked', 'submitted', 'sitting_closed'
+        'transport_closed', 'interrupted', 'lease_expired', 'policy_suspended', 'kicked', 'submitted', 'sitting_closed'
     )),
+    UNIQUE (id, exam_attempt_id, participation_id),
     CONSTRAINT exam_attempt_connections_participation_fkey
         FOREIGN KEY (participation_id, exam_attempt_id)
         REFERENCES exam_attempt_participations(id, exam_attempt_id),
@@ -1298,7 +1300,7 @@ CREATE TABLE integrity_flags (
     id varchar(26) PRIMARY KEY,
     exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
     generation bigint NOT NULL CHECK (generation > 0),
-    policy_kind varchar(32) NOT NULL CHECK (policy_kind = 'connection_loss'),
+    policy_kind varchar(32) NOT NULL CHECK (policy_kind IN ('connection_loss', 'focus_loss')),
     state varchar(16) NOT NULL CHECK (state = 'open'),
     created_at timestamptz NOT NULL,
     UNIQUE (exam_attempt_id, generation, policy_kind),
@@ -1311,16 +1313,118 @@ CREATE TABLE integrity_evidence (
     participation_id varchar(26) NOT NULL,
     integrity_flag_id varchar(26) NOT NULL,
     generation bigint NOT NULL CHECK (generation > 0),
-    policy_kind varchar(32) NOT NULL CHECK (policy_kind = 'connection_loss'),
+    policy_kind varchar(32) NOT NULL CHECK (policy_kind IN ('connection_loss', 'focus_loss')),
+    focus_loss_signal_id varchar(26),
+    sequence bigint,
+    duration_milliseconds bigint,
+    source varchar(32),
+    missing_before bigint,
     observed_at timestamptz NOT NULL,
     recorded_at timestamptz NOT NULL,
     CONSTRAINT integrity_evidence_participation_fkey
-        FOREIGN KEY (participation_id, exam_attempt_id)
-        REFERENCES exam_attempt_participations(id, exam_attempt_id),
+        FOREIGN KEY (participation_id, exam_attempt_id, generation)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id, generation),
     CONSTRAINT integrity_evidence_flag_fkey
         FOREIGN KEY (integrity_flag_id, exam_attempt_id, generation)
         REFERENCES integrity_flags(id, exam_attempt_id, generation),
-    CONSTRAINT integrity_evidence_time_check CHECK (recorded_at >= observed_at)
+    CONSTRAINT integrity_evidence_time_check CHECK (recorded_at >= observed_at),
+    CONSTRAINT integrity_evidence_kind_check CHECK (
+        (policy_kind = 'connection_loss' AND focus_loss_signal_id IS NULL AND sequence IS NULL AND
+         duration_milliseconds IS NULL AND source IS NULL AND missing_before IS NULL) OR
+        (policy_kind = 'focus_loss' AND focus_loss_signal_id IS NOT NULL AND sequence > 0 AND
+         duration_milliseconds BETWEEN 1 AND 86400000 AND
+         (source IS NULL OR source IN ('window_blur', 'document_hidden', 'application_backgrounded', 'fullscreen_exited')) AND
+         missing_before >= 0)
+    ),
+    UNIQUE (exam_attempt_id, generation, policy_kind, sequence)
+);
+
+-- One bounded mutable evaluator exists per Participation generation. It keeps
+-- only the latest accepted outcome needed for natural sequence replay, bounded
+-- aggregate diagnostics/overflow, and the current consumed-window state.
+CREATE TABLE exam_attempt_focus_loss_evaluations (
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    generation bigint NOT NULL CHECK (generation > 0),
+    accepted_sequence bigint NOT NULL DEFAULT 0 CHECK (accepted_sequence >= 0),
+    last_signal_id varchar(26),
+    last_connection_id varchar(26),
+    last_duration_milliseconds bigint,
+    last_source varchar(32),
+    last_received_at timestamptz,
+    last_collection_enabled boolean NOT NULL DEFAULT false,
+    last_qualified boolean NOT NULL DEFAULT false,
+    last_missing_before bigint NOT NULL DEFAULT 0 CHECK (last_missing_before >= 0),
+    unresolved_missing_count bigint NOT NULL DEFAULT 0 CHECK (unresolved_missing_count >= 0),
+    last_window_incident_count integer NOT NULL DEFAULT 0 CHECK (last_window_incident_count BETWEEN 0 AND 99),
+    last_threshold_crossed boolean NOT NULL DEFAULT false,
+    last_policy_outcome varchar(32),
+    retained_evidence_count integer NOT NULL DEFAULT 0 CHECK (retained_evidence_count BETWEEN 0 AND 100),
+    overflow_count bigint NOT NULL DEFAULT 0 CHECK (overflow_count >= 0),
+    overflow_first_received_at timestamptz,
+    overflow_last_received_at timestamptz,
+    overflow_maximum_duration_milliseconds bigint,
+    diagnostic_count bigint NOT NULL DEFAULT 0 CHECK (diagnostic_count >= 0),
+    integrity_flag_id varchar(26),
+    warning_created boolean NOT NULL DEFAULT false,
+    last_flag_returned boolean NOT NULL DEFAULT false,
+    last_flag_created boolean NOT NULL DEFAULT false,
+    last_warning_created boolean NOT NULL DEFAULT false,
+    last_manager_notification_required boolean NOT NULL DEFAULT false,
+    last_connection_closed boolean NOT NULL DEFAULT false,
+    last_suspension_id varchar(26),
+    updated_at timestamptz NOT NULL,
+    PRIMARY KEY (exam_attempt_id, generation),
+    UNIQUE (participation_id, exam_attempt_id),
+    UNIQUE (last_signal_id),
+    CONSTRAINT exam_attempt_focus_loss_evaluations_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id, generation)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id, generation),
+    CONSTRAINT exam_attempt_focus_loss_evaluations_connection_fkey
+        FOREIGN KEY (last_connection_id, exam_attempt_id, participation_id)
+        REFERENCES exam_attempt_connections(id, exam_attempt_id, participation_id),
+    CONSTRAINT exam_attempt_focus_loss_evaluations_flag_fkey
+        FOREIGN KEY (integrity_flag_id, exam_attempt_id, generation)
+        REFERENCES integrity_flags(id, exam_attempt_id, generation),
+    CONSTRAINT exam_attempt_focus_loss_evaluations_last_claim_check CHECK (
+        (accepted_sequence = 0 AND last_signal_id IS NULL AND last_connection_id IS NULL AND last_duration_milliseconds IS NULL AND
+         last_source IS NULL AND last_received_at IS NULL AND last_policy_outcome IS NULL) OR
+        (accepted_sequence > 0 AND last_signal_id IS NOT NULL AND last_connection_id IS NOT NULL AND last_duration_milliseconds BETWEEN 1 AND 86400000 AND
+         (last_source IS NULL OR last_source IN ('window_blur', 'document_hidden', 'application_backgrounded', 'fullscreen_exited')) AND
+         last_received_at IS NOT NULL AND
+         ((last_collection_enabled AND last_threshold_crossed AND last_policy_outcome IN ('flag', 'flag_and_warn', 'flag_and_suspend')) OR
+          (last_collection_enabled AND NOT last_threshold_crossed AND last_policy_outcome IS NULL) OR
+          (NOT last_collection_enabled AND last_policy_outcome IS NULL)))
+    ),
+    CONSTRAINT exam_attempt_focus_loss_evaluations_overflow_check CHECK (
+        (overflow_count = 0 AND overflow_first_received_at IS NULL AND overflow_last_received_at IS NULL AND
+         overflow_maximum_duration_milliseconds IS NULL) OR
+        (overflow_count > 0 AND retained_evidence_count = 100 AND overflow_first_received_at IS NOT NULL AND
+         overflow_last_received_at >= overflow_first_received_at AND overflow_maximum_duration_milliseconds BETWEEN 1 AND 86400000)
+    )
+);
+
+-- Pending qualifiers are internal evaluator state, capped by the policy's
+-- maximum threshold minus one. They become evidence only when a threshold
+-- consumes the bucket, so unconsumed observations are never presented as facts.
+CREATE TABLE exam_attempt_focus_loss_pending (
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    generation bigint NOT NULL CHECK (generation > 0),
+    sequence bigint NOT NULL CHECK (sequence > 0),
+    signal_id varchar(26) NOT NULL UNIQUE,
+    evidence_id varchar(26) NOT NULL UNIQUE,
+    duration_milliseconds bigint NOT NULL CHECK (duration_milliseconds BETWEEN 1 AND 86400000),
+    source varchar(32) CHECK (source IS NULL OR source IN ('window_blur', 'document_hidden', 'application_backgrounded', 'fullscreen_exited')),
+    missing_before bigint NOT NULL CHECK (missing_before >= 0),
+    received_at timestamptz NOT NULL,
+    PRIMARY KEY (exam_attempt_id, generation, sequence),
+    CONSTRAINT exam_attempt_focus_loss_pending_evaluation_fkey
+        FOREIGN KEY (exam_attempt_id, generation)
+        REFERENCES exam_attempt_focus_loss_evaluations(exam_attempt_id, generation) ON DELETE CASCADE,
+    CONSTRAINT exam_attempt_focus_loss_pending_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id, generation)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id, generation)
 );
 
 CREATE TABLE exam_attempt_suspensions (
@@ -1329,17 +1433,18 @@ CREATE TABLE exam_attempt_suspensions (
     participation_id varchar(26) NOT NULL,
     integrity_flag_id varchar(26) NOT NULL UNIQUE,
     generation bigint NOT NULL CHECK (generation > 0),
-    expiry_attempt_revision bigint NOT NULL CHECK (expiry_attempt_revision > 1),
+    suspension_attempt_revision bigint NOT NULL CHECK (suspension_attempt_revision > 1),
     state varchar(16) NOT NULL CHECK (state IN ('active', 'closed')),
     source varchar(16) NOT NULL CHECK (source = 'policy'),
-    candidate_reason varchar(64) NOT NULL CHECK (candidate_reason = 'secure_connectivity_lost'),
+    candidate_reason varchar(64) NOT NULL CHECK (candidate_reason IN ('secure_connectivity_lost', 'focus_policy_review_required')),
     started_at timestamptz NOT NULL,
     ended_at timestamptz,
     reallowed_by_user_id varchar(26) REFERENCES users(id),
     private_reason text,
+    UNIQUE (id, exam_attempt_id, participation_id, generation),
     CONSTRAINT exam_attempt_suspensions_participation_fkey
-        FOREIGN KEY (participation_id, exam_attempt_id)
-        REFERENCES exam_attempt_participations(id, exam_attempt_id),
+        FOREIGN KEY (participation_id, exam_attempt_id, generation)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id, generation),
     CONSTRAINT exam_attempt_suspensions_flag_fkey
         FOREIGN KEY (integrity_flag_id, exam_attempt_id, generation)
         REFERENCES integrity_flags(id, exam_attempt_id, generation),
@@ -1353,6 +1458,11 @@ CREATE TABLE exam_attempt_suspensions (
 
 CREATE UNIQUE INDEX exam_attempt_suspensions_one_active_key
     ON exam_attempt_suspensions (exam_attempt_id) WHERE state = 'active';
+
+ALTER TABLE exam_attempt_focus_loss_evaluations
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_suspension_fkey
+    FOREIGN KEY (last_suspension_id, exam_attempt_id, participation_id, generation)
+    REFERENCES exam_attempt_suspensions(id, exam_attempt_id, participation_id, generation);
 
 CREATE FUNCTION reject_integrity_record_update() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -1372,7 +1482,7 @@ BEGIN
        NEW.participation_id IS DISTINCT FROM OLD.participation_id OR
        NEW.integrity_flag_id IS DISTINCT FROM OLD.integrity_flag_id OR
        NEW.generation IS DISTINCT FROM OLD.generation OR
-       NEW.expiry_attempt_revision IS DISTINCT FROM OLD.expiry_attempt_revision OR NEW.source IS DISTINCT FROM OLD.source OR
+       NEW.suspension_attempt_revision IS DISTINCT FROM OLD.suspension_attempt_revision OR NEW.source IS DISTINCT FROM OLD.source OR
        NEW.candidate_reason IS DISTINCT FROM OLD.candidate_reason OR NEW.started_at IS DISTINCT FROM OLD.started_at OR
        OLD.state = 'closed' THEN
         RAISE EXCEPTION 'Attempt Suspension identity or terminal state changed' USING ERRCODE = '55000';
@@ -1843,7 +1953,22 @@ ALTER TABLE integrity_evidence
     ADD CONSTRAINT integrity_evidence_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT integrity_evidence_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT integrity_evidence_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT integrity_evidence_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT integrity_evidence_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_evidence_focus_loss_signal_id_canonical_check CHECK (focus_loss_signal_id IS NULL OR focus_loss_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_focus_loss_evaluations
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_last_signal_id_canonical_check CHECK (last_signal_id IS NULL OR last_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_last_connection_id_canonical_check CHECK (last_connection_id IS NULL OR last_connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_integrity_flag_id_canonical_check CHECK (integrity_flag_id IS NULL OR integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_last_suspension_id_canonical_check CHECK (last_suspension_id IS NULL OR last_suspension_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_focus_loss_pending
+    ADD CONSTRAINT exam_attempt_focus_loss_pending_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_pending_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_pending_signal_id_canonical_check CHECK (signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_pending_evidence_id_canonical_check CHECK (evidence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_suspensions
     ADD CONSTRAINT exam_attempt_suspensions_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),

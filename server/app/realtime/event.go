@@ -150,6 +150,69 @@ type candidateExamAttemptWorkspaceChangedData struct {
 	ChangedAt     string `json:"changed_at"`
 }
 
+type candidateExamAttemptFocusLossWarningData struct {
+	ExamSittingID string `json:"exam_sitting_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	WarningCode   string `json:"warning_code"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+type managerExamAttemptIntegrityFlaggedData struct {
+	ExamSittingID     string `json:"exam_sitting_id"`
+	ExamAttemptID     string `json:"exam_attempt_id"`
+	CandidateID       string `json:"candidate_user_id"`
+	FlagID            string `json:"integrity_flag_id"`
+	PolicyKind        string `json:"policy_kind"`
+	Outcome           string `json:"outcome"`
+	RetainedEvidence  int    `json:"retained_evidence_count"`
+	EvidenceOverflow  int64  `json:"evidence_overflow_count"`
+	EvidenceAvailable bool   `json:"evidence_available"`
+	ChangedAt         string `json:"changed_at"`
+}
+
+func NewCandidateExamAttemptFocusLossWarningEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("candidate Exam Attempt Focus Loss warning requires valid bounded metadata")
+	}
+	data, err := json.Marshal(candidateExamAttemptFocusLossWarningData{ExamSittingID: sittingID.String(),
+		ExamAttemptID: attemptID.String(), WarningCode: "focus_loss_policy_warning",
+		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: "exam_attempt_focus_warning", UserID: candidateID.String(),
+		Action:   model.ActionExamSittingParticipate,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
+func NewExamAttemptIntegrityFlaggedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, flagID model.IntegrityFlagID, outcome model.IntegrityThresholdOutcome,
+	retainedEvidence int, evidenceOverflow int64, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !flagID.IsValid() ||
+		retainedEvidence < 0 || retainedEvidence > model.FocusLossMaximumEvidenceEpisodes || evidenceOverflow < 0 ||
+		(retainedEvidence == 0 && evidenceOverflow == 0) || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("manager Exam Attempt integrity Flag event requires valid bounded metadata")
+	}
+	switch outcome {
+	case model.IntegrityOutcomeFlag, model.IntegrityOutcomeFlagAndWarn, model.IntegrityOutcomeFlagAndSuspend:
+	default:
+		return RealtimeEvent{}, errors.New("manager Exam Attempt integrity Flag event requires a valid outcome")
+	}
+	data, err := json.Marshal(managerExamAttemptIntegrityFlaggedData{ExamSittingID: sittingID.String(),
+		ExamAttemptID: attemptID.String(), CandidateID: candidateID.String(), FlagID: flagID.String(),
+		PolicyKind: string(model.IntegrityPolicyFocusLoss), Outcome: string(outcome), RetainedEvidence: retainedEvidence,
+		EvidenceOverflow: evidenceOverflow, EvidenceAvailable: true,
+		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: "exam_attempt_integrity_flagged", Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
 // NewCandidateExamAttemptWorkspaceChangedEvent publishes only a targeted
 // refetch hint. Logical paths, content metadata, object selectors, continuity
 // selectors, and mutation bodies remain confined to protected HTTP responses.
@@ -175,7 +238,8 @@ func NewCandidateExamAttemptWorkspaceChangedEvent(sittingID model.ExamSittingID,
 func NewCandidateExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
 	candidateID model.UserID, reason model.AttemptSuspensionCandidateReason, changedAt time.Time,
 ) (RealtimeEvent, error) {
-	if reason != model.AttemptSuspensionCandidateReasonSecureContinuityLost {
+	if reason != model.AttemptSuspensionCandidateReasonSecureContinuityLost &&
+		reason != model.AttemptSuspensionCandidateReasonFocusLossPolicy {
 		return RealtimeEvent{}, errors.New("candidate Exam Attempt suspension event requires a safe reason")
 	}
 	return newCandidateExamAttemptAccessEvent("exam_attempt_access_suspended", sittingID, attemptID, candidateID,

@@ -9,9 +9,12 @@
 // publication selection, and the bounded replay catalog. Each accepted socket
 // is handed to a private connection runtime that owns its pumps, liveness,
 // outbound queue, sequencing, subscriptions, backpressure, and close-once
-// behavior. After every pump has stopped, the runtime returns one immutable
-// snapshot; Hub alone decides whether that snapshot is eligible for local
-// replay. Wire DTOs and validation remain separate protocol contracts.
+// behavior. The runtime also owns strict authenticated Exam Attempt connect,
+// renewal, and Focus Loss claim actions; a policy suspension removes the
+// durable Attempt binding before another protected action can run. After every
+// pump has stopped, the runtime returns one immutable snapshot; Hub alone
+// decides whether that snapshot is eligible for local replay. Wire DTOs and
+// validation remain separate protocol contracts.
 //
 // The package deliberately does not own HTTP route registration, application
 // authorization policy, durable state, cross-node replay, or infrastructure

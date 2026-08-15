@@ -19,6 +19,21 @@ import (
 type ExamAttemptSQLProbe struct {
 	SetParticipationLeaseExpired func(*testing.T, context.Context, model.AttemptParticipationID)
 	FenceRenewalPastDeadline     func(*testing.T, context.Context, model.AttemptParticipationID, func() error) error
+	UnresolvedFocusLossMissing   func(*testing.T, context.Context, model.ExamAttemptID, int64) int64
+	AgeFocusLossPending          func(*testing.T, context.Context, model.ExamAttemptID, int64, int64, time.Duration)
+	FocusLossPersistence         func(*testing.T, context.Context, model.ExamAttemptID, int64) FocusLossPersistenceProbe
+	ConcurrentExamAttempt        store.ExamAttemptStore
+	AssertFocusLossSchema        func(*testing.T, context.Context)
+}
+
+// FocusLossPersistenceProbe exposes bounded persistence totals that cannot be
+// observed through the candidate seam. It is used only by SQL conformance to
+// prove the evidence cap, overflow summary, bucket consumption, and diagnostic
+// bound without making those private details part of the production Store.
+type FocusLossPersistenceProbe struct {
+	Flags, Evidence, Pending int
+	OverflowCount            int64
+	DiagnosticCount          int64
 }
 
 func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQLProbe) {
@@ -77,9 +92,10 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
 	requireNoError(t, err)
 	if presentation.AttemptID != input.AttemptID || presentation.AdmissionRevisionID != fixture.revisionID ||
-		presentation.CurrentRevisionID != fixture.revisionID {
+		presentation.CurrentRevisionID != fixture.revisionID || !presentation.FocusLossCollectionEnabled {
 		t.Fatalf("GetCandidatePresentation() = %#v", presentation)
 	}
+	pausedFocusInput := testExamAttemptFocusLoss(t, ctx, ss, fixture, connected, credentialHash, probes...)
 	page, err := ss.ExamAttemptWorkspace().List(ctx, store.CandidateWorkspaceListOptions{Access: access, ExpectedCursor: -1, Limit: 200})
 	requireNoError(t, err)
 	if page.HasMore || len(page.Items) != 2 || page.Items[0].Path != "cmd" || page.Items[1].Path != "cmd/main.go" ||
@@ -99,6 +115,12 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	requireNoError(t, err)
 	if _, err = ss.ExamAttempt().GetCandidatePresentation(ctx, access); err != nil {
 		t.Fatalf("GetCandidatePresentation(paused) error = %v", err)
+	}
+	pausedFocusInput.AuditEventID, pausedFocusInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
+	pausedFocus, err := ss.ExamAttempt().RecordFocusLoss(ctx, pausedFocusInput)
+	requireNoError(t, err)
+	if pausedFocus.AcceptedSequence != pausedFocusInput.Sequence || !pausedFocus.Qualified || pausedFocus.WindowIncidentCount != 1 {
+		t.Fatalf("RecordFocusLoss(paused) = %#v", pausedFocus)
 	}
 	if _, err = ss.ExamAttemptWorkspace().List(ctx, store.CandidateWorkspaceListOptions{Access: access, ExpectedCursor: -1, Limit: 200}); err != nil {
 		t.Fatalf("ExamAttemptWorkspace.List(paused) error = %v", err)
@@ -315,6 +337,9 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	requireNoError(t, err)
 	if closeEmpty.Changed || closeEmpty.Value.Sitting.State != model.ExamSittingClosing || closing.Value.Sitting.State != model.ExamSittingClosing {
 		t.Fatalf("CloseIfNoAttempts(with Attempt) = %#v", closeEmpty)
+	}
+	if len(probes) != 0 && probes[0].FocusLossPersistence != nil {
+		testExamAttemptFocusLossPolicies(t, ctx, ss, probes[0])
 	}
 }
 
@@ -668,6 +693,10 @@ type examAttemptFixture struct {
 }
 
 func newExamAttemptFixture(t *testing.T, ctx context.Context, ss store.Store) examAttemptFixture {
+	return newExamAttemptFixtureWithFocusLoss(t, ctx, ss, nil)
+}
+
+func newExamAttemptFixtureWithFocusLoss(t *testing.T, ctx context.Context, ss store.Store, focus *model.FocusLossPolicy) examAttemptFixture {
 	t.Helper()
 	unit, programme := saveProgrammeParents(t, ctx, ss, "attempt-unit")
 	level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "attempt-level")
@@ -676,17 +705,27 @@ func newExamAttemptFixture(t *testing.T, ctx context.Context, ss store.Store) ex
 	class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "attempt-class")
 	manager := saveUser(t, ctx, ss)
 	created := createCatalogExam(t, ctx, ss, programme.AcademicUnitID, manager.ID, now, "attempt-exam")
-	directory := starterWorkspaceMutation(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, 1,
+	draftRevision := int64(1)
+	if focus != nil {
+		updated, updateErr := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx,
+			newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, manager.ID, draftRevision, *focus, now.Add(time.Millisecond)),
+			examCommand(manager.ID, "exam.draft.focus_loss.configure.v1", "attempt-focus-policy", "attempt-focus-policy"))
+		requireNoError(t, updateErr)
+		draftRevision = updated.Value.Draft.Revision
+	}
+	directory := starterWorkspaceMutation(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, draftRevision,
 		model.NewStarterWorkspaceEntryID(), "cmd", now.Add(time.Millisecond))
 	_, err := ss.ExamStarterWorkspace().CreateDirectory(ctx, directory,
 		examCommand(manager.ID, "exam.starter_workspace.directory.create.v1", "attempt-dir", "attempt-dir"))
 	requireNoError(t, err)
-	file := reserveStarterWorkspaceObject(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, 2,
+	draftRevision++
+	file := reserveStarterWorkspaceObject(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, draftRevision,
 		model.NewStarterWorkspaceEntryID(), "cmd/main.go", now.Add(2*time.Millisecond), 13)
 	_, err = ss.ExamStarterWorkspace().CreateFile(ctx, file,
 		examCommand(manager.ID, "exam.starter_workspace.file.create.v1", "attempt-file", "attempt-file"))
 	requireNoError(t, err)
-	publication := examRevisionPublication(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, 3, now.Add(3*time.Millisecond))
+	draftRevision++
+	publication := examRevisionPublication(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, draftRevision, now.Add(3*time.Millisecond))
 	published, err := ss.ExamRevision().Publish(ctx, publication, examCommand(manager.ID, "exam.revision.publish.v1", "attempt-revision", "attempt-revision"))
 	requireNoError(t, err)
 	start, end := model.NowUTC().Add(time.Second), model.NowUTC().Add(time.Hour)

@@ -155,8 +155,11 @@ func TestExamRevisionStore(t *testing.T) {
 
 func TestExamAttemptStore(t *testing.T) {
 	persistence := openTestStore(t)
+	peerPersistence := openTestStore(t)
 	resetTestStore(t, persistence)
-	storetest.TestExamAttemptStore(t, persistence, examAttemptSQLProbe(t, persistence))
+	probe := examAttemptSQLProbe(t, persistence)
+	probe.ConcurrentExamAttempt = peerPersistence.ExamAttempt()
+	storetest.TestExamAttemptStore(t, persistence, probe)
 }
 
 func TestExamAttemptWorkspaceStore(t *testing.T) {
@@ -309,6 +312,127 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 			t.Fatal(err)
 		}
 		return <-completed
+	}, UnresolvedFocusLossMissing: func(t *testing.T, ctx context.Context, attemptID model.ExamAttemptID, generation int64) int64 {
+		t.Helper()
+		var count int64
+		if err := persistence.GetMaster().Get(ctx, &count, `SELECT unresolved_missing_count
+			FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? AND generation=?`, attemptID.String(), generation); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}, AgeFocusLossPending: func(t *testing.T, ctx context.Context, attemptID model.ExamAttemptID, generation, sequence int64, age time.Duration) {
+		t.Helper()
+		result, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_attempt_focus_loss_pending
+			SET received_at=statement_timestamp()-(? * INTERVAL '1 microsecond')
+			WHERE exam_attempt_id=? AND generation=? AND sequence=?`, age.Microseconds(), attemptID.String(), generation, sequence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			t.Fatalf("age Focus Loss pending affected=%d", affected)
+		}
+	}, FocusLossPersistence: func(t *testing.T, ctx context.Context, attemptID model.ExamAttemptID, generation int64) storetest.FocusLossPersistenceProbe {
+		t.Helper()
+		var row struct {
+			Flags           int   `db:"flags"`
+			Evidence        int   `db:"evidence"`
+			Pending         int   `db:"pending"`
+			OverflowCount   int64 `db:"overflow_count"`
+			DiagnosticCount int64 `db:"diagnostic_count"`
+		}
+		if err := persistence.GetMaster().Get(ctx, &row, `SELECT
+			(SELECT count(*) FROM integrity_flags WHERE exam_attempt_id=? AND generation=? AND policy_kind='focus_loss') AS flags,
+			(SELECT count(*) FROM integrity_evidence WHERE exam_attempt_id=? AND generation=? AND policy_kind='focus_loss') AS evidence,
+			(SELECT count(*) FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=? AND generation=?) AS pending,
+			COALESCE((SELECT overflow_count FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? AND generation=?),0) AS overflow_count,
+			COALESCE((SELECT diagnostic_count FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? AND generation=?),0) AS diagnostic_count`,
+			attemptID.String(), generation, attemptID.String(), generation, attemptID.String(), generation,
+			attemptID.String(), generation, attemptID.String(), generation); err != nil {
+			t.Fatal(err)
+		}
+		return storetest.FocusLossPersistenceProbe{Flags: row.Flags, Evidence: row.Evidence, Pending: row.Pending,
+			OverflowCount: row.OverflowCount, DiagnosticCount: row.DiagnosticCount}
+	}, AssertFocusLossSchema: func(t *testing.T, ctx context.Context) {
+		t.Helper()
+		var columns []string
+		if err := persistence.GetMaster().Select(ctx, &columns, `SELECT column_name FROM information_schema.columns
+			WHERE table_schema=current_schema() AND table_name='exam_attempt_suspensions'
+			AND column_name IN ('suspension_attempt_revision','expiry_attempt_revision') ORDER BY column_name`); err != nil {
+			t.Fatal(err)
+		}
+		if len(columns) != 1 || columns[0] != "suspension_attempt_revision" {
+			t.Fatalf("Attempt Suspension revision columns = %#v", columns)
+		}
+		var sourceColumns int
+		if err := persistence.GetMaster().Get(ctx, &sourceColumns, `SELECT count(*) FROM information_schema.columns
+			WHERE table_schema=current_schema() AND table_name='integrity_evidence' AND column_name='source'`); err != nil {
+			t.Fatal(err)
+		}
+		if sourceColumns != 1 {
+			t.Fatalf("Integrity Evidence source column count = %d", sourceColumns)
+		}
+		var constraints []string
+		if err := persistence.GetMaster().Select(ctx, &constraints, `SELECT conname FROM pg_constraint
+			WHERE conname IN (
+			'exam_attempt_focus_loss_evaluations_connection_fkey',
+			'exam_attempt_focus_loss_evaluations_participation_fkey',
+			'exam_attempt_focus_loss_evaluations_flag_fkey',
+			'exam_attempt_focus_loss_evaluations_suspension_fkey',
+			'exam_attempt_focus_loss_pending_evaluation_fkey',
+			'exam_attempt_focus_loss_pending_participation_fkey',
+			'exam_attempt_focus_loss_evaluations_exam_attempt_id_canonical_check',
+			'exam_attempt_focus_loss_evaluations_participation_id_canonical_check',
+			'exam_attempt_focus_loss_evaluations_last_signal_id_canonical_check',
+			'exam_attempt_focus_loss_evaluations_last_connection_id_canonical_check',
+			'exam_attempt_focus_loss_evaluations_integrity_flag_id_canonical_check',
+			'exam_attempt_focus_loss_evaluations_last_suspension_id_canonical_check',
+			'exam_attempt_focus_loss_pending_exam_attempt_id_canonical_check',
+			'exam_attempt_focus_loss_pending_participation_id_canonical_check',
+			'exam_attempt_focus_loss_pending_signal_id_canonical_check',
+			'exam_attempt_focus_loss_pending_evidence_id_canonical_check',
+			'integrity_evidence_focus_loss_signal_id_canonical_check') ORDER BY conname`); err != nil {
+			t.Fatal(err)
+		}
+		if len(constraints) != 17 {
+			t.Fatalf("Focus Loss named schema constraints = %#v", constraints)
+		}
+		var connectionDefinition, suspensionDefinition string
+		if err := persistence.GetMaster().Get(ctx, &connectionDefinition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint
+			WHERE conname='exam_attempt_focus_loss_evaluations_connection_fkey'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := persistence.GetMaster().Get(ctx, &suspensionDefinition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint
+			WHERE conname='exam_attempt_focus_loss_evaluations_suspension_fkey'`); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(connectionDefinition, "(last_connection_id, exam_attempt_id, participation_id)") ||
+			!strings.Contains(suspensionDefinition, "(last_suspension_id, exam_attempt_id, participation_id, generation)") {
+			t.Fatalf("Focus Loss exact-owner FKs = %q, %q", connectionDefinition, suspensionDefinition)
+		}
+		for _, name := range []string{
+			"integrity_evidence_participation_fkey",
+			"exam_attempt_focus_loss_evaluations_participation_fkey",
+			"exam_attempt_focus_loss_pending_participation_fkey",
+			"exam_attempt_suspensions_participation_fkey",
+		} {
+			var definition string
+			if err := persistence.GetMaster().Get(ctx, &definition, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname=?`, name); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(definition, "(participation_id, exam_attempt_id, generation)") ||
+				!strings.Contains(definition, "(id, exam_attempt_id, generation)") {
+				t.Fatalf("%s does not enforce exact Participation generation ownership: %q", name, definition)
+			}
+		}
+		var generationOwnerKeys int
+		if err := persistence.GetMaster().Get(ctx, &generationOwnerKeys, `SELECT count(*) FROM pg_constraint
+			WHERE conrelid='exam_attempt_participations'::regclass AND contype='u'
+			AND pg_get_constraintdef(oid)='UNIQUE (id, exam_attempt_id, generation)'`); err != nil {
+			t.Fatal(err)
+		}
+		if generationOwnerKeys != 1 {
+			t.Fatalf("Participation exact-generation owner keys = %d", generationOwnerKeys)
+		}
 	}}
 }
 

@@ -711,7 +711,8 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	currentID := model.NewExamRevisionID()
 	f.persistence.presentation = &store.CandidateExamPresentation{
 		AttemptID: f.attemptID, SittingID: f.sitting.ID, AdmissionRevisionID: f.revision.ID, CurrentRevisionID: currentID,
-		Title: "Algorithms", InstructionsMarkdown: "# Rules\nUse **Go**.\n<script>alert('x')</script>\n[bad](javascript:alert(1))\n![tracker](https://example.test/pixel.png)\n[handbook](https://example.test/handbook)",
+		FocusLossCollectionEnabled: true,
+		Title:                      "Algorithms", InstructionsMarkdown: "# Rules\nUse **Go**.\n<script>alert('x')</script>\n[bad](javascript:alert(1))\n![tracker](https://example.test/pixel.png)\n[handbook](https://example.test/handbook)",
 		Resources: []store.CandidateExamResource{{ResourceID: model.NewExamResourceID(), DisplayName: "Reference",
 			DescriptionMarkdown: "Read _carefully_. <iframe src=https://evil.test></iframe> [data](data:text/html,bad)", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 4, SHA256: strings.Repeat("a", 64)}},
 	}
@@ -721,7 +722,7 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.AdmissionRevisionID != f.revision.ID || result.CurrentRevisionID != currentID ||
+	if result.AdmissionRevisionID != f.revision.ID || result.CurrentRevisionID != currentID || !result.FocusLossCollectionEnabled ||
 		!strings.Contains(result.InstructionsMarkdown, "# Rules") || !strings.Contains(result.InstructionsMarkdown, "**Go**") ||
 		!strings.Contains(result.InstructionsMarkdown, "[handbook](https://example.test/handbook)") ||
 		!strings.Contains(result.Resources[0].DescriptionMarkdown, "_carefully_") {
@@ -1013,6 +1014,8 @@ type fixture struct {
 	effects         *effectsFake
 	content         *contentFake
 	managerOverride bool
+	focusSignalID   model.FocusLossSignalID
+	focusFlagID     model.IntegrityFlagID
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -1038,7 +1041,18 @@ func newFixture(t *testing.T) *fixture {
 		Auditor: f.audit, SystemAuditor: f.systemAudit, Effects: f.effects, EffectFailures: f.effects, Content: f.content,
 		Now: func() time.Time { return f.at }, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
-		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: model.NewIntegrityFlagID, NewSuspension: model.NewAttemptSuspensionID,
+		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: func() model.IntegrityFlagID {
+			if f.focusFlagID.IsValid() {
+				return f.focusFlagID
+			}
+			return model.NewIntegrityFlagID()
+		}, NewSuspension: model.NewAttemptSuspensionID,
+		NewFocusLossSignal: func() model.FocusLossSignalID {
+			if f.focusSignalID.IsValid() {
+				return f.focusSignalID
+			}
+			return model.NewFocusLossSignalID()
+		},
 		NewWorkspaceEntry:   func() model.AttemptWorkspaceEntryID { return entryIDOrNew(f.workspace) },
 		NewWorkspaceObject:  model.NewAttemptWorkspaceObjectID,
 		NewWorkspaceVersion: func() model.WorkspaceContentVersion { return workspaceVersionOrNew(f.workspace) },
@@ -1111,6 +1125,7 @@ type effectsFake struct {
 	expired          int
 	reallowed        int
 	workspaceChanged int
+	focusLoss        int
 }
 
 func (fake *effectsFake) ConnectionOpened(context.Context, ConnectionResult) error {
@@ -1136,6 +1151,11 @@ func (fake *effectsFake) AttemptReallowed(context.Context, ReallowResult) error 
 func (fake *effectsFake) WorkspaceChanged(context.Context, WorkspaceMutationResult) error {
 	fake.f.order = append(fake.f.order, "effect.workspace")
 	fake.workspaceChanged++
+	return nil
+}
+func (fake *effectsFake) FocusLossEvaluated(context.Context, FocusLossEvaluation) error {
+	fake.f.order = append(fake.f.order, "effect.focus_loss")
+	fake.focusLoss++
 	return nil
 }
 func (*effectsFake) Report(context.Context, string, error) {}
@@ -1190,6 +1210,11 @@ type attemptStoreFake struct {
 	renew              *store.ExamAttemptParticipationRenewal
 	renewResult        *store.ExamAttemptParticipationRenewalResult
 	renewErr           error
+	focusAccess        store.ExamAttemptFocusLossAccess
+	focusTarget        *store.ExamAttemptFocusLossTarget
+	focusSignal        *store.ExamAttemptFocusLossSignal
+	focusResult        *store.ExamAttemptFocusLossResult
+	focusErr           error
 	expiryDue          []store.ExamAttemptParticipationExpiryDue
 	resolvedExpiry     *store.ExamAttemptParticipationExpiryDue
 	resolveExpiryErr   error
@@ -1375,6 +1400,16 @@ func (fake *attemptStoreFake) RenewParticipation(_ context.Context, input *store
 	fake.f.order = append(fake.f.order, "renew")
 	fake.renew = input
 	return fake.renewResult, fake.renewErr
+}
+func (fake *attemptStoreFake) ResolveFocusLossTarget(_ context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
+	fake.f.order = append(fake.f.order, "focus.resolve")
+	fake.focusAccess = access
+	return fake.focusTarget, fake.focusErr
+}
+func (fake *attemptStoreFake) RecordFocusLoss(_ context.Context, input *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
+	fake.f.order = append(fake.f.order, "focus.record")
+	fake.focusSignal = input
+	return fake.focusResult, fake.focusErr
 }
 func (fake *attemptStoreFake) ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*store.ExamAttemptParticipationExpiryDue, error) {
 	fake.f.order = append(fake.f.order, "expiry.resolve")

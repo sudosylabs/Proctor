@@ -83,6 +83,7 @@ type Effects interface {
 	ParticipationExpired(context.Context, ParticipationExpiry) error
 	AttemptReallowed(context.Context, ReallowResult) error
 	WorkspaceChanged(context.Context, WorkspaceMutationResult) error
+	FocusLossEvaluated(context.Context, FocusLossEvaluation) error
 }
 
 type EffectFailures interface {
@@ -114,6 +115,7 @@ type Dependencies struct {
 	NewEvidence         func() model.IntegrityEvidenceID
 	NewFlag             func() model.IntegrityFlagID
 	NewSuspension       func() model.AttemptSuspensionID
+	NewFocusLossSignal  func() model.FocusLossSignalID
 	NewWorkspaceEntry   func() model.AttemptWorkspaceEntryID
 	NewWorkspaceObject  func() model.AttemptWorkspaceObjectID
 	NewWorkspaceVersion func() model.WorkspaceContentVersion
@@ -125,7 +127,7 @@ func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Workspace == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
 		deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewAttemptID == nil ||
 		deps.NewWorkspaceID == nil || deps.NewParticipation == nil || deps.NewConnection == nil || deps.NewEvidence == nil ||
-		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil {
+		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewFocusLossSignal == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil {
 		return nil, errors.New("Exam Attempt dependencies are required")
 	}
 	return &Service{deps: deps}, nil
@@ -233,7 +235,8 @@ func validActiveSuspension(view *store.ExamAttemptSuspensionView, attemptID mode
 	}
 	return view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && view.FlagID.IsValid() &&
 		view.Generation > 0 && view.State == model.AttemptSuspensionActive && view.Source == model.AttemptSuspensionSourcePolicy &&
-		view.CandidateReason == model.AttemptSuspensionCandidateReasonSecureContinuityLost && !view.StartedAt.IsZero() &&
+		(view.CandidateReason == model.AttemptSuspensionCandidateReasonSecureContinuityLost ||
+			view.CandidateReason == model.AttemptSuspensionCandidateReasonFocusLossPolicy) && !view.StartedAt.IsZero() &&
 		!view.EndedAt.Valid && view.ReallowedByUserID.IsZero()
 }
 
@@ -654,13 +657,14 @@ type CandidateAccess struct {
 }
 
 type Presentation struct {
-	AttemptID            model.ExamAttemptID
-	SittingID            model.ExamSittingID
-	AdmissionRevisionID  model.ExamRevisionID
-	CurrentRevisionID    model.ExamRevisionID
-	Title                string
-	InstructionsMarkdown string
-	Resources            []Resource
+	AttemptID                  model.ExamAttemptID
+	SittingID                  model.ExamSittingID
+	AdmissionRevisionID        model.ExamRevisionID
+	CurrentRevisionID          model.ExamRevisionID
+	Title                      string
+	InstructionsMarkdown       string
+	FocusLossCollectionEnabled bool
+	Resources                  []Resource
 }
 
 type Resource struct {
@@ -687,7 +691,8 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 	}
 	result := Presentation{AttemptID: stored.AttemptID, SittingID: stored.SittingID,
 		AdmissionRevisionID: stored.AdmissionRevisionID, CurrentRevisionID: stored.CurrentRevisionID,
-		Title: stored.Title, InstructionsMarkdown: sanitizeCandidateMarkdown(stored.InstructionsMarkdown), Resources: make([]Resource, len(stored.Resources))}
+		Title: stored.Title, InstructionsMarkdown: sanitizeCandidateMarkdown(stored.InstructionsMarkdown),
+		FocusLossCollectionEnabled: stored.FocusLossCollectionEnabled, Resources: make([]Resource, len(stored.Resources))}
 	for index, item := range stored.Resources {
 		result.Resources[index] = Resource{ResourceID: item.ResourceID, DisplayName: item.DisplayName,
 			DescriptionMarkdown: sanitizeCandidateMarkdown(item.DescriptionMarkdown), Position: item.Position, MediaType: item.MediaType,
@@ -914,6 +919,8 @@ func mapConflict(constraint string) string {
 		return "exam.attempt.connection_closed"
 	case "attempt_participation_sequence":
 		return "exam.attempt.renewal_conflict"
+	case "focus_loss_sequence":
+		return "exam.attempt.focus_loss_conflict"
 	case "attempt_participation_expired":
 		return "exam.attempt.connection_lost"
 	case "attempt_connection_open":

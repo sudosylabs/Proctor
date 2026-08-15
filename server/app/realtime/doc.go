@@ -13,8 +13,9 @@
 // Package realtime owns transport-neutral realtime events and connection-close
 // reasons, local-first delivery, the stable peer-propagation names and codecs,
 // loop prevention, session revocation and authentication or authorization
-// invalidation propagation, required security-collaborator construction, and
-// thread-safe, attach-once sink and peer-fanout wiring.
+// invalidation propagation, bounded manager and candidate examination facts,
+// required security-collaborator construction, and thread-safe, attach-once
+// sink and peer-fanout wiring.
 //
 // Construction is inert. The package starts no goroutines, owns no queue or
 // retry loop, and has no infrastructure lifecycle. Callers remain responsible

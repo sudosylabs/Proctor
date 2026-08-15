@@ -2852,7 +2852,7 @@
       },
       "CandidateExamPresentationResponse": {
         "type": "object", "additionalProperties": false,
-        "required": ["attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "resources"],
+        "required": ["attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "focus_loss_collection_enabled", "resources"],
         "properties": {
           "attempt_id": {"$ref": "#/components/schemas/ID"},
           "exam_sitting_id": {"$ref": "#/components/schemas/ID"},
@@ -2860,6 +2860,7 @@
           "current_revision_id": {"$ref": "#/components/schemas/ID"},
           "title": {"type": "string", "minLength": 1, "maxLength": 200},
           "instructions_markdown": {"type": "string", "description": "Current Sitting Revision instructions as bounded authored Markdown."},
+          "focus_loss_collection_enabled": {"type": "boolean", "description": "Whether the trusted client should collect and transmit bounded Focus Loss signals for this Sitting."},
           "resources": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/CandidateExamResourceResponse"}}
         }
       },

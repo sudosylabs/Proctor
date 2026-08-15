@@ -81,6 +81,20 @@ boundary. Role, binding, assurance, account, and session changes invalidate
 affected connections. Cluster-received events are delivered locally without
 rebroadcast, preventing loops.
 
+The protected Attempt runtime accepts `exam_attempt.focus_loss` only after an
+`exam_attempt.connect` binding. Its duplicate-free strict object contains the
+required `schema_version: 1`, bound generation, positive monotonic signal
+sequence, integer duration in milliseconds, optional closed source
+classification, and canonical continuity credential. Missing, zero, or unknown
+schema versions fail closed. The acknowledgement contains only generation,
+accepted sequence, server receipt time, and safe duplicate/gap/policy-action
+booleans; it never returns duration, source, qualification, threshold, Flag
+state, raw policy, credential material, or Session identity. A committed policy
+suspension clears the runtime binding and its candidate subscription before
+another renewal or Focus Loss action can reach the application. Unknown
+application failures map to the generic `exam.attempt.unavailable` protocol
+error.
+
 ## Errors and validation
 
 Application methods return standard `error`. Expected public failures use `*app.Error` with a stable dotted domain code, explicitly safe fields, and an optional wrapped cause. They contain no protocol status, localization, request ID, SQL detail, or stack trace.

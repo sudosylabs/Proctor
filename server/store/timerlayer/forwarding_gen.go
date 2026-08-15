@@ -661,6 +661,18 @@ func (s *timedExamAttemptStore) RenewParticipation(arg0 context.Context, arg1 *s
 	})
 }
 
+func (s *timedExamAttemptStore) ResolveFocusLossTarget(arg0 context.Context, arg1 store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveFocusLossTarget), func() (*store.ExamAttemptFocusLossTarget, error) {
+		return s.next.ResolveFocusLossTarget(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) RecordFocusLoss(arg0 context.Context, arg1 *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRecordFocusLoss), func() (*store.ExamAttemptFocusLossResult, error) {
+		return s.next.RecordFocusLoss(arg0, arg1)
+	})
+}
+
 func (s *timedExamAttemptStore) ResolveParticipationExpiry(arg0 context.Context, arg1 model.ExamAttemptID, arg2 model.AttemptParticipationID, arg3 int64) (*store.ExamAttemptParticipationExpiryDue, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveParticipationExpiry), func() (*store.ExamAttemptParticipationExpiryDue, error) {
 		return s.next.ResolveParticipationExpiry(arg0, arg1, arg2, arg3)

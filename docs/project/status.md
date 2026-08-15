@@ -166,6 +166,17 @@ creates the next Participation generation. The external privileged coordinator
 is responsible for sending renewals at the advertised five-second cadence;
 transport ping and server timers cannot renew a Participation.
 
+Focus Loss evaluation is implemented. Candidate presentation projects only
+whether collection is enabled, and the authenticated Attempt WebSocket accepts
+strict generation-scoped monotonic claims without client-selected severity or
+outcome. PostgreSQL receipt time drives bounded rolling-window evaluation,
+exact duplicate replay, gap uncertainty, one open Flag per generation,
+100-episode evidence retention plus bounded overflow, and atomic flag, warning,
+or suspension enforcement. Disabled policy records only a bounded diagnostic.
+Committed non-replay outcomes publish separated safe manager and candidate
+facts; suspension closes the durable Connection and removes the live binding,
+while re-allow preserves evidence and resets only the causal window.
+
 Acknowledged Attempt Workspace operation is implemented. Active candidates can
 list and read a cursor-pinned manifest, recover through its bounded ordered
 journal, and create, replace, move, rename, or delete stable logical entries.
@@ -204,9 +215,9 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: Focus Loss policy
-  evaluation, immutable Submission, resumable Sitting sealing, and integrity
-  evidence review with Student Result release.
+- Continue Examination Core as complete vertical slices: immutable Submission,
+  resumable Sitting sealing, and integrity evidence review with Student Result
+  release.
 - Extend server-owned file handling for validated IDE preferences alongside
   the examination-specific resource and workspace boundaries. Resource search
   is deferred because an Exam initially has at most ten active resources.

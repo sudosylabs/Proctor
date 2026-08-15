@@ -75,7 +75,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "ExamAttemptManagerListResponse", DTO: reflect.TypeOf(examAttemptManagerListResponse{}), Required: []string{"items"}},
 			{Name: "ReallowExamAttemptRequest", DTO: reflect.TypeOf(reallowExamAttemptRequest{}), Required: []string{"suspension_id", "expected_attempt_revision", "reason"}},
 			{Name: "ExamAttemptReallowResponse", DTO: reflect.TypeOf(examAttemptReallowResponse{}), Required: []string{"exam_attempt_id", "exam_sitting_id", "state", "attempt_revision", "suspension_id", "suspension_state", "candidate_reason", "reallowed_by_user_id"}},
-			{Name: "CandidateExamPresentationResponse", DTO: reflect.TypeOf(candidateExamPresentationResponse{}), Required: []string{"attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "resources"}},
+			{Name: "CandidateExamPresentationResponse", DTO: reflect.TypeOf(candidateExamPresentationResponse{}), Required: []string{"attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "focus_loss_collection_enabled", "resources"}},
 			{Name: "CandidateExamResourceResponse", DTO: reflect.TypeOf(candidateExamResourceResponse{}), Required: []string{"id", "display_name", "description_markdown", "position", "media_type", "size", "sha256"}},
 			{Name: "CandidateExamWorkspaceItemResponse", DTO: reflect.TypeOf(candidateExamWorkspaceItemResponse{}), Required: []string{"id", "kind", "path"}},
 			{Name: "CandidateExamWorkspaceListResponse", DTO: reflect.TypeOf(candidateExamWorkspaceListResponse{}), Required: []string{"workspace_id", "workspace_cursor", "items", "refresh_required"}},

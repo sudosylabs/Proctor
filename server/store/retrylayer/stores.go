@@ -299,6 +299,19 @@ func (s *examAttemptStore) RenewParticipation(ctx context.Context, input *store.
 	})
 }
 
+func (s *examAttemptStore) ResolveFocusLossTarget(ctx context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptFocusLossTarget, error) {
+		return s.ExamAttemptStore.ResolveFocusLossTarget(ctx, access)
+	})
+}
+
+func (s *examAttemptStore) RecordFocusLoss(ctx context.Context, input *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
+	// The sequence makes a later client request replayable, but an in-process
+	// retry would reuse the already-completed Audit Event after an unknown commit.
+	// Let the durable client retry begin a fresh audited decision instead.
+	return s.ExamAttemptStore.RecordFocusLoss(ctx, input)
+}
+
 func (s *examAttemptStore) ResolveParticipationExpiry(ctx context.Context, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, generation int64) (*store.ExamAttemptParticipationExpiryDue, error) {
 	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptParticipationExpiryDue, error) {
 		return s.ExamAttemptStore.ResolveParticipationExpiry(ctx, attemptID, participationID, generation)

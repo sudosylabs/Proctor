@@ -116,6 +116,22 @@ func TestRenewExamAttemptParticipationDelegatesWithoutInventingTransportPingStat
 	}
 }
 
+func TestEvaluateExamAttemptFocusLossDelegatesExactTrustedClaim(t *testing.T) {
+	t.Parallel()
+	want := examattempt.FocusLossEvaluation{AttemptID: model.NewExamAttemptID(), ParticipationID: model.NewAttemptParticipationID(),
+		Generation: 2, AcceptedSequence: 8, ReceivedAt: time.Now(), GapDetected: true, Qualified: true}
+	fake := &examAttemptUseCasesFake{focusResult: want}
+	application := &App{examAttempts: fake}
+	command := EvaluateExamAttemptFocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion,
+		AttemptID: want.AttemptID, ParticipationID: want.ParticipationID,
+		ConnectionID: model.NewAttemptConnectionID(), Generation: 2, Sequence: 8, DurationMilliseconds: 2500,
+		Source: model.FocusLossSourceWindowBlur, ContinuityCredential: model.NewCredentialToken()}
+	got, err := application.EvaluateExamAttemptFocusLoss(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
+	if err != nil || got != want || len(fake.focusLoss) != 1 || fake.focusLoss[0] != examattempt.FocusLossCommand(command) {
+		t.Fatalf("result=%#v error=%v calls=%#v", got, err, fake.focusLoss)
+	}
+}
+
 func TestReallowExamAttemptBuildsExactPrivateReasonFingerprintAndDelegates(t *testing.T) {
 	t.Parallel()
 	fake := &examAttemptUseCasesFake{}
@@ -176,6 +192,84 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 	}
 }
 
+func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWarning(t *testing.T) {
+	t.Parallel()
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	sink := &recordingRealtimeSink{}
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC)
+	result := examattempt.FocusLossEvaluation{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+		AttemptID: model.NewExamAttemptID(), ReceivedAt: at, PolicyOutcome: model.IntegrityOutcomeFlagAndWarn,
+		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()}, RetainedEvidenceCount: 3,
+		FlagCreated: true, ManagerNotificationRequired: true, CandidateWarningCreated: true}
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	sink.mu.Unlock()
+	if len(events) != 2 || events[0].Name != "exam_attempt_integrity_flagged" ||
+		events[1].Name != "exam_attempt_focus_warning" || events[1].UserID != result.CandidateUserID.String() {
+		t.Fatalf("events=%#v", events)
+	}
+	for _, event := range events {
+		for _, forbidden := range []string{"duration", "source", "sequence", "credential", "session", "threshold"} {
+			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
+				t.Fatalf("Focus Loss effect contains %q: %s", forbidden, event.Data)
+			}
+		}
+	}
+}
+
+func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *testing.T) {
+	t.Parallel()
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	sink := &recordingRealtimeSink{}
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, time.August, 20, 10, 5, 0, 0, time.UTC)
+	flagID := model.NewIntegrityFlagID()
+	result := examattempt.FocusLossEvaluation{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+		AttemptID: model.NewExamAttemptID(), ReceivedAt: at, PolicyOutcome: model.IntegrityOutcomeFlagAndSuspend,
+		Flag: model.IntegrityFlag{ID: flagID}, RetainedEvidenceCount: 3, FlagCreated: true,
+		ManagerNotificationRequired: true, ConnectionClosed: true,
+		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
+			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionClosePolicySuspended},
+		Attempt: model.ExamAttempt{Revision: 2}, SuspensionCreated: true,
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), FlagID: flagID,
+			CandidateReason: model.AttemptSuspensionCandidateReasonFocusLossPolicy}}
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	sink.mu.Unlock()
+	if len(events) != 4 || events[0].Name != "exam_attempt_connection_closed" ||
+		events[1].Name != "exam_attempt_integrity_flagged" || events[2].Name != "exam_attempt_suspended" ||
+		events[3].Name != "exam_attempt_access_suspended" || events[3].UserID != result.CandidateUserID.String() {
+		t.Fatalf("events=%#v", events)
+	}
+	if encoded := string(events[3].Data); !strings.Contains(encoded, `"reason_code":"focus_policy_review_required"`) {
+		t.Fatalf("candidate suspension lacks neutral reason: %s", encoded)
+	}
+	for _, event := range events {
+		for _, forbidden := range []string{"duration", "source", "sequence", "credential", "session", "threshold", "private"} {
+			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
+				t.Fatalf("Focus Loss suspension effect contains %q: %s", forbidden, event.Data)
+			}
+		}
+	}
+}
+
 func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *testing.T) {
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
@@ -216,6 +310,8 @@ type examAttemptUseCasesFake struct {
 	connects             []examattempt.ConnectCommand
 	renewals             []examattempt.RenewParticipationCommand
 	renewResult          examattempt.ParticipationRenewal
+	focusLoss            []examattempt.FocusLossCommand
+	focusResult          examattempt.FocusLossEvaluation
 	reallows             []examattempt.ReallowCommand
 	err                  error
 	workspaceDirectories []examattempt.CreateWorkspaceDirectoryCommand
@@ -229,6 +325,13 @@ func (fake *examAttemptUseCasesFake) Connect(_ context.Context, _ examattempt.Ca
 func (fake *examAttemptUseCasesFake) RenewParticipation(_ context.Context, _ examattempt.Call, command examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error) {
 	fake.renewals = append(fake.renewals, command)
 	return fake.renewResult, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) EvaluateFocusLoss(_ context.Context, _ examattempt.Call,
+	command examattempt.FocusLossCommand,
+) (examattempt.FocusLossEvaluation, error) {
+	fake.focusLoss = append(fake.focusLoss, command)
+	return fake.focusResult, fake.err
 }
 
 func (fake *examAttemptUseCasesFake) Reallow(_ context.Context, _ examattempt.Call, command examattempt.ReallowCommand) (examattempt.ReallowResult, error) {

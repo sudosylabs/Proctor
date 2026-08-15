@@ -425,7 +425,7 @@ func (s *sqlExamAttemptStore) ExpireParticipation(ctx context.Context, input *st
 			evidence.Generation, evidence.Kind, evidence.ObservedAt, evidence.RecordedAt); err != nil {
 			return nil, translateError("integrity_evidence", evidence.ID.String(), err)
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_suspensions (id,exam_attempt_id,participation_id,integrity_flag_id,generation,expiry_attempt_revision,state,source,candidate_reason,started_at)
+		if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_suspensions (id,exam_attempt_id,participation_id,integrity_flag_id,generation,suspension_attempt_revision,state,source,candidate_reason,started_at)
 			VALUES (?,?,?,?,?,?,?,?,?,?)`, suspension.ID.String(), suspension.AttemptID.String(), suspension.ParticipationID.String(), suspension.FlagID.String(),
 			suspension.Generation, attempt.Revision, suspension.State, suspension.Source, suspension.CandidateReason, suspension.StartedAt); err != nil {
 			return nil, translateError("attempt_suspension", suspension.ID.String(), err)
@@ -491,23 +491,23 @@ func (row participationExpiryLockRow) domain() (*model.ExamAttempt, *model.Attem
 }
 
 type participationExpiryRecordRow struct {
-	FlagID                string         `db:"flag_id"`
-	FlagKind              string         `db:"flag_kind"`
-	FlagState             string         `db:"flag_state"`
-	EvidenceID            string         `db:"evidence_id"`
-	EvidenceKind          string         `db:"evidence_kind"`
-	SuspensionID          string         `db:"suspension_id"`
-	SuspensionState       string         `db:"suspension_state"`
-	ExpiryAttemptRevision int64          `db:"expiry_attempt_revision"`
-	SuspensionSource      string         `db:"suspension_source"`
-	CandidateReason       string         `db:"candidate_reason"`
-	ReallowedByUserID     string         `db:"reallowed_by_user_id"`
-	FlagCreatedAt         time.Time      `db:"flag_created_at"`
-	ObservedAt            time.Time      `db:"observed_at"`
-	RecordedAt            time.Time      `db:"recorded_at"`
-	SuspensionStartedAt   time.Time      `db:"suspension_started_at"`
-	SuspensionEndedAt     sql.NullTime   `db:"ended_at"`
-	PrivateReason         sql.NullString `db:"private_reason"`
+	FlagID                    string         `db:"flag_id"`
+	FlagKind                  string         `db:"flag_kind"`
+	FlagState                 string         `db:"flag_state"`
+	EvidenceID                string         `db:"evidence_id"`
+	EvidenceKind              string         `db:"evidence_kind"`
+	SuspensionID              string         `db:"suspension_id"`
+	SuspensionState           string         `db:"suspension_state"`
+	SuspensionAttemptRevision int64          `db:"suspension_attempt_revision"`
+	SuspensionSource          string         `db:"suspension_source"`
+	CandidateReason           string         `db:"candidate_reason"`
+	ReallowedByUserID         string         `db:"reallowed_by_user_id"`
+	FlagCreatedAt             time.Time      `db:"flag_created_at"`
+	ObservedAt                time.Time      `db:"observed_at"`
+	RecordedAt                time.Time      `db:"recorded_at"`
+	SuspensionStartedAt       time.Time      `db:"suspension_started_at"`
+	SuspensionEndedAt         sql.NullTime   `db:"ended_at"`
+	PrivateReason             sql.NullString `db:"private_reason"`
 }
 
 func loadParticipationExpiryResult(ctx context.Context, tx *sqlxTxWrapper, row participationExpiryLockRow,
@@ -524,7 +524,7 @@ func loadParticipationExpiryResult(ctx context.Context, tx *sqlxTxWrapper, row p
 	var records participationExpiryRecordRow
 	err = tx.Get(ctx, &records, `SELECT f.id AS flag_id,f.policy_kind AS flag_kind,f.state AS flag_state,
 		f.created_at AS flag_created_at,e.id AS evidence_id,e.policy_kind AS evidence_kind,e.observed_at,e.recorded_at,
-		su.id AS suspension_id,su.state AS suspension_state,su.expiry_attempt_revision,su.source AS suspension_source,su.candidate_reason,
+		su.id AS suspension_id,su.state AS suspension_state,su.suspension_attempt_revision,su.source AS suspension_source,su.candidate_reason,
 		su.started_at AS suspension_started_at,su.ended_at,COALESCE(su.reallowed_by_user_id,'') AS reallowed_by_user_id,su.private_reason
 		FROM integrity_flags f JOIN integrity_evidence e ON e.integrity_flag_id=f.id
 		JOIN exam_attempt_suspensions su ON su.integrity_flag_id=f.id
@@ -577,7 +577,7 @@ func loadParticipationExpiryResult(ctx context.Context, tx *sqlxTxWrapper, row p
 	}
 	attempt := *currentAttempt
 	attempt.State, attempt.UpdatedAt, attempt.SubmittedAt, attempt.Revision = model.ExamAttemptSuspended,
-		model.TimeUTC(records.SuspensionStartedAt), model.OptionalTime{}, records.ExpiryAttemptRevision
+		model.TimeUTC(records.SuspensionStartedAt), model.OptionalTime{}, records.SuspensionAttemptRevision
 	if err = attempt.Validate(); err != nil {
 		return nil, invalidPersistedState("exam_attempt", "expiry_value", err)
 	}
@@ -649,6 +649,7 @@ func completeParticipationExpiryAudit(ctx context.Context, tx *sqlxTxWrapper, re
 
 type examAttemptReallowOutcomeV1 struct {
 	ExamID, SittingID, ClassID, CandidateID, AttemptID, SuspensionID string
+	FocusLossWindowReset                                             bool
 }
 
 func (s *sqlExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.ExamAttemptReallow,
@@ -814,8 +815,16 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		attempt.UpdatedAt, attempt.Revision, attempt.ID.String(), row.AttemptRevision); err != nil {
 		return zero, fmt.Errorf("re-allow Exam Attempt: %w", err)
 	}
+	focusLossWindowReset := row.CandidateReason == string(model.AttemptSuspensionCandidateReasonFocusLossPolicy)
+	if focusLossWindowReset {
+		if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=? AND generation=?`,
+			input.AttemptID.String(), row.Generation); err != nil {
+			return zero, fmt.Errorf("reset causal Focus Loss window: %w", err)
+		}
+	}
 	value := examAttemptReallowOutcomeV1{ExamID: input.ExamID.String(), SittingID: input.SittingID.String(), ClassID: row.ClassID,
-		CandidateID: row.CandidateID, AttemptID: input.AttemptID.String(), SuspensionID: input.SuspensionID.String()}
+		CandidateID: row.CandidateID, AttemptID: input.AttemptID.String(), SuspensionID: input.SuspensionID.String(),
+		FocusLossWindowReset: focusLossWindowReset}
 	if err = completeExamAttemptReallowAudit(ctx, tx, value, false, "", input.AuditEventID, input.AuditAt); err != nil {
 		return zero, err
 	}
@@ -826,7 +835,7 @@ func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, val
 	replayed bool, originalAuditID, auditID string, auditAt int64,
 ) error {
 	data := map[string]any{"exam_id": value.ExamID, "exam_sitting_id": value.SittingID, "exam_attempt_id": value.AttemptID,
-		"suspension_id": value.SuspensionID, "replayed": replayed}
+		"suspension_id": value.SuspensionID, "focus_loss_window_reset": value.FocusLossWindowReset, "replayed": replayed}
 	if replayed {
 		data["original_audit_event_id"] = originalAuditID
 	}
@@ -929,7 +938,7 @@ func (s *sqlExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, 
 		return nil, invalidPersistedState("attempt_suspension", "value", err)
 	}
 	return &store.ExamAttemptReallowResult{ExamID: examID, SittingID: sittingID, ClassID: classID, CandidateUserID: candidateID,
-		Attempt: attempt,
+		Attempt: attempt, FocusLossWindowReset: value.FocusLossWindowReset,
 		Suspension: &store.ExamAttemptSuspensionView{ID: domainSuspension.ID, AttemptID: domainSuspension.AttemptID,
 			ParticipationID: domainSuspension.ParticipationID, FlagID: domainSuspension.FlagID, Generation: domainSuspension.Generation,
 			State: domainSuspension.State, Source: domainSuspension.Source, CandidateReason: domainSuspension.CandidateReason,
@@ -1700,56 +1709,66 @@ func (s *sqlExamAttemptStore) lockCandidateGuard(ctx context.Context, tx *sqlxTx
 }
 
 func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, access store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
-	guard, err := s.candidateGuard(ctx, access)
-	if err != nil {
-		return nil, err
-	}
-	var header struct {
-		Title        string `db:"title"`
-		Instructions string `db:"instructions_markdown"`
-	}
-	if err = s.GetMaster().Get(ctx, &header, `SELECT title,instructions_markdown FROM exam_revisions WHERE id=? AND sealed=true`, guard.RevisionID); err != nil {
-		return nil, translateError("exam_revision", guard.RevisionID, err)
-	}
-	var rows []struct {
-		ResourceID  string `db:"resource_id"`
-		DisplayName string `db:"display_name"`
-		Description string `db:"description"`
-		MediaType   string `db:"media_type"`
-		SHA256      string `db:"sha256"`
-		Position    int    `db:"position"`
-		SizeBytes   int64  `db:"size_bytes"`
-	}
-	if err = s.GetMaster().Select(ctx, &rows, `SELECT resource_id,display_name,description_markdown AS description,position,media_type,size_bytes,sha256
-		FROM exam_revision_resources WHERE exam_revision_id=? ORDER BY position`, guard.RevisionID); err != nil {
-		return nil, fmt.Errorf("list candidate Exam Resources: %w", err)
-	}
-	attemptID, parseErr := model.ParseExamAttemptID(guard.AttemptID)
-	if parseErr != nil {
-		return nil, invalidPersistedState("exam_attempt", "id", parseErr)
-	}
-	sittingID, parseErr := model.ParseExamSittingID(guard.SittingID)
-	if parseErr != nil {
-		return nil, invalidPersistedState("exam_attempt", "exam_sitting_id", parseErr)
-	}
-	admissionRevisionID, parseErr := model.ParseExamRevisionID(guard.AdmissionRevisionID)
-	if parseErr != nil {
-		return nil, invalidPersistedState("exam_attempt", "admission_revision_id", parseErr)
-	}
-	revisionID, parseErr := model.ParseExamRevisionID(guard.RevisionID)
-	if parseErr != nil {
-		return nil, invalidPersistedState("exam_sitting", "exam_revision_id", parseErr)
-	}
-	result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, AdmissionRevisionID: admissionRevisionID, CurrentRevisionID: revisionID,
-		Title: header.Title, InstructionsMarkdown: header.Instructions, Resources: make([]store.CandidateExamResource, 0, len(rows))}
-	for _, row := range rows {
-		resourceID, parseErr := model.ParseExamResourceID(row.ResourceID)
-		if parseErr != nil {
-			return nil, invalidPersistedState("exam_revision_resource", "resource_id", parseErr)
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "get candidate Exam presentation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.CandidateExamPresentation, error) {
+		guard, err := s.lockCandidateGuard(ctx, tx, access)
+		if err != nil {
+			return nil, err
 		}
-		result.Resources = append(result.Resources, store.CandidateExamResource{ResourceID: resourceID, DisplayName: row.DisplayName, DescriptionMarkdown: row.Description, Position: row.Position, MediaType: model.ExamResourceMediaType(row.MediaType), SizeBytes: row.SizeBytes, SHA256: row.SHA256})
-	}
-	return result, nil
+		var header struct {
+			Title        string `db:"title"`
+			Instructions string `db:"instructions_markdown"`
+			Policy       []byte `db:"policy_canonical"`
+		}
+		if err = tx.Get(ctx, &header, `SELECT title,instructions_markdown,policy_canonical FROM exam_revisions WHERE id=? AND sealed=true FOR SHARE`, guard.RevisionID); err != nil {
+			return nil, translateError("exam_revision", guard.RevisionID, err)
+		}
+		policy, err := model.DecodeExamPolicySet(header.Policy)
+		if err != nil {
+			return nil, invalidPersistedState("exam_revision", "policy_canonical", err)
+		}
+		var rows []struct {
+			ResourceID  string `db:"resource_id"`
+			DisplayName string `db:"display_name"`
+			Description string `db:"description"`
+			MediaType   string `db:"media_type"`
+			SHA256      string `db:"sha256"`
+			Position    int    `db:"position"`
+			SizeBytes   int64  `db:"size_bytes"`
+		}
+		if err = tx.Select(ctx, &rows, `SELECT resource_id,display_name,description_markdown AS description,position,media_type,size_bytes,sha256
+			FROM exam_revision_resources WHERE exam_revision_id=? ORDER BY position`, guard.RevisionID); err != nil {
+			return nil, fmt.Errorf("list candidate Exam Resources: %w", err)
+		}
+		attemptID, parseErr := model.ParseExamAttemptID(guard.AttemptID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("exam_attempt", "id", parseErr)
+		}
+		sittingID, parseErr := model.ParseExamSittingID(guard.SittingID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("exam_attempt", "exam_sitting_id", parseErr)
+		}
+		admissionRevisionID, parseErr := model.ParseExamRevisionID(guard.AdmissionRevisionID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("exam_attempt", "admission_revision_id", parseErr)
+		}
+		revisionID, parseErr := model.ParseExamRevisionID(guard.RevisionID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("exam_sitting", "exam_revision_id", parseErr)
+		}
+		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, AdmissionRevisionID: admissionRevisionID,
+			CurrentRevisionID: revisionID, Title: header.Title, InstructionsMarkdown: header.Instructions,
+			FocusLossCollectionEnabled: policy.FocusLoss.Enabled, Resources: make([]store.CandidateExamResource, 0, len(rows))}
+		for _, row := range rows {
+			resourceID, parseErr := model.ParseExamResourceID(row.ResourceID)
+			if parseErr != nil {
+				return nil, invalidPersistedState("exam_revision_resource", "resource_id", parseErr)
+			}
+			result.Resources = append(result.Resources, store.CandidateExamResource{ResourceID: resourceID, DisplayName: row.DisplayName,
+				DescriptionMarkdown: row.Description, Position: row.Position, MediaType: model.ExamResourceMediaType(row.MediaType),
+				SizeBytes: row.SizeBytes, SHA256: row.SHA256})
+		}
+		return result, nil
+	})
 }
 
 func (s *sqlExamAttemptStore) listCandidateWorkspace(ctx context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {

@@ -142,6 +142,22 @@ func TestExamAttemptSuspensionAndReallowEventsSeparateCandidateAndManagerPayload
 	}
 }
 
+func TestCandidateExamAttemptSuspendedEventAcceptsFocusPolicyReviewReason(t *testing.T) {
+	t.Parallel()
+	event, err := NewCandidateExamAttemptSuspendedEvent(model.NewExamSittingID(), model.NewExamAttemptID(),
+		model.NewUserID(), model.AttemptSuspensionCandidateReasonFocusLossPolicy, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]any
+	if err = json.Unmarshal(event.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data["reason_code"] != string(model.AttemptSuspensionCandidateReasonFocusLossPolicy) {
+		t.Fatalf("reason_code=%#v data=%s", data["reason_code"], event.Data)
+	}
+}
+
 func TestCandidateExamAttemptWorkspaceChangedEventIsOnlyASafeRefetchHint(t *testing.T) {
 	t.Parallel()
 	sittingID, attemptID, candidateID := model.NewExamSittingID(), model.NewExamAttemptID(), model.NewUserID()
@@ -160,6 +176,51 @@ func TestCandidateExamAttemptWorkspaceChangedEventIsOnlyASafeRefetchHint(t *test
 	for _, forbidden := range []string{"path", "object", "content_version", "sha256", "credential", "session", "generation"} {
 		if strings.Contains(strings.ToLower(data), forbidden) {
 			t.Fatalf("workspace hint contains %q: %s", forbidden, data)
+		}
+	}
+}
+
+func TestFocusLossEventsSeparateNeutralCandidateWarningFromBoundedManagerFlag(t *testing.T) {
+	t.Parallel()
+	sittingID, attemptID, candidateID := model.NewExamSittingID(), model.NewExamAttemptID(), model.NewUserID()
+	flagID := model.NewIntegrityFlagID()
+	at := time.Date(2026, time.August, 20, 9, 5, 0, 0, time.UTC)
+	warning, err := NewCandidateExamAttemptFocusLossWarningEvent(sittingID, attemptID, candidateID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flagged, err := NewExamAttemptIntegrityFlaggedEvent(sittingID, attemptID, candidateID, flagID,
+		model.IntegrityOutcomeFlagAndWarn, 100, 17, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if warning.Name != "exam_attempt_focus_warning" || warning.UserID != candidateID.String() ||
+		warning.Action != model.ActionExamSittingParticipate || warning.Resource.ID != sittingID.String() {
+		t.Fatalf("warning=%#v", warning)
+	}
+	var warningData map[string]any
+	if err = json.Unmarshal(warning.Data, &warningData); err != nil ||
+		warningData["warning_code"] != "focus_loss_policy_warning" || len(warningData) != 4 {
+		t.Fatalf("warning data=%v error=%v", warningData, err)
+	}
+	if flagged.Name != "exam_attempt_integrity_flagged" || flagged.UserID != "" ||
+		flagged.Action != model.ActionExamSittingView || flagged.Resource.ID != sittingID.String() {
+		t.Fatalf("flagged=%#v", flagged)
+	}
+	var managerData map[string]any
+	if err = json.Unmarshal(flagged.Data, &managerData); err != nil || managerData["policy_kind"] != "focus_loss" ||
+		managerData["outcome"] != "flag_and_warn" || managerData["retained_evidence_count"] != float64(100) ||
+		managerData["evidence_overflow_count"] != float64(17) || managerData["evidence_available"] != true || len(managerData) != 10 {
+		t.Fatalf("manager data=%v error=%v", managerData, err)
+	}
+	for _, event := range []RealtimeEvent{warning, flagged} {
+		for _, forbidden := range []string{"duration", "source", "sequence", "threshold", "credential", "hash", "session", "private", "severity", "guilt"} {
+			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
+				t.Fatalf("Focus Loss event contains %q: %s", forbidden, event.Data)
+			}
+		}
+		if err = event.ValidateForPublish(); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

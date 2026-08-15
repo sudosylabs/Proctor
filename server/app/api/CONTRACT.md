@@ -332,8 +332,12 @@ identity so an authoritative refetch can drive exact re-allow after missed
 realtime delivery. Candidate
 presentation exposes the admission Revision only as provenance while title,
 instructions, resources, and resource content resolve from the Sitting's
-current Revision. Workspace pages expose logical entries and content versions,
-never starter/Attempt object identities or VFS keys.
+current Revision. Its single Focus Loss field is the required
+`focus_loss_collection_enabled` boolean telling the trusted client whether to
+collect and transmit observations; minimum duration, incident count, window,
+outcome, and raw policy never enter the candidate projection. Workspace pages
+expose logical entries and content versions, never starter/Attempt object
+identities or VFS keys.
 
 Re-allow requires the exact active Suspension identity, expected Attempt
 revision, and a trimmed private manager reason. The reason is retained only in

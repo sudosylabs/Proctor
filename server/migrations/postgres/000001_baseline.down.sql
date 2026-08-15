@@ -20,6 +20,8 @@ DROP TABLE IF EXISTS mfa_credentials;
 DROP TABLE IF EXISTS user_tokens;
 DROP TABLE IF EXISTS personal_access_tokens;
 DROP TABLE IF EXISTS session_credentials;
+DROP TABLE IF EXISTS exam_attempt_focus_loss_pending;
+DROP TABLE IF EXISTS exam_attempt_focus_loss_evaluations;
 DROP TABLE IF EXISTS exam_attempt_suspensions;
 DROP FUNCTION IF EXISTS guard_exam_attempt_suspension_mutation();
 DROP TABLE IF EXISTS integrity_evidence;

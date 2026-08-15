@@ -52,6 +52,9 @@ func NewAttemptParticipationID() AttemptParticipationID { return AttemptParticip
 // NewAttemptConnectionID returns a freshly generated attempt-connection identifier.
 func NewAttemptConnectionID() AttemptConnectionID { return AttemptConnectionID(NewId()) }
 
+// NewFocusLossSignalID returns a freshly generated focus-loss-signal identifier.
+func NewFocusLossSignalID() FocusLossSignalID { return FocusLossSignalID(NewId()) }
+
 // NewIntegrityEvidenceID returns a freshly generated integrity-evidence identifier.
 func NewIntegrityEvidenceID() IntegrityEvidenceID { return IntegrityEvidenceID(NewId()) }
 
@@ -206,6 +209,11 @@ func ParseAttemptParticipationID(value string) (AttemptParticipationID, error) {
 // ParseAttemptConnectionID validates and converts the shared identifier representation.
 func ParseAttemptConnectionID(value string) (AttemptConnectionID, error) {
 	return parseID[AttemptConnectionID](value, "attempt_connection_id")
+}
+
+// ParseFocusLossSignalID validates and converts the shared identifier representation.
+func ParseFocusLossSignalID(value string) (FocusLossSignalID, error) {
+	return parseID[FocusLossSignalID](value, "focus_loss_signal_id")
 }
 
 // ParseIntegrityEvidenceID validates and converts the shared identifier representation.
@@ -388,6 +396,9 @@ func (id AttemptParticipationID) IsZero() bool { return id == "" }
 // IsZero reports whether the attempt-connection is the empty zero value.
 func (id AttemptConnectionID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the focus-loss-signal is the empty zero value.
+func (id FocusLossSignalID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the integrity-evidence is the empty zero value.
 func (id IntegrityEvidenceID) IsZero() bool { return id == "" }
 
@@ -513,6 +524,9 @@ func (id AttemptParticipationID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the attempt-connection is a canonical non-zero ID.
 func (id AttemptConnectionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the focus-loss-signal is a canonical non-zero ID.
+func (id FocusLossSignalID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the integrity-evidence is a canonical non-zero ID.
 func (id IntegrityEvidenceID) IsValid() bool { return IsValidId(string(id)) }
@@ -640,6 +654,9 @@ func (id AttemptParticipationID) String() string { return string(id) }
 // String returns the attempt-connection wire/database representation.
 func (id AttemptConnectionID) String() string { return string(id) }
 
+// String returns the focus-loss-signal wire/database representation.
+func (id FocusLossSignalID) String() string { return string(id) }
+
 // String returns the integrity-evidence wire/database representation.
 func (id IntegrityEvidenceID) String() string { return string(id) }
 
@@ -765,6 +782,9 @@ func (id AttemptParticipationID) MarshalText() ([]byte, error) { return marshalI
 
 // MarshalText encodes the attempt-connection as its canonical string.
 func (id AttemptConnectionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the focus-loss-signal as its canonical string.
+func (id FocusLossSignalID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the integrity-evidence as its canonical string.
 func (id IntegrityEvidenceID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -920,6 +940,11 @@ func (id *AttemptParticipationID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the attempt-connection when non-empty.
 func (id *AttemptConnectionID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseAttemptConnectionID)
+}
+
+// UnmarshalText decodes and validates the focus-loss-signal when non-empty.
+func (id *FocusLossSignalID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseFocusLossSignalID)
 }
 
 // UnmarshalText decodes and validates the integrity-evidence when non-empty.
@@ -1102,6 +1127,9 @@ func (id AttemptParticipationID) MarshalJSON() ([]byte, error) { return marshalI
 // MarshalJSON encodes the attempt-connection as a JSON string.
 func (id AttemptConnectionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the focus-loss-signal as a JSON string.
+func (id FocusLossSignalID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the integrity-evidence as a JSON string.
 func (id IntegrityEvidenceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1256,6 +1284,11 @@ func (id *AttemptParticipationID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the attempt-connection.
 func (id *AttemptConnectionID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseAttemptConnectionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the focus-loss-signal.
+func (id *FocusLossSignalID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseFocusLossSignalID)
 }
 
 // UnmarshalJSON decodes a JSON string into the integrity-evidence.

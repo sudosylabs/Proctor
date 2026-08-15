@@ -68,6 +68,17 @@ Authorized managers may inspect sealed Submissions and bounded evidence only
 through their application permissions. The integrity review records decisions
 and remarks; it is not a grading or academic-outcome subsystem.
 
+Focus Loss arrives only through the authenticated Attempt WebSocket binding.
+The strict claim supplies the required supported schema version, current
+generation, monotonic signal sequence, bounded integer duration, optional
+closed source classification, and the same continuity credential; the
+application hashes that credential before crossing the Store boundary. Audit
+fields retain only safe identities, generation, and sequence. Candidate
+acknowledgements and events omit duration, source, raw policy, qualification,
+thresholds, Flag state, credentials, and Session identity. Manager events
+expose only the bounded Flag projection: safe identities, configured outcome,
+retained/overflow counts, and server time.
+
 Participation renewal is an application-level authenticated protocol separate
 from WebSocket liveness. PostgreSQL lease expiry is authoritative, permanently
 fences the old generation, and always creates neutral Connection Loss evidence,
