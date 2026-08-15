@@ -64,6 +64,17 @@ func NewIntegrityEvidenceID() IntegrityEvidenceID { return IntegrityEvidenceID(N
 // NewIntegrityFlagID returns a freshly generated integrity-flag identifier.
 func NewIntegrityFlagID() IntegrityFlagID { return IntegrityFlagID(NewId()) }
 
+// NewIntegrityReviewDecisionID returns a freshly generated integrity-review-decision identifier.
+func NewIntegrityReviewDecisionID() IntegrityReviewDecisionID {
+	return IntegrityReviewDecisionID(NewId())
+}
+
+// NewSubmissionReviewID returns a freshly generated submission-review identifier.
+func NewSubmissionReviewID() SubmissionReviewID { return SubmissionReviewID(NewId()) }
+
+// NewIntegrityDiscrepancyID returns a freshly generated integrity-discrepancy identifier.
+func NewIntegrityDiscrepancyID() IntegrityDiscrepancyID { return IntegrityDiscrepancyID(NewId()) }
+
 // NewAttemptSuspensionID returns a freshly generated attempt-suspension identifier.
 func NewAttemptSuspensionID() AttemptSuspensionID { return AttemptSuspensionID(NewId()) }
 
@@ -232,6 +243,21 @@ func ParseIntegrityEvidenceID(value string) (IntegrityEvidenceID, error) {
 // ParseIntegrityFlagID validates and converts the shared identifier representation.
 func ParseIntegrityFlagID(value string) (IntegrityFlagID, error) {
 	return parseID[IntegrityFlagID](value, "integrity_flag_id")
+}
+
+// ParseIntegrityReviewDecisionID validates and converts the shared identifier representation.
+func ParseIntegrityReviewDecisionID(value string) (IntegrityReviewDecisionID, error) {
+	return parseID[IntegrityReviewDecisionID](value, "integrity_review_decision_id")
+}
+
+// ParseSubmissionReviewID validates and converts the shared identifier representation.
+func ParseSubmissionReviewID(value string) (SubmissionReviewID, error) {
+	return parseID[SubmissionReviewID](value, "submission_review_id")
+}
+
+// ParseIntegrityDiscrepancyID validates and converts the shared identifier representation.
+func ParseIntegrityDiscrepancyID(value string) (IntegrityDiscrepancyID, error) {
+	return parseID[IntegrityDiscrepancyID](value, "integrity_discrepancy_id")
 }
 
 // ParseAttemptSuspensionID validates and converts the shared identifier representation.
@@ -416,6 +442,15 @@ func (id IntegrityEvidenceID) IsZero() bool { return id == "" }
 // IsZero reports whether the integrity-flag is the empty zero value.
 func (id IntegrityFlagID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the integrity-review-decision is the empty zero value.
+func (id IntegrityReviewDecisionID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the submission-review is the empty zero value.
+func (id SubmissionReviewID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the integrity-discrepancy is the empty zero value.
+func (id IntegrityDiscrepancyID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the attempt-suspension is the empty zero value.
 func (id AttemptSuspensionID) IsZero() bool { return id == "" }
 
@@ -547,6 +582,15 @@ func (id IntegrityEvidenceID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the integrity-flag is a canonical non-zero ID.
 func (id IntegrityFlagID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the integrity-review-decision is a canonical non-zero ID.
+func (id IntegrityReviewDecisionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the submission-review is a canonical non-zero ID.
+func (id SubmissionReviewID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the integrity-discrepancy is a canonical non-zero ID.
+func (id IntegrityDiscrepancyID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the attempt-suspension is a canonical non-zero ID.
 func (id AttemptSuspensionID) IsValid() bool { return IsValidId(string(id)) }
@@ -680,6 +724,15 @@ func (id IntegrityEvidenceID) String() string { return string(id) }
 // String returns the integrity-flag wire/database representation.
 func (id IntegrityFlagID) String() string { return string(id) }
 
+// String returns the integrity-review-decision wire/database representation.
+func (id IntegrityReviewDecisionID) String() string { return string(id) }
+
+// String returns the submission-review wire/database representation.
+func (id SubmissionReviewID) String() string { return string(id) }
+
+// String returns the integrity-discrepancy wire/database representation.
+func (id IntegrityDiscrepancyID) String() string { return string(id) }
+
 // String returns the attempt-suspension wire/database representation.
 func (id AttemptSuspensionID) String() string { return string(id) }
 
@@ -811,6 +864,15 @@ func (id IntegrityEvidenceID) MarshalText() ([]byte, error) { return marshalID(i
 
 // MarshalText encodes the integrity-flag as its canonical string.
 func (id IntegrityFlagID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the integrity-review-decision as its canonical string.
+func (id IntegrityReviewDecisionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the submission-review as its canonical string.
+func (id SubmissionReviewID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the integrity-discrepancy as its canonical string.
+func (id IntegrityDiscrepancyID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the attempt-suspension as its canonical string.
 func (id AttemptSuspensionID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -980,6 +1042,21 @@ func (id *IntegrityEvidenceID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the integrity-flag when non-empty.
 func (id *IntegrityFlagID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseIntegrityFlagID)
+}
+
+// UnmarshalText decodes and validates the integrity-review-decision when non-empty.
+func (id *IntegrityReviewDecisionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseIntegrityReviewDecisionID)
+}
+
+// UnmarshalText decodes and validates the submission-review when non-empty.
+func (id *SubmissionReviewID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseSubmissionReviewID)
+}
+
+// UnmarshalText decodes and validates the integrity-discrepancy when non-empty.
+func (id *IntegrityDiscrepancyID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseIntegrityDiscrepancyID)
 }
 
 // UnmarshalText decodes and validates the attempt-suspension when non-empty.
@@ -1164,6 +1241,15 @@ func (id IntegrityEvidenceID) MarshalJSON() ([]byte, error) { return marshalIDJS
 // MarshalJSON encodes the integrity-flag as a JSON string.
 func (id IntegrityFlagID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the integrity-review-decision as a JSON string.
+func (id IntegrityReviewDecisionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the submission-review as a JSON string.
+func (id SubmissionReviewID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the integrity-discrepancy as a JSON string.
+func (id IntegrityDiscrepancyID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the attempt-suspension as a JSON string.
 func (id AttemptSuspensionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1332,6 +1418,21 @@ func (id *IntegrityEvidenceID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the integrity-flag.
 func (id *IntegrityFlagID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseIntegrityFlagID)
+}
+
+// UnmarshalJSON decodes a JSON string into the integrity-review-decision.
+func (id *IntegrityReviewDecisionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseIntegrityReviewDecisionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the submission-review.
+func (id *SubmissionReviewID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseSubmissionReviewID)
+}
+
+// UnmarshalJSON decodes a JSON string into the integrity-discrepancy.
+func (id *IntegrityDiscrepancyID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseIntegrityDiscrepancyID)
 }
 
 // UnmarshalJSON decodes a JSON string into the attempt-suspension.

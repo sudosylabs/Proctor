@@ -81,6 +81,50 @@ func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWa
 	}
 }
 
+func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	participationID := model.NewAttemptParticipationID()
+	credential := model.NewCredentialToken()
+	submissionID, discrepancyID, signalID := model.NewSubmissionID(), model.NewIntegrityDiscrepancyID(), model.NewFocusLossSignalID()
+	receivedAt := f.at.Add(time.Second)
+	f.focusSignalID, f.discrepancyID = signalID, discrepancyID
+	f.persistence.focusErr = store.NewErrConflict("exam_attempt", "exam_attempt_state", errors.New("submitted"))
+	target := &store.ExamAttemptFocusLossDiscrepancyTarget{ExamAttemptFocusLossTarget: store.ExamAttemptFocusLossTarget{
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID, CandidateUserID: f.userID,
+		AttemptID: f.attemptID, ParticipationID: participationID, Generation: 3}, SubmissionID: submissionID}
+	discrepancy, err := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
+		ID: discrepancyID, SubmissionID: submissionID, AttemptID: f.attemptID, ParticipationID: participationID,
+		Generation: 3, Kind: model.IntegrityDiscrepancyLateFocusLoss, SchemaVersion: model.FocusLossSignalSchemaVersion,
+		SignalID: signalID, Sequence: 12, DurationMilliseconds: 2100, Source: model.FocusLossSourceDocumentHidden,
+		MissingBefore: 1, ReceivedAt: receivedAt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.persistence.lateFocusTarget = target
+	f.persistence.lateFocusResult = &store.ExamAttemptFocusLossDiscrepancyResult{Target: *target,
+		Discrepancy: discrepancy}
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{
+		SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID, ParticipationID: participationID,
+		ConnectionID: f.connectionID, Generation: 3, Sequence: 12, DurationMilliseconds: 2100,
+		Source: model.FocusLossSourceDocumentHidden, ContinuityCredential: credential})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.DiscrepancyRecorded || result.SubmissionID != submissionID || result.DiscrepancyID != discrepancyID ||
+		result.AcceptedSequence != 12 || !result.GapDetected || result.ReceivedAt != receivedAt || f.effects.focusLoss != 1 {
+		t.Fatalf("result=%#v effects=%#v", result, f.effects)
+	}
+	if f.persistence.lateFocusInput == nil || f.persistence.lateFocusInput.Access.ContinuityCredentialHash != model.HashToken(credential) ||
+		f.persistence.lateFocusInput.DiscrepancyID.IsZero() || f.persistence.lateFocusInput.SignalID != signalID ||
+		f.persistence.lateFocusInput.Sequence != 12 || f.persistence.lateFocusInput.DurationMilliseconds != 2100 {
+		t.Fatalf("late input=%#v", f.persistence.lateFocusInput)
+	}
+	if got := strings.Join(f.order, ","); got != "focus.resolve,focus.late.resolve,audit,focus.late.record,effect.focus_loss" {
+		t.Fatalf("order=%s", got)
+	}
+}
+
 func TestEvaluateFocusLossRejectsMissingOrUnknownClaimSchemaBeforePersistence(t *testing.T) {
 	t.Parallel()
 	for _, schemaVersion := range []int{0, model.FocusLossSignalSchemaVersion + 1} {

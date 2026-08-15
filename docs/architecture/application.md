@@ -36,12 +36,16 @@ The examination capability is a cohesive `app/exam` boundary.
 It owns authoring and publication policy, manager relationships, Sitting and
 Attempt lifecycle, Participation fencing, Submission coordination, integrity
 evaluation, authorization timing, audit intent, and post-commit effects.
-Selective `app/exam/resource`, `app/exam/workspace`, `app/exam/attempt`, and
-`app/exam/correction` children are justified by their distinct stable
+Selective `app/exam/resource`, `app/exam/workspace`, `app/exam/attempt`,
+`app/exam/correction`, and `app/exam/review` children are justified by their distinct stable
 mechanics: published read-only supporting material, Draft Starter Workspace
 authoring, Attempt admission/continuity, bounded Focus Loss evaluation, and
 acknowledged live Workspace coordination over opaque VFS objects, plus bounded
-live-correction staging and atomic application policy. `app/exam/attempt`
+live-correction staging and atomic application policy, and post-Submission
+integrity decisions/finalization/release. The small `app/exam/safemarkdown`
+module owns the one shared candidate-facing sanitizer used by protected Exam
+presentation and released Review remarks; it contains no authorization or
+transport policy. `app/exam/attempt`
 consumes separate bounded Store contracts for the Attempt lifecycle and mutable
 Workspace aggregate and narrow audit, content, and realtime ports. None imports
 the parent application package or selects SQL, VFS, WebSocket, Jobs, or other

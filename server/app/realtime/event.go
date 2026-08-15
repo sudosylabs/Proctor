@@ -193,6 +193,119 @@ type candidateExamAttemptSubmittedData struct {
 	SubmittedAt     string `json:"submitted_at"`
 }
 
+type managerExamIntegrityReviewChangedData struct {
+	SubmissionID  string `json:"submission_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	CandidateID   string `json:"candidate_user_id"`
+	ReviewID      string `json:"submission_review_id"`
+	ReviewState   string `json:"review_state"`
+	Revision      int64  `json:"review_revision"`
+	ReleaseState  string `json:"release_state"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+type managerExamIntegrityDiscrepancyData struct {
+	SubmissionID  string `json:"submission_id"`
+	ExamSittingID string `json:"exam_sitting_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	CandidateID   string `json:"candidate_user_id"`
+	DiscrepancyID string `json:"integrity_discrepancy_id"`
+	RecordedAt    string `json:"recorded_at"`
+}
+
+func NewExamIntegrityDiscrepancyRecordedEvent(submissionID model.SubmissionID, sittingID model.ExamSittingID,
+	attemptID model.ExamAttemptID, candidateID model.UserID, discrepancyID model.IntegrityDiscrepancyID,
+	recordedAt time.Time,
+) (RealtimeEvent, error) {
+	if !submissionID.IsValid() || !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() ||
+		!discrepancyID.IsValid() || recordedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("manager Integrity Discrepancy event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(managerExamIntegrityDiscrepancyData{SubmissionID: submissionID.String(),
+		ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(), CandidateID: candidateID.String(),
+		DiscrepancyID: discrepancyID.String(), RecordedAt: model.TimeUTC(recordedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode manager Integrity Discrepancy event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_integrity_discrepancy_recorded", Action: model.ActionSubmissionView,
+		Resource: model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, Data: data}, nil
+}
+
+type candidateStudentResultReleasedData struct {
+	SubmissionID  string `json:"submission_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	ReviewID      string `json:"submission_review_id"`
+	ReviewState   string `json:"review_state"`
+	Revision      int64  `json:"review_revision"`
+	ReleaseState  string `json:"release_state"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+// ExamIntegrityReviewEventFact is the complete bounded lifecycle fact shared
+// by manager Review events and the candidate release notification. It excludes
+// decisions, rationale, evidence, private notes, and student remarks.
+type ExamIntegrityReviewEventFact struct {
+	SubmissionID model.SubmissionID
+	AttemptID    model.ExamAttemptID
+	CandidateID  model.UserID
+	ReviewID     model.SubmissionReviewID
+	State        model.SubmissionReviewState
+	Revision     int64
+	ReleaseState model.SubmissionReviewReleaseState
+	ChangedAt    time.Time
+}
+
+func NewExamIntegrityReviewChangedEvent(fact ExamIntegrityReviewEventFact) (RealtimeEvent, error) {
+	return newManagerExamIntegrityReviewEvent("exam_integrity_review_changed", fact)
+}
+
+func NewExamIntegrityReviewFinalizedEvent(fact ExamIntegrityReviewEventFact) (RealtimeEvent, error) {
+	if fact.State != model.SubmissionReviewFinalized || fact.ReleaseState != model.SubmissionReviewWithheld {
+		return RealtimeEvent{}, errors.New("finalized Integrity Review event requires a withheld finalized Review")
+	}
+	return newManagerExamIntegrityReviewEvent("exam_integrity_review_finalized", fact)
+}
+
+func NewExamStudentResultReleasedEvent(fact ExamIntegrityReviewEventFact) (RealtimeEvent, error) {
+	if fact.State != model.SubmissionReviewFinalized || fact.ReleaseState != model.SubmissionReviewReleased {
+		return RealtimeEvent{}, errors.New("released Student Result event requires a released finalized Review")
+	}
+	return newManagerExamIntegrityReviewEvent("exam_student_result_released", fact)
+}
+
+func NewCandidateStudentResultReleasedEvent(fact ExamIntegrityReviewEventFact) (RealtimeEvent, error) {
+	if !fact.SubmissionID.IsValid() || !fact.AttemptID.IsValid() || !fact.CandidateID.IsValid() || !fact.ReviewID.IsValid() ||
+		fact.State != model.SubmissionReviewFinalized || fact.ReleaseState != model.SubmissionReviewReleased ||
+		fact.Revision < 1 || fact.ChangedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("candidate Student Result event requires valid released Review metadata")
+	}
+	data, err := json.Marshal(candidateStudentResultReleasedData{SubmissionID: fact.SubmissionID.String(),
+		ExamAttemptID: fact.AttemptID.String(), ReviewID: fact.ReviewID.String(), ReviewState: string(fact.State), Revision: fact.Revision,
+		ReleaseState: string(fact.ReleaseState), ChangedAt: model.TimeUTC(fact.ChangedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode candidate Student Result event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_student_result_released", UserID: fact.CandidateID.String(), Data: data}, nil
+}
+
+func newManagerExamIntegrityReviewEvent(name string, fact ExamIntegrityReviewEventFact) (RealtimeEvent, error) {
+	if !fact.SubmissionID.IsValid() || !fact.AttemptID.IsValid() || !fact.CandidateID.IsValid() || !fact.ReviewID.IsValid() ||
+		fact.Revision < 1 || fact.ChangedAt.IsZero() ||
+		(fact.State != model.SubmissionReviewDraft && fact.State != model.SubmissionReviewFinalized) ||
+		(fact.ReleaseState != model.SubmissionReviewWithheld && fact.ReleaseState != model.SubmissionReviewReleased) {
+		return RealtimeEvent{}, errors.New("manager Integrity Review event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(managerExamIntegrityReviewChangedData{SubmissionID: fact.SubmissionID.String(),
+		ExamAttemptID: fact.AttemptID.String(), CandidateID: fact.CandidateID.String(), ReviewID: fact.ReviewID.String(),
+		ReviewState: string(fact.State), Revision: fact.Revision, ReleaseState: string(fact.ReleaseState),
+		ChangedAt: model.TimeUTC(fact.ChangedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode manager Integrity Review event: %w", err)
+	}
+	return RealtimeEvent{Name: name, Action: model.ActionSubmissionView,
+		Resource: model.Resource{Type: model.ResourceSubmission, ID: fact.SubmissionID.String()}, Data: data}, nil
+}
+
 func NewExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
 	candidateID model.UserID, submissionID model.SubmissionID, workspaceCursor int64, manifestDigest string,
 	submittedAt time.Time,

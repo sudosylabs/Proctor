@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/exam/safemarkdown"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -129,6 +130,7 @@ type Dependencies struct {
 	NewFlag             func() model.IntegrityFlagID
 	NewSuspension       func() model.AttemptSuspensionID
 	NewFocusLossSignal  func() model.FocusLossSignalID
+	NewDiscrepancy      func() model.IntegrityDiscrepancyID
 	NewWorkspaceEntry   func() model.AttemptWorkspaceEntryID
 	NewWorkspaceObject  func() model.AttemptWorkspaceObjectID
 	NewWorkspaceVersion func() model.WorkspaceContentVersion
@@ -141,7 +143,7 @@ func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Workspace == nil || deps.Submissions == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
 		deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewAttemptID == nil ||
 		deps.NewWorkspaceID == nil || deps.NewParticipation == nil || deps.NewConnection == nil || deps.NewEvidence == nil ||
-		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewFocusLossSignal == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil || deps.NewSubmission == nil {
+		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewFocusLossSignal == nil || deps.NewDiscrepancy == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil || deps.NewSubmission == nil {
 		return nil, errors.New("Exam Attempt dependencies are required")
 	}
 	return &Service{deps: deps}, nil
@@ -705,11 +707,11 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 	}
 	result := Presentation{AttemptID: stored.AttemptID, SittingID: stored.SittingID,
 		AdmissionRevisionID: stored.AdmissionRevisionID, CurrentRevisionID: stored.CurrentRevisionID,
-		Title: stored.Title, InstructionsMarkdown: sanitizeCandidateMarkdown(stored.InstructionsMarkdown),
+		Title: stored.Title, InstructionsMarkdown: safemarkdown.Sanitize(stored.InstructionsMarkdown),
 		FocusLossCollectionEnabled: stored.FocusLossCollectionEnabled, Resources: make([]Resource, len(stored.Resources))}
 	for index, item := range stored.Resources {
 		result.Resources[index] = Resource{ResourceID: item.ResourceID, DisplayName: item.DisplayName,
-			DescriptionMarkdown: sanitizeCandidateMarkdown(item.DescriptionMarkdown), Position: item.Position, MediaType: item.MediaType,
+			DescriptionMarkdown: safemarkdown.Sanitize(item.DescriptionMarkdown), Position: item.Position, MediaType: item.MediaType,
 			SizeBytes: item.SizeBytes, SHA256: item.SHA256}
 	}
 	return result, nil

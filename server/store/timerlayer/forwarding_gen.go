@@ -23,6 +23,8 @@ type timedStores struct {
 	examAttemptWorkspaceOnce sync.Once
 	examCorrection           store.ExamCorrectionStore
 	examCorrectionOnce       sync.Once
+	examIntegrityReview      store.ExamIntegrityReviewStore
+	examIntegrityReviewOnce  sync.Once
 	examResource             store.ExamResourceStore
 	examResourceOnce         sync.Once
 	examRevision             store.ExamRevisionStore
@@ -105,6 +107,11 @@ type timedExamAttemptWorkspaceStore struct {
 type timedExamCorrectionStore struct {
 	layer *Layer
 	next  store.ExamCorrectionStore
+}
+
+type timedExamIntegrityReviewStore struct {
+	layer *Layer
+	next  store.ExamIntegrityReviewStore
 }
 
 type timedExamResourceStore struct {
@@ -370,6 +377,16 @@ func (l *Layer) ExamSubmission() store.ExamSubmissionStore {
 		}
 	})
 	return l.stores.examSubmission
+}
+
+func (l *Layer) ExamIntegrityReview() store.ExamIntegrityReviewStore {
+	l.stores.examIntegrityReviewOnce.Do(func() {
+		next := l.next.ExamIntegrityReview()
+		if next != nil {
+			l.stores.examIntegrityReview = &timedExamIntegrityReviewStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examIntegrityReview
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -690,6 +707,18 @@ func (s *timedExamAttemptStore) RecordFocusLoss(arg0 context.Context, arg1 *stor
 	})
 }
 
+func (s *timedExamAttemptStore) ResolveEndedFocusLossTarget(arg0 context.Context, arg1 store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveEndedFocusLossTarget), func() (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
+		return s.next.ResolveEndedFocusLossTarget(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) RecordEndedFocusLoss(arg0 context.Context, arg1 *store.ExamAttemptFocusLossDiscrepancy) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRecordEndedFocusLoss), func() (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
+		return s.next.RecordEndedFocusLoss(arg0, arg1)
+	})
+}
+
 func (s *timedExamAttemptStore) ResolveParticipationExpiry(arg0 context.Context, arg1 model.ExamAttemptID, arg2 model.AttemptParticipationID, arg3 int64) (*store.ExamAttemptParticipationExpiryDue, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveParticipationExpiry), func() (*store.ExamAttemptParticipationExpiryDue, error) {
 		return s.next.ResolveParticipationExpiry(arg0, arg1, arg2, arg3)
@@ -825,6 +854,66 @@ func (s *timedExamCorrectionStore) MarkResourceStageReady(arg0 context.Context, 
 func (s *timedExamCorrectionStore) Apply(arg0 context.Context, arg1 *store.ExamCorrectionApplication, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodApply), func() (*store.ExamCorrectionResult, error) {
 		return s.next.Apply(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) Resolve(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamIntegrityReviewAuthorization, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodResolve), func() (*store.ExamIntegrityReviewAuthorization, error) {
+		return s.next.Resolve(arg0, arg1)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) Get(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamSubmissionReviewSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodGet), func() (*store.ExamSubmissionReviewSnapshot, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) ListFlags(arg0 context.Context, arg1 store.ExamIntegrityFlagListOptions) (*store.ExamIntegrityFlagPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodListFlags), func() (*store.ExamIntegrityFlagPage, error) {
+		return s.next.ListFlags(arg0, arg1)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) ListEvidence(arg0 context.Context, arg1 store.ExamIntegrityEvidenceListOptions) (*store.ExamIntegrityEvidencePage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodListEvidence), func() (*store.ExamIntegrityEvidencePage, error) {
+		return s.next.ListEvidence(arg0, arg1)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) ListDiscrepancies(arg0 context.Context, arg1 store.ExamIntegrityDiscrepancyListOptions) (*store.ExamIntegrityDiscrepancyPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodListDiscrepancies), func() (*store.ExamIntegrityDiscrepancyPage, error) {
+		return s.next.ListDiscrepancies(arg0, arg1)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) SaveDecision(arg0 context.Context, arg1 *store.ExamIntegrityReviewDecisionMutation, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodSaveDecision), func() (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.SaveDecision(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) UpdateDraft(arg0 context.Context, arg1 *store.ExamIntegrityReviewDraftMutation, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodUpdateDraft), func() (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.UpdateDraft(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) Finalize(arg0 context.Context, arg1 *store.ExamIntegrityReviewFinalize, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodFinalize), func() (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.Finalize(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) Release(arg0 context.Context, arg1 *store.ExamIntegrityReviewRelease, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodRelease), func() (*store.ExamIntegrityReviewMutationResult, error) {
+		return s.next.Release(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamIntegrityReviewStore) GetReleasedStudentResult(arg0 context.Context, arg1 model.ExamAttemptID, arg2 model.UserID) (*model.StudentResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodGetReleasedStudentResult), func() (*model.StudentResult, error) {
+		return s.next.GetReleasedStudentResult(arg0, arg1, arg2)
 	})
 }
 
@@ -2274,6 +2363,7 @@ var (
 	_ store.ExamAttemptStore          = (*timedExamAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore = (*timedExamAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore       = (*timedExamCorrectionStore)(nil)
+	_ store.ExamIntegrityReviewStore  = (*timedExamIntegrityReviewStore)(nil)
 	_ store.ExamResourceStore         = (*timedExamResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*timedExamRevisionStore)(nil)
 	_ store.ExamSittingStore          = (*timedExamSittingStore)(nil)

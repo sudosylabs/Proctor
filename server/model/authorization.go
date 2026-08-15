@@ -42,6 +42,10 @@ const (
 	ActionExamSittingParticipate    Action = "exam.sitting.participate"
 	ActionSubmissionView            Action = "submission.view"
 	ActionSubmissionViewOverride    Action = "submission.view.override"
+	ActionSubmissionReview          Action = "submission.review"
+	ActionSubmissionReviewOverride  Action = "submission.review.override"
+	ActionSubmissionRelease         Action = "submission.release"
+	ActionSubmissionReleaseOverride Action = "submission.release.override"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -192,6 +196,22 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionSubmissionViewOverride: {
 		Action: ActionSubmissionViewOverride, ResourceType: ResourceSubmission,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionSubmissionReview: {
+		Action: ActionSubmissionReview, ResourceType: ResourceSubmission,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionSubmissionReviewOverride: {
+		Action: ActionSubmissionReviewOverride, ResourceType: ResourceSubmission,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionSubmissionRelease: {
+		Action: ActionSubmissionRelease, ResourceType: ResourceSubmission,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionSubmissionReleaseOverride: {
+		Action: ActionSubmissionReleaseOverride, ResourceType: ResourceSubmission,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionAcademicUnitView: {

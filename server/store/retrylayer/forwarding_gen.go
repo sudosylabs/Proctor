@@ -20,6 +20,8 @@ type retryStores struct {
 	examAttemptWorkspaceOnce sync.Once
 	examCorrection           store.ExamCorrectionStore
 	examCorrectionOnce       sync.Once
+	examIntegrityReview      store.ExamIntegrityReviewStore
+	examIntegrityReviewOnce  sync.Once
 	examResource             store.ExamResourceStore
 	examResourceOnce         sync.Once
 	examRevision             store.ExamRevisionStore
@@ -101,6 +103,11 @@ type examAttemptWorkspaceStore struct {
 
 type examCorrectionStore struct {
 	store.ExamCorrectionStore
+	layer *Layer
+}
+
+type examIntegrityReviewStore struct {
+	store.ExamIntegrityReviewStore
 	layer *Layer
 }
 
@@ -369,6 +376,16 @@ func (l *Layer) ExamSubmission() store.ExamSubmissionStore {
 	return l.stores.examSubmission
 }
 
+func (l *Layer) ExamIntegrityReview() store.ExamIntegrityReviewStore {
+	l.stores.examIntegrityReviewOnce.Do(func() {
+		next := l.Store.ExamIntegrityReview()
+		if next != nil {
+			l.stores.examIntegrityReview = &examIntegrityReviewStore{ExamIntegrityReviewStore: next, layer: l}
+		}
+	})
+	return l.stores.examIntegrityReview
+}
+
 func (l *Layer) ExamResource() store.ExamResourceStore {
 	l.stores.examResourceOnce.Do(func() {
 		next := l.Store.ExamResource()
@@ -615,6 +632,7 @@ var (
 	_ store.ExamAttemptStore          = (*examAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore = (*examAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore       = (*examCorrectionStore)(nil)
+	_ store.ExamIntegrityReviewStore  = (*examIntegrityReviewStore)(nil)
 	_ store.ExamResourceStore         = (*examResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*examRevisionStore)(nil)
 	_ store.ExamSittingStore          = (*examSittingStore)(nil)

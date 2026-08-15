@@ -134,6 +134,31 @@ func TestAuthorizeSubmissionViewUsesCanonicalSubmissionResourceAndCurrentManager
 	}
 }
 
+func TestAuthorizeSubmissionReviewAndReleaseUseDistinctCurrentPermissions(t *testing.T) {
+	t.Parallel()
+	fixture := newFixture(t)
+	submissionID := model.NewSubmissionID()
+
+	override, err := fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.call, fixture.examID, submissionID)
+	if err != nil || override || fixture.authorizer.action != model.ActionSubmissionReview {
+		t.Fatalf("ordinary Review authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
+	}
+	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.call, fixture.examID, submissionID)
+	if err != nil || override || fixture.authorizer.action != model.ActionSubmissionRelease {
+		t.Fatalf("ordinary release authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
+	}
+
+	fixture.memberships.items = nil
+	override, err = fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.call, fixture.examID, submissionID)
+	if err != nil || !override || fixture.authorizer.action != model.ActionSubmissionReviewOverride {
+		t.Fatalf("Review override authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
+	}
+	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.call, fixture.examID, submissionID)
+	if err != nil || !override || fixture.authorizer.action != model.ActionSubmissionReleaseOverride {
+		t.Fatalf("release override authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
+	}
+}
+
 func TestListAppliesBoundedFiltersAndLookAhead(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)

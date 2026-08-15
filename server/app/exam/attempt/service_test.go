@@ -1017,6 +1017,7 @@ type fixture struct {
 	managerOverride           bool
 	focusSignalID             model.FocusLossSignalID
 	focusFlagID               model.IntegrityFlagID
+	discrepancyID             model.IntegrityDiscrepancyID
 	submissionID              model.SubmissionID
 	submissionAuthorizationID model.SubmissionID
 }
@@ -1056,6 +1057,12 @@ func newFixture(t *testing.T) *fixture {
 				return f.focusSignalID
 			}
 			return model.NewFocusLossSignalID()
+		},
+		NewDiscrepancy: func() model.IntegrityDiscrepancyID {
+			if f.discrepancyID.IsValid() {
+				return f.discrepancyID
+			}
+			return model.NewIntegrityDiscrepancyID()
 		},
 		NewWorkspaceEntry:   func() model.AttemptWorkspaceEntryID { return entryIDOrNew(f.workspace) },
 		NewWorkspaceObject:  model.NewAttemptWorkspaceObjectID,
@@ -1241,6 +1248,10 @@ type attemptStoreFake struct {
 	focusSignal        *store.ExamAttemptFocusLossSignal
 	focusResult        *store.ExamAttemptFocusLossResult
 	focusErr           error
+	lateFocusTarget    *store.ExamAttemptFocusLossDiscrepancyTarget
+	lateFocusInput     *store.ExamAttemptFocusLossDiscrepancy
+	lateFocusResult    *store.ExamAttemptFocusLossDiscrepancyResult
+	lateFocusErr       error
 	expiryDue          []store.ExamAttemptParticipationExpiryDue
 	resolvedExpiry     *store.ExamAttemptParticipationExpiryDue
 	resolveExpiryErr   error
@@ -1436,6 +1447,16 @@ func (fake *attemptStoreFake) RecordFocusLoss(_ context.Context, input *store.Ex
 	fake.f.order = append(fake.f.order, "focus.record")
 	fake.focusSignal = input
 	return fake.focusResult, fake.focusErr
+}
+func (fake *attemptStoreFake) ResolveEndedFocusLossTarget(_ context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
+	fake.f.order = append(fake.f.order, "focus.late.resolve")
+	fake.focusAccess = access
+	return fake.lateFocusTarget, fake.lateFocusErr
+}
+func (fake *attemptStoreFake) RecordEndedFocusLoss(_ context.Context, input *store.ExamAttemptFocusLossDiscrepancy) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {
+	fake.f.order = append(fake.f.order, "focus.late.record")
+	fake.lateFocusInput = input
+	return fake.lateFocusResult, fake.lateFocusErr
 }
 func (fake *attemptStoreFake) ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*store.ExamAttemptParticipationExpiryDue, error) {
 	fake.f.order = append(fake.f.order, "expiry.resolve")

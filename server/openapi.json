@@ -1944,6 +1944,103 @@
         "responses": {"200": {"$ref": "#/components/responses/ExamSubmissionFileContent"}, "304": {"$ref": "#/components/responses/ExamSubmissionFileNotModified"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/submissions/{submission_id}/integrity-flags": {
+      "parameters": [{"$ref": "#/components/parameters/SubmissionID"}],
+      "get": {
+        "operationId": "listExamIntegrityFlags", "summary": "List bounded integrity Flag summaries for one sealed Submission",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, {"name": "cursor", "in": "query", "schema": {"type": "string", "description": "Opaque versioned Flag identity cursor."}}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityFlagListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/submissions/{submission_id}/integrity-flags/{integrity_flag_id}/evidence": {
+      "parameters": [{"$ref": "#/components/parameters/SubmissionID"}, {"$ref": "#/components/parameters/IntegrityFlagID"}],
+      "get": {
+        "operationId": "listExamIntegrityEvidence", "summary": "List bounded purpose-specific evidence for one Submission Flag",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, {"name": "cursor", "in": "query", "schema": {"type": "string", "description": "Opaque versioned Evidence identity cursor."}}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityEvidenceListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/submissions/{submission_id}/integrity-discrepancies": {
+      "parameters": [{"$ref": "#/components/parameters/SubmissionID"}],
+      "get": {
+        "operationId": "listExamIntegrityDiscrepancies", "summary": "List bounded late records retained after integrity collection ended",
+        "description": "Late records are explicit discrepancies and never alter a finalized or released Review inventory.",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, {"name": "cursor", "in": "query", "schema": {"type": "string", "description": "Opaque versioned Discrepancy identity cursor."}}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityDiscrepancyListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/submissions/{submission_id}/review": {
+      "parameters": [{"$ref": "#/components/parameters/SubmissionID"}],
+      "get": {
+        "operationId": "getExamIntegrityReview", "summary": "Get the authorized manager Review snapshot",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityReviewOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "put": {
+        "operationId": "updateExamIntegrityReview", "summary": "Create or revise private notes and approved student remarks",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/UpdateExamIntegrityReview"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityReviewMutationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/submissions/{submission_id}/review/decisions/{integrity_flag_id}": {
+      "parameters": [{"$ref": "#/components/parameters/SubmissionID"}, {"$ref": "#/components/parameters/IntegrityFlagID"}],
+      "put": {
+        "operationId": "saveExamIntegrityDecision", "summary": "Create or revise the one current decision for a Flag",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/SaveExamIntegrityDecision"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityReviewMutationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/submissions/{submission_id}/review/finalize": {
+      "parameters": [{"$ref": "#/components/parameters/SubmissionID"}],
+      "post": {
+        "operationId": "finalizeExamIntegrityReview", "summary": "Freeze the complete Review and bounded evidence inventory",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/TerminalExamIntegrityReview"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityReviewMutationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/submissions/{submission_id}/review/release": {
+      "parameters": [{"$ref": "#/components/parameters/SubmissionID"}],
+      "post": {
+        "operationId": "releaseStudentExamResult", "summary": "Explicitly release the approved candidate result projection",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete", "exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/TerminalExamIntegrityReview"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamIntegrityReviewMutationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exam-attempts/{exam_attempt_id}/result": {
+      "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}],
+      "get": {
+        "operationId": "getStudentExamResult", "summary": "Get only the explicitly released candidate result projection",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid", "resource.not_found", "exam.integrity_review.invalid", "exam.integrity_review.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/StudentExamResultOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "operationId": "listJobs", "summary": "List allowlisted durable Jobs",
@@ -2100,6 +2197,12 @@
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "IntegrityFlagID": {
+        "name": "integrity_flag_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "AttemptWorkspaceEntryID": {
         "name": "attempt_workspace_entry_id",
         "in": "path",
@@ -2238,6 +2341,18 @@
 		"required": true,
 		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitExamAttemptRequest"}}}
 	  },
+      "SaveExamIntegrityDecision": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SaveExamIntegrityDecisionRequest"}}}
+      },
+      "UpdateExamIntegrityReview": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateExamIntegrityReviewRequest"}}}
+      },
+      "TerminalExamIntegrityReview": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TerminalExamIntegrityReviewRequest"}}}
+      },
 	  "CreateCandidateWorkspaceDirectory": {
 		"required": true,
 		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateCandidateWorkspaceDirectoryRequest"}}}
@@ -2506,6 +2621,36 @@
         "description": "Protected immutable Submission manifest page",
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSubmissionManifestResponse"}}}
+      },
+      "ExamIntegrityFlagListOK": {
+        "description": "Bounded manager-authorized integrity Flag summaries",
+        "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamIntegrityFlagListResponse"}}}
+      },
+      "ExamIntegrityEvidenceListOK": {
+        "description": "Bounded manager-authorized purpose-specific evidence",
+        "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamIntegrityEvidenceListResponse"}}}
+      },
+      "ExamIntegrityDiscrepancyListOK": {
+        "description": "Bounded manager-authorized post-collection discrepancies",
+        "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamIntegrityDiscrepancyListResponse"}}}
+      },
+      "ExamIntegrityReviewOK": {
+        "description": "Manager-authorized Review snapshot including private Review fields",
+        "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamIntegrityReviewResponse"}}}
+      },
+      "ExamIntegrityReviewMutationOK": {
+        "description": "Committed Integrity Review mutation or its exact replay",
+        "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamIntegrityReviewMutationResponse"}}}
+      },
+      "StudentExamResultOK": {
+        "description": "Narrow explicitly released candidate result without evidence or private manager content",
+        "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StudentExamResultResponse"}}}
       },
       "ExamSubmissionFileContent": {
         "description": "Authorized inline immutable Submission file content; not a public URL or export response",
@@ -3123,6 +3268,126 @@
           "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamSubmissionManifestItemResponse"}},
           "next_cursor": {"type": "string", "description": "Opaque versioned keyset cursor containing only the last stable Entry identity; no path or storage selector enters the URL."}
         }
+      },
+      "SaveExamIntegrityDecisionRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_review_revision", "expected_decision_revision", "outcome", "private_rationale"],
+        "properties": {
+          "submission_review_id": {"$ref": "#/components/schemas/ID", "description": "Required when revising an existing Review; omitted only when creating its first decision."},
+          "expected_review_revision": {"type": "integer", "format": "int64", "minimum": 0},
+          "expected_decision_revision": {"type": "integer", "format": "int64", "minimum": 0},
+          "outcome": {"type": "string", "enum": ["confirmed", "dismissed", "inconclusive"], "description": "A non-academic integrity disposition, never a grade or guilt verdict."},
+          "private_rationale": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Required already-trimmed manager-only UTF-8 rationale, at most 1000 Unicode scalar values and 4000 bytes."}
+        }
+      },
+      "UpdateExamIntegrityReviewRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_review_revision", "manager_notes", "student_remarks_markdown"],
+        "properties": {
+          "submission_review_id": {"$ref": "#/components/schemas/ID", "description": "Required when revising an existing Review; omitted only when creating it."},
+          "expected_review_revision": {"type": "integer", "format": "int64", "minimum": 0},
+          "manager_notes": {"type": "string", "maxLength": 3000, "description": "Already-trimmed private manager UTF-8 notes, at most 3000 Unicode scalar values and 12000 bytes."},
+          "student_remarks_markdown": {"type": "string", "maxLength": 8192, "description": "Optional approved student-facing Markdown, at most 8192 Unicode scalar values and 32768 UTF-8 bytes; sanitized again on candidate projection."}
+        }
+      },
+      "TerminalExamIntegrityReviewRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["submission_review_id", "expected_review_revision"],
+        "properties": {
+          "submission_review_id": {"$ref": "#/components/schemas/ID"},
+          "expected_review_revision": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "ExamIntegrityReviewDecisionResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "integrity_flag_id", "outcome", "revision", "actor_user_id", "private_rationale", "decided_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "integrity_flag_id": {"$ref": "#/components/schemas/ID"},
+          "outcome": {"type": "string", "enum": ["confirmed", "dismissed", "inconclusive"]},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1}, "actor_user_id": {"$ref": "#/components/schemas/ID"},
+          "private_rationale": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Manager-only private rationale."},
+          "decided_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ExamSubmissionReviewResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "submission_id", "state", "release_state", "revision", "created_by_user_id", "manager_notes", "student_remarks_markdown", "flag_count", "evidence_count", "discrepancy_count", "created_at", "updated_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "submission_id": {"$ref": "#/components/schemas/ID"},
+          "state": {"type": "string", "enum": ["draft", "finalized"]}, "release_state": {"type": "string", "enum": ["withheld", "released"]},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1}, "created_by_user_id": {"$ref": "#/components/schemas/ID"},
+          "manager_notes": {"type": "string", "maxLength": 3000, "description": "Manager-only private notes."},
+          "student_remarks_markdown": {"type": "string", "maxLength": 8192},
+          "flag_count": {"type": "integer", "minimum": 0, "maximum": 200}, "evidence_count": {"type": "integer", "minimum": 0, "maximum": 20000},
+          "discrepancy_count": {"type": "integer", "minimum": 0, "maximum": 200}, "evidence_inventory_digest": {"$ref": "#/components/schemas/SHA256"},
+          "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"},
+          "finalized_at": {"type": "string", "format": "date-time"}, "finalized_by_user_id": {"$ref": "#/components/schemas/ID"},
+          "released_at": {"type": "string", "format": "date-time"}, "released_by_user_id": {"$ref": "#/components/schemas/ID"}
+        }
+      },
+      "ExamIntegrityReviewResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["submission_id", "exam_id", "exam_sitting_id", "exam_attempt_id", "candidate_user_id", "integrity_state", "unresolved_integrity_count", "decisions"],
+        "properties": {
+          "submission_id": {"$ref": "#/components/schemas/ID"}, "exam_id": {"$ref": "#/components/schemas/ID"},
+          "exam_sitting_id": {"$ref": "#/components/schemas/ID"}, "exam_attempt_id": {"$ref": "#/components/schemas/ID"},
+          "candidate_user_id": {"$ref": "#/components/schemas/ID"}, "integrity_state": {"type": "string", "enum": ["settled", "gapped"]},
+          "unresolved_integrity_count": {"type": "integer", "format": "int64", "minimum": 0},
+          "review": {"$ref": "#/components/schemas/ExamSubmissionReviewResponse"},
+          "decisions": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamIntegrityReviewDecisionResponse"}}
+        }
+      },
+      "ExamIntegrityReviewMutationResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["submission_id", "exam_attempt_id", "candidate_user_id", "review"],
+        "properties": {
+          "submission_id": {"$ref": "#/components/schemas/ID"}, "exam_attempt_id": {"$ref": "#/components/schemas/ID"},
+          "candidate_user_id": {"$ref": "#/components/schemas/ID"}, "review": {"$ref": "#/components/schemas/ExamSubmissionReviewResponse"},
+          "decision": {"$ref": "#/components/schemas/ExamIntegrityReviewDecisionResponse"}
+        }
+      },
+      "ExamIntegrityFlagResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "exam_attempt_id", "generation", "policy_kind", "state", "created_at", "evidence_count", "evidence_overflow_count", "unresolved_missing_count"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "exam_attempt_id": {"$ref": "#/components/schemas/ID"},
+          "generation": {"type": "integer", "format": "int64", "minimum": 1}, "policy_kind": {"type": "string", "enum": ["connection_loss", "focus_loss"]},
+          "state": {"type": "string", "enum": ["open", "closed"]}, "created_at": {"type": "string", "format": "date-time"},
+          "evidence_count": {"type": "integer", "minimum": 0, "maximum": 100}, "evidence_overflow_count": {"type": "integer", "format": "int64", "minimum": 0},
+          "unresolved_missing_count": {"type": "integer", "format": "int64", "minimum": 0}
+        }
+      },
+      "ExamIntegrityFlagListResponse": {"type": "object", "additionalProperties": false, "required": ["items"], "properties": {"items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamIntegrityFlagResponse"}}, "next_cursor": {"type": "string"}}},
+      "ExamIntegrityEvidenceResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "exam_attempt_id", "participation_id", "integrity_flag_id", "generation", "policy_kind", "sequence", "duration_milliseconds", "missing_before", "observed_at", "recorded_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "exam_attempt_id": {"$ref": "#/components/schemas/ID"}, "participation_id": {"$ref": "#/components/schemas/ID"},
+          "integrity_flag_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1},
+          "policy_kind": {"type": "string", "enum": ["connection_loss", "focus_loss"]}, "signal_id": {"$ref": "#/components/schemas/ID"},
+          "sequence": {"type": "integer", "format": "int64", "minimum": 0}, "duration_milliseconds": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 86400000},
+          "source": {"type": "string", "enum": ["application_backgrounded", "document_hidden", "fullscreen_exited", "window_blur"]},
+          "missing_before": {"type": "integer", "format": "int64", "minimum": 0}, "observed_at": {"type": "string", "format": "date-time"}, "recorded_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ExamIntegrityEvidenceListResponse": {"type": "object", "additionalProperties": false, "required": ["items"], "properties": {"items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamIntegrityEvidenceResponse"}}, "next_cursor": {"type": "string"}}},
+      "ExamIntegrityDiscrepancyResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "exam_attempt_id", "participation_id", "generation", "kind", "schema_version", "focus_loss_signal_id", "sequence", "duration_milliseconds", "missing_before", "received_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "exam_attempt_id": {"$ref": "#/components/schemas/ID"}, "participation_id": {"$ref": "#/components/schemas/ID"},
+          "generation": {"type": "integer", "format": "int64", "minimum": 1}, "kind": {"type": "string", "const": "late_focus_loss"},
+          "schema_version": {"type": "integer", "const": 1}, "focus_loss_signal_id": {"$ref": "#/components/schemas/ID"},
+          "sequence": {"type": "integer", "format": "int64", "minimum": 1}, "duration_milliseconds": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 86400000},
+          "source": {"type": "string", "enum": ["application_backgrounded", "document_hidden", "fullscreen_exited", "window_blur"]},
+          "missing_before": {"type": "integer", "format": "int64", "minimum": 0}, "received_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ExamIntegrityDiscrepancyListResponse": {"type": "object", "additionalProperties": false, "required": ["items"], "properties": {"items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamIntegrityDiscrepancyResponse"}}, "next_cursor": {"type": "string"}}},
+      "StudentExamResultResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["submission_review_id", "submission_id", "exam_attempt_id", "student_remarks_markdown", "released_at"],
+        "properties": {"submission_review_id": {"$ref": "#/components/schemas/ID"}, "submission_id": {"$ref": "#/components/schemas/ID"}, "exam_attempt_id": {"$ref": "#/components/schemas/ID"}, "student_remarks_markdown": {"type": "string", "maxLength": 8192}, "released_at": {"type": "string", "format": "date-time"}}
       },
 	  "CandidateWorkspaceMutationResponse": {
 		"type": "object", "additionalProperties": false, "required": ["workspace_id", "workspace_cursor", "operation"],

@@ -6,6 +6,8 @@ package attempt
 import (
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/app/exam/safemarkdown"
 )
 
 func TestCandidateMarkdownSanitizerSecurityTable(t *testing.T) {
@@ -33,7 +35,7 @@ func TestCandidateMarkdownSanitizerSecurityTable(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got := sanitizeCandidateMarkdown(test.input)
+			got := safemarkdown.Sanitize(test.input)
 			for _, expected := range test.contains {
 				if !strings.Contains(got, expected) {
 					t.Fatalf("safe Markdown %q was removed: %q", expected, got)
@@ -52,7 +54,7 @@ func TestCandidateMarkdownSanitizerRetainsInertFormattingAndCode(t *testing.T) {
 	t.Parallel()
 	input := "# Heading\n\nUse **bold**, _emphasis_, and `code <script>x</script> ![sample](https://example.test/x)`.\n\n" +
 		"```html\n<img src=https://example.test/pixel>\n```\n\n[Safe](https://example.test/guide)"
-	got := sanitizeCandidateMarkdown(input)
+	got := safemarkdown.Sanitize(input)
 	for _, safe := range []string{"# Heading", "**bold**", "_emphasis_", "`code <script>x</script> ![sample](https://example.test/x)`",
 		"```html\n<img src=https://example.test/pixel>\n```", "[Safe](https://example.test/guide)"} {
 		if !strings.Contains(got, safe) {
@@ -70,7 +72,7 @@ func TestCandidateMarkdownSanitizerRemovesActiveAndRemoteLoadingConstructs(t *te
 ![inline](https://evil.test/image) ![reference][remote]
 [remote]: https://evil.test/reference
 [relative](guide/start) [mail](mailto:help@example.test)`
-	got := sanitizeCandidateMarkdown(input)
+	got := safemarkdown.Sanitize(input)
 	for _, forbidden := range []string{"<script", "a.js", "alert(1)", "<iframe", "frame", "<img", "pixel", "javascript:",
 		"data:text", "file:", "![", "evil.test", "[remote]:"} {
 		if strings.Contains(strings.ToLower(got), forbidden) {

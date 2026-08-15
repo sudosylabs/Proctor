@@ -5,7 +5,8 @@
 // fencing, authenticated renewal, database-time expiry enforcement, bounded
 // Focus Loss evaluation, policy suspension and manager re-allow,
 // correction-aware protected presentation, and the acknowledged mutable
-// Attempt Workspace. It also owns voluntary immutable Submission sealing,
+// Attempt Workspace. Ended Focus Loss claims enter its explicit bounded
+// discrepancy use case and can never rewrite collected evidence. It also owns voluntary immutable Submission sealing,
 // actorless per-Attempt sealing invoked by bounded Sitting-close work, and
 // purpose-specific protected manager inspection. Workspace use cases own
 // path-safe manifest and journal recovery, selective entry fences, staged
@@ -17,7 +18,7 @@
 // exam package remains the public application facade.
 //
 // The package depends inward on model, the bounded Exam Attempt, Attempt
-// Workspace, and Submission Store contracts, and narrow consumer-owned audit,
-// content, and realtime ports. It never imports its parent package, transports,
-// concrete adapters, or platform.
+// Workspace, and Submission Store contracts, the shared safemarkdown leaf,
+// and narrow consumer-owned audit, content, and realtime ports. It never
+// imports its parent package, transports, concrete adapters, or platform.
 package attempt

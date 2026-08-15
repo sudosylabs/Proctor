@@ -11,6 +11,7 @@ import (
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
+	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/model"
@@ -61,10 +62,20 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
 		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: model.NewIntegrityFlagID,
 		NewSuspension: model.NewAttemptSuspensionID, NewFocusLossSignal: model.NewFocusLossSignalID,
+		NewDiscrepancy:    model.NewIntegrityDiscrepancyID,
 		NewWorkspaceEntry: model.NewAttemptWorkspaceEntryID, NewWorkspaceObject: model.NewAttemptWorkspaceObjectID,
 		NewWorkspaceVersion: model.NewWorkspaceContentVersion,
 		NewSubmission:       model.NewSubmissionID,
 	})
+	if err != nil {
+		return examinationConstruction{}, err
+	}
+	reviewEffects := examIntegrityReviewRealtimeEffects{realtime: foundation.realtime}
+	reviews, err := examreview.New(examreview.Dependencies{Persistence: deps.Store.ExamIntegrityReview(),
+		Authorizer: examIntegrityReviewAuthorizationAdapter{reviews: deps.Store.ExamIntegrityReview(), sittings: sittings},
+		Auditor:    examIntegrityReviewAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Effects:    reviewEffects, EffectFailures: reviewEffects, Now: time.Now,
+		NewReviewID: model.NewSubmissionReviewID, NewDecisionID: model.NewIntegrityReviewDecisionID})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
@@ -106,7 +117,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, attempts: attempts,
+	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, attempts: attempts, reviews: reviews,
 		resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
 }
 

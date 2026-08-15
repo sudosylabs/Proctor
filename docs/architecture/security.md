@@ -54,7 +54,8 @@ the false claim that content never reaches the device.
 
 Exam instructions and resource descriptions are untrusted authored Markdown.
 Presentation sanitizes active content, unsafe URLs, and automatic remote loads;
-the server does not moderate academic meaning. Workspace paths are logical
+approved student-facing Review remarks pass through the same sanitizer before
+candidate projection. The server does not moderate academic meaning. Workspace paths are logical
 PostgreSQL metadata and never VFS keys, authorization inputs, or evidence that
 a directory exists in object storage.
 
@@ -67,6 +68,15 @@ remarks do not enter ordinary logs, realtime events, or generic audit fields.
 Authorized managers may inspect sealed Submissions and bounded evidence only
 through their application permissions. The integrity review records decisions
 and remarks; it is not a grading or academic-outcome subsystem.
+
+Manager Review responses may contain bounded private notes, decision
+rationales, and purpose-specific evidence only after current Submission
+authorization. Those values are excluded from generic audit projections,
+ordinary logs, and realtime events. Before explicit release, the candidate
+result is concealed as not found. After release, the candidate receives only
+safe identities, sanitized approved remarks, and server release time. A late
+Focus Loss record is retained in its bounded discrepancy stream and is never
+silently converted to evidence or used to rewrite a finalized inventory.
 
 Submission inspection rechecks the current Exam Manager relationship and the
 dedicated Submission-view scope or override against the canonical Submission

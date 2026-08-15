@@ -103,6 +103,8 @@ type examSittingUseCases interface {
 	Get(context.Context, examsitting.Call, model.ExamID, model.ExamSittingID) (store.ExamSittingSnapshot, error)
 	AuthorizeView(context.Context, examsitting.Call, model.ExamSittingID) error
 	AuthorizeSubmissionView(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) error
+	AuthorizeSubmissionReview(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
+	AuthorizeSubmissionRelease(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
 	AuthorizeManage(context.Context, examsitting.Call, model.ExamSittingID) (bool, error)
 	List(context.Context, examsitting.Call, examsitting.ListQuery) (examsitting.Page, error)
 	UpdateSchedule(context.Context, examsitting.Call, examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error)

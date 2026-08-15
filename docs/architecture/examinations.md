@@ -489,9 +489,33 @@ Every submitted Attempt terminates integrity collection as `Settled` or
 terminal and every Flag has a `Confirmed`, `Dismissed`, or `Inconclusive`
 decision. It contains private manager notes and optional student-facing
 Markdown remarks, but no grade, score, rubric, pass/fail, or academic outcome.
-Finalization freezes the Review; explicit release later exposes only its
-approved student projection. Late records from an ended collection cannot
-silently alter it.
+Each decision has one current revision, deciding actor and server time, plus a
+bounded private rationale. Draft Review changes and decisions advance the one
+Review revision so concurrent manager edits cannot silently overwrite each
+other.
+
+Finalization is one named, audited, idempotent operation. It locks the sealed
+Submission, requires terminal collection and a decision for every current
+Flag, caps the inventory at 200 Flags, 20,000 evidence rows, and 200 explicit
+discrepancies, and freezes their stable identities and decision revisions in a
+canonical SHA-256 digest. The finalized Review has no mutable backdoor.
+Release is a separate one-way `submission.release` operation with its own
+current authorization, audit, revision fence, and idempotent outcome. Before
+release, the candidate result selector is concealed as not found. After
+release it returns only Review, Submission, and Attempt identities, sanitized
+approved Markdown remarks, and release time; it never returns evidence,
+decisions, private notes/rationales, sealed Workspace content, or an academic
+grade.
+
+A versioned Focus Loss record arriving through the exact retained causal
+Participation/Connection selector after Submission is not discarded or
+reinterpreted as evidence. It enters a bounded append-only `late_focus_loss`
+discrepancy stream with PostgreSQL receipt time and monotonic sequence/gap
+semantics. Exact replay returns the retained row; changed or stale sequence
+conflicts. Finalization and discrepancy insertion serialize on the Submission:
+rows committed before finalization enter its frozen inventory, while later
+rows remain manager-readable discrepancies and never alter a finalized or
+released Review.
 
 ## Authorization, effects, and persistence
 

@@ -1693,6 +1693,228 @@ CREATE CONSTRAINT TRIGGER exam_submissions_sealed_check
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION enforce_exam_submission_sealed();
 
+-- One post-seal Integrity Review is mutable only while draft. Finalization
+-- snapshots the exact Flag/evidence inventory and release is a later one-way
+-- transition. Private rationale and manager notes never enter audit/events.
+ALTER TABLE exam_submissions
+    ADD CONSTRAINT exam_submissions_review_owner_key UNIQUE (id, exam_attempt_id);
+ALTER TABLE integrity_flags
+    ADD CONSTRAINT integrity_flags_review_owner_key UNIQUE (id, exam_attempt_id);
+ALTER TABLE integrity_evidence
+    ADD CONSTRAINT integrity_evidence_review_owner_key UNIQUE (id, integrity_flag_id, exam_attempt_id);
+
+CREATE TABLE integrity_discrepancies (
+    id varchar(26) PRIMARY KEY,
+    submission_id varchar(26) NOT NULL,
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    connection_id varchar(26) NOT NULL,
+    generation bigint NOT NULL CHECK (generation > 0),
+    kind varchar(32) NOT NULL CHECK (kind = 'late_focus_loss'),
+    schema_version integer NOT NULL CHECK (schema_version = 1),
+    focus_loss_signal_id varchar(26) NOT NULL UNIQUE,
+    sequence bigint NOT NULL CHECK (sequence > 0),
+    duration_milliseconds bigint NOT NULL CHECK (duration_milliseconds BETWEEN 1 AND 86400000),
+    source varchar(32) CHECK (source IN ('window_blur', 'document_hidden', 'application_backgrounded', 'fullscreen_exited')),
+    missing_before bigint NOT NULL CHECK (missing_before >= 0),
+    received_at timestamptz NOT NULL,
+    UNIQUE (id, submission_id, exam_attempt_id),
+    UNIQUE (submission_id, participation_id, generation, sequence),
+    CONSTRAINT integrity_discrepancies_submission_fkey
+        FOREIGN KEY (submission_id, exam_attempt_id)
+        REFERENCES exam_submissions(id, exam_attempt_id),
+    CONSTRAINT integrity_discrepancies_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id, generation)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id, generation),
+    CONSTRAINT integrity_discrepancies_connection_fkey
+        FOREIGN KEY (connection_id, exam_attempt_id, participation_id)
+        REFERENCES exam_attempt_connections(id, exam_attempt_id, participation_id)
+);
+CREATE INDEX integrity_discrepancies_submission_page_idx
+    ON integrity_discrepancies (submission_id, id);
+CREATE TRIGGER integrity_discrepancies_immutable BEFORE UPDATE OR DELETE ON integrity_discrepancies
+    FOR EACH ROW EXECUTE FUNCTION reject_integrity_record_update();
+
+CREATE TABLE submission_reviews (
+    id varchar(26) PRIMARY KEY,
+    submission_id varchar(26) NOT NULL UNIQUE,
+    exam_attempt_id varchar(26) NOT NULL,
+    state varchar(16) NOT NULL CHECK (state IN ('draft', 'finalized')),
+    release_state varchar(16) NOT NULL CHECK (release_state IN ('withheld', 'released')),
+    revision bigint NOT NULL CHECK (revision > 0),
+    created_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    manager_notes text NOT NULL DEFAULT '',
+    student_remarks_markdown text NOT NULL DEFAULT '',
+    flag_count integer NOT NULL DEFAULT 0 CHECK (flag_count BETWEEN 0 AND 200),
+    evidence_count integer NOT NULL DEFAULT 0 CHECK (evidence_count BETWEEN 0 AND 20000),
+    discrepancy_count integer NOT NULL DEFAULT 0 CHECK (discrepancy_count BETWEEN 0 AND 200),
+    evidence_inventory_digest char(64),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    finalized_at timestamptz,
+    finalized_by_user_id varchar(26) REFERENCES users(id),
+    released_at timestamptz,
+    released_by_user_id varchar(26) REFERENCES users(id),
+    UNIQUE (id, exam_attempt_id),
+    UNIQUE (id, submission_id, exam_attempt_id),
+    CONSTRAINT submission_reviews_submission_fkey
+        FOREIGN KEY (submission_id, exam_attempt_id)
+        REFERENCES exam_submissions(id, exam_attempt_id),
+    CONSTRAINT submission_reviews_text_check CHECK (
+        manager_notes = btrim(manager_notes) AND char_length(manager_notes) <= 3000 AND octet_length(manager_notes) <= 12000 AND
+        student_remarks_markdown = btrim(student_remarks_markdown) AND char_length(student_remarks_markdown) <= 8192 AND
+        octet_length(student_remarks_markdown) <= 32768
+    ),
+    CONSTRAINT submission_reviews_lifecycle_check CHECK (
+        (state = 'draft' AND release_state = 'withheld' AND flag_count = 0 AND evidence_count = 0 AND discrepancy_count = 0 AND
+         evidence_inventory_digest IS NULL AND finalized_at IS NULL AND finalized_by_user_id IS NULL AND
+         released_at IS NULL AND released_by_user_id IS NULL) OR
+        (state = 'finalized' AND evidence_inventory_digest ~ '^[0-9a-f]{64}$' AND finalized_at >= created_at AND
+         finalized_by_user_id IS NOT NULL AND
+         ((release_state = 'withheld' AND released_at IS NULL AND released_by_user_id IS NULL) OR
+          (release_state = 'released' AND released_at >= finalized_at AND released_by_user_id IS NOT NULL)))
+    )
+);
+
+CREATE TABLE integrity_review_decisions (
+    id varchar(26) PRIMARY KEY,
+    submission_review_id varchar(26) NOT NULL,
+    exam_attempt_id varchar(26) NOT NULL,
+    integrity_flag_id varchar(26) NOT NULL,
+    outcome varchar(16) NOT NULL CHECK (outcome IN ('confirmed', 'dismissed', 'inconclusive')),
+    revision bigint NOT NULL CHECK (revision > 0),
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    private_rationale text NOT NULL,
+    decided_at timestamptz NOT NULL,
+    UNIQUE (submission_review_id, integrity_flag_id),
+    UNIQUE (id, submission_review_id, integrity_flag_id),
+    CONSTRAINT integrity_review_decisions_review_fkey
+        FOREIGN KEY (submission_review_id, exam_attempt_id)
+        REFERENCES submission_reviews(id, exam_attempt_id),
+    CONSTRAINT integrity_review_decisions_flag_fkey
+        FOREIGN KEY (integrity_flag_id, exam_attempt_id)
+        REFERENCES integrity_flags(id, exam_attempt_id),
+    CONSTRAINT integrity_review_decisions_rationale_check CHECK (
+        private_rationale = btrim(private_rationale) AND char_length(private_rationale) BETWEEN 1 AND 1000 AND
+        octet_length(private_rationale) <= 4000
+    )
+);
+
+CREATE TABLE submission_review_inventory_flags (
+    submission_review_id varchar(26) NOT NULL,
+    exam_attempt_id varchar(26) NOT NULL,
+    integrity_flag_id varchar(26) NOT NULL,
+    decision_id varchar(26) NOT NULL,
+    decision_revision bigint NOT NULL CHECK (decision_revision > 0),
+    PRIMARY KEY (submission_review_id, integrity_flag_id),
+    CONSTRAINT submission_review_inventory_flags_review_fkey
+        FOREIGN KEY (submission_review_id, exam_attempt_id)
+        REFERENCES submission_reviews(id, exam_attempt_id),
+    CONSTRAINT submission_review_inventory_flags_flag_fkey
+        FOREIGN KEY (integrity_flag_id, exam_attempt_id)
+        REFERENCES integrity_flags(id, exam_attempt_id),
+    CONSTRAINT submission_review_inventory_flags_decision_fkey
+        FOREIGN KEY (decision_id, submission_review_id, integrity_flag_id)
+        REFERENCES integrity_review_decisions(id, submission_review_id, integrity_flag_id)
+);
+
+CREATE TABLE submission_review_inventory_evidence (
+    submission_review_id varchar(26) NOT NULL,
+    exam_attempt_id varchar(26) NOT NULL,
+    integrity_flag_id varchar(26) NOT NULL,
+    integrity_evidence_id varchar(26) NOT NULL,
+    PRIMARY KEY (submission_review_id, integrity_evidence_id),
+    CONSTRAINT submission_review_inventory_evidence_review_fkey
+        FOREIGN KEY (submission_review_id, exam_attempt_id)
+        REFERENCES submission_reviews(id, exam_attempt_id),
+    CONSTRAINT submission_review_inventory_evidence_evidence_fkey
+        FOREIGN KEY (integrity_evidence_id, integrity_flag_id, exam_attempt_id)
+        REFERENCES integrity_evidence(id, integrity_flag_id, exam_attempt_id)
+);
+
+CREATE TABLE submission_review_inventory_discrepancies (
+    submission_review_id varchar(26) NOT NULL,
+    submission_id varchar(26) NOT NULL,
+    exam_attempt_id varchar(26) NOT NULL,
+    integrity_discrepancy_id varchar(26) NOT NULL,
+    PRIMARY KEY (submission_review_id, integrity_discrepancy_id),
+    CONSTRAINT submission_review_inventory_discrepancies_review_fkey
+        FOREIGN KEY (submission_review_id, submission_id, exam_attempt_id)
+        REFERENCES submission_reviews(id, submission_id, exam_attempt_id),
+    CONSTRAINT submission_review_inventory_discrepancies_discrepancy_fkey
+        FOREIGN KEY (integrity_discrepancy_id, submission_id, exam_attempt_id)
+        REFERENCES integrity_discrepancies(id, submission_id, exam_attempt_id)
+);
+
+CREATE FUNCTION guard_submission_review_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.submission_id IS DISTINCT FROM OLD.submission_id OR
+       NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id OR
+       NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.revision <> OLD.revision + 1 OR NEW.updated_at < OLD.updated_at THEN
+        RAISE EXCEPTION 'Submission Review immutable identity or revision changed' USING ERRCODE = '55000';
+    END IF;
+    IF OLD.state = 'draft' AND NEW.state = 'draft' AND NEW.release_state = 'withheld' AND
+       NEW.flag_count = 0 AND NEW.evidence_count = 0 AND NEW.discrepancy_count = 0 AND NEW.evidence_inventory_digest IS NULL AND
+       NEW.finalized_at IS NULL AND NEW.finalized_by_user_id IS NULL AND NEW.released_at IS NULL AND NEW.released_by_user_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.state = 'draft' AND NEW.state = 'finalized' AND NEW.release_state = 'withheld' AND
+       NEW.manager_notes = OLD.manager_notes AND NEW.student_remarks_markdown = OLD.student_remarks_markdown THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.state = 'finalized' AND OLD.release_state = 'withheld' AND NEW.state = 'finalized' AND
+       NEW.release_state = 'released' AND NEW.manager_notes = OLD.manager_notes AND
+       NEW.student_remarks_markdown = OLD.student_remarks_markdown AND NEW.flag_count = OLD.flag_count AND
+       NEW.evidence_count = OLD.evidence_count AND NEW.discrepancy_count = OLD.discrepancy_count AND
+       NEW.evidence_inventory_digest = OLD.evidence_inventory_digest AND NEW.finalized_at = OLD.finalized_at AND
+       NEW.finalized_by_user_id = OLD.finalized_by_user_id THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'Submission Review terminal or frozen state changed' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE FUNCTION guard_integrity_review_decision_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    review_state varchar(16);
+BEGIN
+    SELECT state INTO review_state FROM submission_reviews WHERE id = COALESCE(NEW.submission_review_id, OLD.submission_review_id);
+    IF TG_OP = 'DELETE' OR review_state IS DISTINCT FROM 'draft' THEN
+        RAISE EXCEPTION 'Integrity Review decision is frozen' USING ERRCODE = '55000';
+    END IF;
+    IF TG_OP = 'UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR
+       NEW.submission_review_id IS DISTINCT FROM OLD.submission_review_id OR
+       NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR NEW.integrity_flag_id IS DISTINCT FROM OLD.integrity_flag_id OR
+       NEW.revision <> OLD.revision + 1 OR NEW.decided_at < OLD.decided_at) THEN
+        RAISE EXCEPTION 'Integrity Review decision identity or revision changed' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION reject_submission_review_inventory_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'Submission Review inventory is immutable' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE TRIGGER submission_reviews_guard BEFORE UPDATE OR DELETE ON submission_reviews
+    FOR EACH ROW EXECUTE FUNCTION guard_submission_review_mutation();
+CREATE TRIGGER integrity_review_decisions_guard BEFORE INSERT OR UPDATE OR DELETE ON integrity_review_decisions
+    FOR EACH ROW EXECUTE FUNCTION guard_integrity_review_decision_mutation();
+CREATE TRIGGER submission_review_inventory_flags_immutable BEFORE UPDATE OR DELETE ON submission_review_inventory_flags
+    FOR EACH ROW EXECUTE FUNCTION reject_submission_review_inventory_mutation();
+CREATE TRIGGER submission_review_inventory_evidence_immutable BEFORE UPDATE OR DELETE ON submission_review_inventory_evidence
+    FOR EACH ROW EXECUTE FUNCTION reject_submission_review_inventory_mutation();
+CREATE TRIGGER submission_review_inventory_discrepancies_immutable BEFORE UPDATE OR DELETE ON submission_review_inventory_discrepancies
+    FOR EACH ROW EXECUTE FUNCTION reject_submission_review_inventory_mutation();
+
+CREATE INDEX integrity_flags_attempt_id_idx ON integrity_flags (exam_attempt_id, id);
+CREATE INDEX integrity_evidence_flag_id_idx ON integrity_evidence (integrity_flag_id, id);
+
 CREATE TABLE session_credentials (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -2184,6 +2406,14 @@ ALTER TABLE exam_submissions
     ADD CONSTRAINT exam_submissions_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submissions_connection_id_canonical_check CHECK (connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE integrity_discrepancies
+    ADD CONSTRAINT integrity_discrepancies_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_discrepancies_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_discrepancies_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_discrepancies_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_discrepancies_connection_id_canonical_check CHECK (connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_discrepancies_focus_loss_signal_id_canonical_check CHECK (focus_loss_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE exam_submission_manifest_entries
     ADD CONSTRAINT exam_submission_manifest_entries_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submission_manifest_entries_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -2192,6 +2422,39 @@ ALTER TABLE exam_submission_manifest_entries
     ADD CONSTRAINT exam_submission_manifest_entries_starter_object_id_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submission_manifest_entries_attempt_object_id_canonical_check CHECK (attempt_object_id IS NULL OR attempt_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submission_manifest_entries_workspace_object_id_canonical_check CHECK (workspace_object_id IS NULL OR workspace_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE submission_reviews
+    ADD CONSTRAINT submission_reviews_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_reviews_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_reviews_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_reviews_created_by_user_id_canonical_check CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_reviews_finalized_by_user_id_canonical_check CHECK (finalized_by_user_id IS NULL OR finalized_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_reviews_released_by_user_id_canonical_check CHECK (released_by_user_id IS NULL OR released_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE integrity_review_decisions
+    ADD CONSTRAINT integrity_review_decisions_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_review_decisions_submission_review_id_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_review_decisions_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_review_decisions_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_review_decisions_actor_user_id_canonical_check CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE submission_review_inventory_flags
+    ADD CONSTRAINT submission_review_inventory_flags_submission_review_id_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_flags_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_flags_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_flags_decision_id_canonical_check CHECK (decision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE submission_review_inventory_evidence
+    ADD CONSTRAINT submission_review_inventory_evidence_submission_review_id_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_evidence_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_evidence_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_evidence_integrity_evidence_id_canonical_check CHECK (integrity_evidence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE submission_review_inventory_discrepancies
+    ADD CONSTRAINT submission_review_inventory_discrepancies_submission_review_id_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_discrepancies_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_discrepancies_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_discrepancies_integrity_discrepancy_id_canonical_check CHECK (integrity_discrepancy_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_id_canonical_check

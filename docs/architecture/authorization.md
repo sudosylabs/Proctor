@@ -117,9 +117,9 @@ current Exam Manager relationship and exact Academic Unit membership. The
 corresponding `.override` actions are explicit administrator paths, remain
 audited, and bypass neither Revision ownership nor Class lineage, Academic
 Period, archive, state, or optimistic-revision constraints. Unauthorized exact
-Sitting access is concealed as not found.
-Candidate participation is decided from current exact-Class membership and
-Attempt/Sitting state on every connection; it is not a reusable role grant.
+Sitting access is concealed as not found. Candidate participation is decided
+from current exact-Class membership and Attempt/Sitting state on every
+connection; it is not a reusable role grant.
 After admission, every protected candidate HTTP read requires the immutable
 authenticated Session principal plus the exact open Attempt Connection identity
 and continuity credential. The application hashes that credential immediately;
@@ -129,6 +129,16 @@ continuously re-polled for those established reads, but a fresh connection or
 reconnect always rechecks exact current Class membership. Missing, invalid,
 expired, fenced, or cross-Session selectors are concealed without exposing
 whether the Attempt exists.
+
+Submission inspection rechecks the current Exam Manager relationship plus
+`submission.view` or the explicit override at the Submission's Academic Unit.
+Draft decisions, notes, and finalization require `submission.review`; explicit
+student-result release requires the distinct `submission.release` action.
+Their `.override` variants are separate audited administrator paths. Every
+operation resolves the canonical Submission first, audits that resource and
+resolved Academic Unit scope, and conceals a denied or mismatched target as not
+found. An identical idempotent mutation replay repeats current authorization
+and audit before returning its retained result.
 Further lifecycle and visibility rules are in
 [Examinations](./examinations.md#authorization-effects-and-persistence).
 

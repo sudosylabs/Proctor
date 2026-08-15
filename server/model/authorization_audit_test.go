@@ -83,10 +83,12 @@ func TestExamSittingParticipationActionIsRecognizedButNotRoleGrantable(t *testin
 	}
 }
 
-func TestSubmissionViewActionsAreResourceTypedAndGrantable(t *testing.T) {
+func TestSubmissionActionsAreResourceTypedAndGrantable(t *testing.T) {
 	t.Parallel()
 
-	for _, action := range []Action{ActionSubmissionView, ActionSubmissionViewOverride} {
+	for _, action := range []Action{ActionSubmissionView, ActionSubmissionViewOverride,
+		ActionSubmissionReview, ActionSubmissionReviewOverride,
+		ActionSubmissionRelease, ActionSubmissionReleaseOverride} {
 		definition, ok := DefinitionForAction(action)
 		if !ok || definition.ResourceType != ResourceSubmission || !definition.InheritInstitutionScope ||
 			!definition.InheritAcademicUnitScopes || definition.RelationshipOnly {

@@ -219,6 +219,20 @@ view separately derives membership active at `OpenedAt` and never fabricates an
 Attempt or Submission. PostgreSQL multi-node, mixed lifecycle, crash-recovery,
 Job-history, HTTP/OpenAPI, realtime, race, and bounded-index gates are verified.
 
+Integrity Review and explicit student-result release are implemented. Current
+Exam Managers with Submission review/release authority can page bounded safe
+Flag summaries, purpose-specific evidence, and explicit post-collection
+discrepancies; create or revision-fence one non-academic decision per Flag;
+and maintain private notes plus optional student-facing Markdown. One audited,
+idempotent finalization freezes the complete bounded evidence, decision, and
+discrepancy inventory and digest only after terminal collection and complete
+decisions. A separate audited, revision-fenced release exposes only sanitized
+approved remarks and safe identities to the candidate. Pre-release reads are
+concealed; private rationale, notes, evidence, Workspace content, and academic
+outcomes never enter the candidate projection or realtime facts. PostgreSQL
+multi-node/replay, late-record, authorization, privacy, Markdown, HTTP/OpenAPI,
+race, and architecture gates are verified.
+
 Exam Resources and Starter Workspaces are distinct from mutable Attempt
 Workspace files. PostgreSQL owns their logical identity and hierarchy while
 VFS owns opaque bytes. Candidate access is protected in-application use, with
@@ -245,8 +259,9 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: integrity evidence
-  review and Student Result release.
+- Define the next product slice beyond the completed initial Examination Core;
+  grading, scores, rubrics, pass/fail decisions, and academic outcomes remain
+  deliberately outside the accepted core boundary until separately designed.
 - Extend server-owned file handling for validated IDE preferences alongside
   the examination-specific resource and workspace boundaries. Resource search
   is deferred because an Exam initially has at most ten active resources.

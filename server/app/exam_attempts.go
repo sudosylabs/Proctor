@@ -564,6 +564,14 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 }
 
 func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, result examattempt.FocusLossEvaluation) error {
+	if result.DiscrepancyRecorded {
+		event, err := apprealtime.NewExamIntegrityDiscrepancyRecordedEvent(result.SubmissionID, result.SittingID,
+			result.AttemptID, result.CandidateUserID, result.DiscrepancyID, result.ReceivedAt)
+		if err != nil {
+			return err
+		}
+		return effects.realtime.Publish(ctx, event)
+	}
 	events := make([]apprealtime.RealtimeEvent, 0, 5)
 	if result.ConnectionClosed {
 		event, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.AttemptID,

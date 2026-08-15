@@ -307,16 +307,45 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 func (service *Service) AuthorizeSubmissionView(ctx context.Context, call Call, examID model.ExamID,
 	submissionID model.SubmissionID,
 ) error {
-	if !examID.IsValid() || !submissionID.IsValid() {
-		return invalid("submission_id")
-	}
-	if call.Principal().Validate() != nil {
-		return invalid("principal")
-	}
-	_, err := service.authorize(ctx, call, examID,
-		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.TimeUTC(service.now()),
+	_, err := service.authorizeSubmission(ctx, call, examID, submissionID,
 		model.ActionSubmissionView, model.ActionSubmissionViewOverride)
 	return err
+}
+
+// AuthorizeSubmissionReview applies the current Exam Manager relationship and
+// exact-unit membership decision for draft decisions and finalization.
+func (service *Service) AuthorizeSubmissionReview(ctx context.Context, call Call, examID model.ExamID,
+	submissionID model.SubmissionID,
+) (bool, error) {
+	return service.authorizeSubmission(ctx, call, examID, submissionID,
+		model.ActionSubmissionReview, model.ActionSubmissionReviewOverride)
+}
+
+// AuthorizeSubmissionRelease keeps result release as a distinct, explicit
+// permission from evidence review and finalization.
+func (service *Service) AuthorizeSubmissionRelease(ctx context.Context, call Call, examID model.ExamID,
+	submissionID model.SubmissionID,
+) (bool, error) {
+	return service.authorizeSubmission(ctx, call, examID, submissionID,
+		model.ActionSubmissionRelease, model.ActionSubmissionReleaseOverride)
+}
+
+func (service *Service) authorizeSubmission(ctx context.Context, call Call, examID model.ExamID,
+	submissionID model.SubmissionID, action, overrideAction model.Action,
+) (bool, error) {
+	if !examID.IsValid() || !submissionID.IsValid() {
+		return false, invalid("submission_id")
+	}
+	if call.Principal().Validate() != nil {
+		return false, invalid("principal")
+	}
+	decision, err := service.authorize(ctx, call, examID,
+		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.TimeUTC(service.now()),
+		action, overrideAction)
+	if err != nil {
+		return false, err
+	}
+	return decision.override, nil
 }
 
 // AuthorizeManage rechecks the current manager relationship for a Sitting and

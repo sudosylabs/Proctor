@@ -281,7 +281,8 @@ func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, requ
 	encoded, err := json.Marshal(examAttemptFocusLossResponse{Generation: result.Generation,
 		AcceptedSequence: result.AcceptedSequence, ReceivedAt: result.ReceivedAt.Format(time.RFC3339Nano),
 		Duplicate: result.Duplicate, GapDetected: result.GapDetected, PolicyDisabled: result.PolicyDisabled,
-		WarningCreated: result.CandidateWarningCreated, SuspensionCreated: result.SuspensionCreated})
+		WarningCreated: result.CandidateWarningCreated, SuspensionCreated: result.SuspensionCreated,
+		DiscrepancyRecorded: result.DiscrepancyRecorded})
 	if err != nil {
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Focus Loss signal could not be accepted.")
 		return

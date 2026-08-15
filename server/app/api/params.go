@@ -31,6 +31,7 @@ type Params struct {
 	ExamSittingID           string
 	ExamAttemptID           string
 	SubmissionID            string
+	IntegrityFlagID         string
 	ExamResourceID          string
 	AttemptWorkspaceEntryID string
 	StarterWorkspaceEntryID string
@@ -66,6 +67,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		ExamSittingID:           strings.TrimSpace(variables["exam_sitting_id"]),
 		ExamAttemptID:           strings.TrimSpace(variables["exam_attempt_id"]),
 		SubmissionID:            strings.TrimSpace(variables["submission_id"]),
+		IntegrityFlagID:         strings.TrimSpace(variables["integrity_flag_id"]),
 		ExamResourceID:          strings.TrimSpace(variables["exam_resource_id"]),
 		AttemptWorkspaceEntryID: strings.TrimSpace(variables["attempt_workspace_entry_id"]),
 		StarterWorkspaceEntryID: strings.TrimSpace(variables["starter_workspace_entry_id"]),
@@ -183,6 +185,10 @@ func (p Params) RequireExamAttemptId() (string, error) {
 
 func (p Params) RequireSubmissionId() (string, error) {
 	return requirePathId("submission_id", p.SubmissionID)
+}
+
+func (p Params) RequireIntegrityFlagID() (string, error) {
+	return requirePathId("integrity_flag_id", p.IntegrityFlagID)
 }
 
 func (p Params) RequireExamResourceId() (string, error) {

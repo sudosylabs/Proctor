@@ -308,6 +308,15 @@ candidates use Attempt-scoped protected delivery routes:
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}` | principal plus current Submission-view authorization | protected immutable Submission header |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/manifest` | principal plus current Submission-view authorization | bounded immutable manifest page |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/files/{attempt_workspace_entry_id}/content` | principal plus current Submission-view authorization | protected inline sealed bytes or `304` |
+| `GET /api/v1/submissions/{submission_id}/integrity-flags` | principal plus current Submission-view authorization | bounded safe Flag summaries |
+| `GET /api/v1/submissions/{submission_id}/integrity-flags/{integrity_flag_id}/evidence` | principal plus current Submission-view authorization | bounded purpose-specific evidence |
+| `GET /api/v1/submissions/{submission_id}/integrity-discrepancies` | principal plus current Submission-view authorization | bounded post-collection discrepancies |
+| `GET /api/v1/submissions/{submission_id}/review` | principal plus current Submission-view authorization | manager Review snapshot including authorized private fields |
+| `PUT /api/v1/submissions/{submission_id}/review` | principal plus current Submission-review authorization and required idempotency | created or revised draft Review |
+| `PUT /api/v1/submissions/{submission_id}/review/decisions/{integrity_flag_id}` | principal plus current Submission-review authorization and required idempotency | one created or revision-fenced Flag decision |
+| `POST /api/v1/submissions/{submission_id}/review/finalize` | principal plus current Submission-review authorization and required idempotency | immutable finalized Review inventory |
+| `POST /api/v1/submissions/{submission_id}/review/release` | principal plus current Submission-release authorization and required idempotency | explicitly released Review state |
+| `GET /api/v1/exam-attempts/{exam_attempt_id}/result` | authenticated candidate Session relationship | narrow released result or concealed not found |
 
 Every candidate route requires exactly one
 `X-Proctor-Attempt-Credential` header containing the canonical 32-byte Raw
@@ -361,6 +370,22 @@ download/export contract.
 
 Manager Submission JSON is `no-store`. Submission file content has the same
 `private, no-store`, `nosniff`, strong-ETag, no-`Content-Disposition` contract.
+
+Integrity Review JSON is `no-store`. Manager list cursors are opaque,
+versioned, identity-only tokens and each page is limited to 200 items. Evidence
+and discrepancy records expose only their purpose-specific bounded fields;
+they do not expose a credential hash, Session identity, Connection identity,
+Workspace selector, or arbitrary client payload. Decision private rationale
+and Review manager notes are returned only on manager-authorized Review
+responses and are excluded from ordinary audit values and realtime events.
+Mutation JSON is strict, duplicate-free, closed, and requires
+`Idempotency-Key`.
+
+The candidate result route is concealed until explicit release. Its response
+contains only Review, Submission, and Attempt identities, sanitized approved
+student-facing Markdown, and release time. It never contains private manager
+notes or rationale, flags, evidence, discrepancies, sealed manifest/content,
+grade, score, rubric, pass/fail, or another candidate identity.
 
 Manager projections omit credential hashes, Session identities, and private
 reasons. A suspended Attempt exposes its private-free active Suspension

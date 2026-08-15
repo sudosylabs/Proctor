@@ -171,6 +171,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "application may import Exam workspace child", from: serverModule + "/app", imported: serverModule + "/app/exam/workspace"},
 		{name: "Exam child may import domain models", from: serverModule + "/app/exam", imported: serverModule + "/model"},
 		{name: "Exam child may import store contracts", from: serverModule + "/app/exam", imported: serverModule + "/store"},
+		{name: "Exam children may import shared safe Markdown", from: serverModule + "/app/exam/review", imported: serverModule + "/app/exam/safemarkdown"},
 		{name: "Realtime child may import domain models", from: serverModule + "/app/realtime", imported: serverModule + "/model"},
 		{name: "Job engine may import store contracts", from: serverModule + "/app/job", imported: serverModule + "/store"},
 		{name: "File Content may import domain models", from: serverModule + "/filecontent", imported: serverModule + "/model"},
@@ -291,7 +292,8 @@ func forbiddenImport(from, imported string) bool {
 			forbiddenProjectImportExcept(imported, serverModule+"/model")
 	case packageOrBelow(from, serverModule+"/app/exam"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
-			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
+			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store",
+				serverModule+"/app/exam/safemarkdown")
 	case packageOrBelow(from, serverModule+"/filecontent"):
 		return standardInfrastructureImport(imported) && imported != "os" ||
 			(thirdPartyImport(imported) && !fileContentCodecImport(imported)) ||

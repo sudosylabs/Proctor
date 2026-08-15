@@ -82,6 +82,7 @@ type SQLStoreStores struct {
 	examAttempt          store.ExamAttemptStore
 	examAttemptWorkspace store.ExamAttemptWorkspaceStore
 	examSubmission       store.ExamSubmissionStore
+	examIntegrityReview  store.ExamIntegrityReviewStore
 	examResource         store.ExamResourceStore
 	examCorrection       store.ExamCorrectionStore
 	examStarterWorkspace store.ExamStarterWorkspaceStore
@@ -153,6 +154,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.examAttempt = newSQLExamAttemptStore(sqlStore)
 	sqlStore.stores.examAttemptWorkspace = NewSQLExamAttemptWorkspaceStore(sqlStore)
 	sqlStore.stores.examSubmission = NewSQLExamSubmissionStore(sqlStore)
+	sqlStore.stores.examIntegrityReview = NewSQLExamIntegrityReviewStore(sqlStore)
 	sqlStore.stores.examResource = newSQLExamResourceStore(sqlStore)
 	sqlStore.stores.examCorrection = newSQLExamCorrectionStore(sqlStore)
 	sqlStore.stores.examStarterWorkspace = NewSQLExamStarterWorkspaceStore(sqlStore)
@@ -237,6 +239,10 @@ func (ss *SQLStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 
 func (ss *SQLStore) ExamSubmission() store.ExamSubmissionStore {
 	return ss.stores.examSubmission
+}
+
+func (ss *SQLStore) ExamIntegrityReview() store.ExamIntegrityReviewStore {
+	return ss.stores.examIntegrityReview
 }
 
 func (ss *SQLStore) ExamResource() store.ExamResourceStore {

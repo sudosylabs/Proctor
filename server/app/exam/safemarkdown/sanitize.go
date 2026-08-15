@@ -1,7 +1,12 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package attempt
+// Package safemarkdown owns the shared candidate-facing Markdown sanitizer
+// used by protected Exam presentation and released student remarks. It owns
+// neither rendering nor product-specific presentation policy and depends only
+// on the standard library; application children decide where sanitization is
+// required and clients must still render the result in a sandboxed mode.
+package safemarkdown
 
 import (
 	"fmt"
@@ -11,11 +16,11 @@ import (
 	"unicode"
 )
 
-// sanitizeCandidateMarkdown preserves inert Markdown formatting while
+// Sanitize preserves inert Markdown formatting while
 // removing constructs that can execute active HTML, navigate through unsafe
 // schemes, or automatically fetch remote content. Candidate clients must
 // still render Markdown in a sandboxed, HTML-disabled mode.
-func sanitizeCandidateMarkdown(value string) string {
+func Sanitize(value string) string {
 	value, code := protectMarkdownCode(value)
 	value = removeActiveHTMLElements(value)
 	value = stripRawHTML(value)

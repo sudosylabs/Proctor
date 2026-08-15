@@ -74,6 +74,15 @@ type IntegrityEvidenceID string
 // IntegrityFlagID identifies one manager-reviewable integrity concern.
 type IntegrityFlagID string
 
+// IntegrityReviewDecisionID identifies one current manager decision for an Integrity Flag.
+type IntegrityReviewDecisionID string
+
+// SubmissionReviewID identifies the single integrity Review associated with one Submission.
+type SubmissionReviewID string
+
+// IntegrityDiscrepancyID identifies one bounded record received after integrity collection ended.
+type IntegrityDiscrepancyID string
+
 // AttemptSuspensionID identifies one reversible Attempt suspension episode.
 type AttemptSuspensionID string
 

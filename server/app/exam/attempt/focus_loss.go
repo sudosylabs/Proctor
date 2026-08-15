@@ -33,8 +33,10 @@ type FocusLossCommand struct {
 type FocusLossEvaluation struct {
 	SittingID                   model.ExamSittingID
 	CandidateUserID             model.UserID
+	SubmissionID                model.SubmissionID
 	AttemptID                   model.ExamAttemptID
 	ParticipationID             model.AttemptParticipationID
+	DiscrepancyID               model.IntegrityDiscrepancyID
 	Generation                  int64
 	AcceptedSequence            int64
 	ReceivedAt                  time.Time
@@ -56,6 +58,7 @@ type FocusLossEvaluation struct {
 	ConnectionClosed            bool
 	Suspension                  store.ExamAttemptSuspensionView
 	SuspensionCreated           bool
+	DiscrepancyRecorded         bool
 }
 
 func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, command FocusLossCommand) (FocusLossEvaluation, error) {
@@ -65,6 +68,9 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, comman
 	}
 	target, err := service.deps.Persistence.ResolveFocusLossTarget(ctx, selector)
 	if err != nil {
+		if endedFocusLossCandidate(err) {
+			return service.evaluateEndedFocusLoss(ctx, call, command, selector)
+		}
 		return FocusLossEvaluation{}, mapStore(err)
 	}
 	if !validFocusLossTarget(target, selector) {
@@ -85,6 +91,12 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, comman
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(service.deps.Now())),
 	})
 	if err != nil {
+		if endedFocusLossCandidate(err) {
+			if auditErr := service.deps.Auditor.Fail(ctx, auditID, "exam.attempt.state_conflict"); auditErr != nil {
+				return FocusLossEvaluation{}, auditErr
+			}
+			return service.evaluateEndedFocusLoss(ctx, call, command, selector)
+		}
 		return FocusLossEvaluation{}, service.failAudit(ctx, auditID, err)
 	}
 	result, err := projectFocusLoss(stored, target, selector, command)
@@ -94,6 +106,63 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, comman
 	if !result.Duplicate && (result.ManagerNotificationRequired || result.CandidateWarningCreated || result.SuspensionCreated) {
 		if effectErr := service.deps.Effects.FocusLossEvaluated(ctx, result); effectErr != nil {
 			service.deps.EffectFailures.Report(ctx, "exam_attempt_focus_loss_evaluated", effectErr)
+		}
+	}
+	return result, nil
+}
+
+func endedFocusLossCandidate(err error) bool {
+	var conflict *store.ErrConflict
+	return errors.As(err, &conflict) && (conflict.Constraint == "exam_attempt_state" ||
+		conflict.Constraint == "exam_sitting_state")
+}
+
+func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, command FocusLossCommand,
+	selector store.ExamAttemptFocusLossAccess,
+) (FocusLossEvaluation, error) {
+	target, err := service.deps.Persistence.ResolveEndedFocusLossTarget(ctx, selector)
+	if err != nil {
+		return FocusLossEvaluation{}, mapStore(err)
+	}
+	if target == nil || !target.SubmissionID.IsValid() || !validFocusLossTarget(&target.ExamAttemptFocusLossTarget, selector) {
+		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent late Focus Loss audit target"))
+	}
+	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
+		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
+		target.ClassID.String(), store.ExamAttemptFocusLossDiscrepancyOperation, map[string]any{
+			"exam_attempt_id": command.AttemptID.String(), "submission_id": target.SubmissionID.String(),
+			"generation": command.Generation, "sequence": command.Sequence,
+		})
+	if err != nil {
+		return FocusLossEvaluation{}, err
+	}
+	discrepancyID := service.deps.NewDiscrepancy()
+	signalID := service.deps.NewFocusLossSignal()
+	stored, err := service.deps.Persistence.RecordEndedFocusLoss(ctx, &store.ExamAttemptFocusLossDiscrepancy{
+		Access: selector, SchemaVersion: command.SchemaVersion, DiscrepancyID: discrepancyID, SignalID: signalID,
+		Sequence: command.Sequence, DurationMilliseconds: command.DurationMilliseconds, Source: command.Source,
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(service.deps.Now())),
+	})
+	if err != nil {
+		return FocusLossEvaluation{}, service.failAudit(ctx, auditID, err)
+	}
+	if stored == nil || stored.Discrepancy == nil || stored.Discrepancy.Validate() != nil ||
+		stored.Target != *target || stored.Discrepancy.SubmissionID != target.SubmissionID ||
+		stored.Discrepancy.AttemptID != selector.AttemptID || stored.Discrepancy.ParticipationID != selector.ParticipationID ||
+		stored.Discrepancy.Generation != selector.Generation || stored.Discrepancy.SchemaVersion != command.SchemaVersion ||
+		stored.Discrepancy.Sequence != command.Sequence || stored.Discrepancy.DurationMilliseconds != command.DurationMilliseconds ||
+		stored.Discrepancy.Source != command.Source || (!stored.Duplicate &&
+		(stored.Discrepancy.ID != discrepancyID || stored.Discrepancy.SignalID != signalID)) {
+		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent late Focus Loss outcome"))
+	}
+	result := FocusLossEvaluation{SittingID: target.SittingID, CandidateUserID: target.CandidateUserID,
+		SubmissionID: target.SubmissionID, AttemptID: target.AttemptID, ParticipationID: target.ParticipationID,
+		DiscrepancyID: stored.Discrepancy.ID, Generation: target.Generation,
+		AcceptedSequence: stored.Discrepancy.Sequence, ReceivedAt: stored.Discrepancy.ReceivedAt,
+		Duplicate: stored.Duplicate, GapDetected: stored.Discrepancy.MissingBefore > 0, DiscrepancyRecorded: true}
+	if !result.Duplicate {
+		if effectErr := service.deps.Effects.FocusLossEvaluated(ctx, result); effectErr != nil {
+			service.deps.EffectFailures.Report(ctx, "exam_attempt_focus_loss_discrepancy_recorded", effectErr)
 		}
 	}
 	return result, nil

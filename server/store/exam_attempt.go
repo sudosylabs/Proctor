@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	ExamAttemptConnectOperation             = "exam.attempt.connect.v1"
-	ExamAttemptExpireParticipationOperation = "exam.attempt.expire_participation.v1"
-	ExamAttemptReallowOperation             = "exam.attempt.reallow.v1"
-	ExamAttemptFocusLossOperation           = "exam.attempt.focus_loss.record.v1"
+	ExamAttemptConnectOperation              = "exam.attempt.connect.v1"
+	ExamAttemptExpireParticipationOperation  = "exam.attempt.expire_participation.v1"
+	ExamAttemptReallowOperation              = "exam.attempt.reallow.v1"
+	ExamAttemptFocusLossOperation            = "exam.attempt.focus_loss.record.v1"
+	ExamAttemptFocusLossDiscrepancyOperation = "exam.attempt.focus_loss.discrepancy.v1"
 )
 
 // ExamAttemptConnect carries proposed identities for an atomic first
@@ -200,6 +201,35 @@ type ExamAttemptFocusLossResult struct {
 	ConnectionClosed            bool
 	Suspension                  *ExamAttemptSuspensionView
 	Duplicate                   bool
+}
+
+// ExamAttemptFocusLossDiscrepancyTarget is the safe scope for one claim that
+// reached the server only after Submission sealing ended integrity collection.
+// It is not authority to reopen the Attempt or mutate its settled/gapped state.
+type ExamAttemptFocusLossDiscrepancyTarget struct {
+	ExamAttemptFocusLossTarget
+	SubmissionID model.SubmissionID
+}
+
+// ExamAttemptFocusLossDiscrepancy carries the exact ended-generation selector,
+// bounded client claim, proposed immutable identities, and a pre-created safe
+// audit attempt. Sequence is the natural idempotency fence.
+type ExamAttemptFocusLossDiscrepancy struct {
+	Access               ExamAttemptFocusLossAccess
+	SchemaVersion        int
+	DiscrepancyID        model.IntegrityDiscrepancyID
+	SignalID             model.FocusLossSignalID
+	Sequence             int64
+	DurationMilliseconds int64
+	Source               model.FocusLossSource
+	AuditEventID         string
+	AuditAt              int64
+}
+
+type ExamAttemptFocusLossDiscrepancyResult struct {
+	Target      ExamAttemptFocusLossDiscrepancyTarget
+	Discrepancy *model.IntegrityDiscrepancy
+	Duplicate   bool
 }
 
 // ExamAttemptParticipationExpiryDue is a bounded, hash-free candidate from
@@ -482,6 +512,20 @@ type ExamAttemptStore interface {
 	// later claim through the closed selector. Stable access conflicts retain the
 	// existing Attempt/Participation/Connection constraint vocabulary.
 	RecordFocusLoss(context.Context, *ExamAttemptFocusLossSignal) (*ExamAttemptFocusLossResult, error)
+	// ResolveEndedFocusLossTarget accepts only the exact candidate, Session,
+	// credential, Participation generation, and Connection retained by a sealed
+	// Submission whose Attempt is submitted and whose Participation/Connection
+	// are terminal. Voluntary sealing records submitted; automatic sealing
+	// records sitting_closed for live records and preserves any earlier terminal
+	// cause. It performs no mutation and exists only to begin the discrepancy
+	// audit.
+	ResolveEndedFocusLossTarget(context.Context, ExamAttemptFocusLossAccess) (*ExamAttemptFocusLossDiscrepancyTarget, error)
+	// RecordEndedFocusLoss retains at most the bounded discrepancy maximum. It
+	// serializes on the sealed Submission, accepts only a sequence above the
+	// submitted high-water and prior discrepancy high-water, records explicit
+	// gaps, completes audit atomically, and never mutates Submission integrity or
+	// a draft/finalized/released Review. Exact same-sequence semantics replay.
+	RecordEndedFocusLoss(context.Context, *ExamAttemptFocusLossDiscrepancy) (*ExamAttemptFocusLossDiscrepancyResult, error)
 	// ResolveParticipationExpiry returns the exact active generation only when
 	// expires_at <= PostgreSQL current time, with the same safe scope projection
 	// produced by the scanner. A late renewal uses it to begin actorless scoped

@@ -71,14 +71,15 @@ type examAttemptFocusLossRequest struct {
 }
 
 type examAttemptFocusLossResponse struct {
-	Generation        int64  `json:"generation"`
-	AcceptedSequence  int64  `json:"accepted_sequence"`
-	ReceivedAt        string `json:"received_at"`
-	Duplicate         bool   `json:"duplicate"`
-	GapDetected       bool   `json:"gap_detected"`
-	PolicyDisabled    bool   `json:"policy_disabled"`
-	WarningCreated    bool   `json:"warning_created"`
-	SuspensionCreated bool   `json:"suspension_created"`
+	Generation          int64  `json:"generation"`
+	AcceptedSequence    int64  `json:"accepted_sequence"`
+	ReceivedAt          string `json:"received_at"`
+	Duplicate           bool   `json:"duplicate"`
+	GapDetected         bool   `json:"gap_detected"`
+	PolicyDisabled      bool   `json:"policy_disabled"`
+	WarningCreated      bool   `json:"warning_created"`
+	SuspensionCreated   bool   `json:"suspension_created"`
+	DiscrepancyRecorded bool   `json:"discrepancy_recorded"`
 }
 
 func decodeExamAttemptConnectRequest(document json.RawMessage) (examAttemptConnectRequest, error) {

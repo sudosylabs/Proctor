@@ -91,6 +91,10 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 			probe.ConcurrentPeer = NewSQLExamSubmissionStore(sqlStore)
 			storetest.TestExamSubmissionStore(t, decorated, decorated.ExamSubmission(), probe)
 		}},
+		{"ExamIntegrityReview", func(t *testing.T, decorated store.Store) {
+			storetest.TestExamIntegrityReviewStore(t, decorated, decorated.ExamIntegrityReview(),
+				storetest.ExamIntegrityReviewSQLProbe{ConcurrentPeer: NewSQLExamIntegrityReviewStore(sqlStore)})
+		}},
 		{"ExamResource", storetest.TestExamResourceStore},
 		{"ExamCorrection", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamCorrectionStore(t, decorated, examCorrectionSQLProbe(t, sqlStore))
@@ -184,6 +188,14 @@ func TestExamSubmissionStore(t *testing.T) {
 	probe := examSubmissionSQLProbe(t, persistence)
 	probe.ConcurrentPeer = NewSQLExamSubmissionStore(peerPersistence)
 	storetest.TestExamSubmissionStore(t, persistence, NewSQLExamSubmissionStore(persistence), probe)
+}
+
+func TestExamIntegrityReviewStore(t *testing.T) {
+	persistence := openTestStore(t)
+	peerPersistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestExamIntegrityReviewStore(t, persistence, NewSQLExamIntegrityReviewStore(persistence),
+		storetest.ExamIntegrityReviewSQLProbe{ConcurrentPeer: NewSQLExamIntegrityReviewStore(peerPersistence)})
 }
 
 func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamSubmissionSQLProbe {

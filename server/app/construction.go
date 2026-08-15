@@ -15,6 +15,7 @@ type examinationConstruction struct {
 	revisions        examRevisionUseCases
 	sittings         examSittingUseCases
 	attempts         examAttemptUseCases
+	reviews          examReviewUseCases
 	resources        examResourceUseCases
 	corrections      examCorrectionUseCases
 	starterWorkspace examStarterWorkspaceUseCases
@@ -185,6 +186,7 @@ func assembleApplication(
 		examRevisions:                     examinations.revisions,
 		examSittings:                      examinations.sittings,
 		examAttempts:                      examinations.attempts,
+		examReviews:                       examinations.reviews,
 		examResources:                     examinations.resources,
 		examCorrections:                   examinations.corrections,
 		examStarterWorkspace:              examinations.starterWorkspace,

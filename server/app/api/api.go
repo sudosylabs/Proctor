@@ -413,6 +413,7 @@ type Application interface {
 	ExamResourceApplication
 	ExamStarterWorkspaceApplication
 	ExamAttemptApplication
+	ExamIntegrityReviewApplication
 	Realtime
 }
 
@@ -545,6 +546,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		examResourceHTTPResource(options.Application),
 		examStarterWorkspaceHTTPResource(options.Application),
 		examAttemptResource(options.Application),
+		examIntegrityReviewResource(options.Application),
 		programmeResource(options.Programmes),
 		programmeLevelResource(options.ProgrammeLevels),
 		academicPeriodResource(options.AcademicPeriods),

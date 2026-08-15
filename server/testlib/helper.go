@@ -230,6 +230,9 @@ func (s *LifecycleStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore 
 func (s *LifecycleStore) ExamSubmission() store.ExamSubmissionStore {
 	return lifecycleExamSubmissionStore{}
 }
+func (s *LifecycleStore) ExamIntegrityReview() store.ExamIntegrityReviewStore {
+	return lifecycleExamIntegrityReviewStore{}
+}
 func (s *LifecycleStore) ExamRevision() store.ExamRevisionStore {
 	return lifecycleExamRevisionStore{}
 }
@@ -326,6 +329,7 @@ type lifecycleExamAttemptWorkspaceStore struct {
 	store.ExamAttemptWorkspaceStore
 }
 type lifecycleExamSubmissionStore struct{ store.ExamSubmissionStore }
+type lifecycleExamIntegrityReviewStore struct{ store.ExamIntegrityReviewStore }
 type lifecycleExamRevisionStore struct{ store.ExamRevisionStore }
 type lifecycleExamSittingStore struct{ store.ExamSittingStore }
 type lifecycleExamStarterWorkspaceStore struct {
