@@ -261,19 +261,27 @@ type CandidateAttemptWorkspaceItem struct {
 	SHA256         string
 }
 
-// CandidateWorkspaceListOptions defines the bounded canonical path catalog.
-// Results sort ascending by (Path, EntryID); AfterPath and AfterEntryID are
-// either both empty or the complete exclusive keyset cursor. Limit is 1..200.
+// CandidateWorkspaceListOptions defines one bounded manifest page. Results
+// sort ascending by (Path, EntryID), but the opaque public cursor contains only
+// ExpectedCursor and AfterEntryID: a Workspace Path must never enter a URL,
+// query, access log, or cursor. Persistence resolves AfterEntryID's path under
+// the exact expected aggregate cursor. ExpectedCursor=-1 and a zero
+// AfterEntryID capture the current cursor for the first page; subsequent pages
+// require a nonnegative exact ExpectedCursor and a valid AfterEntryID. An
+// advanced aggregate returns RefreshRequired with no Items. Limit is 1..200.
 type CandidateWorkspaceListOptions struct {
-	Access       CandidateAttemptAccess
-	AfterPath    string
-	AfterEntryID model.AttemptWorkspaceEntryID
-	Limit        int
+	Access         CandidateAttemptAccess
+	ExpectedCursor int64
+	AfterEntryID   model.AttemptWorkspaceEntryID
+	Limit          int
 }
 
 type CandidateAttemptWorkspacePage struct {
-	Items   []CandidateAttemptWorkspaceItem
-	HasMore bool
+	WorkspaceID     model.ExamAttemptWorkspaceID
+	Cursor          int64
+	Items           []CandidateAttemptWorkspaceItem
+	HasMore         bool
+	RefreshRequired bool
 }
 
 // CandidateResourceContent is an internal, post-authorization selector for the
@@ -376,7 +384,5 @@ type ExamAttemptStore interface {
 	Get(context.Context, model.ExamID, model.ExamAttemptID) (*ExamAttemptManagerSnapshot, error)
 	List(context.Context, ExamAttemptManagerListOptions) ([]ExamAttemptManagerSnapshot, error)
 	GetCandidatePresentation(context.Context, CandidateAttemptAccess) (*CandidateExamPresentation, error)
-	ListCandidateWorkspace(context.Context, CandidateWorkspaceListOptions) (*CandidateAttemptWorkspacePage, error)
 	ResolveCandidateResource(context.Context, CandidateAttemptAccess, model.ExamResourceID) (*CandidateResourceContent, error)
-	ResolveCandidateWorkspaceFile(context.Context, CandidateAttemptAccess, model.AttemptWorkspaceEntryID) (*CandidateWorkspaceContent, error)
 }

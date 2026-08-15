@@ -141,6 +141,37 @@ type managerExamAttemptReallowedData struct {
 	ChangedAt     string `json:"changed_at"`
 }
 
+type candidateExamAttemptWorkspaceChangedData struct {
+	ExamSittingID string `json:"exam_sitting_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	EntryID       string `json:"entry_id"`
+	Operation     string `json:"operation"`
+	Cursor        int64  `json:"workspace_cursor"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+// NewCandidateExamAttemptWorkspaceChangedEvent publishes only a targeted
+// refetch hint. Logical paths, content metadata, object selectors, continuity
+// selectors, and mutation bodies remain confined to protected HTTP responses.
+func NewCandidateExamAttemptWorkspaceChangedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, entryID model.AttemptWorkspaceEntryID, operation model.AttemptWorkspaceMutationKind,
+	cursor int64, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !entryID.IsValid() ||
+		!operation.IsValid() || cursor < 1 || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("candidate Exam Attempt Workspace event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(candidateExamAttemptWorkspaceChangedData{ExamSittingID: sittingID.String(),
+		ExamAttemptID: attemptID.String(), EntryID: entryID.String(), Operation: string(operation), Cursor: cursor,
+		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: "exam_attempt_workspace_changed", UserID: candidateID.String(),
+		Action: model.ActionExamSittingParticipate, Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()},
+		Data: data}, nil
+}
+
 func NewCandidateExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
 	candidateID model.UserID, reason model.AttemptSuspensionCandidateReason, changedAt time.Time,
 ) (RealtimeEvent, error) {

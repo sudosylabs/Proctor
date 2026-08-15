@@ -142,6 +142,28 @@ func TestExamAttemptSuspensionAndReallowEventsSeparateCandidateAndManagerPayload
 	}
 }
 
+func TestCandidateExamAttemptWorkspaceChangedEventIsOnlyASafeRefetchHint(t *testing.T) {
+	t.Parallel()
+	sittingID, attemptID, candidateID := model.NewExamSittingID(), model.NewExamAttemptID(), model.NewUserID()
+	entryID := model.NewAttemptWorkspaceEntryID()
+	at := time.Date(2026, time.August, 19, 10, 0, 0, 0, time.UTC)
+	event, err := NewCandidateExamAttemptWorkspaceChangedEvent(sittingID, attemptID, candidateID, entryID,
+		model.AttemptWorkspaceMutationReplaceFile, 17, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Name != "exam_attempt_workspace_changed" || event.UserID != candidateID.String() ||
+		event.Action != model.ActionExamSittingParticipate || event.Resource.ID != sittingID.String() {
+		t.Fatalf("event=%#v", event)
+	}
+	data := string(event.Data)
+	for _, forbidden := range []string{"path", "object", "content_version", "sha256", "credential", "session", "generation"} {
+		if strings.Contains(strings.ToLower(data), forbidden) {
+			t.Fatalf("workspace hint contains %q: %s", forbidden, data)
+		}
+	}
+}
+
 func assertCandidateSittingEvent(t *testing.T, event RealtimeEvent, name string, sittingID model.ExamSittingID) {
 	t.Helper()
 	if event.Name != name || event.Action != model.ActionExamSittingParticipate ||

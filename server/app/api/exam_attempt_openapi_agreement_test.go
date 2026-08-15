@@ -20,6 +20,10 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	candidateBase := "/api/v1/exam-attempts/{exam_attempt_id}"
 	presentation := candidateBase + "/presentation"
 	workspace := candidateBase + "/workspace"
+	workspaceChanges := workspace + "/changes"
+	workspaceDirectories := workspace + "/directories"
+	workspaceFiles := workspace + "/files"
+	workspaceEntry := workspace + "/entries/{attempt_workspace_entry_id}"
 	resourceContent := candidateBase + "/resources/{exam_resource_id}/content"
 	workspaceContent := candidateBase + "/workspace/files/{attempt_workspace_entry_id}/content"
 	managerCodes := principalContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "administration.unavailable")
@@ -29,6 +33,23 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 	candidateCodes := personalAccessTokenSessionCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable")
+	workspaceMutationCodes := func(specific ...string) []string {
+		common := []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
+			"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed",
+			"exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key",
+			"idempotency.conflict", "idempotency.in_progress"}
+		return personalAccessTokenSessionMutationCodes(append(common, specific...)...)
+	}
+	directoryMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict",
+		"exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit")
+	createFileMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict",
+		"exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit", "exam.attempt.workspace.size_limit",
+		"exam.attempt.workspace.object_conflict")
+	moveMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict")
+	replaceMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
+		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict")
+	deleteMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
+		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty")
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET " + managerBase, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamAttemptManagerListOK", SuccessSchema: "ExamAttemptManagerListResponse", PublicErrorCodes: managerCodes},
@@ -36,6 +57,12 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "POST " + reallow, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/ReallowExamAttempt", RequestSchema: "ReallowExamAttemptRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/ExamAttemptReallowed", SuccessSchema: "ExamAttemptReallowResponse", PublicErrorCodes: reallowCodes},
 			{Key: "GET " + presentation, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamPresentationOK", SuccessSchema: "CandidateExamPresentationResponse", PublicErrorCodes: candidateCodes},
 			{Key: "GET " + workspace, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamWorkspaceListOK", SuccessSchema: "CandidateExamWorkspaceListResponse", PublicErrorCodes: candidateCodes},
+			{Key: "GET " + workspaceChanges, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateWorkspaceJournalOK", SuccessSchema: "CandidateWorkspaceJournalResponse", PublicErrorCodes: candidateCodes},
+			{Key: "POST " + workspaceDirectories, Auth: AuthSessionRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/CreateCandidateWorkspaceDirectory", RequestSchema: "CreateCandidateWorkspaceDirectoryRequest", SuccessStatus: "201", SuccessRef: "#/components/responses/CandidateWorkspaceMutationCreated", SuccessSchema: "CandidateWorkspaceMutationResponse", PublicErrorCodes: directoryMutationCodes},
+			{Key: "POST " + workspaceFiles, Auth: AuthSessionRequired, Idempotency: IdempotencyRequired, SuccessStatus: "201", SuccessRef: "#/components/responses/CandidateWorkspaceMutationCreated", SuccessSchema: "CandidateWorkspaceMutationResponse", PublicErrorCodes: createFileMutationCodes},
+			{Key: "PATCH " + workspaceEntry, Auth: AuthSessionRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/MoveCandidateWorkspaceEntry", RequestSchema: "MoveCandidateWorkspaceEntryRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateWorkspaceMutationOK", SuccessSchema: "CandidateWorkspaceMutationResponse", PublicErrorCodes: moveMutationCodes},
+			{Key: "DELETE " + workspaceEntry, Auth: AuthSessionRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/DeleteCandidateWorkspaceEntry", RequestSchema: "DeleteCandidateWorkspaceEntryRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateWorkspaceMutationOK", SuccessSchema: "CandidateWorkspaceMutationResponse", PublicErrorCodes: deleteMutationCodes},
+			{Key: "PUT " + workspaceContent, Auth: AuthSessionRequired, Idempotency: IdempotencyRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateWorkspaceMutationOK", SuccessSchema: "CandidateWorkspaceMutationResponse", PublicErrorCodes: replaceMutationCodes},
 			{Key: "GET " + resourceContent, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamProtectedContent", ExceptionalSuccess: true, PublicErrorCodes: candidateCodes},
 			{Key: "GET " + workspaceContent, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamProtectedContent", ExceptionalSuccess: true, PublicErrorCodes: candidateCodes},
 		},
@@ -51,7 +78,13 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "CandidateExamPresentationResponse", DTO: reflect.TypeOf(candidateExamPresentationResponse{}), Required: []string{"attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "resources"}},
 			{Name: "CandidateExamResourceResponse", DTO: reflect.TypeOf(candidateExamResourceResponse{}), Required: []string{"id", "display_name", "description_markdown", "position", "media_type", "size", "sha256"}},
 			{Name: "CandidateExamWorkspaceItemResponse", DTO: reflect.TypeOf(candidateExamWorkspaceItemResponse{}), Required: []string{"id", "kind", "path"}},
-			{Name: "CandidateExamWorkspaceListResponse", DTO: reflect.TypeOf(candidateExamWorkspaceListResponse{}), Required: []string{"items"}},
+			{Name: "CandidateExamWorkspaceListResponse", DTO: reflect.TypeOf(candidateExamWorkspaceListResponse{}), Required: []string{"workspace_id", "workspace_cursor", "items", "refresh_required"}},
+			{Name: "CreateCandidateWorkspaceDirectoryRequest", DTO: reflect.TypeOf(createCandidateWorkspaceDirectoryRequest{}), Required: []string{"participation_id", "generation", "path"}},
+			{Name: "MoveCandidateWorkspaceEntryRequest", DTO: reflect.TypeOf(moveCandidateWorkspaceEntryRequest{}), Required: []string{"participation_id", "generation", "expected_path", "destination_path"}},
+			{Name: "DeleteCandidateWorkspaceEntryRequest", DTO: reflect.TypeOf(deleteCandidateWorkspaceEntryRequest{}), Required: []string{"participation_id", "generation", "expected_path"}},
+			{Name: "CandidateWorkspaceMutationResponse", DTO: reflect.TypeOf(candidateWorkspaceMutationResponse{}), Required: []string{"workspace_id", "workspace_cursor", "operation"}},
+			{Name: "CandidateWorkspaceJournalEntryResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalEntryResponse{}), Required: []string{"cursor", "entry_id", "kind", "operation", "changed_at"}},
+			{Name: "CandidateWorkspaceJournalResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalResponse{}), Required: []string{"workspace_id", "current_cursor", "entries", "has_more", "refresh_required"}},
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
@@ -61,8 +94,15 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
-	for _, path := range []string{presentation, workspace, resourceContent, workspaceContent} {
-		operation := decodeExamContentOpenAPIOperation(t, document, path, "get")
+	for _, path := range []string{presentation, workspace, workspaceChanges, workspaceDirectories, workspaceFiles, workspaceEntry, resourceContent, workspaceContent} {
+		method := "get"
+		if path == workspaceDirectories || path == workspaceFiles {
+			method = "post"
+		}
+		if path == workspaceEntry {
+			method = "patch"
+		}
+		operation := decodeExamContentOpenAPIOperation(t, document, path, method)
 		for _, expected := range []struct{ name, ref string }{
 			{name: candidateAttemptCredentialHeader, ref: "#/components/parameters/CandidateAttemptCredential"},
 			{name: candidateAttemptConnectionHeader, ref: "#/components/parameters/CandidateAttemptConnectionID"},
@@ -85,6 +125,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	}
 	assertExamAttemptQueryParameters(t, document, managerBase, []string{"state", "limit", "cursor"})
 	assertExamAttemptQueryParameters(t, document, workspace, []string{"limit", "cursor"})
+	assertExamAttemptQueryParameters(t, document, workspaceChanges, []string{"after_cursor", "limit"})
 }
 
 func hasOpenAPIParameterRef(operation openAPIOperation, ref string) bool {

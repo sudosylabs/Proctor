@@ -364,7 +364,7 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 				return fmt.Errorf("resource %q %s maximum body size must not be negative", resource.name, route.method)
 			}
 			if effectiveIdempotencyRequirement(route.idempotency) != IdempotencyNone &&
-				(route.auth != AuthPrincipalRequired || route.upgradeOperation != nil || route.operation == nil && route.protocolOperation == nil) {
+				(!idempotencyPrincipalAuth(route.auth) || route.upgradeOperation != nil || route.operation == nil && route.protocolOperation == nil) {
 				return fmt.Errorf("resource %q %s idempotency requires a principal route", resource.name, route.method)
 			}
 			ordinary := route.operation != nil
@@ -419,6 +419,16 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 		}
 	}
 	return nil
+}
+
+func idempotencyPrincipalAuth(requirement AuthRequirement) bool {
+	switch requirement {
+	case AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired, AuthRecentSessionRequired,
+		AuthStrongRecentSessionRequired:
+		return true
+	default:
+		return false
+	}
 }
 
 func validIdempotencyRequirement(requirement IdempotencyRequirement) bool {

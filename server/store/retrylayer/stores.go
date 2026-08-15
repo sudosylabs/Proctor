@@ -338,22 +338,71 @@ func (s *examAttemptStore) GetCandidatePresentation(ctx context.Context, access 
 	})
 }
 
-func (s *examAttemptStore) ListCandidateWorkspace(ctx context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
-	return retryCall1(ctx, s.layer, func() (*store.CandidateAttemptWorkspacePage, error) {
-		return s.ExamAttemptStore.ListCandidateWorkspace(ctx, options)
-	})
-}
-
 func (s *examAttemptStore) ResolveCandidateResource(ctx context.Context, access store.CandidateAttemptAccess, resourceID model.ExamResourceID) (*store.CandidateResourceContent, error) {
 	return retryCall1(ctx, s.layer, func() (*store.CandidateResourceContent, error) {
 		return s.ExamAttemptStore.ResolveCandidateResource(ctx, access, resourceID)
 	})
 }
 
-func (s *examAttemptStore) ResolveCandidateWorkspaceFile(ctx context.Context, access store.CandidateAttemptAccess, entryID model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
-	return retryCall1(ctx, s.layer, func() (*store.CandidateWorkspaceContent, error) {
-		return s.ExamAttemptStore.ResolveCandidateWorkspaceFile(ctx, access, entryID)
+func (s *examAttemptWorkspaceStore) List(ctx context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
+	return retryCall1(ctx, s.layer, func() (*store.CandidateAttemptWorkspacePage, error) {
+		return s.ExamAttemptWorkspaceStore.List(ctx, options)
 	})
+}
+
+func (s *examAttemptWorkspaceStore) ResolveFile(ctx context.Context, access store.CandidateAttemptAccess, entryID model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
+	return retryCall1(ctx, s.layer, func() (*store.CandidateWorkspaceContent, error) {
+		return s.ExamAttemptWorkspaceStore.ResolveFile(ctx, access, entryID)
+	})
+}
+
+func (s *examAttemptWorkspaceStore) ListJournal(ctx context.Context, options store.CandidateWorkspaceJournalOptions) (*store.CandidateWorkspaceJournalPage, error) {
+	return retryCall1(ctx, s.layer, func() (*store.CandidateWorkspaceJournalPage, error) {
+		return s.ExamAttemptWorkspaceStore.ListJournal(ctx, options)
+	})
+}
+
+func (s *examAttemptWorkspaceStore) ResolveMutationTarget(ctx context.Context, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptWorkspaceMutationTarget, error) {
+		return s.ExamAttemptWorkspaceStore.ResolveMutationTarget(ctx, access)
+	})
+}
+
+func (s *examAttemptWorkspaceStore) ReserveObject(ctx context.Context, input *store.ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error) {
+	return retryCall1(ctx, s.layer, func() (*model.AttemptWorkspaceObject, error) {
+		return s.ExamAttemptWorkspaceStore.ReserveObject(ctx, input)
+	})
+}
+
+func (s *examAttemptWorkspaceStore) MarkObjectReady(ctx context.Context, input *store.ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error) {
+	return retryCall1(ctx, s.layer, func() (*model.AttemptWorkspaceObject, error) {
+		return s.ExamAttemptWorkspaceStore.MarkObjectReady(ctx, input)
+	})
+}
+
+func (s *examAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
+	if command == nil {
+		return s.ExamAttemptWorkspaceStore.ApplyMutation(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptWorkspaceMutationResult, error) {
+		return s.ExamAttemptWorkspaceStore.ApplyMutation(ctx, input, command)
+	})
+}
+
+func (s *examAttemptWorkspaceStore) MarkObjectReclaimable(ctx context.Context, objectID model.AttemptWorkspaceObjectID) error {
+	return s.ExamAttemptWorkspaceStore.MarkObjectReclaimable(ctx, objectID)
+}
+
+func (s *examAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context, limit int, token string) ([]model.AttemptWorkspaceObject, error) {
+	return s.ExamAttemptWorkspaceStore.ClaimObjectsForCleanup(ctx, limit, token)
+}
+
+func (s *examAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context, objectID model.AttemptWorkspaceObjectID, token string) error {
+	return s.ExamAttemptWorkspaceStore.CompleteObjectCleanup(ctx, objectID, token)
+}
+
+func (s *examAttemptWorkspaceStore) ReleaseObjectCleanup(ctx context.Context, objectID model.AttemptWorkspaceObjectID, token string) error {
+	return s.ExamAttemptWorkspaceStore.ReleaseObjectCleanup(ctx, objectID, token)
 }
 
 func (s *examResourceStore) List(ctx context.Context, examID model.ExamID) ([]store.ExamResourceRecord, error) {

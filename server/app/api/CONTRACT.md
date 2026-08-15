@@ -287,6 +287,12 @@ candidates use Attempt-scoped protected delivery routes:
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow` | principal plus current management authorization and required idempotency key | exact suspension re-allowed |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/presentation` | Session plus Attempt credential and Connection | current instructions/resource metadata |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace` | Session plus Attempt credential and Connection | bounded logical Workspace page |
+| `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace/changes` | Session plus Attempt credential and Connection | bounded journal page or explicit full-refresh signal |
+| `POST /api/v1/exam-attempts/{exam_attempt_id}/workspace/directories` | Session plus Attempt credential and Connection; required idempotency | acknowledged directory and Cursor |
+| `POST /api/v1/exam-attempts/{exam_attempt_id}/workspace/files` | Session plus Attempt credential and Connection; required idempotency | staged and acknowledged file and Cursor |
+| `PATCH /api/v1/exam-attempts/{exam_attempt_id}/workspace/entries/{attempt_workspace_entry_id}` | Session plus Attempt credential and Connection; required idempotency | acknowledged rename/move and Cursor |
+| `PUT /api/v1/exam-attempts/{exam_attempt_id}/workspace/files/{attempt_workspace_entry_id}/content` | Session plus Attempt credential and Connection; required idempotency | acknowledged replacement and Cursor |
+| `DELETE /api/v1/exam-attempts/{exam_attempt_id}/workspace/entries/{attempt_workspace_entry_id}` | Session plus Attempt credential and Connection; required idempotency | acknowledged deletion and Cursor |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/resources/{exam_resource_id}/content` | Session plus Attempt credential and Connection | protected inline bytes or `304` |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace/files/{attempt_workspace_entry_id}/content` | Session plus Attempt credential and Connection | protected inline bytes or `304` |
 
@@ -298,6 +304,12 @@ immediately; the Store also binds candidate reads to the authenticated Session
 ID and durable open Connection. Neither header is accepted from a URL, echoed,
 logged, included in Problem Details, or persisted in raw form. Missing,
 duplicate, whitespace-altered, or malformed values are invalid requests.
+Every Workspace mutation also carries the non-secret `participation_id` and
+`generation` returned by the latest successful connect response. File writes
+use metadata-first, exactly-two-part multipart bodies bounded to 10 MiB plus
+64 KiB; other mutations use duplicate-free strict JSON. The access selectors
+are reauthorized on every write but are excluded from the Attempt-scoped
+idempotency fingerprint so an exact command can recover across reconnect.
 Malformed paths, cursors, limits, states, or protection headers return
 `request.invalid` (`400`). Missing or mismatched Attempt, candidate,
 Participation, credential, Connection, or manager-visible target is concealed

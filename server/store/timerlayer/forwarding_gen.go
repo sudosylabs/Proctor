@@ -19,6 +19,8 @@ type timedStores struct {
 	clusterDiscoveryOnce     sync.Once
 	examAttempt              store.ExamAttemptStore
 	examAttemptOnce          sync.Once
+	examAttemptWorkspace     store.ExamAttemptWorkspaceStore
+	examAttemptWorkspaceOnce sync.Once
 	examCorrection           store.ExamCorrectionStore
 	examCorrectionOnce       sync.Once
 	examResource             store.ExamResourceStore
@@ -91,6 +93,11 @@ type timedClusterDiscoveryStore struct {
 type timedExamAttemptStore struct {
 	layer *Layer
 	next  store.ExamAttemptStore
+}
+
+type timedExamAttemptWorkspaceStore struct {
+	layer *Layer
+	next  store.ExamAttemptWorkspaceStore
 }
 
 type timedExamCorrectionStore struct {
@@ -336,6 +343,16 @@ func (l *Layer) ExamAttempt() store.ExamAttemptStore {
 		}
 	})
 	return l.stores.examAttempt
+}
+
+func (l *Layer) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
+	l.stores.examAttemptWorkspaceOnce.Do(func() {
+		next := l.next.ExamAttemptWorkspace()
+		if next != nil {
+			l.stores.examAttemptWorkspace = &timedExamAttemptWorkspaceStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examAttemptWorkspace
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -692,21 +709,75 @@ func (s *timedExamAttemptStore) GetCandidatePresentation(arg0 context.Context, a
 	})
 }
 
-func (s *timedExamAttemptStore) ListCandidateWorkspace(arg0 context.Context, arg1 store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListCandidateWorkspace), func() (*store.CandidateAttemptWorkspacePage, error) {
-		return s.next.ListCandidateWorkspace(arg0, arg1)
-	})
-}
-
 func (s *timedExamAttemptStore) ResolveCandidateResource(arg0 context.Context, arg1 store.CandidateAttemptAccess, arg2 model.ExamResourceID) (*store.CandidateResourceContent, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveCandidateResource), func() (*store.CandidateResourceContent, error) {
 		return s.next.ResolveCandidateResource(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedExamAttemptStore) ResolveCandidateWorkspaceFile(arg0 context.Context, arg1 store.CandidateAttemptAccess, arg2 model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveCandidateWorkspaceFile), func() (*store.CandidateWorkspaceContent, error) {
-		return s.next.ResolveCandidateWorkspaceFile(arg0, arg1, arg2)
+func (s *timedExamAttemptWorkspaceStore) List(arg0 context.Context, arg1 store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodList), func() (*store.CandidateAttemptWorkspacePage, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) ResolveFile(arg0 context.Context, arg1 store.CandidateAttemptAccess, arg2 model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodResolveFile), func() (*store.CandidateWorkspaceContent, error) {
+		return s.next.ResolveFile(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) ListJournal(arg0 context.Context, arg1 store.CandidateWorkspaceJournalOptions) (*store.CandidateWorkspaceJournalPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodListJournal), func() (*store.CandidateWorkspaceJournalPage, error) {
+		return s.next.ListJournal(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) ResolveMutationTarget(arg0 context.Context, arg1 store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodResolveMutationTarget), func() (*store.ExamAttemptWorkspaceMutationTarget, error) {
+		return s.next.ResolveMutationTarget(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) ReserveObject(arg0 context.Context, arg1 *store.ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodReserveObject), func() (*model.AttemptWorkspaceObject, error) {
+		return s.next.ReserveObject(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) MarkObjectReady(arg0 context.Context, arg1 *store.ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodMarkObjectReady), func() (*model.AttemptWorkspaceObject, error) {
+		return s.next.MarkObjectReady(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) ApplyMutation(arg0 context.Context, arg1 *store.ExamAttemptWorkspaceMutation, arg2 *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodApplyMutation), func() (*store.ExamAttemptWorkspaceMutationResult, error) {
+		return s.next.ApplyMutation(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) MarkObjectReclaimable(arg0 context.Context, arg1 model.AttemptWorkspaceObjectID) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodMarkObjectReclaimable), func() error {
+		return s.next.MarkObjectReclaimable(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) ClaimObjectsForCleanup(arg0 context.Context, arg1 int, arg2 string) ([]model.AttemptWorkspaceObject, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodClaimObjectsForCleanup), func() ([]model.AttemptWorkspaceObject, error) {
+		return s.next.ClaimObjectsForCleanup(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) CompleteObjectCleanup(arg0 context.Context, arg1 model.AttemptWorkspaceObjectID, arg2 string) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodCompleteObjectCleanup), func() error {
+		return s.next.CompleteObjectCleanup(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAttemptWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 model.AttemptWorkspaceObjectID, arg2 string) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamAttemptWorkspace, methodReleaseObjectCleanup), func() error {
+		return s.next.ReleaseObjectCleanup(arg0, arg1, arg2)
 	})
 }
 
@@ -2118,6 +2189,7 @@ var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)
 	_ store.ExamAttemptStore          = (*timedExamAttemptStore)(nil)
+	_ store.ExamAttemptWorkspaceStore = (*timedExamAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore       = (*timedExamCorrectionStore)(nil)
 	_ store.ExamResourceStore         = (*timedExamResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*timedExamRevisionStore)(nil)

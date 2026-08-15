@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
@@ -25,6 +26,9 @@ type CandidateExamPresentation = examattempt.Presentation
 type CandidateExamWorkspaceItem = store.CandidateAttemptWorkspaceItem
 type ExamAttemptManagerView = store.ExamAttemptManagerSnapshot
 type OpenedExamAttemptContent = examattempt.OpenedContent
+type ExamAttemptWorkspaceMutationAccess = examattempt.WorkspaceMutationAccess
+type ExamAttemptWorkspaceMutationResult = examattempt.WorkspaceMutationResult
+type CandidateExamWorkspaceJournalPage = examattempt.WorkspaceJournalPage
 
 type ConnectExamAttemptCommand struct {
 	SittingID            model.ExamSittingID
@@ -47,15 +51,64 @@ type ReallowExamAttemptCommand struct {
 }
 
 type ListCandidateExamWorkspaceQuery struct {
-	Access       CandidateExamAttemptAccess
-	AfterPath    string
-	AfterEntryID model.AttemptWorkspaceEntryID
-	Limit        int
+	Access         CandidateExamAttemptAccess
+	ExpectedCursor int64
+	AfterEntryID   model.AttemptWorkspaceEntryID
+	Limit          int
 }
 
 type CandidateExamWorkspacePage struct {
-	Items   []CandidateExamWorkspaceItem
-	HasMore bool
+	WorkspaceID     model.ExamAttemptWorkspaceID
+	Cursor          int64
+	Items           []CandidateExamWorkspaceItem
+	HasMore         bool
+	RefreshRequired bool
+}
+
+type ListCandidateExamWorkspaceJournalQuery = examattempt.WorkspaceJournalQuery
+
+type CreateCandidateExamWorkspaceDirectoryCommand struct {
+	Access         ExamAttemptWorkspaceMutationAccess
+	Path           string
+	IdempotencyKey string
+}
+
+type CreateCandidateExamWorkspaceFileCommand struct {
+	Access         ExamAttemptWorkspaceMutationAccess
+	Path           string
+	MediaType      string
+	ExpectedSHA256 string
+	Body           io.Reader
+	Size           int64
+	IdempotencyKey string
+}
+
+type ReplaceCandidateExamWorkspaceFileCommand struct {
+	Access                 ExamAttemptWorkspaceMutationAccess
+	EntryID                model.AttemptWorkspaceEntryID
+	ExpectedPath           string
+	ExpectedContentVersion model.WorkspaceContentVersion
+	MediaType              string
+	ExpectedSHA256         string
+	Body                   io.Reader
+	Size                   int64
+	IdempotencyKey         string
+}
+
+type MoveCandidateExamWorkspaceEntryCommand struct {
+	Access          ExamAttemptWorkspaceMutationAccess
+	EntryID         model.AttemptWorkspaceEntryID
+	ExpectedPath    string
+	DestinationPath string
+	IdempotencyKey  string
+}
+
+type DeleteCandidateExamWorkspaceEntryCommand struct {
+	Access                 ExamAttemptWorkspaceMutationAccess
+	EntryID                model.AttemptWorkspaceEntryID
+	ExpectedPath           string
+	ExpectedContentVersion model.WorkspaceContentVersion
+	IdempotencyKey         string
 }
 
 type OpenCandidateExamResourceQuery struct {
@@ -96,10 +149,134 @@ type examAttemptUseCases interface {
 	CloseConnection(context.Context, examattempt.Call, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error)
 	GetPresentation(context.Context, examattempt.Call, examattempt.CandidateAccess) (examattempt.Presentation, error)
 	ListWorkspace(context.Context, examattempt.Call, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error)
+	ListWorkspaceJournal(context.Context, examattempt.Call, examattempt.WorkspaceJournalQuery) (examattempt.WorkspaceJournalPage, error)
+	CreateWorkspaceDirectory(context.Context, examattempt.Call, examattempt.CreateWorkspaceDirectoryCommand) (examattempt.WorkspaceMutationResult, error)
+	CreateWorkspaceFile(context.Context, examattempt.Call, examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error)
+	ReplaceWorkspaceFile(context.Context, examattempt.Call, examattempt.ReplaceWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error)
+	MoveWorkspaceEntry(context.Context, examattempt.Call, examattempt.MoveWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error)
+	DeleteWorkspaceEntry(context.Context, examattempt.Call, examattempt.DeleteWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error)
 	OpenResource(context.Context, examattempt.Call, examattempt.CandidateAccess, model.ExamResourceID) (*examattempt.OpenedContent, error)
 	OpenWorkspaceFile(context.Context, examattempt.Call, examattempt.CandidateAccess, model.AttemptWorkspaceEntryID) (*examattempt.OpenedContent, error)
 	GetManaged(context.Context, examattempt.Call, examattempt.GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error)
 	ListManaged(context.Context, examattempt.Call, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error)
+}
+
+func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation Invocation,
+	query ListCandidateExamWorkspaceJournalQuery,
+) (CandidateExamWorkspaceJournalPage, error) {
+	result, err := a.examAttempts.ListWorkspaceJournal(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return CandidateExamWorkspaceJournalPage{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation Invocation,
+	command CreateCandidateExamWorkspaceDirectoryCommand,
+) (ExamAttemptWorkspaceMutationResult, error) {
+	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
+		model.AttemptWorkspaceMutationCreateDirectory, struct {
+			Path string `json:"path"`
+		}{command.Path})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, err
+	}
+	result, err := a.examAttempts.CreateWorkspaceDirectory(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		examattempt.CreateWorkspaceDirectoryCommand{Access: command.Access, Path: command.Path, Idempotency: idempotency})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
+	command CreateCandidateExamWorkspaceFileCommand,
+) (ExamAttemptWorkspaceMutationResult, error) {
+	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
+		model.AttemptWorkspaceMutationCreateFile, struct {
+			Path, MediaType, SHA256 string
+			Size                    int64
+		}{command.Path, command.MediaType, command.ExpectedSHA256, command.Size})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, err
+	}
+	result, err := a.examAttempts.CreateWorkspaceFile(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		examattempt.CreateWorkspaceFileCommand{Access: command.Access, Path: command.Path, MediaType: command.MediaType,
+			ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, Idempotency: idempotency})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
+	command ReplaceCandidateExamWorkspaceFileCommand,
+) (ExamAttemptWorkspaceMutationResult, error) {
+	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
+		model.AttemptWorkspaceMutationReplaceFile, struct {
+			EntryID, Path, Version, MediaType, SHA256 string
+			Size                                      int64
+		}{command.EntryID.String(), command.ExpectedPath, command.ExpectedContentVersion.String(), command.MediaType, command.ExpectedSHA256, command.Size})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, err
+	}
+	result, err := a.examAttempts.ReplaceWorkspaceFile(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		examattempt.ReplaceWorkspaceFileCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+			ExpectedContentVersion: command.ExpectedContentVersion, MediaType: command.MediaType, ExpectedSHA256: command.ExpectedSHA256,
+			Body: command.Body, Size: command.Size, Idempotency: idempotency})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
+	command MoveCandidateExamWorkspaceEntryCommand,
+) (ExamAttemptWorkspaceMutationResult, error) {
+	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
+		model.AttemptWorkspaceMutationMoveEntry, struct{ EntryID, ExpectedPath, DestinationPath string }{
+			command.EntryID.String(), command.ExpectedPath, command.DestinationPath})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, err
+	}
+	result, err := a.examAttempts.MoveWorkspaceEntry(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		examattempt.MoveWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+			DestinationPath: command.DestinationPath, Idempotency: idempotency})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
+	command DeleteCandidateExamWorkspaceEntryCommand,
+) (ExamAttemptWorkspaceMutationResult, error) {
+	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
+		model.AttemptWorkspaceMutationDeleteEntry, struct{ EntryID, ExpectedPath, ExpectedContentVersion string }{
+			command.EntryID.String(), command.ExpectedPath, command.ExpectedContentVersion.String()})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, err
+	}
+	result, err := a.examAttempts.DeleteWorkspaceEntry(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		examattempt.DeleteWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+			ExpectedContentVersion: command.ExpectedContentVersion, Idempotency: idempotency})
+	if err != nil {
+		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func candidateWorkspaceIdempotency(invocation Invocation, key string, access ExamAttemptWorkspaceMutationAccess,
+	operation model.AttemptWorkspaceMutationKind, semantic any,
+) (*store.CommandIdempotency, error) {
+	if key == "" {
+		return nil, NewError("idempotency.key_required")
+	}
+	return newCommandIdempotency(invocation, store.ExamAttemptWorkspaceMutationOperation, key, struct {
+		AttemptID string `json:"exam_attempt_id"`
+		Operation string `json:"operation"`
+		Command   any    `json:"command"`
+	}{access.AttemptID.String(), string(operation), semantic})
 }
 
 func (a *App) ReallowExamAttempt(ctx context.Context, invocation Invocation, command ReallowExamAttemptCommand) (ExamAttemptReallowResult, error) {
@@ -175,12 +352,13 @@ func (a *App) GetCandidateExamPresentation(ctx context.Context, invocation Invoc
 
 func (a *App) ListCandidateExamWorkspace(ctx context.Context, invocation Invocation, query ListCandidateExamWorkspaceQuery) (CandidateExamWorkspacePage, error) {
 	result, err := a.examAttempts.ListWorkspace(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), examattempt.WorkspaceQuery{
-		Access: query.Access, AfterPath: query.AfterPath, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
+		Access: query.Access, ExpectedCursor: query.ExpectedCursor, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
 	})
 	if err != nil {
 		return CandidateExamWorkspacePage{}, examAttemptError(err, true)
 	}
-	return CandidateExamWorkspacePage{Items: result.Items, HasMore: result.HasMore}, nil
+	return CandidateExamWorkspacePage{WorkspaceID: result.WorkspaceID, Cursor: result.Cursor,
+		Items: result.Items, HasMore: result.HasMore, RefreshRequired: result.RefreshRequired}, nil
 }
 
 func (a *App) OpenCandidateExamResource(ctx context.Context, invocation Invocation, query OpenCandidateExamResourceQuery) (OpenedExamAttemptContent, error) {
@@ -329,6 +507,15 @@ func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, 
 		return err
 	}
 	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent))
+}
+
+func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, result examattempt.WorkspaceMutationResult) error {
+	event, err := apprealtime.NewCandidateExamAttemptWorkspaceChangedEvent(result.SittingID, result.AttemptID,
+		result.CandidateUserID, result.Change.EntryID, result.Change.Operation, result.Change.Cursor, result.Change.ChangedAt)
+	if err != nil {
+		return err
+	}
+	return effects.realtime.Publish(ctx, event)
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {

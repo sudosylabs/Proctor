@@ -343,6 +343,7 @@ func (testStore) AcademicPeriod() store.AcademicPeriodStore             { return
 func (testStore) ExamAuthoring() store.ExamAuthoringStore               { return nil }
 func (testStore) ExamCorrection() store.ExamCorrectionStore             { return nil }
 func (testStore) ExamAttempt() store.ExamAttemptStore                   { return nil }
+func (testStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore { return nil }
 func (testStore) ExamResource() store.ExamResourceStore                 { return nil }
 func (testStore) ExamRevision() store.ExamRevisionStore                 { return nil }
 func (testStore) ExamSitting() store.ExamSittingStore                   { return nil }

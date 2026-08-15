@@ -82,6 +82,7 @@ type Effects interface {
 	ConnectionClosed(context.Context, ConnectionClosedResult) error
 	ParticipationExpired(context.Context, ParticipationExpiry) error
 	AttemptReallowed(context.Context, ReallowResult) error
+	WorkspaceChanged(context.Context, WorkspaceMutationResult) error
 }
 
 type EffectFailures interface {
@@ -91,34 +92,40 @@ type EffectFailures interface {
 type Content interface {
 	OpenExamResource(context.Context, model.FileRevisionID, model.FileRenditionID) (io.ReadCloser, error)
 	OpenStarterWorkspaceObject(context.Context, model.StarterWorkspaceObjectID) (io.ReadCloser, error)
+	StageAttemptWorkspaceObject(context.Context, model.AttemptWorkspaceObjectID, io.Reader, int64, string) (*model.AttemptWorkspaceContent, error)
+	OpenAttemptWorkspaceObject(context.Context, model.AttemptWorkspaceObjectID) (io.ReadCloser, error)
 }
 
 type Dependencies struct {
-	Persistence      store.ExamAttemptStore
-	Sittings         Sittings
-	Managers         ManagerAuthorizer
-	Auditor          Auditor
-	SystemAuditor    SystemAuditor
-	Effects          Effects
-	EffectFailures   EffectFailures
-	Content          Content
-	Now              func() time.Time
-	NewAttemptID     func() model.ExamAttemptID
-	NewWorkspaceID   func() model.ExamAttemptWorkspaceID
-	NewParticipation func() model.AttemptParticipationID
-	NewConnection    func() model.AttemptConnectionID
-	NewEvidence      func() model.IntegrityEvidenceID
-	NewFlag          func() model.IntegrityFlagID
-	NewSuspension    func() model.AttemptSuspensionID
+	Persistence         store.ExamAttemptStore
+	Workspace           store.ExamAttemptWorkspaceStore
+	Sittings            Sittings
+	Managers            ManagerAuthorizer
+	Auditor             Auditor
+	SystemAuditor       SystemAuditor
+	Effects             Effects
+	EffectFailures      EffectFailures
+	Content             Content
+	Now                 func() time.Time
+	NewAttemptID        func() model.ExamAttemptID
+	NewWorkspaceID      func() model.ExamAttemptWorkspaceID
+	NewParticipation    func() model.AttemptParticipationID
+	NewConnection       func() model.AttemptConnectionID
+	NewEvidence         func() model.IntegrityEvidenceID
+	NewFlag             func() model.IntegrityFlagID
+	NewSuspension       func() model.AttemptSuspensionID
+	NewWorkspaceEntry   func() model.AttemptWorkspaceEntryID
+	NewWorkspaceObject  func() model.AttemptWorkspaceObjectID
+	NewWorkspaceVersion func() model.WorkspaceContentVersion
 }
 
 type Service struct{ deps Dependencies }
 
 func New(deps Dependencies) (*Service, error) {
-	if deps.Persistence == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
+	if deps.Persistence == nil || deps.Workspace == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
 		deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewAttemptID == nil ||
 		deps.NewWorkspaceID == nil || deps.NewParticipation == nil || deps.NewConnection == nil || deps.NewEvidence == nil ||
-		deps.NewFlag == nil || deps.NewSuspension == nil {
+		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil {
 		return nil, errors.New("Exam Attempt dependencies are required")
 	}
 	return &Service{deps: deps}, nil
@@ -690,15 +697,18 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 }
 
 type WorkspaceQuery struct {
-	Access       CandidateAccess
-	AfterPath    string
-	AfterEntryID model.AttemptWorkspaceEntryID
-	Limit        int
+	Access         CandidateAccess
+	ExpectedCursor int64
+	AfterEntryID   model.AttemptWorkspaceEntryID
+	Limit          int
 }
 
 type WorkspacePage struct {
-	Items   []store.CandidateAttemptWorkspaceItem
-	HasMore bool
+	WorkspaceID     model.ExamAttemptWorkspaceID
+	Cursor          int64
+	Items           []store.CandidateAttemptWorkspaceItem
+	HasMore         bool
+	RefreshRequired bool
 }
 
 func (service *Service) ListWorkspace(ctx context.Context, call Call, query WorkspaceQuery) (WorkspacePage, error) {
@@ -706,25 +716,23 @@ func (service *Service) ListWorkspace(ctx context.Context, call Call, query Work
 	if err != nil {
 		return WorkspacePage{}, err
 	}
-	if query.Limit < 1 || query.Limit > 200 || (query.AfterPath == "") != query.AfterEntryID.IsZero() {
+	if query.Limit < 1 || query.Limit > model.AttemptWorkspaceJournalReadMaximum || query.ExpectedCursor < -1 ||
+		(query.ExpectedCursor == -1 && !query.AfterEntryID.IsZero()) {
 		return WorkspacePage{}, invalid("workspace_list")
 	}
-	if query.AfterPath != "" {
-		normalized, normalizeErr := model.NormalizeStarterWorkspacePath(query.AfterPath)
-		if normalizeErr != nil || normalized != query.AfterPath {
-			return WorkspacePage{}, invalidCause("after_path", normalizeErr)
-		}
-	}
-	page, err := service.deps.Persistence.ListCandidateWorkspace(ctx, store.CandidateWorkspaceListOptions{
-		Access: selector, AfterPath: query.AfterPath, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
+	page, err := service.deps.Workspace.List(ctx, store.CandidateWorkspaceListOptions{
+		Access: selector, ExpectedCursor: query.ExpectedCursor, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
 	})
 	if err != nil {
 		return WorkspacePage{}, mapStore(err)
 	}
-	if page == nil {
+	if page == nil || !page.WorkspaceID.IsValid() || page.Cursor < 0 ||
+		(page.RefreshRequired && (len(page.Items) != 0 || page.HasMore)) {
 		return WorkspacePage{}, unavailable(errors.New("missing candidate Workspace page"))
 	}
-	return WorkspacePage{Items: append([]store.CandidateAttemptWorkspaceItem(nil), page.Items...), HasMore: page.HasMore}, nil
+	return WorkspacePage{WorkspaceID: page.WorkspaceID, Cursor: page.Cursor,
+		Items:   append([]store.CandidateAttemptWorkspaceItem(nil), page.Items...),
+		HasMore: page.HasMore, RefreshRequired: page.RefreshRequired}, nil
 }
 
 type OpenedContent struct {
@@ -765,7 +773,7 @@ func (service *Service) OpenWorkspaceFile(ctx context.Context, call Call, access
 	if !entryID.IsValid() {
 		return nil, invalid("attempt_workspace_entry_id")
 	}
-	resolved, err := service.deps.Persistence.ResolveCandidateWorkspaceFile(ctx, selector, entryID)
+	resolved, err := service.deps.Workspace.ResolveFile(ctx, selector, entryID)
 	if err != nil {
 		return nil, mapStore(err)
 	}
@@ -780,7 +788,10 @@ func (service *Service) OpenWorkspaceFile(ctx context.Context, call Call, access
 		}
 		body, err = service.deps.Content.OpenStarterWorkspaceObject(ctx, resolved.StarterObjectID)
 	case model.AttemptWorkspaceStorageAttempt:
-		return nil, unavailable(errors.New("Attempt-origin Workspace content is not implemented"))
+		if !resolved.AttemptObjectID.IsValid() || resolved.StarterObjectID.IsValid() {
+			return nil, unavailable(errors.New("inconsistent attempt-origin Workspace selector"))
+		}
+		body, err = service.deps.Content.OpenAttemptWorkspaceObject(ctx, resolved.AttemptObjectID)
 	default:
 		return nil, unavailable(errors.New("invalid candidate Workspace storage origin"))
 	}
@@ -909,6 +920,20 @@ func mapConflict(constraint string) string {
 		return "exam.attempt.already_connected"
 	case "attempt_connection_closed":
 		return "exam.attempt.connection_closed"
+	case "attempt_workspace_path":
+		return "exam.attempt.workspace.path_conflict"
+	case "attempt_workspace_entry":
+		return "exam.attempt.workspace.entry_conflict"
+	case "attempt_workspace_content_version":
+		return "exam.attempt.workspace.content_conflict"
+	case "attempt_workspace_not_empty":
+		return "exam.attempt.workspace.directory_not_empty"
+	case "attempt_workspace_entry_limit":
+		return "exam.attempt.workspace.entry_limit"
+	case "attempt_workspace_size_limit":
+		return "exam.attempt.workspace.size_limit"
+	case "attempt_workspace_object_state":
+		return "exam.attempt.workspace.object_conflict"
 	default:
 		return "exam.attempt.conflict"
 	}

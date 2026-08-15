@@ -135,6 +135,54 @@ type starterWorkspaceContentPurgerFake struct {
 	order   *[]string
 }
 
+type attemptWorkspaceCleanupStoreFake struct {
+	objects     []model.AttemptWorkspaceObject
+	claimLimits []int
+	claimTokens []string
+	completed   []model.AttemptWorkspaceObjectID
+	released    []model.AttemptWorkspaceObjectID
+	order       *[]string
+}
+
+func (f *attemptWorkspaceCleanupStoreFake) ClaimObjectsForCleanup(_ context.Context, limit int, token string) ([]model.AttemptWorkspaceObject, error) {
+	f.claimLimits = append(f.claimLimits, limit)
+	f.claimTokens = append(f.claimTokens, token)
+	if len(f.objects) < limit {
+		limit = len(f.objects)
+	}
+	return append([]model.AttemptWorkspaceObject(nil), f.objects[:limit]...), nil
+}
+
+func (f *attemptWorkspaceCleanupStoreFake) CompleteObjectCleanup(_ context.Context, objectID model.AttemptWorkspaceObjectID, _ string) error {
+	f.completed = append(f.completed, objectID)
+	if f.order != nil {
+		*f.order = append(*f.order, "attempt-workspace-complete")
+	}
+	return nil
+}
+
+func (f *attemptWorkspaceCleanupStoreFake) ReleaseObjectCleanup(_ context.Context, objectID model.AttemptWorkspaceObjectID, _ string) error {
+	f.released = append(f.released, objectID)
+	return nil
+}
+
+type attemptWorkspaceContentPurgerFake struct {
+	removed []model.AttemptWorkspaceObjectID
+	order   *[]string
+	errAt   int
+}
+
+func (f *attemptWorkspaceContentPurgerFake) RemoveAttemptWorkspaceObject(_ context.Context, objectID model.AttemptWorkspaceObjectID) error {
+	f.removed = append(f.removed, objectID)
+	if f.order != nil {
+		*f.order = append(*f.order, "attempt-workspace-remove")
+	}
+	if f.errAt > 0 && len(f.removed) == f.errAt {
+		return errors.New("Attempt Workspace backend unavailable")
+	}
+	return nil
+}
+
 func (f *starterWorkspaceContentPurgerFake) RemoveStarterWorkspaceObject(_ context.Context, objectID model.StarterWorkspaceObjectID) error {
 	f.removed = append(f.removed, objectID)
 	if f.order != nil {
@@ -164,7 +212,7 @@ func TestFilePurgeHandlerCheckpointsOnlyAfterContentAndMetadataArePurged(t *test
 	second := store.FilePurgeCandidate{Cursor: secondCursor, Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
 	persistence := &purgeStoreFake{candidates: []store.FilePurgeCandidate{first, second}}
 	content := &purgeContentFake{failAt: 2}
-	handler := newFilePurgeExpiredContentHandler(persistence, content, nil, nil)
+	handler := newFilePurgeExpiredContentHandler(persistence, content, nil, nil, nil, nil)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 2), "daily", now, now, 5)
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +251,7 @@ func TestFilePurgeHandlerSelectsDeletionByAuthoritativeCandidateKind(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome := newFilePurgeExpiredContentHandler(persistence, content, nil, nil).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
+	outcome := newFilePurgeExpiredContentHandler(persistence, content, nil, nil, nil, nil).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(content.abandoned) != 1 || len(content.manifests) != 1 {
 		t.Fatalf("outcome=%#v err=%v abandoned=%#v manifests=%#v", outcome, outcome.Err, content.abandoned, content.manifests)
 	}
@@ -220,7 +268,7 @@ func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T)
 		t.Fatal(err)
 	}
 	job.WorkReserved = 1
-	outcome := newFilePurgeExpiredContentHandler(persistence, content, nil, nil).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
+	outcome := newFilePurgeExpiredContentHandler(persistence, content, nil, nil, nil, nil).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
 		t.Fatalf("outcome=%#v claimed=%#v removed=%#v", outcome, persistence.claimed, content.removed)
 	}
@@ -231,7 +279,7 @@ func TestFilePurgeHandlerCapsWorkByDurableReservationAndCheckpoint(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome = newFilePurgeExpiredContentHandler(persistence, content, nil, nil).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
+	outcome = newFilePurgeExpiredContentHandler(persistence, content, nil, nil, nil, nil).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(persistence.claimed) != 0 || len(content.removed) != 0 {
 		t.Fatalf("checkpoint cap outcome=%#v claimed=%#v removed=%#v", outcome, persistence.claimed, content.removed)
 	}
@@ -248,7 +296,7 @@ func TestFilePurgeHandlerClaimsBeforeDeletingAndDoesNotCountClaimConflicts(t *te
 	second := store.FilePurgeCandidate{Cursor: secondCursor, Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), EntryID: model.NewFileEntryID(), RevisionID: model.NewFileRevisionID()}
 	persistence := &purgeStoreFake{candidates: []store.FilePurgeCandidate{first, second}, claimErrAt: 1}
 	content := &purgeContentFake{}
-	handler := newFilePurgeExpiredContentHandler(persistence, content, nil, nil)
+	handler := newFilePurgeExpiredContentHandler(persistence, content, nil, nil, nil, nil)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 2), "daily", now, now, 5)
 	if err != nil {
 		t.Fatal(err)
@@ -284,7 +332,7 @@ func TestFilePurgeHandlerResumesWithCumulativeProgress(t *testing.T) {
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease, LeaseID: model.NewUploadLeaseID(), EntryID: model.NewFileEntryID(), RevisionID: model.NewFileRevisionID()}
 	persistence := &purgeStoreFake{candidates: []store.FilePurgeCandidate{candidate}}
-	handler := newFilePurgeExpiredContentHandler(persistence, &purgeContentFake{}, nil, nil)
+	handler := newFilePurgeExpiredContentHandler(persistence, &purgeContentFake{}, nil, nil, nil, nil)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 10), "daily", now, now, 5)
 	if err != nil {
 		t.Fatal(err)
@@ -331,7 +379,7 @@ func TestFilePurgeHandlerRunsStarterWorkspaceCleanupAfterGenericPurgeWithinOneBa
 		checkpoints = append(checkpoints, value)
 		return nil
 	})
-	outcome := newFilePurgeExpiredContentHandler(files, genericContent, workspace, workspaceContent).Run(context.Background(), execution)
+	outcome := newFilePurgeExpiredContentHandler(files, genericContent, workspace, workspaceContent, nil, nil).Run(context.Background(), execution)
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(workspace.claimLimits) != 1 || workspace.claimLimits[0] != 1 {
 		t.Fatalf("outcome=%#v claim limits=%v", outcome, workspace.claimLimits)
 	}
@@ -360,7 +408,7 @@ func TestFilePurgeHandlerFencesUnknownWorkspaceRemovalAndReleasesUnprocessedClai
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome := newFilePurgeExpiredContentHandler(&purgeStoreFake{}, &purgeContentFake{}, workspace, workspaceContent).Run(
+	outcome := newFilePurgeExpiredContentHandler(&purgeStoreFake{}, &purgeContentFake{}, workspace, workspaceContent, nil, nil).Run(
 		context.Background(), testWorkspaceCleanupExecution(t, job, at, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
 	if outcome.Kind != jobengine.OutcomeRetryableFailure || outcome.PublicErrorCode != "file.backend_unavailable" {
 		t.Fatalf("outcome=%#v", outcome)
@@ -380,7 +428,7 @@ func TestFilePurgeHandlerLeavesRemovedWorkspaceClaimFencedWhenMetadataCommitFail
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome := newFilePurgeExpiredContentHandler(&purgeStoreFake{}, &purgeContentFake{}, workspace, workspaceContent).Run(
+	outcome := newFilePurgeExpiredContentHandler(&purgeStoreFake{}, &purgeContentFake{}, workspace, workspaceContent, nil, nil).Run(
 		context.Background(), testWorkspaceCleanupExecution(t, job, at, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
 	if outcome.Kind != jobengine.OutcomeRetryableFailure || outcome.PublicErrorCode != "database.unavailable" {
 		t.Fatalf("outcome=%#v", outcome)
@@ -390,10 +438,78 @@ func TestFilePurgeHandlerLeavesRemovedWorkspaceClaimFencedWhenMetadataCommitFail
 	}
 }
 
+func TestFilePurgeHandlerRunsAttemptWorkspaceCleanupAfterStarterWorkspaceWithinOneBatch(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	var order []string
+	candidate := store.FilePurgeCandidate{Cursor: "lease:" + model.NewId(), Kind: store.FilePurgeCandidateExpiredLease,
+		LeaseID: model.NewUploadLeaseID(), RevisionID: model.NewFileRevisionID()}
+	files := &purgeStoreFake{candidates: []store.FilePurgeCandidate{candidate}, order: &order}
+	starterObject := cleanupWorkspaceObject(at)
+	starter := &starterWorkspaceCleanupStoreFake{objects: []model.StarterWorkspaceObject{starterObject}, order: &order}
+	starterContent := &starterWorkspaceContentPurgerFake{order: &order}
+	attemptObject := cleanupAttemptWorkspaceObject(at)
+	attempts := &attemptWorkspaceCleanupStoreFake{objects: []model.AttemptWorkspaceObject{attemptObject}, order: &order}
+	attemptContent := &attemptWorkspaceContentPurgerFake{order: &order}
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 3), "daily", at, at, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var checkpoints []jobengine.CheckpointValue
+	execution := testWorkspaceCleanupExecution(t, job, at, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
+		checkpoints = append(checkpoints, value)
+		return nil
+	})
+	outcome := newFilePurgeExpiredContentHandler(files, &purgeContentFake{}, starter, starterContent, attempts, attemptContent).
+		Run(context.Background(), execution)
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(attempts.claimLimits) != 1 || attempts.claimLimits[0] != 1 {
+		t.Fatalf("outcome=%#v claim limits=%v", outcome, attempts.claimLimits)
+	}
+	if len(attempts.claimTokens) != 1 || attempts.claimTokens[0] != string(execution.Attempt.ClaimToken) {
+		t.Fatalf("claim tokens=%v", attempts.claimTokens)
+	}
+	if got := strings.Join(order, ","); got != "generic-complete,workspace-remove,workspace-complete,attempt-workspace-remove,attempt-workspace-complete" {
+		t.Fatalf("cleanup order=%q", got)
+	}
+	if len(checkpoints) != 3 {
+		t.Fatalf("checkpoints=%d", len(checkpoints))
+	}
+	last, err := DecodeFilePurgeExpiredContentCheckpoint(checkpoints[2].Version, checkpoints[2].Document)
+	if err != nil || last.Examined != 3 || last.Purged != 3 || last.Cursor != candidate.Cursor {
+		t.Fatalf("checkpoint=%#v err=%v", last, err)
+	}
+}
+
+func TestFilePurgeHandlerFencesUnknownAttemptWorkspaceRemovalAndReleasesUntouchedClaims(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	first, second := cleanupAttemptWorkspaceObject(at), cleanupAttemptWorkspaceObject(at)
+	attempts := &attemptWorkspaceCleanupStoreFake{objects: []model.AttemptWorkspaceObject{first, second}}
+	content := &attemptWorkspaceContentPurgerFake{errAt: 1}
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeFilePurgeExpiredContent, 1, mustPurgeCommand(t, 2), "daily", at, at, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome := newFilePurgeExpiredContentHandler(&purgeStoreFake{}, &purgeContentFake{}, &starterWorkspaceCleanupStoreFake{},
+		&starterWorkspaceContentPurgerFake{}, attempts, content).Run(context.Background(),
+		testWorkspaceCleanupExecution(t, job, at, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
+	if outcome.Kind != jobengine.OutcomeRetryableFailure || len(content.removed) != 1 || content.removed[0] != first.ID ||
+		len(attempts.completed) != 0 || len(attempts.released) != 1 || attempts.released[0] != second.ID {
+		t.Fatalf("outcome=%#v removed=%v completed=%v released=%v", outcome, content.removed, attempts.completed, attempts.released)
+	}
+}
+
 func cleanupWorkspaceObject(at time.Time) model.StarterWorkspaceObject {
 	return model.StarterWorkspaceObject{ID: model.NewStarterWorkspaceObjectID(), ExamID: model.NewExamID(), CreatedByUserID: model.NewUserID(),
 		CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(-time.Hour), State: model.StarterWorkspaceObjectClaimed,
 		ReclaimAfter: model.OptionalTimeFrom(at.Add(-time.Hour)), ClaimToken: strings.Repeat("a", 64), ClaimedAt: model.OptionalTimeFrom(at)}
+}
+
+func cleanupAttemptWorkspaceObject(at time.Time) model.AttemptWorkspaceObject {
+	return model.AttemptWorkspaceObject{ID: model.NewAttemptWorkspaceObjectID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		StorageOrigin: model.AttemptWorkspaceStorageAttempt, State: model.AttemptWorkspaceObjectClaimed,
+		CreatedAt: at.Add(-2 * time.Hour), UpdatedAt: at, ReclaimAfter: model.OptionalTimeFrom(at.Add(-time.Hour)),
+		ClaimToken: strings.Repeat("a", 64), ClaimedAt: model.OptionalTimeFrom(at)}
 }
 
 func testWorkspaceCleanupExecution(t *testing.T, job *model.Job, at time.Time, reserve func(context.Context, int, int) (bool, error), checkpoint func(context.Context, jobengine.CheckpointValue) error) jobengine.Execution {

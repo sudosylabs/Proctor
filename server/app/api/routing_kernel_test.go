@@ -137,6 +137,21 @@ func TestRoutingKernelRejectsInvalidCatalogs(t *testing.T) {
 	}
 }
 
+func TestRoutingKernelAllowsIdempotentSessionJSONAndStreamingRoutes(t *testing.T) {
+	t.Parallel()
+	jsonRoute := sessionRoute(http.MethodPost, apiPath(literal("json")), nil,
+		func(operationRequest) (operationResult, error) { return noContentResult(), nil })
+	jsonRoute.idempotency = IdempotencyRequired
+	streamRoute := idempotentProtocolRoute(IdempotencyRequired, 1024, "session-upload", RouteProtocolStreamingUpload,
+		AuthSessionRequired, http.MethodPost, apiPath(literal("upload")), nil,
+		func(operationRequest) (protocolResult, error) {
+			return streamingUploadProtocolResult(http.StatusCreated, struct{}{}), nil
+		})
+	if err := validateResourceCatalog("/api/v1", []resource{newResource("session-mutations", jsonRoute, streamRoute)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing.T) {
 	t.Parallel()
 

@@ -82,6 +82,10 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"ExamAttempt", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamAttemptStore(t, decorated)
 		}},
+		{"ExamAttemptWorkspace", func(t *testing.T, decorated store.Store) {
+			storetest.TestExamAttemptWorkspaceStore(t, decorated, decorated.ExamAttemptWorkspace(),
+				examAttemptWorkspaceSQLProbe(t, sqlStore))
+		}},
 		{"ExamResource", storetest.TestExamResourceStore},
 		{"ExamCorrection", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamCorrectionStore(t, decorated, examCorrectionSQLProbe(t, sqlStore))
@@ -153,6 +157,106 @@ func TestExamAttemptStore(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	storetest.TestExamAttemptStore(t, persistence, examAttemptSQLProbe(t, persistence))
+}
+
+func TestExamAttemptWorkspaceStore(t *testing.T) {
+	persistence := openTestStore(t)
+	peerPersistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	probe := examAttemptWorkspaceSQLProbe(t, persistence)
+	probe.ConcurrentPeer = NewSQLExamAttemptWorkspaceStore(peerPersistence)
+	storetest.TestExamAttemptWorkspaceStore(t, persistence, NewSQLExamAttemptWorkspaceStore(persistence),
+		probe)
+}
+
+func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptWorkspaceSQLProbe {
+	t.Helper()
+	return storetest.ExamAttemptWorkspaceSQLProbe{
+		SetParticipationLeaseExpired: examAttemptSQLProbe(t, persistence).SetParticipationLeaseExpired,
+		MakeObjectCleanupDue: func(t *testing.T, ctx context.Context, id model.AttemptWorkspaceObjectID) {
+			t.Helper()
+			_, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_attempt_workspace_objects
+			SET updated_at=GREATEST(updated_at,statement_timestamp()),reclaim_after=statement_timestamp()-INTERVAL '1 microsecond'
+			WHERE id=? AND state='reclaimable'`, id.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+		}, MakeCleanupClaimStale: func(t *testing.T, ctx context.Context, id model.AttemptWorkspaceObjectID) {
+			t.Helper()
+			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "age Attempt Workspace cleanup claim fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects DISABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_workspace_objects SET
+				created_at=statement_timestamp()-INTERVAL '7 minutes',updated_at=statement_timestamp()-INTERVAL '6 minutes',
+				reclaim_after=statement_timestamp()-INTERVAL '7 minutes',claimed_at=statement_timestamp()-INTERVAL '6 minutes'
+				WHERE id=? AND state='claimed'`, id.String()); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects ENABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				return struct{}{}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}, FillWorkspaceEntryQuota: func(t *testing.T, ctx context.Context, workspaceID model.ExamAttemptWorkspaceID) {
+			t.Helper()
+			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "fill Attempt Workspace entry quota fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+				var workspace struct {
+					RevisionID  string    `db:"admission_revision_id"`
+					Count       int       `db:"entry_count"`
+					DatabaseNow time.Time `db:"database_now"`
+				}
+				if getErr := tx.Get(ctx, &workspace, `SELECT w.admission_revision_id,
+				(SELECT count(*) FROM exam_attempt_workspace_entries e WHERE e.workspace_id=w.id) AS entry_count,
+				statement_timestamp() AS database_now FROM exam_attempt_workspaces w WHERE w.id=? FOR UPDATE`, workspaceID.String()); getErr != nil {
+					return struct{}{}, getErr
+				}
+				for index := workspace.Count; index < model.AttemptWorkspaceMaximumEntries; index++ {
+					if _, execErr := tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_entries
+					(id,workspace_id,admission_revision_id,kind,path,created_at,updated_at)
+					VALUES (?,?,?,'directory',?,?,?)`, model.NewAttemptWorkspaceEntryID().String(), workspaceID.String(),
+						workspace.RevisionID, fmt.Sprintf("zz-quota-%03d", index), workspace.DatabaseNow, workspace.DatabaseNow); execErr != nil {
+						return struct{}{}, execErr
+					}
+				}
+				return struct{}{}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}, MakeJournalGap: func(t *testing.T, ctx context.Context, workspaceID model.ExamAttemptWorkspaceID) {
+			t.Helper()
+			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "create Attempt Workspace journal gap fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+				var entry struct {
+					ID   string `db:"id"`
+					Kind string `db:"kind"`
+				}
+				if getErr := tx.Get(ctx, &entry, `SELECT id,kind FROM exam_attempt_workspace_entries WHERE workspace_id=? ORDER BY id LIMIT 1`, workspaceID.String()); getErr != nil {
+					return struct{}{}, getErr
+				}
+				if _, execErr := tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_journal WHERE workspace_id=?`, workspaceID.String()); execErr != nil {
+					return struct{}{}, execErr
+				}
+				var cursor int64
+				if getErr := tx.Get(ctx, &cursor, `UPDATE exam_attempt_workspaces SET cursor=cursor+?,updated_at=statement_timestamp()
+				WHERE id=? RETURNING cursor`, model.AttemptWorkspaceJournalRetention+1, workspaceID.String()); getErr != nil {
+					return struct{}{}, getErr
+				}
+				if _, execErr := tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_journal
+				(workspace_id,cursor,entry_id,entry_kind,operation,old_path,new_path,mutation_key_digest,changed_at)
+				VALUES (?,?,?,?,'move_entry','gap-old','gap-new',?,statement_timestamp())`, workspaceID.String(), cursor,
+					entry.ID, entry.Kind, bytes.Repeat([]byte{1}, 32)); execErr != nil {
+					return struct{}{}, execErr
+				}
+				return struct{}{}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}}
 }
 
 func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptSQLProbe {

@@ -52,6 +52,210 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	}
 }
 
+func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafeChange(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	credential := model.NewCredentialToken()
+	participationID := model.NewAttemptParticipationID()
+	entryID := model.NewAttemptWorkspaceEntryID()
+	workspaceID := model.NewExamAttemptWorkspaceID()
+	change := model.AttemptWorkspaceJournalEntry{WorkspaceID: workspaceID, Cursor: 9, EntryID: entryID,
+		EntryKind: model.StarterWorkspaceEntryDirectory, Operation: model.AttemptWorkspaceMutationCreateDirectory,
+		NewPath: "src", ChangedAt: f.at}
+	f.workspace.target = &store.ExamAttemptWorkspaceMutationTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+	f.workspace.mutationResult = &store.ExamAttemptWorkspaceMutationResult{SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
+		CandidateUserID: f.userID, WorkspaceID: workspaceID,
+		Entry: &store.CandidateAttemptWorkspaceItem{EntryID: entryID, Kind: model.StarterWorkspaceEntryDirectory, Path: "src"}, Change: change}
+
+	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{
+		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
+			ContinuityCredential: credential}, ParticipationID: participationID, Generation: 4},
+		Path: "src", Idempotency: &store.CommandIdempotency{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := f.call.Principal()
+	access := f.workspace.resolvedAccess
+	if access.AttemptID != f.attemptID || access.ParticipationID != participationID || access.Generation != 4 ||
+		access.CandidateUserID != principal.UserID || access.SessionID != principal.SessionID || access.ConnectionID != f.connectionID ||
+		access.ContinuityCredentialHash != model.HashToken(credential) || f.workspace.mutation == nil ||
+		f.workspace.mutation.EntryID != entryID || f.workspace.mutation.DestinationPath != "src" ||
+		f.workspace.mutation.Operation != model.AttemptWorkspaceMutationCreateDirectory || !model.IsValidId(f.workspace.mutation.AuditEventID) ||
+		result.Change.Cursor != 9 || f.effects.workspaceChanged != 1 {
+		t.Fatalf("access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	}
+	auditCapture := fmt.Sprintf("%#v", f.audit.values)
+	if strings.Contains(auditCapture, "src") || strings.Contains(auditCapture, credential) ||
+		strings.Contains(auditCapture, model.HashToken(credential)) || strings.Contains(auditCapture, participationID.String()) {
+		t.Fatalf("private mutation material entered audit: %s", auditCapture)
+	}
+	if got := strings.Join(f.order, ","); got != "workspace.resolve,audit,workspace.apply,effect.workspace" {
+		t.Fatalf("order = %s", got)
+	}
+}
+
+func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffects(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	credential := model.NewCredentialToken()
+	participationID := model.NewAttemptParticipationID()
+	entryID := model.NewAttemptWorkspaceEntryID()
+	workspaceID := model.NewExamAttemptWorkspaceID()
+	version := model.NewWorkspaceContentVersion()
+	checksum := strings.Repeat("a", 64)
+	f.workspace.target = &store.ExamAttemptWorkspaceMutationTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, entryID, model.StarterWorkspaceEntryFile,
+		model.AttemptWorkspaceMutationCreateFile, "", "main.go", version, false)
+	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 4, SHA256: checksum}
+
+	result, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{
+		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
+			ContinuityCredential: credential}, ParticipationID: participationID, Generation: 2},
+		Path: "main.go", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4,
+		Idempotency: &store.CommandIdempotency{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.workspace.reservation == nil || f.workspace.ready == nil || f.workspace.mutation == nil ||
+		f.workspace.reservation.ObjectID != f.content.attemptObjectID || f.workspace.ready.ObjectID != f.content.attemptObjectID ||
+		f.workspace.ready.ContentVersion != version || f.workspace.mutation.ObjectID != f.content.attemptObjectID ||
+		f.workspace.mutation.DestinationPath != "main.go" || result.Entry == nil || result.Entry.ContentVersion != version ||
+		f.effects.workspaceChanged != 1 {
+		t.Fatalf("reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	}
+	capture := fmt.Sprintf("%#v", f.audit.values)
+	if strings.Contains(capture, "main.go") || strings.Contains(capture, checksum) || strings.Contains(capture, credential) ||
+		strings.Contains(capture, model.HashToken(credential)) {
+		t.Fatalf("private file material entered audit: %s", capture)
+	}
+	if got := strings.Join(f.order, ","); got != "workspace.resolve,workspace.reserve,content.stage,workspace.ready,audit,workspace.apply,effect.workspace" {
+		t.Fatalf("order = %s", got)
+	}
+}
+
+func TestWorkspaceFileReplayReclaimsLosingStageAndPublishesNoEffect(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	workspaceID, entryID := model.NewExamAttemptWorkspaceID(), model.NewAttemptWorkspaceEntryID()
+	version, checksum := model.NewWorkspaceContentVersion(), strings.Repeat("b", 64)
+	f.workspace.target = &store.ExamAttemptWorkspaceMutationTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, entryID, model.StarterWorkspaceEntryFile,
+		model.AttemptWorkspaceMutationCreateFile, "", "retry.txt", version, true)
+	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
+	f.workspace.proposedVersion = model.NewWorkspaceContentVersion()
+	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
+	_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{
+		Access: validWorkspaceMutationAccess(f), Path: "retry.txt", MediaType: "text/plain", ExpectedSHA256: checksum,
+		Body: strings.NewReader("x"), Size: 1, Idempotency: &store.CommandIdempotency{},
+	})
+	if err != nil || len(f.workspace.reclaimable) != 1 || f.effects.workspaceChanged != 0 ||
+		f.workspace.mutation.EntryID != f.workspace.proposedEntryID || f.workspace.mutation.EntryID == entryID ||
+		f.workspace.ready.ContentVersion != f.workspace.proposedVersion || resultVersion(f.workspace.mutationResult) != version {
+		t.Fatalf("error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
+	}
+}
+
+func TestWorkspaceDirectoryReplayAcceptsRetainedEntryInsteadOfFreshProposal(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	workspaceID, retainedID := model.NewExamAttemptWorkspaceID(), model.NewAttemptWorkspaceEntryID()
+	f.workspace.target = &store.ExamAttemptWorkspaceMutationTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, retainedID, model.StarterWorkspaceEntryDirectory,
+		model.AttemptWorkspaceMutationCreateDirectory, "", "src", "", true)
+	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
+	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{
+		Access: validWorkspaceMutationAccess(f), Path: "src", Idempotency: &store.CommandIdempotency{},
+	})
+	if err != nil || result.Entry == nil || result.Entry.EntryID != retainedID || f.workspace.mutation.EntryID != f.workspace.proposedEntryID ||
+		f.workspace.mutation.EntryID == retainedID || f.effects.workspaceChanged != 0 {
+		t.Fatalf("result=%#v mutation=%#v error=%v", result, f.workspace.mutation, err)
+	}
+}
+
+func TestWorkspaceReadyObjectReclamationDistinguishesStableAndUnknownApplyOutcomes(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name        string
+		err         error
+		wantCode    string
+		wantReclaim int
+	}{
+		{name: "stable conflict", err: store.NewErrConflict("attempt_workspace", "attempt_workspace_path", errors.New("collision")),
+			wantCode: "exam.attempt.workspace.path_conflict", wantReclaim: 1},
+		{name: "outcome unknown", err: errors.New("database acknowledgement lost"),
+			wantCode: "exam.attempt.unavailable", wantReclaim: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			f.workspace.target = &store.ExamAttemptWorkspaceMutationTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+				ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: model.NewExamAttemptWorkspaceID()}
+			f.workspace.mutationErr = test.err
+			checksum := strings.Repeat("d", 64)
+			f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
+			_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
+				Path: "work.txt", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("x"), Size: 1,
+				Idempotency: &store.CommandIdempotency{}})
+			var fault *Fault
+			if !errors.As(err, &fault) || fault.Code != test.wantCode || len(f.workspace.reclaimable) != test.wantReclaim {
+				t.Fatalf("error=%v reclaimable=%v", err, f.workspace.reclaimable)
+			}
+		})
+	}
+}
+
+func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		operation model.AttemptWorkspaceMutationKind
+		invoke    func(*fixture, model.AttemptWorkspaceEntryID, model.WorkspaceContentVersion) error
+		check     func(*testing.T, *store.ExamAttemptWorkspaceMutation)
+	}{
+		{name: "move", operation: model.AttemptWorkspaceMutationMoveEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, _ model.WorkspaceContentVersion) error {
+			_, err := f.service.MoveWorkspaceEntry(context.Background(), f.call, MoveWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
+				EntryID: id, ExpectedPath: "old", DestinationPath: "new", Idempotency: &store.CommandIdempotency{}})
+			return err
+		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
+			if mutation.ExpectedPath != "old" || mutation.DestinationPath != "new" {
+				t.Fatalf("mutation=%#v", mutation)
+			}
+		}},
+		{name: "delete_file", operation: model.AttemptWorkspaceMutationDeleteEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, version model.WorkspaceContentVersion) error {
+			_, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
+				EntryID: id, ExpectedPath: "old", ExpectedContentVersion: version, Idempotency: &store.CommandIdempotency{}})
+			return err
+		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
+			if mutation.ExpectedPath != "old" || mutation.ExpectedContentVersion.IsZero() {
+				t.Fatalf("mutation=%#v", mutation)
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			workspaceID, entryID, version := model.NewExamAttemptWorkspaceID(), model.NewAttemptWorkspaceEntryID(), model.NewWorkspaceContentVersion()
+			f.workspace.target = &store.ExamAttemptWorkspaceMutationTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+				ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+			f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, entryID, model.StarterWorkspaceEntryFile,
+				test.operation, "old", map[bool]string{true: "new"}[test.operation == model.AttemptWorkspaceMutationMoveEntry], version, false)
+			if test.operation == model.AttemptWorkspaceMutationDeleteEntry {
+				f.workspace.mutationResult.Entry = nil
+			}
+			if err := test.invoke(f, entryID, version); err != nil {
+				t.Fatal(err)
+			}
+			test.check(t, f.workspace.mutation)
+		})
+	}
+}
+
 func TestConnectRejectsMalformedCredentialAndPATBeforeReads(t *testing.T) {
 	t.Parallel()
 	for _, mutate := range []func(*fixture){
@@ -541,7 +745,7 @@ func TestStarterOriginWorkspaceFileOpensPinnedStarterBytesWithAttemptObjectIdent
 	starterID := model.NewStarterWorkspaceObjectID()
 	attemptObjectID := model.NewAttemptWorkspaceObjectID()
 	version := model.NewWorkspaceContentVersion()
-	f.persistence.workspaceContent = &store.CandidateWorkspaceContent{
+	f.workspace.file = &store.CandidateWorkspaceContent{
 		Entry: store.CandidateAttemptWorkspaceItem{EntryID: entryID, Kind: model.StarterWorkspaceEntryFile,
 			Path: "cmd/main.go", MediaType: "text/x-go", SizeBytes: 4, SHA256: strings.Repeat("a", 64)},
 		StorageOrigin: model.AttemptWorkspaceStorageStarter, StarterObjectID: starterID,
@@ -598,23 +802,77 @@ func TestContentSelectorsPreserveCandidateAccessErrors(t *testing.T) {
 	}
 }
 
-func TestWorkspaceListRejectsUnboundedOrIncompleteCursorsBeforeStore(t *testing.T) {
+func TestWorkspaceListUsesPathFreeSnapshotCursor(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	workspaceID := model.NewExamAttemptWorkspaceID()
+	f.workspace.page = &store.CandidateAttemptWorkspacePage{WorkspaceID: workspaceID, Cursor: 7,
+		Items: []store.CandidateAttemptWorkspaceItem{{EntryID: model.NewAttemptWorkspaceEntryID(),
+			Kind: model.StarterWorkspaceEntryDirectory, Path: "cmd"}}, HasMore: true}
+	page, err := f.service.ListWorkspace(context.Background(), f.call, WorkspaceQuery{Access: CandidateAccess{
+		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
+	}, ExpectedCursor: -1, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.WorkspaceID != workspaceID || page.Cursor != 7 || len(page.Items) != 1 || !page.HasMore || page.RefreshRequired ||
+		f.workspace.options.ExpectedCursor != -1 || !f.workspace.options.AfterEntryID.IsZero() {
+		t.Fatalf("page=%#v options=%#v", page, f.workspace.options)
+	}
+}
+
+func TestWorkspaceListRejectsUnboundedOrInvalidCursorsBeforeStore(t *testing.T) {
 	t.Parallel()
 	access := CandidateAccess{ContinuityCredential: model.NewCredentialToken()}
 	for _, query := range []WorkspaceQuery{
-		{Access: access, Limit: 0},
-		{Access: access, Limit: 201},
-		{Access: access, AfterPath: "cmd/main.go", Limit: 20},
-		{Access: access, AfterEntryID: model.NewAttemptWorkspaceEntryID(), Limit: 20},
-		{Access: access, AfterPath: "cmd/../main.go", AfterEntryID: model.NewAttemptWorkspaceEntryID(), Limit: 20},
+		{Access: access, ExpectedCursor: -1, Limit: 0},
+		{Access: access, ExpectedCursor: -1, Limit: 201},
+		{Access: access, ExpectedCursor: -2, Limit: 20},
+		{Access: access, ExpectedCursor: -1, AfterEntryID: model.NewAttemptWorkspaceEntryID(), Limit: 20},
 	} {
 		f := newFixture(t)
 		query.Access.AttemptID, query.Access.ConnectionID = f.attemptID, f.connectionID
 		_, err := f.service.ListWorkspace(context.Background(), f.call, query)
 		var fault *Fault
-		if !errors.As(err, &fault) || fault.Code != "exam.attempt.invalid" || f.persistence.workspaceLists != 0 {
-			t.Fatalf("query=%#v error=%v calls=%d", query, err, f.persistence.workspaceLists)
+		if !errors.As(err, &fault) || fault.Code != "exam.attempt.invalid" || f.workspace.lists != 0 {
+			t.Fatalf("query=%#v error=%v calls=%d", query, err, f.workspace.lists)
 		}
+	}
+}
+
+func TestWorkspaceJournalReturnsOrderedRecoveryWithoutPathsInSelector(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	workspaceID, entryID := model.NewExamAttemptWorkspaceID(), model.NewAttemptWorkspaceEntryID()
+	f.workspace.journalPage = &store.CandidateWorkspaceJournalPage{WorkspaceID: workspaceID, CurrentCursor: 5,
+		Entries: []model.AttemptWorkspaceJournalEntry{{WorkspaceID: workspaceID, Cursor: 5, EntryID: entryID,
+			EntryKind: model.StarterWorkspaceEntryDirectory, Operation: model.AttemptWorkspaceMutationCreateDirectory,
+			NewPath: "src", ChangedAt: f.at}}}
+	page, err := f.service.ListWorkspaceJournal(context.Background(), f.call, WorkspaceJournalQuery{Access: CandidateAccess{
+		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
+	}, AfterCursor: 4, Limit: 20})
+	if err != nil || page.CurrentCursor != 5 || len(page.Entries) != 1 || f.workspace.journalOptions.AfterCursor != 4 {
+		t.Fatalf("page=%#v options=%#v error=%v", page, f.workspace.journalOptions, err)
+	}
+}
+
+func TestOpenAttemptOriginWorkspaceFileUsesOpaqueAttemptObject(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	entryID, objectID, version := model.NewAttemptWorkspaceEntryID(), model.NewAttemptWorkspaceObjectID(), model.NewWorkspaceContentVersion()
+	f.workspace.file = &store.CandidateWorkspaceContent{Entry: store.CandidateAttemptWorkspaceItem{EntryID: entryID,
+		Kind: model.StarterWorkspaceEntryFile, Path: "answer.txt", ContentVersion: version, MediaType: "text/plain",
+		SizeBytes: 4, SHA256: strings.Repeat("c", 64)}, StorageOrigin: model.AttemptWorkspaceStorageAttempt,
+		AttemptObjectID: objectID, ContentVersion: version}
+	f.content.openAttemptBody = "work"
+	opened, err := f.service.OpenWorkspaceFile(context.Background(), f.call, CandidateAccess{AttemptID: f.attemptID,
+		ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()}, entryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Body.Close()
+	if f.content.openAttemptID != objectID || opened.ContentVersion != version {
+		t.Fatalf("opened=%#v object=%s", opened, f.content.openAttemptID)
 	}
 }
 
@@ -749,6 +1007,7 @@ type fixture struct {
 	revision        *model.ExamRevision
 	order           []string
 	persistence     *attemptStoreFake
+	workspace       *attemptWorkspaceStoreFake
 	audit           *auditFake
 	systemAudit     *systemAuditFake
 	effects         *effectsFake
@@ -769,16 +1028,20 @@ func newFixture(t *testing.T) *fixture {
 			ContentVersion: model.NewWorkspaceContentVersion(), MediaType: "text/x-go", SizeBytes: 4, SHA256: strings.Repeat("a", 64)},
 	}}
 	f.persistence = &attemptStoreFake{f: f, firstAdmission: true, connectionOpened: true}
+	f.workspace = &attemptWorkspaceStoreFake{f: f}
 	f.audit = &auditFake{f: f}
 	f.systemAudit = &systemAuditFake{f: f}
 	f.effects = &effectsFake{f: f}
-	f.content = &contentFake{}
+	f.content = &contentFake{f: f}
 	service, err := New(Dependencies{
-		Persistence: f.persistence, Sittings: &sittingFake{f: f}, Managers: &managerFake{f: f},
+		Persistence: f.persistence, Workspace: f.workspace, Sittings: &sittingFake{f: f}, Managers: &managerFake{f: f},
 		Auditor: f.audit, SystemAuditor: f.systemAudit, Effects: f.effects, EffectFailures: f.effects, Content: f.content,
 		Now: func() time.Time { return f.at }, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
 		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: model.NewIntegrityFlagID, NewSuspension: model.NewAttemptSuspensionID,
+		NewWorkspaceEntry:   func() model.AttemptWorkspaceEntryID { return entryIDOrNew(f.workspace) },
+		NewWorkspaceObject:  model.NewAttemptWorkspaceObjectID,
+		NewWorkspaceVersion: func() model.WorkspaceContentVersion { return workspaceVersionOrNew(f.workspace) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -843,10 +1106,11 @@ func (fake *auditFake) Fail(_ context.Context, _ string, code string) error {
 }
 
 type effectsFake struct {
-	f              *fixture
-	opened, closed int
-	expired        int
-	reallowed      int
+	f                *fixture
+	opened, closed   int
+	expired          int
+	reallowed        int
+	workspaceChanged int
 }
 
 func (fake *effectsFake) ConnectionOpened(context.Context, ConnectionResult) error {
@@ -869,10 +1133,30 @@ func (fake *effectsFake) AttemptReallowed(context.Context, ReallowResult) error 
 	fake.reallowed++
 	return nil
 }
+func (fake *effectsFake) WorkspaceChanged(context.Context, WorkspaceMutationResult) error {
+	fake.f.order = append(fake.f.order, "effect.workspace")
+	fake.workspaceChanged++
+	return nil
+}
 func (*effectsFake) Report(context.Context, string, error) {}
 
 type contentFake struct {
-	starterID model.StarterWorkspaceObjectID
+	f               *fixture
+	starterID       model.StarterWorkspaceObjectID
+	attemptObjectID model.AttemptWorkspaceObjectID
+	attemptContent  *model.AttemptWorkspaceContent
+	openAttemptID   model.AttemptWorkspaceObjectID
+	openAttemptBody string
+}
+
+func (fake *contentFake) StageAttemptWorkspaceObject(_ context.Context, id model.AttemptWorkspaceObjectID, _ io.Reader, _ int64, _ string) (*model.AttemptWorkspaceContent, error) {
+	fake.f.order = append(fake.f.order, "content.stage")
+	fake.attemptObjectID = id
+	return fake.attemptContent, nil
+}
+func (fake *contentFake) OpenAttemptWorkspaceObject(_ context.Context, id model.AttemptWorkspaceObjectID) (io.ReadCloser, error) {
+	fake.openAttemptID = id
+	return io.NopCloser(strings.NewReader(fake.openAttemptBody)), nil
 }
 
 func (*contentFake) OpenExamResource(context.Context, model.FileRevisionID, model.FileRenditionID) (io.ReadCloser, error) {
@@ -903,8 +1187,6 @@ type attemptStoreFake struct {
 	authorizedSession  model.SessionID
 	managerOptions     store.ExamAttemptManagerListOptions
 	managerRows        []store.ExamAttemptManagerSnapshot
-	workspaceLists     int
-	workspaceContent   *store.CandidateWorkspaceContent
 	renew              *store.ExamAttemptParticipationRenewal
 	renewResult        *store.ExamAttemptParticipationRenewalResult
 	renewErr           error
@@ -917,6 +1199,135 @@ type attemptStoreFake struct {
 	reallow            *store.ExamAttemptReallow
 	reallowResult      *store.ExamAttemptReallowResult
 	reallowErr         error
+}
+
+type attemptWorkspaceStoreFake struct {
+	f               *fixture
+	resolvedAccess  store.ExamAttemptWorkspaceMutationAccess
+	target          *store.ExamAttemptWorkspaceMutationTarget
+	mutation        *store.ExamAttemptWorkspaceMutation
+	mutationResult  *store.ExamAttemptWorkspaceMutationResult
+	mutationErr     error
+	reservation     *store.ExamAttemptWorkspaceObjectReservation
+	ready           *store.ExamAttemptWorkspaceObjectReady
+	reclaimable     []model.AttemptWorkspaceObjectID
+	lists           int
+	options         store.CandidateWorkspaceListOptions
+	page            *store.CandidateAttemptWorkspacePage
+	file            *store.CandidateWorkspaceContent
+	journalOptions  store.CandidateWorkspaceJournalOptions
+	journalPage     *store.CandidateWorkspaceJournalPage
+	proposedEntryID model.AttemptWorkspaceEntryID
+	proposedVersion model.WorkspaceContentVersion
+}
+
+func entryIDOrNew(fake *attemptWorkspaceStoreFake) model.AttemptWorkspaceEntryID {
+	if fake.proposedEntryID.IsValid() {
+		return fake.proposedEntryID
+	}
+	result := fake.mutationResult
+	if result != nil && result.Entry != nil && result.Entry.EntryID.IsValid() {
+		return result.Entry.EntryID
+	}
+	return model.NewAttemptWorkspaceEntryID()
+}
+
+func workspaceVersionOrNew(fake *attemptWorkspaceStoreFake) model.WorkspaceContentVersion {
+	if fake.proposedVersion.IsValid() {
+		return fake.proposedVersion
+	}
+	result := fake.mutationResult
+	if result != nil && result.Change.ContentVersion.IsValid() {
+		return result.Change.ContentVersion
+	}
+	return model.NewWorkspaceContentVersion()
+}
+
+func resultVersion(result *store.ExamAttemptWorkspaceMutationResult) model.WorkspaceContentVersion {
+	if result == nil {
+		return ""
+	}
+	return result.Change.ContentVersion
+}
+
+func validWorkspaceMutationAccess(f *fixture) WorkspaceMutationAccess {
+	return WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
+		ContinuityCredential: model.NewCredentialToken()}, ParticipationID: model.NewAttemptParticipationID(), Generation: 1}
+}
+
+func workspaceMutationResultFixture(f *fixture, workspaceID model.ExamAttemptWorkspaceID, entryID model.AttemptWorkspaceEntryID,
+	kind model.StarterWorkspaceEntryKind, operation model.AttemptWorkspaceMutationKind, oldPath, newPath string,
+	version model.WorkspaceContentVersion, replayed bool,
+) *store.ExamAttemptWorkspaceMutationResult {
+	path := newPath
+	if path == "" {
+		path = oldPath
+	}
+	entry := &store.CandidateAttemptWorkspaceItem{EntryID: entryID, Kind: kind, Path: path}
+	if kind == model.StarterWorkspaceEntryFile {
+		entry.ContentVersion, entry.MediaType, entry.SizeBytes, entry.SHA256 = version, "text/plain", 1, strings.Repeat("a", 64)
+	}
+	change := model.AttemptWorkspaceJournalEntry{WorkspaceID: workspaceID, Cursor: 2, EntryID: entryID, EntryKind: kind,
+		Operation: operation, OldPath: oldPath, NewPath: newPath, ContentVersion: version, ChangedAt: f.at}
+	if operation == model.AttemptWorkspaceMutationDeleteEntry {
+		change.ContentVersion = ""
+	}
+	return &store.ExamAttemptWorkspaceMutationResult{SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
+		CandidateUserID: f.userID, WorkspaceID: workspaceID, Entry: entry, Change: change, Replayed: replayed}
+}
+
+func (fake *attemptWorkspaceStoreFake) List(_ context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
+	fake.lists++
+	fake.options = options
+	return fake.page, nil
+}
+func (fake *attemptWorkspaceStoreFake) ResolveFile(context.Context, store.CandidateAttemptAccess, model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
+	return fake.file, nil
+}
+func (fake *attemptWorkspaceStoreFake) ListJournal(_ context.Context, options store.CandidateWorkspaceJournalOptions) (*store.CandidateWorkspaceJournalPage, error) {
+	fake.journalOptions = options
+	return fake.journalPage, nil
+}
+func (fake *attemptWorkspaceStoreFake) ResolveMutationTarget(_ context.Context, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
+	fake.f.order = append(fake.f.order, "workspace.resolve")
+	fake.resolvedAccess = access
+	return fake.target, nil
+}
+func (fake *attemptWorkspaceStoreFake) ReserveObject(_ context.Context, input *store.ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error) {
+	fake.f.order = append(fake.f.order, "workspace.reserve")
+	fake.reservation = input
+	return model.NewStagedAttemptWorkspaceObject(input.ObjectID, fake.target.WorkspaceID, fake.f.at, fake.f.at.Add(time.Hour))
+}
+func (fake *attemptWorkspaceStoreFake) MarkObjectReady(_ context.Context, input *store.ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error) {
+	fake.f.order = append(fake.f.order, "workspace.ready")
+	fake.ready = input
+	object, err := model.NewStagedAttemptWorkspaceObject(input.ObjectID, fake.target.WorkspaceID, fake.f.at, fake.f.at.Add(time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	if err = object.MarkContentReady(input.ContentVersion, input.Content.MediaType, input.Content.SizeBytes, input.Content.SHA256, fake.f.at.Add(time.Second)); err != nil {
+		return nil, err
+	}
+	return object, nil
+}
+func (fake *attemptWorkspaceStoreFake) ApplyMutation(_ context.Context, mutation *store.ExamAttemptWorkspaceMutation, _ *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
+	fake.f.order = append(fake.f.order, "workspace.apply")
+	fake.mutation = mutation
+	return fake.mutationResult, fake.mutationErr
+}
+
+func (fake *attemptWorkspaceStoreFake) MarkObjectReclaimable(_ context.Context, id model.AttemptWorkspaceObjectID) error {
+	fake.reclaimable = append(fake.reclaimable, id)
+	return nil
+}
+func (*attemptWorkspaceStoreFake) ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error) {
+	return nil, nil
+}
+func (*attemptWorkspaceStoreFake) CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+	return nil
+}
+func (*attemptWorkspaceStoreFake) ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+	return nil
 }
 
 func (fake *attemptStoreFake) Connect(_ context.Context, input *store.ExamAttemptConnect, _ *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
@@ -1010,16 +1421,6 @@ func (fake *attemptStoreFake) GetCandidatePresentation(_ context.Context, access
 	}
 	return fake.presentation, nil
 }
-func (fake *attemptStoreFake) ListCandidateWorkspace(context.Context, store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
-	fake.workspaceLists++
-	return &store.CandidateAttemptWorkspacePage{}, nil
-}
 func (*attemptStoreFake) ResolveCandidateResource(context.Context, store.CandidateAttemptAccess, model.ExamResourceID) (*store.CandidateResourceContent, error) {
-	return nil, errors.New("not configured")
-}
-func (fake *attemptStoreFake) ResolveCandidateWorkspaceFile(context.Context, store.CandidateAttemptAccess, model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
-	if fake.workspaceContent != nil {
-		return fake.workspaceContent, nil
-	}
 	return nil, errors.New("not configured")
 }

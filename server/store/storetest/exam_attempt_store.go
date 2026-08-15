@@ -80,16 +80,16 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		presentation.CurrentRevisionID != fixture.revisionID {
 		t.Fatalf("GetCandidatePresentation() = %#v", presentation)
 	}
-	page, err := ss.ExamAttempt().ListCandidateWorkspace(ctx, store.CandidateWorkspaceListOptions{Access: access, Limit: 200})
+	page, err := ss.ExamAttemptWorkspace().List(ctx, store.CandidateWorkspaceListOptions{Access: access, ExpectedCursor: -1, Limit: 200})
 	requireNoError(t, err)
 	if page.HasMore || len(page.Items) != 2 || page.Items[0].Path != "cmd" || page.Items[1].Path != "cmd/main.go" ||
 		!page.Items[0].ContentVersion.IsZero() || !page.Items[1].ContentVersion.IsValid() {
-		t.Fatalf("ListCandidateWorkspace() = %#v", page)
+		t.Fatalf("ExamAttemptWorkspace.List() = %#v", page)
 	}
-	content, err := ss.ExamAttempt().ResolveCandidateWorkspaceFile(ctx, access, page.Items[1].EntryID)
+	content, err := ss.ExamAttemptWorkspace().ResolveFile(ctx, access, page.Items[1].EntryID)
 	requireNoError(t, err)
 	if content.StarterObjectID.IsZero() || content.AttemptObjectID.IsZero() || content.ContentVersion != page.Items[1].ContentVersion {
-		t.Fatalf("ResolveCandidateWorkspaceFile() = %#v", content)
+		t.Fatalf("ExamAttemptWorkspace.ResolveFile() = %#v", content)
 	}
 	paused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
@@ -100,11 +100,11 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	if _, err = ss.ExamAttempt().GetCandidatePresentation(ctx, access); err != nil {
 		t.Fatalf("GetCandidatePresentation(paused) error = %v", err)
 	}
-	if _, err = ss.ExamAttempt().ListCandidateWorkspace(ctx, store.CandidateWorkspaceListOptions{Access: access, Limit: 200}); err != nil {
-		t.Fatalf("ListCandidateWorkspace(paused) error = %v", err)
+	if _, err = ss.ExamAttemptWorkspace().List(ctx, store.CandidateWorkspaceListOptions{Access: access, ExpectedCursor: -1, Limit: 200}); err != nil {
+		t.Fatalf("ExamAttemptWorkspace.List(paused) error = %v", err)
 	}
-	if _, err = ss.ExamAttempt().ResolveCandidateWorkspaceFile(ctx, access, page.Items[1].EntryID); err != nil {
-		t.Fatalf("ResolveCandidateWorkspaceFile(paused) error = %v", err)
+	if _, err = ss.ExamAttemptWorkspace().ResolveFile(ctx, access, page.Items[1].EntryID); err != nil {
+		t.Fatalf("ExamAttemptWorkspace.ResolveFile(paused) error = %v", err)
 	}
 	pausedReplayInput := *input
 	pausedReplayInput.AuditEventID, pausedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
@@ -226,9 +226,13 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		t.Fatalf("CloseConnection(reconnected) error = %v", err)
 	}
 
-	endedAt := model.GetMillis() - 1
+	endedAt := model.GetMillis()
 	endedMembership, err := ss.ClassMember().End(ctx, fixture.membership.ID.String(), fixture.membership.Revision, endedAt)
 	requireNoError(t, err)
+	// Membership timestamps have millisecond precision while PostgreSQL decides
+	// current eligibility with a higher-precision clock. Cross the millisecond
+	// boundary before asserting that the just-ended relationship is inactive.
+	time.Sleep(100 * time.Millisecond)
 	revokedReplayInput := *input
 	revokedReplayInput.AuditEventID, revokedReplayInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
 	if _, err = ss.ExamAttempt().Connect(ctx, &revokedReplayInput, command); !store.IsNotFound(err) {

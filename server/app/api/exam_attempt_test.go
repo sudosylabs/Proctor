@@ -4,9 +4,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -79,7 +82,8 @@ func TestCandidateExamWorkspaceUsesBoundedOpaqueCursor(t *testing.T) {
 		t.Fatalf("Workspace page = %#v, %v", page, err)
 	}
 	cursor, err := decodeCandidateWorkspaceCursor(page.NextCursor)
-	if err != nil || cursor.Path != fake.workspacePage.Items[0].Path || cursor.ID != fake.workspacePage.Items[0].EntryID {
+	if err != nil || cursor.ExpectedCursor != fake.workspacePage.Cursor || cursor.ID != fake.workspacePage.Items[0].EntryID ||
+		fake.workspaceQuery.ExpectedCursor != -1 {
 		t.Fatalf("Workspace cursor = %#v, %v", cursor, err)
 	}
 }
@@ -226,15 +230,19 @@ func TestExamAttemptManagerCursorIsOpaqueStrictAndVersioned(t *testing.T) {
 	}
 }
 
-func TestCandidateWorkspaceCursorBindsCanonicalPathAndEntryIdentity(t *testing.T) {
+func TestCandidateWorkspaceCursorContainsNoReversiblePath(t *testing.T) {
 	t.Parallel()
-	want := candidateWorkspaceCursor{Path: "cmd/main.go", ID: model.NewAttemptWorkspaceEntryID()}
+	want := candidateWorkspaceCursor{ExpectedCursor: 7, ID: model.NewAttemptWorkspaceEntryID()}
 	encoded := encodeCandidateWorkspaceCursor(want)
 	got, err := decodeCandidateWorkspaceCursor(encoded)
 	if err != nil || got != want {
 		t.Fatalf("round trip = %#v, %v; want %#v", got, err, want)
 	}
-	for _, invalid := range []string{"", "%%%", encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{Path: "../escape", ID: want.ID})} {
+	decoded, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
+	if err != nil || strings.Contains(string(decoded), "cmd/main.go") || strings.Contains(string(decoded), `"path"`) {
+		t.Fatalf("cursor exposes Workspace path: %q, %v", decoded, err)
+	}
+	for _, invalid := range []string{"", "%%%", encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: -1, ID: want.ID})} {
 		if _, decodeErr := decodeCandidateWorkspaceCursor(invalid); decodeErr == nil {
 			t.Fatalf("invalid cursor %q was accepted", invalid)
 		}
@@ -288,6 +296,157 @@ func TestManagerAttemptRefetchExposesPrivateFreeActiveSuspensionIdentity(t *test
 	}
 }
 
+func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t *testing.T) {
+	t.Parallel()
+	fake := newExamAttemptHTTPFake(t)
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	base := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/workspace"
+	participationID := fake.participation.ID.String()
+
+	journalRequest := fake.candidateRequest(http.MethodGet, base+"/changes?after_cursor=3&limit=20")
+	journalResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(journalResponse, journalRequest)
+	if journalResponse.Code != http.StatusOK || fake.journalQuery.AfterCursor != 3 || fake.journalQuery.Limit != 20 ||
+		!strings.Contains(journalResponse.Body.String(), `"current_cursor":5`) || !strings.Contains(journalResponse.Header().Get("Cache-Control"), "no-store") {
+		t.Fatalf("journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
+	}
+
+	directoryBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"path":"src"}`)
+	directoryRequest := candidateWorkspaceRequest(fake, http.MethodPost, base+"/directories", directoryBody, "application/json", "mkdir-once")
+	directoryResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(directoryResponse, directoryRequest)
+	assertCandidateWorkspaceMutationHTTP(t, fake, directoryResponse, http.StatusCreated)
+	if fake.workspaceDirectory.Path != "src" || fake.workspaceDirectory.Access.ParticipationID != fake.participation.ID ||
+		fake.workspaceDirectory.Access.Generation != 1 || fake.workspaceDirectory.IdempotencyKey != "mkdir-once" {
+		t.Fatalf("directory command=%#v", fake.workspaceDirectory)
+	}
+
+	fileMetadata := map[string]any{"participation_id": participationID, "generation": 1, "path": "empty.txt",
+		"media_type": "text/plain", "size": 0, "sha256": strings.Repeat("e", 64)}
+	fileBody, fileType := candidateWorkspaceMultipart(t, fileMetadata, nil)
+	fileRequest := candidateWorkspaceRequest(fake, http.MethodPost, base+"/files", fileBody, fileType, "file-once")
+	fileResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(fileResponse, fileRequest)
+	assertCandidateWorkspaceMutationHTTP(t, fake, fileResponse, http.StatusCreated)
+	if fake.workspaceFile.Size != 0 || fake.workspaceFile.Path != "empty.txt" || len(fake.uploaded) != 0 || fake.workspaceFile.IdempotencyKey != "file-once" {
+		t.Fatalf("file command=%#v uploaded=%q", fake.workspaceFile, fake.uploaded)
+	}
+
+	entryID := fake.workspacePage.Items[0].EntryID
+	moveBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"expected_path":"cmd/main.go","destination_path":"src/main.go"}`)
+	moveRequest := candidateWorkspaceRequest(fake, http.MethodPatch, base+"/entries/"+entryID.String(), moveBody, "application/json", "move-once")
+	moveResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(moveResponse, moveRequest)
+	assertCandidateWorkspaceMutationHTTP(t, fake, moveResponse, http.StatusOK)
+	if fake.workspaceMove.EntryID != entryID || fake.workspaceMove.ExpectedPath != "cmd/main.go" || fake.workspaceMove.DestinationPath != "src/main.go" {
+		t.Fatalf("move command=%#v", fake.workspaceMove)
+	}
+
+	version := fake.workspacePage.Items[0].ContentVersion
+	replaceMetadata := map[string]any{"participation_id": participationID, "generation": 1, "expected_path": "cmd/main.go",
+		"expected_content_version": version.String(), "media_type": "text/plain", "size": 3, "sha256": strings.Repeat("f", 64)}
+	replaceBody, replaceType := candidateWorkspaceMultipart(t, replaceMetadata, []byte("new"))
+	replaceRequest := candidateWorkspaceRequest(fake, http.MethodPut, base+"/files/"+entryID.String()+"/content", replaceBody, replaceType, "replace-once")
+	replaceResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(replaceResponse, replaceRequest)
+	assertCandidateWorkspaceMutationHTTP(t, fake, replaceResponse, http.StatusOK)
+	if fake.workspaceReplace.EntryID != entryID || fake.workspaceReplace.ExpectedContentVersion != version || string(fake.uploaded) != "new" {
+		t.Fatalf("replace command=%#v uploaded=%q", fake.workspaceReplace, fake.uploaded)
+	}
+
+	deleteBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"expected_path":"cmd/main.go","expected_content_version":"` + version.String() + `"}`)
+	deleteRequest := candidateWorkspaceRequest(fake, http.MethodDelete, base+"/entries/"+entryID.String(), deleteBody, "application/json", "delete-once")
+	deleteResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(deleteResponse, deleteRequest)
+	assertCandidateWorkspaceMutationHTTP(t, fake, deleteResponse, http.StatusOK)
+	if fake.workspaceDelete.EntryID != entryID || fake.workspaceDelete.ExpectedPath != "cmd/main.go" || fake.workspaceDelete.ExpectedContentVersion != version {
+		t.Fatalf("delete command=%#v", fake.workspaceDelete)
+	}
+}
+
+func TestCandidateWorkspaceMutationsRejectMissingIdempotencyDuplicateJSONAndMissingMultipartSize(t *testing.T) {
+	t.Parallel()
+	fake := newExamAttemptHTTPFake(t)
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	base := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/workspace"
+	participationID := fake.participation.ID.String()
+	for _, test := range []struct {
+		name, path, contentType, key string
+		body                         io.Reader
+	}{
+		{name: "missing idempotency", path: base + "/directories", contentType: "application/json",
+			body: strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"path":"src"}`)},
+		{name: "duplicate JSON", path: base + "/directories", contentType: "application/json", key: "dup-once",
+			body: strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"generation":2,"path":"src"}`)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := candidateWorkspaceRequest(fake, http.MethodPost, test.path, test.body, test.contentType, test.key)
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("response=%d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+	metadata := map[string]any{"participation_id": participationID, "generation": 1, "path": "x", "media_type": "text/plain", "sha256": strings.Repeat("a", 64)}
+	body, contentType := candidateWorkspaceMultipart(t, metadata, []byte("x"))
+	request := candidateWorkspaceRequest(fake, http.MethodPost, base+"/files", body, contentType, "missing-size")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("missing size=%d %s", response.Code, response.Body.String())
+	}
+}
+
+func candidateWorkspaceRequest(fake *examAttemptHTTPFake, method, path string, body io.Reader, contentType, key string) *http.Request {
+	request := httptest.NewRequest(method, path, body)
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set(candidateAttemptCredentialHeader, fake.credential)
+	request.Header.Set(candidateAttemptConnectionHeader, fake.connection.ID.String())
+	request.Header.Set("Content-Type", contentType)
+	if key != "" {
+		request.Header.Set("Idempotency-Key", key)
+	}
+	return request
+}
+
+func candidateWorkspaceMultipart(t *testing.T, metadata any, content []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	metadataPart, err := writer.CreateFormField("metadata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.NewEncoder(metadataPart).Encode(metadata); err != nil {
+		t.Fatal(err)
+	}
+	contentPart, err := writer.CreateFormFile("content", "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = contentPart.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &body, writer.FormDataContentType()
+}
+
+func assertCandidateWorkspaceMutationHTTP(t *testing.T, fake *examAttemptHTTPFake, response *httptest.ResponseRecorder, status int) {
+	t.Helper()
+	if response.Code != status || !strings.Contains(response.Header().Get("Cache-Control"), "no-store") {
+		t.Fatalf("response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	}
+	body := response.Body.String()
+	for _, forbidden := range []string{fake.credential, "continuity_credential", "credential_hash", "participation_id", "generation", "object_id", "session_id"} {
+		if forbidden != "" && strings.Contains(body, forbidden) {
+			t.Fatalf("response contains %q: %s", forbidden, body)
+		}
+	}
+}
+
 type examAttemptHTTPFake struct {
 	principal               model.Principal
 	attempt                 *model.ExamAttempt
@@ -308,6 +467,15 @@ type examAttemptHTTPFake struct {
 	managerGet              application.GetExamAttemptQuery
 	workspaceOpen           application.OpenCandidateExamWorkspaceFileQuery
 	reallow                 application.ReallowExamAttemptCommand
+	journalQuery            application.ListCandidateExamWorkspaceJournalQuery
+	journalPage             application.CandidateExamWorkspaceJournalPage
+	workspaceDirectory      application.CreateCandidateExamWorkspaceDirectoryCommand
+	workspaceFile           application.CreateCandidateExamWorkspaceFileCommand
+	workspaceReplace        application.ReplaceCandidateExamWorkspaceFileCommand
+	workspaceMove           application.MoveCandidateExamWorkspaceEntryCommand
+	workspaceDelete         application.DeleteCandidateExamWorkspaceEntryCommand
+	workspaceMutation       application.ExamAttemptWorkspaceMutationResult
+	uploaded                []byte
 }
 
 func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
@@ -326,7 +494,7 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 	workspaceItem := application.CandidateExamWorkspaceItem{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile,
 		Path: "cmd/main.go", ContentVersion: model.NewWorkspaceContentVersion(), MediaType: "text/x-go", SizeBytes: 9, SHA256: strings.Repeat("a", 64)}
 	principal := testExamHTTPPrincipal()
-	return &examAttemptHTTPFake{principal: principal, attempt: attempt, workspace: workspace,
+	fake := &examAttemptHTTPFake{principal: principal, attempt: attempt, workspace: workspace,
 		participation: &store.ExamAttemptParticipationView{ID: model.NewAttemptParticipationID(), AttemptID: attempt.ID, State: model.AttemptParticipationActive,
 			Generation: 1, StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(20 * time.Second)},
 		connection: &store.ExamAttemptManagerConnection{ID: connectionID, State: model.AttemptConnectionOpen, OpenedAt: at},
@@ -335,12 +503,21 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 			AdmissionRevisionID: attempt.AdmissionRevisionID, CurrentRevisionID: model.NewExamRevisionID(), Title: "Algorithms",
 			InstructionsMarkdown: "Solve safely.", Resources: []examattempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
 				DescriptionMarkdown: "Read this.", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 9, SHA256: strings.Repeat("b", 64)}}},
-		workspacePage: application.CandidateExamWorkspacePage{Items: []application.CandidateExamWorkspaceItem{workspaceItem}},
+		workspacePage: application.CandidateExamWorkspacePage{WorkspaceID: workspace.ID, Cursor: 4,
+			Items: []application.CandidateExamWorkspaceItem{workspaceItem}},
 		managerPage: application.ExamAttemptManagerPage{Items: []application.ExamAttemptManagerView{{Attempt: attempt, Workspace: workspace,
 			LatestParticipation: &store.ExamAttemptParticipationView{ID: model.NewAttemptParticipationID(), AttemptID: attempt.ID, State: model.AttemptParticipationActive,
 				Generation: 1, StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(20 * time.Second)}, CurrentConnection: &store.ExamAttemptManagerConnection{ID: connectionID, State: model.AttemptConnectionOpen, OpenedAt: at}}}},
 		content:                 application.OpenedExamAttemptContent{Body: io.NopCloser(strings.NewReader("protected")), MediaType: "text/plain", SizeBytes: 9, SHA256: strings.Repeat("c", 64)},
 		workspaceContentVersion: model.NewWorkspaceContentVersion()}
+	change := model.AttemptWorkspaceJournalEntry{WorkspaceID: workspace.ID, Cursor: 5, EntryID: workspaceItem.EntryID,
+		EntryKind: workspaceItem.Kind, Operation: model.AttemptWorkspaceMutationReplaceFile, OldPath: workspaceItem.Path,
+		NewPath: workspaceItem.Path, ContentVersion: workspaceItem.ContentVersion, ChangedAt: at}
+	fake.workspaceMutation = application.ExamAttemptWorkspaceMutationResult{AttemptID: attempt.ID, SittingID: attempt.SittingID,
+		CandidateUserID: attempt.CandidateUserID, WorkspaceID: workspace.ID, Entry: &workspaceItem, Change: change}
+	fake.journalPage = application.CandidateExamWorkspaceJournalPage{WorkspaceID: workspace.ID, CurrentCursor: 5,
+		Entries: []model.AttemptWorkspaceJournalEntry{change}}
+	return fake
 }
 
 func newExamAttemptFocusedAPI(t *testing.T, fake *examAttemptHTTPFake) *API {
@@ -398,6 +575,42 @@ func (fake *examAttemptHTTPFake) GetCandidateExamPresentation(_ context.Context,
 func (fake *examAttemptHTTPFake) ListCandidateExamWorkspace(_ context.Context, _ application.Invocation, query application.ListCandidateExamWorkspaceQuery) (application.CandidateExamWorkspacePage, error) {
 	fake.workspaceQuery = query
 	return fake.workspacePage, nil
+}
+
+func (fake *examAttemptHTTPFake) ListCandidateExamWorkspaceJournal(_ context.Context, _ application.Invocation, query application.ListCandidateExamWorkspaceJournalQuery) (application.CandidateExamWorkspaceJournalPage, error) {
+	fake.journalQuery = query
+	return fake.journalPage, nil
+}
+
+func (fake *examAttemptHTTPFake) CreateCandidateExamWorkspaceDirectory(_ context.Context, _ application.Invocation, command application.CreateCandidateExamWorkspaceDirectoryCommand) (application.ExamAttemptWorkspaceMutationResult, error) {
+	fake.workspaceDirectory = command
+	return fake.workspaceMutation, nil
+}
+
+func (fake *examAttemptHTTPFake) CreateCandidateExamWorkspaceFile(_ context.Context, _ application.Invocation, command application.CreateCandidateExamWorkspaceFileCommand) (application.ExamAttemptWorkspaceMutationResult, error) {
+	fake.workspaceFile = command
+	fake.uploaded, _ = io.ReadAll(command.Body)
+	return fake.workspaceMutation, nil
+}
+
+func (fake *examAttemptHTTPFake) ReplaceCandidateExamWorkspaceFile(_ context.Context, _ application.Invocation, command application.ReplaceCandidateExamWorkspaceFileCommand) (application.ExamAttemptWorkspaceMutationResult, error) {
+	fake.workspaceReplace = command
+	fake.uploaded, _ = io.ReadAll(command.Body)
+	return fake.workspaceMutation, nil
+}
+
+func (fake *examAttemptHTTPFake) MoveCandidateExamWorkspaceEntry(_ context.Context, _ application.Invocation, command application.MoveCandidateExamWorkspaceEntryCommand) (application.ExamAttemptWorkspaceMutationResult, error) {
+	fake.workspaceMove = command
+	return fake.workspaceMutation, nil
+}
+
+func (fake *examAttemptHTTPFake) DeleteCandidateExamWorkspaceEntry(_ context.Context, _ application.Invocation, command application.DeleteCandidateExamWorkspaceEntryCommand) (application.ExamAttemptWorkspaceMutationResult, error) {
+	fake.workspaceDelete = command
+	result := fake.workspaceMutation
+	result.Entry = nil
+	result.Change.Operation = model.AttemptWorkspaceMutationDeleteEntry
+	result.Change.NewPath, result.Change.ContentVersion = "", ""
+	return result, nil
 }
 
 func (fake *examAttemptHTTPFake) OpenCandidateExamResource(context.Context, application.Invocation, application.OpenCandidateExamResourceQuery) (application.OpenedExamAttemptContent, error) {

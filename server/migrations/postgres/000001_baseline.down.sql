@@ -29,7 +29,9 @@ DROP TABLE IF EXISTS exam_attempt_connections;
 DROP FUNCTION IF EXISTS guard_attempt_connection_mutation();
 DROP TABLE IF EXISTS exam_attempt_participations;
 DROP FUNCTION IF EXISTS guard_attempt_participation_mutation();
+DROP TABLE IF EXISTS exam_attempt_workspace_journal;
 DROP TABLE IF EXISTS exam_attempt_workspace_entries;
+DROP FUNCTION IF EXISTS guard_exam_attempt_workspace_entry_object();
 DROP TABLE IF EXISTS exam_attempt_workspace_objects;
 ALTER TABLE IF EXISTS exam_revision_starter_workspace_entries
     DROP CONSTRAINT IF EXISTS exam_revision_workspace_entry_object_key;

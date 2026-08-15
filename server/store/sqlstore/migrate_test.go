@@ -26,6 +26,7 @@ var baselineTables = []string{
 	"exam_attempt_participations",
 	"exam_attempt_suspensions",
 	"exam_attempt_workspace_entries",
+	"exam_attempt_workspace_journal",
 	"exam_attempt_workspace_objects",
 	"exam_attempt_workspaces",
 	"exam_attempts",

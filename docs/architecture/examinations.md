@@ -339,6 +339,15 @@ Attempt-scoped journal records identities, paths, mutation keys, resulting
 versions, and Workspace Cursors without retaining every prior content body.
 Only acknowledged authoritative state may be submitted.
 
+Every Workspace write rechecks the Open Sitting, active Attempt, current Class
+membership, exact active Participation generation and credential, and the
+owning Session-bound open Connection. Command idempotency is Attempt-scoped so
+an exact retry can recover its retained outcome after reconnect or re-allow;
+the current access selector is reauthorized separately and is not part of the
+semantic fingerprint. Stable losing stages become reclaimable, while an
+outcome-unknown post-ready commit remains fenced until replay or the durable
+cleanup safety window resolves reachability.
+
 Normal submission first denies new edits, settles workspace mutations, closes
 and reconciles integrity source sequences/gaps, and then atomically creates one
 immutable Submission, marks the Attempt Submitted, ends Participation, and

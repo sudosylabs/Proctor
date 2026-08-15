@@ -166,6 +166,17 @@ creates the next Participation generation. The external privileged coordinator
 is responsible for sending renewals at the advertised five-second cadence;
 transport ping and server timers cannot renew a Participation.
 
+Acknowledged Attempt Workspace operation is implemented. Active candidates can
+list and read a cursor-pinned manifest, recover through its bounded ordered
+journal, and create, replace, move, rename, or delete stable logical entries.
+Every write rechecks the Open Sitting, current Class membership, active fenced
+Participation, credential, Connection, and Session; Attempt-scoped idempotency
+survives reconnect and re-allow. PostgreSQL owns the hierarchy, cursors, quotas,
+and object reachability while VFS stores path-independent opaque bytes. Durable
+cleanup retains referenced or replay-recoverable objects and reclaims only safe
+staged or superseded objects. The HTTP, targeted realtime, local/S3 VFS,
+multi-node PostgreSQL, race, and full server gates are verified.
+
 Exam Resources and Starter Workspaces are distinct from mutable Attempt
 Workspace files. PostgreSQL owns their logical identity and hierarchy while
 VFS owns opaque bytes. Candidate access is protected in-application use, with
@@ -193,9 +204,9 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: mutable Attempt
-  Workspace and immutable Submission, then additional integrity-policy
-  evaluation, evidence review, and Submission Review.
+- Continue Examination Core as complete vertical slices: Focus Loss policy
+  evaluation, immutable Submission, resumable Sitting sealing, and integrity
+  evidence review with Student Result release.
 - Extend server-owned file handling for validated IDE preferences alongside
   the examination-specific resource and workspace boundaries. Resource search
   is deferred because an Exam initially has at most ten active resources.

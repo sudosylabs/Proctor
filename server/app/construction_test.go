@@ -121,6 +121,7 @@ func (catalog constructionCatalogWithJobs) File() store.FileStore { return catal
 func (constructionCatalogWithJobs) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
 	return nil
 }
+func (constructionCatalogWithJobs) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore { return nil }
 func (catalog constructionCatalogWithJobs) Institution() store.InstitutionStore {
 	return catalog.institutions
 }

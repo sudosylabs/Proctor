@@ -281,6 +281,24 @@ cursor or refreshes a complete manifest after a gap. Conflicted, rejected, or
 outcome-unknown client work remains protected until acknowledged replacement
 or explicit discard.
 
+The public protocol is deliberately asymmetric. Authoritative create,
+replace, move/rename, and delete commands are HTTP-only, require the active
+Session-bound Attempt credential and Connection headers, explicitly repeat the
+current Participation identity and generation, and require an idempotency key.
+File creation and replacement use exactly two multipart parts in order: strict
+JSON metadata, then content, with a 10 MiB plus 64 KiB envelope. Other commands
+use duplicate-free strict JSON. WebSocket publishes only the targeted
+`exam_attempt_workspace_changed` refetch hint; it carries no path, content,
+object selector, credential, Session, Participation, or generation.
+
+The bounded live contract is 500 entries, 16 path segments, 255 UTF-8 bytes per
+segment, 1,024 path bytes, 10 MiB per file, 50 MiB total, 200 items per page,
+and a retained 4,096-change journal window. Manifest pagination pins a numeric
+Workspace Cursor and exposes only the last Entry identity in its opaque cursor;
+paths never enter URLs or access logs. If the pinned manifest advances, or a
+journal cursor falls behind retention, the response explicitly requires a
+full manifest refresh and returns no partial page.
+
 Future execution environments are synchronized projections rather than durable
 authorities. Losing a client, node, or execution environment cannot discard an
 acknowledged change. The client exposes the workspace only inside the protected

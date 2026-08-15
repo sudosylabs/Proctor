@@ -1081,9 +1081,9 @@ func (s *sqlExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrap
 		if source.Kind == string(model.StarterWorkspaceEntryFile) {
 			objectID = model.NewAttemptWorkspaceObjectID()
 			if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_objects
-				(id,workspace_id,admission_revision_id,source_starter_entry_id,storage_origin,starter_object_id,content_version,media_type,size_bytes,sha256,created_at)
-				VALUES (?,?,?,?,'starter',?,?,?,?,?,?)`, objectID.String(), input.WorkspaceID.String(), guard.RevisionID, source.EntryID, source.ObjectID.String,
-				source.ContentVersion.String, source.MediaType.String, source.SizeBytes.Int64, source.SHA256.String, guard.DatabaseNow); err != nil {
+				(id,workspace_id,admission_revision_id,source_starter_entry_id,storage_origin,starter_object_id,state,content_version,media_type,size_bytes,sha256,created_at,updated_at)
+				VALUES (?,?,?,?,'starter',?,'current',?,?,?,?,?,?)`, objectID.String(), input.WorkspaceID.String(), guard.RevisionID, source.EntryID, source.ObjectID.String,
+				source.ContentVersion.String, source.MediaType.String, source.SizeBytes.Int64, source.SHA256.String, guard.DatabaseNow, guard.DatabaseNow); err != nil {
 				return zero, fmt.Errorf("insert Exam Attempt Workspace object: %w", err)
 			}
 		}
@@ -1640,6 +1640,65 @@ func (s *sqlExamAttemptStore) candidateGuard(ctx context.Context, access store.C
 	return guard, nil
 }
 
+func (s *sqlExamAttemptStore) lockCandidateGuard(ctx context.Context, tx *sqlxTxWrapper, access store.CandidateAttemptAccess) (candidateAttemptGuard, error) {
+	if !access.AttemptID.IsValid() || !access.CandidateUserID.IsValid() || !access.SessionID.IsValid() ||
+		!access.ConnectionID.IsValid() || !model.IsValidTokenHash(access.ContinuityCredentialHash) {
+		return candidateAttemptGuard{}, store.NewErrInvalidInput("exam_attempt", "candidate_access", nil)
+	}
+	var row struct {
+		candidateAttemptGuard
+		AttemptState       string       `db:"attempt_state"`
+		SittingState       string       `db:"sitting_state"`
+		ScheduledEndAt     time.Time    `db:"scheduled_end_at"`
+		ParticipationState string       `db:"participation_state"`
+		CredentialHash     string       `db:"continuity_credential_hash"`
+		LeaseExpiresAt     time.Time    `db:"lease_expires_at"`
+		ConnectionState    string       `db:"connection_state"`
+		SessionArchivedAt  sql.NullTime `db:"session_archived_at"`
+		SessionRevokedAt   sql.NullTime `db:"session_revoked_at"`
+		SessionIdleExpiry  time.Time    `db:"session_idle_expires_at"`
+		SessionExpiry      time.Time    `db:"session_expires_at"`
+		UserArchivedAt     sql.NullTime `db:"user_archived_at"`
+		UserDisabledAt     sql.NullTime `db:"user_disabled_at"`
+	}
+	err := tx.Get(ctx, &row, `SELECT a.id AS attempt_id,a.exam_sitting_id AS sitting_id,
+		a.admission_revision_id,s.exam_revision_id AS revision_id,a.state AS attempt_state,
+		s.state AS sitting_state,s.scheduled_end_at,p.state AS participation_state,
+		p.continuity_credential_hash,p.lease_expires_at,c.state AS connection_state,
+		se.archived_at AS session_archived_at,se.revoked_at AS session_revoked_at,
+		se.idle_expires_at AS session_idle_expires_at,se.expires_at AS session_expires_at,
+		u.archived_at AS user_archived_at,u.disabled_at AS user_disabled_at
+		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
+		JOIN exam_attempt_participations p ON p.exam_attempt_id=a.id
+		JOIN exam_attempt_connections c ON c.participation_id=p.id AND c.exam_attempt_id=a.id
+		JOIN sessions se ON se.id=c.session_id JOIN users u ON u.id=se.user_id
+		WHERE a.id=? AND a.candidate_user_id=? AND c.id=? AND c.session_id=?
+		FOR SHARE OF a,s,p,c,se,u`, access.AttemptID.String(), access.CandidateUserID.String(),
+		access.ConnectionID.String(), access.SessionID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return candidateAttemptGuard{}, store.NewErrNotFound("exam_attempt_access", access.AttemptID.String())
+	}
+	if err != nil {
+		return candidateAttemptGuard{}, fmt.Errorf("lock candidate Exam Attempt access: %w", err)
+	}
+	var databaseNow time.Time
+	if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
+		return candidateAttemptGuard{}, fmt.Errorf("read candidate Exam Attempt access time: %w", err)
+	}
+	databaseNow = model.TimeUTC(databaseNow)
+	if row.AttemptState != string(model.ExamAttemptActive) || row.ParticipationState != string(model.AttemptParticipationActive) ||
+		row.ConnectionState != string(model.AttemptConnectionOpen) ||
+		subtle.ConstantTimeCompare([]byte(row.CredentialHash), []byte(access.ContinuityCredentialHash)) != 1 ||
+		!databaseNow.Before(row.LeaseExpiresAt) ||
+		(row.SittingState != string(model.ExamSittingOpen) && row.SittingState != string(model.ExamSittingPaused)) ||
+		!databaseNow.Before(row.ScheduledEndAt) || row.SessionArchivedAt.Valid || row.SessionRevokedAt.Valid ||
+		!databaseNow.Before(row.SessionIdleExpiry) || !databaseNow.Before(row.SessionExpiry) ||
+		row.UserArchivedAt.Valid || row.UserDisabledAt.Valid {
+		return candidateAttemptGuard{}, store.NewErrNotFound("exam_attempt_access", access.AttemptID.String())
+	}
+	return row.candidateAttemptGuard, nil
+}
+
 func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, access store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
 	guard, err := s.candidateGuard(ctx, access)
 	if err != nil {
@@ -1693,18 +1752,45 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 	return result, nil
 }
 
-func (s *sqlExamAttemptStore) ListCandidateWorkspace(ctx context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
-	if options.Limit < 1 || options.Limit > 200 || (options.AfterPath == "") != options.AfterEntryID.IsZero() {
+func (s *sqlExamAttemptStore) listCandidateWorkspace(ctx context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
+	firstPage := options.ExpectedCursor == -1 && options.AfterEntryID.IsZero()
+	continuation := options.ExpectedCursor >= 0 && options.AfterEntryID.IsValid()
+	if options.Limit < 1 || options.Limit > model.AttemptWorkspaceJournalReadMaximum || (!firstPage && !continuation) {
 		return nil, store.NewErrInvalidInput("attempt_workspace", "list_options", nil)
 	}
-	if options.AfterPath != "" {
-		normalized, err := model.NormalizeStarterWorkspacePath(options.AfterPath)
-		if err != nil || normalized != options.AfterPath {
-			return nil, store.NewErrInvalidInput("attempt_workspace", "after_path", nil)
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "list candidate Attempt Workspace", func(ctx context.Context, tx *sqlxTxWrapper) (*store.CandidateAttemptWorkspacePage, error) {
+		if _, err := s.lockCandidateGuard(ctx, tx, options.Access); err != nil {
+			return nil, err
 		}
+		return listCandidateWorkspaceSnapshot(ctx, tx, options, continuation)
+	})
+}
+
+func listCandidateWorkspaceSnapshot(ctx context.Context, tx *sqlxTxWrapper, options store.CandidateWorkspaceListOptions, continuation bool) (*store.CandidateAttemptWorkspacePage, error) {
+	var workspace struct {
+		ID     string `db:"id"`
+		Cursor int64  `db:"cursor"`
 	}
-	if _, err := s.candidateGuard(ctx, options.Access); err != nil {
-		return nil, err
+	if err := tx.Get(ctx, &workspace, `SELECT id,cursor FROM exam_attempt_workspaces WHERE exam_attempt_id=? FOR SHARE`,
+		options.Access.AttemptID.String()); err != nil {
+		return nil, translateError("attempt_workspace", options.Access.AttemptID.String(), err)
+	}
+	workspaceID, err := model.ParseExamAttemptWorkspaceID(workspace.ID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_workspace", "id", err)
+	}
+	if continuation && options.ExpectedCursor != workspace.Cursor {
+		return &store.CandidateAttemptWorkspacePage{WorkspaceID: workspaceID, Cursor: workspace.Cursor, RefreshRequired: true}, nil
+	}
+	var afterPath string
+	if continuation {
+		if err = tx.Get(ctx, &afterPath, `SELECT path FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`,
+			workspace.ID, options.AfterEntryID.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return &store.CandidateAttemptWorkspacePage{WorkspaceID: workspaceID, Cursor: workspace.Cursor, RefreshRequired: true}, nil
+			}
+			return nil, fmt.Errorf("resolve Attempt Workspace manifest boundary: %w", err)
+		}
 	}
 	var rows []struct {
 		EntryID        string         `db:"entry_id"`
@@ -1720,13 +1806,13 @@ func (s *sqlExamAttemptStore) ListCandidateWorkspace(ctx context.Context, option
 		LEFT JOIN exam_attempt_workspace_objects o ON o.id=e.current_object_id AND o.workspace_id=e.workspace_id
 		WHERE w.exam_attempt_id=?`
 	args := []any{options.Access.AttemptID.String()}
-	if options.AfterPath != "" {
+	if continuation {
 		query += ` AND (e.path,e.id)>(?,?)`
-		args = append(args, options.AfterPath, options.AfterEntryID.String())
+		args = append(args, afterPath, options.AfterEntryID.String())
 	}
 	query += ` ORDER BY e.path,e.id LIMIT ?`
 	args = append(args, options.Limit+1)
-	if err := s.GetMaster().Select(ctx, &rows, query, args...); err != nil {
+	if err := tx.Select(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("list candidate Attempt Workspace: %w", err)
 	}
 	hasMore := len(rows) > options.Limit
@@ -1748,7 +1834,7 @@ func (s *sqlExamAttemptStore) ListCandidateWorkspace(ctx context.Context, option
 		}
 		result = append(result, store.CandidateAttemptWorkspaceItem{EntryID: id, Kind: model.StarterWorkspaceEntryKind(row.Kind), Path: row.Path, ContentVersion: version, MediaType: row.MediaType.String, SizeBytes: row.SizeBytes.Int64, SHA256: row.SHA256.String})
 	}
-	return &store.CandidateAttemptWorkspacePage{Items: result, HasMore: hasMore}, nil
+	return &store.CandidateAttemptWorkspacePage{WorkspaceID: workspaceID, Cursor: workspace.Cursor, Items: result, HasMore: hasMore}, nil
 }
 
 func (s *sqlExamAttemptStore) ResolveCandidateResource(ctx context.Context, access store.CandidateAttemptAccess, resourceID model.ExamResourceID) (*store.CandidateResourceContent, error) {
@@ -1787,13 +1873,7 @@ func (s *sqlExamAttemptStore) ResolveCandidateResource(ctx context.Context, acce
 		DescriptionMarkdown: row.Description, Position: row.Position, MediaType: model.ExamResourceMediaType(row.MediaType), SizeBytes: row.SizeBytes, SHA256: row.SHA256}, FileRevisionID: fileRevisionID, RenditionID: renditionID}, nil
 }
 
-func (s *sqlExamAttemptStore) ResolveCandidateWorkspaceFile(ctx context.Context, access store.CandidateAttemptAccess, entryID model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
-	if _, err := s.candidateGuard(ctx, access); err != nil {
-		return nil, err
-	}
-	if !entryID.IsValid() {
-		return nil, store.NewErrInvalidInput("attempt_workspace_entry", "id", nil)
-	}
+func resolveCandidateWorkspaceFile(ctx context.Context, executor sqlxExecutor, access store.CandidateAttemptAccess, entryID model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
 	var row struct {
 		EntryID   string         `db:"entry_id"`
 		Kind      string         `db:"kind"`
@@ -1806,7 +1886,7 @@ func (s *sqlExamAttemptStore) ResolveCandidateWorkspaceFile(ctx context.Context,
 		StarterID sql.NullString `db:"starter_id"`
 		SizeBytes int64          `db:"size_bytes"`
 	}
-	err := s.GetMaster().Get(ctx, &row, `SELECT e.id AS entry_id,e.kind,e.path,o.id AS object_id,o.storage_origin AS origin,
+	err := executor.Get(ctx, &row, `SELECT e.id AS entry_id,e.kind,e.path,o.id AS object_id,o.storage_origin AS origin,
 		o.starter_object_id AS starter_id,o.content_version AS version,o.media_type,o.size_bytes,o.sha256
 		FROM exam_attempt_workspaces w JOIN exam_attempt_workspace_entries e ON e.workspace_id=w.id
 		JOIN exam_attempt_workspace_objects o ON o.id=e.current_object_id AND o.workspace_id=e.workspace_id

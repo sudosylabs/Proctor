@@ -82,18 +82,19 @@ func decodeExamAttemptManagerCursor(raw string) (examAttemptManagerCursor, error
 }
 
 type candidateWorkspaceCursor struct {
-	Path string
-	ID   model.AttemptWorkspaceEntryID
+	ExpectedCursor int64
+	ID             model.AttemptWorkspaceEntryID
 }
 
 type candidateWorkspaceCursorWire struct {
-	Version int    `json:"version"`
-	Path    string `json:"path"`
-	ID      string `json:"id"`
+	Version        int    `json:"version"`
+	ExpectedCursor int64  `json:"workspace_cursor"`
+	ID             string `json:"after_entry_id,omitempty"`
 }
 
 func encodeCandidateWorkspaceCursor(cursor candidateWorkspaceCursor) string {
-	wire := candidateWorkspaceCursorWire{Version: candidateWorkspaceCursorVersion, Path: cursor.Path, ID: cursor.ID.String()}
+	wire := candidateWorkspaceCursorWire{Version: candidateWorkspaceCursorVersion,
+		ExpectedCursor: cursor.ExpectedCursor, ID: cursor.ID.String()}
 	encoded, _ := json.Marshal(wire)
 	return base64.RawURLEncoding.EncodeToString(encoded)
 }
@@ -103,15 +104,18 @@ func decodeCandidateWorkspaceCursor(raw string) (candidateWorkspaceCursor, error
 	if err := decodeStrictAttemptCursor(raw, &wire); err != nil || wire.Version != candidateWorkspaceCursorVersion {
 		return candidateWorkspaceCursor{}, errors.New("invalid candidate Workspace cursor")
 	}
-	path, err := model.NormalizeStarterWorkspacePath(wire.Path)
-	if err != nil || path != wire.Path {
+	if wire.ExpectedCursor < 0 {
 		return candidateWorkspaceCursor{}, errors.New("invalid candidate Workspace cursor")
 	}
-	id, err := model.ParseAttemptWorkspaceEntryID(wire.ID)
-	if err != nil {
-		return candidateWorkspaceCursor{}, errors.New("invalid candidate Workspace cursor")
+	var id model.AttemptWorkspaceEntryID
+	if wire.ID != "" {
+		var err error
+		id, err = model.ParseAttemptWorkspaceEntryID(wire.ID)
+		if err != nil {
+			return candidateWorkspaceCursor{}, errors.New("invalid candidate Workspace cursor")
+		}
 	}
-	return candidateWorkspaceCursor{Path: path, ID: id}, nil
+	return candidateWorkspaceCursor{ExpectedCursor: wire.ExpectedCursor, ID: id}, nil
 }
 
 func decodeStrictAttemptCursor(raw string, target any) error {
@@ -139,6 +143,12 @@ type ExamAttemptApplication interface {
 	ListExamAttempts(context.Context, application.Invocation, application.ListExamAttemptsQuery) (application.ExamAttemptManagerPage, error)
 	GetCandidateExamPresentation(context.Context, application.Invocation, application.CandidateExamAttemptAccess) (application.CandidateExamPresentation, error)
 	ListCandidateExamWorkspace(context.Context, application.Invocation, application.ListCandidateExamWorkspaceQuery) (application.CandidateExamWorkspacePage, error)
+	ListCandidateExamWorkspaceJournal(context.Context, application.Invocation, application.ListCandidateExamWorkspaceJournalQuery) (application.CandidateExamWorkspaceJournalPage, error)
+	CreateCandidateExamWorkspaceDirectory(context.Context, application.Invocation, application.CreateCandidateExamWorkspaceDirectoryCommand) (application.ExamAttemptWorkspaceMutationResult, error)
+	CreateCandidateExamWorkspaceFile(context.Context, application.Invocation, application.CreateCandidateExamWorkspaceFileCommand) (application.ExamAttemptWorkspaceMutationResult, error)
+	ReplaceCandidateExamWorkspaceFile(context.Context, application.Invocation, application.ReplaceCandidateExamWorkspaceFileCommand) (application.ExamAttemptWorkspaceMutationResult, error)
+	MoveCandidateExamWorkspaceEntry(context.Context, application.Invocation, application.MoveCandidateExamWorkspaceEntryCommand) (application.ExamAttemptWorkspaceMutationResult, error)
+	DeleteCandidateExamWorkspaceEntry(context.Context, application.Invocation, application.DeleteCandidateExamWorkspaceEntryCommand) (application.ExamAttemptWorkspaceMutationResult, error)
 	OpenCandidateExamResource(context.Context, application.Invocation, application.OpenCandidateExamResourceQuery) (application.OpenedExamAttemptContent, error)
 	OpenCandidateExamWorkspaceFile(context.Context, application.Invocation, application.OpenCandidateExamWorkspaceFileQuery) (application.OpenedExamAttemptContent, error)
 	ReallowExamAttempt(context.Context, application.Invocation, application.ReallowExamAttemptCommand) (application.ExamAttemptReallowResult, error)
@@ -256,8 +266,81 @@ type candidateExamWorkspaceItemResponse struct {
 }
 
 type candidateExamWorkspaceListResponse struct {
-	Items      []candidateExamWorkspaceItemResponse `json:"items"`
-	NextCursor string                               `json:"next_cursor,omitempty"`
+	WorkspaceID     string                               `json:"workspace_id"`
+	WorkspaceCursor int64                                `json:"workspace_cursor"`
+	Items           []candidateExamWorkspaceItemResponse `json:"items"`
+	NextCursor      string                               `json:"next_cursor,omitempty"`
+	RefreshRequired bool                                 `json:"refresh_required"`
+}
+
+type candidateWorkspaceMutationAccessRequest struct {
+	ParticipationID string `json:"participation_id"`
+	Generation      int64  `json:"generation"`
+}
+
+type createCandidateWorkspaceDirectoryRequest struct {
+	ParticipationID string `json:"participation_id"`
+	Generation      int64  `json:"generation"`
+	Path            string `json:"path"`
+}
+
+type candidateWorkspaceFileUploadMetadata struct {
+	ParticipationID string `json:"participation_id"`
+	Generation      int64  `json:"generation"`
+	Path            string `json:"path"`
+	MediaType       string `json:"media_type"`
+	Size            *int64 `json:"size"`
+	SHA256          string `json:"sha256"`
+}
+
+type replaceCandidateWorkspaceFileMetadata struct {
+	ParticipationID        string `json:"participation_id"`
+	Generation             int64  `json:"generation"`
+	ExpectedPath           string `json:"expected_path"`
+	ExpectedContentVersion string `json:"expected_content_version"`
+	MediaType              string `json:"media_type"`
+	Size                   *int64 `json:"size"`
+	SHA256                 string `json:"sha256"`
+}
+
+type moveCandidateWorkspaceEntryRequest struct {
+	ParticipationID string `json:"participation_id"`
+	Generation      int64  `json:"generation"`
+	ExpectedPath    string `json:"expected_path"`
+	DestinationPath string `json:"destination_path"`
+}
+
+type deleteCandidateWorkspaceEntryRequest struct {
+	ParticipationID        string `json:"participation_id"`
+	Generation             int64  `json:"generation"`
+	ExpectedPath           string `json:"expected_path"`
+	ExpectedContentVersion string `json:"expected_content_version,omitempty"`
+}
+
+type candidateWorkspaceMutationResponse struct {
+	WorkspaceID     string                              `json:"workspace_id"`
+	WorkspaceCursor int64                               `json:"workspace_cursor"`
+	Operation       string                              `json:"operation"`
+	Entry           *candidateExamWorkspaceItemResponse `json:"entry,omitempty"`
+}
+
+type candidateWorkspaceJournalEntryResponse struct {
+	Cursor         int64  `json:"cursor"`
+	EntryID        string `json:"entry_id"`
+	Kind           string `json:"kind"`
+	Operation      string `json:"operation"`
+	OldPath        string `json:"old_path,omitempty"`
+	NewPath        string `json:"new_path,omitempty"`
+	ContentVersion string `json:"content_version,omitempty"`
+	ChangedAt      string `json:"changed_at"`
+}
+
+type candidateWorkspaceJournalResponse struct {
+	WorkspaceID     string                                   `json:"workspace_id"`
+	CurrentCursor   int64                                    `json:"current_cursor"`
+	Entries         []candidateWorkspaceJournalEntryResponse `json:"entries"`
+	HasMore         bool                                     `json:"has_more"`
+	RefreshRequired bool                                     `json:"refresh_required"`
 }
 
 func examAttemptResource(application ExamAttemptApplication) resource {
@@ -267,6 +350,10 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	candidate := apiPath(literal("exam-attempts"), canonicalID("exam_attempt_id"))
 	presentation := appendRoutePath(candidate, literal("presentation"))
 	workspace := appendRoutePath(candidate, literal("workspace"))
+	workspaceChanges := appendRoutePath(workspace, literal("changes"))
+	workspaceDirectories := appendRoutePath(workspace, literal("directories"))
+	workspaceFiles := appendRoutePath(workspace, literal("files"))
+	workspaceEntry := appendRoutePath(workspace, literal("entries"), canonicalID("attempt_workspace_entry_id"))
 	resourceContent := appendRoutePath(candidate, literal("resources"), canonicalID("exam_resource_id"), literal("content"))
 	workspaceContent := appendRoutePath(candidate, literal("workspace"), literal("files"), canonicalID("attempt_workspace_entry_id"), literal("content"))
 	reallow := appendRoutePath(managerMember, literal("reallow"))
@@ -277,15 +364,47 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
 	candidateErrors := personalAccessTokenSessionCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable")
+	directoryMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict",
+		"exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit")
+	createFileMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict",
+		"exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit", "exam.attempt.workspace.size_limit",
+		"exam.attempt.workspace.object_conflict")
+	moveMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict")
+	replaceMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
+		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict")
+	deleteMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
+		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty")
 	return newResource("exam-attempts",
 		principalRoute(http.MethodGet, managerCollection, managerErrors, module.listManaged),
 		principalRoute(http.MethodGet, managerMember, managerErrors, module.getManaged),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, reallow, reallowErrors, module.reallow),
 		sessionRoute(http.MethodGet, presentation, candidateErrors, module.presentation),
 		sessionRoute(http.MethodGet, workspace, candidateErrors, module.workspace),
+		sessionRoute(http.MethodGet, workspaceChanges, candidateErrors, module.workspaceChanges),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPost, workspaceDirectories, directoryMutationErrors, module.createWorkspaceDirectory),
+		idempotentProtocolRoute(IdempotencyRequired, model.AttemptWorkspaceMaximumRequestBytes, "candidate-exam-workspace-file-upload",
+			RouteProtocolStreamingUpload, AuthSessionRequired, http.MethodPost, workspaceFiles, createFileMutationErrors, module.createWorkspaceFile),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPatch, workspaceEntry, moveMutationErrors, module.moveWorkspaceEntry),
+		idempotentProtocolRoute(IdempotencyRequired, model.AttemptWorkspaceMaximumRequestBytes, "candidate-exam-workspace-file-replacement",
+			RouteProtocolStreamingUpload, AuthSessionRequired, http.MethodPut, workspaceContent, replaceMutationErrors, module.replaceWorkspaceFile),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodDelete, workspaceEntry, deleteMutationErrors, module.deleteWorkspaceEntry),
 		protocolRoute("candidate-exam-resource-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, resourceContent, candidateErrors, module.openResource),
 		protocolRoute("candidate-exam-workspace-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, workspaceContent, candidateErrors, module.openWorkspaceFile),
 	)
+}
+
+func candidateWorkspaceMutationErrors(specific ...string) []string {
+	common := []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
+		"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed",
+		"exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key",
+		"idempotency.conflict", "idempotency.in_progress"}
+	return personalAccessTokenSessionMutationCodes(append(common, specific...)...)
+}
+
+func idempotentSessionRoute(requirement IdempotencyRequirement, method string, path routePath, errorCodes []string, operation operation) routeDefinition {
+	definition := sessionRoute(method, path, errorCodes, operation)
+	definition.idempotency = requirement
+	return definition
 }
 
 func (module examAttemptHTTPModule) reallow(request operationRequest) (operationResult, error) {
@@ -413,7 +532,7 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 	if err != nil {
 		return operationResult{}, err
 	}
-	query := application.ListCandidateExamWorkspaceQuery{Access: access, Limit: 50}
+	query := application.ListCandidateExamWorkspaceQuery{Access: access, ExpectedCursor: -1, Limit: 50}
 	values := request.request.URL.Query()
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
@@ -426,13 +545,14 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 		if decodeErr != nil {
 			return operationResult{}, invalidRequestError("cursor", decodeErr)
 		}
-		query.AfterPath, query.AfterEntryID = cursor.Path, cursor.ID
+		query.ExpectedCursor, query.AfterEntryID = cursor.ExpectedCursor, cursor.ID
 	}
 	page, err := module.application.ListCandidateExamWorkspace(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := candidateExamWorkspaceListResponse{Items: make([]candidateExamWorkspaceItemResponse, 0, len(page.Items))}
+	response := candidateExamWorkspaceListResponse{WorkspaceID: page.WorkspaceID.String(), WorkspaceCursor: page.Cursor,
+		Items: make([]candidateExamWorkspaceItemResponse, 0, len(page.Items)), RefreshRequired: page.RefreshRequired}
 	for _, item := range page.Items {
 		mapped := candidateExamWorkspaceItemResponse{ID: item.EntryID.String(), Kind: string(item.Kind), Path: item.Path,
 			ContentVersion: item.ContentVersion.String(), MediaType: item.MediaType, SHA256: item.SHA256}
@@ -447,9 +567,231 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 			return operationResult{}, errors.New("Exam Attempt application returned an invalid Workspace page")
 		}
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor = encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{Path: last.Path, ID: last.EntryID})
+		response.NextCursor = encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: page.Cursor, ID: last.EntryID})
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) workspaceChanges(request operationRequest) (operationResult, error) {
+	access, err := candidateAccess(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	query := application.ListCandidateExamWorkspaceJournalQuery{Access: access, Limit: 50}
+	values := request.request.URL.Query()
+	if raw := values.Get("after_cursor"); raw != "" {
+		query.AfterCursor, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || query.AfterCursor < 0 {
+			return operationResult{}, invalidRequestError("after_cursor", errors.New("must be nonnegative"))
+		}
+	}
+	if raw := values.Get("limit"); raw != "" {
+		query.Limit, err = strconv.Atoi(raw)
+		if err != nil || query.Limit < 1 || query.Limit > model.AttemptWorkspaceJournalReadMaximum {
+			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+		}
+	}
+	page, err := module.application.ListCandidateExamWorkspaceJournal(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := candidateWorkspaceJournalResponse{WorkspaceID: page.WorkspaceID.String(), CurrentCursor: page.CurrentCursor,
+		Entries: make([]candidateWorkspaceJournalEntryResponse, 0, len(page.Entries)), HasMore: page.HasMore,
+		RefreshRequired: page.RefreshRequired}
+	for _, entry := range page.Entries {
+		response.Entries = append(response.Entries, candidateWorkspaceJournalEntryResponse{Cursor: entry.Cursor,
+			EntryID: entry.EntryID.String(), Kind: string(entry.EntryKind), Operation: string(entry.Operation), OldPath: entry.OldPath,
+			NewPath: entry.NewPath, ContentVersion: entry.ContentVersion.String(),
+			ChangedAt: model.TimeUTC(entry.ChangedAt).Format(time.RFC3339Nano)})
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) createWorkspaceDirectory(request operationRequest) (operationResult, error) {
+	access, err := candidateAccess(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body createCandidateWorkspaceDirectoryRequest
+	if err = decodeCandidateWorkspaceJSON(request, &body, "createCandidateExamWorkspaceDirectory"); err != nil {
+		return operationResult{}, err
+	}
+	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: body.ParticipationID, Generation: body.Generation})
+	if err != nil {
+		return operationResult{}, err
+	}
+	result, err := module.application.CreateCandidateExamWorkspaceDirectory(request.context, request.invocation(),
+		application.CreateCandidateExamWorkspaceDirectoryCommand{Access: mutationAccess, Path: body.Path,
+			IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusCreated, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) createWorkspaceFile(request operationRequest) (protocolResult, error) {
+	access, err := candidateAccess(request)
+	if err != nil {
+		return protocolResult{}, err
+	}
+	var metadata candidateWorkspaceFileUploadMetadata
+	content, err := decodeExamResourceMultipart(request.request, &metadata)
+	if err != nil || metadata.Size == nil {
+		return protocolResult{}, invalidRequestError("multipart", errors.New("valid metadata and size are required"))
+	}
+	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: metadata.ParticipationID, Generation: metadata.Generation})
+	if err != nil {
+		return protocolResult{}, err
+	}
+	result, err := module.application.CreateCandidateExamWorkspaceFile(request.context, request.invocation(),
+		application.CreateCandidateExamWorkspaceFileCommand{Access: mutationAccess, Path: metadata.Path, MediaType: metadata.MediaType,
+			ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return protocolResult{}, err
+	}
+	return streamingUploadProtocolResult(http.StatusCreated, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) moveWorkspaceEntry(request operationRequest) (operationResult, error) {
+	access, entryID, err := candidateWorkspaceEntryAccess(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body moveCandidateWorkspaceEntryRequest
+	if err = decodeCandidateWorkspaceJSON(request, &body, "moveCandidateExamWorkspaceEntry"); err != nil {
+		return operationResult{}, err
+	}
+	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: body.ParticipationID, Generation: body.Generation})
+	if err != nil {
+		return operationResult{}, err
+	}
+	result, err := module.application.MoveCandidateExamWorkspaceEntry(request.context, request.invocation(),
+		application.MoveCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
+			ExpectedPath: body.ExpectedPath, DestinationPath: body.DestinationPath, IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) replaceWorkspaceFile(request operationRequest) (protocolResult, error) {
+	access, entryID, err := candidateWorkspaceEntryAccess(request)
+	if err != nil {
+		return protocolResult{}, err
+	}
+	var metadata replaceCandidateWorkspaceFileMetadata
+	content, err := decodeExamResourceMultipart(request.request, &metadata)
+	if err != nil || metadata.Size == nil {
+		return protocolResult{}, invalidRequestError("multipart", errors.New("valid metadata and size are required"))
+	}
+	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: metadata.ParticipationID, Generation: metadata.Generation})
+	if err != nil {
+		return protocolResult{}, err
+	}
+	version, err := model.ParseWorkspaceContentVersion(metadata.ExpectedContentVersion)
+	if err != nil {
+		return protocolResult{}, invalidRequestError("expected_content_version", err)
+	}
+	result, err := module.application.ReplaceCandidateExamWorkspaceFile(request.context, request.invocation(),
+		application.ReplaceCandidateExamWorkspaceFileCommand{Access: mutationAccess, EntryID: entryID,
+			ExpectedPath: metadata.ExpectedPath, ExpectedContentVersion: version, MediaType: metadata.MediaType,
+			ExpectedSHA256: metadata.SHA256, Body: content, Size: *metadata.Size, IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return protocolResult{}, err
+	}
+	return streamingUploadProtocolResult(http.StatusOK, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) deleteWorkspaceEntry(request operationRequest) (operationResult, error) {
+	access, entryID, err := candidateWorkspaceEntryAccess(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body deleteCandidateWorkspaceEntryRequest
+	if err = decodeCandidateWorkspaceJSON(request, &body, "deleteCandidateExamWorkspaceEntry"); err != nil {
+		return operationResult{}, err
+	}
+	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: body.ParticipationID, Generation: body.Generation})
+	if err != nil {
+		return operationResult{}, err
+	}
+	var version model.WorkspaceContentVersion
+	if body.ExpectedContentVersion != "" {
+		version, err = model.ParseWorkspaceContentVersion(body.ExpectedContentVersion)
+		if err != nil {
+			return operationResult{}, invalidRequestError("expected_content_version", err)
+		}
+	}
+	result, err := module.application.DeleteCandidateExamWorkspaceEntry(request.context, request.invocation(),
+		application.DeleteCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
+			ExpectedPath: body.ExpectedPath, ExpectedContentVersion: version, IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
+}
+
+func candidateWorkspaceMutationAccess(access application.CandidateExamAttemptAccess,
+	wire candidateWorkspaceMutationAccessRequest,
+) (application.ExamAttemptWorkspaceMutationAccess, error) {
+	participationID, err := model.ParseAttemptParticipationID(wire.ParticipationID)
+	if err != nil || wire.Generation < 1 {
+		return application.ExamAttemptWorkspaceMutationAccess{}, invalidRequestError("participation", errors.New("valid participation_id and generation are required"))
+	}
+	return application.ExamAttemptWorkspaceMutationAccess{CandidateAccess: access, ParticipationID: participationID,
+		Generation: wire.Generation}, nil
+}
+
+func decodeCandidateWorkspaceJSON(request operationRequest, target any, where string) error {
+	if request.request == nil || request.request.Body == nil {
+		return invalidRequestError(where, errors.New("request body is required"))
+	}
+	raw, err := io.ReadAll(io.LimitReader(request.request.Body, (64<<10)+1))
+	if err != nil || len(raw) > 64<<10 || rejectDuplicateTopLevelJSONMembers(raw) != nil {
+		return invalidRequestError(where, errors.New("invalid strict JSON body"))
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(target); err != nil {
+		return invalidRequestError(where, err)
+	}
+	var trailing any
+	if err = decoder.Decode(&trailing); err != io.EOF {
+		return invalidRequestError(where, errors.New("request body must contain one JSON value"))
+	}
+	return nil
+}
+
+func candidateWorkspaceEntryAccess(request operationRequest) (application.CandidateExamAttemptAccess, model.AttemptWorkspaceEntryID, error) {
+	access, err := candidateAccess(request)
+	if err != nil {
+		return application.CandidateExamAttemptAccess{}, "", err
+	}
+	raw, err := request.params.RequireAttemptWorkspaceEntryId()
+	if err != nil {
+		return application.CandidateExamAttemptAccess{}, "", err
+	}
+	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
+	if err != nil {
+		return application.CandidateExamAttemptAccess{}, "", invalidRequestError("attempt_workspace_entry_id", err)
+	}
+	return access, entryID, nil
+}
+
+func candidateWorkspaceMutationResult(result application.ExamAttemptWorkspaceMutationResult) candidateWorkspaceMutationResponse {
+	response := candidateWorkspaceMutationResponse{WorkspaceID: result.WorkspaceID.String(), WorkspaceCursor: result.Change.Cursor,
+		Operation: string(result.Change.Operation)}
+	if result.Entry != nil {
+		entry := candidateExamWorkspaceItemResponse{ID: result.Entry.EntryID.String(), Kind: string(result.Entry.Kind),
+			Path: result.Entry.Path, ContentVersion: result.Entry.ContentVersion.String(), MediaType: result.Entry.MediaType,
+			SHA256: result.Entry.SHA256}
+		if result.Entry.Kind == model.StarterWorkspaceEntryFile {
+			size := result.Entry.SizeBytes
+			entry.Size = &size
+		}
+		response.Entry = &entry
+	}
+	return response
 }
 
 func (module examAttemptHTTPModule) openResource(request operationRequest) (protocolResult, error) {

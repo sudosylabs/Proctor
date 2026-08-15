@@ -1525,6 +1525,60 @@
         "responses": {"200": {"$ref": "#/components/responses/CandidateExamWorkspaceListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+	"/api/v1/exam-attempts/{exam_attempt_id}/workspace/changes": {
+	  "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}],
+	  "get": {
+		"operationId": "listCandidateExamWorkspaceChanges", "summary": "List ordered acknowledged Workspace changes",
+		"x-proctor-auth": "session_required",
+		"x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable"],
+		"security": [{"bearerAuth": []}, {"sessionCookie": []}],
+		"parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"name": "after_cursor", "in": "query", "required": false, "schema": {"type": "integer", "format": "int64", "minimum": 0, "default": 0}}, {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}],
+		"responses": {"200": {"$ref": "#/components/responses/CandidateWorkspaceJournalOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+	  }
+	},
+	"/api/v1/exam-attempts/{exam_attempt_id}/workspace/directories": {
+	  "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}],
+	  "post": {
+		"operationId": "createCandidateExamWorkspaceDirectory", "summary": "Create one acknowledged empty Workspace directory",
+		"x-proctor-auth": "session_required", "x-proctor-idempotency": "required",
+		"x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit"],
+		"security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+		"parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+		"requestBody": {"$ref": "#/components/requestBodies/CreateCandidateWorkspaceDirectory"},
+		"responses": {"201": {"$ref": "#/components/responses/CandidateWorkspaceMutationCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+	  }
+	},
+	"/api/v1/exam-attempts/{exam_attempt_id}/workspace/files": {
+	  "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}],
+	  "post": {
+		"operationId": "createCandidateExamWorkspaceFile", "summary": "Stage and acknowledge one Workspace file",
+		"x-proctor-auth": "session_required", "x-proctor-idempotency": "required",
+		"x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict"],
+		"security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+		"parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+		"requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/CandidateWorkspaceFileUploadMultipart"}, "encoding": {"metadata": {"contentType": "application/json"}, "content": {"contentType": "application/octet-stream"}}}}},
+		"responses": {"201": {"$ref": "#/components/responses/CandidateWorkspaceMutationCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+	  }
+	},
+	"/api/v1/exam-attempts/{exam_attempt_id}/workspace/entries/{attempt_workspace_entry_id}": {
+	  "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}, {"$ref": "#/components/parameters/AttemptWorkspaceEntryID"}],
+	  "patch": {
+		"operationId": "moveCandidateExamWorkspaceEntry", "summary": "Rename or move one Workspace entry",
+		"x-proctor-auth": "session_required", "x-proctor-idempotency": "required",
+		"x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict"],
+		"security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+		"requestBody": {"$ref": "#/components/requestBodies/MoveCandidateWorkspaceEntry"},
+		"responses": {"200": {"$ref": "#/components/responses/CandidateWorkspaceMutationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+	  },
+	  "delete": {
+		"operationId": "deleteCandidateExamWorkspaceEntry", "summary": "Delete one empty directory or one exact Workspace file state",
+		"x-proctor-auth": "session_required", "x-proctor-idempotency": "required",
+		"x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty"],
+		"security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+		"requestBody": {"$ref": "#/components/requestBodies/DeleteCandidateWorkspaceEntry"},
+		"responses": {"200": {"$ref": "#/components/responses/CandidateWorkspaceMutationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+	  }
+	},
     "/api/v1/exam-attempts/{exam_attempt_id}/resources/{exam_resource_id}/content": {
       "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}, {"$ref": "#/components/parameters/ExamResourceID"}],
       "get": {
@@ -1549,7 +1603,16 @@
         "security": [{"bearerAuth": []}, {"sessionCookie": []}],
         "parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}}],
         "responses": {"200": {"$ref": "#/components/responses/CandidateExamProtectedContent"}, "304": {"$ref": "#/components/responses/CandidateExamContentNotModified"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
-      }
+      },
+	  "put": {
+		"operationId": "replaceCandidateExamWorkspaceFile", "summary": "Replace one exact Workspace file content state",
+		"x-proctor-auth": "session_required", "x-proctor-idempotency": "required",
+		"x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict"],
+		"security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+		"parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+		"requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ReplaceCandidateWorkspaceFileMultipart"}, "encoding": {"metadata": {"contentType": "application/json"}, "content": {"contentType": "application/octet-stream"}}}}},
+		"responses": {"200": {"$ref": "#/components/responses/CandidateWorkspaceMutationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+	  }
     },
     "/api/v1/exams/{exam_id}/draft": {
       "parameters": [{"$ref": "#/components/parameters/ExamID"}],
@@ -2097,6 +2160,18 @@
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReallowExamAttemptRequest"}}}
       },
+	  "CreateCandidateWorkspaceDirectory": {
+		"required": true,
+		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateCandidateWorkspaceDirectoryRequest"}}}
+	  },
+	  "MoveCandidateWorkspaceEntry": {
+		"required": true,
+		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/MoveCandidateWorkspaceEntryRequest"}}}
+	  },
+	  "DeleteCandidateWorkspaceEntry": {
+		"required": true,
+		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/DeleteCandidateWorkspaceEntryRequest"}}}
+	  },
       "EditExamDraftText": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EditExamDraftTextRequest"}}}
@@ -2319,6 +2394,21 @@
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CandidateExamWorkspaceListResponse"}}}
       },
+	  "CandidateWorkspaceJournalOK": {
+		"description": "Bounded ordered acknowledged Workspace changes or an explicit full-refresh signal",
+		"headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CandidateWorkspaceJournalResponse"}}}
+	  },
+	  "CandidateWorkspaceMutationCreated": {
+		"description": "Candidate Workspace mutation acknowledged",
+		"headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CandidateWorkspaceMutationResponse"}}}
+	  },
+	  "CandidateWorkspaceMutationOK": {
+		"description": "Candidate Workspace mutation acknowledged",
+		"headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+		"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CandidateWorkspaceMutationResponse"}}}
+	  },
       "CandidateExamProtectedContent": {
         "description": "Authorized inline candidate Exam content; not a public URL or export response",
         "headers": {
@@ -2790,12 +2880,60 @@
         ]
       },
       "CandidateExamWorkspaceListResponse": {
-        "type": "object", "additionalProperties": false, "required": ["items"],
+		"type": "object", "additionalProperties": false, "required": ["workspace_id", "workspace_cursor", "items", "refresh_required"],
         "properties": {
+		  "workspace_id": {"$ref": "#/components/schemas/ID"},
+		  "workspace_cursor": {"type": "integer", "format": "int64", "minimum": 0},
           "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/CandidateExamWorkspaceItemResponse"}},
-          "next_cursor": {"type": "string", "description": "Opaque versioned cursor over ascending canonical path and Workspace entry identity; clients return it unchanged."}
+		  "next_cursor": {"type": "string", "description": "Opaque versioned cursor containing only the pinned Workspace cursor and last Entry identity; no Workspace path enters the URL."},
+		  "refresh_required": {"type": "boolean", "description": "True with an empty page when the pinned manifest cursor advanced; restart from the first page."}
         }
       },
+	  "CandidateWorkspaceMutationAccess": {
+		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation"],
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}}
+	  },
+	  "CreateCandidateWorkspaceDirectoryRequest": {
+		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation", "path"],
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "path": {"$ref": "#/components/schemas/StarterWorkspacePath"}}
+	  },
+	  "CandidateWorkspaceFileUploadMetadata": {
+		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation", "path", "media_type", "size", "sha256"],
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "media_type": {"type": "string", "minLength": 1, "maxLength": 255}, "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760}, "sha256": {"$ref": "#/components/schemas/SHA256"}}
+	  },
+	  "CandidateWorkspaceFileUploadMultipart": {
+		"type": "object", "additionalProperties": false, "required": ["metadata", "content"],
+		"description": "Exactly two parts in order: strict JSON metadata first, then bounded file content. The complete request is limited to 10 MiB plus 64 KiB.",
+		"properties": {"metadata": {"$ref": "#/components/schemas/CandidateWorkspaceFileUploadMetadata"}, "content": {"type": "string", "format": "binary"}}
+	  },
+	  "ReplaceCandidateWorkspaceFileMetadata": {
+		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation", "expected_path", "expected_content_version", "media_type", "size", "sha256"],
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "expected_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "expected_content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"}, "media_type": {"type": "string", "minLength": 1, "maxLength": 255}, "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760}, "sha256": {"$ref": "#/components/schemas/SHA256"}}
+	  },
+	  "ReplaceCandidateWorkspaceFileMultipart": {
+		"type": "object", "additionalProperties": false, "required": ["metadata", "content"],
+		"properties": {"metadata": {"$ref": "#/components/schemas/ReplaceCandidateWorkspaceFileMetadata"}, "content": {"type": "string", "format": "binary"}}
+	  },
+	  "MoveCandidateWorkspaceEntryRequest": {
+		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation", "expected_path", "destination_path"],
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "expected_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "destination_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}}
+	  },
+	  "DeleteCandidateWorkspaceEntryRequest": {
+		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation", "expected_path"],
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "expected_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "expected_content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"}}
+	  },
+	  "CandidateWorkspaceMutationResponse": {
+		"type": "object", "additionalProperties": false, "required": ["workspace_id", "workspace_cursor", "operation"],
+		"properties": {"workspace_id": {"$ref": "#/components/schemas/ID"}, "workspace_cursor": {"type": "integer", "format": "int64", "minimum": 1}, "operation": {"type": "string", "enum": ["create_file", "create_directory", "replace_file", "move_entry", "delete_entry"]}, "entry": {"$ref": "#/components/schemas/CandidateExamWorkspaceItemResponse"}}
+	  },
+	  "CandidateWorkspaceJournalEntryResponse": {
+		"type": "object", "additionalProperties": false, "required": ["cursor", "entry_id", "kind", "operation", "changed_at"],
+		"properties": {"cursor": {"type": "integer", "format": "int64", "minimum": 1}, "entry_id": {"$ref": "#/components/schemas/ID"}, "kind": {"type": "string", "enum": ["file", "directory"]}, "operation": {"type": "string", "enum": ["create_file", "create_directory", "replace_file", "move_entry", "delete_entry"]}, "old_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "new_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"}, "changed_at": {"type": "string", "format": "date-time"}}
+	  },
+	  "CandidateWorkspaceJournalResponse": {
+		"type": "object", "additionalProperties": false, "required": ["workspace_id", "current_cursor", "entries", "has_more", "refresh_required"],
+		"properties": {"workspace_id": {"$ref": "#/components/schemas/ID"}, "current_cursor": {"type": "integer", "format": "int64", "minimum": 0}, "entries": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/CandidateWorkspaceJournalEntryResponse"}}, "has_more": {"type": "boolean"}, "refresh_required": {"type": "boolean"}}
+	  },
       "ExamSittingCorrectionResourceStageMetadata": {
         "type": "object",
         "additionalProperties": false,

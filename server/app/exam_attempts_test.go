@@ -41,6 +41,32 @@ func TestConnectExamAttemptFingerprintBindsSessionAndNeverStoresRawCredential(t 
 	}
 }
 
+func TestWorkspaceMutationFingerprintSurvivesReconnectWhileChildReceivesCurrentAccess(t *testing.T) {
+	t.Parallel()
+	fake := &examAttemptUseCasesFake{}
+	application := &App{examAttempts: fake}
+	principal := examAttemptPrincipal()
+	access := examattempt.WorkspaceMutationAccess{CandidateAccess: examattempt.CandidateAccess{AttemptID: model.NewExamAttemptID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredential: model.NewCredentialToken()},
+		ParticipationID: model.NewAttemptParticipationID(), Generation: 1}
+	command := CreateCandidateExamWorkspaceDirectoryCommand{Access: access, Path: "src", IdempotencyKey: "mkdir-once"}
+	if _, err := application.CreateCandidateExamWorkspaceDirectory(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); err != nil {
+		t.Fatal(err)
+	}
+	first := fake.workspaceDirectories[0].Idempotency.Fingerprint
+	principal.SessionID = model.NewSessionID()
+	command.Access.ConnectionID, command.Access.ParticipationID, command.Access.Generation = model.NewAttemptConnectionID(), model.NewAttemptParticipationID(), 2
+	command.Access.ContinuityCredential = model.NewCredentialToken()
+	if _, err := application.CreateCandidateExamWorkspaceDirectory(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); err != nil {
+		t.Fatal(err)
+	}
+	second := fake.workspaceDirectories[1]
+	if first != second.Idempotency.Fingerprint || second.Access.ConnectionID != command.Access.ConnectionID ||
+		second.Access.ParticipationID != command.Access.ParticipationID || second.Access.Generation != 2 {
+		t.Fatalf("first=%x second=%#v", first, second)
+	}
+}
+
 func TestCandidateExamAttemptFacadeConcealsAccessDenials(t *testing.T) {
 	t.Parallel()
 	for _, childCode := range []string{"exam.attempt.not_found", "exam.attempt.continuity_invalid"} {
@@ -187,11 +213,12 @@ func examAttemptPrincipal() model.Principal {
 }
 
 type examAttemptUseCasesFake struct {
-	connects    []examattempt.ConnectCommand
-	renewals    []examattempt.RenewParticipationCommand
-	renewResult examattempt.ParticipationRenewal
-	reallows    []examattempt.ReallowCommand
-	err         error
+	connects             []examattempt.ConnectCommand
+	renewals             []examattempt.RenewParticipationCommand
+	renewResult          examattempt.ParticipationRenewal
+	reallows             []examattempt.ReallowCommand
+	err                  error
+	workspaceDirectories []examattempt.CreateWorkspaceDirectoryCommand
 }
 
 func (fake *examAttemptUseCasesFake) Connect(_ context.Context, _ examattempt.Call, command examattempt.ConnectCommand) (examattempt.ConnectionResult, error) {
@@ -223,6 +250,31 @@ func (fake *examAttemptUseCasesFake) GetPresentation(context.Context, examattemp
 
 func (fake *examAttemptUseCasesFake) ListWorkspace(context.Context, examattempt.Call, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error) {
 	return examattempt.WorkspacePage{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) ListWorkspaceJournal(context.Context, examattempt.Call, examattempt.WorkspaceJournalQuery) (examattempt.WorkspaceJournalPage, error) {
+	return examattempt.WorkspaceJournalPage{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) CreateWorkspaceDirectory(_ context.Context, _ examattempt.Call, command examattempt.CreateWorkspaceDirectoryCommand) (examattempt.WorkspaceMutationResult, error) {
+	fake.workspaceDirectories = append(fake.workspaceDirectories, command)
+	return examattempt.WorkspaceMutationResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) CreateWorkspaceFile(context.Context, examattempt.Call, examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+	return examattempt.WorkspaceMutationResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) ReplaceWorkspaceFile(context.Context, examattempt.Call, examattempt.ReplaceWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+	return examattempt.WorkspaceMutationResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) MoveWorkspaceEntry(context.Context, examattempt.Call, examattempt.MoveWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
+	return examattempt.WorkspaceMutationResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) DeleteWorkspaceEntry(context.Context, examattempt.Call, examattempt.DeleteWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
+	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 
 func (fake *examAttemptUseCasesFake) OpenResource(context.Context, examattempt.Call, examattempt.CandidateAccess, model.ExamResourceID) (*examattempt.OpenedContent, error) {

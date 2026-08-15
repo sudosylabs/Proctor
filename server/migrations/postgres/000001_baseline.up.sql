@@ -1011,25 +1011,61 @@ CREATE TABLE exam_attempt_workspace_objects (
     source_starter_entry_id varchar(26),
     storage_origin varchar(16) NOT NULL CHECK (storage_origin IN ('starter', 'attempt')),
     starter_object_id varchar(26) REFERENCES exam_starter_workspace_objects(id),
-    content_version varchar(26) NOT NULL CHECK (content_version ~ '^[A-Za-z0-9_-]{26}$'),
-    media_type varchar(255) NOT NULL CHECK (char_length(btrim(media_type)) > 0),
-    size_bytes bigint NOT NULL CHECK (size_bytes BETWEEN 0 AND 10485760),
-    sha256 char(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    state varchar(16) NOT NULL CHECK (state IN ('staged', 'current', 'reclaimable', 'claimed')),
+    content_version varchar(26),
+    media_type varchar(255),
+    size_bytes bigint,
+    sha256 char(64),
     created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    expires_at timestamptz,
+    reclaim_after timestamptz,
+    claim_token varchar(128),
+    claimed_at timestamptz,
     UNIQUE (workspace_id, id),
     UNIQUE (workspace_id, id, admission_revision_id, source_starter_entry_id),
     CONSTRAINT exam_attempt_workspace_objects_source_fkey
         FOREIGN KEY (admission_revision_id, source_starter_entry_id, starter_object_id)
         REFERENCES exam_revision_starter_workspace_entries(exam_revision_id, entry_id, object_id),
     CONSTRAINT exam_attempt_workspace_objects_origin_check CHECK (
-        (storage_origin = 'starter' AND source_starter_entry_id IS NOT NULL AND starter_object_id IS NOT NULL) OR
+        (storage_origin = 'starter' AND source_starter_entry_id IS NOT NULL AND starter_object_id IS NOT NULL AND state = 'current') OR
         (storage_origin = 'attempt' AND source_starter_entry_id IS NULL AND starter_object_id IS NULL)
+    ),
+    CONSTRAINT exam_attempt_workspace_objects_content_check CHECK (
+        (content_version IS NULL AND media_type IS NULL AND size_bytes IS NULL AND sha256 IS NULL) OR
+        (content_version ~ '^[A-Za-z0-9_-]{26}$' AND char_length(btrim(media_type)) > 0 AND
+         size_bytes BETWEEN 0 AND 10485760 AND sha256 ~ '^[0-9a-f]{64}$')
+    ),
+    CONSTRAINT exam_attempt_workspace_objects_lifecycle_check CHECK (
+        updated_at >= created_at AND (expires_at IS NULL OR expires_at > created_at) AND
+        ((storage_origin = 'starter' AND content_version IS NOT NULL AND expires_at IS NULL AND
+          reclaim_after IS NULL AND claim_token IS NULL AND claimed_at IS NULL) OR
+         (storage_origin = 'attempt' AND state = 'staged' AND expires_at IS NOT NULL AND
+          reclaim_after IS NULL AND claim_token IS NULL AND claimed_at IS NULL) OR
+         (storage_origin = 'attempt' AND state = 'current' AND content_version IS NOT NULL AND expires_at IS NULL AND
+          reclaim_after IS NULL AND claim_token IS NULL AND claimed_at IS NULL) OR
+         (storage_origin = 'attempt' AND state = 'reclaimable' AND reclaim_after IS NOT NULL AND
+          claim_token IS NULL AND claimed_at IS NULL) OR
+         (storage_origin = 'attempt' AND state = 'claimed' AND reclaim_after IS NOT NULL AND
+          claim_token IS NOT NULL AND char_length(btrim(claim_token)) > 0 AND claimed_at = updated_at))
     )
 );
 
 CREATE INDEX exam_attempt_workspace_objects_starter_idx
     ON exam_attempt_workspace_objects (starter_object_id)
     WHERE starter_object_id IS NOT NULL;
+
+CREATE INDEX exam_attempt_workspace_objects_staged_cleanup_idx
+    ON exam_attempt_workspace_objects (expires_at, id)
+    WHERE storage_origin = 'attempt' AND state = 'staged';
+
+CREATE INDEX exam_attempt_workspace_objects_reclaimable_cleanup_idx
+    ON exam_attempt_workspace_objects (reclaim_after, id)
+    WHERE storage_origin = 'attempt' AND state = 'reclaimable';
+
+CREATE INDEX exam_attempt_workspace_objects_claimed_cleanup_idx
+    ON exam_attempt_workspace_objects (claimed_at, id)
+    WHERE storage_origin = 'attempt' AND state = 'claimed';
 
 CREATE TABLE exam_attempt_workspace_entries (
     id varchar(26) PRIMARY KEY,
@@ -1052,9 +1088,6 @@ CREATE TABLE exam_attempt_workspace_entries (
     CONSTRAINT exam_attempt_workspace_entries_workspace_object_fkey
         FOREIGN KEY (workspace_id, current_object_id)
         REFERENCES exam_attempt_workspace_objects(workspace_id, id),
-    CONSTRAINT exam_attempt_workspace_entries_object_fkey
-        FOREIGN KEY (workspace_id, current_object_id, admission_revision_id, source_starter_entry_id)
-        REFERENCES exam_attempt_workspace_objects(workspace_id, id, admission_revision_id, source_starter_entry_id),
     CONSTRAINT exam_attempt_workspace_entries_content_check CHECK (
         (kind = 'file' AND current_object_id IS NOT NULL) OR
         (kind = 'directory' AND current_object_id IS NULL)
@@ -1064,6 +1097,27 @@ CREATE TABLE exam_attempt_workspace_entries (
 
 CREATE UNIQUE INDEX exam_attempt_workspace_entries_path_key
     ON exam_attempt_workspace_entries (workspace_id, path);
+
+CREATE TABLE exam_attempt_workspace_journal (
+    workspace_id varchar(26) NOT NULL REFERENCES exam_attempt_workspaces(id),
+    cursor bigint NOT NULL CHECK (cursor > 0),
+    entry_id varchar(26) NOT NULL,
+    entry_kind varchar(16) NOT NULL CHECK (entry_kind IN ('file', 'directory')),
+    operation varchar(24) NOT NULL CHECK (operation IN ('create_file', 'create_directory', 'replace_file', 'move_entry', 'delete_entry')),
+    old_path text,
+    new_path text,
+    content_version varchar(26),
+    mutation_key_digest bytea NOT NULL CHECK (octet_length(mutation_key_digest) = 32),
+    changed_at timestamptz NOT NULL,
+    PRIMARY KEY (workspace_id, cursor),
+    CONSTRAINT exam_attempt_workspace_journal_path_check CHECK (
+        (old_path IS NULL OR octet_length(old_path) BETWEEN 1 AND 1024) AND
+        (new_path IS NULL OR octet_length(new_path) BETWEEN 1 AND 1024)
+    )
+);
+
+CREATE INDEX exam_attempt_workspace_journal_entry_cursor_idx
+    ON exam_attempt_workspace_journal (workspace_id, entry_id, cursor DESC);
 
 CREATE TABLE exam_attempt_participations (
     id varchar(26) PRIMARY KEY,
@@ -1155,10 +1209,49 @@ $$;
 CREATE TRIGGER exam_attempt_workspaces_guard
     BEFORE UPDATE ON exam_attempt_workspaces FOR EACH ROW EXECUTE FUNCTION guard_exam_attempt_workspace_mutation();
 
+CREATE FUNCTION guard_exam_attempt_workspace_entry_object() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    object_origin varchar(16);
+    object_revision_id varchar(26);
+    object_source_entry_id varchar(26);
+BEGIN
+    IF NEW.current_object_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+    SELECT storage_origin, admission_revision_id, source_starter_entry_id
+      INTO object_origin, object_revision_id, object_source_entry_id
+      FROM exam_attempt_workspace_objects
+     WHERE workspace_id = NEW.workspace_id AND id = NEW.current_object_id;
+    IF object_origin IS NULL OR
+       (object_origin = 'starter' AND (object_revision_id IS DISTINCT FROM NEW.admission_revision_id OR
+        object_source_entry_id IS DISTINCT FROM NEW.source_starter_entry_id)) THEN
+        RAISE EXCEPTION 'Exam Attempt Workspace object provenance does not match Entry'
+            USING ERRCODE = '23503', CONSTRAINT = 'exam_attempt_workspace_entries_object_provenance';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER exam_attempt_workspace_entries_object_provenance
+    BEFORE INSERT OR UPDATE OF current_object_id, admission_revision_id, source_starter_entry_id
+    ON exam_attempt_workspace_entries FOR EACH ROW
+    EXECUTE FUNCTION guard_exam_attempt_workspace_entry_object();
+
 CREATE FUNCTION reject_exam_attempt_workspace_object_update() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    RAISE EXCEPTION 'Exam Attempt Workspace objects are immutable' USING ERRCODE = '55000';
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.workspace_id IS DISTINCT FROM OLD.workspace_id OR
+       NEW.admission_revision_id IS DISTINCT FROM OLD.admission_revision_id OR
+       NEW.source_starter_entry_id IS DISTINCT FROM OLD.source_starter_entry_id OR
+       NEW.storage_origin IS DISTINCT FROM OLD.storage_origin OR
+       NEW.starter_object_id IS DISTINCT FROM OLD.starter_object_id OR
+       NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.updated_at < OLD.updated_at OR
+       (OLD.content_version IS NOT NULL AND (NEW.content_version IS DISTINCT FROM OLD.content_version OR
+        NEW.media_type IS DISTINCT FROM OLD.media_type OR NEW.size_bytes IS DISTINCT FROM OLD.size_bytes OR
+        NEW.sha256 IS DISTINCT FROM OLD.sha256)) THEN
+        RAISE EXCEPTION 'Exam Attempt Workspace object identity or content changed' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
 END;
 $$;
 CREATE TRIGGER exam_attempt_workspace_objects_immutable
@@ -1718,7 +1811,7 @@ ALTER TABLE exam_attempt_workspace_objects
     ADD CONSTRAINT exam_attempt_workspace_objects_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_objects_source_starter_entry_id_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_objects_starter_object_id_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_objects_content_version_canonical_check CHECK (content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_workspace_objects_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_workspace_entries
     ADD CONSTRAINT exam_attempt_workspace_entries_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -1726,6 +1819,11 @@ ALTER TABLE exam_attempt_workspace_entries
     ADD CONSTRAINT exam_attempt_workspace_entries_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_entries_source_starter_entry_id_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_entries_current_object_id_canonical_check CHECK (current_object_id IS NULL OR current_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_workspace_journal
+    ADD CONSTRAINT exam_attempt_workspace_journal_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_journal_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_journal_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_participations
     ADD CONSTRAINT exam_attempt_participations_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),

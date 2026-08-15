@@ -71,7 +71,9 @@ func buildApplicationJobDefinitions(
 	reconciliationHandler := defaultProfilePictureReconciliationHandler{
 		users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
 	}
-	purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent, deps.Store.ExamStarterWorkspace(), deps.FileContent)
+	purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent,
+		deps.Store.ExamStarterWorkspace(), deps.FileContent,
+		deps.Store.ExamAttemptWorkspace(), deps.FileContent)
 	lifecycleUseCases := examSittingLifecycleJobUseCases{sittings: examinations.sittings}
 	descriptors := []jobengine.Descriptor{
 		defaultProfilePictureDescriptor(defaultHandler),

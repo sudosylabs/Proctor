@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
@@ -23,6 +24,8 @@ type FileContent interface {
 	DefaultProfilePictureGenerationFiles
 	FileRevisionContentPurger
 	starterWorkspaceObjectPurger
+	attemptWorkspaceObjectPurger
+	examattempt.Content
 	examresource.FileContent
 	examcorrection.Content
 	examworkspace.Content

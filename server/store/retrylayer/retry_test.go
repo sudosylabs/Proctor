@@ -38,11 +38,12 @@ func (s *institutionStub) Save(context.Context, *model.Institution) (*model.Inst
 
 type rootStub struct {
 	store.Store
-	institution         store.InstitutionStore
-	examAuthoring       store.ExamAuthoringStore
-	examSitting         store.ExamSittingStore
-	examAttempt         store.ExamAttemptStore
-	personalAccessToken store.PersonalAccessTokenStore
+	institution          store.InstitutionStore
+	examAuthoring        store.ExamAuthoringStore
+	examSitting          store.ExamSittingStore
+	examAttempt          store.ExamAttemptStore
+	examAttemptWorkspace store.ExamAttemptWorkspaceStore
+	personalAccessToken  store.PersonalAccessTokenStore
 }
 
 func (s *rootStub) Institution() store.InstitutionStore   { return s.institution }
@@ -52,6 +53,9 @@ func (s *rootStub) ExamAuthoring() store.ExamAuthoringStore {
 }
 func (s *rootStub) ExamSitting() store.ExamSittingStore { return s.examSitting }
 func (s *rootStub) ExamAttempt() store.ExamAttemptStore { return s.examAttempt }
+func (s *rootStub) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
+	return s.examAttemptWorkspace
+}
 func (s *rootStub) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return s.personalAccessToken
 }
@@ -132,6 +136,41 @@ type examAttemptRetryStub struct {
 	reallowAttempts       int
 	closeAttempts         int
 	err                   error
+}
+
+type examAttemptWorkspaceRetryStub struct {
+	store.ExamAttemptWorkspaceStore
+	applyAttempts    int
+	markAttempts     int
+	claimAttempts    int
+	completeAttempts int
+	releaseAttempts  int
+	err              error
+}
+
+func (stub *examAttemptWorkspaceRetryStub) ApplyMutation(context.Context, *store.ExamAttemptWorkspaceMutation, *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
+	stub.applyAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptWorkspaceRetryStub) MarkObjectReclaimable(context.Context, model.AttemptWorkspaceObjectID) error {
+	stub.markAttempts++
+	return stub.err
+}
+
+func (stub *examAttemptWorkspaceRetryStub) ClaimObjectsForCleanup(context.Context, int, string) ([]model.AttemptWorkspaceObject, error) {
+	stub.claimAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptWorkspaceRetryStub) CompleteObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+	stub.completeAttempts++
+	return stub.err
+}
+
+func (stub *examAttemptWorkspaceRetryStub) ReleaseObjectCleanup(context.Context, model.AttemptWorkspaceObjectID, string) error {
+	stub.releaseAttempts++
+	return stub.err
 }
 
 func (stub *examAttemptRetryStub) Connect(context.Context, *store.ExamAttemptConnect, *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
@@ -312,6 +351,59 @@ func TestRetryExamAttemptRenewalExpiryAndReallowUseTheirDurableFences(t *testing
 	_, _ = layer.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{}, nil)
 	if stub.reallowAttempts != 4 {
 		t.Fatalf("ReallowAttempt() attempts without command = %d, want one additional call", stub.reallowAttempts)
+	}
+}
+
+func TestRetryOnlyRetriesExamAttemptWorkspaceMutationWithDurableCommandOutcome(t *testing.T) {
+	t.Parallel()
+
+	transientErr := errors.New("unknown commit outcome")
+	stub := &examAttemptWorkspaceRetryStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{examAttemptWorkspace: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	if _, got := layer.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{}, &store.CommandIdempotency{}); got != transientErr {
+		t.Fatalf("ApplyMutation() error = %v", got)
+	}
+	if stub.applyAttempts != 3 {
+		t.Fatalf("ApplyMutation() attempts with command = %d, want 3", stub.applyAttempts)
+	}
+	if _, got := layer.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{}, nil); got != transientErr {
+		t.Fatalf("ApplyMutation() without command error = %v", got)
+	}
+	if stub.applyAttempts != 4 {
+		t.Fatalf("ApplyMutation() attempts without command = %d, want one additional call", stub.applyAttempts)
+	}
+}
+
+func TestRetryForwardsExamAttemptWorkspaceCleanupMutationsOnce(t *testing.T) {
+	t.Parallel()
+
+	transientErr := errors.New("unknown cleanup outcome")
+	stub := &examAttemptWorkspaceRetryStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{examAttemptWorkspace: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	objectID := model.NewAttemptWorkspaceObjectID()
+	_ = layer.ExamAttemptWorkspace().MarkObjectReclaimable(ctx, objectID)
+	_, _ = layer.ExamAttemptWorkspace().ClaimObjectsForCleanup(ctx, 1, "claim")
+	_ = layer.ExamAttemptWorkspace().CompleteObjectCleanup(ctx, objectID, "claim")
+	_ = layer.ExamAttemptWorkspace().ReleaseObjectCleanup(ctx, objectID, "claim")
+	if stub.markAttempts != 1 || stub.claimAttempts != 1 || stub.completeAttempts != 1 || stub.releaseAttempts != 1 {
+		t.Fatalf("cleanup attempts = mark %d, claim %d, complete %d, release %d; want one each",
+			stub.markAttempts, stub.claimAttempts, stub.completeAttempts, stub.releaseAttempts)
 	}
 }
 

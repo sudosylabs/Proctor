@@ -526,17 +526,23 @@ type AttemptWorkspaceObject struct {
 	WorkspaceID     ExamAttemptWorkspaceID
 	StorageOrigin   AttemptWorkspaceObjectStorage
 	StarterObjectID StarterWorkspaceObjectID
+	State           AttemptWorkspaceObjectState
 	ContentVersion  WorkspaceContentVersion
 	MediaType       string
 	SizeBytes       int64
 	SHA256          string
 	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	ExpiresAt       time.Time
+	ReclaimAfter    OptionalTime
+	ClaimToken      string
+	ClaimedAt       OptionalTime
 }
 
 func NewStarterOriginAttemptWorkspaceObject(id AttemptWorkspaceObjectID, workspaceID ExamAttemptWorkspaceID, starterObjectID StarterWorkspaceObjectID, version WorkspaceContentVersion, mediaType string, size int64, checksum string, at time.Time) (*AttemptWorkspaceObject, error) {
 	object := &AttemptWorkspaceObject{ID: id, WorkspaceID: workspaceID, StorageOrigin: AttemptWorkspaceStorageStarter,
-		StarterObjectID: starterObjectID, ContentVersion: version, MediaType: strings.TrimSpace(mediaType),
-		SizeBytes: size, SHA256: strings.ToLower(checksum), CreatedAt: TimeUTC(at)}
+		StarterObjectID: starterObjectID, State: AttemptWorkspaceObjectCurrent, ContentVersion: version, MediaType: strings.TrimSpace(mediaType),
+		SizeBytes: size, SHA256: strings.ToLower(checksum), CreatedAt: TimeUTC(at), UpdatedAt: TimeUTC(at)}
 	if err := object.Validate(); err != nil {
 		return nil, err
 	}
@@ -544,24 +550,7 @@ func NewStarterOriginAttemptWorkspaceObject(id AttemptWorkspaceObjectID, workspa
 }
 
 func (object *AttemptWorkspaceObject) Validate() error {
-	if object == nil || !object.ID.IsValid() || !object.WorkspaceID.IsValid() || !object.ContentVersion.IsValid() ||
-		object.MediaType == "" || strings.TrimSpace(object.MediaType) != object.MediaType || len(object.MediaType) > 255 ||
-		object.SizeBytes < 0 || object.SizeBytes > StarterWorkspaceMaximumFileBytes || !validLowerSHA256(object.SHA256) || object.CreatedAt.IsZero() {
-		return fmt.Errorf("model: invalid Attempt Workspace object")
-	}
-	switch object.StorageOrigin {
-	case AttemptWorkspaceStorageStarter:
-		if !object.StarterObjectID.IsValid() {
-			return fmt.Errorf("model: starter-origin Attempt Workspace object requires source")
-		}
-	case AttemptWorkspaceStorageAttempt:
-		if !object.StarterObjectID.IsZero() {
-			return fmt.Errorf("model: attempt-origin Attempt Workspace object cannot reference starter source")
-		}
-	default:
-		return fmt.Errorf("model: invalid Attempt Workspace storage origin")
-	}
-	return nil
+	return validateAttemptWorkspaceObject(object)
 }
 
 // AttemptWorkspaceEntry is attempt-owned logical metadata. AdmissionRevisionID

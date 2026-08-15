@@ -16,6 +16,8 @@ type localCacheStores struct {
 	clusterDiscoveryOnce     sync.Once
 	examAttempt              store.ExamAttemptStore
 	examAttemptOnce          sync.Once
+	examAttemptWorkspace     store.ExamAttemptWorkspaceStore
+	examAttemptWorkspaceOnce sync.Once
 	examCorrection           store.ExamCorrectionStore
 	examCorrectionOnce       sync.Once
 	examResource             store.ExamResourceStore
@@ -87,6 +89,11 @@ type clusterDiscoveryStore struct {
 
 type examAttemptStore struct {
 	store.ExamAttemptStore
+	layer *Layer
+}
+
+type examAttemptWorkspaceStore struct {
+	store.ExamAttemptWorkspaceStore
 	layer *Layer
 }
 
@@ -335,6 +342,16 @@ func (l *Layer) ExamAttempt() store.ExamAttemptStore {
 	return l.stores.examAttempt
 }
 
+func (l *Layer) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
+	l.stores.examAttemptWorkspaceOnce.Do(func() {
+		next := l.Store.ExamAttemptWorkspace()
+		if next != nil {
+			l.stores.examAttemptWorkspace = &examAttemptWorkspaceStore{ExamAttemptWorkspaceStore: next, layer: l}
+		}
+	})
+	return l.stores.examAttemptWorkspace
+}
+
 func (l *Layer) ExamResource() store.ExamResourceStore {
 	l.stores.examResourceOnce.Do(func() {
 		next := l.Store.ExamResource()
@@ -579,6 +596,7 @@ var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore     = (*clusterDiscoveryStore)(nil)
 	_ store.ExamAttemptStore          = (*examAttemptStore)(nil)
+	_ store.ExamAttemptWorkspaceStore = (*examAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore       = (*examCorrectionStore)(nil)
 	_ store.ExamResourceStore         = (*examResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*examRevisionStore)(nil)
