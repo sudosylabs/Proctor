@@ -7,6 +7,11 @@ operational or product value to trace. Default-picture generation, content
 extraction, mail delivery, exports, and bounded purge batches qualify.
 Continuous runtime loops such as cluster heartbeats, WebSocket pings, and cache
 reapers do not become Jobs merely because they run in the background.
+When a bounded periodic maintenance pass shares the Job engine's lifecycle, it
+is an immutable runtime task rather than a descriptor or recurrence: it runs
+without overlap, stops with the engine, reports transient failures, and creates
+no Job, Job Attempt, occurrence, or permanent deduplication-ledger row. The
+named domain Store operation remains responsible for cross-node convergence.
 
 `model.Job` owns stable intent and current lifecycle state. The append-only
 `model.JobAttempt` records every execution claim and outcome so retries do not

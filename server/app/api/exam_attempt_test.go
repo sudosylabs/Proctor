@@ -241,6 +241,53 @@ func TestCandidateWorkspaceCursorBindsCanonicalPathAndEntryIdentity(t *testing.T
 	}
 }
 
+func TestManagerReallowExamAttemptUsesExactSuspensionAndNeverReturnsPrivateReason(t *testing.T) {
+	t.Parallel()
+	fake := newExamAttemptHTTPFake(t)
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	suspensionID := model.NewAttemptSuspensionID()
+	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
+		"/attempts/" + fake.attempt.ID.String() + "/reallow"
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"suspension_id":"`+suspensionID.String()+`","expected_attempt_revision":2,"reason":"manager verified connectivity"}`))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Idempotency-Key", "reallow-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	}
+	if fake.reallow.SuspensionID != suspensionID || fake.reallow.ExpectedAttemptRevision != 2 ||
+		fake.reallow.PrivateReason != "manager verified connectivity" || fake.reallow.IdempotencyKey != "reallow-once" {
+		t.Fatalf("reallow command = %#v", fake.reallow)
+	}
+	if strings.Contains(response.Body.String(), "manager verified connectivity") || strings.Contains(response.Body.String(), "private") ||
+		strings.Contains(response.Body.String(), "replayed") {
+		t.Fatalf("reallow response exposed internal data: %s", response.Body.String())
+	}
+}
+
+func TestManagerAttemptRefetchExposesPrivateFreeActiveSuspensionIdentity(t *testing.T) {
+	t.Parallel()
+	fake := newExamAttemptHTTPFake(t)
+	fake.attempt.State = model.ExamAttemptSuspended
+	suspension := &store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), AttemptID: fake.attempt.ID,
+		ParticipationID: model.NewAttemptParticipationID(), FlagID: model.NewIntegrityFlagID(), Generation: 2,
+		State: model.AttemptSuspensionActive, Source: model.AttemptSuspensionSourcePolicy,
+		CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: fake.attempt.UpdatedAt}
+	fake.managerPage.Items[0].ActiveSuspension = suspension
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() + "/attempts/" + fake.attempt.ID.String()
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), suspension.ID.String()) ||
+		!strings.Contains(response.Body.String(), `"candidate_reason":"secure_connectivity_lost"`) ||
+		strings.Contains(response.Body.String(), "private_reason") {
+		t.Fatalf("manager suspension response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 type examAttemptHTTPFake struct {
 	principal               model.Principal
 	attempt                 *model.ExamAttempt
@@ -260,6 +307,7 @@ type examAttemptHTTPFake struct {
 	managerList             application.ListExamAttemptsQuery
 	managerGet              application.GetExamAttemptQuery
 	workspaceOpen           application.OpenCandidateExamWorkspaceFileQuery
+	reallow                 application.ReallowExamAttemptCommand
 }
 
 func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
@@ -327,6 +375,19 @@ func (fake *examAttemptHTTPFake) GetExamAttempt(_ context.Context, _ application
 func (fake *examAttemptHTTPFake) ListExamAttempts(_ context.Context, _ application.Invocation, query application.ListExamAttemptsQuery) (application.ExamAttemptManagerPage, error) {
 	fake.managerList = query
 	return fake.managerPage, nil
+}
+
+func (fake *examAttemptHTTPFake) ReallowExamAttempt(_ context.Context, invocation application.Invocation, command application.ReallowExamAttemptCommand) (application.ExamAttemptReallowResult, error) {
+	fake.reallow = command
+	attempt := *fake.attempt
+	attempt.State, attempt.UpdatedAt, attempt.Revision = model.ExamAttemptActive, attempt.UpdatedAt.Add(time.Minute), command.ExpectedAttemptRevision+1
+	return application.ExamAttemptReallowResult{ExamID: attempt.ExamID, SittingID: attempt.SittingID,
+		ClassID: model.NewClassID(), CandidateUserID: attempt.CandidateUserID, Attempt: attempt,
+		Suspension: store.ExamAttemptSuspensionView{ID: command.SuspensionID, AttemptID: attempt.ID,
+			ParticipationID: model.NewAttemptParticipationID(), FlagID: model.NewIntegrityFlagID(), Generation: 1,
+			State: model.AttemptSuspensionClosed, Source: model.AttemptSuspensionSourcePolicy,
+			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: attempt.CreatedAt,
+			EndedAt: model.OptionalTimeFrom(attempt.UpdatedAt), ReallowedByUserID: invocation.Principal().UserID}}, nil
 }
 
 func (fake *examAttemptHTTPFake) GetCandidateExamPresentation(_ context.Context, _ application.Invocation, access application.CandidateExamAttemptAccess) (application.CandidateExamPresentation, error) {

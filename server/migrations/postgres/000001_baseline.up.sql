@@ -1095,7 +1095,7 @@ CREATE TABLE exam_attempt_participations (
 CREATE UNIQUE INDEX exam_attempt_participations_one_active_key
     ON exam_attempt_participations (exam_attempt_id) WHERE state = 'active';
 CREATE INDEX exam_attempt_participations_expiry_idx
-    ON exam_attempt_participations (lease_expires_at, exam_attempt_id, generation)
+    ON exam_attempt_participations (lease_expires_at, id)
     WHERE state = 'active';
 
 CREATE TABLE exam_attempt_connections (
@@ -1197,6 +1197,98 @@ $$;
 CREATE TRIGGER exam_attempt_connections_guard
     BEFORE UPDATE ON exam_attempt_connections FOR EACH ROW
     EXECUTE FUNCTION guard_attempt_connection_mutation();
+
+-- Integrity records are append-preserving facts. A Suspension is the one
+-- mutable enforcement episode: only its active-to-closed re-allow transition
+-- may add the manager actor and private reason.
+CREATE TABLE integrity_flags (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+    generation bigint NOT NULL CHECK (generation > 0),
+    policy_kind varchar(32) NOT NULL CHECK (policy_kind = 'connection_loss'),
+    state varchar(16) NOT NULL CHECK (state = 'open'),
+    created_at timestamptz NOT NULL,
+    UNIQUE (exam_attempt_id, generation, policy_kind),
+    UNIQUE (id, exam_attempt_id, generation)
+);
+
+CREATE TABLE integrity_evidence (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    integrity_flag_id varchar(26) NOT NULL,
+    generation bigint NOT NULL CHECK (generation > 0),
+    policy_kind varchar(32) NOT NULL CHECK (policy_kind = 'connection_loss'),
+    observed_at timestamptz NOT NULL,
+    recorded_at timestamptz NOT NULL,
+    CONSTRAINT integrity_evidence_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id),
+    CONSTRAINT integrity_evidence_flag_fkey
+        FOREIGN KEY (integrity_flag_id, exam_attempt_id, generation)
+        REFERENCES integrity_flags(id, exam_attempt_id, generation),
+    CONSTRAINT integrity_evidence_time_check CHECK (recorded_at >= observed_at)
+);
+
+CREATE TABLE exam_attempt_suspensions (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    integrity_flag_id varchar(26) NOT NULL UNIQUE,
+    generation bigint NOT NULL CHECK (generation > 0),
+    expiry_attempt_revision bigint NOT NULL CHECK (expiry_attempt_revision > 1),
+    state varchar(16) NOT NULL CHECK (state IN ('active', 'closed')),
+    source varchar(16) NOT NULL CHECK (source = 'policy'),
+    candidate_reason varchar(64) NOT NULL CHECK (candidate_reason = 'secure_connectivity_lost'),
+    started_at timestamptz NOT NULL,
+    ended_at timestamptz,
+    reallowed_by_user_id varchar(26) REFERENCES users(id),
+    private_reason text,
+    CONSTRAINT exam_attempt_suspensions_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id),
+    CONSTRAINT exam_attempt_suspensions_flag_fkey
+        FOREIGN KEY (integrity_flag_id, exam_attempt_id, generation)
+        REFERENCES integrity_flags(id, exam_attempt_id, generation),
+    CONSTRAINT exam_attempt_suspensions_lifecycle_check CHECK (
+        (state = 'active' AND ended_at IS NULL AND reallowed_by_user_id IS NULL AND private_reason IS NULL) OR
+        (state = 'closed' AND ended_at >= started_at AND reallowed_by_user_id IS NOT NULL AND
+         private_reason = btrim(private_reason) AND char_length(private_reason) BETWEEN 1 AND 1000 AND
+         octet_length(private_reason) <= 4000)
+    )
+);
+
+CREATE UNIQUE INDEX exam_attempt_suspensions_one_active_key
+    ON exam_attempt_suspensions (exam_attempt_id) WHERE state = 'active';
+
+CREATE FUNCTION reject_integrity_record_update() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'Integrity records are immutable' USING ERRCODE = '55000';
+END;
+$$;
+CREATE TRIGGER integrity_flags_immutable BEFORE UPDATE ON integrity_flags
+    FOR EACH ROW EXECUTE FUNCTION reject_integrity_record_update();
+CREATE TRIGGER integrity_evidence_immutable BEFORE UPDATE ON integrity_evidence
+    FOR EACH ROW EXECUTE FUNCTION reject_integrity_record_update();
+
+CREATE FUNCTION guard_exam_attempt_suspension_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR
+       NEW.participation_id IS DISTINCT FROM OLD.participation_id OR
+       NEW.integrity_flag_id IS DISTINCT FROM OLD.integrity_flag_id OR
+       NEW.generation IS DISTINCT FROM OLD.generation OR
+       NEW.expiry_attempt_revision IS DISTINCT FROM OLD.expiry_attempt_revision OR NEW.source IS DISTINCT FROM OLD.source OR
+       NEW.candidate_reason IS DISTINCT FROM OLD.candidate_reason OR NEW.started_at IS DISTINCT FROM OLD.started_at OR
+       OLD.state = 'closed' THEN
+        RAISE EXCEPTION 'Attempt Suspension identity or terminal state changed' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER exam_attempt_suspensions_guard BEFORE UPDATE ON exam_attempt_suspensions
+    FOR EACH ROW EXECUTE FUNCTION guard_exam_attempt_suspension_mutation();
 
 CREATE TABLE session_credentials (
     id varchar(26) PRIMARY KEY,
@@ -1644,6 +1736,23 @@ ALTER TABLE exam_attempt_connections
     ADD CONSTRAINT exam_attempt_connections_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_connections_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_connections_session_id_canonical_check CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE integrity_flags
+    ADD CONSTRAINT integrity_flags_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_flags_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE integrity_evidence
+    ADD CONSTRAINT integrity_evidence_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_evidence_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_evidence_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_evidence_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_suspensions
+    ADD CONSTRAINT exam_attempt_suspensions_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_suspensions_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_suspensions_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_suspensions_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_suspensions_reallowed_by_user_id_canonical_check CHECK (reallowed_by_user_id IS NULL OR reallowed_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_id_canonical_check

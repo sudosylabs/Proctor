@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -31,12 +32,22 @@ type inboundTestApplication struct {
 	connectErr      error
 	connectResult   app.ExamAttemptConnection
 	connectCalls    []app.ConnectExamAttemptCommand
+	renewErr        error
+	renewResult     app.ExamAttemptParticipationRenewal
+	renewCalls      []app.RenewExamAttemptParticipationCommand
 	closeCalls      []app.CloseExamAttemptConnectionCommand
 	closeContextErr error
 	closePrincipal  model.Principal
 	closeMetadata   model.RequestMetadata
 	authorizations  []inboundAuthorizationCall
 	validations     []model.Principal
+}
+
+func (a *inboundTestApplication) RenewExamAttemptParticipation(_ context.Context, _ app.Invocation, command app.RenewExamAttemptParticipationCommand) (app.ExamAttemptParticipationRenewal, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.renewCalls = append(a.renewCalls, command)
+	return a.renewResult, a.renewErr
 }
 
 func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ app.Invocation, command app.ConnectExamAttemptCommand) (app.ExamAttemptConnection, error) {
@@ -434,8 +445,13 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 	}
 	if body.AttemptID != attempt.ID.String() || body.WorkspaceID != workspace.ID.String() ||
 		body.ParticipationID != participationID.String() || body.AttemptConnectionID != connectionID.String() ||
-		body.Generation != 1 || !body.FirstAdmission {
+		body.Generation != 1 || body.RenewalIntervalSeconds != 5 || !body.FirstAdmission {
 		t.Fatalf("connect response body = %#v", body)
+	}
+	for _, secret := range []string{credential, model.HashToken(credential), "continuity_credential", "credential_hash"} {
+		if strings.Contains(string(response.Data), secret) {
+			t.Fatalf("connect response exposed %q: %s", secret, response.Data)
+		}
 	}
 	candidate := Subscription{Action: model.ActionExamSittingParticipate,
 		Resource: Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}}
@@ -510,6 +526,112 @@ func TestConnectionRuntimeRejectsNonStrictExamAttemptConnectPayload(t *testing.T
 	response := nextInboundResponse(t, runtime)
 	if response.Status != "error" || response.Error == nil || response.Error.Code != "websocket.request.invalid" {
 		t.Fatalf("duplicate connect response = %#v", response)
+	}
+}
+
+func TestConnectionRuntimeRenewsBoundParticipationWithoutTreatingPingAsRenewal(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
+	sittingID := model.NewExamSittingID()
+	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), model.NewExamID(), sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	participationID, connectionID := model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
+	connection, err := model.NewAttemptConnection(connectionID, attempt.ID, participationID, model.NewSessionID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	databaseNow := at.Add(5 * time.Second)
+	application := &inboundTestApplication{connectResult: app.ExamAttemptConnection{
+		Attempt: *attempt, Workspace: *workspace, Participation: store.ExamAttemptParticipationView{
+			ID: participationID, AttemptID: attempt.ID, State: model.AttemptParticipationActive, Generation: 4,
+			StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(model.AttemptParticipationInitialLease),
+		}, Connection: *connection, ClassID: model.NewClassID(), FirstAdmission: true,
+	}, renewResult: app.ExamAttemptParticipationRenewal{
+		AttemptID: attempt.ID, ParticipationID: participationID, Generation: 4, AcceptedSequence: 1,
+		DatabaseTime: databaseNow, LeaseExpiresAt: databaseNow.Add(model.AttemptParticipationInitialLease),
+	}}
+	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
+	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
+	credential := model.NewCredentialToken()
+	runtime.handleRequest(context.Background(), requestWithData(t, 40, examAttemptConnectAction, examAttemptConnectRequest{
+		ExamSittingID: sittingID.String(), IdempotencyKey: "connect", ContinuityCredential: credential,
+	}))
+	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
+		t.Fatalf("connect response = %#v", response)
+	}
+	runtime.handleRequest(context.Background(), &Request{Sequence: 41, Action: "ping", Data: json.RawMessage(`{}`)})
+	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
+		t.Fatalf("ping response = %#v", response)
+	}
+	application.mu.Lock()
+	if len(application.renewCalls) != 0 {
+		application.mu.Unlock()
+		t.Fatal("WebSocket ping renewed the Participation")
+	}
+	application.mu.Unlock()
+	runtime.handleRequest(context.Background(), requestWithData(t, 42, examAttemptRenewAction, examAttemptRenewRequest{
+		Generation: 4, Sequence: 1, ContinuityCredential: credential,
+	}))
+	response := nextInboundResponse(t, runtime)
+	if response.Status != "ok" || response.Error != nil {
+		t.Fatalf("renew response = %#v", response)
+	}
+	var body examAttemptRenewResponse
+	if err = json.Unmarshal(response.Data, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Generation != 4 || body.AcceptedSequence != 1 || body.DatabaseTime != databaseNow.Format(time.RFC3339Nano) ||
+		body.LeaseExpiresAt != databaseNow.Add(model.AttemptParticipationInitialLease).Format(time.RFC3339Nano) {
+		t.Fatalf("renew body = %#v", body)
+	}
+	for _, secret := range []string{credential, model.HashToken(credential), "continuity_credential", "credential_hash"} {
+		if strings.Contains(string(response.Data), secret) {
+			t.Fatalf("renew response exposed %q: %s", secret, response.Data)
+		}
+	}
+	application.mu.Lock()
+	calls := append([]app.RenewExamAttemptParticipationCommand(nil), application.renewCalls...)
+	application.mu.Unlock()
+	if len(calls) != 1 || calls[0].AttemptID != attempt.ID || calls[0].ParticipationID != participationID ||
+		calls[0].ConnectionID != connectionID || calls[0].Generation != 4 || calls[0].Sequence != 1 ||
+		calls[0].ContinuityCredential != credential {
+		t.Fatalf("renew calls = %#v", calls)
+	}
+}
+
+func TestConnectionRuntimeRenewalUsesStrictPayloadAndSafeConnectionLossMessage(t *testing.T) {
+	t.Parallel()
+	application := &inboundTestApplication{}
+	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(time.Now()))
+	runtime.handleRequest(context.Background(), &Request{Sequence: 50, Action: examAttemptRenewAction,
+		Data: json.RawMessage(`{"generation":1,"sequence":1,"sequence":2,"continuity_credential":"bad"}`)})
+	if response := nextInboundResponse(t, runtime); response.Status != "error" || response.Error == nil || response.Error.Code != "websocket.request.invalid" {
+		t.Fatalf("strict renewal response = %#v", response)
+	}
+	application.renewErr = app.NewError("exam.attempt.connection_lost")
+	runtime.attempt = &examAttemptBinding{attemptID: model.NewExamAttemptID(), participationID: model.NewAttemptParticipationID(),
+		connectionID: model.NewAttemptConnectionID(), generation: 1}
+	credential := model.NewCredentialToken()
+	runtime.handleRequest(context.Background(), requestWithData(t, 51, examAttemptRenewAction, examAttemptRenewRequest{
+		Generation: 1, Sequence: 2, ContinuityCredential: credential,
+	}))
+	response := nextInboundResponse(t, runtime)
+	if response.Status != "error" || response.Error == nil || response.Error.Code != "exam.attempt.connection_lost" ||
+		response.Error.Message != "Secure connectivity could not be renewed. Ask a manager to re-allow access." {
+		t.Fatalf("connection-loss response = %#v", response)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), credential) || strings.Contains(string(encoded), model.HashToken(credential)) {
+		t.Fatalf("connection-loss response exposed credential material: %s", encoded)
 	}
 }
 

@@ -266,8 +266,11 @@ uses one random continuity credential for the generation and sends explicit
 authenticated renewals with a monotonic sequence. The server stores only its
 hash and acknowledges the generation, accepted sequence, authoritative
 database time, and new expiry; duplicate renewals return the accepted outcome
-and stale sequences cannot move the lease. The initial runtime targets renewal
-every 5 seconds, a 20-second lease, and an expiry scan every 2 seconds.
+and stale sequences cannot move the lease. The successful connection response
+provides the server-owned renewal interval; the external privileged coordinator
+schedules explicit renew requests from that contract. Transport ping and
+server timers never auto-renew a Participation. The initial runtime targets
+renewal every 5 seconds, a 20-second lease, and an expiry scan every 2 seconds.
 
 The client coordinator supplies the same canonical random 32-byte continuity
 credential on an exact command retry. Only its SHA-256 digest crosses the Store
@@ -287,9 +290,11 @@ Session identity.
 
 PostgreSQL time is authoritative and expiry is exclusive: a lease with
 `expires_at <= database_now` can never be renewed. A late renewal invokes the
-same named idempotent expiry transition as the recurring Job rather than
-waiting for the next scan. That operation conditionally claims the generation
-so several nodes converge on one result, then atomically ends it with
+same named idempotent expiry transition as the recurring runtime scan rather
+than waiting for its next pass. The bounded two-second scanner is owned by the
+application runtime lifecycle and creates no durable Job occurrence or
+permanent deduplication ledger. That operation conditionally claims the
+generation so several nodes converge on one result, then atomically ends it with
 `lease_expired`, closes the current Connection, creates bounded Connection Loss
 evidence and one Integrity Flag, and opens an automatic suspension episode.
 Failure to persist the complete audit/evidence/flag/suspension transition leaves

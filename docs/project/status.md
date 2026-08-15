@@ -155,6 +155,17 @@ aware sanitized candidate presentation, bounded manager and Workspace
 projections, protected inline content, WebSocket attachment and teardown, and
 PostgreSQL conformance across direct and decorated Store layers.
 
+Participation continuity enforcement is implemented. Explicit authenticated
+WebSocket renewals use PostgreSQL-time 20-second leases and monotonic sequence
+fences; a bounded installation-wide two-second runtime scan converges with late
+renewals on one atomic expiry transition. Confirmed expiry closes any still-open
+Connection, retains neutral Connection Loss evidence and a flag, suspends the
+Attempt, and emits safe manager and candidate effects. Authorized managers can
+re-allow the exact suspension without erasing evidence; fresh admission then
+creates the next Participation generation. The external privileged coordinator
+is responsible for sending renewals at the advertised five-second cadence;
+transport ping and server timers cannot renew a Participation.
+
 Exam Resources and Starter Workspaces are distinct from mutable Attempt
 Workspace files. PostgreSQL owns their logical identity and hierarchy while
 VFS owns opaque bytes. Candidate access is protected in-application use, with
@@ -182,10 +193,9 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: Attempt admission,
-  correction-aware candidate presentation, and Participation;
-  mutable Workspace and immutable Submission; then integrity policy, evidence,
-  flags, and Submission Review.
+- Continue Examination Core as complete vertical slices: mutable Attempt
+  Workspace and immutable Submission, then additional integrity-policy
+  evaluation, evidence review, and Submission Review.
 - Extend server-owned file handling for validated IDE preferences alongside
   the examination-specific resource and workspace boundaries. Resource search
   is deferred because an Exam initially has at most ten active resources.

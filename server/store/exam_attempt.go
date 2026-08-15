@@ -10,7 +10,11 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const ExamAttemptConnectOperation = "exam.attempt.connect.v1"
+const (
+	ExamAttemptConnectOperation             = "exam.attempt.connect.v1"
+	ExamAttemptExpireParticipationOperation = "exam.attempt.expire_participation.v1"
+	ExamAttemptReallowOperation             = "exam.attempt.reallow.v1"
+)
 
 // ExamAttemptConnect carries proposed identities for an atomic first
 // admission. Persistence checks exact replay before it locks and materializes
@@ -62,6 +66,133 @@ type ExamAttemptParticipationView struct {
 	LeaseExpiresAt  time.Time
 	EndedAt         model.OptionalTime
 	EndReason       model.AttemptParticipationEndReason
+}
+
+// ExamAttemptParticipationRenewal is the complete sensitive selector for one
+// application-level lease renewal. The application validates and hashes the
+// canonical continuity credential immediately; raw credential material never
+// crosses the Store seam. Generation and Sequence are client fences, while
+// PostgreSQL supplies the only authoritative decision time.
+type ExamAttemptParticipationRenewal struct {
+	AttemptID                model.ExamAttemptID
+	ParticipationID          model.AttemptParticipationID
+	ConnectionID             model.AttemptConnectionID
+	CandidateUserID          model.UserID
+	SessionID                model.SessionID
+	Generation               int64
+	Sequence                 int64
+	ContinuityCredentialHash string
+}
+
+// ExamAttemptParticipationRenewalResult is the bounded hash-free renewal
+// acknowledgement. Duplicate is true only when Sequence was already the
+// current accepted sequence; that case returns the existing authoritative
+// times without extending the lease.
+type ExamAttemptParticipationRenewalResult struct {
+	AttemptID        model.ExamAttemptID
+	ParticipationID  model.AttemptParticipationID
+	Generation       int64
+	AcceptedSequence int64
+	DatabaseTime     time.Time
+	LeaseExpiresAt   time.Time
+	Duplicate        bool
+}
+
+// ExamAttemptParticipationExpiryDue is a bounded, hash-free candidate from
+// the recurring database-time scan. LeaseExpiresAt is informational; only the
+// conditional ExpireParticipation operation decides that the generation is
+// still current and due.
+type ExamAttemptParticipationExpiryDue struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	ClassID         model.ClassID
+	CandidateUserID model.UserID
+	AttemptID       model.ExamAttemptID
+	ParticipationID model.AttemptParticipationID
+	Generation      int64
+	LeaseExpiresAt  time.Time
+}
+
+// ExamAttemptParticipationExpiry supplies proposed append-only identities for
+// the one conditional, atomic expiry outcome. PostgreSQL supplies decision and
+// record times; application-node clocks never decide expiry.
+type ExamAttemptParticipationExpiry struct {
+	AttemptID       model.ExamAttemptID
+	ParticipationID model.AttemptParticipationID
+	Generation      int64
+	EvidenceID      model.IntegrityEvidenceID
+	FlagID          model.IntegrityFlagID
+	SuspensionID    model.AttemptSuspensionID
+	AuditEventID    string
+	AuditAt         int64
+}
+
+// ExamAttemptSuspensionView excludes the manager's private reason while
+// retaining enough state to publish bounded post-commit manager events.
+type ExamAttemptSuspensionView struct {
+	ID                model.AttemptSuspensionID
+	AttemptID         model.ExamAttemptID
+	ParticipationID   model.AttemptParticipationID
+	FlagID            model.IntegrityFlagID
+	Generation        int64
+	State             model.AttemptSuspensionState
+	Source            model.AttemptSuspensionSource
+	CandidateReason   model.AttemptSuspensionCandidateReason
+	StartedAt         time.Time
+	EndedAt           model.OptionalTime
+	ReallowedByUserID model.UserID
+}
+
+// ExamAttemptParticipationExpiryResult is the retained, safe committed
+// aggregate. Replayed means another caller already completed this generation's
+// exact expiry episode; callers publish transient effects only when false.
+type ExamAttemptParticipationExpiryResult struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	ClassID         model.ClassID
+	CandidateUserID model.UserID
+	Attempt         *model.ExamAttempt
+	Participation   *ExamAttemptParticipationView
+	Connection      *ExamAttemptManagerConnection
+	// ConnectionClosed reports whether this expiry transition closed an open
+	// Connection. It is false when transport teardown had already closed the
+	// latest Connection; the flag and suspension still commit and publish.
+	ConnectionClosed bool
+	Evidence         *model.IntegrityEvidence
+	Flag             *model.IntegrityFlag
+	Suspension       *ExamAttemptSuspensionView
+	DatabaseTime     time.Time
+	Replayed         bool
+}
+
+// ExamAttemptReallow is one exact, revision-fenced manager decision. The
+// private trimmed UTF-8 reason is retained only with Suspension provenance; it
+// must not enter ordinary audit data, command outcomes, logs, or realtime.
+type ExamAttemptReallow struct {
+	ExamID                  model.ExamID
+	SittingID               model.ExamSittingID
+	AttemptID               model.ExamAttemptID
+	SuspensionID            model.AttemptSuspensionID
+	ActorUserID             model.UserID
+	ManagerOverride         bool
+	ExpectedAttemptRevision int64
+	PrivateReason           string
+	ChangedAt               time.Time
+	AuditEventID            string
+	AuditAt                 int64
+}
+
+// ExamAttemptReallowResult deliberately uses the private-reason-free
+// Suspension view. Re-allow preserves all evidence and creates neither a new
+// Participation nor continuity credential.
+type ExamAttemptReallowResult struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	ClassID         model.ClassID
+	CandidateUserID model.UserID
+	Attempt         *model.ExamAttempt
+	Suspension      *ExamAttemptSuspensionView
+	Replayed        bool
 }
 
 type ExamAttemptConnectionClose struct {
@@ -178,6 +309,7 @@ type ExamAttemptManagerSnapshot struct {
 	Workspace           *model.ExamAttemptWorkspace
 	LatestParticipation *ExamAttemptParticipationView
 	CurrentConnection   *ExamAttemptManagerConnection
+	ActiveSuspension    *ExamAttemptSuspensionView
 }
 
 // ExamAttemptManagerListOptions is Sitting-scoped and keyset bounded. Results
@@ -200,6 +332,46 @@ type ExamAttemptManagerListOptions struct {
 // every fresh connection performs the same current eligibility checks.
 type ExamAttemptStore interface {
 	Connect(context.Context, *ExamAttemptConnect, *CommandIdempotency) (*ExamAttemptConnectResult, error)
+	// RenewParticipation locks and validates the exact Attempt, active
+	// Participation generation, owning candidate, Session-bound open Connection,
+	// and credential digest. Sequence equal to the current accepted sequence is
+	// an idempotent duplicate; an older sequence conflicts. A greater sequence
+	// sets expiry to PostgreSQL decision time plus the fixed 20-second lease.
+	// expires_at <= database_now returns the stable expired conflict and never
+	// mutates or revives the generation. Stable conflict constraints are
+	// attempt_participation_credential, attempt_participation_generation,
+	// attempt_participation_sequence, and attempt_participation_expired.
+	RenewParticipation(context.Context, *ExamAttemptParticipationRenewal) (*ExamAttemptParticipationRenewalResult, error)
+	// ResolveParticipationExpiry returns the exact active generation only when
+	// expires_at <= PostgreSQL current time, with the same safe scope projection
+	// produced by the scanner. A late renewal uses it to begin actorless scoped
+	// audit before invoking ExpireParticipation; it never performs the transition.
+	// Exact selector/generation mismatches and a current unexpired lease fail
+	// with stable not-found/conflict errors rather than exposing another record.
+	ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*ExamAttemptParticipationExpiryDue, error)
+	// ListExpiredParticipations returns at most limit active generations whose
+	// expiry is at or before PostgreSQL's current time, ordered by
+	// (LeaseExpiresAt, ParticipationID). Limit is 1..200.
+	ListExpiredParticipations(context.Context, int) ([]ExamAttemptParticipationExpiryDue, error)
+	// ExpireParticipation is the single conditional operation shared by late
+	// renewal and the recurring scan. It locks the exact generation and, when
+	// expires_at <= PostgreSQL now, atomically ends it as lease_expired, closes
+	// its open Connection, creates neutral Connection Loss evidence and the one
+	// generation-scoped flag, suspends the Attempt, completes audit, and retains
+	// the outcome. Exact later calls rehydrate that outcome. A generation that
+	// was renewed before the lock conflicts as attempt_participation_not_expired
+	// without partial state; a non-current generation conflicts as
+	// attempt_participation_generation.
+	ExpireParticipation(context.Context, *ExamAttemptParticipationExpiry) (*ExamAttemptParticipationExpiryResult, error)
+	// ReallowAttempt locks the exact active Suspension and Attempt revision,
+	// rechecks current Exam management authority unless an authorized override
+	// is explicit, closes only that episode, returns the Attempt to active, and
+	// commits audit and the idempotent outcome atomically. It preserves all
+	// evidence and creates no Participation or credential. Exact retries return
+	// the retained result without a second revision change after current
+	// authority is rechecked. Stable conflicts are exam_attempt_revision,
+	// attempt_suspension_active, exam_attempt_state, and exam_sitting_state.
+	ReallowAttempt(context.Context, *ExamAttemptReallow, *CommandIdempotency) (*ExamAttemptReallowResult, error)
 	CloseConnection(context.Context, *ExamAttemptConnectionClose) (*ExamAttemptConnectionCloseResult, error)
 	Get(context.Context, model.ExamID, model.ExamAttemptID) (*ExamAttemptManagerSnapshot, error)
 	List(context.Context, ExamAttemptManagerListOptions) ([]ExamAttemptManagerSnapshot, error)

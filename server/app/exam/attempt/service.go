@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -59,6 +61,7 @@ func (fault *Fault) Unwrap() error {
 
 type ManagerAuthorizer interface {
 	AuthorizeSittingView(context.Context, Call, model.ExamSittingID) error
+	AuthorizeSittingManage(context.Context, Call, model.ExamSittingID) (bool, error)
 }
 
 type Auditor interface {
@@ -66,9 +69,19 @@ type Auditor interface {
 	Fail(context.Context, string, string) error
 }
 
+// SystemAuditor creates actor-less audit attempts for trusted periodic
+// continuity enforcement. A runtime scanner must never manufacture a User
+// Principal merely to persist this system decision.
+type SystemAuditor interface {
+	Begin(context.Context, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (string, error)
+	Fail(context.Context, string, string) error
+}
+
 type Effects interface {
 	ConnectionOpened(context.Context, ConnectionResult) error
 	ConnectionClosed(context.Context, ConnectionClosedResult) error
+	ParticipationExpired(context.Context, ParticipationExpiry) error
+	AttemptReallowed(context.Context, ReallowResult) error
 }
 
 type EffectFailures interface {
@@ -85,6 +98,7 @@ type Dependencies struct {
 	Sittings         Sittings
 	Managers         ManagerAuthorizer
 	Auditor          Auditor
+	SystemAuditor    SystemAuditor
 	Effects          Effects
 	EffectFailures   EffectFailures
 	Content          Content
@@ -93,14 +107,18 @@ type Dependencies struct {
 	NewWorkspaceID   func() model.ExamAttemptWorkspaceID
 	NewParticipation func() model.AttemptParticipationID
 	NewConnection    func() model.AttemptConnectionID
+	NewEvidence      func() model.IntegrityEvidenceID
+	NewFlag          func() model.IntegrityFlagID
+	NewSuspension    func() model.AttemptSuspensionID
 }
 
 type Service struct{ deps Dependencies }
 
 func New(deps Dependencies) (*Service, error) {
-	if deps.Persistence == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.Effects == nil ||
+	if deps.Persistence == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
 		deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewAttemptID == nil ||
-		deps.NewWorkspaceID == nil || deps.NewParticipation == nil || deps.NewConnection == nil {
+		deps.NewWorkspaceID == nil || deps.NewParticipation == nil || deps.NewConnection == nil || deps.NewEvidence == nil ||
+		deps.NewFlag == nil || deps.NewSuspension == nil {
 		return nil, errors.New("Exam Attempt dependencies are required")
 	}
 	return &Service{deps: deps}, nil
@@ -124,7 +142,8 @@ func (service *Service) GetManaged(ctx context.Context, call Call, query GetMana
 		return nil, mapStore(err)
 	}
 	if snapshot == nil || snapshot.Attempt == nil || snapshot.Attempt.Validate() != nil ||
-		snapshot.Attempt.ExamID != query.ExamID || snapshot.Attempt.SittingID != query.SittingID {
+		snapshot.Attempt.ExamID != query.ExamID || snapshot.Attempt.SittingID != query.SittingID ||
+		!validActiveSuspension(snapshot.ActiveSuspension, snapshot.Attempt.ID) {
 		return nil, unavailable(errors.New("inconsistent managed Attempt projection"))
 	}
 	return cloneManagerSnapshot(snapshot), nil
@@ -164,7 +183,8 @@ func (service *Service) ListManaged(ctx context.Context, call Call, query ListMa
 		if index == query.Limit {
 			break
 		}
-		if row.Attempt == nil || row.Attempt.Validate() != nil || row.Attempt.ExamID != query.ExamID || row.Attempt.SittingID != query.SittingID {
+		if row.Attempt == nil || row.Attempt.Validate() != nil || row.Attempt.ExamID != query.ExamID || row.Attempt.SittingID != query.SittingID ||
+			!validActiveSuspension(row.ActiveSuspension, row.Attempt.ID) {
 			return ManagedAttemptPage{}, unavailable(errors.New("inconsistent managed Attempt page"))
 		}
 		page.Items = append(page.Items, *cloneManagerSnapshot(&row))
@@ -193,7 +213,21 @@ func cloneManagerSnapshot(snapshot *store.ExamAttemptManagerSnapshot) *store.Exa
 		value := *snapshot.CurrentConnection
 		clone.CurrentConnection = &value
 	}
+	if snapshot.ActiveSuspension != nil {
+		value := *snapshot.ActiveSuspension
+		clone.ActiveSuspension = &value
+	}
 	return &clone
+}
+
+func validActiveSuspension(view *store.ExamAttemptSuspensionView, attemptID model.ExamAttemptID) bool {
+	if view == nil {
+		return true
+	}
+	return view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && view.FlagID.IsValid() &&
+		view.Generation > 0 && view.State == model.AttemptSuspensionActive && view.Source == model.AttemptSuspensionSourcePolicy &&
+		view.CandidateReason == model.AttemptSuspensionCandidateReasonSecureContinuityLost && !view.StartedAt.IsZero() &&
+		!view.EndedAt.Valid && view.ReallowedByUserID.IsZero()
 }
 
 type ConnectCommand struct {
@@ -211,6 +245,293 @@ type ConnectionResult struct {
 	FirstAdmission   bool
 	ConnectionOpened bool
 	Replayed         bool
+}
+
+type RenewParticipationCommand struct {
+	AttemptID            model.ExamAttemptID
+	ParticipationID      model.AttemptParticipationID
+	ConnectionID         model.AttemptConnectionID
+	Generation           int64
+	Sequence             int64
+	ContinuityCredential string
+}
+
+// ParticipationRenewal is the candidate-safe acknowledgement of one explicit
+// application renewal. It contains authoritative database time but no raw or
+// hashed credential material.
+type ParticipationRenewal struct {
+	AttemptID        model.ExamAttemptID
+	ParticipationID  model.AttemptParticipationID
+	Generation       int64
+	AcceptedSequence int64
+	DatabaseTime     time.Time
+	LeaseExpiresAt   time.Time
+	Duplicate        bool
+}
+
+type ParticipationExpiry struct {
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	ClassID          model.ClassID
+	CandidateUserID  model.UserID
+	Attempt          model.ExamAttempt
+	Participation    store.ExamAttemptParticipationView
+	Connection       store.ExamAttemptManagerConnection
+	ConnectionClosed bool
+	Evidence         model.IntegrityEvidence
+	Flag             model.IntegrityFlag
+	Suspension       store.ExamAttemptSuspensionView
+	DatabaseTime     time.Time
+	Replayed         bool
+}
+
+type ExpiryScanResult struct {
+	Due       int
+	Completed int
+	Replayed  int
+}
+
+type ReallowCommand struct {
+	ExamID                  model.ExamID
+	SittingID               model.ExamSittingID
+	AttemptID               model.ExamAttemptID
+	SuspensionID            model.AttemptSuspensionID
+	ExpectedAttemptRevision int64
+	PrivateReason           string
+	Idempotency             *store.CommandIdempotency
+}
+
+type ReallowResult struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	ClassID         model.ClassID
+	CandidateUserID model.UserID
+	Attempt         model.ExamAttempt
+	Suspension      store.ExamAttemptSuspensionView
+	Replayed        bool
+}
+
+func (service *Service) Reallow(ctx context.Context, call Call, command ReallowCommand) (ReallowResult, error) {
+	principal := call.Principal()
+	if command.Idempotency == nil {
+		return ReallowResult{}, &Fault{Code: "idempotency.key_required"}
+	}
+	if principal.Validate() != nil {
+		return ReallowResult{}, &Fault{Code: "authentication.invalid_token"}
+	}
+	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || !command.AttemptID.IsValid() ||
+		!command.SuspensionID.IsValid() || command.ExpectedAttemptRevision < 1 || !validReallowReason(command.PrivateReason) {
+		return ReallowResult{}, invalid("reallow")
+	}
+	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, command.SittingID)
+	if err != nil {
+		return ReallowResult{}, err
+	}
+	snapshot, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
+	if err != nil {
+		return ReallowResult{}, mapStore(err)
+	}
+	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != command.SittingID ||
+		snapshot.Sitting.ExamID != command.ExamID || !snapshot.Sitting.ClassID.IsValid() {
+		return ReallowResult{}, unavailable(errors.New("incomplete Sitting ownership projection"))
+	}
+	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingManage,
+		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(),
+		store.ExamAttemptReallowOperation, map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
+			"exam_attempt_id": command.AttemptID.String(), "suspension_id": command.SuspensionID.String(),
+			"expected_attempt_revision": command.ExpectedAttemptRevision})
+	if err != nil {
+		return ReallowResult{}, err
+	}
+	at := model.TimeUTC(service.deps.Now())
+	stored, err := service.deps.Persistence.ReallowAttempt(ctx, &store.ExamAttemptReallow{
+		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
+		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
+		PrivateReason: command.PrivateReason, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+	}, command.Idempotency)
+	if err != nil {
+		return ReallowResult{}, service.failAudit(ctx, auditID, err)
+	}
+	if stored == nil || stored.Attempt == nil || stored.Suspension == nil || stored.ExamID != command.ExamID ||
+		stored.SittingID != command.SittingID || stored.ClassID != snapshot.Sitting.ClassID || !stored.CandidateUserID.IsValid() ||
+		stored.Attempt.ID != command.AttemptID || stored.Attempt.ExamID != command.ExamID || stored.Attempt.SittingID != command.SittingID ||
+		stored.Attempt.CandidateUserID != stored.CandidateUserID || stored.Attempt.State != model.ExamAttemptActive || stored.Attempt.Validate() != nil ||
+		stored.Attempt.Revision != command.ExpectedAttemptRevision+1 || stored.Suspension.ID != command.SuspensionID ||
+		!validClosedSuspension(stored.Suspension, command.AttemptID, principal.UserID) {
+		return ReallowResult{}, unavailable(errors.New("inconsistent Attempt re-allow outcome"))
+	}
+	result := ReallowResult{ExamID: stored.ExamID, SittingID: stored.SittingID, ClassID: stored.ClassID,
+		CandidateUserID: stored.CandidateUserID, Attempt: *stored.Attempt, Suspension: *stored.Suspension, Replayed: stored.Replayed}
+	if !result.Replayed {
+		if effectErr := service.deps.Effects.AttemptReallowed(ctx, result); effectErr != nil {
+			service.deps.EffectFailures.Report(ctx, "exam_attempt_reallowed", effectErr)
+		}
+	}
+	return result, nil
+}
+
+func validReallowReason(reason string) bool {
+	return utf8.ValidString(reason) && reason == strings.TrimSpace(reason) && utf8.RuneCountInString(reason) >= 1 &&
+		utf8.RuneCountInString(reason) <= model.AttemptSuspensionPrivateReasonMaximumRunes && len(reason) <= 4000
+}
+
+func validClosedSuspension(view *store.ExamAttemptSuspensionView, attemptID model.ExamAttemptID, actorID model.UserID) bool {
+	return view != nil && view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && view.FlagID.IsValid() &&
+		view.Generation > 0 && view.State == model.AttemptSuspensionClosed && view.Source == model.AttemptSuspensionSourcePolicy &&
+		view.CandidateReason == model.AttemptSuspensionCandidateReasonSecureContinuityLost && !view.StartedAt.IsZero() &&
+		view.EndedAt.Valid && !view.EndedAt.Time.Before(view.StartedAt) && view.ReallowedByUserID == actorID
+}
+
+// ScanExpiredParticipations performs one bounded runtime maintenance pass.
+// Every listed candidate is rechecked by the named conditional Store
+// operation; PostgreSQL, never this loop or its clock, decides expiry.
+func (service *Service) ScanExpiredParticipations(ctx context.Context, limit int) (ExpiryScanResult, error) {
+	if limit < 1 || limit > 200 {
+		return ExpiryScanResult{}, invalid("expiry_limit")
+	}
+	due, err := service.deps.Persistence.ListExpiredParticipations(ctx, limit)
+	if err != nil {
+		return ExpiryScanResult{}, mapStore(err)
+	}
+	result := ExpiryScanResult{Due: len(due)}
+	for _, item := range due {
+		expired, expireErr := service.expireParticipation(ctx, item)
+		if expireErr != nil {
+			return result, expireErr
+		}
+		result.Completed++
+		if expired.Replayed {
+			result.Replayed++
+		}
+	}
+	return result, nil
+}
+
+func (service *Service) expireParticipation(ctx context.Context, due store.ExamAttemptParticipationExpiryDue) (ParticipationExpiry, error) {
+	if !validExpiryDue(due) {
+		return ParticipationExpiry{}, unavailable(errors.New("invalid Participation expiry target"))
+	}
+	auditID, err := service.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage,
+		model.Resource{Type: model.ResourceExamSitting, ID: due.SittingID.String()}, model.RoleScopeClass, due.ClassID.String(),
+		store.ExamAttemptExpireParticipationOperation, map[string]any{
+			"exam_id": due.ExamID.String(), "exam_sitting_id": due.SittingID.String(), "exam_attempt_id": due.AttemptID.String(),
+			"participation_id": due.ParticipationID.String(), "generation": due.Generation,
+		})
+	if err != nil {
+		return ParticipationExpiry{}, err
+	}
+	at := model.TimeUTC(service.deps.Now())
+	stored, err := service.deps.Persistence.ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{
+		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, Generation: due.Generation,
+		EvidenceID: service.deps.NewEvidence(), FlagID: service.deps.NewFlag(), SuspensionID: service.deps.NewSuspension(),
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+	})
+	if err != nil {
+		mapped := mapStore(err)
+		code := "exam.attempt.unavailable"
+		var fault *Fault
+		if errors.As(mapped, &fault) {
+			code = fault.Code
+		}
+		if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
+			return ParticipationExpiry{}, auditErr
+		}
+		return ParticipationExpiry{}, mapped
+	}
+	result, err := projectExpiry(stored, due)
+	if err != nil {
+		return ParticipationExpiry{}, err
+	}
+	if !result.Replayed {
+		if effectErr := service.deps.Effects.ParticipationExpired(ctx, result); effectErr != nil {
+			service.deps.EffectFailures.Report(ctx, "exam_attempt_participation_expired", effectErr)
+		}
+	}
+	return result, nil
+}
+
+func validExpiryDue(due store.ExamAttemptParticipationExpiryDue) bool {
+	return due.ExamID.IsValid() && due.SittingID.IsValid() && due.ClassID.IsValid() && due.CandidateUserID.IsValid() &&
+		due.AttemptID.IsValid() && due.ParticipationID.IsValid() && due.Generation > 0 && !due.LeaseExpiresAt.IsZero()
+}
+
+func projectExpiry(stored *store.ExamAttemptParticipationExpiryResult, due store.ExamAttemptParticipationExpiryDue) (ParticipationExpiry, error) {
+	if stored == nil || stored.Attempt == nil || stored.Participation == nil || stored.Connection == nil || stored.Evidence == nil ||
+		stored.Flag == nil || stored.Suspension == nil || stored.ExamID != due.ExamID || stored.SittingID != due.SittingID ||
+		stored.ClassID != due.ClassID || stored.CandidateUserID != due.CandidateUserID || stored.Attempt.ID != due.AttemptID ||
+		stored.Attempt.ExamID != due.ExamID || stored.Attempt.SittingID != due.SittingID || stored.Attempt.CandidateUserID != due.CandidateUserID ||
+		stored.Attempt.State != model.ExamAttemptSuspended || stored.Attempt.Validate() != nil || !validParticipationView(stored.Participation) ||
+		stored.Participation.ID != due.ParticipationID || stored.Participation.AttemptID != due.AttemptID ||
+		stored.Participation.Generation != due.Generation || stored.Participation.State != model.AttemptParticipationEnded ||
+		stored.Participation.EndReason != model.AttemptParticipationEndLeaseExpired || stored.Connection.State != model.AttemptConnectionClosed ||
+		!stored.Connection.ID.IsValid() || stored.Connection.OpenedAt.IsZero() || !stored.Connection.ClosedAt.Valid ||
+		stored.Connection.ClosedAt.Time.Before(stored.Connection.OpenedAt) || !stored.Connection.CloseReason.IsValid() ||
+		(stored.ConnectionClosed != (stored.Connection.CloseReason == model.AttemptConnectionCloseLeaseExpired)) ||
+		stored.Evidence.Validate() != nil || stored.Flag.Validate() != nil ||
+		stored.Evidence.AttemptID != due.AttemptID || stored.Evidence.ParticipationID != due.ParticipationID || stored.Evidence.Generation != due.Generation ||
+		stored.Evidence.FlagID != stored.Flag.ID ||
+		stored.Flag.AttemptID != due.AttemptID || stored.Flag.Generation != due.Generation || !stored.Suspension.ID.IsValid() ||
+		stored.Suspension.AttemptID != due.AttemptID || stored.Suspension.ParticipationID != due.ParticipationID ||
+		stored.Suspension.Generation != due.Generation || stored.Suspension.FlagID != stored.Flag.ID ||
+		stored.Suspension.State != model.AttemptSuspensionActive || stored.Suspension.Source != model.AttemptSuspensionSourcePolicy ||
+		stored.Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonSecureContinuityLost || stored.Suspension.StartedAt.IsZero() ||
+		stored.Suspension.EndedAt.Valid || !stored.Suspension.ReallowedByUserID.IsZero() || stored.DatabaseTime.IsZero() ||
+		stored.DatabaseTime.Before(due.LeaseExpiresAt) {
+		return ParticipationExpiry{}, unavailable(errors.New("inconsistent Participation expiry outcome"))
+	}
+	return ParticipationExpiry{ExamID: stored.ExamID, SittingID: stored.SittingID, ClassID: stored.ClassID,
+		CandidateUserID: stored.CandidateUserID, Attempt: *stored.Attempt, Participation: *stored.Participation,
+		Connection: *stored.Connection, ConnectionClosed: stored.ConnectionClosed, Evidence: *stored.Evidence, Flag: *stored.Flag, Suspension: *stored.Suspension,
+		DatabaseTime: model.TimeUTC(stored.DatabaseTime), Replayed: stored.Replayed}, nil
+}
+
+// RenewParticipation authenticates a continuity renewal independently of the
+// WebSocket transport ping. Store owns the database clock, exclusive expiry
+// boundary, duplicate outcome, and permanent generation fence.
+func (service *Service) RenewParticipation(ctx context.Context, call Call, command RenewParticipationCommand) (ParticipationRenewal, error) {
+	principal := call.Principal()
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
+		return ParticipationRenewal{}, &Fault{Code: "authentication.invalid_token"}
+	}
+	if !command.AttemptID.IsValid() || !command.ParticipationID.IsValid() || !command.ConnectionID.IsValid() ||
+		command.Generation < 1 || command.Sequence < 1 || !model.IsValidCredentialToken(command.ContinuityCredential) {
+		return ParticipationRenewal{}, invalid("renewal")
+	}
+	stored, err := service.deps.Persistence.RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{
+		AttemptID: command.AttemptID, ParticipationID: command.ParticipationID, ConnectionID: command.ConnectionID,
+		CandidateUserID: principal.UserID, SessionID: principal.SessionID, Generation: command.Generation,
+		Sequence: command.Sequence, ContinuityCredentialHash: model.HashToken(command.ContinuityCredential),
+	})
+	if err != nil {
+		var conflict *store.ErrConflict
+		if errors.As(err, &conflict) && conflict.Constraint == "attempt_participation_expired" {
+			due, resolveErr := service.deps.Persistence.ResolveParticipationExpiry(ctx, command.AttemptID, command.ParticipationID, command.Generation)
+			if resolveErr != nil {
+				if store.IsNotFound(resolveErr) {
+					return ParticipationRenewal{}, &Fault{Code: "exam.attempt.connection_lost", Cause: err}
+				}
+				return ParticipationRenewal{}, mapStore(resolveErr)
+			}
+			if due == nil || due.AttemptID != command.AttemptID || due.ParticipationID != command.ParticipationID || due.Generation != command.Generation {
+				return ParticipationRenewal{}, unavailable(errors.New("inconsistent late-renewal expiry target"))
+			}
+			if _, expireErr := service.expireParticipation(ctx, *due); expireErr != nil {
+				return ParticipationRenewal{}, expireErr
+			}
+			return ParticipationRenewal{}, &Fault{Code: "exam.attempt.connection_lost", Cause: err}
+		}
+		return ParticipationRenewal{}, mapStore(err)
+	}
+	if stored == nil || stored.AttemptID != command.AttemptID || stored.ParticipationID != command.ParticipationID ||
+		stored.Generation != command.Generation || stored.AcceptedSequence != command.Sequence || stored.DatabaseTime.IsZero() ||
+		stored.LeaseExpiresAt.IsZero() || !stored.LeaseExpiresAt.Equal(stored.DatabaseTime.Add(model.AttemptParticipationInitialLease)) {
+		return ParticipationRenewal{}, unavailable(errors.New("inconsistent Participation renewal outcome"))
+	}
+	return ParticipationRenewal{
+		AttemptID: stored.AttemptID, ParticipationID: stored.ParticipationID, Generation: stored.Generation,
+		AcceptedSequence: stored.AcceptedSequence, DatabaseTime: model.TimeUTC(stored.DatabaseTime),
+		LeaseExpiresAt: model.TimeUTC(stored.LeaseExpiresAt), Duplicate: stored.Duplicate,
+	}, nil
 }
 
 func (service *Service) Connect(ctx context.Context, call Call, command ConnectCommand) (ConnectionResult, error) {
@@ -572,11 +893,21 @@ func mapConflict(constraint string) string {
 		return "exam.attempt.sitting_unavailable"
 	case "exam_attempt_state":
 		return "exam.attempt.state_conflict"
+	case "exam_attempt_revision":
+		return "exam.attempt.revision_conflict"
+	case "attempt_suspension_active":
+		return "exam.attempt.suspension_conflict"
 	case "attempt_participation_credential":
 		return "exam.attempt.continuity_invalid"
+	case "attempt_participation_generation":
+		return "exam.attempt.connection_closed"
+	case "attempt_participation_sequence":
+		return "exam.attempt.renewal_conflict"
+	case "attempt_participation_expired":
+		return "exam.attempt.connection_lost"
 	case "attempt_connection_open":
 		return "exam.attempt.already_connected"
-	case "attempt_participation_expired", "attempt_connection_closed":
+	case "attempt_connection_closed":
 		return "exam.attempt.connection_closed"
 	default:
 		return "exam.attempt.conflict"

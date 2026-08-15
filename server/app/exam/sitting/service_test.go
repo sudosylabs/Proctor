@@ -96,6 +96,21 @@ func TestAuthorizeViewRechecksCurrentSittingRelationship(t *testing.T) {
 	}
 }
 
+func TestAuthorizeManageReportsOrdinaryAndOverrideDecision(t *testing.T) {
+	t.Parallel()
+	fixture := newFixture(t)
+	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
+	override, err := fixture.service.AuthorizeManage(context.Background(), fixture.call, fixture.sittingID)
+	if err != nil || override || fixture.authorizer.action != model.ActionExamSittingManage {
+		t.Fatalf("ordinary manage override=%t action=%q error=%v", override, fixture.authorizer.action, err)
+	}
+	fixture.memberships.items = nil
+	override, err = fixture.service.AuthorizeManage(context.Background(), fixture.call, fixture.sittingID)
+	if err != nil || !override || fixture.authorizer.action != model.ActionExamSittingManageOverride {
+		t.Fatalf("override manage override=%t action=%q error=%v", override, fixture.authorizer.action, err)
+	}
+}
+
 func TestListAppliesBoundedFiltersAndLookAhead(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)

@@ -157,14 +157,15 @@ func TestExamAttemptStore(t *testing.T) {
 
 func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptSQLProbe {
 	t.Helper()
-	return storetest.ExamAttemptSQLProbe{ExpireParticipation: func(t *testing.T, ctx context.Context, id model.AttemptParticipationID) {
+	return storetest.ExamAttemptSQLProbe{SetParticipationLeaseExpired: func(t *testing.T, ctx context.Context, id model.AttemptParticipationID) {
 		t.Helper()
 		_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "expire Attempt Participation fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
 			if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_participations DISABLE TRIGGER exam_attempt_participations_guard`); execErr != nil {
 				return struct{}{}, execErr
 			}
 			if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_participations
-				SET renewal_sequence=1,updated_at=statement_timestamp(),lease_expires_at=started_at+INTERVAL '1 microsecond'
+				SET renewal_sequence=GREATEST(renewal_sequence,1),updated_at=GREATEST(updated_at,statement_timestamp()),
+					lease_expires_at=started_at+INTERVAL '1 microsecond'
 				WHERE id=?`, id.String()); execErr != nil {
 				return struct{}{}, execErr
 			}
@@ -176,6 +177,34 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 		if err != nil {
 			t.Fatal(err)
 		}
+	}, FenceRenewalPastDeadline: func(t *testing.T, ctx context.Context, id model.AttemptParticipationID, contender func() error) error {
+		t.Helper()
+		var completed chan error
+		_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "fence renewal past lease deadline", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+			if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_participations DISABLE TRIGGER exam_attempt_participations_guard`); execErr != nil {
+				return struct{}{}, execErr
+			}
+			if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_participations
+				SET renewal_sequence=GREATEST(renewal_sequence,1),updated_at=GREATEST(updated_at,statement_timestamp()),
+					lease_expires_at=statement_timestamp()+INTERVAL '100 milliseconds' WHERE id=?`, id.String()); execErr != nil {
+				return struct{}{}, execErr
+			}
+			if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_participations ENABLE TRIGGER exam_attempt_participations_guard`); execErr != nil {
+				return struct{}{}, execErr
+			}
+			var locked string
+			if lockErr := tx.Get(ctx, &locked, `SELECT id FROM exam_attempt_participations WHERE id=? FOR UPDATE`, id.String()); lockErr != nil {
+				return struct{}{}, lockErr
+			}
+			completed = make(chan error, 1)
+			go func() { completed <- contender() }()
+			time.Sleep(200 * time.Millisecond)
+			return struct{}{}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return <-completed
 	}}
 }
 

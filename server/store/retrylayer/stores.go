@@ -293,6 +293,33 @@ func (s *examAttemptStore) Connect(ctx context.Context, input *store.ExamAttempt
 	})
 }
 
+func (s *examAttemptStore) RenewParticipation(ctx context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptParticipationRenewalResult, error) {
+		return s.ExamAttemptStore.RenewParticipation(ctx, input)
+	})
+}
+
+func (s *examAttemptStore) ResolveParticipationExpiry(ctx context.Context, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, generation int64) (*store.ExamAttemptParticipationExpiryDue, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptParticipationExpiryDue, error) {
+		return s.ExamAttemptStore.ResolveParticipationExpiry(ctx, attemptID, participationID, generation)
+	})
+}
+
+func (s *examAttemptStore) ListExpiredParticipations(ctx context.Context, limit int) ([]store.ExamAttemptParticipationExpiryDue, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamAttemptParticipationExpiryDue, error) {
+		return s.ExamAttemptStore.ListExpiredParticipations(ctx, limit)
+	})
+}
+
+func (s *examAttemptStore) ReallowAttempt(ctx context.Context, input *store.ExamAttemptReallow, command *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
+	if command == nil {
+		return s.ExamAttemptStore.ReallowAttempt(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptReallowResult, error) {
+		return s.ExamAttemptStore.ReallowAttempt(ctx, input, command)
+	})
+}
+
 func (s *examAttemptStore) Get(ctx context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
 	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptManagerSnapshot, error) {
 		return s.ExamAttemptStore.Get(ctx, examID, attemptID)

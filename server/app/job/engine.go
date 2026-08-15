@@ -25,6 +25,7 @@ type Engine struct {
 	shutdownTimeout    time.Duration
 	wake               chan struct{}
 	recurrences        []Recurrence
+	periodicTasks      []PeriodicTask
 	proposalRetryDelay time.Duration
 	clock              Clock
 
@@ -46,13 +47,14 @@ type Policy struct {
 }
 
 type Config struct {
-	Store       store.JobStore
-	Descriptors []Descriptor
-	NodeID      string
-	Diagnostics Diagnostics
-	Policy      Policy
-	Clock       Clock
-	Recurrences []Recurrence
+	Store         store.JobStore
+	Descriptors   []Descriptor
+	NodeID        string
+	Diagnostics   Diagnostics
+	Policy        Policy
+	Clock         Clock
+	Recurrences   []Recurrence
+	PeriodicTasks []PeriodicTask
 }
 
 func New(config Config) (*Engine, error) {
@@ -67,6 +69,10 @@ func New(config Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	periodicTasks, err := clonePeriodicTasks(config.PeriodicTasks)
+	if err != nil {
+		return nil, err
+	}
 	if config.Policy.ShutdownTimeout <= 0 {
 		config.Policy.ShutdownTimeout = registry.MaximumTimeout()
 	}
@@ -76,7 +82,7 @@ func New(config Config) (*Engine, error) {
 	if config.Clock == nil {
 		config.Clock = systemClock{}
 	}
-	return &Engine{jobs: config.Store, registry: registry, nodeID: config.NodeID, diagnostics: config.Diagnostics, poll: config.Policy.PollInterval, shutdownTimeout: config.Policy.ShutdownTimeout, recurrences: recurrences, proposalRetryDelay: config.Policy.ProposalRetryDelay, clock: config.Clock, wake: make(chan struct{}, 1)}, nil
+	return &Engine{jobs: config.Store, registry: registry, nodeID: config.NodeID, diagnostics: config.Diagnostics, poll: config.Policy.PollInterval, shutdownTimeout: config.Policy.ShutdownTimeout, recurrences: recurrences, periodicTasks: periodicTasks, proposalRetryDelay: config.Policy.ProposalRetryDelay, clock: config.Clock, wake: make(chan struct{}, 1)}, nil
 }
 
 // Descriptor returns the immutable execution contract for a registered type.
@@ -126,6 +132,13 @@ func (r *Engine) Start(ctx context.Context) error {
 			defer r.wg.Done()
 			runDailyProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay, r.Wake)
 		}(recurrence)
+	}
+	for _, task := range r.periodicTasks {
+		r.wg.Add(1)
+		go func(value PeriodicTask) {
+			defer r.wg.Done()
+			runPeriodicTask(runCtx, value, r.diagnostics, r.clock)
+		}(task)
 	}
 	return nil
 }

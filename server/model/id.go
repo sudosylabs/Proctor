@@ -62,6 +62,15 @@ type AttemptParticipationID string
 // AttemptConnectionID identifies one transport connection admitted to an Attempt Participation.
 type AttemptConnectionID string
 
+// IntegrityEvidenceID identifies one retained integrity observation episode.
+type IntegrityEvidenceID string
+
+// IntegrityFlagID identifies one manager-reviewable integrity concern.
+type IntegrityFlagID string
+
+// AttemptSuspensionID identifies one reversible Attempt suspension episode.
+type AttemptSuspensionID string
+
 // AttemptWorkspaceEntryID identifies one logical path in an Attempt Workspace.
 type AttemptWorkspaceEntryID string
 

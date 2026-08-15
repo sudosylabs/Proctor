@@ -1481,6 +1481,21 @@
         "responses": {"200": {"$ref": "#/components/responses/ExamAttemptManagerOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}, {"$ref": "#/components/parameters/ExamAttemptID"}],
+      "post": {
+        "operationId": "reallowExamAttempt",
+        "summary": "Re-allow one exact active Exam Attempt suspension",
+        "description": "Closes only the identified active suspension episode. It preserves integrity evidence and creates no continuity credential or Participation.",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_unavailable", "exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ReallowExamAttempt"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamAttemptReallowed"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/exam-attempts/{exam_attempt_id}/presentation": {
       "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}],
       "get": {
@@ -2078,6 +2093,10 @@
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApplyExamSittingCorrectionRequest"}}}
       },
+      "ReallowExamAttempt": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReallowExamAttemptRequest"}}}
+      },
       "EditExamDraftText": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EditExamDraftTextRequest"}}}
@@ -2284,6 +2303,11 @@
         "description": "Bounded manager-safe Exam Attempt collection",
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamAttemptManagerListResponse"}}}
+      },
+      "ExamAttemptReallowed": {
+        "description": "Exam Attempt suspension re-allowed without exposing the private manager reason",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamAttemptReallowResponse"}}}
       },
       "CandidateExamPresentationOK": {
         "description": "Protected current Exam presentation for one active Attempt Connection",
@@ -2657,6 +2681,22 @@
           "close_reason": {"$ref": "#/components/schemas/AttemptConnectionCloseReason"}
         }
       },
+      "ExamAttemptSuspensionResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "participation_id", "flag_id", "generation", "state", "source", "candidate_reason", "started_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "participation_id": {"$ref": "#/components/schemas/ID"},
+          "flag_id": {"$ref": "#/components/schemas/ID"},
+          "generation": {"type": "integer", "format": "int64", "minimum": 1},
+          "state": {"type": "string", "enum": ["active", "closed"]},
+          "source": {"type": "string", "const": "policy"},
+          "candidate_reason": {"type": "string", "const": "secure_connectivity_lost"},
+          "started_at": {"type": "string", "format": "date-time"},
+          "ended_at": {"type": "string", "format": "date-time"},
+          "reallowed_by_user_id": {"$ref": "#/components/schemas/ID"}
+        }
+      },
       "ExamAttemptManagerResponse": {
         "type": "object", "additionalProperties": false,
         "required": ["id", "exam_id", "exam_sitting_id", "candidate_user_id", "admission_revision_id", "state", "created_at", "updated_at", "revision", "workspace"],
@@ -2673,7 +2713,31 @@
           "revision": {"type": "integer", "format": "int64", "minimum": 1},
           "workspace": {"$ref": "#/components/schemas/ExamAttemptWorkspaceResponse"},
           "latest_participation": {"$ref": "#/components/schemas/ExamAttemptParticipationResponse"},
-          "current_connection": {"$ref": "#/components/schemas/ExamAttemptConnectionResponse"}
+          "current_connection": {"$ref": "#/components/schemas/ExamAttemptConnectionResponse"},
+          "active_suspension": {"$ref": "#/components/schemas/ExamAttemptSuspensionResponse"}
+        }
+      },
+      "ReallowExamAttemptRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["suspension_id", "expected_attempt_revision", "reason"],
+        "properties": {
+          "suspension_id": {"$ref": "#/components/schemas/ID"},
+          "expected_attempt_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Trimmed private manager reason retained only in suspension provenance."}
+        }
+      },
+      "ExamAttemptReallowResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["exam_attempt_id", "exam_sitting_id", "state", "attempt_revision", "suspension_id", "suspension_state", "candidate_reason", "reallowed_by_user_id"],
+        "properties": {
+          "exam_attempt_id": {"$ref": "#/components/schemas/ID"},
+          "exam_sitting_id": {"$ref": "#/components/schemas/ID"},
+          "state": {"type": "string", "const": "active"},
+          "attempt_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "suspension_id": {"$ref": "#/components/schemas/ID"},
+          "suspension_state": {"type": "string", "const": "closed"},
+          "candidate_reason": {"type": "string", "const": "secure_connectivity_lost"},
+          "reallowed_by_user_id": {"$ref": "#/components/schemas/ID"}
         }
       },
       "ExamAttemptManagerListResponse": {

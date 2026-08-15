@@ -134,6 +134,7 @@ type constructionFileStoreStub struct{ store.FileStore }
 type constructionInstitutionStoreStub struct{ store.InstitutionStore }
 type constructionCommandOutcomeStoreStub struct{}
 type constructionExamSittingUseCasesStub struct{ examSittingUseCases }
+type constructionExamAttemptUseCasesStub struct{ examAttemptUseCases }
 
 func (constructionCommandOutcomeStoreStub) DeleteExpired(context.Context, int) (int64, error) {
 	return 0, nil
@@ -153,7 +154,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 		},
 		applicationFoundation{},
 		accessAcademicConstruction{},
-		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}},
+		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: constructionExamAttemptUseCasesStub{}},
 		profiles,
 	)
 	if err != nil {
@@ -186,7 +187,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 			},
 			FileContent: constructionFileContentStub{},
 		},
-		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}}, profiles,
+		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: constructionExamAttemptUseCasesStub{}}, profiles,
 		&defaultProfilePictureJobProposer{jobs: constructionJobStoreStub{}},
 	)
 	if _, err := jobengine.NewRegistry(definitions.descriptors); err != nil {
@@ -224,6 +225,16 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	}
 	if recurrenceCount != 1 {
 		t.Fatalf("lifecycle recovery recurrence count = %d", recurrenceCount)
+	}
+	if len(definitions.periodicTasks) != 1 {
+		t.Fatalf("periodic task count = %d, want 1", len(definitions.periodicTasks))
+	}
+	periodic := definitions.periodicTasks[0]
+	if periodic.Name != examAttemptExpiryPeriodicTaskName || periodic.Interval != examAttemptExpiryScanInterval {
+		t.Fatalf("Attempt expiry periodic task = %#v", periodic)
+	}
+	if runner, ok := periodic.Runner.(examAttemptExpiryPeriodicRunner); !ok || runner.attempts == nil {
+		t.Fatalf("Attempt expiry periodic runner = %#v", periodic.Runner)
 	}
 
 	cleanup, exists := descriptors[model.JobTypeCleanup]

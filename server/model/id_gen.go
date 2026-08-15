@@ -52,6 +52,15 @@ func NewAttemptParticipationID() AttemptParticipationID { return AttemptParticip
 // NewAttemptConnectionID returns a freshly generated attempt-connection identifier.
 func NewAttemptConnectionID() AttemptConnectionID { return AttemptConnectionID(NewId()) }
 
+// NewIntegrityEvidenceID returns a freshly generated integrity-evidence identifier.
+func NewIntegrityEvidenceID() IntegrityEvidenceID { return IntegrityEvidenceID(NewId()) }
+
+// NewIntegrityFlagID returns a freshly generated integrity-flag identifier.
+func NewIntegrityFlagID() IntegrityFlagID { return IntegrityFlagID(NewId()) }
+
+// NewAttemptSuspensionID returns a freshly generated attempt-suspension identifier.
+func NewAttemptSuspensionID() AttemptSuspensionID { return AttemptSuspensionID(NewId()) }
+
 // NewAttemptWorkspaceEntryID returns a freshly generated attempt-workspace-entry identifier.
 func NewAttemptWorkspaceEntryID() AttemptWorkspaceEntryID { return AttemptWorkspaceEntryID(NewId()) }
 
@@ -197,6 +206,21 @@ func ParseAttemptParticipationID(value string) (AttemptParticipationID, error) {
 // ParseAttemptConnectionID validates and converts the shared identifier representation.
 func ParseAttemptConnectionID(value string) (AttemptConnectionID, error) {
 	return parseID[AttemptConnectionID](value, "attempt_connection_id")
+}
+
+// ParseIntegrityEvidenceID validates and converts the shared identifier representation.
+func ParseIntegrityEvidenceID(value string) (IntegrityEvidenceID, error) {
+	return parseID[IntegrityEvidenceID](value, "integrity_evidence_id")
+}
+
+// ParseIntegrityFlagID validates and converts the shared identifier representation.
+func ParseIntegrityFlagID(value string) (IntegrityFlagID, error) {
+	return parseID[IntegrityFlagID](value, "integrity_flag_id")
+}
+
+// ParseAttemptSuspensionID validates and converts the shared identifier representation.
+func ParseAttemptSuspensionID(value string) (AttemptSuspensionID, error) {
+	return parseID[AttemptSuspensionID](value, "attempt_suspension_id")
 }
 
 // ParseAttemptWorkspaceEntryID validates and converts the shared identifier representation.
@@ -364,6 +388,15 @@ func (id AttemptParticipationID) IsZero() bool { return id == "" }
 // IsZero reports whether the attempt-connection is the empty zero value.
 func (id AttemptConnectionID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the integrity-evidence is the empty zero value.
+func (id IntegrityEvidenceID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the integrity-flag is the empty zero value.
+func (id IntegrityFlagID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the attempt-suspension is the empty zero value.
+func (id AttemptSuspensionID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the attempt-workspace-entry is the empty zero value.
 func (id AttemptWorkspaceEntryID) IsZero() bool { return id == "" }
 
@@ -480,6 +513,15 @@ func (id AttemptParticipationID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the attempt-connection is a canonical non-zero ID.
 func (id AttemptConnectionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the integrity-evidence is a canonical non-zero ID.
+func (id IntegrityEvidenceID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the integrity-flag is a canonical non-zero ID.
+func (id IntegrityFlagID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the attempt-suspension is a canonical non-zero ID.
+func (id AttemptSuspensionID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the attempt-workspace-entry is a canonical non-zero ID.
 func (id AttemptWorkspaceEntryID) IsValid() bool { return IsValidId(string(id)) }
@@ -598,6 +640,15 @@ func (id AttemptParticipationID) String() string { return string(id) }
 // String returns the attempt-connection wire/database representation.
 func (id AttemptConnectionID) String() string { return string(id) }
 
+// String returns the integrity-evidence wire/database representation.
+func (id IntegrityEvidenceID) String() string { return string(id) }
+
+// String returns the integrity-flag wire/database representation.
+func (id IntegrityFlagID) String() string { return string(id) }
+
+// String returns the attempt-suspension wire/database representation.
+func (id AttemptSuspensionID) String() string { return string(id) }
+
 // String returns the attempt-workspace-entry wire/database representation.
 func (id AttemptWorkspaceEntryID) String() string { return string(id) }
 
@@ -714,6 +765,15 @@ func (id AttemptParticipationID) MarshalText() ([]byte, error) { return marshalI
 
 // MarshalText encodes the attempt-connection as its canonical string.
 func (id AttemptConnectionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the integrity-evidence as its canonical string.
+func (id IntegrityEvidenceID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the integrity-flag as its canonical string.
+func (id IntegrityFlagID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the attempt-suspension as its canonical string.
+func (id AttemptSuspensionID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the attempt-workspace-entry as its canonical string.
 func (id AttemptWorkspaceEntryID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -860,6 +920,21 @@ func (id *AttemptParticipationID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the attempt-connection when non-empty.
 func (id *AttemptConnectionID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseAttemptConnectionID)
+}
+
+// UnmarshalText decodes and validates the integrity-evidence when non-empty.
+func (id *IntegrityEvidenceID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseIntegrityEvidenceID)
+}
+
+// UnmarshalText decodes and validates the integrity-flag when non-empty.
+func (id *IntegrityFlagID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseIntegrityFlagID)
+}
+
+// UnmarshalText decodes and validates the attempt-suspension when non-empty.
+func (id *AttemptSuspensionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseAttemptSuspensionID)
 }
 
 // UnmarshalText decodes and validates the attempt-workspace-entry when non-empty.
@@ -1027,6 +1102,15 @@ func (id AttemptParticipationID) MarshalJSON() ([]byte, error) { return marshalI
 // MarshalJSON encodes the attempt-connection as a JSON string.
 func (id AttemptConnectionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the integrity-evidence as a JSON string.
+func (id IntegrityEvidenceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the integrity-flag as a JSON string.
+func (id IntegrityFlagID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the attempt-suspension as a JSON string.
+func (id AttemptSuspensionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the attempt-workspace-entry as a JSON string.
 func (id AttemptWorkspaceEntryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1172,6 +1256,21 @@ func (id *AttemptParticipationID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the attempt-connection.
 func (id *AttemptConnectionID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseAttemptConnectionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the integrity-evidence.
+func (id *IntegrityEvidenceID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseIntegrityEvidenceID)
+}
+
+// UnmarshalJSON decodes a JSON string into the integrity-flag.
+func (id *IntegrityFlagID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseIntegrityFlagID)
+}
+
+// UnmarshalJSON decodes a JSON string into the attempt-suspension.
+func (id *AttemptSuspensionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseAttemptSuspensionID)
 }
 
 // UnmarshalJSON decodes a JSON string into the attempt-workspace-entry.

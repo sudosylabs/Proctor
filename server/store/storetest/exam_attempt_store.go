@@ -17,7 +17,8 @@ import (
 )
 
 type ExamAttemptSQLProbe struct {
-	ExpireParticipation func(*testing.T, context.Context, model.AttemptParticipationID)
+	SetParticipationLeaseExpired func(*testing.T, context.Context, model.AttemptParticipationID)
+	FenceRenewalPastDeadline     func(*testing.T, context.Context, model.AttemptParticipationID, func() error) error
 }
 
 func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQLProbe) {
@@ -69,6 +70,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	if !replayed.Replayed || replayed.ConnectionOpened || replayed.Attempt.ID != connected.Attempt.ID || replayed.Connection.ID != connected.Connection.ID {
 		t.Fatalf("Connect(replay) = %#v", replayed)
 	}
+	testExamAttemptParticipationRenewal(t, ctx, ss, fixture, connected, credentialHash)
 
 	access := store.CandidateAttemptAccess{AttemptID: input.AttemptID, CandidateUserID: fixture.candidate.ID,
 		SessionID: fixture.session.ID, ConnectionID: input.ConnectionID, ContinuityCredentialHash: credentialHash}
@@ -268,14 +270,26 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	if _, err = ss.ExamAttempt().GetCandidatePresentation(ctx, access); !store.IsNotFound(err) {
 		t.Fatalf("candidate access after close error = %v", err)
 	}
-	if len(probes) != 0 && probes[0].ExpireParticipation != nil {
-		probes[0].ExpireParticipation(t, ctx, input.ParticipationID)
+	if len(probes) != 0 && probes[0].SetParticipationLeaseExpired != nil {
+		probes[0].SetParticipationLeaseExpired(t, ctx, input.ParticipationID)
 		expiredReplay := *input
 		expiredReplay.AuditEventID, expiredReplay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
 		_, replayErr := ss.ExamAttempt().Connect(ctx, &expiredReplay, command)
 		var conflict *store.ErrConflict
 		if !errors.As(replayErr, &conflict) || conflict.Constraint != "attempt_participation_expired" {
 			t.Fatalf("Connect(replay after lease expiry) error = %v", replayErr)
+		}
+		otherExpired := testExamAttemptParticipationExpiry(t, ctx, ss, fixture, probes[0])
+		batchAudit := saveExamAttemptSystemAudit(t, ctx, ss, fixture)
+		batchInput := &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
+			Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
+			SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: batchAudit.ID.String(), AuditAt: model.GetMillis()}
+		batchExpired, batchErr := ss.ExamAttempt().ExpireParticipation(ctx, batchInput)
+		requireNoError(t, batchErr)
+		if batchExpired.Evidence.ID == otherExpired.Evidence.ID || batchExpired.Flag.ID == otherExpired.Flag.ID ||
+			batchExpired.Suspension.ID == otherExpired.Suspension.ID || batchExpired.Participation.Generation != connected.Participation.Generation ||
+			batchExpired.ConnectionClosed || batchExpired.Connection.CloseReason != model.AttemptConnectionCloseTransport {
+			t.Fatalf("installation-wide expiry outcomes = %#v, %#v", batchExpired, otherExpired)
 		}
 	}
 	currentSitting, err := ss.ExamSitting().Get(ctx, fixture.examID, fixture.sitting.ID)
@@ -298,6 +312,343 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	if closeEmpty.Changed || closeEmpty.Value.Sitting.State != model.ExamSittingClosing || closing.Value.Sitting.State != model.ExamSittingClosing {
 		t.Fatalf("CloseIfNoAttempts(with Attempt) = %#v", closeEmpty)
 	}
+}
+
+func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture, probe ExamAttemptSQLProbe) *store.ExamAttemptParticipationExpiryResult {
+	t.Helper()
+	candidate := saveUser(t, ctx, ss)
+	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: model.NowUTC().Add(-time.Hour)})
+	requireNoError(t, err)
+	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		StartsAt: model.NowUTC().Add(-time.Minute)})
+	requireNoError(t, err)
+	session, _, _ := saveSession(t, ctx, ss, candidate.ID.String(), 10)
+	expiryFixture := fixture
+	expiryFixture.candidate, expiryFixture.session = candidate, session
+	credentialHash := model.HashToken(model.NewCredentialToken())
+	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID.String(), AuditAt: model.GetMillis()}
+	connected, err := ss.ExamAttempt().Connect(ctx, connect,
+		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "attempt-expiry-connect", "attempt-expiry-connect"))
+	requireNoError(t, err)
+	if probe.FenceRenewalPastDeadline != nil {
+		renewal := &store.ExamAttemptParticipationRenewal{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
+			ConnectionID: connected.Connection.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+			Generation: connected.Participation.Generation, Sequence: 1, ContinuityCredentialHash: credentialHash}
+		renewErr := probe.FenceRenewalPastDeadline(t, ctx, connected.Participation.ID, func() error {
+			_, contenderErr := ss.ExamAttempt().RenewParticipation(ctx, renewal)
+			return contenderErr
+		})
+		assertExamAttemptConflict(t, renewErr, "attempt_participation_expired")
+	}
+	probe.SetParticipationLeaseExpired(t, ctx, connected.Participation.ID)
+
+	due, err := ss.ExamAttempt().ListExpiredParticipations(ctx, 200)
+	requireNoError(t, err)
+	if len(due) < 2 {
+		t.Fatalf("installation-wide expiry batch = %#v, want multiple Attempts", due)
+	}
+	var selected *store.ExamAttemptParticipationExpiryDue
+	for index := range due {
+		if due[index].ParticipationID == connected.Participation.ID {
+			selected = &due[index]
+			break
+		}
+	}
+	if selected == nil || selected.AttemptID != connected.Attempt.ID || selected.Generation != connected.Participation.Generation ||
+		selected.ExamID != fixture.examID || selected.SittingID != fixture.sitting.ID || selected.ClassID != fixture.class.ID ||
+		selected.CandidateUserID != candidate.ID || selected.LeaseExpiresAt.IsZero() {
+		t.Fatalf("ListExpiredParticipations() = %#v", due)
+	}
+	resolved, err := ss.ExamAttempt().ResolveParticipationExpiry(ctx, connected.Attempt.ID, connected.Participation.ID,
+		connected.Participation.Generation)
+	requireNoError(t, err)
+	if resolved.AttemptID != selected.AttemptID || resolved.ParticipationID != selected.ParticipationID ||
+		resolved.Generation != selected.Generation || !resolved.LeaseExpiresAt.Equal(selected.LeaseExpiresAt) ||
+		resolved.ExamID != selected.ExamID || resolved.SittingID != selected.SittingID || resolved.ClassID != selected.ClassID ||
+		resolved.CandidateUserID != selected.CandidateUserID {
+		t.Fatalf("ResolveParticipationExpiry() = %#v, listed = %#v", resolved, selected)
+	}
+	failedInput := &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
+		Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
+		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+	if _, err = ss.ExamAttempt().ExpireParticipation(ctx, failedInput); err == nil {
+		t.Fatal("ExpireParticipation(with missing Audit) succeeded")
+	}
+	unchanged, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
+	requireNoError(t, err)
+	if unchanged.Attempt.State != model.ExamAttemptActive || unchanged.Attempt.Revision != connected.Attempt.Revision ||
+		unchanged.LatestParticipation == nil || unchanged.LatestParticipation.State != model.AttemptParticipationActive ||
+		unchanged.ActiveSuspension != nil {
+		t.Fatalf("failed expiry left partial state: %#v", unchanged)
+	}
+
+	audit := saveExamAttemptSystemAudit(t, ctx, ss, expiryFixture)
+	input := &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
+		Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
+		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}
+	concurrentAudit := saveExamAttemptSystemAudit(t, ctx, ss, expiryFixture)
+	concurrentInput := *input
+	concurrentInput.EvidenceID, concurrentInput.FlagID, concurrentInput.SuspensionID = model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
+	concurrentInput.AuditEventID, concurrentInput.AuditAt = concurrentAudit.ID.String(), model.GetMillis()
+	results := make(chan *store.ExamAttemptParticipationExpiryResult, 2)
+	errorsFound := make(chan error, 2)
+	start := make(chan struct{})
+	for _, proposal := range []*store.ExamAttemptParticipationExpiry{input, &concurrentInput} {
+		go func(proposal *store.ExamAttemptParticipationExpiry) {
+			<-start
+			result, expireErr := ss.ExamAttempt().ExpireParticipation(ctx, proposal)
+			results <- result
+			errorsFound <- expireErr
+		}(proposal)
+	}
+	close(start)
+	first, second := <-results, <-results
+	requireNoError(t, <-errorsFound)
+	requireNoError(t, <-errorsFound)
+	if first.Replayed == second.Replayed || first.Evidence.ID != second.Evidence.ID || first.Flag.ID != second.Flag.ID ||
+		first.Suspension.ID != second.Suspension.ID || !first.DatabaseTime.Equal(second.DatabaseTime) {
+		t.Fatalf("ExpireParticipation(concurrent) = %#v, %#v", first, second)
+	}
+	expired := first
+	if expired.Replayed {
+		expired = second
+	}
+	if expired == nil || expired.Replayed || expired.Attempt == nil || expired.Participation == nil || expired.Connection == nil ||
+		expired.Evidence == nil || expired.Flag == nil || expired.Suspension == nil || expired.ExamID != fixture.examID ||
+		expired.SittingID != fixture.sitting.ID || expired.ClassID != fixture.class.ID || expired.CandidateUserID != candidate.ID ||
+		expired.Attempt.State != model.ExamAttemptSuspended || expired.Attempt.Revision != 2 ||
+		expired.Participation.State != model.AttemptParticipationEnded || expired.Participation.EndReason != model.AttemptParticipationEndLeaseExpired ||
+		expired.Connection.State != model.AttemptConnectionClosed || expired.Connection.CloseReason != model.AttemptConnectionCloseLeaseExpired || !expired.ConnectionClosed ||
+		expired.Evidence.ObservedAt != selected.LeaseExpiresAt || expired.Flag.State != model.IntegrityFlagOpen ||
+		expired.Suspension.State != model.AttemptSuspensionActive ||
+		expired.Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonSecureContinuityLost || expired.DatabaseTime.IsZero() {
+		t.Fatalf("ExpireParticipation() = %#v", expired)
+	}
+	firstProposalWon := expired.Evidence.ID == input.EvidenceID && expired.Flag.ID == input.FlagID && expired.Suspension.ID == input.SuspensionID
+	secondProposalWon := expired.Evidence.ID == concurrentInput.EvidenceID && expired.Flag.ID == concurrentInput.FlagID && expired.Suspension.ID == concurrentInput.SuspensionID
+	if firstProposalWon == secondProposalWon {
+		t.Fatalf("ExpireParticipation retained mixed or unknown proposal IDs: %#v", expired)
+	}
+	requireSuccessfulAudit(t, ctx, ss, audit.ID.String())
+	requireSuccessfulAudit(t, ctx, ss, concurrentAudit.ID.String())
+	managerSnapshot, err := ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
+	requireNoError(t, err)
+	if managerSnapshot.ActiveSuspension == nil || managerSnapshot.ActiveSuspension.ID != expired.Suspension.ID {
+		t.Fatalf("Get(active Suspension) = %#v", managerSnapshot)
+	}
+	managerList, err := ss.ExamAttempt().List(ctx, store.ExamAttemptManagerListOptions{ExamID: fixture.examID,
+		SittingID: fixture.sitting.ID, Limit: 201})
+	requireNoError(t, err)
+	foundActiveSuspension := false
+	for _, snapshot := range managerList {
+		if snapshot.Attempt.ID == connected.Attempt.ID && snapshot.ActiveSuspension != nil && snapshot.ActiveSuspension.ID == expired.Suspension.ID {
+			foundActiveSuspension = true
+		}
+	}
+	if !foundActiveSuspension {
+		t.Fatalf("List(active Suspension) = %#v", managerList)
+	}
+
+	replayAudit := saveExamAttemptSystemAudit(t, ctx, ss, expiryFixture)
+	replayInput := *input
+	replayInput.EvidenceID, replayInput.FlagID, replayInput.SuspensionID = model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
+	replayInput.AuditEventID, replayInput.AuditAt = replayAudit.ID.String(), model.GetMillis()
+	replayed, err := ss.ExamAttempt().ExpireParticipation(ctx, &replayInput)
+	requireNoError(t, err)
+	if replayed == nil || !replayed.Replayed || replayed.Evidence == nil || replayed.Flag == nil || replayed.Suspension == nil ||
+		replayed.Evidence.ID != expired.Evidence.ID || replayed.Flag.ID != expired.Flag.ID || replayed.Suspension.ID != expired.Suspension.ID ||
+		!replayed.DatabaseTime.Equal(expired.DatabaseTime) {
+		t.Fatalf("ExpireParticipation(replay) = %#v, first = %#v", replayed, expired)
+	}
+	requireSuccessfulAudit(t, ctx, ss, replayAudit.ID.String())
+
+	reallowAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
+	reallowInput := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
+		AttemptID: expired.Attempt.ID, SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID,
+		ExpectedAttemptRevision: expired.Attempt.Revision, PrivateReason: "verified connectivity recovery",
+		ChangedAt: model.NowUTC(), AuditEventID: reallowAudit.ID.String(), AuditAt: model.GetMillis()}
+	reallowCommand := examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "attempt-reallow", "attempt-reallow")
+	competingAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
+	competingInput := *reallowInput
+	competingInput.PrivateReason = "second manager recovery decision"
+	competingInput.AuditEventID, competingInput.AuditAt = competingAudit.ID.String(), model.GetMillis()
+	competingCommand := examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "attempt-reallow-competing", "attempt-reallow-competing")
+	type reallowOutcome struct {
+		index  int
+		result *store.ExamAttemptReallowResult
+		err    error
+	}
+	reallowOutcomes := make(chan reallowOutcome, 2)
+	reallowStart := make(chan struct{})
+	for index, proposal := range []*store.ExamAttemptReallow{reallowInput, &competingInput} {
+		command := []*store.CommandIdempotency{reallowCommand, competingCommand}[index]
+		go func(index int, proposal *store.ExamAttemptReallow, command *store.CommandIdempotency) {
+			<-reallowStart
+			result, reallowErr := ss.ExamAttempt().ReallowAttempt(ctx, proposal, command)
+			reallowOutcomes <- reallowOutcome{index: index, result: result, err: reallowErr}
+		}(index, proposal, command)
+	}
+	close(reallowStart)
+	var reallowed *store.ExamAttemptReallowResult
+	winner := -1
+	for range 2 {
+		outcome := <-reallowOutcomes
+		if outcome.err == nil {
+			if winner != -1 {
+				t.Fatal("both concurrent ReallowAttempt calls succeeded")
+			}
+			winner, reallowed = outcome.index, outcome.result
+			continue
+		}
+		var conflict *store.ErrConflict
+		if !errors.As(outcome.err, &conflict) || (conflict.Constraint != "attempt_suspension_active" && conflict.Constraint != "exam_attempt_revision") {
+			t.Fatalf("concurrent ReallowAttempt loser error = %v", outcome.err)
+		}
+	}
+	if winner < 0 {
+		t.Fatal("neither concurrent ReallowAttempt call succeeded")
+	}
+	if winner == 1 {
+		reallowAudit, reallowInput, reallowCommand = competingAudit, &competingInput, competingCommand
+	}
+	if reallowed == nil || reallowed.Replayed || reallowed.Attempt == nil || reallowed.Suspension == nil ||
+		reallowed.Attempt.State != model.ExamAttemptActive || reallowed.Attempt.Revision != expired.Attempt.Revision+1 ||
+		reallowed.Suspension.State != model.AttemptSuspensionClosed || !reallowed.Suspension.EndedAt.Valid ||
+		reallowed.Suspension.ReallowedByUserID != fixture.manager.ID || reallowed.CandidateUserID != candidate.ID {
+		t.Fatalf("ReallowAttempt() = %#v", reallowed)
+	}
+	managerSnapshot, err = ss.ExamAttempt().Get(ctx, fixture.examID, connected.Attempt.ID)
+	requireNoError(t, err)
+	if managerSnapshot.ActiveSuspension != nil {
+		t.Fatalf("Get(after re-allow) retained active Suspension = %#v", managerSnapshot.ActiveSuspension)
+	}
+	reallowEvent, err := ss.Audit().Get(ctx, reallowAudit.ID.String())
+	requireNoError(t, err)
+	if bytes.Contains(reallowEvent.Result, []byte(reallowInput.PrivateReason)) {
+		t.Fatal("ReallowAttempt audit exposed the private reason")
+	}
+	reallowReplayAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
+	reallowReplay := *reallowInput
+	reallowReplay.AuditEventID, reallowReplay.AuditAt = reallowReplayAudit.ID.String(), model.GetMillis()
+	replayedReallow, err := ss.ExamAttempt().ReallowAttempt(ctx, &reallowReplay, reallowCommand)
+	requireNoError(t, err)
+	if replayedReallow == nil || !replayedReallow.Replayed || replayedReallow.Attempt.Revision != reallowed.Attempt.Revision ||
+		replayedReallow.Suspension.ID != reallowed.Suspension.ID {
+		t.Fatalf("ReallowAttempt(replay) = %#v", replayedReallow)
+	}
+	expiryAfterReallowAudit := saveExamAttemptSystemAudit(t, ctx, ss, fixture)
+	expiryAfterReallow := *input
+	expiryAfterReallow.EvidenceID, expiryAfterReallow.FlagID, expiryAfterReallow.SuspensionID =
+		model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
+	expiryAfterReallow.AuditEventID, expiryAfterReallow.AuditAt = expiryAfterReallowAudit.ID.String(), model.GetMillis()
+	retainedExpiry, err := ss.ExamAttempt().ExpireParticipation(ctx, &expiryAfterReallow)
+	requireNoError(t, err)
+	if retainedExpiry == nil || !retainedExpiry.Replayed || retainedExpiry.Attempt.State != model.ExamAttemptSuspended ||
+		retainedExpiry.Attempt.Revision != expired.Attempt.Revision || retainedExpiry.Suspension.State != model.AttemptSuspensionActive ||
+		retainedExpiry.Suspension.EndedAt.Valid || !retainedExpiry.Suspension.ReallowedByUserID.IsZero() ||
+		retainedExpiry.Evidence.ID != expired.Evidence.ID || retainedExpiry.Flag.ID != expired.Flag.ID ||
+		retainedExpiry.Suspension.ID != expired.Suspension.ID || !retainedExpiry.DatabaseTime.Equal(expired.DatabaseTime) {
+		t.Fatalf("ExpireParticipation(replay after re-allow) = %#v, first = %#v", retainedExpiry, expired)
+	}
+	requireSuccessfulAudit(t, ctx, ss, expiryAfterReallowAudit.ID.String())
+	reallowDifferentAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
+	reallowDifferent := reallowReplay
+	reallowDifferent.AuditEventID = reallowDifferentAudit.ID.String()
+	_, err = ss.ExamAttempt().ReallowAttempt(ctx, &reallowDifferent,
+		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "attempt-reallow-different", "attempt-reallow-different"))
+	assertExamAttemptConflict(t, err, "attempt_suspension_active")
+
+	nextConnect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID.String(), AuditAt: model.GetMillis()}
+	next, err := ss.ExamAttempt().Connect(ctx, nextConnect,
+		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "attempt-next-generation", "attempt-next-generation"))
+	requireNoError(t, err)
+	if next.Participation.Generation != expired.Participation.Generation+1 || next.Attempt.ID != expired.Attempt.ID ||
+		next.Workspace.ID != connected.Workspace.ID || !next.ConnectionOpened {
+		t.Fatalf("Connect(next generation) = %#v", next)
+	}
+
+	due, err = ss.ExamAttempt().ListExpiredParticipations(ctx, 200)
+	requireNoError(t, err)
+	for _, candidate := range due {
+		if candidate.ParticipationID == connected.Participation.ID {
+			t.Fatalf("expired Participation remained due: %#v", due)
+		}
+	}
+	access := store.CandidateAttemptAccess{AttemptID: connected.Attempt.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
+	if _, err = ss.ExamAttempt().GetCandidatePresentation(ctx, access); !store.IsNotFound(err) {
+		t.Fatalf("candidate access after expiry error = %v", err)
+	}
+	return expired
+}
+
+func saveExamAttemptSystemAudit(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture) *model.AuditEvent {
+	t.Helper()
+	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionExamSittingParticipate),
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: fixture.sitting.ID.String()}, ScopeType: model.RoleScopeClass,
+		ScopeID: fixture.class.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	requireNoError(t, err)
+	return audit
+}
+
+func saveExamAttemptReallowAudit(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture) *model.AuditEvent {
+	t.Helper()
+	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: fixture.manager.ID, Action: string(model.ActionExamSittingManage),
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: fixture.sitting.ID.String()}, ScopeType: model.RoleScopeClass,
+		ScopeID: fixture.class.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	requireNoError(t, err)
+	return audit
+}
+
+func testExamAttemptParticipationRenewal(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture,
+	connected *store.ExamAttemptConnectResult, credentialHash string,
+) {
+	t.Helper()
+	input := &store.ExamAttemptParticipationRenewal{
+		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, ConnectionID: connected.Connection.ID,
+		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Generation: connected.Participation.Generation,
+		Sequence: 1, ContinuityCredentialHash: credentialHash,
+	}
+	renewed, err := ss.ExamAttempt().RenewParticipation(ctx, input)
+	requireNoError(t, err)
+	if renewed == nil || renewed.AttemptID != input.AttemptID || renewed.ParticipationID != input.ParticipationID ||
+		renewed.Generation != input.Generation || renewed.AcceptedSequence != input.Sequence || renewed.Duplicate ||
+		renewed.DatabaseTime.IsZero() || renewed.LeaseExpiresAt.Sub(renewed.DatabaseTime) != model.AttemptParticipationInitialLease {
+		t.Fatalf("RenewParticipation() = %#v", renewed)
+	}
+
+	duplicate, err := ss.ExamAttempt().RenewParticipation(ctx, input)
+	requireNoError(t, err)
+	if duplicate == nil || !duplicate.Duplicate || duplicate.AcceptedSequence != renewed.AcceptedSequence ||
+		!duplicate.DatabaseTime.Equal(renewed.DatabaseTime) || !duplicate.LeaseExpiresAt.Equal(renewed.LeaseExpiresAt) {
+		t.Fatalf("RenewParticipation(duplicate) = %#v, first = %#v", duplicate, renewed)
+	}
+
+	input.Sequence = 2
+	advanced, err := ss.ExamAttempt().RenewParticipation(ctx, input)
+	requireNoError(t, err)
+	if advanced.Duplicate || advanced.AcceptedSequence != 2 || advanced.DatabaseTime.Before(renewed.DatabaseTime) ||
+		advanced.LeaseExpiresAt.Sub(advanced.DatabaseTime) != model.AttemptParticipationInitialLease {
+		t.Fatalf("RenewParticipation(advanced) = %#v, first = %#v", advanced, renewed)
+	}
+	input.Sequence = 1
+	_, err = ss.ExamAttempt().RenewParticipation(ctx, input)
+	assertExamAttemptConflict(t, err, "attempt_participation_sequence")
+	input.Sequence = 3
+	input.Generation++
+	_, err = ss.ExamAttempt().RenewParticipation(ctx, input)
+	assertExamAttemptConflict(t, err, "attempt_participation_generation")
+	input.Generation--
+	input.ContinuityCredentialHash = model.HashToken(model.NewCredentialToken())
+	_, err = ss.ExamAttempt().RenewParticipation(ctx, input)
+	assertExamAttemptConflict(t, err, "attempt_participation_credential")
 }
 
 type examAttemptFixture struct {

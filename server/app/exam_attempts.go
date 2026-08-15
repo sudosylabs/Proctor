@@ -18,6 +18,8 @@ import (
 
 type ExamAttemptConnection = examattempt.ConnectionResult
 type ExamAttemptConnectionClosed = examattempt.ConnectionClosedResult
+type ExamAttemptParticipationRenewal = examattempt.ParticipationRenewal
+type ExamAttemptReallowResult = examattempt.ReallowResult
 type CandidateExamAttemptAccess = examattempt.CandidateAccess
 type CandidateExamPresentation = examattempt.Presentation
 type CandidateExamWorkspaceItem = store.CandidateAttemptWorkspaceItem
@@ -31,6 +33,18 @@ type ConnectExamAttemptCommand struct {
 }
 
 type CloseExamAttemptConnectionCommand = examattempt.CloseConnectionCommand
+
+type RenewExamAttemptParticipationCommand = examattempt.RenewParticipationCommand
+
+type ReallowExamAttemptCommand struct {
+	ExamID                  model.ExamID
+	SittingID               model.ExamSittingID
+	AttemptID               model.ExamAttemptID
+	SuspensionID            model.AttemptSuspensionID
+	ExpectedAttemptRevision int64
+	PrivateReason           string
+	IdempotencyKey          string
+}
 
 type ListCandidateExamWorkspaceQuery struct {
 	Access       CandidateExamAttemptAccess
@@ -76,6 +90,9 @@ type ExamAttemptManagerPage struct {
 
 type examAttemptUseCases interface {
 	Connect(context.Context, examattempt.Call, examattempt.ConnectCommand) (examattempt.ConnectionResult, error)
+	RenewParticipation(context.Context, examattempt.Call, examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error)
+	Reallow(context.Context, examattempt.Call, examattempt.ReallowCommand) (examattempt.ReallowResult, error)
+	ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error)
 	CloseConnection(context.Context, examattempt.Call, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error)
 	GetPresentation(context.Context, examattempt.Call, examattempt.CandidateAccess) (examattempt.Presentation, error)
 	ListWorkspace(context.Context, examattempt.Call, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error)
@@ -83,6 +100,40 @@ type examAttemptUseCases interface {
 	OpenWorkspaceFile(context.Context, examattempt.Call, examattempt.CandidateAccess, model.AttemptWorkspaceEntryID) (*examattempt.OpenedContent, error)
 	GetManaged(context.Context, examattempt.Call, examattempt.GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error)
 	ListManaged(context.Context, examattempt.Call, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error)
+}
+
+func (a *App) ReallowExamAttempt(ctx context.Context, invocation Invocation, command ReallowExamAttemptCommand) (ExamAttemptReallowResult, error) {
+	if command.IdempotencyKey == "" {
+		return ExamAttemptReallowResult{}, NewError("idempotency.key_required")
+	}
+	idempotency, err := newCommandIdempotency(invocation, store.ExamAttemptReallowOperation, command.IdempotencyKey, struct {
+		ExamID                  string `json:"exam_id"`
+		SittingID               string `json:"exam_sitting_id"`
+		AttemptID               string `json:"exam_attempt_id"`
+		SuspensionID            string `json:"suspension_id"`
+		ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+		PrivateReason           string `json:"private_reason"`
+	}{command.ExamID.String(), command.SittingID.String(), command.AttemptID.String(), command.SuspensionID.String(),
+		command.ExpectedAttemptRevision, command.PrivateReason})
+	if err != nil {
+		return ExamAttemptReallowResult{}, err
+	}
+	result, err := a.examAttempts.Reallow(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), examattempt.ReallowCommand{
+		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
+		ExpectedAttemptRevision: command.ExpectedAttemptRevision, PrivateReason: command.PrivateReason, Idempotency: idempotency,
+	})
+	if err != nil {
+		return ExamAttemptReallowResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) RenewExamAttemptParticipation(ctx context.Context, invocation Invocation, command RenewExamAttemptParticipationCommand) (ExamAttemptParticipationRenewal, error) {
+	result, err := a.examAttempts.RenewParticipation(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return ExamAttemptParticipationRenewal{}, examAttemptError(err, true)
+	}
+	return result, nil
 }
 
 func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (ExamAttemptConnection, error) {
@@ -206,6 +257,10 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingView(ctx c
 	return adapter.sittings.AuthorizeView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
 }
 
+func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingManage(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) (bool, error) {
+	return adapter.sittings.AuthorizeManage(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
+}
+
 type examAttemptAuditAdapter struct{ audit mutationAuditAdapter }
 
 func (adapter examAttemptAuditAdapter) Begin(ctx context.Context, call examattempt.Call, action model.Action, resource model.Resource,
@@ -237,6 +292,43 @@ func (effects examAttemptRealtimeEffects) ConnectionClosed(ctx context.Context, 
 		return err
 	}
 	return effects.realtime.Publish(ctx, event)
+}
+
+func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Context, result examattempt.ParticipationExpiry) error {
+	managerEvent, err := apprealtime.NewExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+		result.Connection.ID, result.Flag.ID, result.Suspension.ID, result.Attempt.Revision, result.DatabaseTime)
+	if err != nil {
+		return err
+	}
+	candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
+		result.CandidateUserID, result.Suspension.CandidateReason, result.DatabaseTime)
+	if err != nil {
+		return err
+	}
+	if !result.ConnectionClosed {
+		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent))
+	}
+	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
+		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
+	if err != nil {
+		return err
+	}
+	return errors.Join(effects.realtime.Publish(ctx, connectionEvent), effects.realtime.Publish(ctx, managerEvent),
+		effects.realtime.Publish(ctx, candidateEvent))
+}
+
+func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, result examattempt.ReallowResult) error {
+	managerEvent, err := apprealtime.NewExamAttemptReallowedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+		result.Suspension.ID, result.Attempt.Revision, result.Attempt.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	candidateEvent, err := apprealtime.NewCandidateExamAttemptReallowedEvent(result.SittingID, result.Attempt.ID,
+		result.CandidateUserID, result.Attempt.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent))
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {

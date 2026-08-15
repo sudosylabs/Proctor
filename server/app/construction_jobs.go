@@ -22,17 +22,18 @@ func constructJobs(
 	if deps.Store.Job() == nil {
 		return jobConstruction{}, nil
 	}
-	if examinations.sittings == nil {
-		return jobConstruction{}, errors.New("Exam Sitting use cases are required when Jobs are enabled")
+	if examinations.sittings == nil || examinations.attempts == nil {
+		return jobConstruction{}, errors.New("Examination lifecycle use cases are required when Jobs are enabled")
 	}
 
 	defaultJobs := &defaultProfilePictureJobProposer{jobs: deps.Store.Job()}
 	definitions := buildApplicationJobDefinitions(deps, examinations, profiles, defaultJobs)
 	runtime, err := jobengine.New(jobengine.Config{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
-		Diagnostics: deps.RecoveryDiagnostics,
-		Policy:      jobengine.Policy{PollInterval: 500 * time.Millisecond},
-		Recurrences: definitions.recurrences,
+		Diagnostics:   deps.RecoveryDiagnostics,
+		Policy:        jobengine.Policy{PollInterval: 500 * time.Millisecond},
+		Recurrences:   definitions.recurrences,
+		PeriodicTasks: definitions.periodicTasks,
 	})
 	if err != nil {
 		return jobConstruction{}, err
@@ -52,8 +53,9 @@ func constructJobs(
 }
 
 type applicationJobDefinitions struct {
-	descriptors []jobengine.Descriptor
-	recurrences []jobengine.Recurrence
+	descriptors   []jobengine.Descriptor
+	recurrences   []jobengine.Recurrence
+	periodicTasks []jobengine.PeriodicTask
 }
 
 // buildApplicationJobDefinitions keeps the complete durable-work recipe
@@ -91,7 +93,11 @@ func buildApplicationJobDefinitions(
 		{Name: "command-outcome-cleanup", Proposer: commandOutcomeCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "exam-sitting-lifecycle-recovery", Proposer: examSittingLifecycleRecoveryProposer{jobs: deps.Store.Job(), now: time.Now}},
 	}
-	return applicationJobDefinitions{descriptors: descriptors, recurrences: recurrences}
+	periodicTasks := []jobengine.PeriodicTask{{
+		Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval,
+		Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts},
+	}}
+	return applicationJobDefinitions{descriptors: descriptors, recurrences: recurrences, periodicTasks: periodicTasks}
 }
 
 func jobRetentionPolicies(descriptors []jobengine.Descriptor) []store.JobRetentionPolicy {

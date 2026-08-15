@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
@@ -51,11 +52,14 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime}
 	attempts, err := examattempt.New(examattempt.Dependencies{
 		Persistence: deps.Store.ExamAttempt(), Sittings: deps.Store.ExamSitting(),
-		Managers: examAttemptManagerAuthorizationAdapter{sittings: sittings},
-		Auditor:  examAttemptAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		Effects:  attemptEffects, EffectFailures: attemptEffects, Content: deps.FileContent,
+		Managers:      examAttemptManagerAuthorizationAdapter{sittings: sittings},
+		Auditor:       examAttemptAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		SystemAuditor: examAttemptSystemAuditAdapter{audit: foundation.audit},
+		Effects:       attemptEffects, EffectFailures: attemptEffects, Content: deps.FileContent,
 		Now: time.Now, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
+		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: model.NewIntegrityFlagID,
+		NewSuspension: model.NewAttemptSuspensionID,
 	})
 	if err != nil {
 		return examinationConstruction{}, err
@@ -100,4 +104,26 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	}
 	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, attempts: attempts,
 		resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
+}
+
+type examAttemptSystemAuditAdapter struct{ audit *auditService }
+
+func (adapter examAttemptSystemAuditAdapter) Begin(ctx context.Context, action model.Action, resource model.Resource,
+	scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
+) (string, error) {
+	auditValue := make(map[string]any, len(value))
+	for key, item := range value {
+		auditValue[key] = item
+	}
+	event, err := adapter.audit.BeginSystemCriticalActionAtScope(ctx, action, resource, scopeType, scopeID,
+		map[string]any{"operation": operation, "value": auditValue})
+	if err != nil {
+		return "", err
+	}
+	return event.ID.String(), nil
+}
+
+func (adapter examAttemptSystemAuditAdapter) Fail(ctx context.Context, id, code string) error {
+	_, err := adapter.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
+	return err
 }

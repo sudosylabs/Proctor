@@ -113,6 +113,101 @@ type examAttemptConnectionChangedData struct {
 	ChangedAt     string `json:"changed_at"`
 }
 
+type candidateExamAttemptAccessChangedData struct {
+	ExamSittingID string `json:"exam_sitting_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	State         string `json:"state"`
+	ReasonCode    string `json:"reason_code,omitempty"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+type managerExamAttemptSuspendedData struct {
+	ExamSittingID string `json:"exam_sitting_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	CandidateID   string `json:"candidate_user_id"`
+	ConnectionID  string `json:"attempt_connection_id"`
+	FlagID        string `json:"integrity_flag_id"`
+	SuspensionID  string `json:"suspension_id"`
+	Revision      int64  `json:"attempt_revision"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+type managerExamAttemptReallowedData struct {
+	ExamSittingID string `json:"exam_sitting_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	CandidateID   string `json:"candidate_user_id"`
+	SuspensionID  string `json:"suspension_id"`
+	Revision      int64  `json:"attempt_revision"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+func NewCandidateExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, reason model.AttemptSuspensionCandidateReason, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if reason != model.AttemptSuspensionCandidateReasonSecureContinuityLost {
+		return RealtimeEvent{}, errors.New("candidate Exam Attempt suspension event requires a safe reason")
+	}
+	return newCandidateExamAttemptAccessEvent("exam_attempt_access_suspended", sittingID, attemptID, candidateID,
+		model.ExamAttemptSuspended, string(reason), changedAt)
+}
+
+func NewCandidateExamAttemptReallowedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, changedAt time.Time,
+) (RealtimeEvent, error) {
+	return newCandidateExamAttemptAccessEvent("exam_attempt_access_reallowed", sittingID, attemptID, candidateID,
+		model.ExamAttemptActive, "", changedAt)
+}
+
+func newCandidateExamAttemptAccessEvent(name string, sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, state model.ExamAttemptState, reason string, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || changedAt.IsZero() ||
+		(state != model.ExamAttemptSuspended && state != model.ExamAttemptActive) {
+		return RealtimeEvent{}, errors.New("candidate Exam Attempt access event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(candidateExamAttemptAccessChangedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
+		State: string(state), ReasonCode: reason, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: name, UserID: candidateID.String(), Action: model.ActionExamSittingParticipate,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
+func NewExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID, candidateID model.UserID,
+	connectionID model.AttemptConnectionID, flagID model.IntegrityFlagID, suspensionID model.AttemptSuspensionID,
+	revision int64, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !connectionID.IsValid() ||
+		!flagID.IsValid() || !suspensionID.IsValid() || revision < 1 || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("manager Exam Attempt suspension event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(managerExamAttemptSuspendedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
+		CandidateID: candidateID.String(), ConnectionID: connectionID.String(), FlagID: flagID.String(),
+		SuspensionID: suspensionID.String(), Revision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: "exam_attempt_suspended", Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
+func NewExamAttemptReallowedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID, candidateID model.UserID,
+	suspensionID model.AttemptSuspensionID, revision int64, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !suspensionID.IsValid() || revision < 1 || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("manager Exam Attempt re-allow event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(managerExamAttemptReallowedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
+		CandidateID: candidateID.String(), SuspensionID: suspensionID.String(), Revision: revision,
+		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: "exam_attempt_reallowed", Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
 func NewExamAttemptConnectionOpenedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
 	candidateID model.UserID, connectionID model.AttemptConnectionID, openedAt time.Time,
 ) (RealtimeEvent, error) {

@@ -121,6 +121,8 @@ func (c *connectionRuntime) handleRequest(
 		c.enqueueResponse(request.Sequence, nil)
 	case examAttemptConnectAction:
 		c.handleExamAttemptConnect(ctx, request)
+	case examAttemptRenewAction:
+		c.handleExamAttemptRenew(ctx, request)
 	default:
 		c.enqueueError(request.Sequence, "websocket.action.unknown", "Unknown WebSocket action.")
 	}
@@ -162,7 +164,8 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 		return
 	}
 	binding := &examAttemptBinding{attemptID: result.Attempt.ID, sittingID: sittingID,
-		classID: result.ClassID, connectionID: result.Connection.ID, requestHash: requestHash}
+		classID: result.ClassID, connectionID: result.Connection.ID, participationID: result.Participation.ID,
+		generation: result.Participation.Generation, requestHash: requestHash}
 	subscription := Subscription{Action: model.ActionExamSittingParticipate,
 		Resource: Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}}
 	c.mu.Lock()
@@ -177,13 +180,59 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 	encoded, err := json.Marshal(examAttemptConnectResponse{
 		AttemptID: result.Attempt.ID.String(), WorkspaceID: result.Workspace.ID.String(),
 		ParticipationID: result.Participation.ID.String(), AttemptConnectionID: result.Connection.ID.String(),
-		Generation:     result.Participation.Generation,
-		StartedAt:      result.Participation.StartedAt.Format(time.RFC3339Nano),
-		LeaseExpiresAt: result.Participation.LeaseExpiresAt.Format(time.RFC3339Nano),
-		FirstAdmission: result.FirstAdmission, Replayed: result.Replayed,
+		Generation:             result.Participation.Generation,
+		RenewalIntervalSeconds: int64(model.AttemptParticipationRenewalInterval / time.Second),
+		StartedAt:              result.Participation.StartedAt.Format(time.RFC3339Nano),
+		LeaseExpiresAt:         result.Participation.LeaseExpiresAt.Format(time.RFC3339Nano),
+		FirstAdmission:         result.FirstAdmission, Replayed: result.Replayed,
 	})
 	if err != nil {
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt connection failed.")
+		return
+	}
+	c.enqueueResponse(request.Sequence, encoded)
+}
+
+func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request *Request) {
+	decoded, err := decodeExamAttemptRenewRequest(request.Data)
+	if err != nil {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Exam Attempt renewal request.")
+		return
+	}
+	c.mu.Lock()
+	if c.attempt == nil || decoded.Generation != c.attempt.generation {
+		c.mu.Unlock()
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		return
+	}
+	binding := *c.attempt
+	c.mu.Unlock()
+	attempts, ok := c.application.(examAttemptApplication)
+	if !ok {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt renewal failed.")
+		return
+	}
+	metadata := c.metadata
+	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
+	result, err := attempts.RenewExamAttemptParticipation(ctx, app.NewInvocation(c.principal, metadata), app.RenewExamAttemptParticipationCommand{
+		AttemptID: binding.attemptID, ParticipationID: binding.participationID, ConnectionID: binding.connectionID,
+		Generation: decoded.Generation, Sequence: decoded.Sequence, ContinuityCredential: decoded.ContinuityCredential,
+	})
+	if err != nil {
+		code, message := examAttemptRenewError(err)
+		c.enqueueError(request.Sequence, code, message)
+		return
+	}
+	if result.AttemptID != binding.attemptID || result.ParticipationID != binding.participationID ||
+		result.Generation != binding.generation || result.AcceptedSequence != decoded.Sequence || result.DatabaseTime.IsZero() ||
+		result.LeaseExpiresAt.IsZero() {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt renewal failed.")
+		return
+	}
+	encoded, err := json.Marshal(examAttemptRenewResponse{Generation: result.Generation, AcceptedSequence: result.AcceptedSequence,
+		DatabaseTime: result.DatabaseTime.Format(time.RFC3339Nano), LeaseExpiresAt: result.LeaseExpiresAt.Format(time.RFC3339Nano), Duplicate: result.Duplicate})
+	if err != nil {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt renewal failed.")
 		return
 	}
 	c.enqueueResponse(request.Sequence, encoded)

@@ -125,6 +125,817 @@ func validateExamAttemptConnect(input *store.ExamAttemptConnect, command *store.
 	return nil
 }
 
+type attemptParticipationRenewalRow struct {
+	State           string         `db:"state"`
+	Generation      int64          `db:"generation"`
+	RenewalSequence int64          `db:"renewal_sequence"`
+	CredentialHash  string         `db:"continuity_credential_hash"`
+	StartedAt       time.Time      `db:"started_at"`
+	UpdatedAt       time.Time      `db:"updated_at"`
+	LeaseExpiresAt  time.Time      `db:"lease_expires_at"`
+	EndedAt         sql.NullTime   `db:"ended_at"`
+	EndReason       sql.NullString `db:"end_reason"`
+	DatabaseNow     time.Time      `db:"database_now"`
+}
+
+func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
+	if input == nil || !input.AttemptID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
+		!input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || input.Generation < 1 || input.Sequence < 1 ||
+		!model.IsValidTokenHash(input.ContinuityCredentialHash) {
+		return nil, store.NewErrInvalidInput("attempt_participation", "renewal", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "renew Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationRenewalResult, error) {
+		var attempt struct {
+			CandidateID string `db:"candidate_user_id"`
+			State       string `db:"state"`
+		}
+		if err := tx.Get(ctx, &attempt, `SELECT candidate_user_id,state FROM exam_attempts WHERE id=? FOR UPDATE`, input.AttemptID.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+			}
+			return nil, fmt.Errorf("lock Exam Attempt for renewal: %w", err)
+		}
+		if attempt.CandidateID != input.CandidateUserID.String() {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+		}
+		var row attemptParticipationRenewalRow
+		if err := tx.Get(ctx, &row, `SELECT state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,
+			lease_expires_at,ended_at,end_reason
+			FROM exam_attempt_participations WHERE id=? AND exam_attempt_id=? FOR UPDATE`, input.ParticipationID.String(), input.AttemptID.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+			}
+			return nil, fmt.Errorf("lock Attempt Participation renewal: %w", err)
+		}
+		if input.Generation != row.Generation {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
+		}
+		if subtle.ConstantTimeCompare([]byte(row.CredentialHash), []byte(input.ContinuityCredentialHash)) != 1 {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+		}
+		if row.State != string(model.AttemptParticipationActive) {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+		}
+		if attempt.State != string(model.ExamAttemptActive) {
+			return nil, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+		}
+
+		var connection struct {
+			SessionID string `db:"session_id"`
+			State     string `db:"state"`
+		}
+		if err := tx.Get(ctx, &connection, `SELECT session_id,state FROM exam_attempt_connections
+			WHERE id=? AND exam_attempt_id=? AND participation_id=? FOR UPDATE`, input.ConnectionID.String(), input.AttemptID.String(), input.ParticipationID.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+			}
+			return nil, fmt.Errorf("lock Attempt Connection renewal: %w", err)
+		}
+		if connection.SessionID != input.SessionID.String() || connection.State != string(model.AttemptConnectionOpen) {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+		}
+		if err := tx.Get(ctx, &row.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
+			return nil, fmt.Errorf("read Attempt Participation renewal decision time: %w", err)
+		}
+		if !row.DatabaseNow.Before(row.LeaseExpiresAt) {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+		}
+		if input.Sequence < row.RenewalSequence {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
+		}
+		if input.Sequence == row.RenewalSequence {
+			return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ParticipationID: input.ParticipationID,
+				Generation: row.Generation, AcceptedSequence: row.RenewalSequence, DatabaseTime: model.TimeUTC(row.UpdatedAt),
+				LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), Duplicate: true}, nil
+		}
+
+		participation := &model.AttemptParticipation{ID: input.ParticipationID, AttemptID: input.AttemptID,
+			State: model.AttemptParticipationActive, Generation: row.Generation, RenewalSequence: row.RenewalSequence,
+			ContinuityCredentialHash: row.CredentialHash, StartedAt: model.TimeUTC(row.StartedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt),
+			LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
+			EndReason: model.AttemptParticipationEndReason(row.EndReason.String)}
+		if err := participation.Validate(); err != nil {
+			return nil, invalidPersistedState("attempt_participation", "value", err)
+		}
+		if _, err := participation.Renew(input.Generation, input.Sequence, row.DatabaseNow); err != nil {
+			return nil, fmt.Errorf("renew Attempt Participation domain state: %w", err)
+		}
+		result, err := tx.Exec(ctx, `UPDATE exam_attempt_participations SET renewal_sequence=?,updated_at=?,lease_expires_at=?
+			WHERE id=? AND exam_attempt_id=? AND state='active' AND renewal_sequence=?`, participation.RenewalSequence,
+			participation.UpdatedAt, participation.LeaseExpiresAt, input.ParticipationID.String(), input.AttemptID.String(), row.RenewalSequence)
+		if err != nil {
+			return nil, fmt.Errorf("renew Attempt Participation: %w", err)
+		}
+		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
+			if rowsErr != nil {
+				return nil, fmt.Errorf("inspect Attempt Participation renewal: %w", rowsErr)
+			}
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
+		}
+		return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ParticipationID: input.ParticipationID,
+			Generation: participation.Generation, AcceptedSequence: participation.RenewalSequence,
+			DatabaseTime: participation.UpdatedAt, LeaseExpiresAt: participation.LeaseExpiresAt}, nil
+	})
+}
+
+type participationExpiryDueRow struct {
+	ExamID          string    `db:"exam_id"`
+	SittingID       string    `db:"exam_sitting_id"`
+	ClassID         string    `db:"class_id"`
+	CandidateID     string    `db:"candidate_user_id"`
+	AttemptID       string    `db:"attempt_id"`
+	ParticipationID string    `db:"participation_id"`
+	Generation      int64     `db:"generation"`
+	LeaseExpiresAt  time.Time `db:"lease_expires_at"`
+}
+
+const participationExpiryDueSelect = `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,
+	a.id AS attempt_id,p.id AS participation_id,p.generation,p.lease_expires_at
+	FROM exam_attempt_participations p JOIN exam_attempts a ON a.id=p.exam_attempt_id
+	JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id`
+
+func (s *sqlExamAttemptStore) ResolveParticipationExpiry(ctx context.Context, attemptID model.ExamAttemptID,
+	participationID model.AttemptParticipationID, generation int64,
+) (*store.ExamAttemptParticipationExpiryDue, error) {
+	if !attemptID.IsValid() || !participationID.IsValid() || generation < 1 {
+		return nil, store.NewErrInvalidInput("attempt_participation", "expiry_identity", nil)
+	}
+	var row participationExpiryDueRow
+	err := s.GetMaster().Get(ctx, &row, participationExpiryDueSelect+`
+		WHERE a.id=? AND p.id=? AND p.generation=? AND p.state='active' AND p.lease_expires_at<=statement_timestamp()`,
+		attemptID.String(), participationID.String(), generation)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("resolve expired Attempt Participation: %w", err)
+	}
+	return row.expiryDue()
+}
+
+func (s *sqlExamAttemptStore) ListExpiredParticipations(ctx context.Context, limit int) ([]store.ExamAttemptParticipationExpiryDue, error) {
+	if limit < 1 || limit > 200 {
+		return nil, store.NewErrInvalidInput("attempt_participation", "expiry_limit", limit)
+	}
+	var rows []participationExpiryDueRow
+	if err := s.GetMaster().Select(ctx, &rows, participationExpiryDueSelect+`
+		WHERE p.state='active' AND p.lease_expires_at<=statement_timestamp()
+		ORDER BY p.lease_expires_at,p.id LIMIT ?`, limit); err != nil {
+		return nil, fmt.Errorf("list expired Attempt Participations: %w", err)
+	}
+	result := make([]store.ExamAttemptParticipationExpiryDue, 0, len(rows))
+	for _, row := range rows {
+		due, err := row.expiryDue()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *due)
+	}
+	return result, nil
+}
+
+func (row participationExpiryDueRow) expiryDue() (*store.ExamAttemptParticipationExpiryDue, error) {
+	examID, err := model.ParseExamID(row.ExamID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_participation", "exam_id", err)
+	}
+	sittingID, err := model.ParseExamSittingID(row.SittingID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_participation", "exam_sitting_id", err)
+	}
+	classID, err := model.ParseClassID(row.ClassID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_participation", "class_id", err)
+	}
+	candidateID, err := model.ParseUserID(row.CandidateID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_participation", "candidate_user_id", err)
+	}
+	attemptID, err := model.ParseExamAttemptID(row.AttemptID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_participation", "exam_attempt_id", err)
+	}
+	participationID, err := model.ParseAttemptParticipationID(row.ParticipationID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_participation", "id", err)
+	}
+	return &store.ExamAttemptParticipationExpiryDue{ExamID: examID, SittingID: sittingID, ClassID: classID,
+		CandidateUserID: candidateID, AttemptID: attemptID, ParticipationID: participationID,
+		Generation: row.Generation, LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt)}, nil
+}
+
+type participationExpiryLockRow struct {
+	participationExpiryDueRow
+	AttemptState           string         `db:"attempt_state"`
+	AdmissionRevisionID    string         `db:"admission_revision_id"`
+	ParticipationState     string         `db:"participation_state"`
+	CredentialHash         string         `db:"continuity_credential_hash"`
+	AttemptCreatedAt       time.Time      `db:"attempt_created_at"`
+	AttemptUpdatedAt       time.Time      `db:"attempt_updated_at"`
+	StartedAt              time.Time      `db:"started_at"`
+	ParticipationUpdatedAt time.Time      `db:"participation_updated_at"`
+	SubmittedAt            sql.NullTime   `db:"submitted_at"`
+	EndedAt                sql.NullTime   `db:"ended_at"`
+	AttemptRevision        int64          `db:"attempt_revision"`
+	RenewalSequence        int64          `db:"renewal_sequence"`
+	EndReason              sql.NullString `db:"end_reason"`
+	DatabaseNow            time.Time      `db:"database_now"`
+}
+
+func (s *sqlExamAttemptStore) ExpireParticipation(ctx context.Context, input *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
+	if input == nil || !input.AttemptID.IsValid() || !input.ParticipationID.IsValid() || input.Generation < 1 ||
+		!input.EvidenceID.IsValid() || !input.FlagID.IsValid() || !input.SuspensionID.IsValid() ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("attempt_participation", "expiry", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "expire Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationExpiryResult, error) {
+		row, err := lockParticipationExpiry(ctx, tx, input.AttemptID, input.ParticipationID)
+		if err != nil {
+			return nil, err
+		}
+		if row.Generation != input.Generation {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
+		}
+		if row.ParticipationState == string(model.AttemptParticipationEnded) && row.EndReason.String == string(model.AttemptParticipationEndLeaseExpired) {
+			result, loadErr := loadParticipationExpiryResult(ctx, tx, row, true)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			if auditErr := completeParticipationExpiryAudit(ctx, tx, result, input.AuditEventID, input.AuditAt); auditErr != nil {
+				return nil, auditErr
+			}
+			return result, nil
+		}
+		var connectionID sql.NullString
+		if err = tx.Get(ctx, &connectionID, `SELECT id FROM exam_attempt_connections
+			WHERE exam_attempt_id=? AND participation_id=? AND state='open' FOR UPDATE`, input.AttemptID.String(), input.ParticipationID.String()); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("lock expired Attempt Connection: %w", err)
+		}
+		if err = tx.Get(ctx, &row.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
+			return nil, fmt.Errorf("read Attempt Participation expiry decision time: %w", err)
+		}
+		if row.ParticipationState != string(model.AttemptParticipationActive) || row.DatabaseNow.Before(row.LeaseExpiresAt) {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_not_expired", nil)
+		}
+		if row.AttemptState != string(model.ExamAttemptActive) {
+			return nil, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+		}
+		attempt, participation, err := row.domain()
+		if err != nil {
+			return nil, err
+		}
+		if err = attempt.Suspend(row.DatabaseNow); err != nil {
+			return nil, fmt.Errorf("suspend Exam Attempt: %w", err)
+		}
+		if err = participation.End(model.AttemptParticipationEndLeaseExpired, row.DatabaseNow); err != nil {
+			return nil, fmt.Errorf("end expired Attempt Participation: %w", err)
+		}
+		flag, err := model.NewIntegrityFlag(input.FlagID, input.AttemptID, input.Generation, model.IntegrityPolicyConnectionLoss, row.DatabaseNow)
+		if err != nil {
+			return nil, err
+		}
+		evidence, err := model.NewConnectionLossEvidence(input.EvidenceID, input.AttemptID, input.ParticipationID,
+			input.FlagID, input.Generation, row.LeaseExpiresAt, row.DatabaseNow)
+		if err != nil {
+			return nil, err
+		}
+		suspension, err := model.NewPolicyAttemptSuspension(input.SuspensionID, input.AttemptID, input.ParticipationID,
+			input.FlagID, input.Generation, model.AttemptSuspensionCandidateReasonSecureContinuityLost, row.DatabaseNow)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE exam_attempts SET state=?,updated_at=?,revision=? WHERE id=? AND revision=?`,
+			attempt.State, attempt.UpdatedAt, attempt.Revision, input.AttemptID.String(), row.AttemptRevision); err != nil {
+			return nil, fmt.Errorf("suspend Exam Attempt: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE exam_attempt_participations SET state=?,updated_at=?,ended_at=?,end_reason=? WHERE id=?`,
+			participation.State, participation.UpdatedAt, participation.EndedAt.Time, participation.EndReason, input.ParticipationID.String()); err != nil {
+			return nil, fmt.Errorf("end Attempt Participation: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE exam_attempt_connections SET state='closed',closed_at=?,close_reason='lease_expired'
+			WHERE exam_attempt_id=? AND participation_id=? AND state='open'`, row.DatabaseNow, input.AttemptID.String(), input.ParticipationID.String()); err != nil {
+			return nil, fmt.Errorf("close expired Attempt Connection: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO integrity_flags (id,exam_attempt_id,generation,policy_kind,state,created_at) VALUES (?,?,?,?,?,?)`,
+			flag.ID.String(), flag.AttemptID.String(), flag.Generation, flag.Kind, flag.State, flag.CreatedAt); err != nil {
+			return nil, translateError("integrity_flag", flag.ID.String(), err)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO integrity_evidence (id,exam_attempt_id,participation_id,integrity_flag_id,generation,policy_kind,observed_at,recorded_at)
+			VALUES (?,?,?,?,?,?,?,?)`, evidence.ID.String(), evidence.AttemptID.String(), evidence.ParticipationID.String(), evidence.FlagID.String(),
+			evidence.Generation, evidence.Kind, evidence.ObservedAt, evidence.RecordedAt); err != nil {
+			return nil, translateError("integrity_evidence", evidence.ID.String(), err)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_suspensions (id,exam_attempt_id,participation_id,integrity_flag_id,generation,expiry_attempt_revision,state,source,candidate_reason,started_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?)`, suspension.ID.String(), suspension.AttemptID.String(), suspension.ParticipationID.String(), suspension.FlagID.String(),
+			suspension.Generation, attempt.Revision, suspension.State, suspension.Source, suspension.CandidateReason, suspension.StartedAt); err != nil {
+			return nil, translateError("attempt_suspension", suspension.ID.String(), err)
+		}
+		row.AttemptState, row.AttemptUpdatedAt, row.AttemptRevision = string(attempt.State), attempt.UpdatedAt, attempt.Revision
+		row.ParticipationState, row.ParticipationUpdatedAt = string(participation.State), participation.UpdatedAt
+		row.EndedAt, row.EndReason = sql.NullTime{Time: participation.EndedAt.Time, Valid: true}, sql.NullString{String: string(participation.EndReason), Valid: true}
+		result, err := loadParticipationExpiryResult(ctx, tx, row, false)
+		if err != nil {
+			return nil, err
+		}
+		if err = completeParticipationExpiryAudit(ctx, tx, result, input.AuditEventID, input.AuditAt); err != nil {
+			return nil, err
+		}
+		return result, nil
+	})
+}
+
+func lockParticipationExpiry(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID,
+	participationID model.AttemptParticipationID,
+) (participationExpiryLockRow, error) {
+	var row participationExpiryLockRow
+	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.id AS attempt_id,
+		p.id AS participation_id,p.generation,p.lease_expires_at,a.state AS attempt_state,a.admission_revision_id,
+		a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,a.revision AS attempt_revision,
+		p.state AS participation_state,p.renewal_sequence,p.continuity_credential_hash,p.started_at,
+		p.updated_at AS participation_updated_at,p.ended_at,p.end_reason
+		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
+		JOIN exam_attempt_participations p ON p.exam_attempt_id=a.id
+		WHERE a.id=? AND p.id=? FOR UPDATE OF a,p`, attemptID.String(), participationID.String())
+	if err != nil {
+		return row, translateError("attempt_participation", participationID.String(), err)
+	}
+	return row, nil
+}
+
+func (row participationExpiryLockRow) domain() (*model.ExamAttempt, *model.AttemptParticipation, error) {
+	due, err := row.expiryDue()
+	if err != nil {
+		return nil, nil, err
+	}
+	revisionID, err := model.ParseExamRevisionID(row.AdmissionRevisionID)
+	if err != nil {
+		return nil, nil, invalidPersistedState("exam_attempt", "admission_revision_id", err)
+	}
+	attempt := &model.ExamAttempt{ID: due.AttemptID, ExamID: due.ExamID, SittingID: due.SittingID,
+		CandidateUserID: due.CandidateUserID, AdmissionRevisionID: revisionID, State: model.ExamAttemptState(row.AttemptState),
+		CreatedAt: model.TimeUTC(row.AttemptCreatedAt), UpdatedAt: model.TimeUTC(row.AttemptUpdatedAt),
+		SubmittedAt: OptionalTimeFromNullTime(row.SubmittedAt), Revision: row.AttemptRevision}
+	if err = attempt.Validate(); err != nil {
+		return nil, nil, invalidPersistedState("exam_attempt", "value", err)
+	}
+	participation := &model.AttemptParticipation{ID: due.ParticipationID, AttemptID: due.AttemptID,
+		State: model.AttemptParticipationState(row.ParticipationState), Generation: row.Generation,
+		RenewalSequence: row.RenewalSequence, ContinuityCredentialHash: row.CredentialHash,
+		StartedAt: model.TimeUTC(row.StartedAt), UpdatedAt: model.TimeUTC(row.ParticipationUpdatedAt),
+		LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
+		EndReason: model.AttemptParticipationEndReason(row.EndReason.String)}
+	if err = participation.Validate(); err != nil {
+		return nil, nil, invalidPersistedState("attempt_participation", "value", err)
+	}
+	return attempt, participation, nil
+}
+
+type participationExpiryRecordRow struct {
+	FlagID                string         `db:"flag_id"`
+	FlagKind              string         `db:"flag_kind"`
+	FlagState             string         `db:"flag_state"`
+	EvidenceID            string         `db:"evidence_id"`
+	EvidenceKind          string         `db:"evidence_kind"`
+	SuspensionID          string         `db:"suspension_id"`
+	SuspensionState       string         `db:"suspension_state"`
+	ExpiryAttemptRevision int64          `db:"expiry_attempt_revision"`
+	SuspensionSource      string         `db:"suspension_source"`
+	CandidateReason       string         `db:"candidate_reason"`
+	ReallowedByUserID     string         `db:"reallowed_by_user_id"`
+	FlagCreatedAt         time.Time      `db:"flag_created_at"`
+	ObservedAt            time.Time      `db:"observed_at"`
+	RecordedAt            time.Time      `db:"recorded_at"`
+	SuspensionStartedAt   time.Time      `db:"suspension_started_at"`
+	SuspensionEndedAt     sql.NullTime   `db:"ended_at"`
+	PrivateReason         sql.NullString `db:"private_reason"`
+}
+
+func loadParticipationExpiryResult(ctx context.Context, tx *sqlxTxWrapper, row participationExpiryLockRow,
+	replayed bool,
+) (*store.ExamAttemptParticipationExpiryResult, error) {
+	currentAttempt, participation, err := row.domain()
+	if err != nil {
+		return nil, err
+	}
+	due, err := row.expiryDue()
+	if err != nil {
+		return nil, err
+	}
+	var records participationExpiryRecordRow
+	err = tx.Get(ctx, &records, `SELECT f.id AS flag_id,f.policy_kind AS flag_kind,f.state AS flag_state,
+		f.created_at AS flag_created_at,e.id AS evidence_id,e.policy_kind AS evidence_kind,e.observed_at,e.recorded_at,
+		su.id AS suspension_id,su.state AS suspension_state,su.expiry_attempt_revision,su.source AS suspension_source,su.candidate_reason,
+		su.started_at AS suspension_started_at,su.ended_at,COALESCE(su.reallowed_by_user_id,'') AS reallowed_by_user_id,su.private_reason
+		FROM integrity_flags f JOIN integrity_evidence e ON e.integrity_flag_id=f.id
+		JOIN exam_attempt_suspensions su ON su.integrity_flag_id=f.id
+		WHERE f.exam_attempt_id=? AND f.generation=? AND f.policy_kind='connection_loss'`, row.AttemptID, row.Generation)
+	if err != nil {
+		return nil, translateError("attempt_expiry", row.AttemptID, err)
+	}
+	flagID, err := model.ParseIntegrityFlagID(records.FlagID)
+	if err != nil {
+		return nil, invalidPersistedState("integrity_flag", "id", err)
+	}
+	evidenceID, err := model.ParseIntegrityEvidenceID(records.EvidenceID)
+	if err != nil {
+		return nil, invalidPersistedState("integrity_evidence", "id", err)
+	}
+	suspensionID, err := model.ParseAttemptSuspensionID(records.SuspensionID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "id", err)
+	}
+	flag := &model.IntegrityFlag{ID: flagID, AttemptID: due.AttemptID, Generation: row.Generation,
+		Kind: model.IntegrityPolicyKind(records.FlagKind), State: model.IntegrityFlagState(records.FlagState), CreatedAt: model.TimeUTC(records.FlagCreatedAt)}
+	if err = flag.Validate(); err != nil {
+		return nil, invalidPersistedState("integrity_flag", "value", err)
+	}
+	evidence := &model.IntegrityEvidence{ID: evidenceID, AttemptID: due.AttemptID, ParticipationID: due.ParticipationID,
+		FlagID: flagID, Generation: row.Generation, Kind: model.IntegrityPolicyKind(records.EvidenceKind),
+		ObservedAt: model.TimeUTC(records.ObservedAt), RecordedAt: model.TimeUTC(records.RecordedAt)}
+	if err = evidence.Validate(); err != nil {
+		return nil, invalidPersistedState("integrity_evidence", "value", err)
+	}
+	var reallowed model.UserID
+	if records.ReallowedByUserID != "" {
+		reallowed, err = model.ParseUserID(records.ReallowedByUserID)
+		if err != nil {
+			return nil, invalidPersistedState("attempt_suspension", "reallowed_by_user_id", err)
+		}
+	}
+	currentSuspension := &model.AttemptSuspension{ID: suspensionID, AttemptID: due.AttemptID, ParticipationID: due.ParticipationID,
+		FlagID: flagID, Generation: row.Generation, State: model.AttemptSuspensionState(records.SuspensionState),
+		Source: model.AttemptSuspensionSource(records.SuspensionSource), CandidateReason: model.AttemptSuspensionCandidateReason(records.CandidateReason),
+		StartedAt: model.TimeUTC(records.SuspensionStartedAt), EndedAt: OptionalTimeFromNullTime(records.SuspensionEndedAt),
+		ReallowedByUserID: reallowed, PrivateReason: records.PrivateReason.String}
+	if err = currentSuspension.Validate(); err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "value", err)
+	}
+	historicalSuspension, err := model.NewPolicyAttemptSuspension(suspensionID, due.AttemptID, due.ParticipationID,
+		flagID, row.Generation, model.AttemptSuspensionCandidateReason(records.CandidateReason), records.SuspensionStartedAt)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "expiry_value", err)
+	}
+	attempt := *currentAttempt
+	attempt.State, attempt.UpdatedAt, attempt.SubmittedAt, attempt.Revision = model.ExamAttemptSuspended,
+		model.TimeUTC(records.SuspensionStartedAt), model.OptionalTime{}, records.ExpiryAttemptRevision
+	if err = attempt.Validate(); err != nil {
+		return nil, invalidPersistedState("exam_attempt", "expiry_value", err)
+	}
+	suspension := &store.ExamAttemptSuspensionView{ID: historicalSuspension.ID, AttemptID: historicalSuspension.AttemptID,
+		ParticipationID: historicalSuspension.ParticipationID, FlagID: historicalSuspension.FlagID, Generation: historicalSuspension.Generation,
+		State: historicalSuspension.State, Source: historicalSuspension.Source, CandidateReason: historicalSuspension.CandidateReason,
+		StartedAt: historicalSuspension.StartedAt}
+	var connectionRow attemptConnectionRow
+	err = tx.Get(ctx, &connectionRow, `SELECT id,exam_attempt_id,participation_id,session_id,state,opened_at,closed_at,close_reason
+		FROM exam_attempt_connections WHERE participation_id=? ORDER BY opened_at DESC,id DESC LIMIT 1`, row.ParticipationID)
+	var connection *store.ExamAttemptManagerConnection
+	connectionClosed := false
+	if err == nil {
+		id, parseErr := model.ParseAttemptConnectionID(connectionRow.ID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("attempt_connection", "id", parseErr)
+		}
+		attemptID, parseErr := model.ParseExamAttemptID(connectionRow.AttemptID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("attempt_connection", "exam_attempt_id", parseErr)
+		}
+		participationID, parseErr := model.ParseAttemptParticipationID(connectionRow.ParticipationID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("attempt_connection", "participation_id", parseErr)
+		}
+		sessionID, parseErr := model.ParseSessionID(connectionRow.SessionID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("attempt_connection", "session_id", parseErr)
+		}
+		domainConnection := &model.AttemptConnection{ID: id, AttemptID: attemptID, ParticipationID: participationID,
+			SessionID: sessionID, State: model.AttemptConnectionState(connectionRow.State), OpenedAt: model.TimeUTC(connectionRow.OpenedAt),
+			ClosedAt: OptionalTimeFromNullTime(connectionRow.ClosedAt), CloseReason: model.AttemptConnectionCloseReason(connectionRow.CloseReason.String)}
+		if attemptID != due.AttemptID || participationID != due.ParticipationID {
+			return nil, invalidPersistedState("attempt_connection", "ownership", errors.New("mismatched Attempt Connection ownership"))
+		}
+		if parseErr = domainConnection.Validate(); parseErr != nil {
+			return nil, invalidPersistedState("attempt_connection", "value", parseErr)
+		}
+		connectionClosed = domainConnection.CloseReason == model.AttemptConnectionCloseLeaseExpired
+		connection = &store.ExamAttemptManagerConnection{ID: id, State: domainConnection.State,
+			OpenedAt: domainConnection.OpenedAt, ClosedAt: domainConnection.ClosedAt, CloseReason: domainConnection.CloseReason}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("load expired Attempt Connection: %w", err)
+	}
+	return &store.ExamAttemptParticipationExpiryResult{ExamID: due.ExamID, SittingID: due.SittingID, ClassID: due.ClassID,
+		CandidateUserID: due.CandidateUserID, Attempt: &attempt,
+		Participation: &store.ExamAttemptParticipationView{ID: participation.ID, AttemptID: participation.AttemptID, State: participation.State,
+			Generation: participation.Generation, RenewalSequence: participation.RenewalSequence, StartedAt: participation.StartedAt,
+			UpdatedAt: participation.UpdatedAt, LeaseExpiresAt: participation.LeaseExpiresAt, EndedAt: participation.EndedAt, EndReason: participation.EndReason},
+		Connection: connection, ConnectionClosed: connectionClosed, Evidence: evidence, Flag: flag, Suspension: suspension,
+		DatabaseTime: model.TimeUTC(records.FlagCreatedAt), Replayed: replayed}, nil
+}
+
+func completeParticipationExpiryAudit(ctx context.Context, tx *sqlxTxWrapper, result *store.ExamAttemptParticipationExpiryResult,
+	auditID string, auditAt int64,
+) error {
+	data, err := model.EncodeAuditData(map[string]any{"exam_id": result.ExamID.String(), "exam_sitting_id": result.SittingID.String(),
+		"exam_attempt_id": result.Attempt.ID.String(), "participation_id": result.Participation.ID.String(),
+		"generation": result.Participation.Generation, "integrity_evidence_id": result.Evidence.ID.String(),
+		"integrity_flag_id": result.Flag.ID.String(), "suspension_id": result.Suspension.ID.String(), "replayed": result.Replayed})
+	if err != nil {
+		return err
+	}
+	if _, err = completeAuditEvent(ctx, tx, auditID, model.AuditStatusSuccess, "", data, auditAt); err != nil {
+		return fmt.Errorf("complete Attempt Participation expiry audit: %w", err)
+	}
+	return nil
+}
+
+type examAttemptReallowOutcomeV1 struct {
+	ExamID, SittingID, ClassID, CandidateID, AttemptID, SuspensionID string
+}
+
+func (s *sqlExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.ExamAttemptReallow,
+	command *store.CommandIdempotency,
+) (*store.ExamAttemptReallowResult, error) {
+	if input == nil || command == nil || command.Operation != store.ExamAttemptReallowOperation || command.OutcomeVersion != 1 ||
+		command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
+		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 || input.ChangedAt.IsZero() ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return nil, store.NewErrInvalidInput("exam_attempt", "reallow", nil)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "re-allow Exam Attempt", idempotentMutation[examAttemptReallowOutcomeV1]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (examAttemptReallowOutcomeV1, error) {
+			return reallowExamAttempt(ctx, tx, input)
+		},
+		encode: func(value examAttemptReallowOutcomeV1) ([]byte, error) { return encodeCommandOutcome(value) },
+		decode: func(version int, encoded []byte) (examAttemptReallowOutcomeV1, error) {
+			var value examAttemptReallowOutcomeV1
+			if version != 1 {
+				return value, fmt.Errorf("unsupported Exam Attempt re-allow outcome version %d", version)
+			}
+			return value, decodeCommandOutcome(encoded, &value)
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcomeV1, originalAuditID string) error {
+			if err := guardExamAttemptReallowAuthority(ctx, tx, input, false); err != nil {
+				return err
+			}
+			return completeExamAttemptReallowAudit(ctx, tx, value, true, originalAuditID, input.AuditEventID, input.AuditAt)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	aggregate, err := s.loadExamAttemptReallowResult(ctx, result.Value)
+	if err != nil {
+		return nil, err
+	}
+	aggregate.Replayed = result.Replayed
+	return aggregate, nil
+}
+
+type examAttemptReallowGuard struct {
+	AttemptState   string `db:"attempt_state"`
+	SittingState   string `db:"sitting_state"`
+	ActorIsManager bool   `db:"actor_is_manager"`
+}
+
+func guardExamAttemptReallowAuthority(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow,
+	lock bool,
+) error {
+	var guard examAttemptReallowGuard
+	query := `SELECT a.state AS attempt_state,s.state AS sitting_state,
+		EXISTS (SELECT 1 FROM exam_managers m WHERE m.exam_id=a.exam_id AND m.user_id=?) AS actor_is_manager
+		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
+		WHERE a.id=? AND a.exam_id=? AND a.exam_sitting_id=?`
+	if lock {
+		query += ` FOR UPDATE OF a,s`
+	}
+	err := tx.Get(ctx, &guard, query, input.ActorUserID.String(), input.AttemptID.String(), input.ExamID.String(), input.SittingID.String())
+	if err != nil {
+		return translateError("exam_attempt", input.AttemptID.String(), err)
+	}
+	if !guard.ActorIsManager && !input.ManagerOverride {
+		return store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if guard.SittingState == string(model.ExamSittingClosing) || guard.SittingState == string(model.ExamSittingClosed) {
+		return store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
+	}
+	return nil
+}
+
+func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow) (examAttemptReallowOutcomeV1, error) {
+	var zero examAttemptReallowOutcomeV1
+	if err := guardExamAttemptReallowAuthority(ctx, tx, input, true); err != nil {
+		return zero, err
+	}
+	var row struct {
+		ExamID              string         `db:"exam_id"`
+		SittingID           string         `db:"exam_sitting_id"`
+		ClassID             string         `db:"class_id"`
+		CandidateID         string         `db:"candidate_user_id"`
+		AdmissionRevisionID string         `db:"admission_revision_id"`
+		AttemptState        string         `db:"attempt_state"`
+		AttemptCreatedAt    time.Time      `db:"attempt_created_at"`
+		AttemptUpdatedAt    time.Time      `db:"attempt_updated_at"`
+		SubmittedAt         sql.NullTime   `db:"submitted_at"`
+		AttemptRevision     int64          `db:"attempt_revision"`
+		ParticipationID     string         `db:"participation_id"`
+		FlagID              string         `db:"flag_id"`
+		SuspensionState     string         `db:"suspension_state"`
+		Source              string         `db:"source"`
+		CandidateReason     string         `db:"candidate_reason"`
+		Generation          int64          `db:"generation"`
+		StartedAt           time.Time      `db:"started_at"`
+		EndedAt             sql.NullTime   `db:"ended_at"`
+		ReallowedByUserID   sql.NullString `db:"reallowed_by_user_id"`
+		PrivateReason       sql.NullString `db:"private_reason"`
+	}
+	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.admission_revision_id,
+		a.state AS attempt_state,a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,
+		a.revision AS attempt_revision,su.participation_id,su.integrity_flag_id AS flag_id,su.state AS suspension_state,
+		su.source,su.candidate_reason,su.generation,su.started_at,su.ended_at,su.reallowed_by_user_id,su.private_reason
+		FROM exam_attempt_suspensions su JOIN exam_attempts a ON a.id=su.exam_attempt_id
+		JOIN exam_sittings s ON s.id=a.exam_sitting_id WHERE su.id=? AND su.exam_attempt_id=? FOR UPDATE OF su`,
+		input.SuspensionID.String(), input.AttemptID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return zero, store.NewErrConflict("attempt_suspension", "attempt_suspension_active", nil)
+	}
+	if err != nil {
+		return zero, fmt.Errorf("lock Attempt Suspension: %w", err)
+	}
+	if row.SuspensionState != string(model.AttemptSuspensionActive) {
+		return zero, store.NewErrConflict("attempt_suspension", "attempt_suspension_active", nil)
+	}
+	if row.AttemptRevision != input.ExpectedAttemptRevision {
+		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_revision", nil)
+	}
+	if row.AttemptState != string(model.ExamAttemptSuspended) {
+		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+	}
+	attemptID := input.AttemptID
+	revisionID, err := model.ParseExamRevisionID(row.AdmissionRevisionID)
+	if err != nil {
+		return zero, invalidPersistedState("exam_attempt", "admission_revision_id", err)
+	}
+	candidateID, err := model.ParseUserID(row.CandidateID)
+	if err != nil {
+		return zero, invalidPersistedState("exam_attempt", "candidate_user_id", err)
+	}
+	participationID, err := model.ParseAttemptParticipationID(row.ParticipationID)
+	if err != nil {
+		return zero, invalidPersistedState("attempt_suspension", "participation_id", err)
+	}
+	flagID, err := model.ParseIntegrityFlagID(row.FlagID)
+	if err != nil {
+		return zero, invalidPersistedState("attempt_suspension", "integrity_flag_id", err)
+	}
+	attempt := &model.ExamAttempt{ID: attemptID, ExamID: input.ExamID, SittingID: input.SittingID, CandidateUserID: candidateID,
+		AdmissionRevisionID: revisionID, State: model.ExamAttemptState(row.AttemptState), CreatedAt: model.TimeUTC(row.AttemptCreatedAt),
+		UpdatedAt: model.TimeUTC(row.AttemptUpdatedAt), SubmittedAt: OptionalTimeFromNullTime(row.SubmittedAt), Revision: row.AttemptRevision}
+	suspension := &model.AttemptSuspension{ID: input.SuspensionID, AttemptID: attemptID, ParticipationID: participationID,
+		FlagID: flagID, Generation: row.Generation, State: model.AttemptSuspensionState(row.SuspensionState),
+		Source: model.AttemptSuspensionSource(row.Source), CandidateReason: model.AttemptSuspensionCandidateReason(row.CandidateReason),
+		StartedAt: model.TimeUTC(row.StartedAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt)}
+	if err = attempt.Validate(); err != nil {
+		return zero, invalidPersistedState("exam_attempt", "value", err)
+	}
+	if err = suspension.Validate(); err != nil {
+		return zero, invalidPersistedState("attempt_suspension", "value", err)
+	}
+	if err = suspension.Reallow(input.ActorUserID, input.PrivateReason, input.ChangedAt); err != nil {
+		return zero, store.NewErrInvalidInput("attempt_suspension", "private_reason", nil)
+	}
+	if err = attempt.Reallow(input.ChangedAt); err != nil {
+		return zero, fmt.Errorf("re-allow Exam Attempt: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_suspensions SET state='closed',ended_at=?,reallowed_by_user_id=?,private_reason=? WHERE id=? AND state='active'`,
+		suspension.EndedAt.Time, suspension.ReallowedByUserID.String(), suspension.PrivateReason, suspension.ID.String()); err != nil {
+		return zero, fmt.Errorf("close Attempt Suspension: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempts SET state='active',updated_at=?,revision=? WHERE id=? AND revision=?`,
+		attempt.UpdatedAt, attempt.Revision, attempt.ID.String(), row.AttemptRevision); err != nil {
+		return zero, fmt.Errorf("re-allow Exam Attempt: %w", err)
+	}
+	value := examAttemptReallowOutcomeV1{ExamID: input.ExamID.String(), SittingID: input.SittingID.String(), ClassID: row.ClassID,
+		CandidateID: row.CandidateID, AttemptID: input.AttemptID.String(), SuspensionID: input.SuspensionID.String()}
+	if err = completeExamAttemptReallowAudit(ctx, tx, value, false, "", input.AuditEventID, input.AuditAt); err != nil {
+		return zero, err
+	}
+	return value, nil
+}
+
+func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcomeV1,
+	replayed bool, originalAuditID, auditID string, auditAt int64,
+) error {
+	data := map[string]any{"exam_id": value.ExamID, "exam_sitting_id": value.SittingID, "exam_attempt_id": value.AttemptID,
+		"suspension_id": value.SuspensionID, "replayed": replayed}
+	if replayed {
+		data["original_audit_event_id"] = originalAuditID
+	}
+	encoded, err := model.EncodeAuditData(data)
+	if err != nil {
+		return err
+	}
+	if _, err = completeAuditEvent(ctx, tx, auditID, model.AuditStatusSuccess, "", encoded, auditAt); err != nil {
+		return fmt.Errorf("complete Exam Attempt re-allow audit: %w", err)
+	}
+	return nil
+}
+
+func (s *sqlExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, value examAttemptReallowOutcomeV1) (*store.ExamAttemptReallowResult, error) {
+	var row struct {
+		ExamID              string       `db:"exam_id"`
+		SittingID           string       `db:"exam_sitting_id"`
+		ClassID             string       `db:"class_id"`
+		CandidateID         string       `db:"candidate_user_id"`
+		AttemptID           string       `db:"attempt_id"`
+		AdmissionRevisionID string       `db:"admission_revision_id"`
+		AttemptState        string       `db:"attempt_state"`
+		AttemptCreatedAt    time.Time    `db:"attempt_created_at"`
+		AttemptUpdatedAt    time.Time    `db:"attempt_updated_at"`
+		SubmittedAt         sql.NullTime `db:"submitted_at"`
+		AttemptRevision     int64        `db:"attempt_revision"`
+		SuspensionID        string       `db:"suspension_id"`
+		ParticipationID     string       `db:"participation_id"`
+		FlagID              string       `db:"flag_id"`
+		SuspensionState     string       `db:"suspension_state"`
+		Source              string       `db:"source"`
+		CandidateReason     string       `db:"candidate_reason"`
+		Generation          int64        `db:"generation"`
+		StartedAt           time.Time    `db:"started_at"`
+		EndedAt             sql.NullTime `db:"ended_at"`
+		ReallowedByUserID   string       `db:"reallowed_by_user_id"`
+		PrivateReason       string       `db:"private_reason"`
+	}
+	err := s.GetMaster().Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.id AS attempt_id,a.admission_revision_id,
+		a.state AS attempt_state,a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,a.revision AS attempt_revision,
+		su.id AS suspension_id,su.participation_id,su.integrity_flag_id AS flag_id,su.state AS suspension_state,su.source,
+		su.candidate_reason,su.generation,su.started_at,su.ended_at,su.reallowed_by_user_id,su.private_reason
+		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id JOIN exam_attempt_suspensions su ON su.exam_attempt_id=a.id
+		WHERE a.id=? AND su.id=?`, value.AttemptID, value.SuspensionID)
+	if err != nil {
+		return nil, translateError("attempt_suspension", value.SuspensionID, err)
+	}
+	examID, err := model.ParseExamID(row.ExamID)
+	if err != nil {
+		return nil, invalidPersistedState("exam_attempt", "exam_id", err)
+	}
+	sittingID, err := model.ParseExamSittingID(row.SittingID)
+	if err != nil {
+		return nil, invalidPersistedState("exam_attempt", "exam_sitting_id", err)
+	}
+	classID, err := model.ParseClassID(row.ClassID)
+	if err != nil {
+		return nil, invalidPersistedState("exam_attempt", "class_id", err)
+	}
+	candidateID, err := model.ParseUserID(row.CandidateID)
+	if err != nil {
+		return nil, invalidPersistedState("exam_attempt", "candidate_user_id", err)
+	}
+	attemptID, err := model.ParseExamAttemptID(row.AttemptID)
+	if err != nil {
+		return nil, invalidPersistedState("exam_attempt", "id", err)
+	}
+	revisionID, err := model.ParseExamRevisionID(row.AdmissionRevisionID)
+	if err != nil {
+		return nil, invalidPersistedState("exam_attempt", "admission_revision_id", err)
+	}
+	suspensionID, err := model.ParseAttemptSuspensionID(row.SuspensionID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "id", err)
+	}
+	participationID, err := model.ParseAttemptParticipationID(row.ParticipationID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "participation_id", err)
+	}
+	flagID, err := model.ParseIntegrityFlagID(row.FlagID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "integrity_flag_id", err)
+	}
+	reallowedID, err := model.ParseUserID(row.ReallowedByUserID)
+	if err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "reallowed_by_user_id", err)
+	}
+	attempt := &model.ExamAttempt{ID: attemptID, ExamID: examID, SittingID: sittingID, CandidateUserID: candidateID,
+		AdmissionRevisionID: revisionID, State: model.ExamAttemptState(row.AttemptState), CreatedAt: model.TimeUTC(row.AttemptCreatedAt),
+		UpdatedAt: model.TimeUTC(row.AttemptUpdatedAt), SubmittedAt: OptionalTimeFromNullTime(row.SubmittedAt), Revision: row.AttemptRevision}
+	if err = attempt.Validate(); err != nil {
+		return nil, invalidPersistedState("exam_attempt", "value", err)
+	}
+	domainSuspension := &model.AttemptSuspension{ID: suspensionID, AttemptID: attemptID, ParticipationID: participationID,
+		FlagID: flagID, Generation: row.Generation, State: model.AttemptSuspensionState(row.SuspensionState),
+		Source: model.AttemptSuspensionSource(row.Source), CandidateReason: model.AttemptSuspensionCandidateReason(row.CandidateReason),
+		StartedAt: model.TimeUTC(row.StartedAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
+		ReallowedByUserID: reallowedID, PrivateReason: row.PrivateReason}
+	if err = domainSuspension.Validate(); err != nil {
+		return nil, invalidPersistedState("attempt_suspension", "value", err)
+	}
+	return &store.ExamAttemptReallowResult{ExamID: examID, SittingID: sittingID, ClassID: classID, CandidateUserID: candidateID,
+		Attempt: attempt,
+		Suspension: &store.ExamAttemptSuspensionView{ID: domainSuspension.ID, AttemptID: domainSuspension.AttemptID,
+			ParticipationID: domainSuspension.ParticipationID, FlagID: domainSuspension.FlagID, Generation: domainSuspension.Generation,
+			State: domainSuspension.State, Source: domainSuspension.Source, CandidateReason: domainSuspension.CandidateReason,
+			StartedAt: domainSuspension.StartedAt, EndedAt: domainSuspension.EndedAt, ReallowedByUserID: domainSuspension.ReallowedByUserID}}, nil
+}
+
 func (s *sqlExamAttemptStore) connect(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect) (examAttemptConnectOutcomeV1, error) {
 	var zero examAttemptConnectOutcomeV1
 	guard, err := s.lockExamAttemptEligibility(ctx, tx, input, false)
@@ -183,7 +994,7 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 
 	var guard examAttemptAdmissionGuard
 	if err := tx.Get(ctx, &guard, `SELECT s.exam_id,s.exam_revision_id,s.class_id,c.academic_period_id,
-		s.state,s.scheduled_end_at,statement_timestamp() AS database_now
+		s.state,s.scheduled_end_at
 		FROM exam_sittings s JOIN classes c ON c.id=s.class_id
 		WHERE s.id=? AND s.exam_id=? FOR SHARE OF s,c`, input.SittingID.String(), initial.ExamID); err != nil {
 		return zero, translateError("exam_sitting", input.SittingID.String(), err)
@@ -194,10 +1005,6 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 	if guard.State != string(model.ExamSittingOpen) && !(allowPaused && guard.State == string(model.ExamSittingPaused)) {
 		return zero, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	}
-	if !guard.DatabaseNow.Before(guard.ScheduledEnd) {
-		return zero, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
-	}
-
 	var eligible bool
 	if err := tx.Get(ctx, &eligible, `SELECT true FROM users u
 		JOIN sessions se ON se.id=? AND se.user_id=u.id
@@ -209,16 +1016,40 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 		JOIN academic_periods ap ON ap.id=c.academic_period_id AND ap.institution_id=au.institution_id
 		WHERE u.id=? AND u.archived_at IS NULL AND u.disabled_at IS NULL
 		AND se.archived_at IS NULL AND se.revoked_at IS NULL
-		AND se.idle_expires_at>? AND se.expires_at>?
-		AND cm.archived_at IS NULL AND cm.start_at<=? AND (cm.end_at IS NULL OR cm.end_at>?)
+		AND cm.archived_at IS NULL
 		AND c.archived_at IS NULL AND pl.archived_at IS NULL AND p.archived_at IS NULL
 		AND au.archived_at IS NULL AND ap.archived_at IS NULL
-		FOR SHARE OF u,se,cm,c,pl,p,au,ap`, input.SessionID.String(), guard.ClassID, input.CandidateUserID.String(),
-		guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow); err != nil {
+		FOR SHARE OF u,se,cm,c,pl,p,au,ap`, input.SessionID.String(), guard.ClassID, input.CandidateUserID.String()); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return zero, store.NewErrNotFound("exam_attempt_eligibility", input.SittingID.String())
 		}
 		return zero, fmt.Errorf("validate Exam Attempt eligibility: %w", err)
+	}
+	if !eligible {
+		return zero, store.NewErrNotFound("exam_attempt_eligibility", input.SittingID.String())
+	}
+	if err := tx.Get(ctx, &guard.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
+		return zero, fmt.Errorf("read Exam Attempt admission decision time: %w", err)
+	}
+	if !guard.DatabaseNow.Before(guard.ScheduledEnd) {
+		return zero, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
+	}
+	if err := tx.Get(ctx, &eligible, `SELECT EXISTS (
+		SELECT 1 FROM users u
+		JOIN sessions se ON se.id=? AND se.user_id=u.id
+		JOIN class_members cm ON cm.user_id=u.id AND cm.class_id=?
+		JOIN classes c ON c.id=cm.class_id AND c.academic_period_id=cm.academic_period_id
+		JOIN programme_levels pl ON pl.id=c.programme_level_id
+		JOIN programmes p ON p.id=pl.programme_id
+		JOIN academic_units au ON au.id=p.academic_unit_id
+		JOIN academic_periods ap ON ap.id=c.academic_period_id AND ap.institution_id=au.institution_id
+		WHERE u.id=? AND u.archived_at IS NULL AND u.disabled_at IS NULL
+		AND se.archived_at IS NULL AND se.revoked_at IS NULL AND se.idle_expires_at>? AND se.expires_at>?
+		AND cm.archived_at IS NULL AND cm.start_at<=? AND (cm.end_at IS NULL OR cm.end_at>?)
+		AND c.archived_at IS NULL AND pl.archived_at IS NULL AND p.archived_at IS NULL
+		AND au.archived_at IS NULL AND ap.archived_at IS NULL)`, input.SessionID.String(), guard.ClassID,
+		input.CandidateUserID.String(), guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow); err != nil {
+		return zero, fmt.Errorf("revalidate Exam Attempt eligibility at decision time: %w", err)
 	}
 	if !eligible {
 		return zero, store.NewErrNotFound("exam_attempt_eligibility", input.SittingID.String())
@@ -304,9 +1135,22 @@ func (s *sqlExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, 
 	if err := tx.Get(ctx, &participation, `SELECT id,continuity_credential_hash,generation,lease_expires_at
 		FROM exam_attempt_participations WHERE exam_attempt_id=? AND state='active' FOR UPDATE`, attemptID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return zero, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
+			if err = tx.Get(ctx, &participation.Generation, `SELECT COALESCE(MAX(generation),0)+1
+				FROM exam_attempt_participations WHERE exam_attempt_id=?`, attemptID); err != nil {
+				return zero, fmt.Errorf("select next Attempt Participation generation: %w", err)
+			}
+			participation.ID = input.ParticipationID.String()
+			participation.CredentialHash = input.ContinuityCredentialHash
+			participation.LeaseExpiresAt = guard.DatabaseNow.Add(model.AttemptParticipationInitialLease)
+			if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_participations
+				(id,exam_attempt_id,state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,lease_expires_at)
+				VALUES (?,?,'active',?,0,?,?,?,?)`, participation.ID, attemptID, participation.Generation,
+				participation.CredentialHash, guard.DatabaseNow, guard.DatabaseNow, participation.LeaseExpiresAt); err != nil {
+				return zero, fmt.Errorf("insert next Attempt Participation: %w", translateError("attempt_participation", participation.ID, err))
+			}
+		} else {
+			return zero, fmt.Errorf("lock active Attempt Participation: %w", err)
 		}
-		return zero, fmt.Errorf("lock active Attempt Participation: %w", err)
 	}
 	if subtle.ConstantTimeCompare([]byte(participation.CredentialHash), []byte(input.ContinuityCredentialHash)) != 1 {
 		return zero, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
@@ -575,46 +1419,62 @@ func lockAttemptConnection(ctx context.Context, tx *sqlxTxWrapper, id model.Atte
 }
 
 type examAttemptManagerRow struct {
-	AttemptID              string         `db:"attempt_id"`
-	ExamID                 string         `db:"exam_id"`
-	SittingID              string         `db:"exam_sitting_id"`
-	CandidateID            string         `db:"candidate_user_id"`
-	AdmissionRevisionID    string         `db:"admission_revision_id"`
-	AttemptState           string         `db:"attempt_state"`
-	AttemptCreatedAt       time.Time      `db:"attempt_created_at"`
-	AttemptUpdatedAt       time.Time      `db:"attempt_updated_at"`
-	SubmittedAt            sql.NullTime   `db:"submitted_at"`
-	AttemptRevision        int64          `db:"attempt_revision"`
-	WorkspaceID            string         `db:"workspace_id"`
-	WorkspaceCursor        int64          `db:"workspace_cursor"`
-	WorkspaceCreatedAt     time.Time      `db:"workspace_created_at"`
-	WorkspaceUpdatedAt     time.Time      `db:"workspace_updated_at"`
-	ParticipationID        sql.NullString `db:"participation_id"`
-	ParticipationState     sql.NullString `db:"participation_state"`
-	Generation             sql.NullInt64  `db:"generation"`
-	RenewalSequence        sql.NullInt64  `db:"renewal_sequence"`
-	StartedAt              sql.NullTime   `db:"started_at"`
-	ParticipationUpdatedAt sql.NullTime   `db:"participation_updated_at"`
-	LeaseExpiresAt         sql.NullTime   `db:"lease_expires_at"`
-	EndedAt                sql.NullTime   `db:"ended_at"`
-	EndReason              sql.NullString `db:"end_reason"`
-	ConnectionID           sql.NullString `db:"connection_id"`
-	ConnectionState        sql.NullString `db:"connection_state"`
-	OpenedAt               sql.NullTime   `db:"opened_at"`
-	ClosedAt               sql.NullTime   `db:"closed_at"`
-	CloseReason            sql.NullString `db:"close_reason"`
+	AttemptID                 string         `db:"attempt_id"`
+	ExamID                    string         `db:"exam_id"`
+	SittingID                 string         `db:"exam_sitting_id"`
+	CandidateID               string         `db:"candidate_user_id"`
+	AdmissionRevisionID       string         `db:"admission_revision_id"`
+	AttemptState              string         `db:"attempt_state"`
+	AttemptCreatedAt          time.Time      `db:"attempt_created_at"`
+	AttemptUpdatedAt          time.Time      `db:"attempt_updated_at"`
+	SubmittedAt               sql.NullTime   `db:"submitted_at"`
+	AttemptRevision           int64          `db:"attempt_revision"`
+	WorkspaceID               string         `db:"workspace_id"`
+	WorkspaceCursor           int64          `db:"workspace_cursor"`
+	WorkspaceCreatedAt        time.Time      `db:"workspace_created_at"`
+	WorkspaceUpdatedAt        time.Time      `db:"workspace_updated_at"`
+	ParticipationID           sql.NullString `db:"participation_id"`
+	ParticipationState        sql.NullString `db:"participation_state"`
+	Generation                sql.NullInt64  `db:"generation"`
+	RenewalSequence           sql.NullInt64  `db:"renewal_sequence"`
+	StartedAt                 sql.NullTime   `db:"started_at"`
+	ParticipationUpdatedAt    sql.NullTime   `db:"participation_updated_at"`
+	LeaseExpiresAt            sql.NullTime   `db:"lease_expires_at"`
+	EndedAt                   sql.NullTime   `db:"ended_at"`
+	EndReason                 sql.NullString `db:"end_reason"`
+	ConnectionID              sql.NullString `db:"connection_id"`
+	ConnectionState           sql.NullString `db:"connection_state"`
+	OpenedAt                  sql.NullTime   `db:"opened_at"`
+	ClosedAt                  sql.NullTime   `db:"closed_at"`
+	CloseReason               sql.NullString `db:"close_reason"`
+	SuspensionID              sql.NullString `db:"suspension_id"`
+	SuspensionParticipationID sql.NullString `db:"suspension_participation_id"`
+	SuspensionFlagID          sql.NullString `db:"suspension_flag_id"`
+	SuspensionGeneration      sql.NullInt64  `db:"suspension_generation"`
+	SuspensionState           sql.NullString `db:"suspension_state"`
+	SuspensionSource          sql.NullString `db:"suspension_source"`
+	SuspensionReason          sql.NullString `db:"suspension_reason"`
+	SuspensionStartedAt       sql.NullTime   `db:"suspension_started_at"`
+	SuspensionEndedAt         sql.NullTime   `db:"suspension_ended_at"`
+	SuspensionReallowedBy     sql.NullString `db:"suspension_reallowed_by"`
 }
 
 const examAttemptManagerSelect = `SELECT a.id AS attempt_id,a.exam_id,a.exam_sitting_id,a.candidate_user_id,a.admission_revision_id,
 	a.state AS attempt_state,a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,a.revision AS attempt_revision,
 	w.id AS workspace_id,w.cursor AS workspace_cursor,w.created_at AS workspace_created_at,w.updated_at AS workspace_updated_at,
 	p.id AS participation_id,p.state AS participation_state,p.generation,p.renewal_sequence,p.started_at,p.updated_at AS participation_updated_at,p.lease_expires_at,p.ended_at,p.end_reason,
-	c.id AS connection_id,c.state AS connection_state,c.opened_at,c.closed_at,c.close_reason
+	c.id AS connection_id,c.state AS connection_state,c.opened_at,c.closed_at,c.close_reason,
+	su.id AS suspension_id,su.participation_id AS suspension_participation_id,su.integrity_flag_id AS suspension_flag_id,
+	su.generation AS suspension_generation,su.state AS suspension_state,su.source AS suspension_source,
+	su.candidate_reason AS suspension_reason,su.started_at AS suspension_started_at,su.ended_at AS suspension_ended_at,
+	su.reallowed_by_user_id AS suspension_reallowed_by
 	FROM exam_attempts a JOIN exam_attempt_workspaces w ON w.exam_attempt_id=a.id
 	LEFT JOIN LATERAL (SELECT id,state,generation,renewal_sequence,started_at,updated_at,lease_expires_at,ended_at,end_reason
 		FROM exam_attempt_participations WHERE exam_attempt_id=a.id ORDER BY generation DESC LIMIT 1) p ON true
 	LEFT JOIN LATERAL (SELECT id,state,opened_at,closed_at,close_reason FROM exam_attempt_connections
-		WHERE exam_attempt_id=a.id AND state='open' ORDER BY opened_at DESC,id DESC LIMIT 1) c ON true`
+		WHERE exam_attempt_id=a.id AND state='open' ORDER BY opened_at DESC,id DESC LIMIT 1) c ON true
+	LEFT JOIN LATERAL (SELECT id,participation_id,integrity_flag_id,generation,state,source,candidate_reason,started_at,ended_at,reallowed_by_user_id
+		FROM exam_attempt_suspensions WHERE exam_attempt_id=a.id AND state='active' LIMIT 1) su ON true`
 
 func (s *sqlExamAttemptStore) Get(ctx context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
 	if !examID.IsValid() || !attemptID.IsValid() {
@@ -713,6 +1573,40 @@ func (row examAttemptManagerRow) snapshot() (*store.ExamAttemptManagerSnapshot, 
 			return nil, invalidPersistedState("attempt_connection", "id", e)
 		}
 		result.CurrentConnection = &store.ExamAttemptManagerConnection{ID: id, State: model.AttemptConnectionState(row.ConnectionState.String), OpenedAt: model.TimeUTC(row.OpenedAt.Time), ClosedAt: OptionalTimeFromNullTime(row.ClosedAt), CloseReason: model.AttemptConnectionCloseReason(row.CloseReason.String)}
+	}
+	if row.SuspensionID.Valid {
+		id, e := model.ParseAttemptSuspensionID(row.SuspensionID.String)
+		if e != nil {
+			return nil, invalidPersistedState("attempt_suspension", "id", e)
+		}
+		participationID, e := model.ParseAttemptParticipationID(row.SuspensionParticipationID.String)
+		if e != nil {
+			return nil, invalidPersistedState("attempt_suspension", "participation_id", e)
+		}
+		flagID, e := model.ParseIntegrityFlagID(row.SuspensionFlagID.String)
+		if e != nil {
+			return nil, invalidPersistedState("attempt_suspension", "integrity_flag_id", e)
+		}
+		var actorID model.UserID
+		if row.SuspensionReallowedBy.Valid {
+			actorID, e = model.ParseUserID(row.SuspensionReallowedBy.String)
+			if e != nil {
+				return nil, invalidPersistedState("attempt_suspension", "reallowed_by_user_id", e)
+			}
+		}
+		domainSuspension, e := model.NewPolicyAttemptSuspension(id, attemptID, participationID, flagID,
+			row.SuspensionGeneration.Int64, model.AttemptSuspensionCandidateReason(row.SuspensionReason.String), row.SuspensionStartedAt.Time)
+		if e != nil {
+			return nil, invalidPersistedState("attempt_suspension", "value", e)
+		}
+		if model.AttemptSuspensionState(row.SuspensionState.String) != model.AttemptSuspensionActive ||
+			row.SuspensionEndedAt.Valid || !actorID.IsZero() {
+			return nil, invalidPersistedState("attempt_suspension", "value", errors.New("invalid active Attempt Suspension projection"))
+		}
+		result.ActiveSuspension = &store.ExamAttemptSuspensionView{ID: domainSuspension.ID, AttemptID: domainSuspension.AttemptID,
+			ParticipationID: domainSuspension.ParticipationID, FlagID: domainSuspension.FlagID, Generation: domainSuspension.Generation,
+			State: domainSuspension.State, Source: domainSuspension.Source, CandidateReason: domainSuspension.CandidateReason,
+			StartedAt: domainSuspension.StartedAt}
 	}
 	return result, nil
 }

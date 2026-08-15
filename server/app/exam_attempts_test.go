@@ -5,10 +5,12 @@ package app
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -74,6 +76,109 @@ func TestConnectExamAttemptRequiresAnIdempotencyKeyBeforeChildCall(t *testing.T)
 	}
 }
 
+func TestRenewExamAttemptParticipationDelegatesWithoutInventingTransportPingState(t *testing.T) {
+	t.Parallel()
+	want := examattempt.ParticipationRenewal{AttemptID: model.NewExamAttemptID(), ParticipationID: model.NewAttemptParticipationID(),
+		Generation: 2, AcceptedSequence: 8, DatabaseTime: time.Now(), LeaseExpiresAt: time.Now().Add(20 * time.Second)}
+	fake := &examAttemptUseCasesFake{renewResult: want}
+	application := &App{examAttempts: fake}
+	command := RenewExamAttemptParticipationCommand{AttemptID: want.AttemptID, ParticipationID: want.ParticipationID,
+		ConnectionID: model.NewAttemptConnectionID(), Generation: 2, Sequence: 8, ContinuityCredential: model.NewCredentialToken()}
+	got, err := application.RenewExamAttemptParticipation(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
+	if err != nil || got != want || len(fake.renewals) != 1 || fake.renewals[0] != examattempt.RenewParticipationCommand(command) {
+		t.Fatalf("result=%#v error=%v calls=%#v", got, err, fake.renewals)
+	}
+}
+
+func TestReallowExamAttemptBuildsExactPrivateReasonFingerprintAndDelegates(t *testing.T) {
+	t.Parallel()
+	fake := &examAttemptUseCasesFake{}
+	application := &App{examAttempts: fake}
+	command := ReallowExamAttemptCommand{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+		AttemptID: model.NewExamAttemptID(), SuspensionID: model.NewAttemptSuspensionID(), ExpectedAttemptRevision: 4,
+		PrivateReason: "manager verified continuity", IdempotencyKey: "reallow-once"}
+	if _, err := application.ReallowExamAttempt(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.reallows) != 1 || fake.reallows[0].ExamID != command.ExamID || fake.reallows[0].SuspensionID != command.SuspensionID ||
+		fake.reallows[0].PrivateReason != command.PrivateReason || fake.reallows[0].Idempotency == nil ||
+		fake.reallows[0].Idempotency.Operation != store.ExamAttemptReallowOperation {
+		t.Fatalf("reallow calls = %#v", fake.reallows)
+	}
+}
+
+func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSuspension(t *testing.T) {
+	t.Parallel()
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	sink := &recordingRealtimeSink{}
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
+	result := examattempt.ParticipationExpiry{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
+		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
+		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
+			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionCloseLeaseExpired},
+		ConnectionClosed: true,
+		Flag:             model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(),
+			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	sink.mu.Unlock()
+	if len(events) != 3 || events[0].Name != "exam_attempt_connection_closed" || events[0].Action != model.ActionExamSittingView ||
+		events[1].Name != "exam_attempt_suspended" || events[1].Action != model.ActionExamSittingView ||
+		events[2].Name != "exam_attempt_access_suspended" || events[2].Action != model.ActionExamSittingParticipate ||
+		events[2].UserID != result.CandidateUserID.String() {
+		t.Fatalf("events = %#v", events)
+	}
+	for _, event := range events {
+		for _, forbidden := range []string{"continuity_credential", "credential_hash", "private_reason"} {
+			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
+				t.Fatalf("expiry event contains %q: %s", forbidden, event.Data)
+			}
+		}
+	}
+	if got := string(events[2].Data); !strings.Contains(got, `"reason_code":"secure_connectivity_lost"`) {
+		t.Fatalf("candidate expiry event lacks safe reason: %s", got)
+	}
+}
+
+func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *testing.T) {
+	t.Parallel()
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	sink := &recordingRealtimeSink{}
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
+	result := examattempt.ParticipationExpiry{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
+		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
+		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
+			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at.Add(-time.Second)), CloseReason: model.AttemptConnectionCloseTransport},
+		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(),
+			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	sink.mu.Unlock()
+	if len(events) != 2 || events[0].Name != "exam_attempt_suspended" || events[1].Name != "exam_attempt_access_suspended" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
 func examAttemptPrincipal() model.Principal {
 	return model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
@@ -82,13 +187,30 @@ func examAttemptPrincipal() model.Principal {
 }
 
 type examAttemptUseCasesFake struct {
-	connects []examattempt.ConnectCommand
-	err      error
+	connects    []examattempt.ConnectCommand
+	renewals    []examattempt.RenewParticipationCommand
+	renewResult examattempt.ParticipationRenewal
+	reallows    []examattempt.ReallowCommand
+	err         error
 }
 
 func (fake *examAttemptUseCasesFake) Connect(_ context.Context, _ examattempt.Call, command examattempt.ConnectCommand) (examattempt.ConnectionResult, error) {
 	fake.connects = append(fake.connects, command)
 	return examattempt.ConnectionResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) RenewParticipation(_ context.Context, _ examattempt.Call, command examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error) {
+	fake.renewals = append(fake.renewals, command)
+	return fake.renewResult, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) Reallow(_ context.Context, _ examattempt.Call, command examattempt.ReallowCommand) (examattempt.ReallowResult, error) {
+	fake.reallows = append(fake.reallows, command)
+	return examattempt.ReallowResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error) {
+	return examattempt.ExpiryScanResult{}, fake.err
 }
 
 func (fake *examAttemptUseCasesFake) CloseConnection(context.Context, examattempt.Call, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error) {

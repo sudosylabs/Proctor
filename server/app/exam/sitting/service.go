@@ -299,6 +299,36 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 	return err
 }
 
+// AuthorizeManage rechecks the current manager relationship for a Sitting and
+// reports whether the caller used the explicit management override action.
+// It returns no mutable Sitting state and performs no mutation.
+func (service *Service) AuthorizeManage(ctx context.Context, call Call, sittingID model.ExamSittingID) (bool, error) {
+	if !sittingID.IsValid() {
+		return false, invalid("exam_sitting_id")
+	}
+	if call.Principal().Validate() != nil {
+		return false, invalid("principal")
+	}
+	snapshot, err := service.persistence.Resolve(ctx, sittingID)
+	if err != nil {
+		return false, mapStoreError(err)
+	}
+	value, err := requireSnapshot(snapshot)
+	if err != nil {
+		return false, err
+	}
+	if value.Sitting.ID != sittingID {
+		return false, unavailable(errors.New("Exam Sitting Store returned a mismatched snapshot"))
+	}
+	decision, err := service.authorize(ctx, call, value.Sitting.ExamID,
+		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(service.now()),
+		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
+	if err != nil {
+		return false, err
+	}
+	return decision.override, nil
+}
+
 func (service *Service) List(ctx context.Context, call Call, query ListQuery) (Page, error) {
 	options, err := listOptions(query)
 	if err != nil {

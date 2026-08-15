@@ -40,11 +40,13 @@ type connectionRuntime struct {
 }
 
 type examAttemptBinding struct {
-	attemptID    model.ExamAttemptID
-	sittingID    model.ExamSittingID
-	classID      model.ClassID
-	connectionID model.AttemptConnectionID
-	requestHash  [32]byte
+	attemptID       model.ExamAttemptID
+	sittingID       model.ExamSittingID
+	classID         model.ClassID
+	connectionID    model.AttemptConnectionID
+	participationID model.AttemptParticipationID
+	generation      int64
+	requestHash     [32]byte
 }
 
 func newConnectionRuntime(

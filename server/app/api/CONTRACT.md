@@ -275,7 +275,7 @@ decodeJSON(writer, request, &unit, "update")
 store.AcademicUnit().Update(request.Context(), &unit)
 ```
 
-## Exam Attempt protected reads
+## Exam Attempt protected access and management
 
 Exam Managers use the Exam/Sitting-scoped Attempt catalog and exact read;
 candidates use Attempt-scoped protected delivery routes:
@@ -284,6 +284,7 @@ candidates use Attempt-scoped protected delivery routes:
 | --- | --- | --- |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts` | principal plus current management authorization | bounded manager-safe Attempt page |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}` | principal plus current management authorization | exact manager-safe Attempt |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow` | principal plus current management authorization and required idempotency key | exact suspension re-allowed |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/presentation` | Session plus Attempt credential and Connection | current instructions/resource metadata |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace` | Session plus Attempt credential and Connection | bounded logical Workspace page |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/resources/{exam_resource_id}/content` | Session plus Attempt credential and Connection | protected inline bytes or `304` |
@@ -313,11 +314,21 @@ content is inline, `private, no-store`, `nosniff`, and conditionally readable
 with a strong ETag; it has no `Content-Disposition`, public URL, object key, or
 download/export contract.
 
-Manager projections omit credential hashes and Session identities. Candidate
+Manager projections omit credential hashes, Session identities, and private
+reasons. A suspended Attempt exposes its private-free active Suspension
+identity so an authoritative refetch can drive exact re-allow after missed
+realtime delivery. Candidate
 presentation exposes the admission Revision only as provenance while title,
 instructions, resources, and resource content resolve from the Sitting's
 current Revision. Workspace pages expose logical entries and content versions,
 never starter/Attempt object identities or VFS keys.
+
+Re-allow requires the exact active Suspension identity, expected Attempt
+revision, and a trimmed private manager reason. The reason is retained only in
+the durable suspension provenance: it is absent from the JSON response,
+ordinary audit values, logs, realtime events, and idempotent command outcome.
+Re-allow creates neither a continuity credential nor a Participation; the
+candidate must establish a fresh authenticated connection generation.
 
 The OpenAPI document describes the wire contract only. It does not generate or
 dictate domain models, application commands, persistence rows, or handlers.

@@ -638,6 +638,36 @@ func (s *timedExamAttemptStore) Connect(arg0 context.Context, arg1 *store.ExamAt
 	})
 }
 
+func (s *timedExamAttemptStore) RenewParticipation(arg0 context.Context, arg1 *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRenewParticipation), func() (*store.ExamAttemptParticipationRenewalResult, error) {
+		return s.next.RenewParticipation(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) ResolveParticipationExpiry(arg0 context.Context, arg1 model.ExamAttemptID, arg2 model.AttemptParticipationID, arg3 int64) (*store.ExamAttemptParticipationExpiryDue, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveParticipationExpiry), func() (*store.ExamAttemptParticipationExpiryDue, error) {
+		return s.next.ResolveParticipationExpiry(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExamAttemptStore) ListExpiredParticipations(arg0 context.Context, arg1 int) ([]store.ExamAttemptParticipationExpiryDue, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListExpiredParticipations), func() ([]store.ExamAttemptParticipationExpiryDue, error) {
+		return s.next.ListExpiredParticipations(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) ExpireParticipation(arg0 context.Context, arg1 *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodExpireParticipation), func() (*store.ExamAttemptParticipationExpiryResult, error) {
+		return s.next.ExpireParticipation(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) ReallowAttempt(arg0 context.Context, arg1 *store.ExamAttemptReallow, arg2 *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodReallowAttempt), func() (*store.ExamAttemptReallowResult, error) {
+		return s.next.ReallowAttempt(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamAttemptStore) CloseConnection(arg0 context.Context, arg1 *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodCloseConnection), func() (*store.ExamAttemptConnectionCloseResult, error) {
 		return s.next.CloseConnection(arg0, arg1)

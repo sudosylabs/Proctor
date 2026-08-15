@@ -124,9 +124,14 @@ type examSittingUnsafeMutationStub struct {
 
 type examAttemptRetryStub struct {
 	store.ExamAttemptStore
-	connectAttempts int
-	closeAttempts   int
-	err             error
+	connectAttempts       int
+	renewAttempts         int
+	resolveExpiryAttempts int
+	listExpiryAttempts    int
+	expireAttempts        int
+	reallowAttempts       int
+	closeAttempts         int
+	err                   error
 }
 
 func (stub *examAttemptRetryStub) Connect(context.Context, *store.ExamAttemptConnect, *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
@@ -136,6 +141,31 @@ func (stub *examAttemptRetryStub) Connect(context.Context, *store.ExamAttemptCon
 
 func (stub *examAttemptRetryStub) CloseConnection(context.Context, *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
 	stub.closeAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) RenewParticipation(context.Context, *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
+	stub.renewAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*store.ExamAttemptParticipationExpiryDue, error) {
+	stub.resolveExpiryAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) ListExpiredParticipations(context.Context, int) ([]store.ExamAttemptParticipationExpiryDue, error) {
+	stub.listExpiryAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) ExpireParticipation(context.Context, *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
+	stub.expireAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) ReallowAttempt(context.Context, *store.ExamAttemptReallow, *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
+	stub.reallowAttempts++
 	return nil, stub.err
 }
 
@@ -254,6 +284,34 @@ func TestRetryOnlyRetriesExamAttemptMutationWithDurableCommandOutcome(t *testing
 	}
 	if stub.connectAttempts != 3 || stub.closeAttempts != 1 {
 		t.Fatalf("Exam Attempt mutation attempts = connect %d close %d", stub.connectAttempts, stub.closeAttempts)
+	}
+}
+
+func TestRetryExamAttemptRenewalExpiryAndReallowUseTheirDurableFences(t *testing.T) {
+	t.Parallel()
+	transientErr := errors.New("unknown commit outcome")
+	stub := &examAttemptRetryStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{examAttempt: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	_, _ = layer.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{})
+	_, _ = layer.ExamAttempt().ResolveParticipationExpiry(ctx, model.NewExamAttemptID(), model.NewAttemptParticipationID(), 1)
+	_, _ = layer.ExamAttempt().ListExpiredParticipations(ctx, 10)
+	_, _ = layer.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{})
+	_, _ = layer.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{}, &store.CommandIdempotency{})
+	if stub.renewAttempts != 3 || stub.resolveExpiryAttempts != 3 || stub.listExpiryAttempts != 3 ||
+		stub.expireAttempts != 1 || stub.reallowAttempts != 3 {
+		t.Fatalf("attempts renew/resolve/list/expire/reallow = %d/%d/%d/%d/%d, want 3/3/3/1/3",
+			stub.renewAttempts, stub.resolveExpiryAttempts, stub.listExpiryAttempts, stub.expireAttempts, stub.reallowAttempts)
+	}
+	_, _ = layer.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{}, nil)
+	if stub.reallowAttempts != 4 {
+		t.Fatalf("ReallowAttempt() attempts without command = %d, want one additional call", stub.reallowAttempts)
 	}
 }
 

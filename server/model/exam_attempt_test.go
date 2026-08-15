@@ -67,6 +67,12 @@ func TestExamAttemptValidationClosesLifecycleStates(t *testing.T) {
 
 func TestNewAttemptParticipationStoresOnlyHashAndUsesExactInitialLease(t *testing.T) {
 	t.Parallel()
+	if AttemptParticipationRenewalInterval != 5*time.Second ||
+		AttemptParticipationInitialLease != 20*time.Second ||
+		AttemptParticipationRenewalInterval >= AttemptParticipationInitialLease {
+		t.Fatalf("Participation timing contract: renewal=%s lease=%s",
+			AttemptParticipationRenewalInterval, AttemptParticipationInitialLease)
+	}
 	startedAt := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.FixedZone("source", -3*60*60))
 	rawCredential := NewCredentialToken()
 	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), 1, HashToken(rawCredential), startedAt)
@@ -119,6 +125,44 @@ func TestAttemptParticipationEndIsPermanentAndAtomic(t *testing.T) {
 	}
 }
 
+func TestAttemptParticipationRenewalIsGenerationFencedAndMonotonic(t *testing.T) {
+	t.Parallel()
+	startedAt := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)
+	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), 3,
+		HashToken(NewCredentialToken()), startedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	databaseNow := startedAt.Add(5 * time.Second)
+	duplicate, err := participation.Renew(3, 1, databaseNow)
+	if err != nil || duplicate {
+		t.Fatalf("first renewal duplicate=%t error=%v", duplicate, err)
+	}
+	if participation.RenewalSequence != 1 || participation.UpdatedAt != databaseNow ||
+		participation.LeaseExpiresAt != databaseNow.Add(AttemptParticipationInitialLease) {
+		t.Fatalf("renewed Participation = %#v", participation)
+	}
+	before := *participation
+	duplicate, err = participation.Renew(3, 1, databaseNow.Add(time.Second))
+	if err != nil || !duplicate || *participation != before {
+		t.Fatalf("duplicate renewal duplicate=%t error=%v Participation=%#v", duplicate, err, participation)
+	}
+	for _, request := range []struct {
+		generation int64
+		sequence   int64
+		at         time.Time
+	}{
+		{generation: 2, sequence: 2, at: databaseNow.Add(time.Second)},
+		{generation: 3, sequence: 0, at: databaseNow.Add(time.Second)},
+		{generation: 3, sequence: 1, at: participation.LeaseExpiresAt},
+		{generation: 3, sequence: 2, at: participation.LeaseExpiresAt},
+	} {
+		if _, renewErr := participation.Renew(request.generation, request.sequence, request.at); renewErr == nil || *participation != before {
+			t.Fatalf("invalid renewal %#v error=%v Participation=%#v", request, renewErr, participation)
+		}
+	}
+}
+
 func TestAttemptConnectionOpensAndClosesOnce(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)
@@ -157,6 +201,85 @@ func TestAttemptConnectionCloseReasonValidity(t *testing.T) {
 		if reason.IsValid() {
 			t.Fatalf("unknown close reason %q is valid", reason)
 		}
+	}
+}
+
+func TestConnectionLossIntegrityEpisodeIsNeutralAndGenerationScoped(t *testing.T) {
+	t.Parallel()
+	attemptID := NewExamAttemptID()
+	participationID := NewAttemptParticipationID()
+	flagID := NewIntegrityFlagID()
+	leaseExpiredAt := time.Date(2026, time.August, 17, 9, 0, 20, 0, time.UTC)
+	recordedAt := leaseExpiredAt.Add(2 * time.Second)
+
+	flag, err := NewIntegrityFlag(flagID, attemptID, 4, IntegrityPolicyConnectionLoss, recordedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := NewConnectionLossEvidence(NewIntegrityEvidenceID(), attemptID, participationID, flag.ID, 4, leaseExpiredAt, recordedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suspension, err := NewPolicyAttemptSuspension(NewAttemptSuspensionID(), attemptID, participationID, flag.ID, 4,
+		AttemptSuspensionCandidateReasonSecureContinuityLost, recordedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flag.State != IntegrityFlagOpen || evidence.Kind != IntegrityPolicyConnectionLoss ||
+		evidence.ObservedAt != leaseExpiredAt || evidence.RecordedAt != recordedAt ||
+		suspension.State != AttemptSuspensionActive || suspension.Source != AttemptSuspensionSourcePolicy ||
+		suspension.CandidateReason != AttemptSuspensionCandidateReasonSecureContinuityLost {
+		t.Fatalf("connection-loss episode = %#v / %#v / %#v", flag, evidence, suspension)
+	}
+	if suspension.PrivateReason != "" || suspension.FlagID != flag.ID || suspension.Generation != 4 {
+		t.Fatalf("connection-loss episode = %#v / %#v / %#v", flag, evidence, suspension)
+	}
+}
+
+func TestAttemptSuspensionReallowBoundsPrivateReasonAndClosesOnlyOnce(t *testing.T) {
+	t.Parallel()
+	startedAt := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)
+	suspension, err := NewPolicyAttemptSuspension(NewAttemptSuspensionID(), NewExamAttemptID(), NewAttemptParticipationID(),
+		NewIntegrityFlagID(), 2, AttemptSuspensionCandidateReasonSecureContinuityLost, startedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorID := NewUserID()
+	if err = suspension.Reallow(actorID, "manager verified continuity", startedAt.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if suspension.State != AttemptSuspensionClosed || suspension.PrivateReason != "manager verified continuity" ||
+		suspension.ReallowedByUserID != actorID || !suspension.EndedAt.Valid {
+		t.Fatalf("re-allowed Suspension = %#v", suspension)
+	}
+	before := *suspension
+	if err = suspension.Reallow(actorID, "again", startedAt.Add(2*time.Minute)); err == nil || *suspension != before {
+		t.Fatalf("second re-allow error=%v Suspension=%#v", err, suspension)
+	}
+	for _, reason := range []string{"", " not trimmed ", "\xff", strings.Repeat("é", AttemptSuspensionPrivateReasonMaximumRunes+1)} {
+		candidate, createErr := NewPolicyAttemptSuspension(NewAttemptSuspensionID(), NewExamAttemptID(), NewAttemptParticipationID(),
+			NewIntegrityFlagID(), 2, AttemptSuspensionCandidateReasonSecureContinuityLost, startedAt)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if reallowErr := candidate.Reallow(actorID, reason, startedAt.Add(time.Minute)); reallowErr == nil {
+			t.Fatalf("private reason %q was accepted", reason)
+		}
+	}
+}
+
+func TestExamAttemptSuspendAndReallowAreRevisionFencedStateChanges(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)
+	attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = attempt.Suspend(at.Add(time.Second)); err != nil || attempt.State != ExamAttemptSuspended || attempt.Revision != 2 {
+		t.Fatalf("Suspend() Attempt=%#v error=%v", attempt, err)
+	}
+	if err = attempt.Reallow(at.Add(2 * time.Second)); err != nil || attempt.State != ExamAttemptActive || attempt.Revision != 3 {
+		t.Fatalf("Reallow() Attempt=%#v error=%v", attempt, err)
 	}
 }
 

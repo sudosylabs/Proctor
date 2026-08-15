@@ -7,9 +7,13 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
-const AttemptParticipationInitialLease = 20 * time.Second
+const (
+	AttemptParticipationRenewalInterval = 5 * time.Second
+	AttemptParticipationInitialLease    = 20 * time.Second
+)
 
 type ExamAttemptState string
 
@@ -65,6 +69,41 @@ func (attempt *ExamAttempt) Validate() error {
 	default:
 		return fmt.Errorf("model: invalid Exam Attempt state")
 	}
+	return nil
+}
+
+// Suspend enters one blocking enforcement episode. Persistence is responsible
+// for committing the causal evidence, flag, Suspension, audit, and this state
+// transition atomically.
+func (attempt *ExamAttempt) Suspend(at time.Time) error {
+	if attempt == nil || attempt.State != ExamAttemptActive {
+		return fmt.Errorf("model: Exam Attempt cannot suspend")
+	}
+	candidate := *attempt
+	candidate.State = ExamAttemptSuspended
+	candidate.UpdatedAt = TimeUTC(at)
+	candidate.Revision++
+	if err := candidate.Validate(); err != nil {
+		return err
+	}
+	*attempt = candidate
+	return nil
+}
+
+// Reallow closes the blocking effect of the current Suspension. It does not
+// create a Participation or continuity credential.
+func (attempt *ExamAttempt) Reallow(at time.Time) error {
+	if attempt == nil || attempt.State != ExamAttemptSuspended {
+		return fmt.Errorf("model: Exam Attempt cannot be re-allowed")
+	}
+	candidate := *attempt
+	candidate.State = ExamAttemptActive
+	candidate.UpdatedAt = TimeUTC(at)
+	candidate.Revision++
+	if err := candidate.Validate(); err != nil {
+		return err
+	}
+	*attempt = candidate
 	return nil
 }
 
@@ -148,6 +187,34 @@ func (participation *AttemptParticipation) Validate() error {
 
 func (participation *AttemptParticipation) IsExpiredAt(at time.Time) bool {
 	return participation == nil || !TimeUTC(at).Before(participation.LeaseExpiresAt)
+}
+
+// Renew applies one database-time Participation renewal. The caller supplies
+// PostgreSQL's decision time; local application clocks are never authoritative.
+// Repeating the currently accepted sequence is an idempotent no-op. An older
+// sequence, another generation, a non-active Participation, or the exclusive
+// expiry boundary is permanently fenced.
+func (participation *AttemptParticipation) Renew(generation, sequence int64, databaseNow time.Time) (bool, error) {
+	if participation == nil || participation.State != AttemptParticipationActive ||
+		generation != participation.Generation || sequence < 1 || sequence < participation.RenewalSequence {
+		return false, fmt.Errorf("model: Attempt Participation renewal is fenced")
+	}
+	databaseNow = TimeUTC(databaseNow)
+	if databaseNow.IsZero() || databaseNow.Before(participation.UpdatedAt) || participation.IsExpiredAt(databaseNow) {
+		return false, fmt.Errorf("model: Attempt Participation renewal is expired")
+	}
+	if sequence == participation.RenewalSequence {
+		return true, nil
+	}
+	candidate := *participation
+	candidate.RenewalSequence = sequence
+	candidate.UpdatedAt = databaseNow
+	candidate.LeaseExpiresAt = databaseNow.Add(AttemptParticipationInitialLease)
+	if err := candidate.Validate(); err != nil {
+		return false, err
+	}
+	*participation = candidate
+	return false, nil
 }
 
 func (participation *AttemptParticipation) End(reason AttemptParticipationEndReason, at time.Time) error {
@@ -250,6 +317,170 @@ func (connection *AttemptConnection) Close(reason AttemptConnectionCloseReason, 
 	}
 	*connection = candidate
 	return nil
+}
+
+// IntegrityPolicyKind identifies the bounded detector policy that caused
+// evidence and a flag. It is not a verdict or severity supplied by a client.
+type IntegrityPolicyKind string
+
+const IntegrityPolicyConnectionLoss IntegrityPolicyKind = "connection_loss"
+
+func (kind IntegrityPolicyKind) isValid() bool { return kind == IntegrityPolicyConnectionLoss }
+
+// IntegrityEvidence is neutral server-owned evidence for one policy flag.
+// Connection Loss evidence intentionally has no accusation, free-form text,
+// client time, credential, Session identity, or transport payload.
+type IntegrityEvidence struct {
+	ID              IntegrityEvidenceID
+	AttemptID       ExamAttemptID
+	ParticipationID AttemptParticipationID
+	FlagID          IntegrityFlagID
+	Generation      int64
+	Kind            IntegrityPolicyKind
+	ObservedAt      time.Time
+	RecordedAt      time.Time
+}
+
+func NewConnectionLossEvidence(id IntegrityEvidenceID, attemptID ExamAttemptID, participationID AttemptParticipationID,
+	flagID IntegrityFlagID, generation int64, leaseExpiredAt, recordedAt time.Time,
+) (*IntegrityEvidence, error) {
+	evidence := &IntegrityEvidence{ID: id, AttemptID: attemptID, ParticipationID: participationID, FlagID: flagID,
+		Generation: generation, Kind: IntegrityPolicyConnectionLoss, ObservedAt: TimeUTC(leaseExpiredAt), RecordedAt: TimeUTC(recordedAt)}
+	if err := evidence.Validate(); err != nil {
+		return nil, err
+	}
+	return evidence, nil
+}
+
+func (evidence *IntegrityEvidence) Validate() error {
+	if evidence == nil || !evidence.ID.IsValid() || !evidence.AttemptID.IsValid() || !evidence.ParticipationID.IsValid() ||
+		!evidence.FlagID.IsValid() || evidence.Generation < 1 || !evidence.Kind.isValid() || evidence.ObservedAt.IsZero() ||
+		evidence.RecordedAt.IsZero() || evidence.RecordedAt.Before(evidence.ObservedAt) {
+		return fmt.Errorf("model: invalid Integrity Evidence")
+	}
+	return nil
+}
+
+type IntegrityFlagState string
+
+const IntegrityFlagOpen IntegrityFlagState = "open"
+
+// IntegrityFlag is an append-preserving indication for review, never a guilt
+// finding. Ticket 13 creates one open flag per Attempt/policy/generation.
+type IntegrityFlag struct {
+	ID         IntegrityFlagID
+	AttemptID  ExamAttemptID
+	Generation int64
+	Kind       IntegrityPolicyKind
+	State      IntegrityFlagState
+	CreatedAt  time.Time
+}
+
+func NewIntegrityFlag(id IntegrityFlagID, attemptID ExamAttemptID, generation int64, kind IntegrityPolicyKind, at time.Time) (*IntegrityFlag, error) {
+	flag := &IntegrityFlag{ID: id, AttemptID: attemptID, Generation: generation, Kind: kind, State: IntegrityFlagOpen, CreatedAt: TimeUTC(at)}
+	if err := flag.Validate(); err != nil {
+		return nil, err
+	}
+	return flag, nil
+}
+
+func (flag *IntegrityFlag) Validate() error {
+	if flag == nil || !flag.ID.IsValid() || !flag.AttemptID.IsValid() || flag.Generation < 1 ||
+		!flag.Kind.isValid() || flag.State != IntegrityFlagOpen || flag.CreatedAt.IsZero() {
+		return fmt.Errorf("model: invalid Integrity Flag")
+	}
+	return nil
+}
+
+type AttemptSuspensionState string
+
+const (
+	AttemptSuspensionActive AttemptSuspensionState = "active"
+	AttemptSuspensionClosed AttemptSuspensionState = "closed"
+)
+
+type AttemptSuspensionSource string
+
+const AttemptSuspensionSourcePolicy AttemptSuspensionSource = "policy"
+
+type AttemptSuspensionCandidateReason string
+
+const (
+	AttemptSuspensionCandidateReasonSecureContinuityLost AttemptSuspensionCandidateReason = "secure_connectivity_lost"
+	AttemptSuspensionPrivateReasonMaximumRunes                                            = 1000
+)
+
+// AttemptSuspension is one append-preserving blocking episode. PrivateReason
+// is manager-only and must never enter ordinary logs, audit data, or realtime.
+type AttemptSuspension struct {
+	ID                AttemptSuspensionID
+	AttemptID         ExamAttemptID
+	ParticipationID   AttemptParticipationID
+	FlagID            IntegrityFlagID
+	Generation        int64
+	State             AttemptSuspensionState
+	Source            AttemptSuspensionSource
+	CandidateReason   AttemptSuspensionCandidateReason
+	StartedAt         time.Time
+	EndedAt           OptionalTime
+	ReallowedByUserID UserID
+	PrivateReason     string
+}
+
+func NewPolicyAttemptSuspension(id AttemptSuspensionID, attemptID ExamAttemptID, participationID AttemptParticipationID,
+	flagID IntegrityFlagID, generation int64, candidateReason AttemptSuspensionCandidateReason, at time.Time,
+) (*AttemptSuspension, error) {
+	suspension := &AttemptSuspension{ID: id, AttemptID: attemptID, ParticipationID: participationID, FlagID: flagID,
+		Generation: generation, State: AttemptSuspensionActive, Source: AttemptSuspensionSourcePolicy,
+		CandidateReason: candidateReason, StartedAt: TimeUTC(at)}
+	if err := suspension.Validate(); err != nil {
+		return nil, err
+	}
+	return suspension, nil
+}
+
+func (suspension *AttemptSuspension) Validate() error {
+	if suspension == nil || !suspension.ID.IsValid() || !suspension.AttemptID.IsValid() || !suspension.ParticipationID.IsValid() ||
+		!suspension.FlagID.IsValid() || suspension.Generation < 1 || suspension.Source != AttemptSuspensionSourcePolicy ||
+		suspension.CandidateReason != AttemptSuspensionCandidateReasonSecureContinuityLost || suspension.StartedAt.IsZero() {
+		return fmt.Errorf("model: invalid Attempt Suspension")
+	}
+	switch suspension.State {
+	case AttemptSuspensionActive:
+		if suspension.EndedAt.Valid || !suspension.ReallowedByUserID.IsZero() || suspension.PrivateReason != "" {
+			return fmt.Errorf("model: active Attempt Suspension has re-allow metadata")
+		}
+	case AttemptSuspensionClosed:
+		if !suspension.EndedAt.Valid || suspension.EndedAt.Time.Before(suspension.StartedAt) ||
+			!suspension.ReallowedByUserID.IsValid() || !validAttemptSuspensionPrivateReason(suspension.PrivateReason) {
+			return fmt.Errorf("model: invalid closed Attempt Suspension")
+		}
+	default:
+		return fmt.Errorf("model: invalid Attempt Suspension state")
+	}
+	return nil
+}
+
+func (suspension *AttemptSuspension) Reallow(actorID UserID, privateReason string, at time.Time) error {
+	if suspension == nil || suspension.State != AttemptSuspensionActive || !actorID.IsValid() ||
+		!validAttemptSuspensionPrivateReason(privateReason) {
+		return fmt.Errorf("model: Attempt Suspension cannot be re-allowed")
+	}
+	candidate := *suspension
+	candidate.State = AttemptSuspensionClosed
+	candidate.EndedAt = OptionalTimeFrom(at)
+	candidate.ReallowedByUserID = actorID
+	candidate.PrivateReason = privateReason
+	if err := candidate.Validate(); err != nil {
+		return err
+	}
+	*suspension = candidate
+	return nil
+}
+
+func validAttemptSuspensionPrivateReason(reason string) bool {
+	return utf8.ValidString(reason) && reason == strings.TrimSpace(reason) && utf8.RuneCountInString(reason) >= 1 &&
+		utf8.RuneCountInString(reason) <= AttemptSuspensionPrivateReasonMaximumRunes && len(reason) <= 4000
 }
 
 type AttemptWorkspaceObjectStorage string
