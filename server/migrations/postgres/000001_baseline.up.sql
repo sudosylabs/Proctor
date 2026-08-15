@@ -750,8 +750,6 @@ CREATE TABLE exam_sittings (
     closed_at timestamptz,
     canceled_at timestamptz,
     reason_code varchar(32),
-    canceled_by_user_id varchar(26) REFERENCES users(id),
-    cancellation_private_reason text,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     CONSTRAINT exam_sittings_revision_fkey
         FOREIGN KEY (exam_id, exam_revision_id, exam_revision_sealed)
@@ -767,28 +765,18 @@ CREATE TABLE exam_sittings (
     ),
     CONSTRAINT exam_sittings_lifecycle_check CHECK (
         (state = 'scheduled' AND opened_at IS NULL AND paused_at IS NULL AND closing_at IS NULL AND
-            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
-            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL) OR
         (state = 'open' AND opened_at IS NOT NULL AND paused_at IS NULL AND closing_at IS NULL AND
-            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
-            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL) OR
         (state = 'paused' AND opened_at IS NOT NULL AND paused_at IS NOT NULL AND closing_at IS NULL AND
-            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
-            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL) OR
         (state = 'closing' AND opened_at IS NOT NULL AND paused_at IS NULL AND closing_at IS NOT NULL AND
-            closed_at IS NULL AND canceled_at IS NULL AND reason_code IS NULL AND
-            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+            closed_at IS NULL AND canceled_at IS NULL AND reason_code IN ('manager_closed', 'scheduled_end_reached')) OR
         (state = 'closed' AND opened_at IS NOT NULL AND paused_at IS NULL AND closing_at IS NOT NULL AND
-            closed_at IS NOT NULL AND canceled_at IS NULL AND reason_code IS NULL AND
-            canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL) OR
+            closed_at IS NOT NULL AND canceled_at IS NULL AND reason_code IN ('manager_closed', 'scheduled_end_reached')) OR
         (state = 'canceled' AND opened_at IS NULL AND paused_at IS NULL AND closing_at IS NULL AND
-            closed_at IS NULL AND canceled_at IS NOT NULL AND (
-                (reason_code = 'manager_canceled' AND canceled_by_user_id IS NOT NULL AND
-                    cancellation_private_reason = btrim(cancellation_private_reason) AND
-                    char_length(cancellation_private_reason) BETWEEN 1 AND 1000 AND
-                    octet_length(cancellation_private_reason) <= 4000) OR
-                (reason_code = 'schedule_elapsed' AND canceled_by_user_id IS NULL AND cancellation_private_reason IS NULL)
-            ))
+            closed_at IS NULL AND canceled_at IS NOT NULL AND
+            reason_code IN ('manager_canceled', 'schedule_elapsed', 'academic_structure_invalid'))
     )
 );
 
@@ -798,6 +786,12 @@ CREATE INDEX exam_sittings_exam_class_schedule_idx
     ON exam_sittings (exam_id, class_id, scheduled_start_at DESC, id DESC);
 CREATE INDEX exam_sittings_exam_state_schedule_idx
     ON exam_sittings (exam_id, state, scheduled_start_at DESC, id DESC);
+CREATE INDEX exam_sittings_lifecycle_open_due_idx
+    ON exam_sittings (scheduled_start_at, id) WHERE state = 'scheduled';
+CREATE INDEX exam_sittings_lifecycle_deadline_due_idx
+    ON exam_sittings (scheduled_end_at, id) WHERE state IN ('open', 'paused');
+CREATE INDEX exam_sittings_lifecycle_closing_due_idx
+    ON exam_sittings (closing_at, id) WHERE state = 'closing';
 
 CREATE TABLE class_members (
     id varchar(26) PRIMARY KEY,
@@ -1032,7 +1026,7 @@ CREATE TABLE audit_events (
     session_id varchar(26) REFERENCES sessions(id),
     action varchar(128) NOT NULL,
     resource_type varchar(32) NOT NULL
-        CHECK (resource_type IN ('institution', 'academic_unit', 'class', 'user', 'exam')),
+        CHECK (resource_type IN ('institution', 'academic_unit', 'class', 'user', 'exam', 'exam_sitting')),
     resource_id varchar(26) NOT NULL,
     scope_type varchar(32) NOT NULL
         CHECK (scope_type IN ('institution', 'academic_unit', 'class')),
@@ -1061,6 +1055,35 @@ CREATE INDEX audit_events_resource_type_resource_id_created_at_id_idx
     ON audit_events (resource_type, resource_id, created_at DESC, id DESC);
 CREATE INDEX audit_events_status_created_at_id_idx
     ON audit_events (created_at, id) WHERE status = 'attempt';
+
+CREATE TABLE exam_sitting_private_actions (
+    audit_event_id varchar(26) PRIMARY KEY REFERENCES audit_events(id),
+    exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    action_code varchar(32) NOT NULL CHECK (action_code IN (
+        'manager_canceled', 'manager_paused', 'manager_resumed', 'manager_extended', 'manager_closed'
+    )),
+    private_reason text NOT NULL,
+    created_at timestamptz NOT NULL,
+    sitting_revision bigint NOT NULL CHECK (sitting_revision > 1),
+    UNIQUE (exam_sitting_id, sitting_revision),
+    CONSTRAINT exam_sitting_private_actions_reason_check CHECK (
+        private_reason = btrim(private_reason) AND
+        char_length(private_reason) BETWEEN 1 AND 1000 AND
+        octet_length(private_reason) <= 4000
+    )
+);
+
+CREATE FUNCTION reject_exam_sitting_private_action_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'Exam Sitting private action provenance is append-only' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE TRIGGER exam_sitting_private_actions_append_only
+    BEFORE UPDATE OR DELETE ON exam_sitting_private_actions
+    FOR EACH ROW EXECUTE FUNCTION reject_exam_sitting_private_action_mutation();
 
 CREATE TABLE command_outcomes (
     user_id varchar(26) NOT NULL REFERENCES users(id),
@@ -1243,9 +1266,15 @@ ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_exam_revision_id_canonical_check
     CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_sittings_class_id_canonical_check
-    CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_sittings_canceled_by_user_id_canonical_check
-    CHECK (canceled_by_user_id IS NULL OR canceled_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_sitting_private_actions
+    ADD CONSTRAINT exam_sitting_private_actions_audit_event_id_canonical_check
+    CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_private_actions_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_private_actions_actor_user_id_canonical_check
+    CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE classes
     ADD CONSTRAINT classes_id_canonical_check

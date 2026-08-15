@@ -182,6 +182,38 @@ func (s *auditService) BeginCriticalActionAtScope(
 	return s.beginCriticalActionAtScope(ctx, principal, action, resource, scopeType, scopeID, metadata, parameters, priorState)
 }
 
+// BeginSystemCriticalActionAtScope persists an actor-less critical mutation
+// attempt for trusted durable work. It is intentionally distinct from the
+// principal-bearing path so Jobs never fabricate a user identity or silently
+// bypass user authorization.
+func (s *auditService) BeginSystemCriticalActionAtScope(
+	ctx context.Context,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	parameters any,
+) (*model.AuditEvent, error) {
+	if s.audits == nil {
+		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
+	}
+	encodedParameters, err := model.EncodeAuditData(parameters)
+	if err != nil {
+		return nil, domainInvalid("audit.event.invalid", err)
+	}
+	event := &model.AuditEvent{
+		Action: string(action), Resource: resource,
+		ScopeType: scopeType, ScopeID: scopeID,
+		Status: model.AuditStatusAttempt, NodeID: s.nodeID,
+		Parameters: encodedParameters,
+	}
+	saved, err := s.audits.Save(ctx, event)
+	if err != nil {
+		return nil, auditUnavailable(err)
+	}
+	return saved, nil
+}
+
 func (s *auditService) beginCriticalActionAtScope(
 	ctx context.Context,
 	principal model.Principal,

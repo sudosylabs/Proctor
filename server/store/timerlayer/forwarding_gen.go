@@ -682,6 +682,12 @@ func (s *timedExamSittingStore) List(arg0 context.Context, arg1 store.ExamSittin
 	})
 }
 
+func (s *timedExamSittingStore) ListLifecycleDue(arg0 context.Context, arg1 store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListLifecycleDue), func() ([]store.ExamSittingLifecycleDue, error) {
+		return s.next.ListLifecycleDue(arg0, arg1)
+	})
+}
+
 func (s *timedExamSittingStore) Schedule(arg0 context.Context, arg1 *store.ExamSittingSchedule, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodSchedule), func() (*store.ExamSittingCommandResult, error) {
 		return s.next.Schedule(arg0, arg1, arg2)
@@ -697,6 +703,42 @@ func (s *timedExamSittingStore) UpdateSchedule(arg0 context.Context, arg1 *store
 func (s *timedExamSittingStore) Cancel(arg0 context.Context, arg1 *store.ExamSittingCancellation, arg2 *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCancel), func() (*store.ExamSittingCommandResult, error) {
 		return s.next.Cancel(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Pause(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodPause), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Pause(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Resume(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodResume), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Resume(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) Extend(arg0 context.Context, arg1 *store.ExamSittingExtension, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodExtend), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.Extend(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) EarlyClose(arg0 context.Context, arg1 *store.ExamSittingManagerTransition, arg2 *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodEarlyClose), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.EarlyClose(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSittingStore) AdvanceDue(arg0 context.Context, arg1 *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodAdvanceDue), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.AdvanceDue(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) CloseIfNoAttempts(arg0 context.Context, arg1 *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCloseIfNoAttempts), func() (*store.ExamSittingLifecycleResult, error) {
+		return s.next.CloseIfNoAttempts(arg0, arg1)
 	})
 }
 

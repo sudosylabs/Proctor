@@ -37,8 +37,10 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		deps.Store.ExamSitting(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examSittingAuthorizationAdapter{authorization: access.authorization},
 		examSittingAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		examSittingSystemAuditAdapter{audit: foundation.audit},
 		examSittingRealtimeEffects{realtime: foundation.realtime},
 		examSittingRealtimeEffects{realtime: foundation.realtime},
+		examSittingLifecycleJobFactory{now: time.Now, newID: model.NewJobID},
 		time.Now, model.NewExamSittingID,
 	)
 	if err != nil {

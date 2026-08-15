@@ -82,6 +82,36 @@ type CancelCommand struct {
 	Idempotency      *store.CommandIdempotency
 }
 
+type PauseCommand struct {
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	ExpectedRevision int64
+	PrivateReason    string
+	Idempotency      *store.CommandIdempotency
+}
+
+type ResumeCommand = PauseCommand
+
+type EarlyCloseCommand = PauseCommand
+
+type ExtendCommand struct {
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	ExpectedRevision int64
+	ScheduledEndAt   time.Time
+	PrivateReason    string
+	Idempotency      *store.CommandIdempotency
+}
+
+// SystemCall identifies one durable Job execution without manufacturing a
+// user Principal. Both IDs are retained in bounded system audit metadata.
+type SystemCall struct {
+	JobID     model.JobID
+	AttemptID model.JobAttemptID
+}
+
+func (call SystemCall) valid() bool { return call.JobID.IsValid() && call.AttemptID.IsValid() }
+
 type ListQuery struct {
 	ExamID                 model.ExamID
 	ClassID                model.ClassID
@@ -115,10 +145,27 @@ type Auditor interface {
 	Fail(context.Context, string, string) error
 }
 
+// SystemAuditor owns audit creation for trusted durable work. It deliberately
+// accepts SystemCall rather than Call so Jobs cannot impersonate a User.
+type SystemAuditor interface {
+	Begin(context.Context, SystemCall, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (string, error)
+	Fail(context.Context, string, string) error
+}
+
+// LifecycleJobFactory constructs validated durable intents. Persistence owns
+// inserting them atomically with the corresponding Sitting mutation.
+type LifecycleJobFactory interface {
+	BoundaryJobs(model.ExamSittingID, int64, time.Time, time.Time) (*model.Job, *model.Job, error)
+	DeadlineJob(model.ExamSittingID, int64, time.Time) (*model.Job, error)
+	FinalizeJob(model.ExamSittingID, int64, time.Time) (*model.Job, error)
+}
+
 type Effects interface {
 	Scheduled(context.Context, model.ExamID, model.ExamSittingID, model.ExamSittingState, int64, time.Time) error
 	ScheduleUpdated(context.Context, model.ExamID, model.ExamSittingID, model.ExamSittingState, int64, time.Time) error
 	Canceled(context.Context, model.ExamID, model.ExamSittingID, model.ExamSittingState, int64, time.Time) error
+	LifecycleChanged(context.Context, model.ExamID, model.ExamSittingID, model.ExamSittingState, int64,
+		store.ExamSittingLifecycleTransitionCode, time.Time, time.Time) error
 }
 
 type EffectFailures interface {
@@ -131,20 +178,24 @@ type Service struct {
 	memberships memberships
 	authorizer  Authorizer
 	auditor     Auditor
+	systemAudit SystemAuditor
 	effects     Effects
 	failures    EffectFailures
+	jobs        LifecycleJobFactory
 	now         func() time.Time
 	newID       func() model.ExamSittingID
 }
 
 func New(persistence store.ExamSittingStore, access accessStore, memberships memberships, authorizer Authorizer,
-	auditor Auditor, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamSittingID) (*Service, error) {
-	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil ||
-		failures == nil || now == nil || newID == nil {
+	auditor Auditor, systemAudit SystemAuditor, effects Effects, failures EffectFailures, jobs LifecycleJobFactory,
+	now func() time.Time, newID func() model.ExamSittingID,
+) (*Service, error) {
+	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || systemAudit == nil || effects == nil ||
+		failures == nil || jobs == nil || now == nil || newID == nil {
 		return nil, errors.New("Exam Sitting dependencies are required")
 	}
 	return &Service{persistence: persistence, access: access, memberships: memberships, authorizer: authorizer,
-		auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
+		auditor: auditor, systemAudit: systemAudit, effects: effects, failures: failures, jobs: jobs, now: now, newID: newID}, nil
 }
 
 func (service *Service) Schedule(ctx context.Context, call Call, command ScheduleCommand) (store.ExamSittingSnapshot, error) {
@@ -170,6 +221,10 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 	if err != nil {
 		return store.ExamSittingSnapshot{}, invalidCause("schedule", err)
 	}
+	openJob, deadlineJob, err := service.jobs.BoundaryJobs(sittingID, sitting.Revision, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
+	if err != nil || openJob == nil || deadlineJob == nil {
+		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting boundary Jobs", err)
+	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": sittingID.String(),
 		"exam_revision_id": command.ExamRevisionID.String(), "class_id": command.ClassID.String()}
 	auditID, err := service.auditor.Begin(ctx, call, authorization.action, model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()},
@@ -177,7 +232,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	result, err := service.persistence.Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, ActorUserID: principal.UserID,
+	result, err := service.persistence.Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: principal.UserID,
 		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, command.Idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
@@ -323,6 +378,10 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 	if noChanges && snapshot.Sitting.Revision == command.ExpectedRevision && snapshot.Sitting.State == model.ExamSittingScheduled && !authorization.examArchived {
 		return store.ExamSittingSnapshot{}, &Fault{Code: "exam.sitting.no_changes"}
 	}
+	openJob, deadlineJob, err := service.jobs.BoundaryJobs(command.SittingID, command.ExpectedRevision+1, startAt, endAt)
+	if err != nil || openJob == nil || deadlineJob == nil {
+		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting boundary Jobs", err)
+	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"exam_revision_id": revisionID.String(), "class_id": classID.String(),
 		"expected_sitting_revision": command.ExpectedRevision}
@@ -335,6 +394,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		ExamID: command.ExamID, SittingID: command.SittingID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
+		OpenJob: openJob, DeadlineJob: deadlineJob,
 		ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, command.Idempotency)
 	if err != nil {
@@ -391,6 +451,287 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 		}
 	}
 	return value, nil
+}
+
+func (service *Service) Pause(ctx context.Context, call Call, command PauseCommand) (store.ExamSittingSnapshot, error) {
+	return service.runManagerTransition(ctx, call, command, "pause", store.ExamSittingTransitionManagerPaused, true, false,
+		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+			return service.persistence.Pause(ctx, input, idempotency)
+		})
+}
+
+func (service *Service) Resume(ctx context.Context, call Call, command ResumeCommand) (store.ExamSittingSnapshot, error) {
+	return service.runManagerTransition(ctx, call, command, "resume", store.ExamSittingTransitionManagerResumed, false, false,
+		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+			return service.persistence.Resume(ctx, input, idempotency)
+		})
+}
+
+func (service *Service) EarlyClose(ctx context.Context, call Call, command EarlyCloseCommand) (store.ExamSittingSnapshot, error) {
+	return service.runManagerTransition(ctx, call, command, "early_close", store.ExamSittingTransitionManagerClosed, true, true,
+		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+			return service.persistence.EarlyClose(ctx, input, idempotency)
+		})
+}
+
+type managerTransitionStoreCall func(context.Context, *store.ExamSittingManagerTransition, *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error)
+
+func (service *Service) runManagerTransition(ctx context.Context, call Call, command PauseCommand, operation string,
+	transition store.ExamSittingLifecycleTransitionCode, allowArchived, finalize bool, run managerTransitionStoreCall,
+) (store.ExamSittingSnapshot, error) {
+	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
+		return store.ExamSittingSnapshot{}, invalid(operation)
+	}
+	if command.Idempotency == nil {
+		return store.ExamSittingSnapshot{}, &Fault{Code: "idempotency.key_required"}
+	}
+	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
+	at := model.TimeUTC(service.now())
+	authorization, err := service.authorize(ctx, call, command.ExamID, resource, at,
+		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
+	}
+	if authorization.examArchived && !allowArchived {
+		return store.ExamSittingSnapshot{}, &Fault{Code: "exam.archived"}
+	}
+	var finalizeJob *model.Job
+	if finalize {
+		finalizeJob, err = service.jobs.FinalizeJob(command.SittingID, command.ExpectedRevision+1, at)
+		if err != nil || finalizeJob == nil {
+			return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting finalize Job", err)
+		}
+	}
+	auditValue := managerLifecycleAuditValue(command.ExamID, command.SittingID, command.ExpectedRevision, transition)
+	auditID, err := service.auditor.Begin(ctx, call, authorization.action, resource, model.RoleScopeAcademicUnit,
+		authorization.unitID.String(), operation, auditValue, nil)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
+	}
+	input := &store.ExamSittingManagerTransition{ExamID: command.ExamID, SittingID: command.SittingID,
+		ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
+		PrivateReason: command.PrivateReason, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		FinalizeJob: finalizeJob}
+	result, err := run(ctx, input, command.Idempotency)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
+	}
+	value, err := requireManagerLifecycleResult(result, command.ExamID, command.SittingID, transition)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
+	}
+	service.publishLifecycle(ctx, result, operation)
+	return value, nil
+}
+
+func (service *Service) Extend(ctx context.Context, call Call, command ExtendCommand) (store.ExamSittingSnapshot, error) {
+	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || command.ScheduledEndAt.IsZero() ||
+		!validPrivateReason(command.PrivateReason) {
+		return store.ExamSittingSnapshot{}, invalid("extend")
+	}
+	if command.Idempotency == nil {
+		return store.ExamSittingSnapshot{}, &Fault{Code: "idempotency.key_required"}
+	}
+	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
+	at := model.TimeUTC(service.now())
+	authorization, err := service.authorize(ctx, call, command.ExamID, resource, at,
+		model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
+	}
+	if authorization.examArchived {
+		return store.ExamSittingSnapshot{}, &Fault{Code: "exam.archived"}
+	}
+	deadline := model.TimeUTC(command.ScheduledEndAt)
+	deadlineJob, err := service.jobs.DeadlineJob(command.SittingID, command.ExpectedRevision+1, deadline)
+	if err != nil || deadlineJob == nil {
+		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting deadline Job", err)
+	}
+	auditValue := managerLifecycleAuditValue(command.ExamID, command.SittingID, command.ExpectedRevision, store.ExamSittingTransitionManagerExtended)
+	auditID, err := service.auditor.Begin(ctx, call, authorization.action, resource, model.RoleScopeAcademicUnit,
+		authorization.unitID.String(), "extend", auditValue, nil)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
+	}
+	result, err := service.persistence.Extend(ctx, &store.ExamSittingExtension{ExamID: command.ExamID, SittingID: command.SittingID,
+		ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
+		ScheduledEndAt: deadline, DeadlineJob: deadlineJob, PrivateReason: command.PrivateReason, ChangedAt: at,
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, command.Idempotency)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
+	}
+	value, err := requireManagerLifecycleResult(result, command.ExamID, command.SittingID, store.ExamSittingTransitionManagerExtended)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
+	}
+	service.publishLifecycle(ctx, result, "extend")
+	return value, nil
+}
+
+func managerLifecycleAuditValue(examID model.ExamID, sittingID model.ExamSittingID, expectedRevision int64,
+	transition store.ExamSittingLifecycleTransitionCode,
+) map[string]any {
+	return map[string]any{"exam_id": examID.String(), "exam_sitting_id": sittingID.String(),
+		"expected_sitting_revision": expectedRevision, "transition": string(transition)}
+}
+
+func (service *Service) AdvanceDue(ctx context.Context, call SystemCall, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+	return service.runSystemLifecycle(ctx, call, sittingID, "advance_due", true,
+		func(ctx context.Context, input systemLifecycleInput) (*store.ExamSittingLifecycleResult, error) {
+			return service.persistence.AdvanceDue(ctx, &store.ExamSittingDueAdvance{SittingID: input.sittingID,
+				AuditEventID: input.auditID, AuditAt: input.auditAt, FinalizeJob: input.finalizeJob})
+		})
+}
+
+func (service *Service) CloseIfNoAttempts(ctx context.Context, call SystemCall, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+	return service.runSystemLifecycle(ctx, call, sittingID, "close_if_no_attempts", false,
+		func(ctx context.Context, input systemLifecycleInput) (*store.ExamSittingLifecycleResult, error) {
+			return service.persistence.CloseIfNoAttempts(ctx, &store.ExamSittingCloseIfNoAttempts{SittingID: input.sittingID,
+				AuditEventID: input.auditID, AuditAt: input.auditAt})
+		})
+}
+
+type systemLifecycleInput struct {
+	sittingID   model.ExamSittingID
+	auditID     string
+	auditAt     int64
+	finalizeJob *model.Job
+}
+
+type systemLifecycleStoreCall func(context.Context, systemLifecycleInput) (*store.ExamSittingLifecycleResult, error)
+
+func (service *Service) runSystemLifecycle(ctx context.Context, call SystemCall, sittingID model.ExamSittingID, operation string,
+	prepareFinalize bool, run systemLifecycleStoreCall,
+) (store.ExamSittingLifecycleResult, error) {
+	if !call.valid() || !sittingID.IsValid() {
+		return store.ExamSittingLifecycleResult{}, invalid("system_call")
+	}
+	current, err := service.persistence.Resolve(ctx, sittingID)
+	if err != nil {
+		return store.ExamSittingLifecycleResult{}, mapStoreError(err)
+	}
+	snapshot, err := requireSnapshot(current)
+	if err != nil || snapshot.Sitting.ID != sittingID || !snapshot.AcademicUnitID.IsValid() {
+		return store.ExamSittingLifecycleResult{}, unavailable(errors.New("Exam Sitting Store returned a mismatched system snapshot"))
+	}
+	var finalizeJob *model.Job
+	if prepareFinalize {
+		finalizeJob, err = service.jobs.FinalizeJob(sittingID, snapshot.Sitting.Revision+1, snapshot.Sitting.ScheduledEndAt)
+		if err != nil || finalizeJob == nil {
+			return store.ExamSittingLifecycleResult{}, jobFactoryUnavailable("construct Exam Sitting finalize Job", err)
+		}
+	}
+	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
+	auditValue := map[string]any{"exam_id": snapshot.Sitting.ExamID.String(), "exam_sitting_id": sittingID.String(),
+		"expected_sitting_revision": snapshot.Sitting.Revision, "job_id": call.JobID.String(), "job_attempt_id": call.AttemptID.String()}
+	auditID, err := service.systemAudit.Begin(ctx, call, model.ActionExamSittingManage, resource,
+		model.RoleScopeAcademicUnit, snapshot.AcademicUnitID.String(), operation, auditValue)
+	if err != nil {
+		return store.ExamSittingLifecycleResult{}, err
+	}
+	at := model.TimeUTC(service.now())
+	result, err := run(ctx, systemLifecycleInput{sittingID: sittingID, auditID: auditID, auditAt: model.MillisFromTime(at), finalizeJob: finalizeJob})
+	if err != nil {
+		return store.ExamSittingLifecycleResult{}, service.failSystemAudit(ctx, auditID, err)
+	}
+	value, err := requireSystemLifecycleResult(result, snapshot.Sitting.ExamID, sittingID)
+	if err != nil {
+		return store.ExamSittingLifecycleResult{}, err
+	}
+	service.publishLifecycle(ctx, result, operation)
+	return value, nil
+}
+
+func (service *Service) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	invalidCursor := options.AfterDueAt.IsZero() != options.AfterSittingID.IsZero() ||
+		!options.AfterSittingID.IsZero() && !options.AfterSittingID.IsValid()
+	if invalidCursor || options.Limit < 1 || options.Limit > 200 {
+		return nil, invalid("lifecycle_due")
+	}
+	options.AfterDueAt = model.TimeUTC(options.AfterDueAt)
+	items, err := service.persistence.ListLifecycleDue(ctx, options)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	for _, item := range items {
+		if item.Value == nil || item.Value.Sitting == nil || item.Value.Sitting.Validate() != nil || item.DueAt.IsZero() || item.DueAt.Location() != time.UTC {
+			return nil, unavailable(errors.New("Exam Sitting Store returned an invalid lifecycle due item"))
+		}
+	}
+	if items == nil {
+		items = []store.ExamSittingLifecycleDue{}
+	}
+	return items, nil
+}
+
+func requireManagerLifecycleResult(result *store.ExamSittingLifecycleResult, examID model.ExamID, sittingID model.ExamSittingID,
+	transition store.ExamSittingLifecycleTransitionCode,
+) (store.ExamSittingSnapshot, error) {
+	if result == nil || result.Value == nil || !result.Changed || result.Transition != transition {
+		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned an invalid manager lifecycle result"))
+	}
+	value, err := requireSnapshot(result.Value)
+	if err != nil || value.Sitting.ExamID != examID || value.Sitting.ID != sittingID {
+		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned a mismatched manager lifecycle result"))
+	}
+	return value, nil
+}
+
+func requireSystemLifecycleResult(result *store.ExamSittingLifecycleResult, examID model.ExamID, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+	if result == nil || result.Value == nil || result.Changed != (result.Transition != "") || result.Replayed ||
+		result.Changed && !validLifecycleTransition(result.Transition) {
+		return store.ExamSittingLifecycleResult{}, unavailable(errors.New("Exam Sitting Store returned an invalid system lifecycle result"))
+	}
+	value, err := requireSnapshot(result.Value)
+	if err != nil || value.Sitting.ExamID != examID || value.Sitting.ID != sittingID {
+		return store.ExamSittingLifecycleResult{}, unavailable(errors.New("Exam Sitting Store returned a mismatched system lifecycle result"))
+	}
+	return *result, nil
+}
+
+func validLifecycleTransition(value store.ExamSittingLifecycleTransitionCode) bool {
+	switch value {
+	case store.ExamSittingTransitionOpened, store.ExamSittingTransitionManagerPaused, store.ExamSittingTransitionManagerResumed,
+		store.ExamSittingTransitionManagerExtended, store.ExamSittingTransitionManagerClosed,
+		store.ExamSittingTransitionAcademicStructureInvalid, store.ExamSittingTransitionScheduleElapsed,
+		store.ExamSittingTransitionScheduledEndReached, store.ExamSittingTransitionClosedNoAttempts:
+		return true
+	default:
+		return false
+	}
+}
+
+func (service *Service) publishLifecycle(ctx context.Context, result *store.ExamSittingLifecycleResult, operation string) {
+	if result == nil || !result.Changed || result.Replayed || result.Value == nil || result.Value.Sitting == nil {
+		return
+	}
+	sitting := result.Value.Sitting
+	if err := service.effects.LifecycleChanged(ctx, sitting.ExamID, sitting.ID, sitting.State, sitting.Revision,
+		result.Transition, sitting.ScheduledEndAt, sitting.UpdatedAt); err != nil {
+		service.failures.Report(ctx, "exam_sitting_"+operation, err)
+	}
+}
+
+func (service *Service) failSystemAudit(ctx context.Context, auditID string, err error) error {
+	mapped := mapStoreError(err)
+	code := "exam.sitting.unavailable"
+	var fault *Fault
+	if errors.As(mapped, &fault) {
+		code = fault.Code
+	}
+	if auditErr := service.systemAudit.Fail(ctx, auditID, code); auditErr != nil {
+		return auditErr
+	}
+	return mapped
+}
+
+func jobFactoryUnavailable(message string, cause error) error {
+	if cause == nil {
+		cause = errors.New(message)
+	} else {
+		cause = errors.Join(errors.New(message), cause)
+	}
+	return unavailable(cause)
 }
 
 func validPrivateReason(reason string) bool {
@@ -555,9 +896,17 @@ func mapConflict(conflict *store.ErrConflict, cause error) error {
 		code = "exam.sitting.no_changes"
 	case "exam_sitting_state":
 		code = "exam.sitting.state_conflict"
+	case "exam_sitting_extension":
+		code = "exam.sitting.extension_not_later"
+	case "exam_sitting_extension_not_later":
+		code = "exam.sitting.extension_not_later"
+	case "exam_sitting_deadline_reached":
+		code = "exam.sitting.deadline_reached"
 	case "exam_sitting_class_lineage":
 		code = "exam.sitting.class_ineligible"
 	case "exam_sitting_period_containment":
+		code = "exam.sitting.schedule_outside_period"
+	case "exam_sitting_schedule_outside_period":
 		code = "exam.sitting.schedule_outside_period"
 	case "exam_sitting_not_future":
 		code = "exam.sitting.schedule_not_future"

@@ -183,6 +183,67 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatalf("cancel replay = %#v, %v", canceledReplay, appErr)
 	}
 
+	// Exercise the production lifecycle Job factory through the public manager
+	// facade and the real PostgreSQL Store. The direct state advance stands in
+	// for the separately tested delayed opening Job so this test can focus on
+	// the user-command composition seam.
+	live, appErr := helper.App.ScheduleExamSitting(ctx, managerInvocation, application.ScheduleExamSittingCommand{
+		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
+		ScheduledStartAt: now.Add(10 * time.Hour).Truncate(time.Millisecond),
+		ScheduledEndAt:   now.Add(12 * time.Hour).Truncate(time.Millisecond),
+		IdempotencyKey:   "sitting-live-schedule",
+	})
+	if appErr != nil || live.Sitting == nil {
+		t.Fatalf("live schedule = %#v, %v", live, appErr)
+	}
+	openedAt := time.Now().UTC().Truncate(time.Millisecond)
+	result, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_sittings SET state='open',opened_at=?,updated_at=?,revision=2 WHERE id=? AND state='scheduled' AND revision=1`,
+		openedAt, openedAt, live.Sitting.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+		t.Fatalf("open live Sitting affected=%d error=%v", affected, affectedErr)
+	}
+	paused, appErr := helper.App.PauseExamSitting(ctx, managerInvocation, application.PauseExamSittingCommand{
+		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 2,
+		PrivateReason: "Investigating a delivery interruption", IdempotencyKey: "sitting-live-pause",
+	})
+	if appErr != nil || paused.Sitting == nil || paused.Sitting.State != model.ExamSittingPaused || paused.Sitting.Revision != 3 {
+		t.Fatalf("pause live Sitting = %#v, %v", paused, appErr)
+	}
+	resumed, appErr := helper.App.ResumeExamSitting(ctx, managerInvocation, application.ResumeExamSittingCommand{
+		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 3,
+		PrivateReason: "Delivery interruption resolved", IdempotencyKey: "sitting-live-resume",
+	})
+	if appErr != nil || resumed.Sitting == nil || resumed.Sitting.State != model.ExamSittingOpen || resumed.Sitting.Revision != 4 {
+		t.Fatalf("resume live Sitting = %#v, %v", resumed, appErr)
+	}
+	liveEnd := live.Sitting.ScheduledEndAt.Add(30 * time.Minute)
+	extended, appErr := helper.App.ExtendExamSitting(ctx, managerInvocation, application.ExtendExamSittingCommand{
+		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 4, ScheduledEndAt: liveEnd,
+		PrivateReason: "Compensating for the interruption", IdempotencyKey: "sitting-live-extend",
+	})
+	if appErr != nil || extended.Sitting == nil || extended.Sitting.Revision != 5 || !extended.Sitting.ScheduledEndAt.Equal(liveEnd) {
+		t.Fatalf("extend live Sitting = %#v, %v", extended, appErr)
+	}
+	closedEarly, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, application.CloseExamSittingCommand{
+		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 5,
+		PrivateReason: "Authorized early close", IdempotencyKey: "sitting-live-close",
+	})
+	if appErr != nil || closedEarly.Sitting == nil || closedEarly.Sitting.State != model.ExamSittingClosing ||
+		closedEarly.Sitting.Revision != 6 || closedEarly.Sitting.ReasonCode != model.ExamSittingReasonManagerClosed {
+		t.Fatalf("close live Sitting = %#v, %v", closedEarly, appErr)
+	}
+	closedReplay, appErr := helper.App.CloseExamSitting(ctx, managerInvocation, application.CloseExamSittingCommand{
+		ExamID: created.Exam.ID, SittingID: live.Sitting.ID, ExpectedRevision: 5,
+		PrivateReason: "Authorized early close", IdempotencyKey: "sitting-live-close",
+	})
+	if appErr != nil || closedReplay.Sitting == nil || closedReplay.Sitting.Revision != closedEarly.Sitting.Revision ||
+		!closedReplay.Sitting.ClosingAt.Time.Equal(closedEarly.Sitting.ClosingAt.Time) {
+		t.Fatalf("close live replay = %#v, %v", closedReplay, appErr)
+	}
+
 	if _, err := persistence.AcademicUnitMember().End(ctx, managerMembership.ID.String(), managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +321,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	overridePage, appErr := helper.App.ListExamSittings(ctx, overrideInvocation, application.ListExamSittingsQuery{
 		ExamID: created.Exam.ID, Limit: 50,
 	})
-	if appErr != nil || len(overridePage.Items) != 2 {
+	if appErr != nil || len(overridePage.Items) != 3 {
 		t.Fatalf("override list = %#v, %v", overridePage, appErr)
 	}
 	overrideEndAt := overrideSchedule.ScheduledEndAt.Add(30 * time.Minute)

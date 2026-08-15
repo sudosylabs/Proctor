@@ -99,6 +99,30 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	if _, err := NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingScheduled, 2, sittingChangedAt); err == nil {
 		t.Fatal("accepted a cancellation event with non-canceled state")
 	}
+	lifecycle, err := NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingPaused, 4,
+		"manager_paused", sittingChangedAt.Add(2*time.Hour), sittingChangedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle.Name != "exam_sitting_lifecycle_changed" || lifecycle.Action != model.ActionExamSittingView ||
+		lifecycle.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
+		t.Fatalf("lifecycle Sitting event = %#v", lifecycle)
+	}
+	if got := string(lifecycle.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-14T11:05:00.000000123Z","changed_at":"2026-08-14T09:05:00.000000123Z"}` {
+		t.Fatalf("lifecycle Sitting data = %s", got)
+	}
+	if _, err = NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingPaused, 4,
+		"private teacher reason", sittingChangedAt.Add(2*time.Hour), sittingChangedAt); err == nil {
+		t.Fatal("accepted private lifecycle event reason")
+	}
+	opened, err := NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingOpen, 2,
+		"scheduled_start_reached", sittingChangedAt.Add(2*time.Hour), sittingChangedAt)
+	if err != nil {
+		t.Fatalf("opening lifecycle event: %v", err)
+	}
+	if got := string(opened.Data); !strings.Contains(got, `"reason_code":"scheduled_start_reached"`) {
+		t.Fatalf("opening lifecycle data = %s", got)
+	}
 	revisionID := model.NewExamRevisionID()
 	policyDigest := strings.Repeat("a", 64)
 	publishedAt := time.Date(2026, 8, 14, 9, 10, 0, 123, time.UTC)

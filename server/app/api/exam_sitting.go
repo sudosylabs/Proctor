@@ -12,7 +12,9 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -26,6 +28,10 @@ type ExamSittingApplication interface {
 	ListExamSittings(context.Context, application.Invocation, application.ListExamSittingsQuery) (application.ExamSittingPage, error)
 	UpdateExamSittingSchedule(context.Context, application.Invocation, application.UpdateExamSittingScheduleCommand) (application.ExamSittingView, error)
 	CancelExamSitting(context.Context, application.Invocation, application.CancelExamSittingCommand) (application.ExamSittingView, error)
+	PauseExamSitting(context.Context, application.Invocation, application.PauseExamSittingCommand) (application.ExamSittingView, error)
+	ResumeExamSitting(context.Context, application.Invocation, application.ResumeExamSittingCommand) (application.ExamSittingView, error)
+	ExtendExamSitting(context.Context, application.Invocation, application.ExtendExamSittingCommand) (application.ExamSittingView, error)
+	CloseExamSitting(context.Context, application.Invocation, application.CloseExamSittingCommand) (application.ExamSittingView, error)
 }
 
 type scheduleExamSittingRequest struct {
@@ -45,6 +51,17 @@ type updateExamSittingScheduleRequest struct {
 
 type cancelExamSittingRequest struct {
 	ExpectedRevision int64  `json:"expected_revision"`
+	Reason           string `json:"reason"`
+}
+
+type examSittingManagerTransitionRequest struct {
+	ExpectedRevision int64  `json:"expected_revision"`
+	Reason           string `json:"reason"`
+}
+
+type extendExamSittingRequest struct {
+	ExpectedRevision int64  `json:"expected_revision"`
+	ScheduledEndAt   string `json:"scheduled_end_at"`
 	Reason           string `json:"reason"`
 }
 
@@ -78,7 +95,30 @@ func (body *cancelExamSittingRequest) UnmarshalJSON(encoded []byte) error {
 	return nil
 }
 
+func (body *examSittingManagerTransitionRequest) UnmarshalJSON(encoded []byte) error {
+	type wire examSittingManagerTransitionRequest
+	var decoded wire
+	if err := decodeDuplicateFreeExamSittingObject(encoded, &decoded); err != nil {
+		return err
+	}
+	*body = examSittingManagerTransitionRequest(decoded)
+	return nil
+}
+
+func (body *extendExamSittingRequest) UnmarshalJSON(encoded []byte) error {
+	type wire extendExamSittingRequest
+	var decoded wire
+	if err := decodeDuplicateFreeExamSittingObject(encoded, &decoded); err != nil {
+		return err
+	}
+	*body = extendExamSittingRequest(decoded)
+	return nil
+}
+
 func decodeDuplicateFreeExamSittingObject(encoded []byte, target any) error {
+	if !utf8.Valid(encoded) {
+		return errors.New("Exam Sitting request must be valid UTF-8")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	token, err := decoder.Token()
 	if err != nil || token != json.Delim('{') {
@@ -153,6 +193,10 @@ func examSittingResource(app ExamSittingApplication) resource {
 	collection := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"))
 	cancel := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("cancel"))
+	pause := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("pause"))
+	resume := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("resume"))
+	extend := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("extend"))
+	closeSitting := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("close"))
 	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.unavailable")
 	return newResource(
 		"exam-sittings",
@@ -161,6 +205,10 @@ func examSittingResource(app ExamSittingApplication) resource {
 		principalRoute(http.MethodGet, member, readErrors, module.get),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, member, examSittingUpdateErrorCodes(), module.updateSchedule),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, cancel, examSittingCancelErrorCodes(), module.cancel),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, pause, examSittingPauseErrorCodes(), module.pause),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, resume, examSittingResumeErrorCodes(), module.resume),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, extend, examSittingExtendErrorCodes(), module.extend),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, closeSitting, examSittingCloseErrorCodes(), module.close),
 	)
 }
 
@@ -181,6 +229,23 @@ func examSittingUpdateErrorCodes() []string {
 
 func examSittingCancelErrorCodes() []string {
 	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict")
+}
+
+func examSittingPauseErrorCodes() []string {
+	return examSittingMutationErrorCodes("exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached")
+}
+
+func examSittingResumeErrorCodes() []string {
+	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached")
+}
+
+func examSittingExtendErrorCodes() []string {
+	return examSittingMutationErrorCodes("exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict",
+		"exam.sitting.deadline_reached", "exam.sitting.extension_not_later", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period")
+}
+
+func examSittingCloseErrorCodes() []string {
+	return examSittingMutationErrorCodes("exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached")
 }
 
 func (module examSittingHTTPModule) schedule(request operationRequest) (operationResult, error) {
@@ -360,8 +425,8 @@ func (module examSittingHTTPModule) cancel(request operationRequest) (operationR
 	if body.ExpectedRevision < 1 {
 		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
 	}
-	if body.Reason == "" {
-		return operationResult{}, invalidRequestError("reason", errors.New("is required"))
+	if !validExamSittingManagerReason(body.Reason) {
+		return operationResult{}, invalidRequestError("reason", errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
 	}
 	view, err := module.application.CancelExamSitting(request.context, request.invocation(), application.CancelExamSittingCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision,
@@ -371,6 +436,81 @@ func (module examSittingHTTPModule) cancel(request operationRequest) (operationR
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, examSittingResponseFromView(view)), nil
+}
+
+type examSittingManagerCommandCall func(context.Context, application.Invocation, application.PauseExamSittingCommand) (application.ExamSittingView, error)
+
+func (module examSittingHTTPModule) pause(request operationRequest) (operationResult, error) {
+	return module.managerTransition(request, "pauseExamSitting", module.application.PauseExamSitting)
+}
+
+func (module examSittingHTTPModule) resume(request operationRequest) (operationResult, error) {
+	return module.managerTransition(request, "resumeExamSitting", module.application.ResumeExamSitting)
+}
+
+func (module examSittingHTTPModule) close(request operationRequest) (operationResult, error) {
+	return module.managerTransition(request, "closeExamSitting", module.application.CloseExamSitting)
+}
+
+func (module examSittingHTTPModule) managerTransition(request operationRequest, operation string,
+	run examSittingManagerCommandCall,
+) (operationResult, error) {
+	examID, sittingID, err := examSittingIDs(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body examSittingManagerTransitionRequest
+	if err = request.decodeJSON(&body, operation); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+	}
+	if !validExamSittingManagerReason(body.Reason) {
+		return operationResult{}, invalidRequestError("reason", errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
+	}
+	view, err := run(request.context, request.invocation(), application.PauseExamSittingCommand{
+		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision,
+		PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examSittingResponseFromView(view)), nil
+}
+
+func (module examSittingHTTPModule) extend(request operationRequest) (operationResult, error) {
+	examID, sittingID, err := examSittingIDs(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body extendExamSittingRequest
+	if err = request.decodeJSON(&body, "extendExamSitting"); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+	}
+	endAt, err := parseExamSittingTime("scheduled_end_at", body.ScheduledEndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
+	if !validExamSittingManagerReason(body.Reason) {
+		return operationResult{}, invalidRequestError("reason", errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
+	}
+	view, err := module.application.ExtendExamSitting(request.context, request.invocation(), application.ExtendExamSittingCommand{
+		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision, ScheduledEndAt: endAt,
+		PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examSittingResponseFromView(view)), nil
+}
+
+func validExamSittingManagerReason(reason string) bool {
+	return utf8.ValidString(reason) && reason == strings.TrimSpace(reason) && utf8.RuneCountInString(reason) >= 1 &&
+		utf8.RuneCountInString(reason) <= 1000 && len(reason) <= 4000
 }
 
 func examSittingExamID(request operationRequest) (model.ExamID, error) {

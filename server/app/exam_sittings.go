@@ -66,6 +66,26 @@ type CancelExamSittingCommand struct {
 	IdempotencyKey   string
 }
 
+type PauseExamSittingCommand struct {
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	ExpectedRevision int64
+	PrivateReason    string
+	IdempotencyKey   string
+}
+
+type ResumeExamSittingCommand = PauseExamSittingCommand
+type CloseExamSittingCommand = PauseExamSittingCommand
+
+type ExtendExamSittingCommand struct {
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	ExpectedRevision int64
+	ScheduledEndAt   time.Time
+	PrivateReason    string
+	IdempotencyKey   string
+}
+
 type examSittingUseCases interface {
 	Schedule(context.Context, examsitting.Call, examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
 	Get(context.Context, examsitting.Call, model.ExamID, model.ExamSittingID) (store.ExamSittingSnapshot, error)
@@ -73,6 +93,13 @@ type examSittingUseCases interface {
 	List(context.Context, examsitting.Call, examsitting.ListQuery) (examsitting.Page, error)
 	UpdateSchedule(context.Context, examsitting.Call, examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error)
 	Cancel(context.Context, examsitting.Call, examsitting.CancelCommand) (store.ExamSittingSnapshot, error)
+	Pause(context.Context, examsitting.Call, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
+	Resume(context.Context, examsitting.Call, examsitting.ResumeCommand) (store.ExamSittingSnapshot, error)
+	Extend(context.Context, examsitting.Call, examsitting.ExtendCommand) (store.ExamSittingSnapshot, error)
+	EarlyClose(context.Context, examsitting.Call, examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error)
+	AdvanceDue(context.Context, examsitting.SystemCall, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
+	CloseIfNoAttempts(context.Context, examsitting.SystemCall, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
+	ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
 func (a *App) ScheduleExamSitting(ctx context.Context, invocation Invocation, command ScheduleExamSittingCommand) (ExamSittingView, error) {
@@ -165,6 +192,87 @@ func (a *App) CancelExamSitting(ctx context.Context, invocation Invocation, comm
 	return view, nil
 }
 
+func (a *App) PauseExamSitting(ctx context.Context, invocation Invocation, command PauseExamSittingCommand) (ExamSittingView, error) {
+	return a.runExamSittingManagerTransition(ctx, invocation, "exam.sitting.pause.v1", command, a.examSittings.Pause)
+}
+
+func (a *App) ResumeExamSitting(ctx context.Context, invocation Invocation, command ResumeExamSittingCommand) (ExamSittingView, error) {
+	return a.runExamSittingManagerTransition(ctx, invocation, "exam.sitting.resume.v1", command, a.examSittings.Resume)
+}
+
+func (a *App) CloseExamSitting(ctx context.Context, invocation Invocation, command CloseExamSittingCommand) (ExamSittingView, error) {
+	return a.runExamSittingManagerTransition(ctx, invocation, "exam.sitting.close.v1", command, a.examSittings.EarlyClose)
+}
+
+type examSittingManagerTransitionUseCase func(context.Context, examsitting.Call, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
+
+func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation Invocation, operation string,
+	command PauseExamSittingCommand, run examSittingManagerTransitionUseCase,
+) (ExamSittingView, error) {
+	idempotency, err := newExamSittingIdempotency(invocation, operation, command.IdempotencyKey, struct {
+		ExamID           model.ExamID        `json:"exam_id"`
+		SittingID        model.ExamSittingID `json:"exam_sitting_id"`
+		ExpectedRevision int64               `json:"expected_revision"`
+		PrivateReason    string              `json:"private_reason"`
+	}{command.ExamID, command.SittingID, command.ExpectedRevision, command.PrivateReason})
+	if err != nil {
+		return ExamSittingView{}, err
+	}
+	view, err := run(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.PauseCommand{
+		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedRevision: command.ExpectedRevision,
+		PrivateReason: command.PrivateReason, Idempotency: idempotency,
+	})
+	if err != nil {
+		return ExamSittingView{}, examSittingError(err, true)
+	}
+	return view, nil
+}
+
+func (a *App) ExtendExamSitting(ctx context.Context, invocation Invocation, command ExtendExamSittingCommand) (ExamSittingView, error) {
+	idempotency, err := newExamSittingIdempotency(invocation, "exam.sitting.extend.v1", command.IdempotencyKey, struct {
+		ExamID           model.ExamID        `json:"exam_id"`
+		SittingID        model.ExamSittingID `json:"exam_sitting_id"`
+		ExpectedRevision int64               `json:"expected_revision"`
+		ScheduledEndAt   time.Time           `json:"scheduled_end_at"`
+		PrivateReason    string              `json:"private_reason"`
+	}{command.ExamID, command.SittingID, command.ExpectedRevision, model.TimeUTC(command.ScheduledEndAt), command.PrivateReason})
+	if err != nil {
+		return ExamSittingView{}, err
+	}
+	view, err := a.examSittings.Extend(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.ExtendCommand{
+		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedRevision: command.ExpectedRevision,
+		ScheduledEndAt: command.ScheduledEndAt, PrivateReason: command.PrivateReason, Idempotency: idempotency,
+	})
+	if err != nil {
+		return ExamSittingView{}, examSittingError(err, true)
+	}
+	return view, nil
+}
+
+type examSittingLifecycleJobUseCases struct{ sittings examSittingUseCases }
+
+func (useCases examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFromJob(ctx context.Context, sittingID model.ExamSittingID, jobID model.JobID,
+	attemptID model.JobAttemptID,
+) (*store.ExamSittingLifecycleResult, error) {
+	call := examsitting.SystemCall{JobID: jobID, AttemptID: attemptID}
+	result, err := useCases.sittings.AdvanceDue(ctx, call, sittingID)
+	if err != nil {
+		return nil, err
+	}
+	if result.Value != nil && result.Value.Sitting != nil && result.Value.Sitting.State == model.ExamSittingClosing {
+		closed, closeErr := useCases.sittings.CloseIfNoAttempts(ctx, call, sittingID)
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		return &closed, nil
+	}
+	return &result, nil
+}
+
+func (useCases examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJob(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	return useCases.sittings.ListLifecycleDue(ctx, options)
+}
+
 func newExamSittingIdempotency(invocation Invocation, operation, key string, fingerprint any) (*store.CommandIdempotency, error) {
 	if key == "" {
 		return nil, NewError("idempotency.key_required")
@@ -223,6 +331,30 @@ func (adapter examSittingAuditAdapter) Fail(ctx context.Context, id, code string
 	return adapter.audit.Fail(ctx, id, code)
 }
 
+type examSittingSystemAuditAdapter struct{ audit *auditService }
+
+func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call examsitting.SystemCall, action model.Action,
+	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
+) (string, error) {
+	auditValue := make(map[string]any, len(value)+2)
+	for key, item := range value {
+		auditValue[key] = item
+	}
+	auditValue["job_id"] = call.JobID.String()
+	auditValue["job_attempt_id"] = call.AttemptID.String()
+	event, err := adapter.audit.BeginSystemCriticalActionAtScope(ctx, action, resource, scopeType, scopeID,
+		map[string]any{"operation": operation, "value": auditValue})
+	if err != nil {
+		return "", err
+	}
+	return event.ID.String(), nil
+}
+
+func (adapter examSittingSystemAuditAdapter) Fail(ctx context.Context, id, code string) error {
+	_, err := adapter.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
+	return err
+}
+
 type examSittingRealtimeEffects struct{ realtime *realtimeService }
 
 func (effects examSittingRealtimeEffects) Scheduled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
@@ -255,11 +387,23 @@ func (effects examSittingRealtimeEffects) Canceled(ctx context.Context, examID m
 	return effects.realtime.Publish(ctx, event)
 }
 
+func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
+	state model.ExamSittingState, revision int64, transition store.ExamSittingLifecycleTransitionCode,
+	scheduledEndAt, changedAt time.Time,
+) error {
+	event, err := apprealtime.NewExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
+	if err != nil {
+		return err
+	}
+	return effects.realtime.Publish(ctx, event)
+}
+
 func (effects examSittingRealtimeEffects) Report(ctx context.Context, operation string, err error) {
 	effects.realtime.reportTransientFailure(ctx, operation, err)
 }
 
 var _ examsitting.Authorizer = examSittingAuthorizationAdapter{}
 var _ examsitting.Auditor = examSittingAuditAdapter{}
+var _ examsitting.SystemAuditor = examSittingSystemAuditAdapter{}
 var _ examsitting.Effects = examSittingRealtimeEffects{}
 var _ examsitting.EffectFailures = examSittingRealtimeEffects{}

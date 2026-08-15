@@ -119,9 +119,8 @@ Starter Workspace paths, object identities, or source bytes.
 ## Exam Sitting schedule
 
 An Exam Sitting delivers one immutable Exam Revision to one exact Class over a
-half-open scheduled interval. The manager surface is intentionally limited to
-schedule, exact read, bounded list, scheduled-only update, and scheduled-only
-cancellation:
+half-open scheduled interval. The manager surface covers pre-open scheduling
+and the explicit live lifecycle transitions:
 
 | Method and path | Request | Success |
 | --- | --- | --- |
@@ -130,14 +129,22 @@ cancellation:
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}` | none | exact Sitting |
 | `PATCH /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}` | expected Sitting revision and at least one non-null schedule field | updated Sitting |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/cancel` | expected Sitting revision and private reason | canceled Sitting |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/pause` | expected Sitting revision and private reason | paused Sitting |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/resume` | expected Sitting revision and private reason | resumed Sitting |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/extend` | expected Sitting revision, later RFC 3339 end, and private reason | extended Sitting |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/close` | expected Sitting revision and private reason | Closing Sitting |
 
-Every route requires an authenticated principal. The three mutations require
+Every route requires an authenticated principal. All seven mutations require
 `Idempotency-Key`; their bodies are closed, duplicate-free JSON objects.
 Schedule instants are RFC 3339 values and start must precede end. PATCH
 distinguishes omission from presence and rejects explicit `null` for Revision,
 Class, start, and end.
-The private cancellation reason must be valid UTF-8, already trimmed, between
+Each private manager reason must be valid UTF-8, already trimmed, between
 1 and 1,000 Unicode scalar values, and at most 4,000 encoded bytes.
+Pause, resume, extension, and early close lose to the PostgreSQL deadline fence
+at or after the scheduled end. Extension must move the end later and remain
+inside the current Class Academic Period. Archived Exams still permit pause
+and early close to reduce capability, but reject resume and extension.
 
 The list defaults to 50 items and accepts at most 200. It can filter by one
 `class_id`, repeated deduplicated `state` values (at most the six defined
@@ -148,7 +155,7 @@ it unchanged.
 
 Responses expose only the Sitting identity, Exam/Revision/Class identities,
 schedule, state, lifecycle times, candidate-safe reason code, and optimistic
-revision. A cancellation's private manager reason, authorization decisions,
+revision. Private manager reasons, authorization decisions,
 audit provenance, and authored Exam content are never returned. All JSON
 responses are `no-store`; there is no delete operation.
 

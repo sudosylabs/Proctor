@@ -10,6 +10,8 @@ DROP TABLE IF EXISTS job_permanent_occurrences;
 DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS installation_states;
 DROP TABLE IF EXISTS command_outcomes;
+DROP TABLE IF EXISTS exam_sitting_private_actions;
+DROP FUNCTION IF EXISTS reject_exam_sitting_private_action_mutation();
 DROP TABLE IF EXISTS audit_events;
 DROP TABLE IF EXISTS external_login_states;
 DROP TABLE IF EXISTS mfa_recovery_codes;

@@ -69,3 +69,96 @@ func TestExamSittingAuditExcludesPrivateContent(t *testing.T) {
 		t.Fatalf("audit unexpectedly contains private field: %s", encoded)
 	}
 }
+
+func TestValidateExamSittingLifecycleJob(t *testing.T) {
+	sittingID := model.NewExamSittingID()
+	availableAt := model.NowUTC().Add(time.Hour)
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := model.ExamSittingLifecycleDedupeKey(sittingID, model.ExamSittingLifecycleJobOpen, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command, key,
+		model.JobDedupeActive, model.NowUTC(), availableAt, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = validateExamSittingLifecycleJob(valid, sittingID, model.ExamSittingLifecycleJobOpen, 2, availableAt); err != nil {
+		t.Fatalf("valid lifecycle Job: %v", err)
+	}
+	mutations := []func(*model.Job){
+		func(job *model.Job) { job.Type = model.JobTypeCleanup },
+		func(job *model.Job) { job.DedupePolicy = model.JobDedupePermanent },
+		func(job *model.Job) { job.DedupeKey += "-wrong" },
+		func(job *model.Job) { job.AvailableAt = job.AvailableAt.Add(time.Second) },
+		func(job *model.Job) {
+			job.Command = []byte(`{"exam_sitting_id":"` + model.NewExamSittingID().String() + `"}`)
+		},
+	}
+	for index, mutate := range mutations {
+		candidate := *valid
+		candidate.Command = append([]byte(nil), valid.Command...)
+		mutate(&candidate)
+		var invalid *store.ErrInvalidInput
+		if err = validateExamSittingLifecycleJob(&candidate, sittingID, model.ExamSittingLifecycleJobOpen, 2, availableAt); !errors.As(err, &invalid) {
+			t.Errorf("mutation[%d] error=%v", index, err)
+		}
+	}
+}
+
+func TestPrepareExamSittingManagerTransitionRequiresPhaseSpecificFinalizeJob(t *testing.T) {
+	base := &store.ExamSittingManagerTransition{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ActorUserID: model.NewUserID(),
+		ExpectedRevision: 2, PrivateReason: "manager reason", ChangedAt: model.NowUTC(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+	if err := prepareExamSittingManagerTransition(base, false); err != nil {
+		t.Fatalf("pause/resume transition: %v", err)
+	}
+	if err := prepareExamSittingManagerTransition(base, true); err == nil {
+		t.Fatal("early close accepted missing Finalize Job")
+	}
+	withFinalize := *base
+	withFinalize.FinalizeJob = &model.Job{}
+	if err := prepareExamSittingManagerTransition(&withFinalize, true); err != nil {
+		t.Fatalf("early close shape: %v", err)
+	}
+	if err := prepareExamSittingManagerTransition(&withFinalize, false); err == nil {
+		t.Fatal("pause/resume accepted Finalize Job")
+	}
+}
+
+func TestStaleExamSittingFinalizeJobIsRevisionConflictCandidate(t *testing.T) {
+	now := model.NowUTC()
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
+		now.Add(-time.Hour), now.Add(-time.Minute), now.Add(-2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sitting.Open(now.Add(-50 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err = sitting.Pause(now.Add(-40 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sitting.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleKey, err := model.ExamSittingLifecycleDedupeKey(sitting.ID, model.ExamSittingLifecycleJobFinalize, sitting.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command, staleKey,
+		model.JobDedupeActive, now, sitting.ScheduledEndAt, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isStaleExamSittingFinalizeJob(stale, sitting) {
+		t.Fatal("well-formed finalizer prepared for the prior Sitting revision was not recognized as stale")
+	}
+	stale.AvailableAt = stale.AvailableAt.Add(time.Second)
+	if isStaleExamSittingFinalizeJob(stale, sitting) {
+		t.Fatal("malformed finalizer was classified as a retryable stale revision")
+	}
+}

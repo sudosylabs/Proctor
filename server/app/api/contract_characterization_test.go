@@ -51,7 +51,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 	}
 	digest := sha256.Sum256(canonical)
 	gotDigest := hex.EncodeToString(digest[:])
-	const wantDigest = "7412451a4ba54e166ae93d4da5055264c267e2b0bedb607674949307cef069e6"
+	const wantDigest = "df79d6d5a8a22c23e153f168d1bebb5e3a4e8166d8b33b8699f529c72d5bc321"
 	if gotDigest != wantDigest {
 		t.Fatalf("v1 HTTP contract digest = %s, want %s", gotDigest, wantDigest)
 	}
@@ -70,8 +70,8 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 			}
 		}
 	}
-	if operationCount != 127 {
-		t.Fatalf("v1 operation count = %d, want 127", operationCount)
+	if operationCount != 131 {
+		t.Fatalf("v1 operation count = %d, want 131", operationCount)
 	}
 	if len(runtimeAPI.Routes()) != operationCount {
 		t.Fatalf("runtime route count = %d, want %d", len(runtimeAPI.Routes()), operationCount)

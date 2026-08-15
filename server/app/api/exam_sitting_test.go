@@ -142,6 +142,82 @@ func TestExamSittingHTTPCancelKeepsPrivateReasonOutOfResponse(t *testing.T) {
 	}
 }
 
+func TestExamSittingHTTPLifecycleCommandsAreStrictIdempotentAndKeepReasonsPrivate(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, suffix, body, key string
+		assert                  func(*testing.T, *examSittingHTTPFake)
+	}{
+		{"pause", "/pause", `{"expected_revision":1,"reason":"Investigating candidate access"}`, "pause-once", func(t *testing.T, fake *examSittingHTTPFake) {
+			if fake.pause.ExpectedRevision != 1 || fake.pause.PrivateReason != "Investigating candidate access" || fake.pause.IdempotencyKey != "pause-once" {
+				t.Fatalf("command = %#v", fake.pause)
+			}
+		}},
+		{"resume", "/resume", `{"expected_revision":2,"reason":"Investigation completed"}`, "resume-once", func(t *testing.T, fake *examSittingHTTPFake) {
+			if fake.resume.ExpectedRevision != 2 || fake.resume.PrivateReason != "Investigation completed" || fake.resume.IdempotencyKey != "resume-once" {
+				t.Fatalf("command = %#v", fake.resume)
+			}
+		}},
+		{"extend", "/extend", `{"expected_revision":3,"scheduled_end_at":"2026-08-15T15:30:00+02:00","reason":"Compensating for disruption"}`, "extend-once", func(t *testing.T, fake *examSittingHTTPFake) {
+			if fake.extend.ExpectedRevision != 3 || fake.extend.PrivateReason != "Compensating for disruption" || fake.extend.IdempotencyKey != "extend-once" || fake.extend.ScheduledEndAt.Location() != time.UTC || fake.extend.ScheduledEndAt.Hour() != 13 {
+				t.Fatalf("command = %#v", fake.extend)
+			}
+		}},
+		{"close", "/close", `{"expected_revision":4,"reason":"Authorized early close"}`, "close-once", func(t *testing.T, fake *examSittingHTTPFake) {
+			if fake.close.ExpectedRevision != 4 || fake.close.PrivateReason != "Authorized early close" || fake.close.IdempotencyKey != "close-once" {
+				t.Fatalf("command = %#v", fake.close)
+			}
+		}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			logger, _ := newTestLogger(t)
+			fake := newExamSittingHTTPFake(t)
+			httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+			request := httptest.NewRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+test.suffix, strings.NewReader(test.body))
+			request.Header.Set("Authorization", "Bearer credential")
+			request.Header.Set("Idempotency-Key", test.key)
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+			}
+			test.assert(t, fake)
+			if bytes.Contains(response.Body.Bytes(), []byte(`"reason"`)) || bytes.Contains(response.Body.Bytes(), []byte("disruption")) {
+				t.Fatalf("private reason exposed: %s", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestExamSittingHTTPLifecycleBodiesRejectUnknownDuplicateAndInvalidValues(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"unknown":       `{"expected_revision":1,"reason":"Valid reason","extra":true}`,
+		"duplicate":     `{"expected_revision":1,"expected_revision":2,"reason":"Valid reason"}`,
+		"zero revision": `{"expected_revision":0,"reason":"Valid reason"}`,
+		"padded reason": `{"expected_revision":1,"reason":" padded "}`,
+		"long reason":   `{"expected_revision":1,"reason":"` + strings.Repeat("x", 1001) + `"}`,
+	} {
+		name, body := name, body
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			logger, _ := newTestLogger(t)
+			fake := newExamSittingHTTPFake(t)
+			httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
+			request := httptest.NewRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/pause", strings.NewReader(body))
+			request.Header.Set("Authorization", "Bearer credential")
+			request.Header.Set("Idempotency-Key", "invalid-once")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || fake.pause.ExamID.IsValid() {
+				t.Fatalf("status=%d command=%#v body=%s", response.Code, fake.pause, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestExamSittingHTTPListNormalizesFiltersAndUsesVersionedDescendingTupleCursor(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
@@ -232,6 +308,10 @@ type examSittingHTTPFake struct {
 	updateCalls  int
 	cancel       application.CancelExamSittingCommand
 	cancelResult application.ExamSittingView
+	pause        application.PauseExamSittingCommand
+	resume       application.ResumeExamSittingCommand
+	extend       application.ExtendExamSittingCommand
+	close        application.CloseExamSittingCommand
 }
 
 func newExamSittingHTTPFake(t *testing.T) *examSittingHTTPFake {
@@ -277,6 +357,26 @@ func (f *examSittingHTTPFake) UpdateExamSittingSchedule(_ context.Context, _ app
 func (f *examSittingHTTPFake) CancelExamSitting(_ context.Context, _ application.Invocation, command application.CancelExamSittingCommand) (application.ExamSittingView, error) {
 	f.cancel = command
 	return f.cancelResult, nil
+}
+
+func (f *examSittingHTTPFake) PauseExamSitting(_ context.Context, _ application.Invocation, command application.PauseExamSittingCommand) (application.ExamSittingView, error) {
+	f.pause = command
+	return application.ExamSittingView{Sitting: f.sitting}, nil
+}
+
+func (f *examSittingHTTPFake) ResumeExamSitting(_ context.Context, _ application.Invocation, command application.ResumeExamSittingCommand) (application.ExamSittingView, error) {
+	f.resume = command
+	return application.ExamSittingView{Sitting: f.sitting}, nil
+}
+
+func (f *examSittingHTTPFake) ExtendExamSitting(_ context.Context, _ application.Invocation, command application.ExtendExamSittingCommand) (application.ExamSittingView, error) {
+	f.extend = command
+	return application.ExamSittingView{Sitting: f.sitting}, nil
+}
+
+func (f *examSittingHTTPFake) CloseExamSitting(_ context.Context, _ application.Invocation, command application.CloseExamSittingCommand) (application.ExamSittingView, error) {
+	f.close = command
+	return application.ExamSittingView{Sitting: f.sitting}, nil
 }
 
 func examSittingCollectionPath(examID model.ExamID) string {

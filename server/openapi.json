@@ -1365,6 +1365,62 @@
         "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/pause": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "post": {
+        "operationId": "pauseExamSitting",
+        "summary": "Pause an open Exam Sitting with a private manager reason",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/PauseExamSitting"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/resume": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "post": {
+        "operationId": "resumeExamSitting",
+        "summary": "Resume a paused Exam Sitting with a private manager reason",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ResumeExamSitting"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/extend": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "post": {
+        "operationId": "extendExamSitting",
+        "summary": "Extend the deadline of an open or paused Exam Sitting",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "exam.sitting.extension_not_later", "exam.sitting.class_ineligible", "exam.sitting.schedule_outside_period", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ExtendExamSitting"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/close": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "post": {
+        "operationId": "closeExamSitting",
+        "summary": "Close an open or paused Exam Sitting early with a private manager reason",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/CloseExamSitting"},
+        "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/exams/{exam_id}/draft": {
       "parameters": [{"$ref": "#/components/parameters/ExamID"}],
       "patch": {
@@ -1861,6 +1917,22 @@
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CancelExamSittingRequest"}}}
       },
+      "PauseExamSitting": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingManagerTransitionRequest"}}}
+      },
+      "ResumeExamSitting": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingManagerTransitionRequest"}}}
+      },
+      "ExtendExamSitting": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExtendExamSittingRequest"}}}
+      },
+      "CloseExamSitting": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingManagerTransitionRequest"}}}
+      },
       "EditExamDraftText": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EditExamDraftTextRequest"}}}
@@ -2293,13 +2365,32 @@
           "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes."}
         }
       },
+      "ExamSittingManagerTransitionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_revision", "reason"],
+        "properties": {
+          "expected_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes."}
+        }
+      },
+      "ExtendExamSittingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_revision", "scheduled_end_at", "reason"],
+        "properties": {
+          "expected_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "scheduled_end_at": {"type": "string", "format": "date-time"},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes."}
+        }
+      },
       "ExamSittingState": {
         "type": "string",
         "enum": ["scheduled", "open", "paused", "closing", "closed", "canceled"]
       },
       "ExamSittingReasonCode": {
         "type": "string",
-        "enum": ["manager_canceled", "schedule_elapsed"]
+        "enum": ["manager_canceled", "schedule_elapsed", "academic_structure_invalid", "manager_closed", "scheduled_end_reached"]
       },
       "ExamSittingResponse": {
         "type": "object",

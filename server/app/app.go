@@ -90,7 +90,7 @@ func New(deps Dependencies) (*App, error) {
 		return nil, err
 	}
 	profiles := constructProfilesAndFiles(deps, foundation, access)
-	jobs, err := constructJobs(deps, foundation, access, profiles)
+	jobs, err := constructJobs(deps, foundation, access, examinations, profiles)
 	if err != nil {
 		return nil, err
 	}

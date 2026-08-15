@@ -103,10 +103,16 @@ the code and component contracts for that detail.
   Unit/Class lineage, Academic Period containment, and a strictly future start
   at its own decision time; application authorization separately requires the
   current scoped permission, and administrator overrides remain distinct and
-  audited.
-  Version 1 uses `ScheduledEndAt` as the sole delivery deadline and does not
-  extend it for paused time. Opening, lifecycle Jobs, and opening-time academic
-  structure revalidation belong to the next slice.
+  audited. Durable deduplicated lifecycle Jobs now open due Sittings, reject
+  structurally invalid openings, preserve the original end when opening late,
+  and enter Closing at the PostgreSQL-enforced deadline. Authorized managers
+  can pause, resume, extend only to a later contained end, or close early
+  through strict idempotent HTTP commands with private reasons. Deadline races
+  converge on the scheduled-end cause, archive still permits pause and early
+  close to reduce capability, and committed non-replay transitions publish
+  bounded lifecycle events. Version 1 uses `ScheduledEndAt` as the sole
+  delivery deadline and does not extend it for paused time. Zero-Attempt
+  Sittings close directly; resumable Attempt sealing remains a later slice.
 
 ## Architecture migration acceptance
 
@@ -169,9 +175,8 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: Sitting lifecycle
-  Jobs, opening-time eligibility revalidation, and live correction; Attempt
-  admission and Participation;
+- Continue Examination Core as complete vertical slices: live correction;
+  Attempt admission and Participation;
   mutable Workspace and immutable Submission; then integrity policy, evidence,
   flags, and Submission Review.
 - Extend server-owned file handling for validated IDE preferences alongside

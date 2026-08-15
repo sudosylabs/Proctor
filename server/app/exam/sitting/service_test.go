@@ -36,7 +36,9 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 		t.Fatalf("authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
 	}
 	if fixture.persistence.schedule == nil || fixture.persistence.schedule.ManagerOverride || fixture.persistence.schedule.ActorUserID != fixture.userID ||
-		fixture.persistence.schedule.Sitting.ID != fixture.sittingID || fixture.persistence.schedule.Sitting.ScheduledStartAt != start || fixture.persistence.command == nil {
+		fixture.persistence.schedule.Sitting.ID != fixture.sittingID || fixture.persistence.schedule.Sitting.ScheduledStartAt != start || fixture.persistence.command == nil ||
+		fixture.persistence.schedule.OpenJob != fixture.jobs.open || fixture.persistence.schedule.DeadlineJob != fixture.jobs.deadline ||
+		fixture.jobs.boundaryRevision != 1 || !fixture.jobs.boundaryStart.Equal(start) || !fixture.jobs.boundaryEnd.Equal(end) {
 		t.Fatalf("store schedule = %#v, command=%#v", fixture.persistence.schedule, fixture.persistence.command)
 	}
 	wantAudit := map[string]any{
@@ -156,6 +158,11 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 	input := fixture.persistence.update
 	if input == nil || input.ExpectedRevision != 1 || input.ManagerOverride || input.ChangedAt != changedAt || fixture.persistence.command == nil {
 		t.Fatalf("store update = %#v, command=%#v", input, fixture.persistence.command)
+	}
+	if input.OpenJob != fixture.jobs.open || input.DeadlineJob != fixture.jobs.deadline || fixture.jobs.boundaryRevision != 2 ||
+		!fixture.jobs.boundaryStart.Equal(changedStart) || !fixture.jobs.boundaryEnd.Equal(changedEnd) {
+		t.Fatalf("boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob,
+			fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
 	}
 	if input.ExamRevisionID != fixture.revisionID || input.ClassID != fixture.classID || !input.ScheduledStartAt.Equal(changedStart) || !input.ScheduledEndAt.Equal(changedEnd) {
 		t.Fatalf("merged store update = %#v", input)
@@ -395,14 +402,18 @@ func TestPrivateCancellationReasonBounds(t *testing.T) {
 func TestStoreConflictsHaveStableFaults(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		"exam_sitting_revision":           "exam.sitting.revision_conflict",
-		"exam_sitting_no_changes":         "exam.sitting.no_changes",
-		"exam_sitting_state":              "exam.sitting.state_conflict",
-		"exam_sitting_class_lineage":      "exam.sitting.class_ineligible",
-		"exam_sitting_period_containment": "exam.sitting.schedule_outside_period",
-		"exam_sitting_not_future":         "exam.sitting.schedule_not_future",
-		"exam_sitting_revision_lineage":   "exam.sitting.not_found",
-		"exam_archived":                   "exam.archived",
+		"exam_sitting_revision":                "exam.sitting.revision_conflict",
+		"exam_sitting_no_changes":              "exam.sitting.no_changes",
+		"exam_sitting_state":                   "exam.sitting.state_conflict",
+		"exam_sitting_extension":               "exam.sitting.extension_not_later",
+		"exam_sitting_extension_not_later":     "exam.sitting.extension_not_later",
+		"exam_sitting_deadline_reached":        "exam.sitting.deadline_reached",
+		"exam_sitting_class_lineage":           "exam.sitting.class_ineligible",
+		"exam_sitting_period_containment":      "exam.sitting.schedule_outside_period",
+		"exam_sitting_schedule_outside_period": "exam.sitting.schedule_outside_period",
+		"exam_sitting_not_future":              "exam.sitting.schedule_not_future",
+		"exam_sitting_revision_lineage":        "exam.sitting.not_found",
+		"exam_archived":                        "exam.archived",
 	}
 	for constraint, want := range tests {
 		constraint, want := constraint, want
@@ -510,7 +521,9 @@ type fixture struct {
 	memberships *membershipsFake
 	authorizer  *authorizerFake
 	auditor     *auditorFake
+	systemAudit *systemAuditorFake
 	effects     *effectsFake
+	jobs        *lifecycleJobFactoryFake
 }
 
 func (fixture fixture) sitting(t *testing.T) *model.ExamSitting {
@@ -535,15 +548,17 @@ func newFixture(t *testing.T) fixture {
 	persistence := &sittingStoreFake{}
 	access := &accessFake{snapshot: &store.ExamAccessSnapshot{Exam: exam, ActorIsManager: true}}
 	memberships := &membershipsFake{items: []*model.AcademicUnitMember{{AcademicUnitID: unitID}}}
-	authorizer, auditor, effects := &authorizerFake{}, &auditorFake{id: model.NewId()}, &effectsFake{}
-	service, err := New(persistence, access, memberships, authorizer, auditor, effects, effects,
+	authorizer, auditor, systemAudit, effects := &authorizerFake{}, &auditorFake{id: model.NewId()}, &systemAuditorFake{id: model.NewId()}, &effectsFake{}
+	jobs := &lifecycleJobFactoryFake{open: &model.Job{}, deadline: &model.Job{}, finalize: &model.Job{}}
+	service, err := New(persistence, access, memberships, authorizer, auditor, systemAudit, effects, effects, jobs,
 		func() time.Time { return testNow }, func() model.ExamSittingID { return sittingID })
 	if err != nil {
 		t.Fatal(err)
 	}
 	return fixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), userID: userID,
 		unitID: unitID, examID: examID, revisionID: revisionID, classID: classID, sittingID: sittingID,
-		persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor, effects: effects}
+		persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor,
+		systemAudit: systemAudit, effects: effects, jobs: jobs}
 }
 
 func assertFaultCode(t *testing.T, err error, want string) {
@@ -567,6 +582,15 @@ type sittingStoreFake struct {
 	result       *store.ExamSittingCommandResult
 	update       *store.ExamSittingScheduleUpdate
 	cancel       *store.ExamSittingCancellation
+	pause        *store.ExamSittingManagerTransition
+	resume       *store.ExamSittingManagerTransition
+	extend       *store.ExamSittingExtension
+	earlyClose   *store.ExamSittingManagerTransition
+	advance      *store.ExamSittingDueAdvance
+	closeEmpty   *store.ExamSittingCloseIfNoAttempts
+	lifecycle    *store.ExamSittingLifecycleResult
+	dueOptions   store.ExamSittingLifecycleDueOptions
+	due          []store.ExamSittingLifecycleDue
 	snapshot     *store.ExamSittingSnapshot
 	getExamID    model.ExamID
 	getSittingID model.ExamSittingID
@@ -614,6 +638,41 @@ func (fake *sittingStoreFake) UpdateSchedule(_ context.Context, input *store.Exa
 func (fake *sittingStoreFake) Cancel(_ context.Context, input *store.ExamSittingCancellation, command *store.CommandIdempotency) (*store.ExamSittingCommandResult, error) {
 	fake.cancel, fake.command = input, command
 	return fake.result, fake.err
+}
+
+func (fake *sittingStoreFake) Pause(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	fake.pause, fake.command = input, command
+	return fake.lifecycle, fake.err
+}
+
+func (fake *sittingStoreFake) Resume(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	fake.resume, fake.command = input, command
+	return fake.lifecycle, fake.err
+}
+
+func (fake *sittingStoreFake) Extend(_ context.Context, input *store.ExamSittingExtension, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	fake.extend, fake.command = input, command
+	return fake.lifecycle, fake.err
+}
+
+func (fake *sittingStoreFake) EarlyClose(_ context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	fake.earlyClose, fake.command = input, command
+	return fake.lifecycle, fake.err
+}
+
+func (fake *sittingStoreFake) AdvanceDue(_ context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+	fake.advance = input
+	return fake.lifecycle, fake.err
+}
+
+func (fake *sittingStoreFake) CloseIfNoAttempts(_ context.Context, input *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
+	fake.closeEmpty = input
+	return fake.lifecycle, fake.err
+}
+
+func (fake *sittingStoreFake) ListLifecycleDue(_ context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	fake.dueOptions = options
+	return fake.due, fake.err
 }
 
 type accessFake struct {
@@ -682,6 +741,13 @@ type effectsFake struct {
 	reported []error
 }
 
+func (fake *effectsFake) LifecycleChanged(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID,
+	state model.ExamSittingState, revision int64, transition store.ExamSittingLifecycleTransitionCode, scheduledEndAt, at time.Time,
+) error {
+	fake.events = append(fake.events, effectEvent{kind: string(transition), examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
+	return nil
+}
+
 func (fake *effectsFake) Scheduled(_ context.Context, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, at time.Time) error {
 	fake.events = append(fake.events, effectEvent{kind: "scheduled", examID: examID, sittingID: sittingID, state: state, revision: revision, at: at})
 	return nil
@@ -699,4 +765,51 @@ func (fake *effectsFake) Canceled(_ context.Context, examID model.ExamID, sittin
 
 func (fake *effectsFake) Report(_ context.Context, _ string, err error) {
 	fake.reported = append(fake.reported, err)
+}
+
+type systemAuditorFake struct {
+	id, operation, failCode string
+	action                  model.Action
+	resource                model.Resource
+	scopeType               model.RoleScopeType
+	scopeID                 string
+	call                    SystemCall
+	value                   map[string]any
+	err, failErr            error
+}
+
+func (fake *systemAuditorFake) Begin(_ context.Context, call SystemCall, action model.Action, resource model.Resource,
+	scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
+) (string, error) {
+	fake.call, fake.action, fake.resource, fake.operation, fake.value = call, action, resource, operation, value
+	fake.scopeType, fake.scopeID = scopeType, scopeID
+	return fake.id, fake.err
+}
+
+func (fake *systemAuditorFake) Fail(_ context.Context, _ string, code string) error {
+	fake.failCode = code
+	return fake.failErr
+}
+
+type lifecycleJobFactoryFake struct {
+	open, deadline, finalize                                    *model.Job
+	boundaryRevision, deadlineRevision, finalizeRevision        int64
+	boundaryStart, boundaryEnd, deadlineAt, finalizeAvailableAt time.Time
+	err                                                         error
+}
+
+func (fake *lifecycleJobFactoryFake) BoundaryJobs(_ model.ExamSittingID, revision int64, startAt, endAt time.Time) (*model.Job, *model.Job, error) {
+	fake.boundaryRevision, fake.boundaryStart, fake.boundaryEnd = revision, startAt, endAt
+	return fake.open, fake.deadline, fake.err
+}
+
+func (fake *lifecycleJobFactoryFake) DeadlineJob(_ model.ExamSittingID, revision int64, deadline time.Time) (*model.Job, error) {
+	fake.deadlineRevision, fake.deadlineAt = revision, deadline
+	return fake.deadline, fake.err
+}
+
+func (fake *lifecycleJobFactoryFake) FinalizeJob(_ model.ExamSittingID, revision int64, availableAt time.Time) (*model.Job, error) {
+	fake.finalizeRevision = revision
+	fake.finalizeAvailableAt = availableAt
+	return fake.finalize, fake.err
 }

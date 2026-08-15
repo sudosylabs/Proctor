@@ -40,6 +40,7 @@ type rootStub struct {
 	store.Store
 	institution         store.InstitutionStore
 	examAuthoring       store.ExamAuthoringStore
+	examSitting         store.ExamSittingStore
 	personalAccessToken store.PersonalAccessTokenStore
 }
 
@@ -48,6 +49,7 @@ func (s *rootStub) AcademicUnit() store.AcademicUnitStore { return nil }
 func (s *rootStub) ExamAuthoring() store.ExamAuthoringStore {
 	return s.examAuthoring
 }
+func (s *rootStub) ExamSitting() store.ExamSittingStore { return s.examSitting }
 func (s *rootStub) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return s.personalAccessToken
 }
@@ -111,6 +113,23 @@ type personalAccessTokenStub struct {
 	err      error
 }
 
+type examSittingUnsafeMutationStub struct {
+	store.ExamSittingStore
+	advanceAttempts int
+	closeAttempts   int
+	err             error
+}
+
+func (stub *examSittingUnsafeMutationStub) AdvanceDue(context.Context, *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+	stub.advanceAttempts++
+	return nil, stub.err
+}
+
+func (stub *examSittingUnsafeMutationStub) CloseIfNoAttempts(context.Context, *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
+	stub.closeAttempts++
+	return nil, stub.err
+}
+
 func (s *personalAccessTokenStub) Resolve(context.Context, string, int64, int64) (*store.PersonalAccessTokenResolution, error) {
 	s.attempts++
 	return nil, s.err
@@ -171,6 +190,28 @@ func TestRetryNeverRetriesUnsafeMutation(t *testing.T) {
 	}
 	if stub.saveAttempts != 1 {
 		t.Fatalf("Save() attempts = %d, want 1", stub.saveAttempts)
+	}
+}
+
+func TestRetryNeverRetriesSystemSittingMutationsWithoutCommandOutcomes(t *testing.T) {
+	t.Parallel()
+	transientErr := errors.New("unknown commit outcome")
+	stub := &examSittingUnsafeMutationStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{examSitting: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, got := layer.ExamSitting().AdvanceDue(context.Background(), &store.ExamSittingDueAdvance{}); got != transientErr {
+		t.Fatalf("AdvanceDue() error = %v", got)
+	}
+	if _, got := layer.ExamSitting().CloseIfNoAttempts(context.Background(), &store.ExamSittingCloseIfNoAttempts{}); got != transientErr {
+		t.Fatalf("CloseIfNoAttempts() error = %v", got)
+	}
+	if stub.advanceAttempts != 1 || stub.closeAttempts != 1 {
+		t.Fatalf("system mutation attempts = advance %d close %d", stub.advanceAttempts, stub.closeAttempts)
 	}
 }
 

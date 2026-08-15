@@ -28,6 +28,7 @@ var baselineTables = []string{
 	"exam_revision_resources",
 	"exam_revision_starter_workspace_entries",
 	"exam_revisions",
+	"exam_sitting_private_actions",
 	"exam_sittings",
 	"exam_starter_workspace_entries",
 	"exam_starter_workspace_objects",

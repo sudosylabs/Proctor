@@ -12,6 +12,8 @@ import (
 	"sort"
 	"testing"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -94,6 +96,7 @@ func TestJobRecipePreservesLifecycleOnlyGraphs(t *testing.T) {
 		Dependencies{Store: constructionCatalogWithoutJobs{}},
 		applicationFoundation{},
 		accessAcademicConstruction{},
+		examinationConstruction{},
 		profileFileConstruction{},
 	)
 	if err != nil {
@@ -130,6 +133,7 @@ type constructionUserStoreStub struct{ store.UserStore }
 type constructionFileStoreStub struct{ store.FileStore }
 type constructionInstitutionStoreStub struct{ store.InstitutionStore }
 type constructionCommandOutcomeStoreStub struct{}
+type constructionExamSittingUseCasesStub struct{ examSittingUseCases }
 
 func (constructionCommandOutcomeStoreStub) DeleteExpired(context.Context, int) (int64, error) {
 	return 0, nil
@@ -149,6 +153,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 		},
 		applicationFoundation{},
 		accessAcademicConstruction{},
+		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}},
 		profiles,
 	)
 	if err != nil {
@@ -167,6 +172,74 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 	)
 	if application.jobs != jobs.runtime || application.jobOperations != jobs.operations {
 		t.Fatal("assembled application did not retain the constructed Job runtime and operations")
+	}
+}
+
+func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *testing.T) {
+	t.Parallel()
+	profiles := profileFileConstruction{profilePictures: &profilePictureService{reads: &profilePictureReadService{}}}
+	definitions := buildApplicationJobDefinitions(
+		Dependencies{
+			Store: constructionCatalogWithJobs{
+				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
+				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
+			},
+			FileContent: constructionFileContentStub{},
+		},
+		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}}, profiles,
+		&defaultProfilePictureJobProposer{jobs: constructionJobStoreStub{}},
+	)
+	if _, err := jobengine.NewRegistry(definitions.descriptors); err != nil {
+		t.Fatalf("descriptor registry: %v", err)
+	}
+	descriptors := make(map[model.JobType]jobengine.Descriptor, len(definitions.descriptors))
+	for _, descriptor := range definitions.descriptors {
+		descriptors[descriptor.Type] = descriptor
+	}
+	lifecycle, exists := descriptors[model.JobTypeExamSittingLifecycle]
+	if !exists {
+		t.Fatal("Exam Sitting lifecycle descriptor is absent from the application Job graph")
+	}
+	if handler, ok := lifecycle.Handler.(examSittingLifecycleHandler); !ok || handler.reconciler == nil {
+		t.Fatalf("lifecycle handler = %#v", lifecycle.Handler)
+	}
+	recovery, exists := descriptors[model.JobTypeExamSittingLifecycleRecovery]
+	if !exists {
+		t.Fatal("Exam Sitting lifecycle recovery descriptor is absent from the application Job graph")
+	}
+	if handler, ok := recovery.Handler.(examSittingLifecycleRecoveryHandler); !ok || handler.service == nil {
+		t.Fatalf("recovery handler = %#v", recovery.Handler)
+	}
+
+	recurrenceCount := 0
+	for _, recurrence := range definitions.recurrences {
+		if recurrence.Name != "exam-sitting-lifecycle-recovery" {
+			continue
+		}
+		recurrenceCount++
+		proposer, ok := recurrence.Proposer.(examSittingLifecycleRecoveryProposer)
+		if !ok || proposer.jobs == nil || proposer.now == nil {
+			t.Fatalf("recovery proposer = %#v", recurrence.Proposer)
+		}
+	}
+	if recurrenceCount != 1 {
+		t.Fatalf("lifecycle recovery recurrence count = %d", recurrenceCount)
+	}
+
+	cleanup, exists := descriptors[model.JobTypeCleanup]
+	if !exists {
+		t.Fatal("Job cleanup descriptor is absent")
+	}
+	cleanupHandler, ok := cleanup.Handler.(jobHistoryCleanupHandler)
+	if !ok {
+		t.Fatalf("cleanup handler = %#v", cleanup.Handler)
+	}
+	retained := map[model.JobType]bool{}
+	for _, policy := range cleanupHandler.policies {
+		retained[policy.Type] = true
+	}
+	if !retained[model.JobTypeExamSittingLifecycle] || !retained[model.JobTypeExamSittingLifecycleRecovery] {
+		t.Fatalf("cleanup retention types = %#v", retained)
 	}
 }
 

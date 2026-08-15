@@ -105,6 +105,8 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"exam.sitting.class_ineligible":                        {status: http.StatusConflict},
 	"exam.sitting.schedule_outside_period":                 {status: http.StatusConflict},
 	"exam.sitting.schedule_not_future":                     {status: http.StatusConflict},
+	"exam.sitting.deadline_reached":                        {status: http.StatusConflict},
+	"exam.sitting.extension_not_later":                     {status: http.StatusConflict},
 	"exam.sitting.unavailable":                             {status: http.StatusInternalServerError},
 	"exam.draft.revision_conflict":                         {status: http.StatusConflict},
 	"exam.draft.no_changes":                                {status: http.StatusConflict},

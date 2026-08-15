@@ -164,12 +164,16 @@ or changed schedule must start strictly after PostgreSQL's decision time while
 the relevant rows are locked. Authorization never bypasses those structural
 rules.
 
-The implemented pre-open slice owns bounded exact and keyset-paginated
+The implemented Sitting slice owns bounded exact and keyset-paginated
 discovery plus audited, revision-fenced, idempotent scheduling, rescheduling,
-and cancellation. Only a `Scheduled` Sitting may be rescheduled or canceled.
-The lifecycle slice adds opening and deadline Jobs; opening revalidates the
-current academic structure so an administrative lineage or period change after
-scheduling cannot admit an ineligible Sitting.
+cancellation, and manager lifecycle commands. Only a `Scheduled` Sitting may
+be rescheduled or canceled. Each schedule revision atomically queues active-
+deduplicated opening and deadline Jobs; superseded Jobs reread PostgreSQL and
+finish as harmless no-ops. A permanently deduplicated daily recovery Job runs
+at process startup and scans bounded due work so restart or terminal Job
+failure cannot strand a Sitting. Opening revalidates the current academic
+structure so an administrative lineage or period change after scheduling
+cannot admit an ineligible Sitting.
 
 ~~~text
 Scheduled -> Open <-> Paused -> Closing -> Closed
@@ -185,6 +189,12 @@ new Attempts, workspace mutation, execution, and submission while retaining
 read-only candidate presentation and integrity monitoring. In version 1,
 `ScheduledEndAt` is the sole delivery deadline: paused duration does not extend
 it and there is no separate effective-deadline field or pause-extension policy.
+Manager pause, resume, extension, and early close are exposed as distinct
+idempotent HTTP commands with optimistic Sitting revision fences and private
+reasons. PostgreSQL time wins deadline races: at or after `ScheduledEndAt`, the
+scheduled-end transition owns the reason instead of a competing manager
+command. Archiving does not prevent pause or early close from reducing live
+capability, while resume and extension remain unavailable after archive.
 
 Closing immediately denies new participation and workspace mutation. Resumable
 bounded work seals every unfinished Attempt's last acknowledged workspace,

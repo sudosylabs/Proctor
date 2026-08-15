@@ -232,6 +232,51 @@ func (s *examSittingStore) Cancel(ctx context.Context, input *store.ExamSittingC
 	})
 }
 
+func (s *examSittingStore) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamSittingLifecycleDue, error) {
+		return s.ExamSittingStore.ListLifecycleDue(ctx, options)
+	})
+}
+
+func (s *examSittingStore) Pause(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return s.retryLifecycleMutation(ctx, command, func() (*store.ExamSittingLifecycleResult, error) {
+		return s.ExamSittingStore.Pause(ctx, input, command)
+	})
+}
+
+func (s *examSittingStore) Resume(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return s.retryLifecycleMutation(ctx, command, func() (*store.ExamSittingLifecycleResult, error) {
+		return s.ExamSittingStore.Resume(ctx, input, command)
+	})
+}
+
+func (s *examSittingStore) Extend(ctx context.Context, input *store.ExamSittingExtension, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return s.retryLifecycleMutation(ctx, command, func() (*store.ExamSittingLifecycleResult, error) {
+		return s.ExamSittingStore.Extend(ctx, input, command)
+	})
+}
+
+func (s *examSittingStore) EarlyClose(ctx context.Context, input *store.ExamSittingManagerTransition, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
+	return s.retryLifecycleMutation(ctx, command, func() (*store.ExamSittingLifecycleResult, error) {
+		return s.ExamSittingStore.EarlyClose(ctx, input, command)
+	})
+}
+
+func (s *examSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
+	return s.ExamSittingStore.AdvanceDue(ctx, input)
+}
+
+func (s *examSittingStore) CloseIfNoAttempts(ctx context.Context, input *store.ExamSittingCloseIfNoAttempts) (*store.ExamSittingLifecycleResult, error) {
+	return s.ExamSittingStore.CloseIfNoAttempts(ctx, input)
+}
+
+func (s *examSittingStore) retryLifecycleMutation(ctx context.Context, command *store.CommandIdempotency, operation func() (*store.ExamSittingLifecycleResult, error)) (*store.ExamSittingLifecycleResult, error) {
+	if command == nil {
+		return operation()
+	}
+	return retryCall1(ctx, s.layer, operation)
+}
+
 func (s *examSittingStore) retryMutation(ctx context.Context, command *store.CommandIdempotency, operation func() (*store.ExamSittingCommandResult, error)) (*store.ExamSittingCommandResult, error) {
 	if command == nil {
 		return operation()

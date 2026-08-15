@@ -84,6 +84,47 @@ type examSittingChangedData struct {
 	ChangedAt     string `json:"changed_at"`
 }
 
+type examSittingLifecycleChangedData struct {
+	ExamID        string `json:"exam_id"`
+	ExamSittingID string `json:"exam_sitting_id"`
+	State         string `json:"state"`
+	Revision      int64  `json:"revision"`
+	ReasonCode    string `json:"reason_code"`
+	ScheduledEnd  string `json:"scheduled_end_at"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+// NewExamSittingLifecycleChangedEvent constructs the safe authoritative fact
+// emitted after one committed lifecycle transition or deadline extension.
+func NewExamSittingLifecycleChangedEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState,
+	revision int64, reasonCode string, scheduledEndAt, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !examID.IsValid() || !sittingID.IsValid() || !state.IsValid() || revision < 1 ||
+		!validExamSittingLifecycleEventReason(reasonCode) || scheduledEndAt.IsZero() || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("Exam Sitting lifecycle event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(examSittingLifecycleChangedData{
+		ExamID: examID.String(), ExamSittingID: sittingID.String(), State: string(state), Revision: revision,
+		ReasonCode: reasonCode, ScheduledEnd: model.TimeUTC(scheduledEndAt).Format(time.RFC3339Nano),
+		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting lifecycle event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_sitting_lifecycle_changed", Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
+func validExamSittingLifecycleEventReason(value string) bool {
+	switch value {
+	case "scheduled_start_reached", "manager_paused", "manager_resumed", "manager_extended", "manager_closed",
+		"scheduled_end_reached", "schedule_elapsed", "academic_structure_invalid", "closed_no_attempts":
+		return true
+	default:
+		return false
+	}
+}
+
 func NewExamSittingScheduledEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState, revision int64, changedAt time.Time) (RealtimeEvent, error) {
 	if state != model.ExamSittingScheduled {
 		return RealtimeEvent{}, errors.New("scheduled Exam Sitting event requires Scheduled state")
