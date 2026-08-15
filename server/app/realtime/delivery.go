@@ -11,21 +11,27 @@
 package realtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-const clusterEventPublication = "websocket.publish"
+const (
+	clusterEventPublication        = "websocket.publish"
+	clusterEventExamAttemptUnbound = "exam_attempt.connection_unbound"
+)
 
 // Sink delivers already-authorized events and connection closes to the local
 // socket boundary. It deliberately contains no WebSocket wire types.
 type Sink interface {
 	PublishLocal(context.Context, RealtimeEvent)
+	UnbindExamAttemptConnection(model.AttemptConnectionID)
 	CloseSession(string, ConnectionCloseReason)
 	CloseUser(string, ConnectionCloseReason)
 	CloseAll(ConnectionCloseReason)
@@ -133,6 +139,7 @@ func (s *Service) SetClusterFanout(fanout ClusterFanout) error {
 		handler func(context.Context, []byte) error
 	}{
 		{event: clusterEventPublication, handler: s.handlePeerPublication},
+		{event: clusterEventExamAttemptUnbound, handler: s.handlePeerExamAttemptUnbound},
 		{event: clusterEventSessionRevoked, handler: s.handlePeerSessionRevocation},
 		{event: clusterEventAuthorizationInvalidated, handler: s.handlePeerAuthorizationInvalidation},
 	}
@@ -140,6 +147,69 @@ func (s *Service) SetClusterFanout(fanout ClusterFanout) error {
 		if err := fanout.RegisterHandler(registration.event, registration.handler); err != nil {
 			return fmt.Errorf("register %s cluster handler: %w", registration.event, err)
 		}
+	}
+	return nil
+}
+
+// UnbindExamAttemptConnection clears only the runtime binding for one durable
+// Attempt Connection, locally first and then on peers. It deliberately leaves
+// the generic WebSocket open for unrelated application use.
+func (s *Service) UnbindExamAttemptConnection(ctx context.Context, connectionID model.AttemptConnectionID) error {
+	if !connectionID.IsValid() {
+		return &InvalidPublicationError{err: errors.New("Exam Attempt Connection identity is invalid")}
+	}
+	s.unbindExamAttemptConnectionLocal(connectionID)
+	payload, err := json.Marshal(examAttemptUnboundMessage{AttemptConnectionID: connectionID.String()})
+	if err != nil {
+		return &DeliveryError{err: err}
+	}
+	if err = s.broadcast(ctx, clusterEventExamAttemptUnbound, payload); err != nil {
+		return &DeliveryError{err: err}
+	}
+	return nil
+}
+
+func (s *Service) unbindExamAttemptConnectionLocal(connectionID model.AttemptConnectionID) {
+	s.mu.RLock()
+	sink := s.sink
+	s.mu.RUnlock()
+	if sink != nil {
+		sink.UnbindExamAttemptConnection(connectionID)
+	}
+}
+
+type examAttemptUnboundMessage struct {
+	AttemptConnectionID string `json:"attempt_connection_id"`
+}
+
+func (s *Service) handlePeerExamAttemptUnbound(_ context.Context, data []byte) error {
+	var message examAttemptUnboundMessage
+	if err := decodeStrictPayload(data, &message); err != nil {
+		return err
+	}
+	connectionID, err := model.ParseAttemptConnectionID(message.AttemptConnectionID)
+	if err != nil {
+		return errors.New("cluster Exam Attempt Connection identity is invalid")
+	}
+	s.unbindExamAttemptConnectionLocal(connectionID)
+	return nil
+}
+
+func decodeStrictPayload(data []byte, target any) error {
+	if len(data) == 0 {
+		return errors.New("realtime cluster payload is empty")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("realtime cluster payload has trailing JSON")
+		}
+		return err
 	}
 	return nil
 }

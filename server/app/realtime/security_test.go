@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestSessionRevocationAppliesAllLocalEffectsBeforeStablePeerFanout(t *testing.T) {
@@ -229,7 +231,8 @@ func TestCompleteHandlerRegistrationFailureIsTerminal(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "register authorization.invalidated cluster handler") {
 		t.Fatalf("SetClusterFanout() error = %v", err)
 	}
-	wantRegistered := []string{clusterEventPublication, clusterEventSessionRevoked, clusterEventAuthorizationInvalidated}
+	wantRegistered := []string{clusterEventPublication, clusterEventExamAttemptUnbound,
+		clusterEventSessionRevoked, clusterEventAuthorizationInvalidated}
 	if !reflect.DeepEqual(registered, wantRegistered) {
 		t.Fatalf("registration order = %#v, want %#v", registered, wantRegistered)
 	}
@@ -340,7 +343,8 @@ type securityRecordingSink struct {
 	order    *orderedCalls
 }
 
-func (*securityRecordingSink) PublishLocal(context.Context, RealtimeEvent) {}
+func (*securityRecordingSink) PublishLocal(context.Context, RealtimeEvent)           {}
+func (*securityRecordingSink) UnbindExamAttemptConnection(model.AttemptConnectionID) {}
 
 func (s *securityRecordingSink) CloseSession(value string, _ ConnectionCloseReason) {
 	s.mu.Lock()

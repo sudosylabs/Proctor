@@ -285,6 +285,75 @@ func TestPublishPreservesOrdinaryPeerWireFixtureAndDoesNotRebroadcast(t *testing
 	}
 }
 
+func TestUnbindExamAttemptConnectionAppliesExactLocalEffectBeforePeerFanout(t *testing.T) {
+	t.Parallel()
+
+	connectionID := model.NewAttemptConnectionID()
+	order := &orderedCalls{}
+	sink := &recordingSink{unbind: func(got model.AttemptConnectionID) {
+		if got != connectionID {
+			t.Fatalf("unbound Connection = %s, want %s", got, connectionID)
+		}
+		order.add("local")
+	}}
+	fanout := &recordingFanout{broadcast: func(_ string, _ []byte) error {
+		order.add("peer")
+		return nil
+	}}
+	service := newOrdinaryTestService(t)
+	if err := service.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetClusterFanout(fanout); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.UnbindExamAttemptConnection(context.Background(), connectionID); err != nil {
+		t.Fatal(err)
+	}
+	if got := order.snapshot(); !reflect.DeepEqual(got, []string{"local", "peer"}) {
+		t.Fatalf("delivery order = %#v", got)
+	}
+	if len(fanout.broadcasts) != 1 || fanout.broadcasts[0].event != clusterEventExamAttemptUnbound ||
+		string(fanout.broadcasts[0].data) != `{"attempt_connection_id":"`+connectionID.String()+`"}` {
+		t.Fatalf("peer broadcasts = %#v", fanout.broadcasts)
+	}
+
+	handler := fanout.handler(clusterEventExamAttemptUnbound)
+	if handler == nil {
+		t.Fatal("Attempt unbind handler was not registered")
+	}
+	if err := handler(context.Background(), fanout.broadcasts[0].data); err != nil {
+		t.Fatal(err)
+	}
+	if sink.unboundCount() != 2 || len(fanout.broadcasts) != 1 {
+		t.Fatalf("peer effect count=%d broadcasts=%d", sink.unboundCount(), len(fanout.broadcasts))
+	}
+}
+
+func TestPeerExamAttemptUnbindRejectsNonCanonicalPayloadWithoutLocalEffect(t *testing.T) {
+	t.Parallel()
+
+	service := newOrdinaryTestService(t)
+	sink := &recordingSink{}
+	fanout := &recordingFanout{}
+	if err := service.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetClusterFanout(fanout); err != nil {
+		t.Fatal(err)
+	}
+	handler := fanout.handler(clusterEventExamAttemptUnbound)
+	connectionID := model.NewAttemptConnectionID()
+	payload := []byte(`{"attempt_connection_id":"` + connectionID.String() + `","credential":"forbidden"}`)
+	if err := handler(context.Background(), payload); err == nil {
+		t.Fatal("peer unbind accepted an unknown payload field")
+	}
+	if sink.unboundCount() != 0 {
+		t.Fatalf("invalid peer unbound %d local bindings", sink.unboundCount())
+	}
+}
+
 func TestPublishMissingCollaboratorsAndTypedFailures(t *testing.T) {
 	t.Parallel()
 
@@ -453,6 +522,24 @@ type recordingSink struct {
 	mu      sync.Mutex
 	events  []RealtimeEvent
 	publish func(RealtimeEvent)
+	unbound []model.AttemptConnectionID
+	unbind  func(model.AttemptConnectionID)
+}
+
+func (s *recordingSink) UnbindExamAttemptConnection(value model.AttemptConnectionID) {
+	s.mu.Lock()
+	s.unbound = append(s.unbound, value)
+	unbind := s.unbind
+	s.mu.Unlock()
+	if unbind != nil {
+		unbind(value)
+	}
+}
+
+func (s *recordingSink) unboundCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.unbound)
 }
 
 func (s *recordingSink) PublishLocal(_ context.Context, event RealtimeEvent) {

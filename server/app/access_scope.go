@@ -183,6 +183,7 @@ type accessScopeResolver struct {
 	classMembers  store.ClassMemberStore
 	exams         store.ExamAuthoringStore
 	sittings      store.ExamSittingStore
+	submissions   store.ExamSubmissionStore
 }
 
 func newAccessScopeResolver(
@@ -193,13 +194,15 @@ func newAccessScopeResolver(
 	classMembers store.ClassMemberStore,
 	exams store.ExamAuthoringStore,
 	sittings store.ExamSittingStore,
+	submissions store.ExamSubmissionStore,
 ) (*accessScopeResolver, error) {
-	if institutions == nil || academicUnits == nil || classes == nil || users == nil || classMembers == nil || exams == nil || sittings == nil {
+	if institutions == nil || academicUnits == nil || classes == nil || users == nil || classMembers == nil || exams == nil ||
+		sittings == nil || submissions == nil {
 		return nil, errors.New("access scope resolver persistence is required")
 	}
 	return &accessScopeResolver{
 		institutions: institutions, academicUnits: academicUnits,
-		classes: classes, users: users, classMembers: classMembers, exams: exams, sittings: sittings,
+		classes: classes, users: users, classMembers: classMembers, exams: exams, sittings: sittings, submissions: submissions,
 	}, nil
 }
 
@@ -328,6 +331,34 @@ func (r *accessScopeResolver) resolve(
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
 				return resolved, NewError("resource.not_found").WithField("resource", "exam_sitting")
+			}
+			resolved.academicUnitID[unit.ID.String()] = struct{}{}
+		}
+	case model.ResourceSubmission:
+		submissionID, err := model.ParseSubmissionID(resource.ID)
+		if err != nil {
+			return resolved, NewError("authorization.request.invalid").Wrap(err)
+		}
+		ownership, err := r.submissions.Resolve(ctx, submissionID)
+		if err != nil {
+			return resolved, authorizationResourceError("submission", err)
+		}
+		if ownership == nil || ownership.SubmissionID != submissionID || !ownership.ExamID.IsValid() ||
+			!ownership.SittingID.IsValid() || !ownership.AttemptID.IsValid() || !ownership.AcademicUnitID.IsValid() {
+			return resolved, authorizationUnavailableError("accessScopeResolver.submission", errors.New("Submission persistence returned no ownership projection"))
+		}
+		units, err := r.academicUnits.ListAncestors(ctx, ownership.AcademicUnitID.String())
+		if err != nil {
+			return resolved, authorizationResourceError("submission_academic_unit", err)
+		}
+		if len(units) == 0 {
+			return resolved, NewError("resource.not_found").WithField("resource", "submission")
+		}
+		resolved.institutionID = units[0].InstitutionID.String()
+		resolved.targetAcademicUnitID = ownership.AcademicUnitID.String()
+		for _, unit := range units {
+			if unit == nil || unit.IsArchived() {
+				return resolved, NewError("resource.not_found").WithField("resource", "submission")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}

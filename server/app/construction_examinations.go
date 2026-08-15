@@ -51,8 +51,9 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	}
 	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime}
 	attempts, err := examattempt.New(examattempt.Dependencies{
-		Persistence: deps.Store.ExamAttempt(), Workspace: deps.Store.ExamAttemptWorkspace(), Sittings: deps.Store.ExamSitting(),
-		Managers:      examAttemptManagerAuthorizationAdapter{sittings: sittings},
+		Persistence: deps.Store.ExamAttempt(), Workspace: deps.Store.ExamAttemptWorkspace(),
+		Submissions: deps.Store.ExamSubmission(), Sittings: deps.Store.ExamSitting(),
+		Managers:      examAttemptManagerAuthorizationAdapter{sittings: sittings, submissions: deps.Store.ExamSubmission()},
 		Auditor:       examAttemptAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		SystemAuditor: examAttemptSystemAuditAdapter{audit: foundation.audit},
 		Effects:       attemptEffects, EffectFailures: attemptEffects, Content: deps.FileContent,
@@ -62,6 +63,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewSuspension: model.NewAttemptSuspensionID, NewFocusLossSignal: model.NewFocusLossSignalID,
 		NewWorkspaceEntry: model.NewAttemptWorkspaceEntryID, NewWorkspaceObject: model.NewAttemptWorkspaceObjectID,
 		NewWorkspaceVersion: model.NewWorkspaceContentVersion,
+		NewSubmission:       model.NewSubmissionID,
 	})
 	if err != nil {
 		return examinationConstruction{}, err

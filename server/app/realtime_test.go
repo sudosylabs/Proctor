@@ -70,11 +70,18 @@ func newTestRealtimeService(t *testing.T, cache authenticationCache) *realtimeSe
 }
 
 type recordingRealtimeSink struct {
-	mu            sync.Mutex
-	events        []apprealtime.RealtimeEvent
-	sessionCloses []closeRecord
-	userCloses    []closeRecord
-	allCloses     []apprealtime.ConnectionCloseReason
+	mu             sync.Mutex
+	events         []apprealtime.RealtimeEvent
+	sessionCloses  []closeRecord
+	userCloses     []closeRecord
+	allCloses      []apprealtime.ConnectionCloseReason
+	attemptUnbinds []model.AttemptConnectionID
+}
+
+func (s *recordingRealtimeSink) UnbindExamAttemptConnection(connectionID model.AttemptConnectionID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attemptUnbinds = append(s.attemptUnbinds, connectionID)
 }
 
 type closeRecord struct {

@@ -81,6 +81,15 @@ boundary. Role, binding, assurance, account, and session changes invalidate
 affected connections. Cluster-received events are delivered locally without
 rebroadcast, preventing loops.
 
+A committed voluntary Submission publishes bounded `exam_attempt_submitted`
+facts to the authorized manager Sitting subscription and the candidate user,
+then propagates an exact Attempt Connection identity for local and peer
+unbinding. Every node clears only that durable Attempt binding and its candidate
+subscription; the authenticated generic socket remains open. Replay of the
+committed Submission emits no duplicate events or unbind. Neither event nor
+the cluster unbind envelope contains a Workspace path, content, integrity
+evidence, credential, or private selector.
+
 The protected Attempt runtime accepts `exam_attempt.focus_loss` only after an
 `exam_attempt.connect` binding. Its duplicate-free strict object contains the
 required `schema_version: 1`, bound generation, positive monotonic signal

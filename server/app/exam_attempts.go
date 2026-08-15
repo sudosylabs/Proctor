@@ -163,6 +163,10 @@ type examAttemptUseCases interface {
 	OpenWorkspaceFile(context.Context, examattempt.Call, examattempt.CandidateAccess, model.AttemptWorkspaceEntryID) (*examattempt.OpenedContent, error)
 	GetManaged(context.Context, examattempt.Call, examattempt.GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error)
 	ListManaged(context.Context, examattempt.Call, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error)
+	Submit(context.Context, examattempt.Call, examattempt.SubmitCommand) (examattempt.SubmissionResult, error)
+	GetSubmission(context.Context, examattempt.Call, examattempt.GetSubmissionQuery) (*examattempt.ManagedSubmission, error)
+	ListSubmissionManifest(context.Context, examattempt.Call, examattempt.ListSubmissionManifestQuery) (examattempt.SubmissionManifestPage, error)
+	OpenSubmissionFile(context.Context, examattempt.Call, examattempt.OpenSubmissionFileQuery) (*examattempt.OpenedContent, error)
 }
 
 func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation Invocation,
@@ -444,7 +448,10 @@ func examAttemptError(err error, conceal bool) error {
 	return mapped.Wrap(err)
 }
 
-type examAttemptManagerAuthorizationAdapter struct{ sittings examSittingUseCases }
+type examAttemptManagerAuthorizationAdapter struct {
+	sittings    examSittingUseCases
+	submissions store.ExamSubmissionStore
+}
 
 func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingView(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) error {
 	return adapter.sittings.AuthorizeView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
@@ -452,6 +459,27 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingView(ctx c
 
 func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingManage(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) (bool, error) {
 	return adapter.sittings.AuthorizeManage(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
+}
+
+func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ctx context.Context, call examattempt.Call,
+	submissionID model.SubmissionID,
+) error {
+	if adapter.submissions == nil || !submissionID.IsValid() {
+		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: errors.New("Submission authorization dependencies are invalid")}
+	}
+	authorization, err := adapter.submissions.Resolve(ctx, submissionID)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return &examattempt.Fault{Code: "exam.attempt.not_found", Cause: err}
+		}
+		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: err}
+	}
+	if authorization == nil || authorization.SubmissionID != submissionID || !authorization.ExamID.IsValid() ||
+		!authorization.SittingID.IsValid() || !authorization.AttemptID.IsValid() || !authorization.AcademicUnitID.IsValid() {
+		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: errors.New("Submission authorization projection is incomplete")}
+	}
+	return adapter.sittings.AuthorizeSubmissionView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()),
+		authorization.ExamID, submissionID)
 }
 
 type examAttemptAuditAdapter struct{ audit mutationAuditAdapter }
@@ -579,6 +607,23 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 		joined = errors.Join(joined, effects.realtime.Publish(ctx, event))
 	}
 	return joined
+}
+
+func (effects examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, result examattempt.SubmissionResult) error {
+	managerEvent, err := apprealtime.NewExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
+		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
+		result.Receipt.ManifestDigest, result.Receipt.SubmittedAt)
+	if err != nil {
+		return err
+	}
+	candidateEvent, err := apprealtime.NewCandidateExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
+		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
+		result.Receipt.ManifestDigest, result.Receipt.SubmittedAt)
+	if err != nil {
+		return err
+	}
+	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
+		effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {

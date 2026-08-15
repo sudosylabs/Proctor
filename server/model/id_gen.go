@@ -46,6 +46,9 @@ func NewExamAttemptID() ExamAttemptID { return ExamAttemptID(NewId()) }
 // NewExamAttemptWorkspaceID returns a freshly generated exam-attempt-workspace identifier.
 func NewExamAttemptWorkspaceID() ExamAttemptWorkspaceID { return ExamAttemptWorkspaceID(NewId()) }
 
+// NewSubmissionID returns a freshly generated submission identifier.
+func NewSubmissionID() SubmissionID { return SubmissionID(NewId()) }
+
 // NewAttemptParticipationID returns a freshly generated attempt-participation identifier.
 func NewAttemptParticipationID() AttemptParticipationID { return AttemptParticipationID(NewId()) }
 
@@ -199,6 +202,11 @@ func ParseExamAttemptID(value string) (ExamAttemptID, error) {
 // ParseExamAttemptWorkspaceID validates and converts the shared identifier representation.
 func ParseExamAttemptWorkspaceID(value string) (ExamAttemptWorkspaceID, error) {
 	return parseID[ExamAttemptWorkspaceID](value, "exam_attempt_workspace_id")
+}
+
+// ParseSubmissionID validates and converts the shared identifier representation.
+func ParseSubmissionID(value string) (SubmissionID, error) {
+	return parseID[SubmissionID](value, "submission_id")
 }
 
 // ParseAttemptParticipationID validates and converts the shared identifier representation.
@@ -390,6 +398,9 @@ func (id ExamAttemptID) IsZero() bool { return id == "" }
 // IsZero reports whether the exam-attempt-workspace is the empty zero value.
 func (id ExamAttemptWorkspaceID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the submission is the empty zero value.
+func (id SubmissionID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the attempt-participation is the empty zero value.
 func (id AttemptParticipationID) IsZero() bool { return id == "" }
 
@@ -518,6 +529,9 @@ func (id ExamAttemptID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the exam-attempt-workspace is a canonical non-zero ID.
 func (id ExamAttemptWorkspaceID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the submission is a canonical non-zero ID.
+func (id SubmissionID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the attempt-participation is a canonical non-zero ID.
 func (id AttemptParticipationID) IsValid() bool { return IsValidId(string(id)) }
@@ -648,6 +662,9 @@ func (id ExamAttemptID) String() string { return string(id) }
 // String returns the exam-attempt-workspace wire/database representation.
 func (id ExamAttemptWorkspaceID) String() string { return string(id) }
 
+// String returns the submission wire/database representation.
+func (id SubmissionID) String() string { return string(id) }
+
 // String returns the attempt-participation wire/database representation.
 func (id AttemptParticipationID) String() string { return string(id) }
 
@@ -776,6 +793,9 @@ func (id ExamAttemptID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the exam-attempt-workspace as its canonical string.
 func (id ExamAttemptWorkspaceID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the submission as its canonical string.
+func (id SubmissionID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the attempt-participation as its canonical string.
 func (id AttemptParticipationID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -930,6 +950,11 @@ func (id *ExamAttemptID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the exam-attempt-workspace when non-empty.
 func (id *ExamAttemptWorkspaceID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExamAttemptWorkspaceID)
+}
+
+// UnmarshalText decodes and validates the submission when non-empty.
+func (id *SubmissionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseSubmissionID)
 }
 
 // UnmarshalText decodes and validates the attempt-participation when non-empty.
@@ -1121,6 +1146,9 @@ func (id ExamAttemptID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id)
 // MarshalJSON encodes the exam-attempt-workspace as a JSON string.
 func (id ExamAttemptWorkspaceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the submission as a JSON string.
+func (id SubmissionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the attempt-participation as a JSON string.
 func (id AttemptParticipationID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1274,6 +1302,11 @@ func (id *ExamAttemptID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the exam-attempt-workspace.
 func (id *ExamAttemptWorkspaceID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExamAttemptWorkspaceID)
+}
+
+// UnmarshalJSON decodes a JSON string into the submission.
+func (id *SubmissionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseSubmissionID)
 }
 
 // UnmarshalJSON decodes a JSON string into the attempt-participation.

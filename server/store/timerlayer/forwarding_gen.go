@@ -31,6 +31,8 @@ type timedStores struct {
 	examSittingOnce          sync.Once
 	examStarterWorkspace     store.ExamStarterWorkspaceStore
 	examStarterWorkspaceOnce sync.Once
+	examSubmission           store.ExamSubmissionStore
+	examSubmissionOnce       sync.Once
 	examAuthoring            store.ExamAuthoringStore
 	examAuthoringOnce        sync.Once
 	commandOutcome           store.CommandOutcomeStore
@@ -123,6 +125,11 @@ type timedExamSittingStore struct {
 type timedExamStarterWorkspaceStore struct {
 	layer *Layer
 	next  store.ExamStarterWorkspaceStore
+}
+
+type timedExamSubmissionStore struct {
+	layer *Layer
+	next  store.ExamSubmissionStore
 }
 
 type timedExamAuthoringStore struct {
@@ -353,6 +360,16 @@ func (l *Layer) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 		}
 	})
 	return l.stores.examAttemptWorkspace
+}
+
+func (l *Layer) ExamSubmission() store.ExamSubmissionStore {
+	l.stores.examSubmissionOnce.Do(func() {
+		next := l.next.ExamSubmission()
+		if next != nil {
+			l.stores.examSubmission = &timedExamSubmissionStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examSubmission
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -1024,6 +1041,42 @@ func (s *timedExamStarterWorkspaceStore) CompleteObjectCleanup(arg0 context.Cont
 func (s *timedExamStarterWorkspaceStore) ReleaseObjectCleanup(arg0 context.Context, arg1 model.StarterWorkspaceObjectID, arg2 string) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateExamStarterWorkspace, methodReleaseObjectCleanup), func() error {
 		return s.next.ReleaseObjectCleanup(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSubmissionStore) ResolveSealTarget(arg0 context.Context, arg1 store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveSealTarget), func() (*store.ExamSubmissionSealTarget, error) {
+		return s.next.ResolveSealTarget(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) Seal(arg0 context.Context, arg1 *store.ExamSubmissionSeal, arg2 *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSeal), func() (*store.ExamSubmissionSealResult, error) {
+		return s.next.Seal(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamSubmissionStore) Resolve(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolve), func() (*store.ExamSubmissionAuthorization, error) {
+		return s.next.Resolve(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) Get(arg0 context.Context, arg1 model.SubmissionID) (*model.ExamSubmission, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodGet), func() (*model.ExamSubmission, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) ListManifest(arg0 context.Context, arg1 store.ExamSubmissionManifestListOptions) (*store.ExamSubmissionManifestPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListManifest), func() (*store.ExamSubmissionManifestPage, error) {
+		return s.next.ListManifest(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) ResolveFile(arg0 context.Context, arg1 model.SubmissionID, arg2 model.AttemptWorkspaceEntryID) (*store.ExamSubmissionFileSelector, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveFile), func() (*store.ExamSubmissionFileSelector, error) {
+		return s.next.ResolveFile(arg0, arg1, arg2)
 	})
 }
 
@@ -2207,6 +2260,7 @@ var (
 	_ store.ExamRevisionStore         = (*timedExamRevisionStore)(nil)
 	_ store.ExamSittingStore          = (*timedExamSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*timedExamStarterWorkspaceStore)(nil)
+	_ store.ExamSubmissionStore       = (*timedExamSubmissionStore)(nil)
 	_ store.ExamAuthoringStore        = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*timedCommandOutcomeStore)(nil)
 	_ store.JobStore                  = (*timedJobStore)(nil)

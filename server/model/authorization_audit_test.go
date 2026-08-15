@@ -83,6 +83,24 @@ func TestExamSittingParticipationActionIsRecognizedButNotRoleGrantable(t *testin
 	}
 }
 
+func TestSubmissionViewActionsAreResourceTypedAndGrantable(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range []Action{ActionSubmissionView, ActionSubmissionViewOverride} {
+		definition, ok := DefinitionForAction(action)
+		if !ok || definition.ResourceType != ResourceSubmission || !definition.InheritInstitutionScope ||
+			!definition.InheritAcademicUnitScopes || definition.RelationshipOnly {
+			t.Fatalf("Submission action %q definition = %#v, %v", action, definition, ok)
+		}
+		if !IsGrantableAction(string(action)) {
+			t.Fatalf("Submission action %q is not role grantable", action)
+		}
+	}
+	if err := (Resource{Type: ResourceSubmission, ID: NewId()}).Validate(); err != nil {
+		t.Fatalf("valid Submission resource was rejected: %v", err)
+	}
+}
+
 func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 	event := &AuditEvent{
 		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionUserView),

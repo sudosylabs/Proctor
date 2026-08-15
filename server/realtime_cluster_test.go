@@ -120,6 +120,7 @@ func TestRealtimeClusterAdapterRegistersStableChildEventsAndPropagatesFailure(t 
 	}
 	want := []cluster.Event{
 		cluster.Event("websocket.publish"),
+		cluster.Event("exam_attempt.connection_unbound"),
 		cluster.Event("authentication.session_revoked"),
 		cluster.Event("authorization.invalidated"),
 	}
@@ -187,6 +188,7 @@ func (s *countingRealtimeSink) PublishLocal(context.Context, apprealtime.Realtim
 func (*countingRealtimeSink) CloseSession(string, apprealtime.ConnectionCloseReason) {}
 func (*countingRealtimeSink) CloseUser(string, apprealtime.ConnectionCloseReason)    {}
 func (*countingRealtimeSink) CloseAll(apprealtime.ConnectionCloseReason)             {}
+func (*countingRealtimeSink) UnbindExamAttemptConnection(model.AttemptConnectionID)  {}
 
 func (s *countingRealtimeSink) publishCount() int {
 	s.mu.Lock()

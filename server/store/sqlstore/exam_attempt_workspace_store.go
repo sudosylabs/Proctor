@@ -992,6 +992,7 @@ func (s *SQLExamAttemptWorkspaceStore) MarkObjectReclaimable(ctx context.Context
 			reclaim_after=statement_timestamp()+(? * INTERVAL '1 millisecond')
 		WHERE objects.id=? AND objects.storage_origin='attempt' AND objects.state='staged'
 			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
+			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
 				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))`,
 		model.AttemptWorkspaceReclaimSafetyWindow.Milliseconds(), objectID.String(), store.ExamAttemptWorkspaceMutationOperation)
@@ -1018,6 +1019,7 @@ func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Contex
 			 OR (objects.state='reclaimable' AND objects.reclaim_after<=statement_timestamp())
 			 OR (objects.state='claimed' AND objects.claimed_at+(? * INTERVAL '1 millisecond')<=statement_timestamp()))
 			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
+			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
 				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))
 		ORDER BY COALESCE(objects.reclaim_after,objects.expires_at,objects.claimed_at),objects.id
@@ -1052,6 +1054,7 @@ func (s *SQLExamAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context
 	result, err := s.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_objects objects
 		WHERE objects.id=? AND objects.storage_origin='attempt' AND objects.state='claimed' AND objects.claim_token=?
 			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
+			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
 				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))`,
 		objectID.String(), claimToken, store.ExamAttemptWorkspaceMutationOperation)

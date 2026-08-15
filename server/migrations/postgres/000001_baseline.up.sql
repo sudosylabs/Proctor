@@ -1493,6 +1493,201 @@ $$;
 CREATE TRIGGER exam_attempt_suspensions_guard BEFORE UPDATE ON exam_attempt_suspensions
     FOR EACH ROW EXECUTE FUNCTION guard_exam_attempt_suspension_mutation();
 
+-- A Submission seals one exact acknowledged Workspace state without copying
+-- bytes. The header is created unsealed only inside the sealing transaction;
+-- its children are inserted from locked authoritative Workspace rows and the
+-- header is sealed before commit. Exact owner keys prevent cross-Attempt,
+-- cross-Participation, and cross-Workspace references.
+ALTER TABLE exam_attempt_workspaces
+    ADD CONSTRAINT exam_attempt_workspaces_submission_owner_key
+    UNIQUE (exam_attempt_id, id);
+ALTER TABLE exam_attempt_workspace_entries
+    ADD CONSTRAINT exam_attempt_workspace_entries_submission_owner_key
+    UNIQUE (workspace_id, id, current_object_id);
+
+CREATE TABLE exam_submissions (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL UNIQUE,
+    workspace_id varchar(26) NOT NULL UNIQUE,
+    participation_id varchar(26) NOT NULL,
+    generation bigint NOT NULL CHECK (generation > 0),
+    connection_id varchar(26) NOT NULL,
+    manifest_schema_version integer NOT NULL CHECK (manifest_schema_version = 1),
+    workspace_cursor bigint NOT NULL CHECK (workspace_cursor >= 0),
+    manifest_digest char(64) NOT NULL CHECK (manifest_digest ~ '^[0-9a-f]{64}$'),
+    manifest_entry_count integer NOT NULL CHECK (manifest_entry_count BETWEEN 0 AND 500),
+    manifest_total_file_bytes bigint NOT NULL CHECK (manifest_total_file_bytes BETWEEN 0 AND 52428800),
+    final_focus_loss_sequence bigint NOT NULL CHECK (final_focus_loss_sequence >= 0),
+    integrity_state varchar(16) NOT NULL CHECK (integrity_state IN ('settled', 'gapped')),
+    unresolved_integrity_count bigint NOT NULL CHECK (unresolved_integrity_count >= 0),
+    submitted_at timestamptz NOT NULL,
+    sealed boolean NOT NULL DEFAULT false,
+    UNIQUE (id, workspace_id),
+    CONSTRAINT exam_submissions_workspace_fkey
+        FOREIGN KEY (exam_attempt_id, workspace_id)
+        REFERENCES exam_attempt_workspaces(exam_attempt_id, id),
+    CONSTRAINT exam_submissions_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id, generation)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id, generation),
+    CONSTRAINT exam_submissions_connection_fkey
+        FOREIGN KEY (connection_id, exam_attempt_id, participation_id)
+        REFERENCES exam_attempt_connections(id, exam_attempt_id, participation_id),
+    CONSTRAINT exam_submissions_integrity_check CHECK (
+        (integrity_state = 'settled' AND unresolved_integrity_count = 0) OR
+        (integrity_state = 'gapped' AND unresolved_integrity_count > 0)
+    )
+);
+
+CREATE TABLE exam_submission_manifest_entries (
+    submission_id varchar(26) NOT NULL,
+    workspace_id varchar(26) NOT NULL,
+    entry_id varchar(26) NOT NULL,
+    kind varchar(16) NOT NULL CHECK (kind IN ('file', 'directory')),
+    path text NOT NULL CHECK (octet_length(path) BETWEEN 1 AND 1024),
+    content_version varchar(26),
+    media_type varchar(255),
+    size_bytes bigint,
+    sha256 char(64),
+    storage_origin varchar(16),
+    starter_object_id varchar(26),
+    attempt_object_id varchar(26),
+    workspace_object_id varchar(26),
+    PRIMARY KEY (submission_id, entry_id),
+    UNIQUE (submission_id, path),
+    CONSTRAINT exam_submission_manifest_entries_submission_fkey
+        FOREIGN KEY (submission_id, workspace_id)
+        REFERENCES exam_submissions(id, workspace_id),
+    CONSTRAINT exam_submission_manifest_entries_workspace_entry_fkey
+        FOREIGN KEY (workspace_id, entry_id, workspace_object_id)
+        REFERENCES exam_attempt_workspace_entries(workspace_id, id, current_object_id),
+    CONSTRAINT exam_submission_manifest_entries_workspace_object_fkey
+        FOREIGN KEY (workspace_id, workspace_object_id)
+        REFERENCES exam_attempt_workspace_objects(workspace_id, id),
+    CONSTRAINT exam_submission_manifest_entries_starter_object_fkey
+        FOREIGN KEY (starter_object_id) REFERENCES exam_starter_workspace_objects(id),
+    CONSTRAINT exam_submission_manifest_entries_attempt_object_fkey
+        FOREIGN KEY (workspace_id, attempt_object_id)
+        REFERENCES exam_attempt_workspace_objects(workspace_id, id),
+    CONSTRAINT exam_submission_manifest_entries_content_check CHECK (
+        (kind = 'directory' AND content_version IS NULL AND media_type IS NULL AND size_bytes IS NULL AND
+         sha256 IS NULL AND storage_origin IS NULL AND starter_object_id IS NULL AND attempt_object_id IS NULL AND
+         workspace_object_id IS NULL) OR
+        (kind = 'file' AND content_version ~ '^[A-Za-z0-9_-]{26}$' AND
+         media_type IS NOT NULL AND media_type = btrim(media_type) AND char_length(media_type) BETWEEN 1 AND 255 AND
+         size_bytes BETWEEN 0 AND 10485760 AND sha256 ~ '^[0-9a-f]{64}$' AND workspace_object_id IS NOT NULL AND
+         ((storage_origin = 'starter' AND starter_object_id IS NOT NULL AND attempt_object_id IS NULL) OR
+          (storage_origin = 'attempt' AND starter_object_id IS NULL AND attempt_object_id = workspace_object_id)))
+    )
+);
+
+CREATE FUNCTION guard_exam_submission_manifest_object() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    current_kind varchar(16);
+    current_path text;
+    current_object_id varchar(26);
+    current_content_version varchar(26);
+    current_media_type varchar(255);
+    current_size_bytes bigint;
+    current_sha256 char(64);
+    current_origin varchar(16);
+    current_starter_id varchar(26);
+    current_attempt_id varchar(26);
+BEGIN
+    SELECT e.kind, e.path, e.current_object_id, o.content_version, o.media_type,
+           o.size_bytes, o.sha256, o.storage_origin, o.starter_object_id,
+           CASE WHEN o.storage_origin = 'attempt' THEN o.id END
+      INTO current_kind, current_path, current_object_id, current_content_version,
+           current_media_type, current_size_bytes, current_sha256, current_origin,
+           current_starter_id, current_attempt_id
+      FROM exam_attempt_workspace_entries e
+      LEFT JOIN exam_attempt_workspace_objects o
+        ON o.workspace_id = e.workspace_id AND o.id = e.current_object_id
+     WHERE e.workspace_id = NEW.workspace_id AND e.id = NEW.entry_id;
+    IF NOT FOUND OR
+       current_kind IS DISTINCT FROM NEW.kind OR
+       current_path IS DISTINCT FROM NEW.path OR
+       current_object_id IS DISTINCT FROM NEW.workspace_object_id OR
+       current_content_version IS DISTINCT FROM NEW.content_version OR
+       current_media_type IS DISTINCT FROM NEW.media_type OR
+       current_size_bytes IS DISTINCT FROM NEW.size_bytes OR
+       current_sha256 IS DISTINCT FROM NEW.sha256 OR
+       current_origin IS DISTINCT FROM NEW.storage_origin OR
+       current_starter_id IS DISTINCT FROM NEW.starter_object_id OR
+       current_attempt_id IS DISTINCT FROM NEW.attempt_object_id THEN
+        RAISE EXCEPTION 'Submission manifest row does not match authoritative Workspace state'
+            USING ERRCODE = '23503', CONSTRAINT = 'exam_submission_manifest_entries_object_provenance';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION guard_exam_submission_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND NOT OLD.sealed AND NEW.sealed AND
+       (to_jsonb(NEW) - 'sealed') = (to_jsonb(OLD) - 'sealed') THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'sealed Submission is immutable' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE FUNCTION reject_exam_submission_manifest_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'sealed Submission manifest is immutable' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE FUNCTION guard_exam_submission_manifest_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    submission_sealed boolean;
+BEGIN
+    SELECT sealed INTO submission_sealed FROM exam_submissions WHERE id = NEW.submission_id FOR KEY SHARE;
+    IF submission_sealed THEN
+        RAISE EXCEPTION 'sealed Submission manifest is immutable' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION enforce_exam_submission_sealed() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    current_submission exam_submissions%ROWTYPE;
+    actual_entries integer;
+    actual_bytes bigint;
+BEGIN
+    SELECT * INTO current_submission FROM exam_submissions WHERE id = NEW.id;
+    SELECT count(*), COALESCE(sum(size_bytes), 0) INTO actual_entries, actual_bytes
+      FROM exam_submission_manifest_entries WHERE submission_id = NEW.id;
+    IF NOT current_submission.sealed OR current_submission.manifest_entry_count <> actual_entries OR
+       current_submission.manifest_total_file_bytes <> actual_bytes THEN
+        RAISE EXCEPTION 'Submission manifest was not sealed completely' USING ERRCODE = '23514';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER exam_submissions_immutable
+    BEFORE UPDATE OR DELETE ON exam_submissions
+    FOR EACH ROW EXECUTE FUNCTION guard_exam_submission_mutation();
+CREATE TRIGGER exam_submission_manifest_entries_immutable
+    BEFORE UPDATE OR DELETE ON exam_submission_manifest_entries
+    FOR EACH ROW EXECUTE FUNCTION reject_exam_submission_manifest_mutation();
+CREATE TRIGGER exam_submission_manifest_entries_insert_guard
+    BEFORE INSERT ON exam_submission_manifest_entries
+    FOR EACH ROW EXECUTE FUNCTION guard_exam_submission_manifest_insert();
+CREATE TRIGGER exam_submission_manifest_entries_object_provenance
+    BEFORE INSERT ON exam_submission_manifest_entries
+    FOR EACH ROW EXECUTE FUNCTION guard_exam_submission_manifest_object();
+CREATE CONSTRAINT TRIGGER exam_submissions_sealed_check
+    AFTER INSERT OR UPDATE ON exam_submissions
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION enforce_exam_submission_sealed();
+
 CREATE TABLE session_credentials (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -1633,7 +1828,7 @@ CREATE TABLE audit_events (
     session_id varchar(26) REFERENCES sessions(id),
     action varchar(128) NOT NULL,
     resource_type varchar(32) NOT NULL
-        CHECK (resource_type IN ('institution', 'academic_unit', 'class', 'user', 'exam', 'exam_sitting')),
+        CHECK (resource_type IN ('institution', 'academic_unit', 'class', 'user', 'exam', 'exam_sitting', 'submission')),
     resource_id varchar(26) NOT NULL,
     scope_type varchar(32) NOT NULL
         CHECK (scope_type IN ('institution', 'academic_unit', 'class')),
@@ -1976,6 +2171,22 @@ ALTER TABLE exam_attempt_suspensions
     ADD CONSTRAINT exam_attempt_suspensions_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_suspensions_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_suspensions_reallowed_by_user_id_canonical_check CHECK (reallowed_by_user_id IS NULL OR reallowed_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_submissions
+    ADD CONSTRAINT exam_submissions_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submissions_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submissions_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submissions_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submissions_connection_id_canonical_check CHECK (connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_submission_manifest_entries
+    ADD CONSTRAINT exam_submission_manifest_entries_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_starter_object_id_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_attempt_object_id_canonical_check CHECK (attempt_object_id IS NULL OR attempt_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_workspace_object_id_canonical_check CHECK (workspace_object_id IS NULL OR workspace_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_id_canonical_check

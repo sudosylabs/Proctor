@@ -10,10 +10,58 @@ import (
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
+
+func TestExamAttemptSubmissionAuthorizationResolvesCanonicalExamBeforeCurrentManagerCheck(t *testing.T) {
+	t.Parallel()
+
+	submissionID, examID := model.NewSubmissionID(), model.NewExamID()
+	sittings := &submissionAuthorizationSittingFake{}
+	adapter := examAttemptManagerAuthorizationAdapter{
+		sittings: sittings,
+		submissions: &submissionAuthorizationStoreFake{authorization: &store.ExamSubmissionAuthorization{
+			SubmissionID: submissionID, ExamID: examID, SittingID: model.NewExamSittingID(),
+			AttemptID: model.NewExamAttemptID(), AcademicUnitID: model.NewAcademicUnitID(),
+		}},
+	}
+	principal := examAttemptPrincipal()
+	call := examattempt.NewCall(principal, model.RequestMetadata{RequestID: "submission-view"})
+	if err := adapter.AuthorizeSubmissionView(context.Background(), call, submissionID); err != nil {
+		t.Fatal(err)
+	}
+	if sittings.examID != examID || sittings.submissionID != submissionID ||
+		sittings.call.Principal().UserID != principal.UserID {
+		t.Fatalf("authorization call = exam %s submission %s principal %s", sittings.examID,
+			sittings.submissionID, sittings.call.Principal().UserID)
+	}
+}
+
+type submissionAuthorizationStoreFake struct {
+	store.ExamSubmissionStore
+	authorization *store.ExamSubmissionAuthorization
+}
+
+func (fake *submissionAuthorizationStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamSubmissionAuthorization, error) {
+	return fake.authorization, nil
+}
+
+type submissionAuthorizationSittingFake struct {
+	examSittingUseCases
+	call         examsitting.Call
+	examID       model.ExamID
+	submissionID model.SubmissionID
+}
+
+func (fake *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.Context, call examsitting.Call,
+	examID model.ExamID, submissionID model.SubmissionID,
+) error {
+	fake.call, fake.examID, fake.submissionID = call, examID, submissionID
+	return nil
+}
 
 func TestConnectExamAttemptFingerprintBindsSessionAndNeverStoresRawCredential(t *testing.T) {
 	t.Parallel()
@@ -189,6 +237,45 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 	}
 	if got := string(events[2].Data); !strings.Contains(got, `"reason_code":"secure_connectivity_lost"`) {
 		t.Fatalf("candidate expiry event lacks safe reason: %s", got)
+	}
+}
+
+func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactConnection(t *testing.T) {
+	t.Parallel()
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	sink := &recordingRealtimeSink{}
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+	result := examattempt.SubmissionResult{Receipt: store.ExamSubmissionReceipt{
+		SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(), State: model.ExamAttemptSubmitted,
+		WorkspaceCursor: 13, ManifestDigest: strings.Repeat("d", 64),
+		SubmittedAt: time.Date(2026, time.August, 21, 11, 0, 0, 0, time.UTC),
+	}, SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+		ConnectionID: model.NewAttemptConnectionID()}
+
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSubmitted(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
+	sink.mu.Unlock()
+	if len(events) != 2 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
+		events[1].Name != "exam_attempt_submitted" || events[1].UserID != result.CandidateUserID.String() ||
+		len(unbound) != 1 || unbound[0] != result.ConnectionID {
+		t.Fatalf("events=%#v unbound=%#v", events, unbound)
+	}
+	for _, event := range events {
+		encoded := strings.ToLower(string(event.Data))
+		for _, forbidden := range []string{"path", "content", "source", "evidence", "sequence", "credential", "session", "private"} {
+			if strings.Contains(encoded, forbidden) {
+				t.Fatalf("Submission event contains %q: %s", forbidden, event.Data)
+			}
+		}
 	}
 }
 
@@ -394,6 +481,30 @@ func (fake *examAttemptUseCasesFake) GetManaged(context.Context, examattempt.Cal
 
 func (fake *examAttemptUseCasesFake) ListManaged(context.Context, examattempt.Call, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error) {
 	return examattempt.ManagedAttemptPage{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) Submit(context.Context, examattempt.Call,
+	examattempt.SubmitCommand,
+) (examattempt.SubmissionResult, error) {
+	return examattempt.SubmissionResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) GetSubmission(context.Context, examattempt.Call,
+	examattempt.GetSubmissionQuery,
+) (*examattempt.ManagedSubmission, error) {
+	return nil, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) ListSubmissionManifest(context.Context, examattempt.Call,
+	examattempt.ListSubmissionManifestQuery,
+) (examattempt.SubmissionManifestPage, error) {
+	return examattempt.SubmissionManifestPage{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) OpenSubmissionFile(context.Context, examattempt.Call,
+	examattempt.OpenSubmissionFileQuery,
+) (*examattempt.OpenedContent, error) {
+	return nil, fake.err
 }
 
 var _ examAttemptUseCases = (*examAttemptUseCasesFake)(nil)

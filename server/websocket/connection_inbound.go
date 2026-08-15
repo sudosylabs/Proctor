@@ -305,6 +305,17 @@ func (c *connectionRuntime) examAttemptSubscriptionLocked() Subscription {
 		Resource: Resource{Type: model.ResourceExamSitting, ID: c.attempt.sittingID.String()}}
 }
 
+func (c *connectionRuntime) unbindExamAttemptConnection(connectionID model.AttemptConnectionID) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.attempt == nil || c.attempt.connectionID != connectionID {
+		return false
+	}
+	delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
+	c.attempt = nil
+	return true
+}
+
 func (c *connectionRuntime) finalizeExamAttempt(ctx context.Context) {
 	c.attemptClose.Do(func() {
 		c.mu.Lock()

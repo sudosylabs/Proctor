@@ -4,9 +4,11 @@
 package realtime
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -168,6 +170,73 @@ type managerExamAttemptIntegrityFlaggedData struct {
 	EvidenceOverflow  int64  `json:"evidence_overflow_count"`
 	EvidenceAvailable bool   `json:"evidence_available"`
 	ChangedAt         string `json:"changed_at"`
+}
+
+type managerExamAttemptSubmittedData struct {
+	ExamSittingID   string `json:"exam_sitting_id"`
+	ExamAttemptID   string `json:"exam_attempt_id"`
+	CandidateID     string `json:"candidate_user_id"`
+	SubmissionID    string `json:"submission_id"`
+	State           string `json:"state"`
+	WorkspaceCursor int64  `json:"workspace_cursor"`
+	ManifestDigest  string `json:"manifest_digest"`
+	SubmittedAt     string `json:"submitted_at"`
+}
+
+type candidateExamAttemptSubmittedData struct {
+	ExamSittingID   string `json:"exam_sitting_id"`
+	ExamAttemptID   string `json:"exam_attempt_id"`
+	SubmissionID    string `json:"submission_id"`
+	State           string `json:"state"`
+	WorkspaceCursor int64  `json:"workspace_cursor"`
+	ManifestDigest  string `json:"manifest_digest"`
+	SubmittedAt     string `json:"submitted_at"`
+}
+
+func NewExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, submissionID model.SubmissionID, workspaceCursor int64, manifestDigest string,
+	submittedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !submissionID.IsValid() ||
+		workspaceCursor < 0 || !validEventSHA256(manifestDigest) || submittedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("manager Exam Attempt submitted event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(managerExamAttemptSubmittedData{ExamSittingID: sittingID.String(),
+		ExamAttemptID: attemptID.String(), CandidateID: candidateID.String(), SubmissionID: submissionID.String(),
+		State: string(model.ExamAttemptSubmitted), WorkspaceCursor: workspaceCursor, ManifestDigest: manifestDigest,
+		SubmittedAt: model.TimeUTC(submittedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: "exam_attempt_submitted", Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
+func NewCandidateExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, submissionID model.SubmissionID, workspaceCursor int64, manifestDigest string,
+	submittedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !submissionID.IsValid() ||
+		workspaceCursor < 0 || !validEventSHA256(manifestDigest) || submittedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("candidate Exam Attempt submitted event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(candidateExamAttemptSubmittedData{ExamSittingID: sittingID.String(),
+		ExamAttemptID: attemptID.String(), SubmissionID: submissionID.String(), State: string(model.ExamAttemptSubmitted),
+		WorkspaceCursor: workspaceCursor, ManifestDigest: manifestDigest,
+		SubmittedAt: model.TimeUTC(submittedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, err
+	}
+	return RealtimeEvent{Name: "exam_attempt_submitted", UserID: candidateID.String(), Action: model.ActionExamSittingParticipate,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
+func validEventSHA256(value string) bool {
+	if len(value) != 64 || value != strings.ToLower(value) {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
 }
 
 func NewCandidateExamAttemptFocusLossWarningEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,

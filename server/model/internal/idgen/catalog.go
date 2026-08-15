@@ -26,6 +26,7 @@ var entityIDs = []idSpec{
 	{typeName: "ExamCorrectionResourceStageID", fieldName: "exam_correction_resource_stage_id", constructorSubject: "exam-correction-resource-stage"},
 	{typeName: "ExamAttemptID", fieldName: "exam_attempt_id", constructorSubject: "exam-attempt"},
 	{typeName: "ExamAttemptWorkspaceID", fieldName: "exam_attempt_workspace_id", constructorSubject: "exam-attempt-workspace"},
+	{typeName: "SubmissionID", fieldName: "submission_id", constructorSubject: "submission"},
 	{typeName: "AttemptParticipationID", fieldName: "attempt_participation_id", constructorSubject: "attempt-participation"},
 	{typeName: "AttemptConnectionID", fieldName: "attempt_connection_id", constructorSubject: "attempt-connection"},
 	{typeName: "FocusLossSignalID", fieldName: "focus_loss_signal_id", constructorSubject: "focus-loss-signal"},

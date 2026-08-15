@@ -262,6 +262,7 @@ type Catalog interface {
 	ExamSitting() ExamSittingStore
 	ExamAttempt() ExamAttemptStore
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
+	ExamSubmission() ExamSubmissionStore
 	ExamResource() ExamResourceStore
 	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
@@ -299,6 +300,7 @@ type Store interface {
 	ExamSitting() ExamSittingStore
 	ExamAttempt() ExamAttemptStore
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
+	ExamSubmission() ExamSubmissionStore
 	ExamResource() ExamResourceStore
 	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore

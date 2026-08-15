@@ -299,6 +299,26 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 	return err
 }
 
+// AuthorizeSubmissionView applies the current Exam Manager relationship and
+// exact-unit membership decision to one immutable Submission resource. The
+// caller resolves the Submission's owning Exam through the bounded ownership
+// projection before invoking this gate; authorization independently resolves
+// the canonical Submission resource for its scoped, durable decision audit.
+func (service *Service) AuthorizeSubmissionView(ctx context.Context, call Call, examID model.ExamID,
+	submissionID model.SubmissionID,
+) error {
+	if !examID.IsValid() || !submissionID.IsValid() {
+		return invalid("submission_id")
+	}
+	if call.Principal().Validate() != nil {
+		return invalid("principal")
+	}
+	_, err := service.authorize(ctx, call, examID,
+		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.TimeUTC(service.now()),
+		model.ActionSubmissionView, model.ActionSubmissionViewOverride)
+	return err
+}
+
 // AuthorizeManage rechecks the current manager relationship for a Sitting and
 // reports whether the caller used the explicit management override action.
 // It returns no mutable Sitting state and performs no mutation.

@@ -1,0 +1,86 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app
+
+import (
+	"context"
+
+	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/store"
+)
+
+type ExamSubmissionReceipt = store.ExamSubmissionReceipt
+type ExamSubmissionManagerView = examattempt.ManagedSubmission
+type ExamSubmissionManifestPage = examattempt.SubmissionManifestPage
+type GetExamSubmissionQuery = examattempt.GetSubmissionQuery
+type ListExamSubmissionManifestQuery = examattempt.ListSubmissionManifestQuery
+type OpenExamSubmissionFileQuery = examattempt.OpenSubmissionFileQuery
+
+type SubmitExamAttemptCommand struct {
+	Access                  ExamAttemptWorkspaceMutationAccess
+	ExpectedWorkspaceCursor int64
+	FinalFocusLossSequence  int64
+	IdempotencyKey          string
+}
+
+func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
+	command SubmitExamAttemptCommand,
+) (ExamSubmissionReceipt, error) {
+	if command.IdempotencyKey == "" {
+		return ExamSubmissionReceipt{}, NewError("idempotency.key_required")
+	}
+	idempotency, err := newCommandIdempotency(invocation, store.ExamSubmissionSealOperation, command.IdempotencyKey, struct {
+		AttemptID              string `json:"exam_attempt_id"`
+		WorkspaceCursor        int64  `json:"expected_workspace_cursor"`
+		FinalFocusLossSequence int64  `json:"final_focus_loss_sequence"`
+	}{command.Access.AttemptID.String(), command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence})
+	if err != nil {
+		return ExamSubmissionReceipt{}, err
+	}
+	result, err := a.examAttempts.Submit(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		examattempt.SubmitCommand{Access: command.Access, ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor,
+			FinalFocusLossSequence: command.FinalFocusLossSequence, Idempotency: idempotency})
+	if err != nil {
+		return ExamSubmissionReceipt{}, examAttemptError(err, true)
+	}
+	return result.Receipt, nil
+}
+
+func (a *App) GetExamSubmission(ctx context.Context, invocation Invocation,
+	query GetExamSubmissionQuery,
+) (ExamSubmissionManagerView, error) {
+	result, err := a.examAttempts.GetSubmission(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return ExamSubmissionManagerView{}, examAttemptError(err, true)
+	}
+	if result == nil {
+		return ExamSubmissionManagerView{}, NewError("exam.attempt.unavailable")
+	}
+	return *result, nil
+}
+
+func (a *App) ListExamSubmissionManifest(ctx context.Context, invocation Invocation,
+	query ListExamSubmissionManifestQuery,
+) (ExamSubmissionManifestPage, error) {
+	result, err := a.examAttempts.ListSubmissionManifest(ctx,
+		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return ExamSubmissionManifestPage{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) OpenExamSubmissionFile(ctx context.Context, invocation Invocation,
+	query OpenExamSubmissionFileQuery,
+) (OpenedExamAttemptContent, error) {
+	result, err := a.examAttempts.OpenSubmissionFile(ctx,
+		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return OpenedExamAttemptContent{}, examAttemptError(err, true)
+	}
+	if result == nil {
+		return OpenedExamAttemptContent{}, NewError("exam.attempt.unavailable")
+	}
+	return *result, nil
+}

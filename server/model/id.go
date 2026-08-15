@@ -56,6 +56,9 @@ type ExamAttemptID string
 // ExamAttemptWorkspaceID identifies the private Workspace owned by one Attempt.
 type ExamAttemptWorkspaceID string
 
+// SubmissionID identifies the single immutable Submission sealed from one Attempt.
+type SubmissionID string
+
 // AttemptParticipationID identifies one bounded continuity-credential lease.
 type AttemptParticipationID string
 

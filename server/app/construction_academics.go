@@ -17,6 +17,7 @@ func constructAccessAndAcademics(
 		deps.Store.Institution(), deps.Store.AcademicUnit(), deps.Store.Class(), deps.Store.User(), deps.Store.ClassMember(),
 		deps.Store.ExamAuthoring(),
 		deps.Store.ExamSitting(),
+		deps.Store.ExamSubmission(),
 	)
 	if err != nil {
 		return accessAcademicConstruction{}, err

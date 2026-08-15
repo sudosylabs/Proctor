@@ -52,6 +52,7 @@ func (compositionWebSocket) PublishLocal(context.Context, apprealtime.RealtimeEv
 func (compositionWebSocket) CloseSession(string, apprealtime.ConnectionCloseReason)  {}
 func (compositionWebSocket) CloseUser(string, apprealtime.ConnectionCloseReason)     {}
 func (compositionWebSocket) CloseAll(apprealtime.ConnectionCloseReason)              {}
+func (compositionWebSocket) UnbindExamAttemptConnection(model.AttemptConnectionID)   {}
 
 type compositionFanout struct{}
 
@@ -209,6 +210,7 @@ func TestRealtimeHandlerRegistrationFailureUnwindsComposition(t *testing.T) {
 	}
 	wantRegistrations := []cluster.Event{
 		cluster.Event("websocket.publish"),
+		cluster.Event("exam_attempt.connection_unbound"),
 		cluster.Event("authentication.session_revoked"),
 	}
 	if !slices.Equal(transport.registrations, wantRegistrations) {

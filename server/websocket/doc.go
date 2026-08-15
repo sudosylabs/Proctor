@@ -11,7 +11,9 @@
 // outbound queue, sequencing, subscriptions, backpressure, and close-once
 // behavior. The runtime also owns strict authenticated Exam Attempt connect,
 // renewal, and Focus Loss claim actions; a policy suspension removes the
-// durable Attempt binding before another protected action can run. After every
+// durable Attempt binding before another protected action can run. A committed
+// Submission can likewise remove one exact durable Attempt binding and its
+// candidate subscription while leaving the generic socket open. After every
 // pump has stopped, the runtime returns one immutable snapshot; Hub alone
 // decides whether that snapshot is eligible for local replay. Wire DTOs and
 // validation remain separate protocol contracts.

@@ -28,6 +28,8 @@ type retryStores struct {
 	examSittingOnce          sync.Once
 	examStarterWorkspace     store.ExamStarterWorkspaceStore
 	examStarterWorkspaceOnce sync.Once
+	examSubmission           store.ExamSubmissionStore
+	examSubmissionOnce       sync.Once
 	examAuthoring            store.ExamAuthoringStore
 	examAuthoringOnce        sync.Once
 	commandOutcome           store.CommandOutcomeStore
@@ -119,6 +121,11 @@ type examSittingStore struct {
 
 type examStarterWorkspaceStore struct {
 	store.ExamStarterWorkspaceStore
+	layer *Layer
+}
+
+type examSubmissionStore struct {
+	store.ExamSubmissionStore
 	layer *Layer
 }
 
@@ -350,6 +357,16 @@ func (l *Layer) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 		}
 	})
 	return l.stores.examAttemptWorkspace
+}
+
+func (l *Layer) ExamSubmission() store.ExamSubmissionStore {
+	l.stores.examSubmissionOnce.Do(func() {
+		next := l.Store.ExamSubmission()
+		if next != nil {
+			l.stores.examSubmission = &examSubmissionStore{ExamSubmissionStore: next, layer: l}
+		}
+	})
+	return l.stores.examSubmission
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -602,6 +619,7 @@ var (
 	_ store.ExamRevisionStore         = (*examRevisionStore)(nil)
 	_ store.ExamSittingStore          = (*examSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*examStarterWorkspaceStore)(nil)
+	_ store.ExamSubmissionStore       = (*examSubmissionStore)(nil)
 	_ store.ExamAuthoringStore        = (*examAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*commandOutcomeStore)(nil)
 	_ store.JobStore                  = (*jobStore)(nil)

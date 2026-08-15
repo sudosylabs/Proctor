@@ -363,6 +363,17 @@ Submission or workspace after terminal state. Authorized managers cannot read
 live candidate workspace content, but may inspect the immutable Submission
 after sealing.
 
+Voluntary submission rechecks current Class membership and the exact active
+Participation generation, credential, Session-bound Connection, expected
+Workspace Cursor, and final Focus Loss sequence. Its single named atomic Store
+operation also retains the idempotent safe receipt; an exact replay returns
+that receipt without repeating realtime or runtime-unbind effects. Manager
+inspection authorizes the canonical Submission resource against the current
+Exam Manager relationship and access scope before concealing a mismatched
+nested Exam/Sitting/Attempt path. Manifest pagination uses stable Entry identity
+only, and protected file reads stream the retained starter- or Attempt-origin
+bytes without exposing their storage selectors.
+
 ## Policies, integrity, and review
 
 Exam Policy Set is a concrete typed model persisted as one bounded, versioned,

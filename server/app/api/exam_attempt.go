@@ -24,11 +24,39 @@ const (
 	candidateAttemptConnectionHeader = "X-Proctor-Attempt-Connection-ID"
 	examAttemptManagerCursorVersion  = 1
 	candidateWorkspaceCursorVersion  = 1
+	submissionManifestCursorVersion  = 1
 )
 
 type candidateAttemptHeaderAccess struct {
 	ConnectionID         model.AttemptConnectionID
 	ContinuityCredential string
+}
+
+type submissionManifestCursor struct {
+	EntryID model.AttemptWorkspaceEntryID
+}
+
+type submissionManifestCursorWire struct {
+	Version int    `json:"version"`
+	EntryID string `json:"after_entry_id"`
+}
+
+func encodeSubmissionManifestCursor(cursor submissionManifestCursor) string {
+	wire := submissionManifestCursorWire{Version: submissionManifestCursorVersion, EntryID: cursor.EntryID.String()}
+	encoded, _ := json.Marshal(wire)
+	return base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+func decodeSubmissionManifestCursor(raw string) (submissionManifestCursor, error) {
+	var wire submissionManifestCursorWire
+	if err := decodeStrictAttemptCursor(raw, &wire); err != nil || wire.Version != submissionManifestCursorVersion {
+		return submissionManifestCursor{}, errors.New("invalid Submission manifest cursor")
+	}
+	entryID, err := model.ParseAttemptWorkspaceEntryID(wire.EntryID)
+	if err != nil {
+		return submissionManifestCursor{}, errors.New("invalid Submission manifest cursor")
+	}
+	return submissionManifestCursor{EntryID: entryID}, nil
 }
 
 func candidateAttemptAccessHeaders(request *http.Request) (candidateAttemptHeaderAccess, error) {
@@ -152,6 +180,10 @@ type ExamAttemptApplication interface {
 	OpenCandidateExamResource(context.Context, application.Invocation, application.OpenCandidateExamResourceQuery) (application.OpenedExamAttemptContent, error)
 	OpenCandidateExamWorkspaceFile(context.Context, application.Invocation, application.OpenCandidateExamWorkspaceFileQuery) (application.OpenedExamAttemptContent, error)
 	ReallowExamAttempt(context.Context, application.Invocation, application.ReallowExamAttemptCommand) (application.ExamAttemptReallowResult, error)
+	SubmitExamAttempt(context.Context, application.Invocation, application.SubmitExamAttemptCommand) (application.ExamSubmissionReceipt, error)
+	GetExamSubmission(context.Context, application.Invocation, application.GetExamSubmissionQuery) (application.ExamSubmissionManagerView, error)
+	ListExamSubmissionManifest(context.Context, application.Invocation, application.ListExamSubmissionManifestQuery) (application.ExamSubmissionManifestPage, error)
+	OpenExamSubmissionFile(context.Context, application.Invocation, application.OpenExamSubmissionFileQuery) (application.OpenedExamAttemptContent, error)
 }
 
 type examAttemptHTTPModule struct{ application ExamAttemptApplication }
@@ -325,6 +357,57 @@ type candidateWorkspaceMutationResponse struct {
 	Entry           *candidateExamWorkspaceItemResponse `json:"entry,omitempty"`
 }
 
+type submitExamAttemptRequest struct {
+	ParticipationID         string `json:"participation_id"`
+	Generation              int64  `json:"generation"`
+	ExpectedWorkspaceCursor int64  `json:"expected_workspace_cursor"`
+	FinalFocusLossSequence  int64  `json:"final_focus_loss_sequence"`
+}
+
+type examSubmissionReceiptResponse struct {
+	SubmissionID    string `json:"submission_id"`
+	ExamAttemptID   string `json:"exam_attempt_id"`
+	State           string `json:"state"`
+	WorkspaceCursor int64  `json:"workspace_cursor"`
+	ManifestDigest  string `json:"manifest_digest"`
+	SubmittedAt     string `json:"submitted_at"`
+}
+
+type examSubmissionManagerResponse struct {
+	SubmissionID             string `json:"submission_id"`
+	ExamID                   string `json:"exam_id"`
+	ExamSittingID            string `json:"exam_sitting_id"`
+	ExamAttemptID            string `json:"exam_attempt_id"`
+	WorkspaceID              string `json:"workspace_id"`
+	ManifestSchemaVersion    int    `json:"manifest_schema_version"`
+	WorkspaceCursor          int64  `json:"workspace_cursor"`
+	ManifestDigest           string `json:"manifest_digest"`
+	ManifestEntryCount       int    `json:"manifest_entry_count"`
+	ManifestTotalFileBytes   int64  `json:"manifest_total_file_bytes"`
+	FinalFocusLossSequence   int64  `json:"final_focus_loss_sequence"`
+	IntegrityState           string `json:"integrity_state"`
+	UnresolvedIntegrityCount int64  `json:"unresolved_integrity_count"`
+	SubmittedAt              string `json:"submitted_at"`
+}
+
+type examSubmissionManifestItemResponse struct {
+	EntryID        string `json:"entry_id"`
+	Kind           string `json:"kind"`
+	Path           string `json:"path"`
+	ContentVersion string `json:"content_version,omitempty"`
+	MediaType      string `json:"media_type,omitempty"`
+	Size           *int64 `json:"size,omitempty"`
+	SHA256         string `json:"sha256,omitempty"`
+}
+
+type examSubmissionManifestResponse struct {
+	SubmissionID    string                               `json:"submission_id"`
+	WorkspaceCursor int64                                `json:"workspace_cursor"`
+	ManifestDigest  string                               `json:"manifest_digest"`
+	Items           []examSubmissionManifestItemResponse `json:"items"`
+	NextCursor      string                               `json:"next_cursor,omitempty"`
+}
+
 type candidateWorkspaceJournalEntryResponse struct {
 	Cursor         int64  `json:"cursor"`
 	EntryID        string `json:"entry_id"`
@@ -357,6 +440,10 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	workspaceEntry := appendRoutePath(workspace, literal("entries"), canonicalID("attempt_workspace_entry_id"))
 	resourceContent := appendRoutePath(candidate, literal("resources"), canonicalID("exam_resource_id"), literal("content"))
 	workspaceContent := appendRoutePath(candidate, literal("workspace"), literal("files"), canonicalID("attempt_workspace_entry_id"), literal("content"))
+	candidateSubmissions := appendRoutePath(candidate, literal("submissions"))
+	managerSubmission := appendRoutePath(managerMember, literal("submissions"), canonicalID("submission_id"))
+	managerSubmissionManifest := appendRoutePath(managerSubmission, literal("manifest"))
+	managerSubmissionContent := appendRoutePath(managerSubmission, literal("files"), canonicalID("attempt_workspace_entry_id"), literal("content"))
 	reallow := appendRoutePath(managerMember, literal("reallow"))
 	managerErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable")
 	reallowErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
@@ -375,6 +462,8 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict")
 	deleteMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
 		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty")
+	submissionErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.cursor_conflict", "exam.attempt.focus_loss_conflict",
+		"exam.attempt.connection_lost")
 	return newResource("exam-attempts",
 		principalRoute(http.MethodGet, managerCollection, managerErrors, module.listManaged),
 		principalRoute(http.MethodGet, managerMember, managerErrors, module.getManaged),
@@ -391,6 +480,11 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 		idempotentSessionRoute(IdempotencyRequired, http.MethodDelete, workspaceEntry, deleteMutationErrors, module.deleteWorkspaceEntry),
 		protocolRoute("candidate-exam-resource-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, resourceContent, candidateErrors, module.openResource),
 		protocolRoute("candidate-exam-workspace-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, workspaceContent, candidateErrors, module.openWorkspaceFile),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPost, candidateSubmissions, submissionErrors, module.submit),
+		principalRoute(http.MethodGet, managerSubmission, managerErrors, module.getSubmission),
+		principalRoute(http.MethodGet, managerSubmissionManifest, managerErrors, module.listSubmissionManifest),
+		protocolRoute("exam-submission-file-content", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet,
+			managerSubmissionContent, managerErrors, module.openSubmissionFile),
 	)
 }
 
@@ -629,6 +723,138 @@ func (module examAttemptHTTPModule) createWorkspaceDirectory(request operationRe
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusCreated, candidateWorkspaceMutationResult(result)).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) submit(request operationRequest) (operationResult, error) {
+	access, err := candidateAccess(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body submitExamAttemptRequest
+	if err = decodeCandidateWorkspaceJSON(request, &body, "submitExamAttempt"); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedWorkspaceCursor < 0 || body.FinalFocusLossSequence < 0 {
+		return operationResult{}, invalidRequestError("submission_sequence", errors.New("Workspace Cursor and Focus Loss sequence must be nonnegative"))
+	}
+	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{
+		ParticipationID: body.ParticipationID, Generation: body.Generation})
+	if err != nil {
+		return operationResult{}, err
+	}
+	receipt, err := module.application.SubmitExamAttempt(request.context, request.invocation(),
+		application.SubmitExamAttemptCommand{Access: mutationAccess, ExpectedWorkspaceCursor: body.ExpectedWorkspaceCursor,
+			FinalFocusLossSequence: body.FinalFocusLossSequence, IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := examSubmissionReceiptResponse{SubmissionID: receipt.SubmissionID.String(),
+		ExamAttemptID: receipt.AttemptID.String(), State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
+		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.TimeUTC(receipt.SubmittedAt).Format(time.RFC3339Nano)}
+	return jsonResult(http.StatusCreated, response).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) getSubmission(request operationRequest) (operationResult, error) {
+	query, err := managedSubmissionQuery(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	view, err := module.application.GetExamSubmission(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	submission := view.Submission
+	response := examSubmissionManagerResponse{SubmissionID: submission.ID.String(), ExamID: view.Authorization.ExamID.String(),
+		ExamSittingID: view.Authorization.SittingID.String(), ExamAttemptID: submission.AttemptID.String(),
+		WorkspaceID: submission.WorkspaceID.String(), ManifestSchemaVersion: submission.ManifestSchemaVersion,
+		WorkspaceCursor: submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
+		ManifestEntryCount: submission.ManifestEntryCount, ManifestTotalFileBytes: submission.ManifestTotalFileBytes,
+		FinalFocusLossSequence: submission.FinalFocusLossSequence, IntegrityState: string(submission.IntegrityState),
+		UnresolvedIntegrityCount: submission.UnresolvedIntegrityCount,
+		SubmittedAt:              model.TimeUTC(submission.SubmittedAt).Format(time.RFC3339Nano)}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) listSubmissionManifest(request operationRequest) (operationResult, error) {
+	ownership, err := managedSubmissionQuery(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	query := application.ListExamSubmissionManifestQuery{GetSubmissionQuery: ownership, Limit: 50}
+	values := request.request.URL.Query()
+	if raw := values.Get("limit"); raw != "" {
+		query.Limit, err = strconv.Atoi(raw)
+		if err != nil || query.Limit < 1 || query.Limit > model.ExamSubmissionManifestReadMaximum {
+			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+		}
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		cursor, decodeErr := decodeSubmissionManifestCursor(raw)
+		if decodeErr != nil {
+			return operationResult{}, invalidRequestError("cursor", decodeErr)
+		}
+		query.AfterEntryID = cursor.EntryID
+	}
+	page, err := module.application.ListExamSubmissionManifest(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := examSubmissionManifestResponse{SubmissionID: page.SubmissionID.String(), WorkspaceCursor: page.WorkspaceCursor,
+		ManifestDigest: page.ManifestDigest, Items: make([]examSubmissionManifestItemResponse, 0, len(page.Items))}
+	for _, item := range page.Items {
+		mapped := examSubmissionManifestItemResponse{EntryID: item.EntryID.String(), Kind: string(item.Kind), Path: item.Path,
+			ContentVersion: item.ContentVersion.String(), MediaType: item.MediaType, SHA256: item.SHA256}
+		if item.Kind == model.StarterWorkspaceEntryFile {
+			size := item.SizeBytes
+			mapped.Size = &size
+		}
+		response.Items = append(response.Items, mapped)
+	}
+	if page.HasMore {
+		if len(page.Items) == 0 {
+			return operationResult{}, errors.New("Exam Attempt application returned an invalid Submission manifest page")
+		}
+		response.NextCursor = encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: page.Items[len(page.Items)-1].EntryID})
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) openSubmissionFile(request operationRequest) (protocolResult, error) {
+	ownership, err := managedSubmissionQuery(request)
+	if err != nil {
+		return protocolResult{}, err
+	}
+	raw, err := request.params.RequireAttemptWorkspaceEntryId()
+	if err != nil {
+		return protocolResult{}, err
+	}
+	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
+	if err != nil {
+		return protocolResult{}, invalidRequestError("attempt_workspace_entry_id", err)
+	}
+	opened, err := module.application.OpenExamSubmissionFile(request.context, request.invocation(),
+		application.OpenExamSubmissionFileQuery{GetSubmissionQuery: ownership, EntryID: entryID})
+	if err != nil {
+		return protocolResult{}, err
+	}
+	return candidateAttemptContentResult(request, opened, `"`+opened.SHA256+`"`)
+}
+
+func managedSubmissionQuery(request operationRequest) (application.GetExamSubmissionQuery, error) {
+	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
+	if err != nil {
+		return application.GetExamSubmissionQuery{}, err
+	}
+	raw, err := request.params.RequireSubmissionId()
+	if err != nil {
+		return application.GetExamSubmissionQuery{}, err
+	}
+	submissionID, err := model.ParseSubmissionID(raw)
+	if err != nil {
+		return application.GetExamSubmissionQuery{}, invalidRequestError("submission_id", err)
+	}
+	return application.GetExamSubmissionQuery{ExamID: examID, SittingID: sittingID,
+		AttemptID: attemptID, SubmissionID: submissionID}, nil
 }
 
 func (module examAttemptHTTPModule) createWorkspaceFile(request operationRequest) (protocolResult, error) {

@@ -188,6 +188,21 @@ cleanup retains referenced or replay-recoverable objects and reclaims only safe
 staged or superseded objects. The HTTP, targeted realtime, local/S3 VFS,
 multi-node PostgreSQL, race, and full server gates are verified.
 
+Immutable Submission sealing and protected inspection are implemented. An
+active candidate can seal exactly the acknowledged Workspace Cursor once; the
+same PostgreSQL transaction snapshots the authoritative manifest, settles
+Focus Loss sequence uncertainty, marks the Attempt Submitted, ends its active
+Participation and Connection, completes audit, and retains the idempotent
+receipt. The manifest pins immutable entry and object metadata without copying
+VFS bytes, and Submission references fence Attempt-object reclamation.
+Voluntary submission rechecks current exact-Class membership and denies paused,
+suspended, disconnected, Closing, or terminal Attempts. Candidates receive
+only a safe receipt and lose Workspace access; currently authorized Exam
+Managers can inspect the immutable header, bounded manifest, and protected
+content through purpose-specific Submission authorization. Unknown-commit,
+multi-node, manifest-integrity, retained-content, HTTP/OpenAPI, race, and full
+PostgreSQL gates are verified.
+
 Exam Resources and Starter Workspaces are distinct from mutable Attempt
 Workspace files. PostgreSQL owns their logical identity and hierarchy while
 VFS owns opaque bytes. Candidate access is protected in-application use, with
@@ -215,9 +230,8 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: immutable Submission,
-  resumable Sitting sealing, and integrity evidence review with Student Result
-  release.
+- Continue Examination Core as complete vertical slices: resumable Sitting
+  sealing and integrity evidence review with Student Result release.
 - Extend server-owned file handling for validated IDE preferences alongside
   the examination-specific resource and workspace boundaries. Resource search
   is deferred because an Exam initially has at most ten active resources.

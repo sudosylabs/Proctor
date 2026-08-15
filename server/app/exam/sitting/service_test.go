@@ -111,6 +111,28 @@ func TestAuthorizeManageReportsOrdinaryAndOverrideDecision(t *testing.T) {
 	}
 }
 
+func TestAuthorizeSubmissionViewUsesCanonicalSubmissionResourceAndCurrentManagerRelationship(t *testing.T) {
+	t.Parallel()
+	fixture := newFixture(t)
+	submissionID := model.NewSubmissionID()
+
+	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.call, fixture.examID, submissionID); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.authorizer.action != model.ActionSubmissionView ||
+		fixture.authorizer.resource != (model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}) {
+		t.Fatalf("ordinary Submission authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
+	}
+
+	fixture.memberships.items = nil
+	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.call, fixture.examID, submissionID); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.authorizer.action != model.ActionSubmissionViewOverride {
+		t.Fatalf("Submission override action = %q", fixture.authorizer.action)
+	}
+}
+
 func TestListAppliesBoundedFiltersAndLookAhead(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)

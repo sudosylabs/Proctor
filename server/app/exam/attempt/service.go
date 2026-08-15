@@ -62,6 +62,7 @@ func (fault *Fault) Unwrap() error {
 type ManagerAuthorizer interface {
 	AuthorizeSittingView(context.Context, Call, model.ExamSittingID) error
 	AuthorizeSittingManage(context.Context, Call, model.ExamSittingID) (bool, error)
+	AuthorizeSubmissionView(context.Context, Call, model.SubmissionID) error
 }
 
 type Auditor interface {
@@ -84,6 +85,7 @@ type Effects interface {
 	AttemptReallowed(context.Context, ReallowResult) error
 	WorkspaceChanged(context.Context, WorkspaceMutationResult) error
 	FocusLossEvaluated(context.Context, FocusLossEvaluation) error
+	AttemptSubmitted(context.Context, SubmissionResult) error
 }
 
 type EffectFailures interface {
@@ -100,6 +102,7 @@ type Content interface {
 type Dependencies struct {
 	Persistence         store.ExamAttemptStore
 	Workspace           store.ExamAttemptWorkspaceStore
+	Submissions         store.ExamSubmissionStore
 	Sittings            Sittings
 	Managers            ManagerAuthorizer
 	Auditor             Auditor
@@ -119,15 +122,16 @@ type Dependencies struct {
 	NewWorkspaceEntry   func() model.AttemptWorkspaceEntryID
 	NewWorkspaceObject  func() model.AttemptWorkspaceObjectID
 	NewWorkspaceVersion func() model.WorkspaceContentVersion
+	NewSubmission       func() model.SubmissionID
 }
 
 type Service struct{ deps Dependencies }
 
 func New(deps Dependencies) (*Service, error) {
-	if deps.Persistence == nil || deps.Workspace == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
+	if deps.Persistence == nil || deps.Workspace == nil || deps.Submissions == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
 		deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewAttemptID == nil ||
 		deps.NewWorkspaceID == nil || deps.NewParticipation == nil || deps.NewConnection == nil || deps.NewEvidence == nil ||
-		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewFocusLossSignal == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil {
+		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewFocusLossSignal == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil || deps.NewSubmission == nil {
 		return nil, errors.New("Exam Attempt dependencies are required")
 	}
 	return &Service{deps: deps}, nil
@@ -941,6 +945,8 @@ func mapConflict(constraint string) string {
 		return "exam.attempt.workspace.size_limit"
 	case "attempt_workspace_object_state":
 		return "exam.attempt.workspace.object_conflict"
+	case "attempt_workspace_cursor":
+		return "exam.attempt.workspace.cursor_conflict"
 	default:
 		return "exam.attempt.conflict"
 	}

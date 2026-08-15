@@ -28,6 +28,19 @@ func TestEntityIDsAreDistinctTypes(t *testing.T) {
 	}
 }
 
+func TestSubmissionIDUsesCanonicalTypedIDContract(t *testing.T) {
+	t.Parallel()
+
+	id := NewSubmissionID()
+	if !id.IsValid() || id.IsZero() {
+		t.Fatalf("NewSubmissionID() = %q", id)
+	}
+	parsed, err := ParseSubmissionID(id.String())
+	if err != nil || parsed != id {
+		t.Fatalf("ParseSubmissionID(%q) = %q, %v", id, parsed, err)
+	}
+}
+
 func TestParseEntityIDRejectsInvalid(t *testing.T) {
 	t.Parallel()
 

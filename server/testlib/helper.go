@@ -227,6 +227,9 @@ func (s *LifecycleStore) ExamAttempt() store.ExamAttemptStore {
 func (s *LifecycleStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 	return lifecycleExamAttemptWorkspaceStore{}
 }
+func (s *LifecycleStore) ExamSubmission() store.ExamSubmissionStore {
+	return lifecycleExamSubmissionStore{}
+}
 func (s *LifecycleStore) ExamRevision() store.ExamRevisionStore {
 	return lifecycleExamRevisionStore{}
 }
@@ -322,6 +325,7 @@ type lifecycleExamAttemptStore struct{ store.ExamAttemptStore }
 type lifecycleExamAttemptWorkspaceStore struct {
 	store.ExamAttemptWorkspaceStore
 }
+type lifecycleExamSubmissionStore struct{ store.ExamSubmissionStore }
 type lifecycleExamRevisionStore struct{ store.ExamRevisionStore }
 type lifecycleExamSittingStore struct{ store.ExamSittingStore }
 type lifecycleExamStarterWorkspaceStore struct {

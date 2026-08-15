@@ -47,6 +47,17 @@ Workspace aggregate and narrow audit, content, and realtime ports. None imports
 the parent application package or selects SQL, VFS, WebSocket, Jobs, or other
 infrastructure.
 
+The Attempt child also owns the voluntary Submission use case and protected
+manager inspection queries. Submission crosses one named Store aggregate seam
+that revalidates current membership and continuity, seals lifecycle and
+integrity state with the immutable manifest, and commits audit and idempotent
+outcome together. The application publishes only safe manager and candidate
+facts and requests exact Attempt-Connection unbinding after commit; an exact
+replay returns the retained safe receipt and repeats neither effect. Manager
+queries authorize the canonical Submission resource before concealing any
+nested ownership mismatch, and stream retained file bytes only through the
+narrow content port.
+
 The package is introduced with the first working vertical slice, not as an
 empty architectural placeholder. Its `doc.go` must define the Exam, Draft,
 Revision, Sitting, Attempt, Participation, Resource, Starter Workspace,

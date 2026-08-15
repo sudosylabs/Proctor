@@ -347,6 +347,29 @@ func (h *Hub) PublishLocal(_ context.Context, event realtime.RealtimeEvent) {
 	h.publishWire(eventFromRealtime(event))
 }
 
+// UnbindExamAttemptConnection implements realtime.Sink. It clears only the
+// matching durable Attempt Connection binding and its protected subscription;
+// the generic WebSocket remains available for unrelated actions.
+func (h *Hub) UnbindExamAttemptConnection(connectionID model.AttemptConnectionID) {
+	if !connectionID.IsValid() {
+		return
+	}
+	var connections []*connectionRuntime
+	for _, shard := range h.shards {
+		shard.mu.RLock()
+		for _, connection := range shard.conns {
+			if connection.acquire() {
+				connections = append(connections, connection)
+			}
+		}
+		shard.mu.RUnlock()
+	}
+	for _, connection := range connections {
+		connection.unbindExamAttemptConnection(connectionID)
+		connection.release()
+	}
+}
+
 func (h *Hub) publishWire(event *Event) {
 	if event == nil || event.ValidateForPublish() != nil {
 		return

@@ -57,6 +57,9 @@ func (s *hookStore) ExamAttempt() store.ExamAttemptStore {
 func (s *hookStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 	return hookExamAttemptWorkspaceStore{}
 }
+func (s *hookStore) ExamSubmission() store.ExamSubmissionStore {
+	return hookExamSubmissionStore{}
+}
 func (s *hookStore) ExamCorrection() store.ExamCorrectionStore {
 	return hookExamCorrectionStore{}
 }
@@ -128,6 +131,7 @@ type hookExamAttemptStore struct{ store.ExamAttemptStore }
 type hookExamAttemptWorkspaceStore struct {
 	store.ExamAttemptWorkspaceStore
 }
+type hookExamSubmissionStore struct{ store.ExamSubmissionStore }
 type hookExamCorrectionStore struct{ store.ExamCorrectionStore }
 type hookExamResourceStore struct{ store.ExamResourceStore }
 type hookExamRevisionStore struct{ store.ExamRevisionStore }

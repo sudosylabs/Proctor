@@ -89,6 +89,59 @@ func TestCandidateExamWorkspaceUsesBoundedOpaqueCursor(t *testing.T) {
 	}
 }
 
+func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceipt(t *testing.T) {
+	t.Parallel()
+
+	fake := newExamAttemptHTTPFake(t)
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	body := `{"participation_id":"` + fake.participation.ID.String() + `","generation":1,"expected_workspace_cursor":4,"final_focus_loss_sequence":0}`
+	path := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/submissions"
+	request := fake.candidateRequest(http.MethodPost, path)
+	request.Body = io.NopCloser(strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "submit-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "no-store" ||
+		fake.submit.Access.AttemptID != fake.attempt.ID || fake.submit.Access.ParticipationID != fake.participation.ID ||
+		fake.submit.Access.Generation != 1 || fake.submit.ExpectedWorkspaceCursor != 4 ||
+		fake.submit.FinalFocusLossSequence != 0 || fake.submit.IdempotencyKey != "submit-once" {
+		t.Fatalf("status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 6 ||
+		string(payload["state"]) != `"submitted"` || string(payload["workspace_cursor"]) != "4" {
+		t.Fatalf("receipt=%v error=%v", payload, err)
+	}
+	for _, forbidden := range []string{"participation", "generation", "connection", "credential", "integrity", "gap", "path", "content", "evidence"} {
+		if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
+			t.Fatalf("receipt contains %q: %s", forbidden, response.Body.String())
+		}
+	}
+}
+
+func TestSubmissionManifestCursorIsVersionedStrictAndPathFree(t *testing.T) {
+	t.Parallel()
+
+	entryID := model.NewAttemptWorkspaceEntryID()
+	raw := encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: entryID})
+	decoded, err := decodeSubmissionManifestCursor(raw)
+	if err != nil || decoded.EntryID != entryID {
+		t.Fatalf("decoded cursor = %#v, %v", decoded, err)
+	}
+	if strings.Contains(raw, "src") || strings.Contains(raw, "main.go") {
+		t.Fatalf("cursor exposed a Workspace path: %q", raw)
+	}
+	unsupported, _ := json.Marshal(submissionManifestCursorWire{Version: 2, EntryID: entryID.String()})
+	if _, err = decodeSubmissionManifestCursor(base64.RawURLEncoding.EncodeToString(unsupported)); err == nil {
+		t.Fatal("unsupported cursor version was accepted")
+	}
+	unknown := base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"entry_id":"` + entryID.String() + `","path":"src/main.go"}`))
+	if _, err = decodeSubmissionManifestCursor(unknown); err == nil {
+		t.Fatal("cursor containing a path field was accepted")
+	}
+}
+
 func TestCandidateExamContentIsInlinePrivateNoStoreAndConditional(t *testing.T) {
 	t.Parallel()
 	fake := newExamAttemptHTTPFake(t)
@@ -156,6 +209,47 @@ func TestManagedExamAttemptListIsBoundedSafeAndOpaque(t *testing.T) {
 	if response.Code != http.StatusOK || fake.managerGet.ExamID != fake.attempt.ExamID || fake.managerGet.SittingID != fake.attempt.SittingID ||
 		fake.managerGet.AttemptID != fake.attempt.ID || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
+	}
+}
+
+func TestManagerSubmissionReadManifestAndFileArePurposeSpecificAndProtected(t *testing.T) {
+	t.Parallel()
+
+	fake := newExamAttemptHTTPFake(t)
+	fake.submissionManifest.HasMore = true
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	base := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
+		"/attempts/" + fake.attempt.ID.String() + "/submissions/" + fake.submissionView.Submission.ID.String()
+	for _, path := range []string{base, base + "/manifest?limit=1"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Authorization", "Bearer credential")
+		response := httptest.NewRecorder()
+		httpAPI.ServeHTTP(response, request)
+		if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("GET %s = %d headers=%v body=%s", path, response.Code, response.Header(), response.Body.String())
+		}
+		for _, forbidden := range []string{"starter_object", "attempt_object", "storage_origin", "vfs", "url"} {
+			if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
+				t.Fatalf("GET %s exposed %q: %s", path, forbidden, response.Body.String())
+			}
+		}
+	}
+	if fake.submissionGet.SubmissionID != fake.submissionView.Submission.ID || fake.submissionManifestQuery.Limit != 1 ||
+		fake.submissionManifestQuery.SubmissionID != fake.submissionView.Submission.ID {
+		t.Fatalf("get=%#v manifest=%#v", fake.submissionGet, fake.submissionManifestQuery)
+	}
+
+	entry := fake.submissionManifest.Items[0]
+	contentPath := base + "/files/" + entry.EntryID.String() + "/content"
+	request := httptest.NewRequest(http.MethodGet, contentPath, nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Body.String() != "protected" ||
+		response.Header().Get("Cache-Control") != "private, no-store" ||
+		response.Header().Get("ETag") != `"`+entry.SHA256+`"` || response.Header().Get("Content-Disposition") != "" ||
+		fake.submissionOpen.EntryID != entry.EntryID {
+		t.Fatalf("content=%d headers=%v query=%#v body=%q", response.Code, response.Header(), fake.submissionOpen, response.Body.String())
 	}
 }
 
@@ -476,6 +570,13 @@ type examAttemptHTTPFake struct {
 	workspaceMove           application.MoveCandidateExamWorkspaceEntryCommand
 	workspaceDelete         application.DeleteCandidateExamWorkspaceEntryCommand
 	workspaceMutation       application.ExamAttemptWorkspaceMutationResult
+	submit                  application.SubmitExamAttemptCommand
+	submissionReceipt       application.ExamSubmissionReceipt
+	submissionView          application.ExamSubmissionManagerView
+	submissionManifest      application.ExamSubmissionManifestPage
+	submissionGet           application.GetExamSubmissionQuery
+	submissionManifestQuery application.ListExamSubmissionManifestQuery
+	submissionOpen          application.OpenExamSubmissionFileQuery
 	uploaded                []byte
 }
 
@@ -519,6 +620,30 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		CandidateUserID: attempt.CandidateUserID, WorkspaceID: workspace.ID, Entry: &workspaceItem, Change: change}
 	fake.journalPage = application.CandidateExamWorkspaceJournalPage{WorkspaceID: workspace.ID, CurrentCursor: 5,
 		Entries: []model.AttemptWorkspaceJournalEntry{change}}
+	fake.submissionReceipt = application.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: attempt.ID,
+		State: model.ExamAttemptSubmitted, WorkspaceCursor: 4, ManifestDigest: strings.Repeat("d", 64), SubmittedAt: at.Add(time.Minute)}
+	submissionManifest, err := model.NewExamSubmissionManifest(4, []model.ExamSubmissionManifestEntry{{
+		EntryID: workspaceItem.EntryID, Kind: model.StarterWorkspaceEntryFile, Path: workspaceItem.Path,
+		ContentVersion: workspaceItem.ContentVersion, MediaType: workspaceItem.MediaType, SizeBytes: workspaceItem.SizeBytes,
+		SHA256: workspaceItem.SHA256, StorageOrigin: model.AttemptWorkspaceStorageStarter,
+		StarterObjectID: model.NewStarterWorkspaceObjectID(),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: fake.submissionReceipt.SubmissionID,
+		AttemptID: attempt.ID, WorkspaceID: workspace.ID, Manifest: submissionManifest, SubmittedAt: at.Add(time.Minute)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake.submissionView = application.ExamSubmissionManagerView{Authorization: store.ExamSubmissionAuthorization{
+		SubmissionID: submission.ID, ExamID: attempt.ExamID, SittingID: attempt.SittingID, AttemptID: attempt.ID,
+		AcademicUnitID: model.NewAcademicUnitID()}, Submission: *submission}
+	fake.submissionManifest = application.ExamSubmissionManifestPage{SubmissionID: submission.ID,
+		WorkspaceCursor: submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
+		Items: []store.ExamSubmissionManifestItem{{EntryID: workspaceItem.EntryID, Kind: workspaceItem.Kind,
+			Path: workspaceItem.Path, ContentVersion: workspaceItem.ContentVersion, MediaType: workspaceItem.MediaType,
+			SizeBytes: workspaceItem.SizeBytes, SHA256: workspaceItem.SHA256}}}
 	return fake
 }
 
@@ -613,6 +738,39 @@ func (fake *examAttemptHTTPFake) DeleteCandidateExamWorkspaceEntry(_ context.Con
 	result.Change.Operation = model.AttemptWorkspaceMutationDeleteEntry
 	result.Change.NewPath, result.Change.ContentVersion = "", ""
 	return result, nil
+}
+
+func (fake *examAttemptHTTPFake) SubmitExamAttempt(_ context.Context, _ application.Invocation,
+	command application.SubmitExamAttemptCommand,
+) (application.ExamSubmissionReceipt, error) {
+	fake.submit = command
+	return fake.submissionReceipt, nil
+}
+
+func (fake *examAttemptHTTPFake) GetExamSubmission(_ context.Context, _ application.Invocation,
+	query application.GetExamSubmissionQuery,
+) (application.ExamSubmissionManagerView, error) {
+	fake.submissionGet = query
+	return fake.submissionView, nil
+}
+
+func (fake *examAttemptHTTPFake) ListExamSubmissionManifest(_ context.Context, _ application.Invocation,
+	query application.ListExamSubmissionManifestQuery,
+) (application.ExamSubmissionManifestPage, error) {
+	fake.submissionManifestQuery = query
+	return fake.submissionManifest, nil
+}
+
+func (fake *examAttemptHTTPFake) OpenExamSubmissionFile(_ context.Context, _ application.Invocation,
+	query application.OpenExamSubmissionFileQuery,
+) (application.OpenedExamAttemptContent, error) {
+	fake.submissionOpen = query
+	fake.content.Body = io.NopCloser(strings.NewReader("protected"))
+	fake.content.ContentVersion = fake.submissionManifest.Items[0].ContentVersion
+	fake.content.SHA256 = fake.submissionManifest.Items[0].SHA256
+	fake.content.MediaType = fake.submissionManifest.Items[0].MediaType
+	fake.content.SizeBytes = fake.submissionManifest.Items[0].SizeBytes
+	return fake.content, nil
 }
 
 func (fake *examAttemptHTTPFake) OpenCandidateExamResource(context.Context, application.Invocation, application.OpenCandidateExamResourceQuery) (application.OpenedExamAttemptContent, error) {

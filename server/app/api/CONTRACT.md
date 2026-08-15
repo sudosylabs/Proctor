@@ -295,6 +295,10 @@ candidates use Attempt-scoped protected delivery routes:
 | `DELETE /api/v1/exam-attempts/{exam_attempt_id}/workspace/entries/{attempt_workspace_entry_id}` | Session plus Attempt credential and Connection; required idempotency | acknowledged deletion and Cursor |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/resources/{exam_resource_id}/content` | Session plus Attempt credential and Connection | protected inline bytes or `304` |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace/files/{attempt_workspace_entry_id}/content` | Session plus Attempt credential and Connection | protected inline bytes or `304` |
+| `POST /api/v1/exam-attempts/{exam_attempt_id}/submissions` | Session plus Attempt credential and Connection; required idempotency | `201` candidate-safe retained receipt |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}` | principal plus current Submission-view authorization | protected immutable Submission header |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/manifest` | principal plus current Submission-view authorization | bounded immutable manifest page |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/files/{attempt_workspace_entry_id}/content` | principal plus current Submission-view authorization | protected inline sealed bytes or `304` |
 
 Every candidate route requires exactly one
 `X-Proctor-Attempt-Credential` header containing the canonical 32-byte Raw
@@ -318,6 +322,26 @@ Attempt returns its stable safe `exam.attempt.*` conflict (`409`); dependency
 failure is `exam.attempt.unavailable` (`500`). No error distinguishes which
 sensitive selector failed.
 
+Submission repeats `participation_id` and `generation`, and requires the
+expected acknowledged Workspace Cursor plus the client's final Focus Loss
+sequence; zero is a valid sequence. It rechecks current Class membership and
+all active continuity selectors inside the named atomic Store operation. Both
+an initial commit and its exact replay return `201`, but replay suppresses
+post-commit realtime and unbind effects. The candidate receipt contains only
+Submission and Attempt identities, `submitted` state, Workspace Cursor,
+manifest digest, and server submission time. Candidates have no Submission
+browse or content route.
+
+Manager reads authorize the canonical Submission identity before testing the
+nested Exam, Sitting, and Attempt ownership path, so a mismatch is concealed
+as not found. Authorization rechecks the current Exam Manager relationship and
+Submission-view scope or override. Manifest pagination is ordered by stable
+Entry identity; its opaque cursor contains that identity only, never a path.
+Manifest responses expose immutable logical paths and bounded content metadata
+but no starter/Attempt object identity or VFS selector. Sealed content is
+streamed from its retained storage origin through the protected application
+content capability; it is never represented by a signed or public URL.
+
 Manager results are ordered by Attempt creation time and identity descending.
 Candidate Workspace results are ordered by canonical path and entry identity
 ascending. Both catalogs default to 50 and accept at most 200 items, using
@@ -325,6 +349,9 @@ distinct opaque versioned keyset cursors. JSON is `no-store`. Candidate binary
 content is inline, `private, no-store`, `nosniff`, and conditionally readable
 with a strong ETag; it has no `Content-Disposition`, public URL, object key, or
 download/export contract.
+
+Manager Submission JSON is `no-store`. Submission file content has the same
+`private, no-store`, `nosniff`, strong-ETag, no-`Content-Disposition` contract.
 
 Manager projections omit credential hashes, Session identities, and private
 reasons. A suspended Attempt exposes its private-free active Suspension

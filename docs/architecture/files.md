@@ -315,5 +315,17 @@ checksums, media types, and sizes without copying bytes. Sitting closure seals
 the last acknowledged state even when the client cannot cooperate. After
 submission no workspace mutation or reopening is possible.
 
+The candidate submits through a session-authenticated, idempotent endpoint
+using the same credential and Connection headers as Workspace mutation plus
+the explicit Participation generation, expected Workspace Cursor, and final
+Focus Loss sequence. Its receipt is intentionally non-browsable and exposes
+only stable Submission/Attempt identities, terminal state, cursor, manifest
+digest, and server time. Current authorized Exam Managers inspect a sealed
+header, an Entry-ID-keyset manifest page, or one exact file stream through
+separate purpose-specific routes. The cursor contains no path; responses expose
+no storage origin, object identity, VFS key, signed URL, or public URL. Retained
+starter-origin and Attempt-origin bytes use the existing protected content
+capability and are `private, no-store`.
+
 The complete Examination Core lifecycle and candidate-containment contract is
 [Examinations](./examinations.md).

@@ -40,6 +40,8 @@ const (
 	ActionExamSittingManage         Action = "exam.sitting.manage"
 	ActionExamSittingManageOverride Action = "exam.sitting.manage.override"
 	ActionExamSittingParticipate    Action = "exam.sitting.participate"
+	ActionSubmissionView            Action = "submission.view"
+	ActionSubmissionViewOverride    Action = "submission.view.override"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -59,6 +61,7 @@ const (
 	ResourceUser         ResourceType = "user"
 	ResourceExam         ResourceType = "exam"
 	ResourceExamSitting  ResourceType = "exam_sitting"
+	ResourceSubmission   ResourceType = "submission"
 )
 
 // Resource identifies the concrete object against which an action is checked.
@@ -183,6 +186,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionExamSittingParticipate, ResourceType: ResourceExamSitting,
 		RelationshipOnly: true,
 	},
+	ActionSubmissionView: {
+		Action: ActionSubmissionView, ResourceType: ResourceSubmission,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionSubmissionViewOverride: {
+		Action: ActionSubmissionViewOverride, ResourceType: ResourceSubmission,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
 	ActionAcademicUnitView: {
 		Action: ActionAcademicUnitView, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
@@ -246,7 +257,7 @@ func (r Resource) Validate() error {
 		return invalidModelError(where, "resource", "id", "must be a valid identifier", "")
 	}
 	switch r.Type {
-	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser, ResourceExam, ResourceExamSitting:
+	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser, ResourceExam, ResourceExamSitting, ResourceSubmission:
 		return nil
 	default:
 		return invalidModelError(where, "resource", "type", "has an unknown value", "id="+r.ID)

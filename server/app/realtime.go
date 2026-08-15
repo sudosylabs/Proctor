@@ -78,6 +78,18 @@ func (s *realtimeService) Publish(ctx context.Context, event apprealtime.Realtim
 	return internalRealtimeError(err)
 }
 
+func (s *realtimeService) UnbindExamAttemptConnection(ctx context.Context, connectionID model.AttemptConnectionID) error {
+	err := s.delivery.UnbindExamAttemptConnection(ctx, connectionID)
+	if err == nil {
+		return nil
+	}
+	var invalid *apprealtime.InvalidPublicationError
+	if errors.As(err, &invalid) {
+		return invalidRealtimeRequest(invalid.Error())
+	}
+	return internalRealtimeError(err)
+}
+
 func (s *realtimeService) reportTransientFailure(
 	ctx context.Context,
 	event string,

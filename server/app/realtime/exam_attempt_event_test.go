@@ -180,6 +180,51 @@ func TestCandidateExamAttemptWorkspaceChangedEventIsOnlyASafeRefetchHint(t *test
 	}
 }
 
+func TestExamAttemptSubmittedEventsSeparateManagerAndCandidateTargetsWithSafeReceiptData(t *testing.T) {
+	t.Parallel()
+
+	sittingID, attemptID := model.NewExamSittingID(), model.NewExamAttemptID()
+	candidateID, submissionID := model.NewUserID(), model.NewSubmissionID()
+	digest := strings.Repeat("d", 64)
+	submittedAt := time.Date(2026, time.August, 21, 10, 15, 0, 123, time.UTC)
+	manager, err := NewExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest, submittedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := NewCandidateExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest, submittedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manager.Name != "exam_attempt_submitted" || manager.UserID != "" || manager.Action != model.ActionExamSittingView ||
+		manager.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
+		t.Fatalf("manager event=%#v", manager)
+	}
+	if candidate.Name != "exam_attempt_submitted" || candidate.UserID != candidateID.String() ||
+		candidate.Action != model.ActionExamSittingParticipate || candidate.Resource.ID != sittingID.String() {
+		t.Fatalf("candidate event=%#v", candidate)
+	}
+	var managerData, candidateData map[string]any
+	if err = json.Unmarshal(manager.Data, &managerData); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(candidate.Data, &candidateData); err != nil {
+		t.Fatal(err)
+	}
+	if len(managerData) != 8 || managerData["candidate_user_id"] != candidateID.String() || len(candidateData) != 7 {
+		t.Fatalf("manager=%v candidate=%v", managerData, candidateData)
+	}
+	for _, event := range []RealtimeEvent{manager, candidate} {
+		for _, forbidden := range []string{"path", "content", "source", "evidence", "gap", "sequence", "credential", "session", "private", "remark"} {
+			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
+				t.Fatalf("submitted event contains %q: %s", forbidden, event.Data)
+			}
+		}
+		if err = event.ValidateForPublish(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestFocusLossEventsSeparateNeutralCandidateWarningFromBoundedManagerFlag(t *testing.T) {
 	t.Parallel()
 	sittingID, attemptID, candidateID := model.NewExamSittingID(), model.NewExamAttemptID(), model.NewUserID()

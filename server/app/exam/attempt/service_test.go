@@ -998,24 +998,27 @@ func TestTrustedCloseRejectsUnknownReasonBeforeAudit(t *testing.T) {
 }
 
 type fixture struct {
-	service         *Service
-	call            Call
-	userID          model.UserID
-	attemptID       model.ExamAttemptID
-	connectionID    model.AttemptConnectionID
-	at              time.Time
-	sitting         *model.ExamSitting
-	revision        *model.ExamRevision
-	order           []string
-	persistence     *attemptStoreFake
-	workspace       *attemptWorkspaceStoreFake
-	audit           *auditFake
-	systemAudit     *systemAuditFake
-	effects         *effectsFake
-	content         *contentFake
-	managerOverride bool
-	focusSignalID   model.FocusLossSignalID
-	focusFlagID     model.IntegrityFlagID
+	service                   *Service
+	call                      Call
+	userID                    model.UserID
+	attemptID                 model.ExamAttemptID
+	connectionID              model.AttemptConnectionID
+	at                        time.Time
+	sitting                   *model.ExamSitting
+	revision                  *model.ExamRevision
+	order                     []string
+	persistence               *attemptStoreFake
+	workspace                 *attemptWorkspaceStoreFake
+	submissions               *submissionStoreFake
+	audit                     *auditFake
+	systemAudit               *systemAuditFake
+	effects                   *effectsFake
+	content                   *contentFake
+	managerOverride           bool
+	focusSignalID             model.FocusLossSignalID
+	focusFlagID               model.IntegrityFlagID
+	submissionID              model.SubmissionID
+	submissionAuthorizationID model.SubmissionID
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -1032,12 +1035,13 @@ func newFixture(t *testing.T) *fixture {
 	}}
 	f.persistence = &attemptStoreFake{f: f, firstAdmission: true, connectionOpened: true}
 	f.workspace = &attemptWorkspaceStoreFake{f: f}
+	f.submissions = &submissionStoreFake{f: f}
 	f.audit = &auditFake{f: f}
 	f.systemAudit = &systemAuditFake{f: f}
 	f.effects = &effectsFake{f: f}
 	f.content = &contentFake{f: f}
 	service, err := New(Dependencies{
-		Persistence: f.persistence, Workspace: f.workspace, Sittings: &sittingFake{f: f}, Managers: &managerFake{f: f},
+		Persistence: f.persistence, Workspace: f.workspace, Submissions: f.submissions, Sittings: &sittingFake{f: f}, Managers: &managerFake{f: f},
 		Auditor: f.audit, SystemAuditor: f.systemAudit, Effects: f.effects, EffectFailures: f.effects, Content: f.content,
 		Now: func() time.Time { return f.at }, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
@@ -1056,6 +1060,12 @@ func newFixture(t *testing.T) *fixture {
 		NewWorkspaceEntry:   func() model.AttemptWorkspaceEntryID { return entryIDOrNew(f.workspace) },
 		NewWorkspaceObject:  model.NewAttemptWorkspaceObjectID,
 		NewWorkspaceVersion: func() model.WorkspaceContentVersion { return workspaceVersionOrNew(f.workspace) },
+		NewSubmission: func() model.SubmissionID {
+			if f.submissionID.IsValid() {
+				return f.submissionID
+			}
+			return model.NewSubmissionID()
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1083,6 +1093,11 @@ func (fake *managerFake) AuthorizeSittingView(context.Context, Call, model.ExamS
 func (fake *managerFake) AuthorizeSittingManage(context.Context, Call, model.ExamSittingID) (bool, error) {
 	fake.f.order = append(fake.f.order, "manager.manage")
 	return fake.f.managerOverride, nil
+}
+func (fake *managerFake) AuthorizeSubmissionView(_ context.Context, _ Call, submissionID model.SubmissionID) error {
+	fake.f.order = append(fake.f.order, "submission.authorize")
+	fake.f.submissionAuthorizationID = submissionID
+	return nil
 }
 
 type auditFake struct {
@@ -1126,6 +1141,7 @@ type effectsFake struct {
 	reallowed        int
 	workspaceChanged int
 	focusLoss        int
+	submitted        int
 }
 
 func (fake *effectsFake) ConnectionOpened(context.Context, ConnectionResult) error {
@@ -1156,6 +1172,11 @@ func (fake *effectsFake) WorkspaceChanged(context.Context, WorkspaceMutationResu
 func (fake *effectsFake) FocusLossEvaluated(context.Context, FocusLossEvaluation) error {
 	fake.f.order = append(fake.f.order, "effect.focus_loss")
 	fake.focusLoss++
+	return nil
+}
+func (fake *effectsFake) AttemptSubmitted(context.Context, SubmissionResult) error {
+	fake.f.order = append(fake.f.order, "effect.submit")
+	fake.submitted++
 	return nil
 }
 func (*effectsFake) Report(context.Context, string, error) {}

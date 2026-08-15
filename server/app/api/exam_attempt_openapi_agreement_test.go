@@ -26,6 +26,10 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	workspaceEntry := workspace + "/entries/{attempt_workspace_entry_id}"
 	resourceContent := candidateBase + "/resources/{exam_resource_id}/content"
 	workspaceContent := candidateBase + "/workspace/files/{attempt_workspace_entry_id}/content"
+	candidateSubmissions := candidateBase + "/submissions"
+	managerSubmission := managerMember + "/submissions/{submission_id}"
+	managerSubmissionManifest := managerSubmission + "/manifest"
+	managerSubmissionContent := managerSubmission + "/files/{attempt_workspace_entry_id}/content"
 	managerCodes := principalContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "administration.unavailable")
 	reallowCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict",
@@ -50,6 +54,8 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict")
 	deleteMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
 		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty")
+	submissionMutationCodes := workspaceMutationCodes("exam.attempt.workspace.cursor_conflict", "exam.attempt.focus_loss_conflict",
+		"exam.attempt.connection_lost")
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET " + managerBase, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamAttemptManagerListOK", SuccessSchema: "ExamAttemptManagerListResponse", PublicErrorCodes: managerCodes},
@@ -65,6 +71,16 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "PUT " + workspaceContent, Auth: AuthSessionRequired, Idempotency: IdempotencyRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateWorkspaceMutationOK", SuccessSchema: "CandidateWorkspaceMutationResponse", PublicErrorCodes: replaceMutationCodes},
 			{Key: "GET " + resourceContent, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamProtectedContent", ExceptionalSuccess: true, PublicErrorCodes: candidateCodes},
 			{Key: "GET " + workspaceContent, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamProtectedContent", ExceptionalSuccess: true, PublicErrorCodes: candidateCodes},
+			{Key: "POST " + candidateSubmissions, Auth: AuthSessionRequired, Idempotency: IdempotencyRequired,
+				RequestBodyRef: "#/components/requestBodies/SubmitExamAttempt", RequestSchema: "SubmitExamAttemptRequest",
+				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamSubmissionReceiptCreated",
+				SuccessSchema: "ExamSubmissionReceiptResponse", PublicErrorCodes: submissionMutationCodes},
+			{Key: "GET " + managerSubmission, Auth: AuthPrincipalRequired, SuccessStatus: "200",
+				SuccessRef: "#/components/responses/ExamSubmissionManagerOK", SuccessSchema: "ExamSubmissionManagerResponse", PublicErrorCodes: managerCodes},
+			{Key: "GET " + managerSubmissionManifest, Auth: AuthPrincipalRequired, SuccessStatus: "200",
+				SuccessRef: "#/components/responses/ExamSubmissionManifestOK", SuccessSchema: "ExamSubmissionManifestResponse", PublicErrorCodes: managerCodes},
+			{Key: "GET " + managerSubmissionContent, Auth: AuthPrincipalRequired, SuccessStatus: "200",
+				SuccessRef: "#/components/responses/ExamSubmissionFileContent", ExceptionalSuccess: true, PublicErrorCodes: managerCodes},
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "ExamAttemptManagerResponse", DTO: reflect.TypeOf(examAttemptManagerResponse{}), Required: []string{"id", "exam_id", "exam_sitting_id", "candidate_user_id", "admission_revision_id", "state", "created_at", "updated_at", "revision", "workspace"}},
@@ -85,6 +101,11 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "CandidateWorkspaceMutationResponse", DTO: reflect.TypeOf(candidateWorkspaceMutationResponse{}), Required: []string{"workspace_id", "workspace_cursor", "operation"}},
 			{Name: "CandidateWorkspaceJournalEntryResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalEntryResponse{}), Required: []string{"cursor", "entry_id", "kind", "operation", "changed_at"}},
 			{Name: "CandidateWorkspaceJournalResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalResponse{}), Required: []string{"workspace_id", "current_cursor", "entries", "has_more", "refresh_required"}},
+			{Name: "SubmitExamAttemptRequest", DTO: reflect.TypeOf(submitExamAttemptRequest{}), Required: []string{"participation_id", "generation", "expected_workspace_cursor", "final_focus_loss_sequence"}},
+			{Name: "ExamSubmissionReceiptResponse", DTO: reflect.TypeOf(examSubmissionReceiptResponse{}), Required: []string{"submission_id", "exam_attempt_id", "state", "workspace_cursor", "manifest_digest", "submitted_at"}},
+			{Name: "ExamSubmissionManagerResponse", DTO: reflect.TypeOf(examSubmissionManagerResponse{}), Required: []string{"submission_id", "exam_id", "exam_sitting_id", "exam_attempt_id", "workspace_id", "manifest_schema_version", "workspace_cursor", "manifest_digest", "manifest_entry_count", "manifest_total_file_bytes", "final_focus_loss_sequence", "integrity_state", "unresolved_integrity_count", "submitted_at"}},
+			{Name: "ExamSubmissionManifestItemResponse", DTO: reflect.TypeOf(examSubmissionManifestItemResponse{}), Required: []string{"entry_id", "kind", "path"}},
+			{Name: "ExamSubmissionManifestResponse", DTO: reflect.TypeOf(examSubmissionManifestResponse{}), Required: []string{"submission_id", "workspace_cursor", "manifest_digest", "items"}},
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
@@ -94,9 +115,12 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
 
 	document := readOpenAPIDocument(t)
-	for _, path := range []string{presentation, workspace, workspaceChanges, workspaceDirectories, workspaceFiles, workspaceEntry, resourceContent, workspaceContent} {
+	for _, path := range []string{presentation, workspace, workspaceChanges, workspaceDirectories, workspaceFiles, workspaceEntry, resourceContent, workspaceContent, candidateSubmissions} {
 		method := "get"
 		if path == workspaceDirectories || path == workspaceFiles {
+			method = "post"
+		}
+		if path == candidateSubmissions {
 			method = "post"
 		}
 		if path == workspaceEntry {
@@ -119,6 +143,15 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			t.Errorf("GET %s 304 response = %#v", path, operation.Responses["304"])
 		}
 	}
+	assertProtectedExamContentResponse(t, document, managerSubmissionContent, "ExamSubmissionFileContent")
+	managerContentOperation := decodeExamContentOpenAPIOperation(t, document, managerSubmissionContent, "get")
+	if managerContentOperation.Responses["304"].Ref != "#/components/responses/ExamSubmissionFileNotModified" {
+		t.Errorf("GET %s 304 response = %#v", managerSubmissionContent, managerContentOperation.Responses["304"])
+	}
+	assertProtectedExamCacheControl(t, "ExamSubmissionFileContent", "private, no-store")
+	if _, ok := document.Components.Responses["ExamSubmissionFileContent"].Headers["Content-Disposition"]; ok {
+		t.Error("Submission protected response documents forbidden Content-Disposition")
+	}
 	assertProtectedExamCacheControl(t, "CandidateExamProtectedContent", "private, no-store")
 	if _, ok := document.Components.Responses["CandidateExamProtectedContent"].Headers["Content-Disposition"]; ok {
 		t.Error("candidate protected response documents forbidden Content-Disposition")
@@ -126,6 +159,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	assertExamAttemptQueryParameters(t, document, managerBase, []string{"state", "limit", "cursor"})
 	assertExamAttemptQueryParameters(t, document, workspace, []string{"limit", "cursor"})
 	assertExamAttemptQueryParameters(t, document, workspaceChanges, []string{"after_cursor", "limit"})
+	assertExamAttemptQueryParameters(t, document, managerSubmissionManifest, []string{"limit", "cursor"})
 }
 
 func hasOpenAPIParameterRef(operation openAPIOperation, ref string) bool {

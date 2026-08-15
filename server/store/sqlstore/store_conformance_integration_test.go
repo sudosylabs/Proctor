@@ -86,6 +86,11 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 			storetest.TestExamAttemptWorkspaceStore(t, decorated, decorated.ExamAttemptWorkspace(),
 				examAttemptWorkspaceSQLProbe(t, sqlStore))
 		}},
+		{"ExamSubmission", func(t *testing.T, decorated store.Store) {
+			probe := examSubmissionSQLProbe(t, sqlStore)
+			probe.ConcurrentPeer = NewSQLExamSubmissionStore(sqlStore)
+			storetest.TestExamSubmissionStore(t, decorated, decorated.ExamSubmission(), probe)
+		}},
 		{"ExamResource", storetest.TestExamResourceStore},
 		{"ExamCorrection", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamCorrectionStore(t, decorated, examCorrectionSQLProbe(t, sqlStore))
@@ -170,6 +175,290 @@ func TestExamAttemptWorkspaceStore(t *testing.T) {
 	probe.ConcurrentPeer = NewSQLExamAttemptWorkspaceStore(peerPersistence)
 	storetest.TestExamAttemptWorkspaceStore(t, persistence, NewSQLExamAttemptWorkspaceStore(persistence),
 		probe)
+}
+
+func TestExamSubmissionStore(t *testing.T) {
+	persistence := openTestStore(t)
+	peerPersistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	probe := examSubmissionSQLProbe(t, persistence)
+	probe.ConcurrentPeer = NewSQLExamSubmissionStore(peerPersistence)
+	storetest.TestExamSubmissionStore(t, persistence, NewSQLExamSubmissionStore(persistence), probe)
+}
+
+func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamSubmissionSQLProbe {
+	t.Helper()
+	return storetest.ExamSubmissionSQLProbe{
+		IntegrityPersistence: func(t *testing.T, ctx context.Context, attemptID model.ExamAttemptID, generation int64) storetest.SubmissionIntegrityPersistence {
+			t.Helper()
+			var row struct {
+				PendingQualifiers int64 `db:"pending_qualifiers"`
+				UnresolvedMissing int64 `db:"unresolved_missing"`
+			}
+			if err := persistence.GetMaster().Get(ctx, &row, `SELECT
+				(SELECT count(*) FROM exam_attempt_focus_loss_pending WHERE exam_attempt_id=? AND generation=?) AS pending_qualifiers,
+				COALESCE((SELECT unresolved_missing_count FROM exam_attempt_focus_loss_evaluations
+				 WHERE exam_attempt_id=? AND generation=?),0) AS unresolved_missing`,
+				attemptID.String(), generation, attemptID.String(), generation); err != nil {
+				t.Fatal(err)
+			}
+			return storetest.SubmissionIntegrityPersistence{PendingQualifiers: row.PendingQualifiers, UnresolvedMissing: row.UnresolvedMissing}
+		},
+		AssertSchema: func(t *testing.T, ctx context.Context) {
+			t.Helper()
+			var constraints []string
+			if err := persistence.GetMaster().Select(ctx, &constraints, `SELECT conname FROM pg_constraint WHERE conname IN (
+				'exam_attempt_workspaces_submission_owner_key',
+				'exam_attempt_workspace_entries_submission_owner_key','exam_submissions_workspace_fkey',
+				'exam_submissions_participation_fkey','exam_submissions_connection_fkey',
+				'exam_submission_manifest_entries_submission_fkey',
+				'exam_submission_manifest_entries_workspace_entry_fkey',
+				'exam_submission_manifest_entries_workspace_object_fkey',
+				'exam_submission_manifest_entries_starter_object_fkey',
+				'exam_submission_manifest_entries_attempt_object_fkey',
+				'exam_submissions_id_canonical_check','exam_submissions_exam_attempt_id_canonical_check',
+				'exam_submissions_workspace_id_canonical_check','exam_submissions_participation_id_canonical_check',
+				'exam_submissions_connection_id_canonical_check',
+				'exam_submission_manifest_entries_submission_id_canonical_check',
+				'exam_submission_manifest_entries_workspace_id_canonical_check',
+				'exam_submission_manifest_entries_entry_id_canonical_check',
+				'exam_submission_manifest_entries_content_version_canonical_check',
+				'exam_submission_manifest_entries_starter_object_id_canonical_check',
+				'exam_submission_manifest_entries_attempt_object_id_canonical_check',
+				'exam_submission_manifest_entries_workspace_object_id_canonical_check'
+			) ORDER BY conname`); err != nil {
+				t.Fatal(err)
+			}
+			if len(constraints) != 22 {
+				t.Fatalf("Submission named schema constraints = %#v", constraints)
+			}
+			for name, fragment := range map[string]string{
+				"exam_submissions_participation_fkey":                   "(participation_id, exam_attempt_id, generation)",
+				"exam_submissions_connection_fkey":                      "(connection_id, exam_attempt_id, participation_id)",
+				"exam_submissions_workspace_fkey":                       "(exam_attempt_id, workspace_id)",
+				"exam_submission_manifest_entries_workspace_entry_fkey": "(workspace_id, entry_id, workspace_object_id)",
+			} {
+				var definition string
+				if err := persistence.GetMaster().Get(ctx, &definition,
+					`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname=?`, name); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(definition, fragment) {
+					t.Fatalf("%s definition = %q", name, definition)
+				}
+			}
+			var triggers []string
+			if err := persistence.GetMaster().Select(ctx, &triggers, `SELECT tgname FROM pg_trigger
+				WHERE NOT tgisinternal AND tgname IN ('exam_submissions_immutable',
+				'exam_submission_manifest_entries_immutable','exam_submission_manifest_entries_insert_guard',
+				'exam_submission_manifest_entries_object_provenance','exam_submissions_sealed_check') ORDER BY tgname`); err != nil {
+				t.Fatal(err)
+			}
+			if len(triggers) != 5 {
+				t.Fatalf("Submission immutable/seal triggers = %#v", triggers)
+			}
+			var auditResourceConstraint string
+			if err := persistence.GetMaster().Get(ctx, &auditResourceConstraint,
+				`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audit_events_resource_type_check'`); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(auditResourceConstraint, "'submission'") {
+				t.Fatalf("audit Submission resource constraint = %q", auditResourceConstraint)
+			}
+		},
+		AssertRetentionFence: func(t *testing.T, ctx context.Context, submissionID model.SubmissionID) {
+			t.Helper()
+			var selectors struct {
+				StarterID        string `db:"starter_object_id"`
+				AttemptID        string `db:"attempt_object_id"`
+				Workspace        string `db:"workspace_id"`
+				EntryID          string `db:"entry_id"`
+				DirectoryEntryID string `db:"directory_entry_id"`
+			}
+			if err := persistence.GetMaster().Get(ctx, &selectors, `SELECT
+				(SELECT starter_object_id FROM exam_submission_manifest_entries
+				 WHERE submission_id=? AND starter_object_id IS NOT NULL ORDER BY entry_id LIMIT 1) AS starter_object_id,
+				(SELECT attempt_object_id FROM exam_submission_manifest_entries
+				 WHERE submission_id=? AND attempt_object_id IS NOT NULL ORDER BY entry_id LIMIT 1) AS attempt_object_id,
+				(SELECT workspace_id FROM exam_submission_manifest_entries
+				 WHERE submission_id=? AND attempt_object_id IS NOT NULL ORDER BY entry_id LIMIT 1) AS workspace_id,
+				(SELECT entry_id FROM exam_submission_manifest_entries
+				 WHERE submission_id=? AND attempt_object_id IS NOT NULL ORDER BY entry_id LIMIT 1) AS entry_id,
+				(SELECT entry_id FROM exam_submission_manifest_entries
+				 WHERE submission_id=? AND kind='directory' ORDER BY entry_id LIMIT 1) AS directory_entry_id`,
+				submissionID.String(), submissionID.String(), submissionID.String(), submissionID.String(), submissionID.String()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_starter_workspace_objects WHERE id=?`, selectors.StarterID); err == nil {
+				t.Fatal("starter object retention fence allowed deletion")
+			}
+			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_objects WHERE id=?`, selectors.AttemptID); err == nil {
+				t.Fatal("attempt object retention fence allowed deletion")
+			}
+			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`, selectors.Workspace, selectors.EntryID); err == nil {
+				t.Fatal("Submission-owned Workspace Entry retention fence allowed deletion")
+			}
+			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_submission_manifest_entries SET path='changed' WHERE submission_id=?`, submissionID.String()); err == nil {
+				t.Fatal("immutable Submission manifest accepted mutation")
+			}
+			assertExamSubmissionManifestInsertFence(t, ctx, persistence,
+				`INSERT INTO exam_submission_manifest_entries (submission_id,workspace_id,entry_id,kind,path)
+				 VALUES (?,?,?,'directory','missing')`, submissionID.String(), selectors.Workspace,
+				model.NewAttemptWorkspaceEntryID().String())
+			assertExamSubmissionManifestInsertFence(t, ctx, persistence,
+				`INSERT INTO exam_submission_manifest_entries
+				 (submission_id,workspace_id,entry_id,kind,path,content_version,media_type,size_bytes,sha256,storage_origin,
+				  starter_object_id,attempt_object_id,workspace_object_id)
+				 SELECT submission_id,workspace_id,entry_id,kind,'wrong/'||path,content_version,media_type,size_bytes,sha256,
+				  storage_origin,starter_object_id,attempt_object_id,workspace_object_id
+				 FROM exam_submission_manifest_entries WHERE submission_id=? AND entry_id=?`,
+				submissionID.String(), selectors.DirectoryEntryID)
+			assertExamSubmissionManifestInsertFence(t, ctx, persistence,
+				`INSERT INTO exam_submission_manifest_entries
+				 (submission_id,workspace_id,entry_id,kind,path,content_version,media_type,size_bytes,sha256,storage_origin,
+				  starter_object_id,attempt_object_id,workspace_object_id)
+				 SELECT submission_id,workspace_id,entry_id,kind,path,content_version,media_type,size_bytes,?,storage_origin,
+				  starter_object_id,attempt_object_id,workspace_object_id
+				 FROM exam_submission_manifest_entries WHERE submission_id=? AND entry_id=?`,
+				strings.Repeat("c", 64), submissionID.String(), selectors.EntryID)
+
+			// Simulate a later record-retention workflow removing the live
+			// Workspace Entry and making its object cleanup-eligible. The direct
+			// Submission reference must independently fence every cleanup phase
+			// before a VFS purge can occur.
+			_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "isolate Submission object retention fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_entries DISABLE TRIGGER ALL`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`, selectors.Workspace, selectors.EntryID); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_entries ENABLE TRIGGER ALL`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects DISABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_workspace_objects SET state='staged',
+					updated_at=GREATEST(updated_at,statement_timestamp()),expires_at=statement_timestamp()+INTERVAL '1 hour',
+					reclaim_after=NULL,claim_token=NULL,claimed_at=NULL WHERE id=?`, selectors.AttemptID); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects ENABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				return struct{}{}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspaceStore := NewSQLExamAttemptWorkspaceStore(persistence)
+			attemptObjectID, err := model.ParseAttemptWorkspaceObjectID(selectors.AttemptID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = workspaceStore.MarkObjectReclaimable(ctx, attemptObjectID); !store.IsConflict(err) {
+				t.Fatalf("MarkObjectReclaimable(Submission pinned) error = %v", err)
+			}
+			_, err = runSQLTransaction(ctx, persistence.GetMaster().Begin, "make Submission object cleanup due", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects DISABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_workspace_objects SET state='reclaimable',
+					updated_at=GREATEST(updated_at,statement_timestamp()),expires_at=NULL,
+					reclaim_after=statement_timestamp()-INTERVAL '1 microsecond',claim_token=NULL,claimed_at=NULL WHERE id=?`, selectors.AttemptID); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects ENABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				return struct{}{}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			claimed, err := workspaceStore.ClaimObjectsForCleanup(ctx, 200, "submission-retention")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, object := range claimed {
+				if object.ID == attemptObjectID {
+					t.Fatalf("ClaimObjectsForCleanup claimed Submission-pinned object %#v", object)
+				}
+			}
+			_, err = runSQLTransaction(ctx, persistence.GetMaster().Begin, "force Submission object cleanup claim", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects DISABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_workspace_objects SET state='claimed',
+					updated_at=GREATEST(updated_at,statement_timestamp()),claim_token='submission-retention',
+					claimed_at=GREATEST(updated_at,statement_timestamp()) WHERE id=?`, selectors.AttemptID); execErr != nil {
+					return struct{}{}, execErr
+				}
+				if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_workspace_objects ENABLE TRIGGER exam_attempt_workspace_objects_immutable`); execErr != nil {
+					return struct{}{}, execErr
+				}
+				return struct{}{}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = workspaceStore.CompleteObjectCleanup(ctx, attemptObjectID, "submission-retention"); !store.IsConflict(err) {
+				t.Fatalf("CompleteObjectCleanup(Submission pinned) error = %v", err)
+			}
+		},
+		CorruptManifest: func(t *testing.T, ctx context.Context, submissionID model.SubmissionID) {
+			t.Helper()
+			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_submissions SET manifest_digest=? WHERE id=?`,
+				strings.Repeat("c", 64), submissionID.String()); err == nil {
+				t.Fatal("immutable Submission header accepted an update")
+			}
+			connection, err := persistence.GetMaster().DB().Connx(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Close()
+			transaction, err := connection.BeginTxx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer transaction.Rollback()
+			if _, err = transaction.ExecContext(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = transaction.ExecContext(ctx, persistence.GetMaster().DB().Rebind(`UPDATE exam_submissions SET manifest_digest=? WHERE id=?`),
+				strings.Repeat("c", 64), submissionID.String()); err != nil {
+				t.Fatal(err)
+			}
+			if err = transaction.Commit(); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+}
+
+func assertExamSubmissionManifestInsertFence(t *testing.T, ctx context.Context, persistence *SQLStore,
+	query string, args ...any,
+) {
+	t.Helper()
+	_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "probe Submission manifest state fence", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+		if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_submission_manifest_entries
+			DISABLE TRIGGER exam_submission_manifest_entries_insert_guard`); execErr != nil {
+			return struct{}{}, execErr
+		}
+		if _, execErr := tx.Exec(ctx, query, args...); execErr != nil {
+			return struct{}{}, execErr
+		}
+		if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_submission_manifest_entries
+			ENABLE TRIGGER exam_submission_manifest_entries_insert_guard`); execErr != nil {
+			return struct{}{}, execErr
+		}
+		return struct{}{}, nil
+	})
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) || pqErr.Constraint != "exam_submission_manifest_entries_object_provenance" {
+		t.Fatalf("direct manifest insert state fence error = %v", err)
+	}
 }
 
 func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptWorkspaceSQLProbe {

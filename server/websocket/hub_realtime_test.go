@@ -5,6 +5,7 @@ package websocket
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -44,6 +45,62 @@ func TestEventFromRealtimePreservesWireFieldsAndClonesData(t *testing.T) {
 	if bytes.Equal(event.Data, source.Data) {
 		t.Fatal("wire event data aliases the realtime event data")
 	}
+}
+
+func TestHubUnbindExamAttemptConnectionClearsOnlyExactBindingAndKeepsSocketOpen(t *testing.T) {
+	t.Parallel()
+
+	hub := newInternalTestHub(t)
+	if err := hub.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hub.Close() }()
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
+	exactSocket, otherSocket := newRuntimeTestSocket(), newRuntimeTestSocket()
+	exact, _ := hub.register(exactSocket, principal, model.RequestMetadata{}, "", 0)
+	other, _ := hub.register(otherSocket, principal, model.RequestMetadata{}, "", 0)
+	if exact == nil || other == nil {
+		t.Fatal("Hub did not register test connections")
+	}
+	exactID, otherID := model.NewAttemptConnectionID(), model.NewAttemptConnectionID()
+	exactSubscription := bindRuntimeForUnbindTest(exact, exactID)
+	bindRuntimeForUnbindTest(other, otherID)
+
+	hub.UnbindExamAttemptConnection(exactID)
+
+	exact.mu.Lock()
+	exactBinding := exact.attempt
+	_, exactSubscribed := exact.subscriptions[exactSubscription.Key()]
+	exact.mu.Unlock()
+	other.mu.Lock()
+	otherBinding := other.attempt
+	otherSubscribed := len(other.subscriptions) == 1
+	other.mu.Unlock()
+	if exactBinding != nil || exactSubscribed || otherBinding == nil || otherBinding.connectionID != otherID || !otherSubscribed {
+		t.Fatalf("exact binding=%#v subscribed=%v other=%#v subscribed=%v", exactBinding, exactSubscribed, otherBinding, otherSubscribed)
+	}
+	select {
+	case <-exactSocket.closed:
+		t.Fatal("exact generic WebSocket was closed")
+	default:
+	}
+	select {
+	case <-otherSocket.closed:
+		t.Fatal("unrelated generic WebSocket was closed")
+	default:
+	}
+}
+
+func bindRuntimeForUnbindTest(runtime *connectionRuntime, connectionID model.AttemptConnectionID) Subscription {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	sittingID := model.NewExamSittingID()
+	runtime.attempt = &examAttemptBinding{attemptID: model.NewExamAttemptID(), sittingID: sittingID,
+		connectionID: connectionID, participationID: model.NewAttemptParticipationID(), generation: 1}
+	subscription := Subscription{Action: model.ActionExamSittingParticipate,
+		Resource: Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}}
+	runtime.subscriptions[subscription.Key()] = subscription
+	return subscription
 }
 
 func TestCloseCodeForRealtimeReason(t *testing.T) {

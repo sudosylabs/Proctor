@@ -68,6 +68,13 @@ Authorized managers may inspect sealed Submissions and bounded evidence only
 through their application permissions. The integrity review records decisions
 and remarks; it is not a grading or academic-outcome subsystem.
 
+Submission inspection rechecks the current Exam Manager relationship and the
+dedicated Submission-view scope or override against the canonical Submission
+before validating its nested route ownership. Candidate Submission access ends
+at a safe receipt; candidates cannot list manifests or read sealed content.
+Manager manifest cursors contain only stable Entry identity, and protected
+content streams expose no object selector, public URL, or signed URL.
+
 Focus Loss arrives only through the authenticated Attempt WebSocket binding.
 The strict claim supplies the required supported schema version, current
 generation, monotonic signal sequence, bounded integer duration, optional
