@@ -58,6 +58,7 @@ type accessAcademicConstruction struct {
 
 type profileFileConstruction struct {
 	userProfiles    *userProfileService
+	userSettings    *userSettingsService
 	profilePictures *profilePictureService
 }
 
@@ -191,6 +192,7 @@ func assembleApplication(
 		examCorrections:                   examinations.corrections,
 		examStarterWorkspace:              examinations.starterWorkspace,
 		userProfiles:                      profiles.userProfiles,
+		userSettings:                      profiles.userSettings,
 		profilePictures:                   profiles.profilePictures,
 		accountStates:                     administration.accountStates,
 		sessionAdministrations:            administration.sessionAdministrations,

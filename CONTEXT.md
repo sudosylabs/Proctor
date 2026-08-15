@@ -221,6 +221,12 @@ A login-capable Proctor account containing profile and account state, but not
 credentials, affiliations, roles, or permissions.
 _Avoid_: Person, account when referring specifically to the Proctor identity
 
+**User Settings Document**:
+One portable, user-owned source document containing client presentation
+preferences; it grants no capability and belongs to neither deployment
+configuration nor an exam workspace.
+_Avoid_: IDE preferences file, workspace settings, deployment configuration
+
 **Affiliation**:
 A time-bounded, non-exclusive relationship between a user and the institution,
 such as student, teacher, staff member, or external collaborator.

@@ -42,6 +42,7 @@ type App struct {
 	examCorrections                   examCorrectionUseCases
 	examStarterWorkspace              examStarterWorkspaceUseCases
 	userProfiles                      *userProfileService
+	userSettings                      *userSettingsService
 	profilePictures                   *profilePictureService
 	accountStates                     *accountStateService
 	sessionAdministrations            *sessionAdministrationService
@@ -92,7 +93,10 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	profiles := constructProfilesAndFiles(deps, foundation, access)
+	profiles, err := constructProfilesAndFiles(deps, foundation, access)
+	if err != nil {
+		return nil, err
+	}
 	jobs, err := constructJobs(deps, foundation, access, examinations, profiles)
 	if err != nil {
 		return nil, err

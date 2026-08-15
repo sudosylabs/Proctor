@@ -233,8 +233,12 @@ func (s *authenticationService) createLocalUser(
 	}
 	credential := &model.PasswordCredential{UserID: user.ID, PasswordHash: hash}
 	credential.PrepareCreate(model.NewPasswordCredentialID(), user.CreatedAt)
+	settings, err := prepareInitialUserSettingsDocument(user)
+	if err != nil {
+		return nil, NewError("authentication.user.invalid").Wrap(err)
+	}
 	result, err := s.users.Create(ctx, &store.UserCreation{
-		User: user, PasswordCredential: credential, DefaultProfilePictureJob: job,
+		User: user, Settings: settings, PasswordCredential: credential, DefaultProfilePictureJob: job,
 	})
 	if err != nil {
 		var conflict *store.ErrConflict

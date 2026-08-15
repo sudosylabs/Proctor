@@ -174,7 +174,7 @@ func composeConsumers(
 		Application: application, AcademicUnits: application, Institutions: application,
 		Programmes: application, ProgrammeLevels: application, AcademicPeriods: application,
 		Classes: application, Affiliations: application, AcademicUnitMembers: application,
-		ClassMembers: application, UserProfiles: application, AccountStates: application,
+		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
 		SessionAdministrations: application, Roles: application, RoleBindings: application,
 		AuditListings: application, Bootstrap: application, BuildInfo: buildInfo,
 		PublicURL: snapshot.Server.PublicURL, MaxBodyBytes: snapshot.Server.MaxBodyBytes,

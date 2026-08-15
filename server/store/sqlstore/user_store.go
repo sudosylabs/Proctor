@@ -85,15 +85,19 @@ func newSQLUserStore(sqlStore *SQLStore) store.UserStore {
 }
 
 func (s SQLUserStore) Create(ctx context.Context, input *store.UserCreation) (*store.UserCreationResult, error) {
-	if input == nil || input.User == nil || input.DefaultProfilePictureJob == nil {
+	if input == nil || input.User == nil || input.Settings == nil || input.DefaultProfilePictureJob == nil {
 		return nil, store.NewErrInvalidInput("user", "creation", nil)
 	}
 	user := *input.User
+	settings := input.Settings.Clone()
 	job := *input.DefaultProfilePictureJob
 	if err := user.Validate(); err != nil {
 		return nil, err
 	}
 	if err := validateUserDefaultProfilePictureJob(&user, &job); err != nil {
+		return nil, err
+	}
+	if err := validateInitialUserSettingsDocument(&user, settings); err != nil {
 		return nil, err
 	}
 	var credential *model.PasswordCredential
@@ -110,6 +114,9 @@ func (s SQLUserStore) Create(ctx context.Context, input *store.UserCreation) (*s
 
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "user creation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.UserCreationResult, error) {
 		if err := insertUser(ctx, tx, &user); err != nil {
+			return nil, err
+		}
+		if err := insertUserSettingsDocument(ctx, tx, settings); err != nil {
 			return nil, err
 		}
 		if credential != nil {

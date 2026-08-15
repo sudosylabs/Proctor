@@ -46,6 +46,7 @@ const (
 	aggregateSession              aggregateName = "session"
 	aggregateSessionCredential    aggregateName = "session_credential"
 	aggregateUser                 aggregateName = "user"
+	aggregateUserSettings         aggregateName = "user_settings"
 	aggregateUserToken            aggregateName = "user_token"
 )
 
@@ -141,6 +142,7 @@ const (
 	methodRemove                        methodName = "remove"
 	methodRemoveEntry                   methodName = "remove_entry"
 	methodReplaceRecoveryCodes          methodName = "replace_recovery_codes"
+	methodReplace                       methodName = "replace"
 	methodReleaseObjectCleanup          methodName = "release_object_cleanup"
 	methodResolve                       methodName = "resolve"
 	methodResolveSealTarget             methodName = "resolve_seal_target"

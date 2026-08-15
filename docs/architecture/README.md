@@ -22,6 +22,8 @@ change:
   enforcement, and durable decisions
 - [Configuration](./configuration.md) — deployment configuration and
   application settings
+- [User settings](./user-settings.md) — exact portable presentation source,
+  revisions, validation, persistence, and self-service access
 - [Transport](./transport.md) — HTTP, WebSocket, errors, compatibility, and
   validation
 - [Persistence](./persistence.md) — stores, layers, schema, and migrations

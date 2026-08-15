@@ -87,6 +87,7 @@ DROP TABLE IF EXISTS password_credentials;
 DROP TABLE IF EXISTS external_identities;
 DROP TABLE IF EXISTS file_legal_holds;
 DROP TABLE IF EXISTS upload_leases;
+DROP TABLE IF EXISTS user_settings_documents;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS file_renditions;
 ALTER TABLE IF EXISTS file_entries DROP CONSTRAINT IF EXISTS file_entries_current_revision_fkey;

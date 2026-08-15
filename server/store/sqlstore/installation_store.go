@@ -69,6 +69,9 @@ func (s SQLInstallationStore) Bootstrap(
 		if err := insertUser(ctx, tx, prepared.Administrator); err != nil {
 			return nil, err
 		}
+		if err := insertUserSettingsDocument(ctx, tx, prepared.AdministratorSettings); err != nil {
+			return nil, err
+		}
 		if err := insertPasswordCredential(ctx, tx, prepared.credential); err != nil {
 			return nil, err
 		}
@@ -102,6 +105,7 @@ type preparedInstallationBootstrap struct {
 	*model.InstallationBootstrapResult
 	credential               *model.PasswordCredential
 	auditEvent               *model.AuditEvent
+	AdministratorSettings    *model.UserSettingsDocument
 	DefaultProfilePictureJob *model.Job
 }
 
@@ -110,7 +114,7 @@ func prepareInstallationBootstrap(
 ) (*preparedInstallationBootstrap, error) {
 	if input == nil || input.Institution == nil || input.Administrator == nil ||
 		input.Role == nil || input.RoleBinding == nil || input.AuditEvent == nil ||
-		input.DefaultProfilePictureJob == nil || input.PasswordHash == "" {
+		input.AdministratorSettings == nil || input.DefaultProfilePictureJob == nil || input.PasswordHash == "" {
 		return nil, store.NewErrInvalidInput("installation", "bootstrap", nil)
 	}
 	institutionID, err := model.ParseInstitutionID(model.NewId())
@@ -136,6 +140,10 @@ func prepareInstallationBootstrap(
 		return nil, err
 	}
 	if err := validateUserDefaultProfilePictureJob(&administrator, input.DefaultProfilePictureJob); err != nil {
+		return nil, err
+	}
+	administratorSettings := input.AdministratorSettings.Clone()
+	if err := validateInitialUserSettingsDocument(&administrator, administratorSettings); err != nil {
 		return nil, err
 	}
 	at := administrator.CreatedAt
@@ -210,6 +218,7 @@ func prepareInstallationBootstrap(
 		},
 		credential:               credential,
 		auditEvent:               event,
+		AdministratorSettings:    administratorSettings,
 		DefaultProfilePictureJob: input.DefaultProfilePictureJob,
 	}, nil
 }

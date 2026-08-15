@@ -31,7 +31,11 @@ func saveIntegrationUser(t *testing.T, ctx context.Context, persistence store.St
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := persistence.User().Create(ctx, &store.UserCreation{User: user, DefaultProfilePictureJob: job})
+	settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), user.CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := persistence.User().Create(ctx, &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job})
 	if err != nil {
 		t.Fatal(err)
 	}

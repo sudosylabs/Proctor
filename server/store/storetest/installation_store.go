@@ -121,6 +121,13 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if credential.PasswordHash == "" {
 		t.Fatal("bootstrap password hash was not persisted")
 	}
+	settings, err := ss.UserSettings().Get(ctx, winner.Administrator.ID)
+	requireNoError(t, err)
+	if settings.Source != model.UserSettingsInitialSource ||
+		settings.FormatVersion != model.UserSettingsFormatVersion1 ||
+		!settings.CreatedAt.Equal(winner.Administrator.CreatedAt) {
+		t.Fatalf("bootstrap administrator settings = %#v", settings)
+	}
 	probe := testUserCreation(winner.Administrator, nil).DefaultProfilePictureJob
 	queued, inserted, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: probe})
 	requireNoError(t, err)
@@ -160,7 +167,7 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 		panic(appErr)
 	}
 	return &store.InstallationBootstrap{
-		Institution: institution, Administrator: creation.User,
+		Institution: institution, Administrator: creation.User, AdministratorSettings: creation.Settings,
 		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$MTIzNDU2Nzg5MDEyMzQ1Ng$MTIzNDU2Nzg5MDEyMzQ1Ng",
 		Role: &model.Role{
 			ID: model.RoleID(model.NewId()), CreatedAt: model.TimeFromMillis(1),

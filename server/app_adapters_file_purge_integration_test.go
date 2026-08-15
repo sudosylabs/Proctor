@@ -82,7 +82,11 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := persistence.User().Create(ctx, &store.UserCreation{User: user, DefaultProfilePictureJob: job})
+	settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := persistence.User().Create(ctx, &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job})
 	if err != nil {
 		t.Fatal(err)
 	}

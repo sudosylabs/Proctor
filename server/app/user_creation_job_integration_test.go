@@ -28,6 +28,15 @@ func TestLocalUserCreationCommitsDefaultPictureIntent(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
+	settings, err := persistence.UserSettings().Get(context.Background(), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Source != model.UserSettingsInitialSource ||
+		settings.FormatVersion != model.UserSettingsFormatVersion1 ||
+		settings.UserID != user.ID || !settings.Revision.IsValid() {
+		t.Fatalf("local user creation settings = %#v", settings)
+	}
 	jobs, err := persistence.Job().List(context.Background(), store.JobListOptions{
 		Types: []model.JobType{model.JobTypeProfilePictureGenerateDefault}, Limit: 200,
 	})

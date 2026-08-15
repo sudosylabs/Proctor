@@ -49,6 +49,17 @@ func testUserCreationAndDefaultJobAreAtomic(t *testing.T, ss store.Store) {
 	if _, err := ss.Job().Get(ctx, mismatched.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
 		t.Fatalf("mismatched Job was persisted: %v", err)
 	}
+	if _, err := ss.UserSettings().Get(ctx, mismatched.User.ID); !store.IsNotFound(err) {
+		t.Fatalf("settings survived mismatched Job rollback: %v", err)
+	}
+	mismatchedSettings := testUserCreation(newUser(), nil)
+	mismatchedSettings.Settings.UserID = model.NewUserID()
+	if _, err := ss.User().Create(ctx, mismatchedSettings); err == nil {
+		t.Fatal("Create() accepted settings targeting another User")
+	}
+	if _, err := ss.User().Get(ctx, mismatchedSettings.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("user survived mismatched settings rollback: %v", err)
+	}
 	permanent := testUserCreation(newUser(), nil)
 	permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
 	if _, err := ss.User().Create(ctx, permanent); err == nil {
@@ -64,6 +75,11 @@ func testUserCreationAndDefaultJobAreAtomic(t *testing.T, ss store.Store) {
 		result.PasswordCredential == nil || result.PasswordCredential.UserID != result.User.ID {
 		t.Fatalf("Create() result/job = %#v / %#v", result, queued)
 	}
+	settings, err := ss.UserSettings().Get(ctx, result.User.ID)
+	requireNoError(t, err)
+	if settings.Source != model.UserSettingsInitialSource || settings.FormatVersion != model.UserSettingsFormatVersion1 || settings.UserID != result.User.ID {
+		t.Fatalf("created settings = %#v", settings)
+	}
 
 	second := testUserCreation(newUser(), &model.PasswordCredential{PasswordHash: "encoded-password"})
 	second.DefaultProfilePictureJob.ID = first.DefaultProfilePictureJob.ID
@@ -75,6 +91,9 @@ func testUserCreationAndDefaultJobAreAtomic(t *testing.T, ss store.Store) {
 	}
 	if _, err = ss.PasswordCredential().GetByUser(ctx, second.User.ID.String()); !store.IsNotFound(err) {
 		t.Fatalf("credential survived Job rollback: %v", err)
+	}
+	if _, err = ss.UserSettings().Get(ctx, second.User.ID); !store.IsNotFound(err) {
+		t.Fatalf("settings survived Job rollback: %v", err)
 	}
 }
 
@@ -534,7 +553,8 @@ func testUserCreation(input *model.User, credential *model.PasswordCredential) *
 		model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
 		command, user.ID.String(), user.CreatedAt, user.CreatedAt, 8,
 	)
-	return &store.UserCreation{User: &user, PasswordCredential: credential, DefaultProfilePictureJob: job}
+	settings, _ := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), user.CreatedAt)
+	return &store.UserCreation{User: &user, Settings: settings, PasswordCredential: credential, DefaultProfilePictureJob: job}
 }
 
 func defaultProfilePictureCommand(userID model.UserID) json.RawMessage {

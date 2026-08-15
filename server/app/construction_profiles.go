@@ -9,10 +9,20 @@ func constructProfilesAndFiles(
 	deps Dependencies,
 	foundation applicationFoundation,
 	access accessAcademicConstruction,
-) profileFileConstruction {
+) (profileFileConstruction, error) {
 	authorization := userProfileAuthorization{
 		authorization: access.authorization,
 		institutions:  deps.Store.Institution(),
+	}
+	userSettings, err := newUserSettingsService(
+		deps.Store.UserSettings(),
+		userSettingsAuditAdapter{audit: foundation.audit},
+		userSettingsRealtimeEffects{realtime: foundation.realtime},
+		userSettingsEffectReporter{realtime: foundation.realtime},
+		time.Now,
+	)
+	if err != nil {
+		return profileFileConstruction{}, err
 	}
 	return profileFileConstruction{
 		userProfiles: newUserProfileService(
@@ -29,5 +39,6 @@ func constructProfilesAndFiles(
 			nil,
 			time.Now,
 		),
-	}
+		userSettings: userSettings,
+	}, nil
 }

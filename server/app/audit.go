@@ -24,6 +24,47 @@ type auditService struct {
 	now          func() time.Time
 }
 
+type userSettingsAuditAdapter struct{ audit *auditService }
+
+func (a userSettingsAuditAdapter) PrepareReplacement(
+	ctx context.Context,
+	input userSettingsAuditInput,
+) (*model.AuditEvent, error) {
+	if a.audit == nil {
+		return nil, auditUnavailable(errors.New("user settings audit service is unavailable"))
+	}
+	principal := input.Invocation.Principal()
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess ||
+		principal.UserID != input.UserID || !input.PreviousRevision.IsValid() ||
+		!input.ResultingRevision.IsValid() || input.FormatVersion <= 0 || input.SourceBytes < 0 {
+		return nil, NewError("audit.event.invalid")
+	}
+	institution, err := a.audit.institutions.GetSingleton(ctx)
+	if err != nil {
+		return nil, auditUnavailable(err)
+	}
+	parameters, err := model.EncodeAuditData(map[string]any{
+		"previous_revision":  input.PreviousRevision.String(),
+		"resulting_revision": input.ResultingRevision.String(),
+		"format_version":     input.FormatVersion,
+		"source_bytes":       input.SourceBytes,
+	})
+	if err != nil {
+		return nil, domainInvalid("audit.event.invalid", err)
+	}
+	metadata := input.Invocation.RequestMetadata()
+	return &model.AuditEvent{
+		ActorID: principal.UserID, SessionID: principal.SessionID,
+		Action:    "user.settings.replace",
+		Resource:  model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+		Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
+		NodeID: a.audit.nodeID, ClientType: string(principal.ClientType),
+		AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress,
+		UserAgent: metadata.UserAgent, Parameters: parameters,
+	}, nil
+}
+
 func newAuditService(audits store.AuditStore, institutions store.InstitutionStore, nodeID string) (*auditService, error) {
 	if audits == nil {
 		return nil, errors.New("audit store is required")

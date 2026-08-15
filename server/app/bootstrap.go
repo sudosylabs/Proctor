@@ -118,13 +118,18 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "administrator").Wrap(err)
 	}
+	administratorSettings, err := prepareInitialUserSettingsDocument(administrator)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "administrator").Wrap(err)
+	}
 	result, err := s.installations.Bootstrap(ctx, &store.InstallationBootstrap{
 		Institution: &model.Institution{
 			Name: command.InstitutionName, DisplayName: command.InstitutionDisplayName,
 			Description: command.InstitutionDescription,
 		},
-		Administrator: administrator,
-		PasswordHash:  hash,
+		Administrator:         administrator,
+		AdministratorSettings: administratorSettings,
+		PasswordHash:          hash,
 		Role: &model.Role{
 			Name:        model.SystemAdministratorRoleName,
 			DisplayName: "System Administrator",

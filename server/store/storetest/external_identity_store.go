@@ -62,7 +62,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				Provider: "campus-cas", Subject: "new-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
-				User: creation.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+				User: creation.User, Settings: creation.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
 					Action:    "authentication.external_provision",
 					ScopeType: model.RoleScopeInstitution,
 					ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
@@ -79,6 +79,13 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 		if queued.DedupeKey != resolved.User.ID.String() || queued.Status != model.JobStatusQueued {
 			t.Fatalf("provisioned default-picture job = %#v", queued)
+		}
+		settings, err := ss.UserSettings().Get(ctx, resolved.User.ID)
+		requireNoError(t, err)
+		if settings.Source != model.UserSettingsInitialSource ||
+			settings.FormatVersion != model.UserSettingsFormatVersion1 ||
+			!settings.CreatedAt.Equal(resolved.User.CreatedAt) {
+			t.Fatalf("provisioned user settings = %#v", settings)
 		}
 		audits, err := ss.Audit().List(ctx, store.AuditListOptions{
 			Action: "authentication.external_provision",
@@ -119,7 +126,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "different-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			}, User: creation.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+			}, User: creation.User, Settings: creation.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
 				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
@@ -140,6 +147,9 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		}
 		if _, err := ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
 			t.Fatalf("colliding provision default-picture job was persisted: %v", err)
+		}
+		if _, err := ss.UserSettings().Get(ctx, creation.User.ID); !store.IsNotFound(err) {
+			t.Fatalf("colliding provision settings were persisted: %v", err)
 		}
 	})
 
@@ -162,7 +172,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: subject,
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			}, User: creation.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+			}, User: creation.User, Settings: creation.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
 				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess,
 				NodeID: "test-node", AuthMethod: "cas",
@@ -180,6 +190,9 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		if _, err = ss.Job().Get(ctx, creation.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
 			t.Fatalf("mismatched provision Job was persisted: %v", err)
 		}
+		if _, err = ss.UserSettings().Get(ctx, creation.User.ID); !store.IsNotFound(err) {
+			t.Fatalf("mismatched provision settings survived rollback: %v", err)
+		}
 		after, err := ss.Audit().List(ctx, store.AuditListOptions{
 			Action: "authentication.external_provision", Limit: 100,
 		})
@@ -191,7 +204,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
 		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
 			Identity: &model.ExternalIdentity{Provider: "campus-cas", Subject: "permanent-job-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
-			User:     permanent.User, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+			User:     permanent.User, Settings: permanent.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
 				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "test-node", AuthMethod: "cas",
 			}, DefaultProfilePictureJob: permanent.DefaultProfilePictureJob,

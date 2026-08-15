@@ -82,6 +82,7 @@ type authenticationStoreFake struct {
 	saveErr             error
 	maximumPerUser      int
 	createdJob          *model.Job
+	createdSettings     *model.UserSettingsDocument
 	rotation            *store.SessionRotation
 	rotatedAccess       *model.SessionCredential
 	rotatedRefresh      *model.SessionCredential
@@ -146,6 +147,11 @@ func (s authenticationUserStore) Create(
 	_ context.Context,
 	input *store.UserCreation,
 ) (*store.UserCreationResult, error) {
+	if input.Settings == nil || input.Settings.UserID != input.User.ID ||
+		input.Settings.Source != model.UserSettingsInitialSource ||
+		input.Settings.FormatVersion != model.UserSettingsFormatVersion1 {
+		return nil, errors.New("invalid initial user settings")
+	}
 	cloned := *input.User
 	s.root.users[cloned.ID.String()] = &cloned
 	s.root.usersByUsername[strings.ToLower(cloned.Username)] = &cloned
@@ -154,6 +160,7 @@ func (s authenticationUserStore) Create(
 	s.root.passwords[cloned.ID.String()] = &pass
 	job := *input.DefaultProfilePictureJob
 	s.root.createdJob = &job
+	s.root.createdSettings = input.Settings.Clone()
 	return &store.UserCreationResult{User: &cloned, PasswordCredential: &pass}, nil
 }
 
@@ -798,6 +805,11 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 	if persistence.createdJob == nil || persistence.createdJob.DedupeKey != user.ID.String() ||
 		persistence.createdJob.Type != model.JobTypeProfilePictureGenerateDefault {
 		t.Fatalf("local user default-picture job = %#v", persistence.createdJob)
+	}
+	if persistence.createdSettings == nil || persistence.createdSettings.UserID != user.ID ||
+		persistence.createdSettings.Source != model.UserSettingsInitialSource ||
+		persistence.createdSettings.FormatVersion != model.UserSettingsFormatVersion1 {
+		t.Fatalf("local user settings = %#v", persistence.createdSettings)
 	}
 
 	result, err := service.login(context.Background(), LoginCommand{

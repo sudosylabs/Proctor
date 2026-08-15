@@ -269,6 +269,7 @@ type Catalog interface {
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore
 	User() UserStore
+	UserSettings() UserSettingsStore
 	File() FileStore
 	Job() JobStore
 	ExternalIdentity() ExternalIdentityStore
@@ -308,6 +309,7 @@ type Store interface {
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore
 	User() UserStore
+	UserSettings() UserSettingsStore
 	File() FileStore
 	Job() JobStore
 	ExternalIdentity() ExternalIdentityStore
@@ -885,6 +887,7 @@ type UserDisabledStateResult struct {
 // external/imported accounts do not need to invent a local credential.
 type UserCreation struct {
 	User                     *model.User
+	Settings                 *model.UserSettingsDocument
 	PasswordCredential       *model.PasswordCredential
 	DefaultProfilePictureJob *model.Job
 }
@@ -910,6 +913,32 @@ type UserStore interface {
 	UpdateLastLogin(context.Context, string, int64) error
 }
 
+// UserSettingsStore owns the exact current User Settings Document. Mutations
+// are added only through named atomic contracts; it is not a generic file or
+// configuration store.
+type UserSettingsStore interface {
+	Get(context.Context, model.UserID) (*model.UserSettingsDocument, error)
+	Replace(context.Context, *UserSettingsReplacement, *CommandIdempotency) (*UserSettingsReplacementResult, error)
+}
+
+type UserSettingsReplacement struct {
+	UserID           model.UserID
+	Source           string
+	FormatVersion    int
+	ExpectedRevision model.UserSettingsRevision
+	NextRevision     model.UserSettingsRevision
+	UpdatedAt        time.Time
+	AuditEvent       *model.AuditEvent
+}
+
+type UserSettingsReplacementResult struct {
+	Revision      model.UserSettingsRevision `json:"revision"`
+	FormatVersion int                        `json:"format_version"`
+	UpdatedAt     time.Time                  `json:"updated_at"`
+	Changed       bool                       `json:"changed"`
+	Replayed      bool                       `json:"-"`
+}
+
 type ExternalIdentityResolution struct {
 	Identity    *model.ExternalIdentity
 	User        *model.User
@@ -919,6 +948,7 @@ type ExternalIdentityResolution struct {
 type ExternalIdentityResolutionRequest struct {
 	Identity                 *model.ExternalIdentity
 	User                     *model.User
+	Settings                 *model.UserSettingsDocument
 	AutoProvision            bool
 	ProvisionAudit           *model.AuditEvent
 	DefaultProfilePictureJob *model.Job
@@ -1311,6 +1341,7 @@ type AuditStore interface {
 type InstallationBootstrap struct {
 	Institution              *model.Institution
 	Administrator            *model.User
+	AdministratorSettings    *model.UserSettingsDocument
 	PasswordHash             string
 	Role                     *model.Role
 	RoleBinding              *model.RoleBinding

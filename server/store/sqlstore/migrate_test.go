@@ -78,6 +78,7 @@ var baselineTables = []string{
 	"submission_review_inventory_flags",
 	"submission_reviews",
 	"upload_leases",
+	"user_settings_documents",
 	"user_tokens",
 	"users",
 }
@@ -249,6 +250,7 @@ func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrato
 		TRUNCATE TABLE
 			cluster_discovery_nodes, job_attempts, jobs, external_login_states, installation_states,
 			audit_events, mfa_recovery_codes, mfa_credentials, user_tokens,
+			user_settings_documents,
 			personal_access_tokens, session_credentials, sessions, role_bindings,
 			roles, class_members, exam_submission_manifest_entries, exam_submissions,
 			exam_attempt_suspensions, integrity_evidence, integrity_flags,

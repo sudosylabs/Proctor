@@ -244,8 +244,11 @@ func (s *LifecycleStore) ExamStarterWorkspace() store.ExamStarterWorkspaceStore 
 }
 func (s *LifecycleStore) Class() store.ClassStore { return lifecycleClassStore{} }
 func (s *LifecycleStore) User() store.UserStore   { return lifecycleUserStore{} }
-func (s *LifecycleStore) File() store.FileStore   { return nil }
-func (s *LifecycleStore) Job() store.JobStore     { return nil }
+func (s *LifecycleStore) UserSettings() store.UserSettingsStore {
+	return lifecycleUserSettingsStore{}
+}
+func (s *LifecycleStore) File() store.FileStore { return nil }
+func (s *LifecycleStore) Job() store.JobStore   { return nil }
 func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore {
 	return lifecycleExternalIdentityStore{}
 }
@@ -318,6 +321,7 @@ var _ store.Store = (*LifecycleStore)(nil)
 // composition graph to validate focused service dependencies while keeping
 // lifecycle tests free of unrelated persistence behavior.
 type lifecycleUserStore struct{ store.UserStore }
+type lifecycleUserSettingsStore struct{ store.UserSettingsStore }
 type lifecycleInstitutionStore struct{ store.InstitutionStore }
 type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }
 type lifecycleAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }

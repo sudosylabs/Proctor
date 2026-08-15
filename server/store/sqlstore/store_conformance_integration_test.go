@@ -102,6 +102,7 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"ExamStarterWorkspace", storetest.TestExamStarterWorkspaceStore},
 		{"Class", storetest.TestClassStore},
 		{"User", storetest.TestUserStore},
+		{"UserSettings", storetest.TestUserSettingsStore},
 		{"File", storetest.TestFileStore},
 		{"Job", storetest.TestJobStore},
 		{"ExternalIdentity", storetest.TestExternalIdentityStore},
@@ -1125,6 +1126,52 @@ func TestClassStore(t *testing.T) {
 
 func TestUserStore(t *testing.T) {
 	StoreTest(t, storetest.TestUserStore)
+}
+
+func TestUserSettingsStore(t *testing.T) {
+	StoreTest(t, storetest.TestUserSettingsStore)
+}
+
+func TestUserSettingsRequiredRowAndCascade(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	ctx := context.Background()
+
+	missing := saveIntegrationUser(t, ctx, persistence, &model.User{
+		Username: "settings-missing-row",
+		Email:    "settings-missing-row@example.test",
+	})
+	if _, err := persistence.GetMaster().Exec(
+		ctx,
+		"DELETE FROM user_settings_documents WHERE user_id = $1",
+		missing.ID.String(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.UserSettings().Get(ctx, missing.ID); err == nil || store.IsNotFound(err) ||
+		strings.Contains(err.Error(), missing.ID.String()) {
+		t.Fatalf("missing required settings row error = %v", err)
+	}
+
+	cascaded := saveIntegrationUser(t, ctx, persistence, &model.User{
+		Username: "settings-cascade",
+		Email:    "settings-cascade@example.test",
+	})
+	if _, err := persistence.GetMaster().Exec(ctx, "DELETE FROM users WHERE id = $1", cascaded.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := persistence.GetMaster().Get(
+		ctx,
+		&count,
+		"SELECT count(*) FROM user_settings_documents WHERE user_id = $1",
+		cascaded.ID.String(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("hard-deleted User retained %d settings rows", count)
+	}
 }
 
 func TestFileStore(t *testing.T) {

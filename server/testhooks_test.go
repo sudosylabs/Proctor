@@ -81,9 +81,12 @@ func (s *hookStore) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
 func (s *hookStore) Class() store.ClassStore             { return hookClassStore{} }
 func (s *hookStore) Affiliation() store.AffiliationStore { return nil }
 func (s *hookStore) User() store.UserStore               { return hookUserStore{} }
-func (s *hookStore) File() store.FileStore               { return nil }
-func (s *hookStore) Job() store.JobStore                 { return nil }
-func (s *hookStore) Session() store.SessionStore         { return hookSessionStore{} }
+func (s *hookStore) UserSettings() store.UserSettingsStore {
+	return hookUserSettingsStore{}
+}
+func (s *hookStore) File() store.FileStore       { return nil }
+func (s *hookStore) Job() store.JobStore         { return nil }
+func (s *hookStore) Session() store.SessionStore { return hookSessionStore{} }
 func (s *hookStore) SessionCredential() store.SessionCredentialStore {
 	return hookSessionCredentialStore{}
 }
@@ -146,6 +149,7 @@ type hookExamStarterWorkspaceStore struct {
 type hookAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 
 type hookUserStore struct{ store.UserStore }
+type hookUserSettingsStore struct{ store.UserSettingsStore }
 type hookInstitutionStore struct{ store.InstitutionStore }
 type hookAcademicUnitStore struct{ store.AcademicUnitStore }
 type hookClassStore struct{ store.ClassStore }

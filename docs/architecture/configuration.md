@@ -1,7 +1,7 @@
 # Configuration
 
-Deployment configuration is operator-owned; application settings are durable
-application data changed through authorized use cases.
+Deployment configuration is operator-owned; institution application settings
+are durable application data changed through authorized use cases.
 
 Deployment configuration includes listeners/public URL, PostgreSQL, cache,
 cluster, VFS, SMTP, external identity providers, logging, secrets, and process
@@ -28,3 +28,8 @@ Runtime reconfiguration is capability-specific. Logging and the external
 provider registry reconfigure dynamically; listener addresses, HTTP limits,
 cluster backend, and node identity require restart. Structural validation and
 external connectivity diagnostics remain separate.
+
+A User-owned portable presentation document is neither deployment
+configuration nor an institution application setting. Its exact-source,
+revision, self-access, and client-interpretation boundaries are defined in
+[User settings](./user-settings.md); it never enters `config.Store`.

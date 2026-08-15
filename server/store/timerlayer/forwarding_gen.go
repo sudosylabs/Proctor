@@ -57,6 +57,8 @@ type timedStores struct {
 	classOnce                sync.Once
 	user                     store.UserStore
 	userOnce                 sync.Once
+	userSettings             store.UserSettingsStore
+	userSettingsOnce         sync.Once
 	externalIdentity         store.ExternalIdentityStore
 	externalIdentityOnce     sync.Once
 	externalLoginState       store.ExternalLoginStateStore
@@ -192,6 +194,11 @@ type timedClassStore struct {
 type timedUserStore struct {
 	layer *Layer
 	next  store.UserStore
+}
+
+type timedUserSettingsStore struct {
+	layer *Layer
+	next  store.UserSettingsStore
 }
 
 type timedExternalIdentityStore struct {
@@ -437,6 +444,16 @@ func (l *Layer) User() store.UserStore {
 		}
 	})
 	return l.stores.user
+}
+
+func (l *Layer) UserSettings() store.UserSettingsStore {
+	l.stores.userSettingsOnce.Do(func() {
+		next := l.next.UserSettings()
+		if next != nil {
+			l.stores.userSettings = &timedUserSettingsStore{layer: l, next: next}
+		}
+	})
+	return l.stores.userSettings
 }
 
 func (l *Layer) File() store.FileStore {
@@ -1835,6 +1852,18 @@ func (s *timedUserStore) UpdateLastLogin(arg0 context.Context, arg1 string, arg2
 	})
 }
 
+func (s *timedUserSettingsStore) Get(arg0 context.Context, arg1 model.UserID) (*model.UserSettingsDocument, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUserSettings, methodGet), func() (*model.UserSettingsDocument, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedUserSettingsStore) Replace(arg0 context.Context, arg1 *store.UserSettingsReplacement, arg2 *store.CommandIdempotency) (*store.UserSettingsReplacementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUserSettings, methodReplace), func() (*store.UserSettingsReplacementResult, error) {
+		return s.next.Replace(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExternalIdentityStore) Save(arg0 context.Context, arg1 *model.ExternalIdentity) (*model.ExternalIdentity, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodSave), func() (*model.ExternalIdentity, error) {
 		return s.next.Save(arg0, arg1)
@@ -2380,6 +2409,7 @@ var (
 	_ store.AcademicPeriodStore       = (*timedAcademicPeriodStore)(nil)
 	_ store.ClassStore                = (*timedClassStore)(nil)
 	_ store.UserStore                 = (*timedUserStore)(nil)
+	_ store.UserSettingsStore         = (*timedUserSettingsStore)(nil)
 	_ store.ExternalIdentityStore     = (*timedExternalIdentityStore)(nil)
 	_ store.ExternalLoginStateStore   = (*timedExternalLoginStateStore)(nil)
 	_ store.UserTokenStore            = (*timedUserTokenStore)(nil)

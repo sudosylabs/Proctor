@@ -239,6 +239,23 @@ VFS owns opaque bytes. Candidate access is protected in-application use, with
 no candidate download/export surface. The complete accepted contract and
 delivery order are in [Examinations](../architecture/examinations.md).
 
+## Implemented user settings
+
+The server-owned User Settings Document is implemented as one exact bounded
+JSONC source document per User behind session-only self read and conditional
+replacement. It provides opaque revision fencing, command idempotency,
+structural validation, safe mutation audit, forward-compatible read-only
+access, and content-free refetch events. PostgreSQL, not VFS or an Attempt
+Workspace, owns the source; the desktop registry alone interprets recognized
+presentation preferences. The complete contract is in
+[User settings](../architecture/user-settings.md).
+
+The initial server slice excludes profiles, keybindings, device/restoration
+state, client registry and UI work, server-visible source history, and every
+Exam Attempt integration. In particular, Candidate Settings Baseline capture
+is deferred to a separately designed Attempt-admission phase and must not
+widen the User Settings module.
+
 ## Open decisions
 
 - Choose and define the next external identity provider after CAS and OIDC:
@@ -262,9 +279,8 @@ delivery order are in [Examinations](../architecture/examinations.md).
 - Define the next product slice beyond the completed initial Examination Core;
   grading, scores, rubrics, pass/fail decisions, and academic outcomes remain
   deliberately outside the accepted core boundary until separately designed.
-- Extend server-owned file handling for validated IDE preferences alongside
-  the examination-specific resource and workspace boundaries. Resource search
-  is deferred because an Exam initially has at most ten active resources.
+- Resource search remains deferred because an Exam initially has at most ten
+  active resources.
 
 ## Optional engineering follow-ups
 

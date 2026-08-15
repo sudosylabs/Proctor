@@ -618,6 +618,39 @@
         }
       }
     },
+    "/api/v1/users/me/settings": {
+      "get": {
+        "operationId": "getCurrentUserSettings",
+        "summary": "Get the signed-in User's exact settings.json source",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "user_settings.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/UserSettingsOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "put": {
+        "operationId": "replaceCurrentUserSettings",
+        "summary": "Conditionally replace the signed-in User's exact settings.json source",
+        "x-proctor-auth": "session_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "request.invalid", "user_settings.invalid", "user_settings.format_unsupported", "user_settings.revision_conflict", "user_settings.unavailable", "audit.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ReplaceUserSettings"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/UserSettingsReplaced"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
     "/api/v1/users/{user_id}": {
       "parameters": [{"$ref": "#/components/parameters/UserID"}],
       "get": {
@@ -2478,6 +2511,10 @@
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateUserProfileRequest"}}}
       },
+      "ReplaceUserSettings": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserSettingsReplaceRequest"}}}
+      },
       "CreateRole": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateRoleRequest"}}}
@@ -2829,6 +2866,8 @@
       "ClassMemberEnded": {"description": "Class Member ended", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ClassMemberResponse"}}}},
       "UserProfileOK": {"description": "User profile", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserProfileResponse"}}}},
       "UserProfileListOK": {"description": "User profile collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserProfileListResponse"}}}},
+      "UserSettingsOK": {"description": "Exact current User Settings Document", "headers": {"Cache-Control": {"$ref": "#/components/headers/PrivateNoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserSettingsResponse"}}}},
+      "UserSettingsReplaced": {"description": "User Settings Document replacement outcome", "headers": {"Cache-Control": {"$ref": "#/components/headers/PrivateNoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserSettingsReplacementResponse"}}}},
       "ProfilePictureOK": {"description": "Normalized private profile-picture rendition", "headers": {"ETag": {"schema": {"type": "string"}}, "Cache-Control": {"schema": {"type": "string"}}}, "content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}}},
       "SessionAdministrationListOK": {"description": "Administrative session list", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionAdministrationListResponse"}}}},
       "SessionAdministrationRevoked": {"description": "Session(s) revoked"},
@@ -2873,7 +2912,8 @@
       ,"NotImplemented": {"description": "Capability is not enabled", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}}
     },
     "headers": {
-      "NoStore": {"description": "Prevents storage of sensitive responses.", "schema": {"type": "string", "const": "no-store"}}
+      "NoStore": {"description": "Prevents storage of sensitive responses.", "schema": {"type": "string", "const": "no-store"}},
+      "PrivateNoStore": {"description": "Marks a private response and prevents all storage.", "schema": {"type": "string", "const": "private, no-store"}}
     },
     "schemas": {
       "ID": {
@@ -4174,6 +4214,36 @@
         }
       },
       "UserProfileListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/UserProfileResponse"}},
+      "UserSettingsResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["source", "format_version", "revision", "writable", "updated_at"],
+        "properties": {
+          "source": {"type": "string", "maxLength": 262144},
+          "format_version": {"type": "integer", "minimum": 1},
+          "revision": {"$ref": "#/components/schemas/ID"},
+          "writable": {"type": "boolean"},
+          "updated_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "UserSettingsReplaceRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["source", "format_version", "expected_revision"],
+        "properties": {
+          "source": {"type": "string", "maxLength": 262144},
+          "format_version": {"type": "integer", "minimum": 1},
+          "expected_revision": {"$ref": "#/components/schemas/ID"}
+        }
+      },
+      "UserSettingsReplacementResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["revision", "format_version", "updated_at", "changed"],
+        "properties": {
+          "revision": {"$ref": "#/components/schemas/ID"},
+          "format_version": {"type": "integer", "minimum": 1},
+          "updated_at": {"type": "integer", "format": "int64"},
+          "changed": {"type": "boolean"}
+        }
+      },
       "SessionAdministrationResponse": {
         "type": "object", "additionalProperties": false,
         "required": ["id", "create_at", "update_at", "delete_at", "user_id", "client_type", "authentication_method", "authentication_strength", "authenticated_at", "last_activity_at", "idle_expires_at", "expires_at"],

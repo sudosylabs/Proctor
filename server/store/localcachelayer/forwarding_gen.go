@@ -54,6 +54,8 @@ type localCacheStores struct {
 	classOnce                sync.Once
 	user                     store.UserStore
 	userOnce                 sync.Once
+	userSettings             store.UserSettingsStore
+	userSettingsOnce         sync.Once
 	externalIdentity         store.ExternalIdentityStore
 	externalIdentityOnce     sync.Once
 	externalLoginState       store.ExternalLoginStateStore
@@ -188,6 +190,11 @@ type classStore struct {
 
 type userStore struct {
 	store.UserStore
+	layer *Layer
+}
+
+type userSettingsStore struct {
+	store.UserSettingsStore
 	layer *Layer
 }
 
@@ -436,6 +443,16 @@ func (l *Layer) User() store.UserStore {
 	return l.stores.user
 }
 
+func (l *Layer) UserSettings() store.UserSettingsStore {
+	l.stores.userSettingsOnce.Do(func() {
+		next := l.Store.UserSettings()
+		if next != nil {
+			l.stores.userSettings = &userSettingsStore{UserSettingsStore: next, layer: l}
+		}
+	})
+	return l.stores.userSettings
+}
+
 func (l *Layer) File() store.FileStore {
 	l.stores.fileOnce.Do(func() {
 		next := l.Store.File()
@@ -649,6 +666,7 @@ var (
 	_ store.AcademicPeriodStore       = (*academicPeriodStore)(nil)
 	_ store.ClassStore                = (*classStore)(nil)
 	_ store.UserStore                 = (*userStore)(nil)
+	_ store.UserSettingsStore         = (*userSettingsStore)(nil)
 	_ store.ExternalIdentityStore     = (*externalIdentityStore)(nil)
 	_ store.ExternalLoginStateStore   = (*externalLoginStateStore)(nil)
 	_ store.UserTokenStore            = (*userTokenStore)(nil)

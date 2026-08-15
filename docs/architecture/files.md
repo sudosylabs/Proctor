@@ -53,16 +53,14 @@ Attempt-specific acknowledgement protocol described below.
 ## Domain ownership and events
 
 The file capability returns a generic committed-change result. The owning
-application use case emits domain meaning such as
-`UserProfilePictureChanged`, `UserIDEPreferencesChanged`,
+application use case emits domain meaning such as `UserProfilePictureChanged`,
 `ExamResourceChanged`, or `AttemptFileChanged`. The file capability does not
 know every consumer or invent domain-specific event names.
 
-IDE preferences are bounded JSON objects whose setting keys are governed by VS
-Code. Proctor validates structural safety and denies settings that would weaken
-the exam environment; it does not duplicate the evolving VS Code schema. The
-normalized preferences are authoritative, and `settings.json` is their
-materialized workspace representation.
+A [User Settings Document](./user-settings.md) is exact PostgreSQL-owned JSONC
+source behind a dedicated self-service resource. It is not a File Entry, VFS
+object, immutable File Revision, or materialized Workspace file, and file
+capabilities never parse, authorize, retain, or publish its changes.
 
 Clients use purpose-specific operations rather than a generic endpoint that
 accepts arbitrary owners or purposes. Profile-picture, exam-resource, and
@@ -90,12 +88,11 @@ New revisions pass through `Pending` to `Available`, `Quarantined`, or
 or projected into an execution environment. Content inspection may initially
 be a no-op adapter, but consumers cannot bypass the availability boundary.
 
-Retention is purpose-specific. Replaced profile pictures and older IDE
-preferences may expire after bounded recovery windows. Exam-resource revisions
-remain while a sitting references them; attempt files, journals, and sealed
-submission revisions remain for the applicable examination-record period.
-Quarantined and rejected content remains only as long as security review and
-audit require.
+Retention is purpose-specific. Replaced profile pictures may expire after
+bounded recovery windows. Exam-resource revisions remain while a sitting
+references them; attempt files, journals, and sealed submission revisions
+remain for the applicable examination-record period. Quarantined and rejected
+content remains only as long as security review and audit require.
 
 ## Search
 

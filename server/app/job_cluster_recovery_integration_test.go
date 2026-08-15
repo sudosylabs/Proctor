@@ -37,7 +37,11 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = persistence.User().Create(context.Background(), &store.UserCreation{User: user, DefaultProfilePictureJob: job}); err != nil {
+			settings, settingsErr := prepareInitialUserSettingsDocument(user)
+			if settingsErr != nil {
+				t.Fatal(settingsErr)
+			}
+			if _, err = persistence.User().Create(context.Background(), &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job}); err != nil {
 				t.Fatal(err)
 			}
 

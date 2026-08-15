@@ -11,6 +11,8 @@ package store
 import (
 	"errors"
 	"fmt"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // ErrInvalidInput reports that a repository received a model in a state it
@@ -83,6 +85,16 @@ func (*ErrIdempotencyConflict) Error() string {
 type ErrIdempotencyInProgress struct{}
 
 func (*ErrIdempotencyInProgress) Error() string { return "idempotent command is still in progress" }
+
+// ErrUserSettingsRevisionConflict carries only the safe current opaque
+// revision hint. It never carries the current settings source.
+type ErrUserSettingsRevisionConflict struct {
+	CurrentRevision model.UserSettingsRevision
+}
+
+func (e *ErrUserSettingsRevisionConflict) Error() string {
+	return "user settings revision conflicts with current state"
+}
 
 func NewErrConflict(resource, constraint string, cause error) *ErrConflict {
 	return &ErrConflict{Resource: resource, Constraint: constraint, cause: cause}

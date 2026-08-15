@@ -279,6 +279,17 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX users_username_key ON users (username) WHERE archived_at IS NULL;
 CREATE UNIQUE INDEX users_email_key ON users (email) WHERE archived_at IS NULL;
 
+CREATE TABLE user_settings_documents (
+    user_id varchar(26) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    source text NOT NULL,
+    format_version integer NOT NULL CHECK (format_version > 0),
+    revision varchar(26) NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    CONSTRAINT user_settings_documents_source_size_check CHECK (octet_length(source) <= 262144),
+    CONSTRAINT user_settings_documents_lifecycle_check CHECK (updated_at >= created_at)
+);
+
 CREATE TABLE upload_leases (
     id varchar(26) PRIMARY KEY,
     file_revision_id varchar(26) NOT NULL UNIQUE REFERENCES file_revisions(id),
@@ -2152,9 +2163,12 @@ CREATE TABLE command_outcomes (
     fingerprint bytea NOT NULL CHECK (octet_length(fingerprint) = 32),
     outcome_version integer NOT NULL CHECK (outcome_version > 0),
     outcome jsonb NOT NULL CHECK (octet_length(outcome::text) <= 65536),
-    original_audit_event_id varchar(26) NOT NULL REFERENCES audit_events(id),
+    original_audit_event_id varchar(26) REFERENCES audit_events(id),
     created_at timestamptz NOT NULL,
     expires_at timestamptz NOT NULL,
+    CONSTRAINT command_outcomes_audit_required_check CHECK (
+        original_audit_event_id IS NOT NULL OR operation = 'user_settings.replace'
+    ),
     PRIMARY KEY (user_id, operation, key_digest),
     CONSTRAINT command_outcomes_lifecycle_check CHECK (expires_at > created_at),
     CONSTRAINT command_outcomes_operation_check
@@ -2562,6 +2576,12 @@ ALTER TABLE users
     CHECK (default_profile_picture_file_id IS NULL OR default_profile_picture_file_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT users_custom_profile_picture_file_id_canonical_check
     CHECK (custom_profile_picture_file_id IS NULL OR custom_profile_picture_file_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE user_settings_documents
+    ADD CONSTRAINT user_settings_documents_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT user_settings_documents_revision_canonical_check
+    CHECK (revision ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE upload_leases
     ADD CONSTRAINT upload_leases_id_canonical_check

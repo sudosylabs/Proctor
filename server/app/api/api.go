@@ -115,6 +115,7 @@ type Options struct {
 	AcademicUnitMembers     AcademicUnitMemberApplication
 	ClassMembers            ClassMemberApplication
 	UserProfiles            UserProfileApplication
+	UserSettings            UserSettingsApplication
 	AccountStates           AccountStateApplication
 	SessionAdministrations  SessionAdministrationApplication
 	Roles                   RoleApplication
@@ -219,6 +220,11 @@ type UserProfileApplication interface {
 	UploadProfilePicture(context.Context, application.Invocation, application.UploadProfilePictureCommand) (*model.User, error)
 	RemoveProfilePicture(context.Context, application.Invocation, application.RemoveProfilePictureCommand) (*model.User, error)
 	GetProfilePicture(context.Context, application.Invocation, application.GetProfilePictureQuery) (*application.ProfilePictureContent, error)
+}
+
+type UserSettingsApplication interface {
+	ReadOwnUserSettings(context.Context, application.Invocation) (application.UserSettingsView, error)
+	ReplaceOwnUserSettings(context.Context, application.Invocation, application.ReplaceOwnUserSettingsCommand) (application.UserSettingsReplacementResult, error)
 }
 
 type AcademicUnitApplication interface {
@@ -533,6 +539,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		authenticationResource(options.Application, cookies),
 		externalAuthenticationResource(options.Application, cookies),
 		userProfileResource(options.UserProfiles),
+		userSettingsResource(options.UserSettings),
 		userAdministrationResource(options.AccountStates, options.SessionAdministrations),
 		sessionResource(options.Application, cookies),
 		mfaResource(options.Application),
@@ -673,7 +680,9 @@ func (a *API) allowedMethods(request *http.Request) []string {
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
 	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
+	if writer.Header().Get("Cache-Control") == "" {
+		writer.Header().Set("Cache-Control", "no-store")
+	}
 	writer.WriteHeader(status)
 	_ = json.NewEncoder(writer).Encode(value)
 }

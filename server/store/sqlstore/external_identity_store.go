@@ -169,7 +169,7 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 		if !request.AutoProvision {
 			return nil, store.NewErrNotFound("external_identity", provider)
 		}
-		if request.User == nil || request.ProvisionAudit == nil ||
+		if request.User == nil || request.Settings == nil || request.ProvisionAudit == nil ||
 			!request.ProvisionAudit.ID.IsZero() || request.DefaultProfilePictureJob == nil {
 			return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
 		}
@@ -185,6 +185,10 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 		if err := validateUserDefaultProfilePictureJob(&userCandidate, request.DefaultProfilePictureJob); err != nil {
 			return nil, err
 		}
+		settingsCandidate := request.Settings.Clone()
+		if err := validateInitialUserSettingsDocument(&userCandidate, settingsCandidate); err != nil {
+			return nil, err
+		}
 		identityCandidate := *identity
 		identityCandidate.Provider = provider
 		identityCandidate.UserID = userCandidate.ID
@@ -193,6 +197,9 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 			return nil, err
 		}
 		if err := insertUser(ctx, tx, &userCandidate); err != nil {
+			return nil, err
+		}
+		if err := insertUserSettingsDocument(ctx, tx, settingsCandidate); err != nil {
 			return nil, err
 		}
 		if err := insertExternalIdentity(ctx, tx, &identityCandidate); err != nil {

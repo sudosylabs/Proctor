@@ -195,6 +195,15 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		!user.EmailVerified {
 		t.Fatalf("provisioned user = %#v, %v", user, err)
 	}
+	settings, err := persistence.UserSettings().Get(context.Background(), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Source != model.UserSettingsInitialSource ||
+		settings.FormatVersion != model.UserSettingsFormatVersion1 ||
+		settings.UserID != user.ID || !settings.Revision.IsValid() {
+		t.Fatalf("externally provisioned user settings = %#v", settings)
+	}
 	jobs, err := persistence.Job().List(context.Background(), store.JobListOptions{
 		Types: []model.JobType{model.JobTypeProfilePictureGenerateDefault}, Limit: 200,
 	})

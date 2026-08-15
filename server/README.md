@@ -110,6 +110,9 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /api/v1/auth/providers/{provider_id}/callback` (browser-bound provider
   callback)
 - `GET /api/v1/users/me`
+- `GET /api/v1/users/me/settings` and `PUT /api/v1/users/me/settings`
+  (interactive Session only; exact JSONC source with conditional revision and
+  required `Idempotency-Key` on replacement)
 - `GET /api/v1/users/me/sessions`
 - `POST /api/v1/users/me/sessions/revoke`
 - `POST /api/v1/users/me/sessions/revoke-all`

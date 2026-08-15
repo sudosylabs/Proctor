@@ -149,6 +149,12 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 		persistence.input.DefaultProfilePictureJob.DedupeKey != persistence.input.Administrator.ID.String() {
 		t.Fatalf("bootstrap default-picture job = %#v", persistence.input.DefaultProfilePictureJob)
 	}
+	if persistence.input.AdministratorSettings == nil ||
+		persistence.input.AdministratorSettings.UserID != persistence.input.Administrator.ID ||
+		persistence.input.AdministratorSettings.Source != model.UserSettingsInitialSource ||
+		persistence.input.AdministratorSettings.FormatVersion != model.UserSettingsFormatVersion1 {
+		t.Fatalf("bootstrap administrator settings = %#v", persistence.input.AdministratorSettings)
+	}
 	want := []string{"get-status", "rate-limit", "hash-password", "bootstrap"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)

@@ -380,8 +380,13 @@ func (s *externalAuthenticationService) complete(
 		return nil, appErr
 	}
 	var defaultPictureJob *model.Job
+	var userSettings *model.UserSettingsDocument
 	if provider.AutoProvision() {
 		userCandidate, defaultPictureJob, err = prepareUserDefaultProfilePictureJob(userCandidate, nowTime)
+		if err != nil {
+			return nil, authenticationUnavailable(err)
+		}
+		userSettings, err = prepareInitialUserSettingsDocument(userCandidate)
 		if err != nil {
 			return nil, authenticationUnavailable(err)
 		}
@@ -392,7 +397,7 @@ func (s *externalAuthenticationService) complete(
 				Provider: providerID, Subject: assertion.Subject,
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
-			User: userCandidate, AutoProvision: provider.AutoProvision(),
+			User: userCandidate, Settings: userSettings, AutoProvision: provider.AutoProvision(),
 			ProvisionAudit: &model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,

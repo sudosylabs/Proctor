@@ -30,6 +30,9 @@ type testMailer struct{}
 
 func (testStore) File() store.FileStore { return nil }
 func (testStore) Job() store.JobStore   { return nil }
+func (testStore) UserSettings() store.UserSettingsStore {
+	return nil
+}
 
 type trackedStore struct {
 	testStore

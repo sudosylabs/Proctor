@@ -88,6 +88,7 @@ type SQLStoreStores struct {
 	examStarterWorkspace store.ExamStarterWorkspaceStore
 	class                store.ClassStore
 	user                 store.UserStore
+	userSettings         store.UserSettingsStore
 	file                 store.FileStore
 	job                  store.JobStore
 	externalIdentity     store.ExternalIdentityStore
@@ -160,6 +161,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.examStarterWorkspace = NewSQLExamStarterWorkspaceStore(sqlStore)
 	sqlStore.stores.class = newSQLClassStore(sqlStore)
 	sqlStore.stores.user = newSQLUserStore(sqlStore)
+	sqlStore.stores.userSettings = newSQLUserSettingsStore(sqlStore)
 	sqlStore.stores.file = newSQLFileStore(sqlStore)
 	sqlStore.stores.job = newSQLJobStore(sqlStore)
 	sqlStore.stores.externalIdentity = newSQLExternalIdentityStore(sqlStore)
@@ -263,6 +265,10 @@ func (ss *SQLStore) Class() store.ClassStore {
 
 func (ss *SQLStore) User() store.UserStore {
 	return ss.stores.user
+}
+
+func (ss *SQLStore) UserSettings() store.UserSettingsStore {
+	return ss.stores.userSettings
 }
 
 func (ss *SQLStore) File() store.FileStore { return ss.stores.file }

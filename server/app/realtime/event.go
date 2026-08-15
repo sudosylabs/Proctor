@@ -35,6 +35,36 @@ const (
 	maxRealtimeEventDataBytes = 256 << 10
 )
 
+type userSettingsChangedData struct {
+	Revision      string `json:"revision"`
+	FormatVersion int    `json:"format_version"`
+	ChangedAt     int64  `json:"changed_at"`
+}
+
+// NewUserSettingsChangedEvent constructs the content-free refetch hint sent to
+// the owning User's live sessions after a durable settings replacement. The
+// source document and all client/session details deliberately remain absent.
+func NewUserSettingsChangedEvent(
+	userID model.UserID,
+	revision model.UserSettingsRevision,
+	formatVersion int,
+	changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !userID.IsValid() || !revision.IsValid() || formatVersion <= 0 || changedAt.IsZero() {
+		return RealtimeEvent{}, errors.New("User Settings change event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(userSettingsChangedData{
+		Revision: revision.String(), FormatVersion: formatVersion,
+		ChangedAt: model.TimeUTC(changedAt).UnixMilli(),
+	})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode User Settings change event: %w", err)
+	}
+	return RealtimeEvent{
+		Name: "user_settings_changed", UserID: userID.String(), Data: data,
+	}, nil
+}
+
 type examDraftUpdatedData struct {
 	ExamID        string `json:"exam_id"`
 	DraftRevision int64  `json:"draft_revision"`

@@ -18,11 +18,11 @@ import (
 )
 
 type commandOutcomeRow struct {
-	FingerprintVersion int       `db:"fingerprint_version"`
-	Fingerprint        []byte    `db:"fingerprint"`
-	OutcomeVersion     int       `db:"outcome_version"`
-	Outcome            jsonValue `db:"outcome"`
-	OriginalAuditID    string    `db:"original_audit_event_id"`
+	FingerprintVersion int            `db:"fingerprint_version"`
+	Fingerprint        []byte         `db:"fingerprint"`
+	OutcomeVersion     int            `db:"outcome_version"`
+	Outcome            jsonValue      `db:"outcome"`
+	OriginalAuditID    sql.NullString `db:"original_audit_event_id"`
 }
 
 type SQLCommandOutcomeStore struct{ *SQLStore }
@@ -53,12 +53,13 @@ func (s SQLCommandOutcomeStore) DeleteExpired(ctx context.Context, limit int) (i
 }
 
 type idempotentMutation[T any] struct {
-	command        *store.CommandIdempotency
-	auditEventID   string
-	execute        func(context.Context, *sqlxTxWrapper) (T, error)
-	encode         func(T) ([]byte, error)
-	decode         func(int, []byte) (T, error)
-	completeReplay func(context.Context, *sqlxTxWrapper, T, string) error
+	command           *store.CommandIdempotency
+	auditEventID      string
+	execute           func(context.Context, *sqlxTxWrapper) (T, error)
+	encode            func(T) ([]byte, error)
+	decode            func(int, []byte) (T, error)
+	completeReplay    func(context.Context, *sqlxTxWrapper, T, string) error
+	freshAuditEventID func(T) (string, error)
 }
 
 type idempotentResult[T any] struct {
@@ -71,8 +72,9 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 	if command == nil || !command.UserID.IsValid() || command.Operation == "" ||
 		command.FingerprintVersion <= 0 || command.OutcomeVersion <= 0 ||
 		command.Retention <= 0 || command.Wait <= 0 || mutation.execute == nil ||
-		mutation.encode == nil || mutation.decode == nil || mutation.completeReplay == nil ||
-		!model.IsValidId(mutation.auditEventID) {
+		mutation.encode == nil || mutation.decode == nil ||
+		(mutation.freshAuditEventID == nil &&
+			(mutation.completeReplay == nil || !model.IsValidId(mutation.auditEventID))) {
 		return nil, store.NewErrInvalidInput("command_outcome", "mutation", nil)
 	}
 	return runSQLTransaction(ctx, sqlStore.GetMaster().Begin, operation, func(ctx context.Context, tx *sqlxTxWrapper) (*idempotentResult[T], error) {
@@ -102,8 +104,9 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 			if decodeErr != nil {
 				return nil, fmt.Errorf("decode idempotent command outcome: %w", decodeErr)
 			}
-			if mutation.auditEventID != row.OriginalAuditID {
-				if completeErr := mutation.completeReplay(ctx, tx, value, row.OriginalAuditID); completeErr != nil {
+			if mutation.completeReplay != nil && row.OriginalAuditID.Valid &&
+				mutation.auditEventID != row.OriginalAuditID.String {
+				if completeErr := mutation.completeReplay(ctx, tx, value, row.OriginalAuditID.String); completeErr != nil {
 					return nil, completeErr
 				}
 			}
@@ -124,12 +127,27 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		if len(encoded) == 0 || len(encoded) > store.CommandOutcomeMaxBytes || !json.Valid(encoded) {
 			return nil, store.NewErrInvalidInput("command_outcome", "outcome", len(encoded))
 		}
+		originalAuditID := mutation.auditEventID
+		if mutation.freshAuditEventID != nil {
+			originalAuditID, err = mutation.freshAuditEventID(value)
+			if err != nil {
+				return nil, fmt.Errorf("resolve idempotent command audit: %w", err)
+			}
+		}
+		var persistedAuditID any
+		switch {
+		case originalAuditID == "":
+		case model.IsValidId(originalAuditID):
+			persistedAuditID = originalAuditID
+		default:
+			return nil, store.NewErrInvalidInput("command_outcome", "audit_event_id", nil)
+		}
 		if _, err = tx.Exec(ctx, `INSERT INTO command_outcomes (
 			user_id, operation, key_digest, fingerprint_version, fingerprint,
 			outcome_version, outcome, original_audit_event_id, created_at, expires_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + (? * interval '1 millisecond'))`,
 			command.UserID.String(), command.Operation, command.KeyDigest[:], command.FingerprintVersion,
-			command.Fingerprint[:], command.OutcomeVersion, encoded, mutation.auditEventID,
+			command.Fingerprint[:], command.OutcomeVersion, encoded, persistedAuditID,
 			command.Retention.Milliseconds()); err != nil {
 			return nil, fmt.Errorf("persist idempotent command outcome: %w", err)
 		}

@@ -92,6 +92,15 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	if len(created.Role.Permissions) != len(model.AllActions()) {
 		t.Fatalf("system administrator permissions = %#v", created.Role.Permissions)
 	}
+	settings, err := persistence.UserSettings().Get(context.Background(), created.Administrator.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Source != model.UserSettingsInitialSource ||
+		settings.FormatVersion != model.UserSettingsFormatVersion1 ||
+		settings.UserID != created.Administrator.ID || !settings.Revision.IsValid() {
+		t.Fatalf("bootstrap administrator settings = %#v", settings)
+	}
 	if second := performJSONRequest(
 		handler,
 		http.MethodPost,
