@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type inboundAuthorizationCall struct {
@@ -24,11 +25,35 @@ type inboundAuthorizationCall struct {
 }
 
 type inboundTestApplication struct {
-	mu             sync.Mutex
-	authorizeErr   error
-	validationErr  error
-	authorizations []inboundAuthorizationCall
-	validations    []model.Principal
+	mu              sync.Mutex
+	authorizeErr    error
+	validationErr   error
+	connectErr      error
+	connectResult   app.ExamAttemptConnection
+	connectCalls    []app.ConnectExamAttemptCommand
+	closeCalls      []app.CloseExamAttemptConnectionCommand
+	closeContextErr error
+	closePrincipal  model.Principal
+	closeMetadata   model.RequestMetadata
+	authorizations  []inboundAuthorizationCall
+	validations     []model.Principal
+}
+
+func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ app.Invocation, command app.ConnectExamAttemptCommand) (app.ExamAttemptConnection, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.connectCalls = append(a.connectCalls, command)
+	return a.connectResult, a.connectErr
+}
+
+func (a *inboundTestApplication) CloseExamAttemptConnection(ctx context.Context, invocation app.Invocation, command app.CloseExamAttemptConnectionCommand) (app.ExamAttemptConnectionClosed, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.closeCalls = append(a.closeCalls, command)
+	a.closeContextErr = ctx.Err()
+	a.closePrincipal = invocation.Principal()
+	a.closeMetadata = invocation.RequestMetadata()
+	return app.ExamAttemptConnectionClosed{}, nil
 }
 
 func (a *inboundTestApplication) AuthorizeWebSocketSubscription(
@@ -366,6 +391,125 @@ func TestConnectionRuntimeOwnsAuthorizedSubscriptionSet(t *testing.T) {
 		first.action != subscription.Action ||
 		first.resource != subscription.Resource.model() {
 		t.Fatalf("authorization call = %#v", first)
+	}
+}
+
+func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 17, 10, 0, 0, 0, time.UTC)
+	examID, sittingID, classID := model.NewExamID(), model.NewExamSittingID(), model.NewClassID()
+	attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), examID, sittingID, model.NewUserID(), model.NewExamRevisionID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := model.NewExamAttemptWorkspace(model.NewExamAttemptWorkspaceID(), attempt.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	participationID, connectionID := model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
+	connection, err := model.NewAttemptConnection(connectionID, attempt.ID, participationID, model.NewSessionID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &inboundTestApplication{connectResult: app.ExamAttemptConnection{
+		Attempt: *attempt, Workspace: *workspace, Participation: store.ExamAttemptParticipationView{
+			ID: participationID, AttemptID: attempt.ID, State: model.AttemptParticipationActive, Generation: 1,
+			StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(20 * time.Second),
+		}, Connection: *connection, ClassID: classID, FirstAdmission: true,
+	}}
+	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
+	runtime.principal.UserID = attempt.CandidateUserID
+	runtime.principal.SessionID = connection.SessionID
+	credential := model.NewCredentialToken()
+	runtime.handleRequest(context.Background(), requestWithData(t, 30, "exam_attempt.connect", examAttemptConnectRequest{
+		ExamSittingID: sittingID.String(), IdempotencyKey: "admit-once", ContinuityCredential: credential,
+	}))
+	response := nextInboundResponse(t, runtime)
+	if response.Status != "ok" || response.Error != nil {
+		t.Fatalf("connect response = %#v", response)
+	}
+	var body examAttemptConnectResponse
+	if err = json.Unmarshal(response.Data, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.AttemptID != attempt.ID.String() || body.WorkspaceID != workspace.ID.String() ||
+		body.ParticipationID != participationID.String() || body.AttemptConnectionID != connectionID.String() ||
+		body.Generation != 1 || !body.FirstAdmission {
+		t.Fatalf("connect response body = %#v", body)
+	}
+	candidate := Subscription{Action: model.ActionExamSittingParticipate,
+		Resource: Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}}
+	if !runtime.hasSubscription(candidate) {
+		t.Fatal("candidate relationship subscription was not installed")
+	}
+	application.mu.Lock()
+	calls := append([]app.ConnectExamAttemptCommand(nil), application.connectCalls...)
+	application.mu.Unlock()
+	if len(calls) != 1 || calls[0].SittingID != sittingID || calls[0].IdempotencyKey != "admit-once" ||
+		calls[0].ContinuityCredential != credential {
+		t.Fatalf("connect calls = %#v", calls)
+	}
+	runtime.handleRequest(context.Background(), requestWithData(t, 31, "exam_attempt.connect", examAttemptConnectRequest{
+		ExamSittingID: sittingID.String(), IdempotencyKey: "admit-once", ContinuityCredential: credential,
+	}))
+	response = nextInboundResponse(t, runtime)
+	if response.Status != "ok" || response.Error != nil {
+		t.Fatalf("exact connect replay response = %#v", response)
+	}
+
+	runtime.handleRequest(context.Background(), requestWithData(t, 32, "unsubscribe", candidate))
+	response = nextInboundResponse(t, runtime)
+	if response.Status != "ok" || !runtime.hasSubscription(candidate) {
+		t.Fatalf("protected candidate unsubscribe = %#v, subscribed = %t", response, runtime.hasSubscription(candidate))
+	}
+
+	runtime.handleRequest(context.Background(), requestWithData(t, 33, "exam_attempt.connect", examAttemptConnectRequest{
+		ExamSittingID: model.NewExamSittingID().String(), IdempotencyKey: "another-admission",
+		ContinuityCredential: model.NewCredentialToken(),
+	}))
+	response = nextInboundResponse(t, runtime)
+	if response.Status != "error" || response.Error == nil || response.Error.Code != "exam.attempt.already_connected" {
+		t.Fatalf("second binding response = %#v", response)
+	}
+	application.mu.Lock()
+	if got := len(application.connectCalls); got != 2 {
+		application.mu.Unlock()
+		t.Fatalf("durable connect calls after exact replay and rejected binding = %d, want 2", got)
+	}
+	application.mu.Unlock()
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	runtime.finalizeExamAttempt(canceled)
+	runtime.finalizeExamAttempt(context.Background())
+	if runtime.hasSubscription(candidate) {
+		t.Fatal("candidate subscription survived transport finalization")
+	}
+	application.mu.Lock()
+	closeCalls := append([]app.CloseExamAttemptConnectionCommand(nil), application.closeCalls...)
+	closeContextErr := application.closeContextErr
+	closePrincipal := application.closePrincipal
+	closeMetadata := application.closeMetadata
+	application.mu.Unlock()
+	if len(closeCalls) != 1 || closeCalls[0].AttemptID != attempt.ID || closeCalls[0].SittingID != sittingID ||
+		closeCalls[0].ClassID != classID || closeCalls[0].ConnectionID != connectionID ||
+		closeCalls[0].Reason != model.AttemptConnectionCloseTransport {
+		t.Fatalf("transport close calls = %#v", closeCalls)
+	}
+	if closeContextErr != nil || closePrincipal.UserID != runtime.principal.UserID ||
+		closePrincipal.SessionID != runtime.principal.SessionID || closeMetadata.RequestID != runtime.id+":attempt-close" {
+		t.Fatalf("transport close invocation = context %v, principal %#v, metadata %#v", closeContextErr, closePrincipal, closeMetadata)
+	}
+}
+
+func TestConnectionRuntimeRejectsNonStrictExamAttemptConnectPayload(t *testing.T) {
+	t.Parallel()
+	runtime := newInboundRuntime(&inboundTestApplication{}, newInboundTestSocket(), newRuntimeTestClock(time.Now()))
+	runtime.handleRequest(context.Background(), &Request{Sequence: 31, Action: "exam_attempt.connect",
+		Data: json.RawMessage(`{"exam_sitting_id":"bad","idempotency_key":"one","idempotency_key":"two","continuity_credential":"secret"}`)})
+	response := nextInboundResponse(t, runtime)
+	if response.Status != "error" || response.Error == nil || response.Error.Code != "websocket.request.invalid" {
+		t.Fatalf("duplicate connect response = %#v", response)
 	}
 }
 

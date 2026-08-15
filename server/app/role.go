@@ -309,7 +309,7 @@ func roleError(err error) error {
 
 func validateKnownPermissions(permissions []string) error {
 	for _, permission := range permissions {
-		if !model.IsKnownAction(permission) {
+		if !model.IsGrantableAction(permission) {
 			return NewError("role.permission.unknown").WithField("permission", permission)
 		}
 	}
@@ -327,7 +327,7 @@ func validatePatchedPermissions(current []string, permissions *[]string) error {
 		}
 	}
 	for _, permission := range *permissions {
-		if model.IsKnownAction(permission) {
+		if model.IsGrantableAction(permission) {
 			continue
 		}
 		if _, preserved := existingUnknown[permission]; preserved {

@@ -16,6 +16,7 @@ import (
 
 type connectionRuntime struct {
 	application Application
+	logger      Logger
 	nodeID      string
 	socket      connectionSocket
 	clock       runtimeClock
@@ -30,14 +31,25 @@ type connectionRuntime struct {
 	replayable    bool
 	send          chan outboundMessage
 	closeOnce     sync.Once
+	attemptClose  sync.Once
+	attempt       *examAttemptBinding
 
 	activityMu sync.Mutex
 	activities sync.WaitGroup
 	finalized  bool
 }
 
+type examAttemptBinding struct {
+	attemptID    model.ExamAttemptID
+	sittingID    model.ExamSittingID
+	classID      model.ClassID
+	connectionID model.AttemptConnectionID
+	requestHash  [32]byte
+}
+
 func newConnectionRuntime(
 	application Application,
+	logger Logger,
 	nodeID string,
 	socket connectionSocket,
 	principal model.Principal,
@@ -50,6 +62,7 @@ func newConnectionRuntime(
 ) *connectionRuntime {
 	runtime := &connectionRuntime{
 		application:   application,
+		logger:        logger,
 		nodeID:        nodeID,
 		socket:        socket,
 		clock:         systemRuntimeClock{},
@@ -84,6 +97,7 @@ func (c *connectionRuntime) run(ctx context.Context) {
 	cancel()
 	c.closeTransport()
 	pumps.Wait()
+	c.finalizeExamAttempt(ctx)
 }
 
 // acquire retains the runtime for one Hub-selected operation. The Hub calls it

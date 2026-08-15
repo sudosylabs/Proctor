@@ -950,7 +950,16 @@ func (s sqlExamSittingStore) CloseIfNoAttempts(ctx context.Context, input *store
 		if err != nil {
 			return nil, err
 		}
-		changed := current.State == model.ExamSittingClosing
+		changed := false
+		if current.State == model.ExamSittingClosing {
+			var hasAttempts bool
+			if err = tx.Get(ctx, &hasAttempts, `SELECT EXISTS (
+				SELECT 1 FROM exam_attempts WHERE exam_sitting_id=? LIMIT 1
+			)`, input.SittingID.String()); err != nil {
+				return nil, fmt.Errorf("inspect Closing Exam Sitting Attempts: %w", err)
+			}
+			changed = !hasAttempts
+		}
 		transition := store.ExamSittingLifecycleTransitionCode("")
 		if changed {
 			expected := current.Revision

@@ -377,7 +377,7 @@ func normalizePersonalAccessTokenScopes(scopes []string) ([]string, error) {
 	result := append([]string(nil), scopes...)
 	sort.Strings(result)
 	for index, scope := range result {
-		if !model.IsKnownAction(scope) ||
+		if !model.IsGrantableAction(scope) ||
 			(index > 0 && result[index-1] == scope) {
 			return nil, invalidPersonalAccessTokenRequest("scopes")
 		}

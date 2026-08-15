@@ -231,6 +231,15 @@ Revision for provenance while current instructions/resources resolve through
 the Sitting so an accepted live correction becomes visible without recreating
 the Attempt.
 
+The copy is logical copy-on-write bootstrap: PostgreSQL creates one stable
+Attempt Workspace plus attempt-owned entry/object metadata that references the
+immutable starter bytes frozen in the admission Revision. Admission performs
+no VFS copy, and concurrent first connections converge on the same aggregate
+before any transient effect. The Store checks exact command replay before
+loading or materializing the locked current Revision snapshot, so a lost
+response does not depend on stale application preflight data or duplicate
+starter identities.
+
 ~~~text
 Attempt: Active <-> Suspended
          Active/Suspended -> Submitted
@@ -259,6 +268,22 @@ hash and acknowledges the generation, accepted sequence, authoritative
 database time, and new expiry; duplicate renewals return the accepted outcome
 and stale sequences cannot move the lease. The initial runtime targets renewal
 every 5 seconds, a 20-second lease, and an expiry scan every 2 seconds.
+
+The client coordinator supplies the same canonical random 32-byte continuity
+credential on an exact command retry. Only its SHA-256 digest crosses the Store
+boundary or reaches PostgreSQL. A committed command outcome contains a bounded,
+hash-free Participation projection; replay rehydrates current Participation and
+Connection state and fails closed when the database-time lease has expired or
+the Connection has closed.
+
+Candidate HTTP delivery is Session-authenticated and additionally requires the
+continuity credential and durable Connection ID in dedicated sensitive headers.
+Persistence binds all three selectors to the owning candidate, active unexpired
+Participation, open Connection, and readable Sitting state. Presentation reads
+resolve current Sitting Revision instructions/resources; the admission Revision
+remains provenance, and the Attempt Workspace remains its admission snapshot.
+Manager Attempt reads expose bounded lifecycle state but no credential hash or
+Session identity.
 
 PostgreSQL time is authoritative and expiry is exclusive: a lease with
 `expires_at <= database_now` can never be renewed. A late renewal invokes the

@@ -30,6 +30,10 @@ func TestPersonalAccessTokenPrincipalValidation(t *testing.T) {
 	if principal.Validate() == nil {
 		t.Fatal("PAT principal with an unknown action was accepted")
 	}
+	principal.CredentialScopes = []string{string(ActionExamSittingParticipate)}
+	if principal.Validate() == nil {
+		t.Fatal("PAT principal with a relationship-only action was accepted")
+	}
 }
 
 func modelTestID() string {

@@ -391,11 +391,18 @@ func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, 
 	state model.ExamSittingState, revision int64, transition store.ExamSittingLifecycleTransitionCode,
 	scheduledEndAt, changedAt time.Time,
 ) error {
-	event, err := apprealtime.NewExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
+	managerEvent, err := apprealtime.NewExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	candidateEvent, err := apprealtime.NewCandidateExamSittingLifecycleChangedEvent(examID, sittingID, state, revision, string(transition), scheduledEndAt, changedAt)
+	if err != nil {
+		return err
+	}
+	return errors.Join(
+		effects.realtime.Publish(ctx, managerEvent),
+		effects.realtime.Publish(ctx, candidateEvent),
+	)
 }
 
 func (effects examSittingRealtimeEffects) Report(ctx context.Context, operation string, err error) {

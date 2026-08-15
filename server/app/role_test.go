@@ -126,6 +126,15 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 	}
 }
 
+func TestRoleCreateRejectsRelationshipOnlyParticipationAction(t *testing.T) {
+	t.Parallel()
+
+	err := validateKnownPermissions([]string{string(model.ActionExamSittingParticipate)})
+	if err == nil || !Is(err, "role.permission.unknown") {
+		t.Fatalf("validateKnownPermissions() error = %v, want role.permission.unknown", err)
+	}
+}
+
 func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}

@@ -260,6 +260,7 @@ type Catalog interface {
 	ExamAuthoring() ExamAuthoringStore
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
+	ExamAttempt() ExamAttemptStore
 	ExamResource() ExamResourceStore
 	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
@@ -295,6 +296,7 @@ type Store interface {
 	ExamAuthoring() ExamAuthoringStore
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
+	ExamAttempt() ExamAttemptStore
 	ExamResource() ExamResourceStore
 	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore

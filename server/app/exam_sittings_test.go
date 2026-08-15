@@ -285,8 +285,12 @@ func TestExamSittingLifecycleEffectPublishesOnlySafeBoundedMetadata(t *testing.T
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 1 || events[0].Name != "exam_sitting_lifecycle_changed" ||
-		string(events[0].Data) != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-16T11:00:00Z","changed_at":"2026-08-16T09:00:00Z"}` {
+	if len(events) != 2 || events[0].Name != "exam_sitting_lifecycle_changed" ||
+		events[0].Action != model.ActionExamSittingView ||
+		events[1].Name != "exam_sitting_lifecycle_changed" ||
+		events[1].Action != model.ActionExamSittingParticipate ||
+		string(events[0].Data) != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-16T11:00:00Z","changed_at":"2026-08-16T09:00:00Z"}` ||
+		string(events[1].Data) != string(events[0].Data) {
 		t.Fatalf("events = %#v", events)
 	}
 }

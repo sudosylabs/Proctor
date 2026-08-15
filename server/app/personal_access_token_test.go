@@ -15,6 +15,15 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+func TestPersonalAccessTokenScopesRejectRelationshipOnlyParticipationAction(t *testing.T) {
+	t.Parallel()
+
+	_, err := normalizePersonalAccessTokenScopes([]string{string(model.ActionExamSittingParticipate)})
+	if err == nil || !Is(err, "personal_access_token.invalid") {
+		t.Fatalf("normalizePersonalAccessTokenScopes() error = %v, want personal_access_token.invalid", err)
+	}
+}
+
 func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *testing.T) {
 	t.Parallel()
 

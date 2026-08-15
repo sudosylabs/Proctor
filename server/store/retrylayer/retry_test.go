@@ -41,6 +41,7 @@ type rootStub struct {
 	institution         store.InstitutionStore
 	examAuthoring       store.ExamAuthoringStore
 	examSitting         store.ExamSittingStore
+	examAttempt         store.ExamAttemptStore
 	personalAccessToken store.PersonalAccessTokenStore
 }
 
@@ -50,6 +51,7 @@ func (s *rootStub) ExamAuthoring() store.ExamAuthoringStore {
 	return s.examAuthoring
 }
 func (s *rootStub) ExamSitting() store.ExamSittingStore { return s.examSitting }
+func (s *rootStub) ExamAttempt() store.ExamAttemptStore { return s.examAttempt }
 func (s *rootStub) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return s.personalAccessToken
 }
@@ -118,6 +120,23 @@ type examSittingUnsafeMutationStub struct {
 	advanceAttempts int
 	closeAttempts   int
 	err             error
+}
+
+type examAttemptRetryStub struct {
+	store.ExamAttemptStore
+	connectAttempts int
+	closeAttempts   int
+	err             error
+}
+
+func (stub *examAttemptRetryStub) Connect(context.Context, *store.ExamAttemptConnect, *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
+	stub.connectAttempts++
+	return nil, stub.err
+}
+
+func (stub *examAttemptRetryStub) CloseConnection(context.Context, *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
+	stub.closeAttempts++
+	return nil, stub.err
 }
 
 func (stub *examSittingUnsafeMutationStub) AdvanceDue(context.Context, *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
@@ -212,6 +231,29 @@ func TestRetryNeverRetriesSystemSittingMutationsWithoutCommandOutcomes(t *testin
 	}
 	if stub.advanceAttempts != 1 || stub.closeAttempts != 1 {
 		t.Fatalf("system mutation attempts = advance %d close %d", stub.advanceAttempts, stub.closeAttempts)
+	}
+}
+
+func TestRetryOnlyRetriesExamAttemptMutationWithDurableCommandOutcome(t *testing.T) {
+	t.Parallel()
+	transientErr := errors.New("unknown commit outcome")
+	stub := &examAttemptRetryStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{examAttempt: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := &store.CommandIdempotency{UserID: model.NewUserID()}
+	if _, got := layer.ExamAttempt().Connect(context.Background(), &store.ExamAttemptConnect{}, command); got != transientErr {
+		t.Fatalf("Connect() error = %v", got)
+	}
+	if _, got := layer.ExamAttempt().CloseConnection(context.Background(), &store.ExamAttemptConnectionClose{}); got != transientErr {
+		t.Fatalf("CloseConnection() error = %v", got)
+	}
+	if stub.connectAttempts != 3 || stub.closeAttempts != 1 {
+		t.Fatalf("Exam Attempt mutation attempts = connect %d close %d", stub.connectAttempts, stub.closeAttempts)
 	}
 }
 

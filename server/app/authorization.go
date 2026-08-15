@@ -77,6 +77,9 @@ func (s *accessControlService) evaluate(
 	if !known || resource.Validate() != nil || definition.ResourceType != resource.Type {
 		return false, unresolved, NewError("authorization.request.invalid")
 	}
+	if definition.RelationshipOnly {
+		return false, unresolved, NewError("authorization.request.invalid")
+	}
 	resolved, appErr := s.resolver.resolve(ctx, resource)
 	if appErr != nil {
 		return false, unresolved, appErr

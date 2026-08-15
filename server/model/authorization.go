@@ -39,6 +39,7 @@ const (
 	ActionExamSittingViewOverride   Action = "exam.sitting.view.override"
 	ActionExamSittingManage         Action = "exam.sitting.manage"
 	ActionExamSittingManageOverride Action = "exam.sitting.manage.override"
+	ActionExamSittingParticipate    Action = "exam.sitting.participate"
 
 	ActionAcademicUnitView   Action = "academic_unit.view"
 	ActionAcademicUnitManage Action = "academic_unit.manage"
@@ -75,6 +76,10 @@ type ActionDefinition struct {
 	ResourceType              ResourceType
 	InheritInstitutionScope   bool
 	InheritAcademicUnitScopes bool
+	// RelationshipOnly marks a recognized application/realtime capability that
+	// must be established from current domain state and can never be granted by
+	// a reusable Role or Personal Access Token scope.
+	RelationshipOnly bool
 }
 
 var actionDefinitions = map[Action]ActionDefinition{
@@ -174,6 +179,10 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionExamSittingManageOverride, ResourceType: ResourceExamSitting,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
+	ActionExamSittingParticipate: {
+		Action: ActionExamSittingParticipate, ResourceType: ResourceExamSitting,
+		RelationshipOnly: true,
+	},
 	ActionAcademicUnitView: {
 		Action: ActionAcademicUnitView, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
@@ -201,12 +210,16 @@ func DefinitionForAction(action Action) (ActionDefinition, bool) {
 	return definition, ok
 }
 
-// AllActions returns every action currently recognized by the authorization
-// evaluator in stable order. The installation bootstrap uses this closed,
-// code-reviewed registry to construct the protected system-administrator role.
+// AllActions returns every role-grantable action currently recognized by the
+// authorization evaluator in stable order. Relationship-only capabilities are
+// deliberately excluded. Installation bootstrap uses this closed registry to
+// construct the protected system-administrator role.
 func AllActions() []string {
 	actions := make([]string, 0, len(actionDefinitions))
-	for action := range actionDefinitions {
+	for action, definition := range actionDefinitions {
+		if definition.RelationshipOnly {
+			continue
+		}
 		actions = append(actions, string(action))
 	}
 	sort.Strings(actions)
@@ -216,6 +229,14 @@ func AllActions() []string {
 func IsKnownAction(action string) bool {
 	_, ok := actionDefinitions[Action(action)]
 	return ok
+}
+
+// IsGrantableAction reports whether an action may appear in reusable Roles or
+// Personal Access Token scopes. Relationship-only capabilities remain known to
+// strict protocol registries while never becoming transferable permission.
+func IsGrantableAction(action string) bool {
+	definition, ok := actionDefinitions[Action(action)]
+	return ok && !definition.RelationshipOnly
 }
 
 // Validate checks that the resource identifies a supported authorization target.

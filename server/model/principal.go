@@ -77,7 +77,7 @@ func (p Principal) Validate() error {
 		}
 		seen := make(map[string]struct{}, len(p.CredentialScopes))
 		for _, scope := range p.CredentialScopes {
-			if !IsKnownAction(scope) {
+			if !IsGrantableAction(scope) {
 				return errors.New("model: personal access token scope is invalid")
 			}
 			if _, exists := seen[scope]; exists {

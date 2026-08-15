@@ -284,6 +284,51 @@ func (s *examSittingStore) retryMutation(ctx context.Context, command *store.Com
 	return retryCall1(ctx, s.layer, operation)
 }
 
+func (s *examAttemptStore) Connect(ctx context.Context, input *store.ExamAttemptConnect, command *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
+	if command == nil {
+		return s.ExamAttemptStore.Connect(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptConnectResult, error) {
+		return s.ExamAttemptStore.Connect(ctx, input, command)
+	})
+}
+
+func (s *examAttemptStore) Get(ctx context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptManagerSnapshot, error) {
+		return s.ExamAttemptStore.Get(ctx, examID, attemptID)
+	})
+}
+
+func (s *examAttemptStore) List(ctx context.Context, options store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
+	return retryCall1(ctx, s.layer, func() ([]store.ExamAttemptManagerSnapshot, error) {
+		return s.ExamAttemptStore.List(ctx, options)
+	})
+}
+
+func (s *examAttemptStore) GetCandidatePresentation(ctx context.Context, access store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
+	return retryCall1(ctx, s.layer, func() (*store.CandidateExamPresentation, error) {
+		return s.ExamAttemptStore.GetCandidatePresentation(ctx, access)
+	})
+}
+
+func (s *examAttemptStore) ListCandidateWorkspace(ctx context.Context, options store.CandidateWorkspaceListOptions) (*store.CandidateAttemptWorkspacePage, error) {
+	return retryCall1(ctx, s.layer, func() (*store.CandidateAttemptWorkspacePage, error) {
+		return s.ExamAttemptStore.ListCandidateWorkspace(ctx, options)
+	})
+}
+
+func (s *examAttemptStore) ResolveCandidateResource(ctx context.Context, access store.CandidateAttemptAccess, resourceID model.ExamResourceID) (*store.CandidateResourceContent, error) {
+	return retryCall1(ctx, s.layer, func() (*store.CandidateResourceContent, error) {
+		return s.ExamAttemptStore.ResolveCandidateResource(ctx, access, resourceID)
+	})
+}
+
+func (s *examAttemptStore) ResolveCandidateWorkspaceFile(ctx context.Context, access store.CandidateAttemptAccess, entryID model.AttemptWorkspaceEntryID) (*store.CandidateWorkspaceContent, error) {
+	return retryCall1(ctx, s.layer, func() (*store.CandidateWorkspaceContent, error) {
+		return s.ExamAttemptStore.ResolveCandidateWorkspaceFile(ctx, access, entryID)
+	})
+}
+
 func (s *examResourceStore) List(ctx context.Context, examID model.ExamID) ([]store.ExamResourceRecord, error) {
 	return retryCall1(ctx, s.layer, func() ([]store.ExamResourceRecord, error) {
 		return s.ExamResourceStore.List(ctx, examID)

@@ -79,6 +79,9 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"ExamAuthoring", storetest.TestExamAuthoringStore},
 		{"ExamRevision", storetest.TestExamRevisionStore},
 		{"ExamSitting", storetest.TestExamSittingStore},
+		{"ExamAttempt", func(t *testing.T, decorated store.Store) {
+			storetest.TestExamAttemptStore(t, decorated)
+		}},
 		{"ExamResource", storetest.TestExamResourceStore},
 		{"ExamCorrection", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamCorrectionStore(t, decorated, examCorrectionSQLProbe(t, sqlStore))
@@ -144,6 +147,36 @@ func TestExamAuthoringStore(t *testing.T) {
 
 func TestExamRevisionStore(t *testing.T) {
 	StoreTest(t, storetest.TestExamRevisionStore)
+}
+
+func TestExamAttemptStore(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestExamAttemptStore(t, persistence, examAttemptSQLProbe(t, persistence))
+}
+
+func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptSQLProbe {
+	t.Helper()
+	return storetest.ExamAttemptSQLProbe{ExpireParticipation: func(t *testing.T, ctx context.Context, id model.AttemptParticipationID) {
+		t.Helper()
+		_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "expire Attempt Participation fixture", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+			if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_participations DISABLE TRIGGER exam_attempt_participations_guard`); execErr != nil {
+				return struct{}{}, execErr
+			}
+			if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_participations
+				SET renewal_sequence=1,updated_at=statement_timestamp(),lease_expires_at=started_at+INTERVAL '1 microsecond'
+				WHERE id=?`, id.String()); execErr != nil {
+				return struct{}{}, execErr
+			}
+			if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_participations ENABLE TRIGGER exam_attempt_participations_guard`); execErr != nil {
+				return struct{}{}, execErr
+			}
+			return struct{}{}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}}
 }
 
 func TestExamCorrectionStore(t *testing.T) {

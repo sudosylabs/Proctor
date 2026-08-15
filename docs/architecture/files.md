@@ -240,6 +240,13 @@ The protected HTTP content operations return inline content only after current
 authorization, with a strong checksum ETag and `nosniff`; they never expose a
 VFS path, object key, or public URL. Exam Resources use private five-minute
 caching. Mutable Draft Starter Workspace files are private and `no-store`.
+Candidate Attempt resource and Workspace content reads add the active
+Session-bound continuity credential and durable Connection selector. Both are
+`private, no-store`: live corrections may retarget candidate resources, and
+Attempt Workspace content is private mutable work. Candidate Workspace
+manifests expose logical path, kind, bounded content metadata, and opaque
+content version only; starter/Attempt object identities and VFS selectors stay
+inside the application/content boundary.
 
 ## Live attempt workspaces
 

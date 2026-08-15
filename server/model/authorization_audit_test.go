@@ -66,6 +66,23 @@ func TestJobActionsAreInstitutionScopedAndKnown(t *testing.T) {
 	}
 }
 
+func TestExamSittingParticipationActionIsRecognizedButNotRoleGrantable(t *testing.T) {
+	t.Parallel()
+
+	definition, ok := DefinitionForAction(ActionExamSittingParticipate)
+	if !ok || definition.ResourceType != ResourceExamSitting || !definition.RelationshipOnly {
+		t.Fatalf("participation definition = %#v, %v", definition, ok)
+	}
+	if IsGrantableAction(string(ActionExamSittingParticipate)) {
+		t.Fatal("relationship-only participation action became role grantable")
+	}
+	for _, action := range AllActions() {
+		if action == string(ActionExamSittingParticipate) {
+			t.Fatal("relationship-only participation action entered the system administrator role")
+		}
+	}
+}
+
 func TestUserAuditResourceKeepsItsAcademicScopeSeparate(t *testing.T) {
 	event := &AuditEvent{
 		ActorID: NewUserID(), SessionID: SessionID(NewId()), Action: string(ActionUserView),

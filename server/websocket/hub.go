@@ -301,6 +301,7 @@ func (h *Hub) register(
 	}
 	connection := newConnectionRuntime(
 		h.application,
+		h.logger,
 		h.nodeID,
 		socket,
 		principal,

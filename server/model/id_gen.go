@@ -40,6 +40,24 @@ func NewExamCorrectionResourceStageID() ExamCorrectionResourceStageID {
 	return ExamCorrectionResourceStageID(NewId())
 }
 
+// NewExamAttemptID returns a freshly generated exam-attempt identifier.
+func NewExamAttemptID() ExamAttemptID { return ExamAttemptID(NewId()) }
+
+// NewExamAttemptWorkspaceID returns a freshly generated exam-attempt-workspace identifier.
+func NewExamAttemptWorkspaceID() ExamAttemptWorkspaceID { return ExamAttemptWorkspaceID(NewId()) }
+
+// NewAttemptParticipationID returns a freshly generated attempt-participation identifier.
+func NewAttemptParticipationID() AttemptParticipationID { return AttemptParticipationID(NewId()) }
+
+// NewAttemptConnectionID returns a freshly generated attempt-connection identifier.
+func NewAttemptConnectionID() AttemptConnectionID { return AttemptConnectionID(NewId()) }
+
+// NewAttemptWorkspaceEntryID returns a freshly generated attempt-workspace-entry identifier.
+func NewAttemptWorkspaceEntryID() AttemptWorkspaceEntryID { return AttemptWorkspaceEntryID(NewId()) }
+
+// NewAttemptWorkspaceObjectID returns a freshly generated attempt-workspace-object identifier.
+func NewAttemptWorkspaceObjectID() AttemptWorkspaceObjectID { return AttemptWorkspaceObjectID(NewId()) }
+
 // NewStarterWorkspaceEntryID returns a freshly generated starter-workspace-entry identifier.
 func NewStarterWorkspaceEntryID() StarterWorkspaceEntryID { return StarterWorkspaceEntryID(NewId()) }
 
@@ -159,6 +177,36 @@ func ParseExamResourceID(value string) (ExamResourceID, error) {
 // ParseExamCorrectionResourceStageID validates and converts the shared identifier representation.
 func ParseExamCorrectionResourceStageID(value string) (ExamCorrectionResourceStageID, error) {
 	return parseID[ExamCorrectionResourceStageID](value, "exam_correction_resource_stage_id")
+}
+
+// ParseExamAttemptID validates and converts the shared identifier representation.
+func ParseExamAttemptID(value string) (ExamAttemptID, error) {
+	return parseID[ExamAttemptID](value, "exam_attempt_id")
+}
+
+// ParseExamAttemptWorkspaceID validates and converts the shared identifier representation.
+func ParseExamAttemptWorkspaceID(value string) (ExamAttemptWorkspaceID, error) {
+	return parseID[ExamAttemptWorkspaceID](value, "exam_attempt_workspace_id")
+}
+
+// ParseAttemptParticipationID validates and converts the shared identifier representation.
+func ParseAttemptParticipationID(value string) (AttemptParticipationID, error) {
+	return parseID[AttemptParticipationID](value, "attempt_participation_id")
+}
+
+// ParseAttemptConnectionID validates and converts the shared identifier representation.
+func ParseAttemptConnectionID(value string) (AttemptConnectionID, error) {
+	return parseID[AttemptConnectionID](value, "attempt_connection_id")
+}
+
+// ParseAttemptWorkspaceEntryID validates and converts the shared identifier representation.
+func ParseAttemptWorkspaceEntryID(value string) (AttemptWorkspaceEntryID, error) {
+	return parseID[AttemptWorkspaceEntryID](value, "attempt_workspace_entry_id")
+}
+
+// ParseAttemptWorkspaceObjectID validates and converts the shared identifier representation.
+func ParseAttemptWorkspaceObjectID(value string) (AttemptWorkspaceObjectID, error) {
+	return parseID[AttemptWorkspaceObjectID](value, "attempt_workspace_object_id")
 }
 
 // ParseStarterWorkspaceEntryID validates and converts the shared identifier representation.
@@ -304,6 +352,24 @@ func (id ExamResourceID) IsZero() bool { return id == "" }
 // IsZero reports whether the exam-correction-resource-stage is the empty zero value.
 func (id ExamCorrectionResourceStageID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the exam-attempt is the empty zero value.
+func (id ExamAttemptID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the exam-attempt-workspace is the empty zero value.
+func (id ExamAttemptWorkspaceID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the attempt-participation is the empty zero value.
+func (id AttemptParticipationID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the attempt-connection is the empty zero value.
+func (id AttemptConnectionID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the attempt-workspace-entry is the empty zero value.
+func (id AttemptWorkspaceEntryID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the attempt-workspace-object is the empty zero value.
+func (id AttemptWorkspaceObjectID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the starter-workspace-entry is the empty zero value.
 func (id StarterWorkspaceEntryID) IsZero() bool { return id == "" }
 
@@ -402,6 +468,24 @@ func (id ExamResourceID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the exam-correction-resource-stage is a canonical non-zero ID.
 func (id ExamCorrectionResourceStageID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the exam-attempt is a canonical non-zero ID.
+func (id ExamAttemptID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the exam-attempt-workspace is a canonical non-zero ID.
+func (id ExamAttemptWorkspaceID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the attempt-participation is a canonical non-zero ID.
+func (id AttemptParticipationID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the attempt-connection is a canonical non-zero ID.
+func (id AttemptConnectionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the attempt-workspace-entry is a canonical non-zero ID.
+func (id AttemptWorkspaceEntryID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the attempt-workspace-object is a canonical non-zero ID.
+func (id AttemptWorkspaceObjectID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the starter-workspace-entry is a canonical non-zero ID.
 func (id StarterWorkspaceEntryID) IsValid() bool { return IsValidId(string(id)) }
@@ -502,6 +586,24 @@ func (id ExamResourceID) String() string { return string(id) }
 // String returns the exam-correction-resource-stage wire/database representation.
 func (id ExamCorrectionResourceStageID) String() string { return string(id) }
 
+// String returns the exam-attempt wire/database representation.
+func (id ExamAttemptID) String() string { return string(id) }
+
+// String returns the exam-attempt-workspace wire/database representation.
+func (id ExamAttemptWorkspaceID) String() string { return string(id) }
+
+// String returns the attempt-participation wire/database representation.
+func (id AttemptParticipationID) String() string { return string(id) }
+
+// String returns the attempt-connection wire/database representation.
+func (id AttemptConnectionID) String() string { return string(id) }
+
+// String returns the attempt-workspace-entry wire/database representation.
+func (id AttemptWorkspaceEntryID) String() string { return string(id) }
+
+// String returns the attempt-workspace-object wire/database representation.
+func (id AttemptWorkspaceObjectID) String() string { return string(id) }
+
 // String returns the starter-workspace-entry wire/database representation.
 func (id StarterWorkspaceEntryID) String() string { return string(id) }
 
@@ -600,6 +702,24 @@ func (id ExamResourceID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the exam-correction-resource-stage as its canonical string.
 func (id ExamCorrectionResourceStageID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the exam-attempt as its canonical string.
+func (id ExamAttemptID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the exam-attempt-workspace as its canonical string.
+func (id ExamAttemptWorkspaceID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the attempt-participation as its canonical string.
+func (id AttemptParticipationID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the attempt-connection as its canonical string.
+func (id AttemptConnectionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the attempt-workspace-entry as its canonical string.
+func (id AttemptWorkspaceEntryID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the attempt-workspace-object as its canonical string.
+func (id AttemptWorkspaceObjectID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the starter-workspace-entry as its canonical string.
 func (id StarterWorkspaceEntryID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -720,6 +840,36 @@ func (id *ExamResourceID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the exam-correction-resource-stage when non-empty.
 func (id *ExamCorrectionResourceStageID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExamCorrectionResourceStageID)
+}
+
+// UnmarshalText decodes and validates the exam-attempt when non-empty.
+func (id *ExamAttemptID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamAttemptID)
+}
+
+// UnmarshalText decodes and validates the exam-attempt-workspace when non-empty.
+func (id *ExamAttemptWorkspaceID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamAttemptWorkspaceID)
+}
+
+// UnmarshalText decodes and validates the attempt-participation when non-empty.
+func (id *AttemptParticipationID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseAttemptParticipationID)
+}
+
+// UnmarshalText decodes and validates the attempt-connection when non-empty.
+func (id *AttemptConnectionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseAttemptConnectionID)
+}
+
+// UnmarshalText decodes and validates the attempt-workspace-entry when non-empty.
+func (id *AttemptWorkspaceEntryID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseAttemptWorkspaceEntryID)
+}
+
+// UnmarshalText decodes and validates the attempt-workspace-object when non-empty.
+func (id *AttemptWorkspaceObjectID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseAttemptWorkspaceObjectID)
 }
 
 // UnmarshalText decodes and validates the starter-workspace-entry when non-empty.
@@ -865,6 +1015,24 @@ func (id ExamResourceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id
 // MarshalJSON encodes the exam-correction-resource-stage as a JSON string.
 func (id ExamCorrectionResourceStageID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the exam-attempt as a JSON string.
+func (id ExamAttemptID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the exam-attempt-workspace as a JSON string.
+func (id ExamAttemptWorkspaceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the attempt-participation as a JSON string.
+func (id AttemptParticipationID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the attempt-connection as a JSON string.
+func (id AttemptConnectionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the attempt-workspace-entry as a JSON string.
+func (id AttemptWorkspaceEntryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the attempt-workspace-object as a JSON string.
+func (id AttemptWorkspaceObjectID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the starter-workspace-entry as a JSON string.
 func (id StarterWorkspaceEntryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -984,6 +1152,36 @@ func (id *ExamResourceID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the exam-correction-resource-stage.
 func (id *ExamCorrectionResourceStageID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExamCorrectionResourceStageID)
+}
+
+// UnmarshalJSON decodes a JSON string into the exam-attempt.
+func (id *ExamAttemptID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamAttemptID)
+}
+
+// UnmarshalJSON decodes a JSON string into the exam-attempt-workspace.
+func (id *ExamAttemptWorkspaceID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamAttemptWorkspaceID)
+}
+
+// UnmarshalJSON decodes a JSON string into the attempt-participation.
+func (id *AttemptParticipationID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseAttemptParticipationID)
+}
+
+// UnmarshalJSON decodes a JSON string into the attempt-connection.
+func (id *AttemptConnectionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseAttemptConnectionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the attempt-workspace-entry.
+func (id *AttemptWorkspaceEntryID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseAttemptWorkspaceEntryID)
+}
+
+// UnmarshalJSON decodes a JSON string into the attempt-workspace-object.
+func (id *AttemptWorkspaceObjectID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseAttemptWorkspaceObjectID)
 }
 
 // UnmarshalJSON decodes a JSON string into the starter-workspace-entry.

@@ -187,11 +187,18 @@ func (a examCorrectionAuditAdapter) Fail(ctx context.Context, id, code string) e
 type examCorrectionRealtimeEffects struct{ realtime *realtimeService }
 
 func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result examcorrection.Result) error {
-	event, err := apprealtime.NewExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
+	managerEvent, err := apprealtime.NewExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	candidateEvent, err := apprealtime.NewCandidateExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
+	if err != nil {
+		return err
+	}
+	return errors.Join(
+		e.realtime.Publish(ctx, managerEvent),
+		e.realtime.Publish(ctx, candidateEvent),
+	)
 }
 func (e examCorrectionRealtimeEffects) Report(ctx context.Context, operation string, err error) {
 	e.realtime.reportTransientFailure(ctx, operation, err)

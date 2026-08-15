@@ -10,10 +10,13 @@ package websocket
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func (c *connectionRuntime) readPump(ctx context.Context) {
@@ -111,12 +114,117 @@ func (c *connectionRuntime) handleRequest(
 			return
 		}
 		c.mu.Lock()
-		delete(c.subscriptions, subscription.Key())
+		if c.attempt == nil || subscription != c.examAttemptSubscriptionLocked() {
+			delete(c.subscriptions, subscription.Key())
+		}
 		c.mu.Unlock()
 		c.enqueueResponse(request.Sequence, nil)
+	case examAttemptConnectAction:
+		c.handleExamAttemptConnect(ctx, request)
 	default:
 		c.enqueueError(request.Sequence, "websocket.action.unknown", "Unknown WebSocket action.")
 	}
+}
+
+func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, request *Request) {
+	decoded, err := decodeExamAttemptConnectRequest(request.Data)
+	if err != nil {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Exam Attempt connection request.")
+		return
+	}
+	sittingID, _ := model.ParseExamSittingID(decoded.ExamSittingID)
+	requestHash := sha256.Sum256([]byte(decoded.ExamSittingID + "\x00" + decoded.IdempotencyKey + "\x00" + decoded.ContinuityCredential))
+	c.mu.Lock()
+	if c.attempt != nil && (c.attempt.sittingID != sittingID || c.attempt.requestHash != requestHash) {
+		c.mu.Unlock()
+		c.enqueueError(request.Sequence, "exam.attempt.already_connected", "Exam Attempt connection is already established.")
+		return
+	}
+	c.mu.Unlock()
+	attempts, ok := c.application.(examAttemptApplication)
+	if !ok {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt connection failed.")
+		return
+	}
+	metadata := c.metadata
+	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
+	result, err := attempts.ConnectExamAttempt(ctx, app.NewInvocation(c.principal, metadata), app.ConnectExamAttemptCommand{
+		SittingID: sittingID, ContinuityCredential: decoded.ContinuityCredential, IdempotencyKey: decoded.IdempotencyKey,
+	})
+	if err != nil {
+		code, message := examAttemptConnectError(err)
+		c.enqueueError(request.Sequence, code, message)
+		return
+	}
+	if result.Connection.State != model.AttemptConnectionOpen || result.Attempt.SittingID != sittingID ||
+		result.Connection.AttemptID != result.Attempt.ID || result.Connection.ParticipationID != result.Participation.ID {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt connection failed.")
+		return
+	}
+	binding := &examAttemptBinding{attemptID: result.Attempt.ID, sittingID: sittingID,
+		classID: result.ClassID, connectionID: result.Connection.ID, requestHash: requestHash}
+	subscription := Subscription{Action: model.ActionExamSittingParticipate,
+		Resource: Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}}
+	c.mu.Lock()
+	if c.attempt != nil && *c.attempt != *binding {
+		c.mu.Unlock()
+		c.enqueueError(request.Sequence, "exam.attempt.already_connected", "Exam Attempt connection is already established.")
+		return
+	}
+	c.attempt = binding
+	c.subscriptions[subscription.Key()] = subscription
+	c.mu.Unlock()
+	encoded, err := json.Marshal(examAttemptConnectResponse{
+		AttemptID: result.Attempt.ID.String(), WorkspaceID: result.Workspace.ID.String(),
+		ParticipationID: result.Participation.ID.String(), AttemptConnectionID: result.Connection.ID.String(),
+		Generation:     result.Participation.Generation,
+		StartedAt:      result.Participation.StartedAt.Format(time.RFC3339Nano),
+		LeaseExpiresAt: result.Participation.LeaseExpiresAt.Format(time.RFC3339Nano),
+		FirstAdmission: result.FirstAdmission, Replayed: result.Replayed,
+	})
+	if err != nil {
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt connection failed.")
+		return
+	}
+	c.enqueueResponse(request.Sequence, encoded)
+}
+
+func (c *connectionRuntime) examAttemptSubscriptionLocked() Subscription {
+	if c.attempt == nil {
+		return Subscription{}
+	}
+	return Subscription{Action: model.ActionExamSittingParticipate,
+		Resource: Resource{Type: model.ResourceExamSitting, ID: c.attempt.sittingID.String()}}
+}
+
+func (c *connectionRuntime) finalizeExamAttempt(ctx context.Context) {
+	c.attemptClose.Do(func() {
+		c.mu.Lock()
+		binding := c.attempt
+		if binding != nil {
+			delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
+			c.attempt = nil
+		}
+		c.mu.Unlock()
+		if binding == nil {
+			return
+		}
+		attempts, ok := c.application.(examAttemptApplication)
+		if !ok {
+			return
+		}
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		metadata := c.metadata
+		metadata.RequestID = c.id + ":attempt-close"
+		_, err := attempts.CloseExamAttemptConnection(closeCtx, app.NewInvocation(c.principal, metadata), app.CloseExamAttemptConnectionCommand{
+			AttemptID: binding.attemptID, SittingID: binding.sittingID, ClassID: binding.classID,
+			ConnectionID: binding.connectionID, Reason: model.AttemptConnectionCloseTransport,
+		})
+		if err != nil && c.logger != nil {
+			c.logger.WarnContext(closeCtx, "Exam Attempt connection close failed", err)
+		}
+	})
 }
 
 func (c *connectionRuntime) hasSubscription(

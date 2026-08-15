@@ -877,6 +877,9 @@ CREATE UNIQUE INDEX class_members_one_active_class_per_period_key
     WHERE archived_at IS NULL AND end_at IS NULL;
 CREATE INDEX class_members_class_id_idx
     ON class_members (class_id) WHERE archived_at IS NULL;
+CREATE INDEX class_members_current_class_user_idx
+    ON class_members (class_id, user_id, start_at, end_at)
+    WHERE archived_at IS NULL;
 
 CREATE TABLE roles (
     id varchar(26) PRIMARY KEY,
@@ -946,6 +949,254 @@ CREATE INDEX sessions_user_id_last_activity_at_idx
     ON sessions (user_id) WHERE archived_at IS NULL AND revoked_at IS NULL;
 CREATE INDEX sessions_expires_at_idx
     ON sessions (expires_at) WHERE archived_at IS NULL AND revoked_at IS NULL;
+
+-- An Attempt is the stable work identity for one candidate in one Sitting.
+-- Admission copies only logical workspace metadata; immutable starter bytes
+-- remain pinned through opaque starter-object identities until copy-on-write.
+CREATE TABLE exam_attempts (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL,
+    exam_sitting_id varchar(26) NOT NULL,
+    candidate_user_id varchar(26) NOT NULL REFERENCES users(id),
+    admission_revision_id varchar(26) NOT NULL,
+    state varchar(16) NOT NULL CHECK (state IN ('active', 'suspended', 'submitted')),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    submitted_at timestamptz,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    UNIQUE (exam_sitting_id, candidate_user_id),
+    UNIQUE (exam_sitting_id, id),
+    UNIQUE (id, admission_revision_id),
+    UNIQUE (id, exam_id, admission_revision_id),
+    CONSTRAINT exam_attempts_sitting_fkey
+        FOREIGN KEY (exam_id, exam_sitting_id) REFERENCES exam_sittings(exam_id, id),
+    CONSTRAINT exam_attempts_admission_revision_fkey
+        FOREIGN KEY (exam_id, admission_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_attempts_lifecycle_check CHECK (
+        updated_at >= created_at AND
+        ((state IN ('active', 'suspended') AND submitted_at IS NULL) OR
+         (state = 'submitted' AND submitted_at BETWEEN created_at AND updated_at))
+    )
+);
+
+CREATE INDEX exam_attempts_sitting_state_created_id_idx
+    ON exam_attempts (exam_sitting_id, state, created_at DESC, id DESC);
+CREATE INDEX exam_attempts_sitting_created_id_idx
+    ON exam_attempts (exam_sitting_id, created_at DESC, id DESC);
+CREATE INDEX exam_attempts_candidate_created_id_idx
+    ON exam_attempts (candidate_user_id, created_at DESC, id DESC);
+
+CREATE TABLE exam_attempt_workspaces (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL UNIQUE,
+    admission_revision_id varchar(26) NOT NULL,
+    cursor bigint NOT NULL DEFAULT 0 CHECK (cursor >= 0),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    UNIQUE (id, admission_revision_id),
+    CONSTRAINT exam_attempt_workspaces_attempt_fkey
+        FOREIGN KEY (exam_attempt_id, admission_revision_id)
+        REFERENCES exam_attempts(id, admission_revision_id),
+    CONSTRAINT exam_attempt_workspaces_lifecycle_check CHECK (updated_at >= created_at)
+);
+
+ALTER TABLE exam_revision_starter_workspace_entries
+    ADD CONSTRAINT exam_revision_workspace_entry_object_key
+    UNIQUE (exam_revision_id, entry_id, object_id);
+
+CREATE TABLE exam_attempt_workspace_objects (
+    id varchar(26) PRIMARY KEY,
+    workspace_id varchar(26) NOT NULL REFERENCES exam_attempt_workspaces(id),
+    admission_revision_id varchar(26) NOT NULL,
+    source_starter_entry_id varchar(26),
+    storage_origin varchar(16) NOT NULL CHECK (storage_origin IN ('starter', 'attempt')),
+    starter_object_id varchar(26) REFERENCES exam_starter_workspace_objects(id),
+    content_version varchar(26) NOT NULL CHECK (content_version ~ '^[A-Za-z0-9_-]{26}$'),
+    media_type varchar(255) NOT NULL CHECK (char_length(btrim(media_type)) > 0),
+    size_bytes bigint NOT NULL CHECK (size_bytes BETWEEN 0 AND 10485760),
+    sha256 char(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL,
+    UNIQUE (workspace_id, id),
+    UNIQUE (workspace_id, id, admission_revision_id, source_starter_entry_id),
+    CONSTRAINT exam_attempt_workspace_objects_source_fkey
+        FOREIGN KEY (admission_revision_id, source_starter_entry_id, starter_object_id)
+        REFERENCES exam_revision_starter_workspace_entries(exam_revision_id, entry_id, object_id),
+    CONSTRAINT exam_attempt_workspace_objects_origin_check CHECK (
+        (storage_origin = 'starter' AND source_starter_entry_id IS NOT NULL AND starter_object_id IS NOT NULL) OR
+        (storage_origin = 'attempt' AND source_starter_entry_id IS NULL AND starter_object_id IS NULL)
+    )
+);
+
+CREATE INDEX exam_attempt_workspace_objects_starter_idx
+    ON exam_attempt_workspace_objects (starter_object_id)
+    WHERE starter_object_id IS NOT NULL;
+
+CREATE TABLE exam_attempt_workspace_entries (
+    id varchar(26) PRIMARY KEY,
+    workspace_id varchar(26) NOT NULL,
+    admission_revision_id varchar(26) NOT NULL,
+    source_starter_entry_id varchar(26),
+    kind varchar(16) NOT NULL CHECK (kind IN ('file', 'directory')),
+    path text NOT NULL CHECK (octet_length(path) BETWEEN 1 AND 1024),
+    current_object_id varchar(26),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    UNIQUE (workspace_id, source_starter_entry_id),
+    UNIQUE (workspace_id, id),
+    CONSTRAINT exam_attempt_workspace_entries_workspace_fkey
+        FOREIGN KEY (workspace_id, admission_revision_id)
+        REFERENCES exam_attempt_workspaces(id, admission_revision_id),
+    CONSTRAINT exam_attempt_workspace_entries_source_fkey
+        FOREIGN KEY (admission_revision_id, source_starter_entry_id)
+        REFERENCES exam_revision_starter_workspace_entries(exam_revision_id, entry_id),
+    CONSTRAINT exam_attempt_workspace_entries_workspace_object_fkey
+        FOREIGN KEY (workspace_id, current_object_id)
+        REFERENCES exam_attempt_workspace_objects(workspace_id, id),
+    CONSTRAINT exam_attempt_workspace_entries_object_fkey
+        FOREIGN KEY (workspace_id, current_object_id, admission_revision_id, source_starter_entry_id)
+        REFERENCES exam_attempt_workspace_objects(workspace_id, id, admission_revision_id, source_starter_entry_id),
+    CONSTRAINT exam_attempt_workspace_entries_content_check CHECK (
+        (kind = 'file' AND current_object_id IS NOT NULL) OR
+        (kind = 'directory' AND current_object_id IS NULL)
+    ),
+    CONSTRAINT exam_attempt_workspace_entries_lifecycle_check CHECK (updated_at >= created_at)
+);
+
+CREATE UNIQUE INDEX exam_attempt_workspace_entries_path_key
+    ON exam_attempt_workspace_entries (workspace_id, path);
+
+CREATE TABLE exam_attempt_participations (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+    state varchar(16) NOT NULL CHECK (state IN ('active', 'ended')),
+    generation bigint NOT NULL CHECK (generation > 0),
+    renewal_sequence bigint NOT NULL DEFAULT 0 CHECK (renewal_sequence >= 0),
+    continuity_credential_hash char(64) NOT NULL UNIQUE
+        CHECK (continuity_credential_hash ~ '^[0-9a-f]{64}$'),
+    started_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    lease_expires_at timestamptz NOT NULL,
+    ended_at timestamptz,
+    end_reason varchar(24) CHECK (end_reason IN (
+        'interrupted', 'lease_expired', 'kicked', 'submitted', 'sitting_closed'
+    )),
+    UNIQUE (exam_attempt_id, generation),
+    UNIQUE (id, exam_attempt_id),
+    CONSTRAINT exam_attempt_participations_time_check CHECK (
+        updated_at >= started_at AND lease_expires_at > started_at AND
+        (renewal_sequence <> 0 OR lease_expires_at = started_at + INTERVAL '20 seconds')
+    ),
+    CONSTRAINT exam_attempt_participations_lifecycle_check CHECK (
+        (state = 'active' AND ended_at IS NULL AND end_reason IS NULL) OR
+        (state = 'ended' AND ended_at BETWEEN started_at AND updated_at AND end_reason IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX exam_attempt_participations_one_active_key
+    ON exam_attempt_participations (exam_attempt_id) WHERE state = 'active';
+CREATE INDEX exam_attempt_participations_expiry_idx
+    ON exam_attempt_participations (lease_expires_at, exam_attempt_id, generation)
+    WHERE state = 'active';
+
+CREATE TABLE exam_attempt_connections (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    session_id varchar(26) NOT NULL REFERENCES sessions(id),
+    state varchar(16) NOT NULL CHECK (state IN ('open', 'closed')),
+    opened_at timestamptz NOT NULL,
+    closed_at timestamptz,
+    close_reason varchar(24) CHECK (close_reason IN (
+        'transport_closed', 'interrupted', 'lease_expired', 'kicked', 'submitted', 'sitting_closed'
+    )),
+    CONSTRAINT exam_attempt_connections_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id),
+    CONSTRAINT exam_attempt_connections_lifecycle_check CHECK (
+        (state = 'open' AND closed_at IS NULL AND close_reason IS NULL) OR
+        (state = 'closed' AND closed_at >= opened_at AND close_reason IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX exam_attempt_connections_one_open_attempt_key
+    ON exam_attempt_connections (exam_attempt_id) WHERE state = 'open';
+CREATE UNIQUE INDEX exam_attempt_connections_one_open_participation_key
+    ON exam_attempt_connections (participation_id) WHERE state = 'open';
+CREATE INDEX exam_attempt_connections_attempt_opened_id_idx
+    ON exam_attempt_connections (exam_attempt_id, opened_at DESC, id DESC);
+
+CREATE FUNCTION guard_exam_attempt_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.exam_id IS DISTINCT FROM OLD.exam_id OR
+       NEW.exam_sitting_id IS DISTINCT FROM OLD.exam_sitting_id OR
+       NEW.candidate_user_id IS DISTINCT FROM OLD.candidate_user_id OR
+       NEW.admission_revision_id IS DISTINCT FROM OLD.admission_revision_id OR
+       NEW.created_at IS DISTINCT FROM OLD.created_at OR OLD.state = 'submitted' THEN
+        RAISE EXCEPTION 'Exam Attempt immutable identity or terminal state changed' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER exam_attempts_guard
+    BEFORE UPDATE ON exam_attempts FOR EACH ROW EXECUTE FUNCTION guard_exam_attempt_mutation();
+
+CREATE FUNCTION guard_exam_attempt_workspace_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR
+       NEW.admission_revision_id IS DISTINCT FROM OLD.admission_revision_id OR
+       NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.cursor < OLD.cursor THEN
+        RAISE EXCEPTION 'Exam Attempt Workspace immutable identity or cursor regressed' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER exam_attempt_workspaces_guard
+    BEFORE UPDATE ON exam_attempt_workspaces FOR EACH ROW EXECUTE FUNCTION guard_exam_attempt_workspace_mutation();
+
+CREATE FUNCTION reject_exam_attempt_workspace_object_update() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'Exam Attempt Workspace objects are immutable' USING ERRCODE = '55000';
+END;
+$$;
+CREATE TRIGGER exam_attempt_workspace_objects_immutable
+    BEFORE UPDATE ON exam_attempt_workspace_objects FOR EACH ROW
+    EXECUTE FUNCTION reject_exam_attempt_workspace_object_update();
+
+CREATE FUNCTION guard_attempt_participation_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR
+       NEW.generation IS DISTINCT FROM OLD.generation OR
+       NEW.continuity_credential_hash IS DISTINCT FROM OLD.continuity_credential_hash OR
+       NEW.started_at IS DISTINCT FROM OLD.started_at OR OLD.state = 'ended' OR
+       NEW.renewal_sequence < OLD.renewal_sequence OR NEW.updated_at < OLD.updated_at OR
+       NEW.lease_expires_at < OLD.lease_expires_at THEN
+        RAISE EXCEPTION 'Attempt Participation identity, terminal state, or fence regressed' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER exam_attempt_participations_guard
+    BEFORE UPDATE ON exam_attempt_participations FOR EACH ROW
+    EXECUTE FUNCTION guard_attempt_participation_mutation();
+
+CREATE FUNCTION guard_attempt_connection_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR
+       NEW.participation_id IS DISTINCT FROM OLD.participation_id OR NEW.session_id IS DISTINCT FROM OLD.session_id OR
+       NEW.opened_at IS DISTINCT FROM OLD.opened_at OR OLD.state = 'closed' THEN
+        RAISE EXCEPTION 'Attempt Connection immutable identity or terminal state changed' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER exam_attempt_connections_guard
+    BEFORE UPDATE ON exam_attempt_connections FOR EACH ROW
+    EXECUTE FUNCTION guard_attempt_connection_mutation();
 
 CREATE TABLE session_credentials (
     id varchar(26) PRIMARY KEY,
@@ -1356,6 +1607,43 @@ ALTER TABLE exam_revision_starter_workspace_entries
     ADD CONSTRAINT exam_revision_starter_workspace_entries_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_revision_starter_workspace_entries_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_revision_starter_workspace_entries_object_id_canonical_check CHECK (object_id IS NULL OR object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempts
+    ADD CONSTRAINT exam_attempts_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempts_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempts_exam_sitting_id_canonical_check CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempts_candidate_user_id_canonical_check CHECK (candidate_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempts_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_workspaces
+    ADD CONSTRAINT exam_attempt_workspaces_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspaces_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspaces_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_workspace_objects
+    ADD CONSTRAINT exam_attempt_workspace_objects_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_source_starter_entry_id_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_starter_object_id_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_content_version_canonical_check CHECK (content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_workspace_entries
+    ADD CONSTRAINT exam_attempt_workspace_entries_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_entries_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_entries_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_entries_source_starter_entry_id_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_entries_current_object_id_canonical_check CHECK (current_object_id IS NULL OR current_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_participations
+    ADD CONSTRAINT exam_attempt_participations_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_participations_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_connections
+    ADD CONSTRAINT exam_attempt_connections_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_connections_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_connections_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_connections_session_id_canonical_check CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_id_canonical_check

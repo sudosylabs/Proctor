@@ -29,7 +29,9 @@ type Params struct {
 	ExamID                  string
 	ExamRevisionID          string
 	ExamSittingID           string
+	ExamAttemptID           string
 	ExamResourceID          string
+	AttemptWorkspaceEntryID string
 	StarterWorkspaceEntryID string
 	UserID                  string
 	AcademicUnitID          string
@@ -61,7 +63,9 @@ func ParamsFromRequest(request *http.Request) Params {
 		ExamID:                  strings.TrimSpace(variables["exam_id"]),
 		ExamRevisionID:          strings.TrimSpace(variables["exam_revision_id"]),
 		ExamSittingID:           strings.TrimSpace(variables["exam_sitting_id"]),
+		ExamAttemptID:           strings.TrimSpace(variables["exam_attempt_id"]),
 		ExamResourceID:          strings.TrimSpace(variables["exam_resource_id"]),
+		AttemptWorkspaceEntryID: strings.TrimSpace(variables["attempt_workspace_entry_id"]),
 		StarterWorkspaceEntryID: strings.TrimSpace(variables["starter_workspace_entry_id"]),
 		UserID:                  strings.TrimSpace(variables["user_id"]),
 		AcademicUnitID:          strings.TrimSpace(variables["academic_unit_id"]),
@@ -171,12 +175,20 @@ func (p Params) RequireExamSittingId() (string, error) {
 	return requirePathId("exam_sitting_id", p.ExamSittingID)
 }
 
+func (p Params) RequireExamAttemptId() (string, error) {
+	return requirePathId("exam_attempt_id", p.ExamAttemptID)
+}
+
 func (p Params) RequireExamResourceId() (string, error) {
 	return requirePathId("exam_resource_id", p.ExamResourceID)
 }
 
 func (p Params) RequireStarterWorkspaceEntryId() (string, error) {
 	return requirePathId("starter_workspace_entry_id", p.StarterWorkspaceEntryID)
+}
+
+func (p Params) RequireAttemptWorkspaceEntryId() (string, error) {
+	return requirePathId("attempt_workspace_entry_id", p.AttemptWorkspaceEntryID)
 }
 
 func requirePathId(name, id string) (string, error) {

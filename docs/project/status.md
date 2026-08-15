@@ -148,6 +148,13 @@ claims and server observations into evidence, enforcement, and a final
 integrity review. Grading, scores, rubrics, pass/fail decisions, and academic
 outcomes are outside the initial product boundary.
 
+The Attempt-admission vertical slice is implemented. It provides atomic logical
+copy-on-write Workspace bootstrap, hash-only Session-bound Participation and
+Connection selectors, current-membership admission and reconnect, correction-
+aware sanitized candidate presentation, bounded manager and Workspace
+projections, protected inline content, WebSocket attachment and teardown, and
+PostgreSQL conformance across direct and decorated Store layers.
+
 Exam Resources and Starter Workspaces are distinct from mutable Attempt
 Workspace files. PostgreSQL owns their logical identity and hierarchy while
 VFS owns opaque bytes. Candidate access is protected in-application use, with

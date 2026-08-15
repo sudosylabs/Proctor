@@ -1454,6 +1454,88 @@
         "responses": {"201": {"$ref": "#/components/responses/ExamSittingCorrectionCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "get": {
+        "operationId": "listExamAttempts",
+        "summary": "List bounded candidate Attempts for one Exam Sitting",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "state", "in": "query", "required": false, "description": "Repeated distinct Attempt states.", "style": "form", "explode": true, "schema": {"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"$ref": "#/components/schemas/ExamAttemptState"}}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
+          {"name": "cursor", "in": "query", "required": false, "description": "Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged.", "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"$ref": "#/components/responses/ExamAttemptManagerListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}, {"$ref": "#/components/parameters/ExamAttemptID"}],
+      "get": {
+        "operationId": "getExamAttempt",
+        "summary": "Get one manager-safe Exam Attempt projection",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/ExamAttemptManagerOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exam-attempts/{exam_attempt_id}/presentation": {
+      "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}],
+      "get": {
+        "operationId": "getCandidateExamPresentation",
+        "summary": "Get the protected current presentation for one candidate Attempt",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}],
+        "responses": {"200": {"$ref": "#/components/responses/CandidateExamPresentationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exam-attempts/{exam_attempt_id}/workspace": {
+      "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}],
+      "get": {
+        "operationId": "listCandidateExamWorkspace",
+        "summary": "List one protected candidate Workspace page",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/CandidateAttemptCredential"},
+          {"$ref": "#/components/parameters/CandidateAttemptConnectionID"},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
+          {"name": "cursor", "in": "query", "required": false, "description": "Opaque versioned cursor over ascending canonical path and Workspace entry identity; clients return it unchanged.", "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"$ref": "#/components/responses/CandidateExamWorkspaceListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exam-attempts/{exam_attempt_id}/resources/{exam_resource_id}/content": {
+      "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}, {"$ref": "#/components/parameters/ExamResourceID"}],
+      "get": {
+        "operationId": "getCandidateExamResourceContent",
+        "summary": "Render a current protected Exam resource inline",
+        "description": "Requires the active session-bound Attempt credential and Connection. It is not a public or export URL.",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}}],
+        "responses": {"200": {"$ref": "#/components/responses/CandidateExamProtectedContent"}, "304": {"$ref": "#/components/responses/CandidateExamContentNotModified"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exam-attempts/{exam_attempt_id}/workspace/files/{attempt_workspace_entry_id}/content": {
+      "parameters": [{"$ref": "#/components/parameters/ExamAttemptID"}, {"$ref": "#/components/parameters/AttemptWorkspaceEntryID"}],
+      "get": {
+        "operationId": "getCandidateExamWorkspaceContent",
+        "summary": "Render a protected candidate Workspace file inline",
+        "description": "Requires the active session-bound Attempt credential and Connection. It never exposes a VFS key or object identity.",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [{"$ref": "#/components/parameters/CandidateAttemptCredential"}, {"$ref": "#/components/parameters/CandidateAttemptConnectionID"}, {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}}],
+        "responses": {"200": {"$ref": "#/components/responses/CandidateExamProtectedContent"}, "304": {"$ref": "#/components/responses/CandidateExamContentNotModified"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/exams/{exam_id}/draft": {
       "parameters": [{"$ref": "#/components/parameters/ExamID"}],
       "patch": {
@@ -1860,6 +1942,32 @@
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "ExamAttemptID": {
+        "name": "exam_attempt_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "AttemptWorkspaceEntryID": {
+        "name": "attempt_workspace_entry_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "CandidateAttemptCredential": {
+        "name": "X-Proctor-Attempt-Credential",
+        "in": "header",
+        "required": true,
+        "description": "Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL.",
+        "schema": {"type": "string", "minLength": 43, "maxLength": 43, "pattern": "^[A-Za-z0-9_-]{43}$"}
+      },
+      "CandidateAttemptConnectionID": {
+        "name": "X-Proctor-Attempt-Connection-ID",
+        "in": "header",
+        "required": true,
+        "description": "The durable open Attempt Connection bound to the current authenticated Session.",
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "ExamResourceID": {
         "name": "exam_resource_id",
         "in": "path",
@@ -2167,6 +2275,43 @@
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingListResponse"}}}
       },
+      "ExamAttemptManagerOK": {
+        "description": "Bounded manager-safe Exam Attempt state",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamAttemptManagerResponse"}}}
+      },
+      "ExamAttemptManagerListOK": {
+        "description": "Bounded manager-safe Exam Attempt collection",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamAttemptManagerListResponse"}}}
+      },
+      "CandidateExamPresentationOK": {
+        "description": "Protected current Exam presentation for one active Attempt Connection",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CandidateExamPresentationResponse"}}}
+      },
+      "CandidateExamWorkspaceListOK": {
+        "description": "Bounded protected candidate Workspace manifest page",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CandidateExamWorkspaceListResponse"}}}
+      },
+      "CandidateExamProtectedContent": {
+        "description": "Authorized inline candidate Exam content; not a public URL or export response",
+        "headers": {
+          "ETag": {"schema": {"type": "string"}},
+          "Cache-Control": {"schema": {"type": "string", "const": "private, no-store"}},
+          "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}}
+        },
+        "content": {"*/*": {"schema": {"type": "string", "format": "binary"}}}
+      },
+      "CandidateExamContentNotModified": {
+        "description": "Protected candidate Exam content has not changed",
+        "headers": {
+          "ETag": {"schema": {"type": "string"}},
+          "Cache-Control": {"schema": {"type": "string", "const": "private, no-store"}},
+          "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}}
+        }
+      },
       "ExamSittingCorrectionResourceStageCreated": {
         "description": "Purpose-bound resource content staged and ready for one live Sitting correction",
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
@@ -2469,6 +2614,122 @@
         "properties": {
           "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamSittingResponse"}},
           "next_cursor": {"type": "string", "description": "Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged."}
+        }
+      },
+      "ExamAttemptState": {"type": "string", "enum": ["active", "suspended", "submitted"]},
+      "AttemptParticipationState": {"type": "string", "enum": ["active", "ended"]},
+      "AttemptParticipationEndReason": {"type": "string", "enum": ["interrupted", "lease_expired", "kicked", "submitted", "sitting_closed"]},
+      "AttemptConnectionState": {"type": "string", "enum": ["open", "closed"]},
+      "AttemptConnectionCloseReason": {"type": "string", "enum": ["transport_closed", "interrupted", "lease_expired", "kicked", "submitted", "sitting_closed"]},
+      "ExamAttemptWorkspaceResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "cursor", "created_at", "updated_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "cursor": {"type": "integer", "format": "int64", "minimum": 0},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ExamAttemptParticipationResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "state", "generation", "renewal_sequence", "started_at", "updated_at", "lease_expires_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "state": {"$ref": "#/components/schemas/AttemptParticipationState"},
+          "generation": {"type": "integer", "format": "int64", "minimum": 1},
+          "renewal_sequence": {"type": "integer", "format": "int64", "minimum": 0},
+          "started_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "lease_expires_at": {"type": "string", "format": "date-time"},
+          "ended_at": {"type": "string", "format": "date-time"},
+          "end_reason": {"$ref": "#/components/schemas/AttemptParticipationEndReason"}
+        }
+      },
+      "ExamAttemptConnectionResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "state", "opened_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "state": {"$ref": "#/components/schemas/AttemptConnectionState"},
+          "opened_at": {"type": "string", "format": "date-time"},
+          "closed_at": {"type": "string", "format": "date-time"},
+          "close_reason": {"$ref": "#/components/schemas/AttemptConnectionCloseReason"}
+        }
+      },
+      "ExamAttemptManagerResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "exam_id", "exam_sitting_id", "candidate_user_id", "admission_revision_id", "state", "created_at", "updated_at", "revision", "workspace"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "exam_id": {"$ref": "#/components/schemas/ID"},
+          "exam_sitting_id": {"$ref": "#/components/schemas/ID"},
+          "candidate_user_id": {"$ref": "#/components/schemas/ID"},
+          "admission_revision_id": {"$ref": "#/components/schemas/ID"},
+          "state": {"$ref": "#/components/schemas/ExamAttemptState"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "submitted_at": {"type": "string", "format": "date-time"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "workspace": {"$ref": "#/components/schemas/ExamAttemptWorkspaceResponse"},
+          "latest_participation": {"$ref": "#/components/schemas/ExamAttemptParticipationResponse"},
+          "current_connection": {"$ref": "#/components/schemas/ExamAttemptConnectionResponse"}
+        }
+      },
+      "ExamAttemptManagerListResponse": {
+        "type": "object", "additionalProperties": false, "required": ["items"],
+        "properties": {
+          "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamAttemptManagerResponse"}},
+          "next_cursor": {"type": "string", "description": "Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged."}
+        }
+      },
+      "CandidateExamResourceResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "display_name", "description_markdown", "position", "media_type", "size", "sha256"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "display_name": {"type": "string", "minLength": 1, "maxLength": 255},
+          "description_markdown": {"type": "string", "maxLength": 16384},
+          "position": {"type": "integer", "minimum": 0, "maximum": 9},
+          "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"}
+        }
+      },
+      "CandidateExamPresentationResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "resources"],
+        "properties": {
+          "attempt_id": {"$ref": "#/components/schemas/ID"},
+          "exam_sitting_id": {"$ref": "#/components/schemas/ID"},
+          "admission_revision_id": {"$ref": "#/components/schemas/ID"},
+          "current_revision_id": {"$ref": "#/components/schemas/ID"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "instructions_markdown": {"type": "string", "description": "Current Sitting Revision instructions as bounded authored Markdown."},
+          "resources": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/CandidateExamResourceResponse"}}
+        }
+      },
+      "CandidateExamWorkspaceItemResponse": {
+        "type": "object", "additionalProperties": false, "required": ["id", "kind", "path"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "kind": {"type": "string", "enum": ["file", "directory"]},
+          "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
+          "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
+          "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"}
+        },
+        "oneOf": [
+          {"properties": {"kind": {"const": "file"}}, "required": ["content_version", "media_type", "size", "sha256"]},
+          {"properties": {"kind": {"const": "directory"}}, "not": {"anyOf": [{"required": ["content_version"]}, {"required": ["media_type"]}, {"required": ["size"]}, {"required": ["sha256"]}]}}
+        ]
+      },
+      "CandidateExamWorkspaceListResponse": {
+        "type": "object", "additionalProperties": false, "required": ["items"],
+        "properties": {
+          "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/CandidateExamWorkspaceItemResponse"}},
+          "next_cursor": {"type": "string", "description": "Opaque versioned cursor over ascending canonical path and Workspace entry identity; clients return it unchanged."}
         }
       },
       "ExamSittingCorrectionResourceStageMetadata": {

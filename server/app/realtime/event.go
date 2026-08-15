@@ -103,13 +103,77 @@ type examSittingContentCorrectedData struct {
 	EffectiveAt        string `json:"effective_at"`
 }
 
+type examAttemptConnectionChangedData struct {
+	ExamSittingID string `json:"exam_sitting_id"`
+	ExamAttemptID string `json:"exam_attempt_id"`
+	CandidateID   string `json:"candidate_user_id"`
+	ConnectionID  string `json:"attempt_connection_id"`
+	State         string `json:"state"`
+	CloseReason   string `json:"close_reason,omitempty"`
+	ChangedAt     string `json:"changed_at"`
+}
+
+func NewExamAttemptConnectionOpenedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, connectionID model.AttemptConnectionID, openedAt time.Time,
+) (RealtimeEvent, error) {
+	return newExamAttemptConnectionChangedEvent("exam_attempt_connection_opened", sittingID, attemptID, candidateID,
+		connectionID, model.AttemptConnectionOpen, "", openedAt)
+}
+
+func NewExamAttemptConnectionClosedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, connectionID model.AttemptConnectionID, reason model.AttemptConnectionCloseReason, closedAt time.Time,
+) (RealtimeEvent, error) {
+	if !reason.IsValid() {
+		return RealtimeEvent{}, errors.New("Exam Attempt Connection closed event requires a valid reason")
+	}
+	return newExamAttemptConnectionChangedEvent("exam_attempt_connection_closed", sittingID, attemptID, candidateID,
+		connectionID, model.AttemptConnectionClosed, reason, closedAt)
+}
+
+func newExamAttemptConnectionChangedEvent(name string, sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
+	candidateID model.UserID, connectionID model.AttemptConnectionID, state model.AttemptConnectionState,
+	reason model.AttemptConnectionCloseReason, changedAt time.Time,
+) (RealtimeEvent, error) {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !connectionID.IsValid() ||
+		changedAt.IsZero() || (state != model.AttemptConnectionOpen && state != model.AttemptConnectionClosed) {
+		return RealtimeEvent{}, errors.New("Exam Attempt Connection event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(examAttemptConnectionChangedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
+		CandidateID: candidateID.String(), ConnectionID: connectionID.String(), State: string(state), CloseReason: string(reason),
+		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Exam Attempt Connection event: %w", err)
+	}
+	return RealtimeEvent{Name: name, Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
 // NewExamSittingContentCorrectedEvent constructs the content-free fact that
 // tells authorized Sitting subscribers to refetch authoritative presentation.
 func NewExamSittingContentCorrectedEvent(examID model.ExamID, sittingID model.ExamSittingID,
 	previousRevisionID, revisionID model.ExamRevisionID, sittingRevision int64, effectiveAt time.Time,
 ) (RealtimeEvent, error) {
+	return newExamSittingContentCorrectedEvent(model.ActionExamSittingView, examID, sittingID,
+		previousRevisionID, revisionID, sittingRevision, effectiveAt)
+}
+
+// NewCandidateExamSittingContentCorrectedEvent constructs the independently
+// authorized candidate fact for the same committed correction. Candidate and
+// manager subscriptions deliberately use different actions so later manager
+// payloads cannot become candidate-visible by accident.
+func NewCandidateExamSittingContentCorrectedEvent(examID model.ExamID, sittingID model.ExamSittingID,
+	previousRevisionID, revisionID model.ExamRevisionID, sittingRevision int64, effectiveAt time.Time,
+) (RealtimeEvent, error) {
+	return newExamSittingContentCorrectedEvent(model.ActionExamSittingParticipate, examID, sittingID,
+		previousRevisionID, revisionID, sittingRevision, effectiveAt)
+}
+
+func newExamSittingContentCorrectedEvent(action model.Action, examID model.ExamID, sittingID model.ExamSittingID,
+	previousRevisionID, revisionID model.ExamRevisionID, sittingRevision int64, effectiveAt time.Time,
+) (RealtimeEvent, error) {
 	if !examID.IsValid() || !sittingID.IsValid() || !previousRevisionID.IsValid() || !revisionID.IsValid() ||
-		previousRevisionID == revisionID || sittingRevision < 1 || effectiveAt.IsZero() {
+		previousRevisionID == revisionID || sittingRevision < 1 || effectiveAt.IsZero() ||
+		(action != model.ActionExamSittingView && action != model.ActionExamSittingParticipate) {
 		return RealtimeEvent{}, errors.New("Exam Sitting correction event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(examSittingContentCorrectedData{
@@ -119,7 +183,7 @@ func NewExamSittingContentCorrectedEvent(examID model.ExamID, sittingID model.Ex
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting correction event: %w", err)
 	}
-	return RealtimeEvent{Name: "exam_sitting_content_corrected", Action: model.ActionExamSittingView,
+	return RealtimeEvent{Name: "exam_sitting_content_corrected", Action: action,
 		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
 }
 
@@ -128,8 +192,25 @@ func NewExamSittingContentCorrectedEvent(examID model.ExamID, sittingID model.Ex
 func NewExamSittingLifecycleChangedEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState,
 	revision int64, reasonCode string, scheduledEndAt, changedAt time.Time,
 ) (RealtimeEvent, error) {
+	return newExamSittingLifecycleChangedEvent(model.ActionExamSittingView, examID, sittingID, state,
+		revision, reasonCode, scheduledEndAt, changedAt)
+}
+
+// NewCandidateExamSittingLifecycleChangedEvent constructs the candidate-safe
+// lifecycle fact under the relationship-only participation action.
+func NewCandidateExamSittingLifecycleChangedEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState,
+	revision int64, reasonCode string, scheduledEndAt, changedAt time.Time,
+) (RealtimeEvent, error) {
+	return newExamSittingLifecycleChangedEvent(model.ActionExamSittingParticipate, examID, sittingID, state,
+		revision, reasonCode, scheduledEndAt, changedAt)
+}
+
+func newExamSittingLifecycleChangedEvent(action model.Action, examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState,
+	revision int64, reasonCode string, scheduledEndAt, changedAt time.Time,
+) (RealtimeEvent, error) {
 	if !examID.IsValid() || !sittingID.IsValid() || !state.IsValid() || revision < 1 ||
-		!validExamSittingLifecycleEventReason(reasonCode) || scheduledEndAt.IsZero() || changedAt.IsZero() {
+		!validExamSittingLifecycleEventReason(reasonCode) || scheduledEndAt.IsZero() || changedAt.IsZero() ||
+		(action != model.ActionExamSittingView && action != model.ActionExamSittingParticipate) {
 		return RealtimeEvent{}, errors.New("Exam Sitting lifecycle event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(examSittingLifecycleChangedData{
@@ -140,7 +221,7 @@ func NewExamSittingLifecycleChangedEvent(examID model.ExamID, sittingID model.Ex
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting lifecycle event: %w", err)
 	}
-	return RealtimeEvent{Name: "exam_sitting_lifecycle_changed", Action: model.ActionExamSittingView,
+	return RealtimeEvent{Name: "exam_sitting_lifecycle_changed", Action: action,
 		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
 }
 

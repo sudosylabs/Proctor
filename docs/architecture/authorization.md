@@ -120,6 +120,15 @@ Period, archive, state, or optimistic-revision constraints. Unauthorized exact
 Sitting access is concealed as not found.
 Candidate participation is decided from current exact-Class membership and
 Attempt/Sitting state on every connection; it is not a reusable role grant.
+After admission, every protected candidate HTTP read requires the immutable
+authenticated Session principal plus the exact open Attempt Connection identity
+and continuity credential. The application hashes that credential immediately;
+persistence matches the hash and requires the Connection's candidate and
+Session identities to equal the current principal. Membership is not
+continuously re-polled for those established reads, but a fresh connection or
+reconnect always rechecks exact current Class membership. Missing, invalid,
+expired, fenced, or cross-Session selectors are concealed without exposing
+whether the Attempt exists.
 Further lifecycle and visibility rules are in
 [Examinations](./examinations.md#authorization-effects-and-persistence).
 

@@ -275,5 +275,49 @@ decodeJSON(writer, request, &unit, "update")
 store.AcademicUnit().Update(request.Context(), &unit)
 ```
 
+## Exam Attempt protected reads
+
+Exam Managers use the Exam/Sitting-scoped Attempt catalog and exact read;
+candidates use Attempt-scoped protected delivery routes:
+
+| Method and path | Authentication | Success |
+| --- | --- | --- |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts` | principal plus current management authorization | bounded manager-safe Attempt page |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}` | principal plus current management authorization | exact manager-safe Attempt |
+| `GET /api/v1/exam-attempts/{exam_attempt_id}/presentation` | Session plus Attempt credential and Connection | current instructions/resource metadata |
+| `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace` | Session plus Attempt credential and Connection | bounded logical Workspace page |
+| `GET /api/v1/exam-attempts/{exam_attempt_id}/resources/{exam_resource_id}/content` | Session plus Attempt credential and Connection | protected inline bytes or `304` |
+| `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace/files/{attempt_workspace_entry_id}/content` | Session plus Attempt credential and Connection | protected inline bytes or `304` |
+
+Every candidate route requires exactly one
+`X-Proctor-Attempt-Credential` header containing the canonical 32-byte Raw
+URL-safe base64 continuity credential and one
+`X-Proctor-Attempt-Connection-ID` header. The application hashes the credential
+immediately; the Store also binds candidate reads to the authenticated Session
+ID and durable open Connection. Neither header is accepted from a URL, echoed,
+logged, included in Problem Details, or persisted in raw form. Missing,
+duplicate, whitespace-altered, or malformed values are invalid requests.
+Malformed paths, cursors, limits, states, or protection headers return
+`request.invalid` (`400`). Missing or mismatched Attempt, candidate,
+Participation, credential, Connection, or manager-visible target is concealed
+as `resource.not_found` (`404`). A presently unreadable Sitting or blocked
+Attempt returns its stable safe `exam.attempt.*` conflict (`409`); dependency
+failure is `exam.attempt.unavailable` (`500`). No error distinguishes which
+sensitive selector failed.
+
+Manager results are ordered by Attempt creation time and identity descending.
+Candidate Workspace results are ordered by canonical path and entry identity
+ascending. Both catalogs default to 50 and accept at most 200 items, using
+distinct opaque versioned keyset cursors. JSON is `no-store`. Candidate binary
+content is inline, `private, no-store`, `nosniff`, and conditionally readable
+with a strong ETag; it has no `Content-Disposition`, public URL, object key, or
+download/export contract.
+
+Manager projections omit credential hashes and Session identities. Candidate
+presentation exposes the admission Revision only as provenance while title,
+instructions, resources, and resource content resolve from the Sitting's
+current Revision. Workspace pages expose logical entries and content versions,
+never starter/Attempt object identities or VFS keys.
+
 The OpenAPI document describes the wire contract only. It does not generate or
 dictate domain models, application commands, persistence rows, or handlers.

@@ -77,6 +77,7 @@ func TestConnectionRuntimeClonesTheAcceptedPrincipal(t *testing.T) {
 	}
 	runtime := newConnectionRuntime(
 		&inboundTestApplication{},
+		replayTestLogger{},
 		"node-a",
 		newInboundTestSocket(),
 		principal,

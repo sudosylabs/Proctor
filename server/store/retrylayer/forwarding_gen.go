@@ -14,6 +14,8 @@ import (
 type retryStores struct {
 	clusterDiscovery         store.ClusterDiscoveryStore
 	clusterDiscoveryOnce     sync.Once
+	examAttempt              store.ExamAttemptStore
+	examAttemptOnce          sync.Once
 	examCorrection           store.ExamCorrectionStore
 	examCorrectionOnce       sync.Once
 	examResource             store.ExamResourceStore
@@ -80,6 +82,11 @@ type retryStores struct {
 
 type clusterDiscoveryStore struct {
 	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type examAttemptStore struct {
+	store.ExamAttemptStore
 	layer *Layer
 }
 
@@ -316,6 +323,16 @@ func (l *Layer) ExamSitting() store.ExamSittingStore {
 		}
 	})
 	return l.stores.examSitting
+}
+
+func (l *Layer) ExamAttempt() store.ExamAttemptStore {
+	l.stores.examAttemptOnce.Do(func() {
+		next := l.Store.ExamAttempt()
+		if next != nil {
+			l.stores.examAttempt = &examAttemptStore{ExamAttemptStore: next, layer: l}
+		}
+	})
+	return l.stores.examAttempt
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -561,6 +578,7 @@ func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
 var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore     = (*clusterDiscoveryStore)(nil)
+	_ store.ExamAttemptStore          = (*examAttemptStore)(nil)
 	_ store.ExamCorrectionStore       = (*examCorrectionStore)(nil)
 	_ store.ExamResourceStore         = (*examResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*examRevisionStore)(nil)

@@ -50,6 +50,24 @@ type ExamResourceID string
 // upload for a single live Exam Sitting correction.
 type ExamCorrectionResourceStageID string
 
+// ExamAttemptID identifies one candidate's stable work identity for a Sitting.
+type ExamAttemptID string
+
+// ExamAttemptWorkspaceID identifies the private Workspace owned by one Attempt.
+type ExamAttemptWorkspaceID string
+
+// AttemptParticipationID identifies one bounded continuity-credential lease.
+type AttemptParticipationID string
+
+// AttemptConnectionID identifies one transport connection admitted to an Attempt Participation.
+type AttemptConnectionID string
+
+// AttemptWorkspaceEntryID identifies one logical path in an Attempt Workspace.
+type AttemptWorkspaceEntryID string
+
+// AttemptWorkspaceObjectID identifies one immutable content selection in an Attempt Workspace.
+type AttemptWorkspaceObjectID string
+
 // StarterWorkspaceEntryID identifies one logical file or directory in an Exam
 // Draft's Starter Workspace.
 type StarterWorkspaceEntryID string
