@@ -25,13 +25,14 @@ Academic Unit
 
 The planned application boundary is `app/exam`. It owns authoring,
 publication, sitting and attempt lifecycle, policy evaluation, integrity
-decisions, and effect ordering. Selective `app/exam/resource` and
-`app/exam/workspace` children own the distinct resource and workspace
-mechanics. They may depend inward on domain types and narrow capabilities but
-never on the parent application package, transports, SQL, VFS, or concrete
-infrastructure. The parent application remains the public facade. The package
-comment added with the first working slice must state this vocabulary,
-ownership, exclusions, and dependency direction.
+decisions, and effect ordering. Selective `app/exam/resource`,
+`app/exam/workspace`, and `app/exam/correction` children own the distinct
+resource, workspace, and live-correction mechanics. They may depend inward on
+domain types and narrow capabilities but never on the parent application
+package, transports, SQL, VFS, or concrete infrastructure. The parent
+application remains the public facade. The package comment added with the
+first working slice must state this vocabulary, ownership, exclusions, and
+dependency direction.
 
 ## Authoring, ownership, and publication
 
@@ -73,6 +74,17 @@ digests and Starter Workspace digests to match, so only instructions and Exam
 Resources can change; eligibility, schedule, policy, and starter files cannot
 change through this path. Selecting the correction as the future default is
 explicit, and changing the reusable Draft remains a separate operation.
+
+Resource bytes for a correction are first staged against the exact Sitting,
+base Revision, target kind, manager, and expiry. Staging an addition allocates
+a new stable resource identity; staging a replacement binds an identity already
+present in the base Revision. The final command supplies one complete ordered
+manifest: omission removes a resource, order becomes position, an item without
+a stage retains its base content, and an item with a ready stage selects those
+bytes. Only that atomic final command makes staged bytes visible. It creates no
+Draft mutation, selects no future default, and exposes no file, lease, object
+key, path, or public-download identity. Exact retries return the original safe
+outcome; failed or abandoned stages remain invisible and retention-eligible.
 
 The creator is immutable provenance and the first Owner and Exam Manager. One
 current Owner is protected from removal; ownership transfer is audited and

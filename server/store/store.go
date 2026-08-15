@@ -261,6 +261,7 @@ type Catalog interface {
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
 	ExamResource() ExamResourceStore
+	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore
 	User() UserStore
@@ -295,6 +296,7 @@ type Store interface {
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
 	ExamResource() ExamResourceStore
+	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
 	Class() ClassStore
 	User() UserStore

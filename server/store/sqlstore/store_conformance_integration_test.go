@@ -80,6 +80,9 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"ExamRevision", storetest.TestExamRevisionStore},
 		{"ExamSitting", storetest.TestExamSittingStore},
 		{"ExamResource", storetest.TestExamResourceStore},
+		{"ExamCorrection", func(t *testing.T, decorated store.Store) {
+			storetest.TestExamCorrectionStore(t, decorated, examCorrectionSQLProbe(t, sqlStore))
+		}},
 		{"ExamStarterWorkspace", storetest.TestExamStarterWorkspaceStore},
 		{"Class", storetest.TestClassStore},
 		{"User", storetest.TestUserStore},
@@ -141,6 +144,161 @@ func TestExamAuthoringStore(t *testing.T) {
 
 func TestExamRevisionStore(t *testing.T) {
 	StoreTest(t, storetest.TestExamRevisionStore)
+}
+
+func TestExamCorrectionStore(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestExamCorrectionStore(t, persistence, examCorrectionSQLProbe(t, persistence))
+}
+
+func examCorrectionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamCorrectionSQLProbe {
+	t.Helper()
+	filesystem := memoryvfs.New()
+	content, err := filecontent.New(filesystem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return storetest.ExamCorrectionSQLProbe{OpenSitting: func(t *testing.T, ctx context.Context, sittingID model.ExamSittingID) {
+		t.Helper()
+		result, execErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_sittings SET state='open',
+			scheduled_start_at=statement_timestamp()-INTERVAL '1 minute',scheduled_end_at=statement_timestamp()+INTERVAL '1 hour',
+			opened_at=GREATEST(created_at,statement_timestamp()),updated_at=GREATEST(created_at,statement_timestamp()),revision=revision+1
+			WHERE id=? AND state='scheduled'`, sittingID.String())
+		if execErr != nil {
+			t.Fatal(execErr)
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			t.Fatalf("open correction Sitting affected=%d", affected)
+		}
+	}, StageBytes: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, body string) {
+		t.Helper()
+		if _, stageErr := content.StoreExamResourceRendition(ctx, revisionID, renditionID, model.ExamResourceMediaText,
+			strings.NewReader(body), int64(len(body)), model.NowUTC()); stageErr != nil {
+			t.Fatal(stageErr)
+		}
+	}, VerifyBytes: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, want string) {
+		t.Helper()
+		opened, openErr := content.OpenExamResource(ctx, revisionID, renditionID)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		defer opened.Close()
+		got, readErr := io.ReadAll(opened)
+		if readErr != nil || string(got) != want {
+			t.Fatalf("retained correction bytes=%q error=%v want=%q", got, readErr, want)
+		}
+	}, FileAvailability: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID) model.FileAvailability {
+		t.Helper()
+		var availability string
+		if getErr := persistence.GetMaster().Get(ctx, &availability, `SELECT availability FROM file_revisions WHERE id=?`, revisionID.String()); getErr != nil {
+			t.Fatal(getErr)
+		}
+		return model.FileAvailability(availability)
+	}, Corrections: func(t *testing.T, ctx context.Context, sittingID model.ExamSittingID) []storetest.ExamCorrectionProvenanceProbe {
+		t.Helper()
+		var rows []struct {
+			PreviousRevisionID   string `db:"previous_revision_id"`
+			CorrectionRevisionID string `db:"correction_revision_id"`
+			PrivateReason        string `db:"private_reason"`
+			SittingRevision      int64  `db:"sitting_revision"`
+		}
+		if selectErr := persistence.GetMaster().Select(ctx, &rows, `SELECT previous_revision_id,correction_revision_id,private_reason,sitting_revision FROM exam_sitting_live_corrections WHERE exam_sitting_id=? ORDER BY sitting_revision`, sittingID.String()); selectErr != nil {
+			t.Fatal(selectErr)
+		}
+		items := make([]storetest.ExamCorrectionProvenanceProbe, len(rows))
+		for index, row := range rows {
+			previousID, parseErr := model.ParseExamRevisionID(row.PreviousRevisionID)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			correctionID, parseErr := model.ParseExamRevisionID(row.CorrectionRevisionID)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			items[index] = storetest.ExamCorrectionProvenanceProbe{PreviousRevisionID: previousID, CorrectionRevisionID: correctionID,
+				PrivateReason: row.PrivateReason, SittingRevision: row.SittingRevision}
+		}
+		return items
+	}, AssertAppendOnly: func(t *testing.T, ctx context.Context, sittingID model.ExamSittingID) {
+		t.Helper()
+		if _, updateErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_sitting_live_corrections SET private_reason='tampered' WHERE exam_sitting_id=?`, sittingID.String()); updateErr == nil {
+			t.Fatal("live correction provenance UPDATE unexpectedly succeeded")
+		}
+		if _, deleteErr := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_sitting_live_corrections WHERE exam_sitting_id=?`, sittingID.String()); deleteErr == nil {
+			t.Fatal("live correction provenance DELETE unexpectedly succeeded")
+		}
+	}, ExpireStage: func(t *testing.T, ctx context.Context, stageID model.ExamCorrectionResourceStageID) {
+		t.Helper()
+		_, transactionErr := runSQLTransaction(ctx, persistence.GetMaster().Begin, "age correction stage", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+			if _, execErr := tx.Exec(ctx, `UPDATE exam_correction_resource_stages SET created_at=statement_timestamp()-INTERVAL '26 hours',ready_at=statement_timestamp()-INTERVAL '25 hours' WHERE id=? AND state='ready'`, stageID.String()); execErr != nil {
+				return struct{}{}, execErr
+			}
+			result, execErr := tx.Exec(ctx, `UPDATE upload_leases SET created_at=statement_timestamp()-INTERVAL '26 hours',updated_at=statement_timestamp()-INTERVAL '25 hours',expires_at=statement_timestamp()-INTERVAL '25 hours' WHERE id=(SELECT upload_lease_id FROM exam_correction_resource_stages WHERE id=?)`, stageID.String())
+			if execErr != nil {
+				return struct{}{}, execErr
+			}
+			if affected, _ := result.RowsAffected(); affected != 1 {
+				return struct{}{}, fmt.Errorf("expire correction stage affected=%d", affected)
+			}
+			return struct{}{}, nil
+		})
+		if transactionErr != nil {
+			t.Fatal(transactionErr)
+		}
+	}, ExpireStageOutcome: func(t *testing.T, ctx context.Context, stageID model.ExamCorrectionResourceStageID) {
+		t.Helper()
+		result, execErr := persistence.GetMaster().Exec(ctx, `UPDATE command_outcomes SET created_at=statement_timestamp()-INTERVAL '26 hours',expires_at=statement_timestamp()-INTERVAL '1 hour' WHERE operation=? AND outcome->>'stage_id'=?`, store.ExamCorrectionResourceStageOperation, stageID.String())
+		if execErr != nil {
+			t.Fatal(execErr)
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			t.Fatalf("expire correction stage outcome affected=%d", affected)
+		}
+	}, ReleaseStageCleanupProtection: func(t *testing.T, ctx context.Context, stageID model.ExamCorrectionResourceStageID) {
+		t.Helper()
+		result, execErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_correction_resource_stages SET cleanup_protected_until=statement_timestamp()-INTERVAL '1 second' WHERE id=?`, stageID.String())
+		if execErr != nil {
+			t.Fatal(execErr)
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			t.Fatalf("release correction stage cleanup protection affected=%d", affected)
+		}
+	}, RemoveBytes: func(t *testing.T, ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) {
+		t.Helper()
+		if removeErr := content.RemoveExamResource(ctx, revisionID, renditionID); removeErr != nil {
+			t.Fatal(removeErr)
+		}
+	}, AssertPurged: func(t *testing.T, ctx context.Context, stage *store.ExamCorrectionResourceStage) {
+		t.Helper()
+		for _, query := range []struct {
+			name string
+			sql  string
+			arg  string
+		}{
+			{"stage", `SELECT COUNT(*) FROM exam_correction_resource_stages WHERE id=?`, stage.ID.String()},
+			{"revision", `SELECT COUNT(*) FROM file_revisions WHERE id=?`, stage.FileRevisionID.String()},
+			{"lease", `SELECT COUNT(*) FROM upload_leases WHERE id=?`, stage.UploadLeaseID.String()},
+			{"rendition", `SELECT COUNT(*) FROM file_renditions WHERE id=?`, stage.RenditionID.String()},
+			{"identity", `SELECT COUNT(*) FROM exam_resource_identities WHERE id=?`, stage.ResourceID.String()},
+			{"entry", `SELECT COUNT(*) FROM file_entries WHERE id=?`, stage.FileEntryID.String()},
+		} {
+			var count int
+			if getErr := persistence.GetMaster().Get(ctx, &count, query.sql, query.arg); getErr != nil {
+				t.Fatal(getErr)
+			}
+			if count != 0 {
+				t.Fatalf("purged correction %s count=%d", query.name, count)
+			}
+		}
+		var outcomeCount int
+		if getErr := persistence.GetMaster().Get(ctx, &outcomeCount, `SELECT COUNT(*) FROM command_outcomes WHERE operation=? AND outcome->>'stage_id'=?`, store.ExamCorrectionResourceStageOperation, stage.ID.String()); getErr != nil {
+			t.Fatal(getErr)
+		}
+		if outcomeCount != 0 {
+			t.Fatalf("purged correction command outcome count=%d", outcomeCount)
+		}
+	}}
 }
 
 func TestExamRevisionPublishedBytesSurviveDraftReplacementAndCleanup(t *testing.T) {
@@ -263,6 +421,9 @@ func createExamRevisionConstraintResource(t *testing.T, ctx context.Context, per
 		t.Fatal(err)
 	}
 	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO file_renditions (id,file_revision_id,created_at,name,media_type,size_bytes,width,height,sha256) VALUES (?,?,?,'original','text/plain',1,0,0,?)`, renditionID.String(), revisionID.String(), at, strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO exam_resource_identities (id,exam_id,file_entry_id) VALUES (?,?,?)`, resourceID.String(), examID.String(), entryID.String()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO exam_resources (id,exam_id,file_entry_id,selected_file_revision_id,display_name,description_markdown,position,created_at,updated_at) VALUES (?,?,?,?,'Other','',1,?,?)`, resourceID.String(), examID.String(), entryID.String(), revisionID.String(), at, at); err != nil {

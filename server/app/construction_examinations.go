@@ -7,6 +7,7 @@ import (
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
@@ -58,6 +59,19 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
+	corrections, err := examcorrection.New(
+		deps.Store.ExamCorrection(), deps.Store.ExamRevision(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		examCorrectionAuthorizationAdapter{authorization: access.authorization},
+		examCorrectionAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		examCorrectionRealtimeEffects{realtime: foundation.realtime},
+		examCorrectionRealtimeEffects{realtime: foundation.realtime},
+		deps.FileContent, time.Now, model.NewExamCorrectionResourceStageID, model.NewExamResourceID,
+		model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID,
+		model.NewExamRevisionID,
+	)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
 	starterWorkspace, err := examworkspace.NewService(
 		deps.Store.ExamStarterWorkspace(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examStarterWorkspaceAuthorizationAdapter{authorization: access.authorization},
@@ -71,5 +85,5 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, resources: resources, starterWorkspace: starterWorkspace}, nil
+	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
 }

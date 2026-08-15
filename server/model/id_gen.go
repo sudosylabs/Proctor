@@ -35,6 +35,11 @@ func NewExamSittingID() ExamSittingID { return ExamSittingID(NewId()) }
 // NewExamResourceID returns a freshly generated exam-resource identifier.
 func NewExamResourceID() ExamResourceID { return ExamResourceID(NewId()) }
 
+// NewExamCorrectionResourceStageID returns a freshly generated exam-correction-resource-stage identifier.
+func NewExamCorrectionResourceStageID() ExamCorrectionResourceStageID {
+	return ExamCorrectionResourceStageID(NewId())
+}
+
 // NewStarterWorkspaceEntryID returns a freshly generated starter-workspace-entry identifier.
 func NewStarterWorkspaceEntryID() StarterWorkspaceEntryID { return StarterWorkspaceEntryID(NewId()) }
 
@@ -149,6 +154,11 @@ func ParseExamSittingID(value string) (ExamSittingID, error) {
 // ParseExamResourceID validates and converts the shared identifier representation.
 func ParseExamResourceID(value string) (ExamResourceID, error) {
 	return parseID[ExamResourceID](value, "exam_resource_id")
+}
+
+// ParseExamCorrectionResourceStageID validates and converts the shared identifier representation.
+func ParseExamCorrectionResourceStageID(value string) (ExamCorrectionResourceStageID, error) {
+	return parseID[ExamCorrectionResourceStageID](value, "exam_correction_resource_stage_id")
 }
 
 // ParseStarterWorkspaceEntryID validates and converts the shared identifier representation.
@@ -291,6 +301,9 @@ func (id ExamSittingID) IsZero() bool { return id == "" }
 // IsZero reports whether the exam-resource is the empty zero value.
 func (id ExamResourceID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the exam-correction-resource-stage is the empty zero value.
+func (id ExamCorrectionResourceStageID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the starter-workspace-entry is the empty zero value.
 func (id StarterWorkspaceEntryID) IsZero() bool { return id == "" }
 
@@ -386,6 +399,9 @@ func (id ExamSittingID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the exam-resource is a canonical non-zero ID.
 func (id ExamResourceID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the exam-correction-resource-stage is a canonical non-zero ID.
+func (id ExamCorrectionResourceStageID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the starter-workspace-entry is a canonical non-zero ID.
 func (id StarterWorkspaceEntryID) IsValid() bool { return IsValidId(string(id)) }
@@ -483,6 +499,9 @@ func (id ExamSittingID) String() string { return string(id) }
 // String returns the exam-resource wire/database representation.
 func (id ExamResourceID) String() string { return string(id) }
 
+// String returns the exam-correction-resource-stage wire/database representation.
+func (id ExamCorrectionResourceStageID) String() string { return string(id) }
+
 // String returns the starter-workspace-entry wire/database representation.
 func (id StarterWorkspaceEntryID) String() string { return string(id) }
 
@@ -578,6 +597,9 @@ func (id ExamSittingID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the exam-resource as its canonical string.
 func (id ExamResourceID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the exam-correction-resource-stage as its canonical string.
+func (id ExamCorrectionResourceStageID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the starter-workspace-entry as its canonical string.
 func (id StarterWorkspaceEntryID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -693,6 +715,11 @@ func (id *ExamSittingID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the exam-resource when non-empty.
 func (id *ExamResourceID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExamResourceID)
+}
+
+// UnmarshalText decodes and validates the exam-correction-resource-stage when non-empty.
+func (id *ExamCorrectionResourceStageID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamCorrectionResourceStageID)
 }
 
 // UnmarshalText decodes and validates the starter-workspace-entry when non-empty.
@@ -835,6 +862,9 @@ func (id ExamSittingID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id)
 // MarshalJSON encodes the exam-resource as a JSON string.
 func (id ExamResourceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the exam-correction-resource-stage as a JSON string.
+func (id ExamCorrectionResourceStageID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the starter-workspace-entry as a JSON string.
 func (id StarterWorkspaceEntryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -949,6 +979,11 @@ func (id *ExamSittingID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the exam-resource.
 func (id *ExamResourceID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExamResourceID)
+}
+
+// UnmarshalJSON decodes a JSON string into the exam-correction-resource-stage.
+func (id *ExamCorrectionResourceStageID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamCorrectionResourceStageID)
 }
 
 // UnmarshalJSON decodes a JSON string into the starter-workspace-entry.

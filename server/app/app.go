@@ -37,6 +37,7 @@ type App struct {
 	examRevisions                     examRevisionUseCases
 	examSittings                      examSittingUseCases
 	examResources                     examResourceUseCases
+	examCorrections                   examCorrectionUseCases
 	examStarterWorkspace              examStarterWorkspaceUseCases
 	userProfiles                      *userProfileService
 	profilePictures                   *profilePictureService

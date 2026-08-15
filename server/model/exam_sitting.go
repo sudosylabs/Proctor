@@ -252,6 +252,26 @@ func (s *ExamSitting) ExtendEnd(endAt, at time.Time) error {
 	return s.applyLifecycleCandidate(candidate)
 }
 
+// RetargetRevision atomically advances one live Sitting to a newly sealed
+// Revision while preserving its lifecycle and fixed v1 deadline. Persistence
+// owns the same-Exam and live-correction lineage checks under aggregate locks.
+func (s *ExamSitting) RetargetRevision(revisionID ExamRevisionID, at time.Time) error {
+	if s == nil {
+		return invalidModelError("ExamSitting.RetargetRevision", "exam_sitting", "value", "is required", "")
+	}
+	if s.State != ExamSittingOpen && s.State != ExamSittingPaused {
+		return invalidModelError("ExamSitting.RetargetRevision", "exam_sitting", "state", "must be open or paused", "id="+s.ID.String())
+	}
+	if !revisionID.IsValid() || revisionID == s.ExamRevisionID {
+		return invalidModelError("ExamSitting.RetargetRevision", "exam_sitting", "exam_revision_id", "must identify a different valid Revision", "id="+s.ID.String())
+	}
+	candidate := *s
+	candidate.ExamRevisionID = revisionID
+	candidate.UpdatedAt = examSittingTransitionTime(s.UpdatedAt, at)
+	candidate.Revision++
+	return s.applyLifecycleCandidate(candidate)
+}
+
 // EnterClosing denies new participation and mutable candidate work. The safe
 // terminal cause is retained through Closed; private manager rationale lives
 // only in dedicated persistence provenance.

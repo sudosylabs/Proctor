@@ -49,7 +49,15 @@ var disablePDFCPUConfigDir sync.Once
 // metadata is safe to pass to the named SQL finalization operation; the VFS
 // key remains private to File Content.
 func (c *Content) StoreExamResource(ctx context.Context, revisionID model.FileRevisionID, mediaType model.ExamResourceMediaType, body io.Reader, declaredSize int64, at time.Time) (model.FileRendition, error) {
-	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !mediaType.IsValid() || body == nil || declaredSize < 0 || declaredSize > model.ExamResourceMaximumBytes {
+	return c.StoreExamResourceRendition(ctx, revisionID, model.NewFileRenditionID(), mediaType, body, declaredSize, at)
+}
+
+// StoreExamResourceRendition validates and writes exact authored bytes at a
+// caller-preallocated opaque identity. Preallocation lets an idempotent Stage
+// command resume after an unknown VFS or database commit outcome without
+// discovering object keys or allocating a second rendition.
+func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, mediaType model.ExamResourceMediaType, body io.Reader, declaredSize int64, at time.Time) (model.FileRendition, error) {
+	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() || !mediaType.IsValid() || body == nil || declaredSize < 0 || declaredSize > model.ExamResourceMaximumBytes {
 		return model.FileRendition{}, ErrInvalidExamResourceContent
 	}
 
@@ -76,17 +84,48 @@ func (c *Content) StoreExamResource(ctx context.Context, revisionID model.FileRe
 		return model.FileRendition{}, sanitize("rewind exam resource spool", err)
 	}
 
-	renditionID := model.NewFileRenditionID()
 	checksum := fmt.Sprintf("%x", digest.Sum(nil))
 	rendition, err := model.NewFileRendition(renditionID, revisionID, "original", string(mediaType), size, 0, 0, checksum, at)
 	if err != nil {
 		return model.FileRendition{}, ErrInvalidExamResourceContent
 	}
-	_, err = c.filesystem.Write(ctx, examResourceRenditionKey(revisionID, renditionID), spool, vfspkg.WriteOptions{Size: &size, NoOverwrite: c.filesystem.Capabilities().ConditionalWrite})
+	conditionalWrite := c.filesystem.Capabilities().ConditionalWrite
+	if !conditionalWrite {
+		matching, openErr := c.openMatchingExamResource(ctx, revisionID, renditionID, size, checksum)
+		switch {
+		case openErr == nil && matching:
+			return *rendition, nil
+		case openErr == nil:
+			return model.FileRendition{}, sanitize("stage exam resource", vfspkg.ErrConflict)
+		case !errors.Is(openErr, vfspkg.ErrNotFound):
+			return model.FileRendition{}, sanitize("stage exam resource", openErr)
+		}
+	}
+	_, err = c.filesystem.Write(ctx, examResourceRenditionKey(revisionID, renditionID), spool, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditionalWrite})
 	if err != nil {
+		if existing, verifyErr := c.openMatchingExamResource(ctx, revisionID, renditionID, size, checksum); verifyErr == nil && existing {
+			return *rendition, nil
+		}
 		return model.FileRendition{}, sanitize("stage exam resource", err)
 	}
 	return *rendition, nil
+}
+
+func (c *Content) openMatchingExamResource(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, size int64, checksum string) (bool, error) {
+	file, err := c.filesystem.Open(ctx, examResourceRenditionKey(revisionID, renditionID), vfspkg.OpenOptions{})
+	if err != nil {
+		return false, err
+	}
+	defer file.Body.Close()
+	if file.Info.Size != size {
+		return false, nil
+	}
+	digest := sha256.New()
+	read, err := io.Copy(digest, io.LimitReader(file.Body, model.ExamResourceMaximumBytes+1))
+	if err != nil {
+		return false, err
+	}
+	return read == size && fmt.Sprintf("%x", digest.Sum(nil)) == checksum, nil
 }
 
 // OpenExamResource opens only the exact rendition selected by authoritative

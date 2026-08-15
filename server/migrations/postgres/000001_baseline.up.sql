@@ -431,6 +431,17 @@ ALTER TABLE exams
     REFERENCES exam_managers (exam_id, user_id)
     DEFERRABLE INITIALLY DEFERRED;
 
+-- Stable Exam Resource identity is independent of mutable Draft attachment.
+-- Published Revisions and purpose-bound live-correction stages pin this
+-- catalog so old immutable bytes remain reachable after Draft replacement or
+-- removal.
+CREATE TABLE exam_resource_identities (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    file_entry_id varchar(26) NOT NULL UNIQUE REFERENCES file_entries(id),
+    UNIQUE (exam_id, id, file_entry_id)
+);
+
 CREATE TABLE exam_resources (
     id varchar(26) PRIMARY KEY,
     exam_id varchar(26) NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
@@ -446,6 +457,9 @@ CREATE TABLE exam_resources (
     CONSTRAINT exam_resources_selected_revision_fkey
         FOREIGN KEY (selected_file_revision_id, file_entry_id)
         REFERENCES file_revisions(id, file_entry_id),
+    CONSTRAINT exam_resources_identity_fkey
+        FOREIGN KEY (exam_id, id, file_entry_id)
+        REFERENCES exam_resource_identities(exam_id, id, file_entry_id),
     CONSTRAINT exam_resources_display_name_check
         CHECK (char_length(display_name) BETWEEN 1 AND 255),
     CONSTRAINT exam_resources_description_markdown_check
@@ -610,7 +624,7 @@ CREATE TABLE exam_revision_resources (
     CONSTRAINT exam_revision_resources_revision_fkey
         FOREIGN KEY (exam_id, exam_revision_id) REFERENCES exam_revisions(exam_id, id),
     CONSTRAINT exam_revision_resources_resource_fkey
-        FOREIGN KEY (exam_id, resource_id, file_entry_id) REFERENCES exam_resources(exam_id, id, file_entry_id),
+        FOREIGN KEY (exam_id, resource_id, file_entry_id) REFERENCES exam_resource_identities(exam_id, id, file_entry_id),
     CONSTRAINT exam_revision_resources_file_revision_fkey
         FOREIGN KEY (file_revision_id, file_entry_id) REFERENCES file_revisions(id, file_entry_id),
     CONSTRAINT exam_revision_resources_rendition_fkey
@@ -751,6 +765,7 @@ CREATE TABLE exam_sittings (
     canceled_at timestamptz,
     reason_code varchar(32),
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    UNIQUE (exam_id, id),
     CONSTRAINT exam_sittings_revision_fkey
         FOREIGN KEY (exam_id, exam_revision_id, exam_revision_sealed)
         REFERENCES exam_revisions(exam_id, id, sealed),
@@ -792,6 +807,52 @@ CREATE INDEX exam_sittings_lifecycle_deadline_due_idx
     ON exam_sittings (scheduled_end_at, id) WHERE state IN ('open', 'paused');
 CREATE INDEX exam_sittings_lifecycle_closing_due_idx
     ON exam_sittings (closing_at, id) WHERE state = 'closing';
+
+-- Resource bytes staged for a live correction remain pending and invisible
+-- until the named correction transaction consumes them. Exact command replay
+-- returns the same preallocated identities and current stage state.
+CREATE TABLE exam_correction_resource_stages (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL,
+    exam_sitting_id varchar(26) NOT NULL,
+    base_revision_id varchar(26) NOT NULL,
+    target varchar(16) NOT NULL CHECK (target IN ('addition', 'replacement')),
+    resource_id varchar(26) NOT NULL,
+    file_entry_id varchar(26) NOT NULL,
+    file_revision_id varchar(26) NOT NULL UNIQUE,
+    upload_lease_id varchar(26) NOT NULL UNIQUE,
+    rendition_id varchar(26) NOT NULL UNIQUE,
+    created_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    state varchar(16) NOT NULL CHECK (state IN ('pending', 'ready', 'consumed')),
+    created_at timestamptz NOT NULL,
+    cleanup_protected_until timestamptz NOT NULL,
+    ready_at timestamptz,
+    consumed_at timestamptz,
+    CONSTRAINT exam_correction_stages_sitting_fkey
+        FOREIGN KEY (exam_id, exam_sitting_id) REFERENCES exam_sittings(exam_id, id),
+    CONSTRAINT exam_correction_stages_base_fkey
+        FOREIGN KEY (exam_id, base_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_correction_stages_identity_fkey
+        FOREIGN KEY (exam_id, resource_id, file_entry_id)
+        REFERENCES exam_resource_identities(exam_id, id, file_entry_id),
+    CONSTRAINT exam_correction_stages_file_revision_fkey
+        FOREIGN KEY (file_revision_id, file_entry_id) REFERENCES file_revisions(id, file_entry_id),
+    CONSTRAINT exam_correction_stages_upload_lease_fkey
+        FOREIGN KEY (upload_lease_id) REFERENCES upload_leases(id),
+    CONSTRAINT exam_correction_stages_state_check CHECK (
+        (state = 'pending' AND ready_at IS NULL AND consumed_at IS NULL) OR
+        (state = 'ready' AND ready_at IS NOT NULL AND consumed_at IS NULL) OR
+        (state = 'consumed' AND ready_at IS NOT NULL AND consumed_at IS NOT NULL)
+    ),
+    CONSTRAINT exam_correction_stages_time_check CHECK (
+        cleanup_protected_until >= created_at AND
+        (ready_at IS NULL OR ready_at >= created_at) AND
+        (consumed_at IS NULL OR consumed_at >= ready_at)
+    )
+);
+
+CREATE INDEX exam_correction_resource_stages_sitting_state_idx
+    ON exam_correction_resource_stages (exam_sitting_id, state, id);
 
 CREATE TABLE class_members (
     id varchar(26) PRIMARY KEY,
@@ -1085,6 +1146,36 @@ CREATE TRIGGER exam_sitting_private_actions_append_only
     BEFORE UPDATE OR DELETE ON exam_sitting_private_actions
     FOR EACH ROW EXECUTE FUNCTION reject_exam_sitting_private_action_mutation();
 
+CREATE TABLE exam_sitting_live_corrections (
+    audit_event_id varchar(26) PRIMARY KEY REFERENCES audit_events(id),
+    exam_id varchar(26) NOT NULL,
+    exam_sitting_id varchar(26) NOT NULL,
+    previous_revision_id varchar(26) NOT NULL,
+    correction_revision_id varchar(26) NOT NULL,
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    private_reason text NOT NULL,
+    effective_at timestamptz NOT NULL,
+    sitting_revision bigint NOT NULL CHECK (sitting_revision > 1),
+    UNIQUE (exam_sitting_id, sitting_revision),
+    CONSTRAINT exam_sitting_live_corrections_sitting_fkey
+        FOREIGN KEY (exam_id, exam_sitting_id) REFERENCES exam_sittings(exam_id, id),
+    CONSTRAINT exam_sitting_live_corrections_previous_fkey
+        FOREIGN KEY (exam_id, previous_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_sitting_live_corrections_correction_fkey
+        FOREIGN KEY (exam_id, correction_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_sitting_live_corrections_distinct_revision_check
+        CHECK (previous_revision_id <> correction_revision_id),
+    CONSTRAINT exam_sitting_live_corrections_reason_check CHECK (
+        private_reason = btrim(private_reason) AND
+        char_length(private_reason) BETWEEN 1 AND 1000 AND
+        octet_length(private_reason) <= 4000
+    )
+);
+
+CREATE TRIGGER exam_sitting_live_corrections_append_only
+    BEFORE UPDATE OR DELETE ON exam_sitting_live_corrections
+    FOR EACH ROW EXECUTE FUNCTION reject_exam_sitting_private_action_mutation();
+
 CREATE TABLE command_outcomes (
     user_id varchar(26) NOT NULL REFERENCES users(id),
     operation varchar(128) NOT NULL,
@@ -1208,6 +1299,14 @@ ALTER TABLE exam_managers
     ADD CONSTRAINT exam_managers_granted_by_user_id_canonical_check
     CHECK (granted_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE exam_resource_identities
+    ADD CONSTRAINT exam_resource_identities_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_resource_identities_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_resource_identities_file_entry_id_canonical_check
+    CHECK (file_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE exam_resources
     ADD CONSTRAINT exam_resources_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -1268,12 +1367,48 @@ ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_class_id_canonical_check
     CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE exam_correction_resource_stages
+    ADD CONSTRAINT exam_correction_resource_stages_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_base_revision_id_canonical_check
+    CHECK (base_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_resource_id_canonical_check
+    CHECK (resource_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_file_entry_id_canonical_check
+    CHECK (file_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_file_revision_id_canonical_check
+    CHECK (file_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_upload_lease_id_canonical_check
+    CHECK (upload_lease_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_rendition_id_canonical_check
+    CHECK (rendition_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_correction_resource_stages_created_by_user_id_canonical_check
+    CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE exam_sitting_private_actions
     ADD CONSTRAINT exam_sitting_private_actions_audit_event_id_canonical_check
     CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_sitting_private_actions_exam_sitting_id_canonical_check
     CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_sitting_private_actions_actor_user_id_canonical_check
+    CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_sitting_live_corrections
+    ADD CONSTRAINT exam_sitting_live_corrections_audit_event_id_canonical_check
+    CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_live_corrections_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_live_corrections_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_live_corrections_previous_revision_id_canonical_check
+    CHECK (previous_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_live_corrections_correction_revision_id_canonical_check
+    CHECK (correction_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_live_corrections_actor_user_id_canonical_check
     CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE classes

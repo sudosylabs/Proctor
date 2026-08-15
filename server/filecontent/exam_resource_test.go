@@ -68,6 +68,45 @@ func TestExamResourceContentStoresAndOpensExactVerifiedBytes(t *testing.T) {
 	}
 }
 
+func TestExamResourceContentStoresAtPreallocatedRenditionIdentity(t *testing.T) {
+	t.Parallel()
+
+	for _, filesystem := range []vfspkg.FileSystem{memoryvfs.New(), &examResourceNonConditionalVFS{FileSystem: memoryvfs.New()}} {
+		content, err := New(filesystem)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revisionID, renditionID := model.NewFileRevisionID(), model.NewFileRenditionID()
+		body := "corrected reference"
+		rendition, err := content.StoreExamResourceRendition(context.Background(), revisionID, renditionID,
+			model.ExamResourceMediaText, strings.NewReader(body), int64(len(body)), time.Now().UTC())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rendition.ID != renditionID || rendition.RevisionID != revisionID {
+			t.Fatalf("rendition=%#v", rendition)
+		}
+		replayed, err := content.StoreExamResourceRendition(context.Background(), revisionID, renditionID,
+			model.ExamResourceMediaText, strings.NewReader(body), int64(len(body)), rendition.CreatedAt)
+		if err != nil || replayed != rendition {
+			t.Fatalf("exact replay rendition=%#v error=%v", replayed, err)
+		}
+		if _, err = content.StoreExamResourceRendition(context.Background(), revisionID, renditionID,
+			model.ExamResourceMediaText, strings.NewReader("different"), int64(len("different")), rendition.CreatedAt); err == nil {
+			t.Fatal("mismatched bytes at preallocated identity unexpectedly succeeded")
+		}
+		opened, err := content.OpenExamResource(context.Background(), revisionID, renditionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, readErr := io.ReadAll(opened)
+		_ = opened.Close()
+		if readErr != nil || string(got) != body {
+			t.Fatalf("opened=%q error=%v", got, readErr)
+		}
+	}
+}
+
 func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *testing.T) {
 	t.Parallel()
 	filesystem := memoryvfs.New()
@@ -160,7 +199,8 @@ func TestExamResourceContentRemovesPrivateSpoolAfterEveryOutcome(t *testing.T) {
 		want       func(error) bool
 	}{
 		{name: "validation rejection", filesystem: memoryvfs.New(), body: "\x00", want: func(err error) bool { return errors.Is(err, ErrInvalidExamResourceContent) }},
-		{name: "uncertain VFS write", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New()}, body: "notes", want: IsUnavailable},
+		{name: "uncertain exact VFS write", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New()}, body: "notes", want: func(err error) bool { return err == nil }},
+		{name: "uncertain mismatched VFS write", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New(), mismatch: true}, body: "notes", want: IsUnavailable},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			privateTemp := t.TempDir()
@@ -206,9 +246,26 @@ type boundedExamResourceReader struct {
 
 type examResourceWriteFailureVFS struct {
 	vfspkg.FileSystem
+	mismatch bool
+}
+
+type examResourceNonConditionalVFS struct{ vfspkg.FileSystem }
+
+func (f *examResourceNonConditionalVFS) Capabilities() vfspkg.Capabilities {
+	capabilities := f.FileSystem.Capabilities()
+	capabilities.ConditionalWrite = false
+	return capabilities
 }
 
 func (f *examResourceWriteFailureVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+	if f.mismatch {
+		wrongSize := int64(len("wrong"))
+		info, err := f.FileSystem.Write(ctx, path, strings.NewReader("wrong"), vfspkg.WriteOptions{Size: &wrongSize, NoOverwrite: options.NoOverwrite})
+		if err != nil {
+			return info, err
+		}
+		return info, errors.New("write acknowledgement lost")
+	}
 	info, err := f.FileSystem.Write(ctx, path, body, options)
 	if err != nil {
 		return info, err

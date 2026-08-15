@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -110,5 +111,92 @@ func TestExamRevisionRejectsIncompleteOrUnboundedSnapshots(t *testing.T) {
 				t.Fatal("invalid revision snapshot was accepted")
 			}
 		})
+	}
+}
+
+func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 15, 14, 0, 0, 0, time.UTC)
+	policy, err := NewExamRevisionPolicy(DefaultExamPolicySet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := ExamRevisionResource{ResourceID: NewExamResourceID(), FileEntryID: NewFileEntryID(),
+		FileRevisionID: NewFileRevisionID(), RenditionID: NewFileRenditionID(), DisplayName: "Reference", Position: 0,
+		MediaType: ExamResourceMediaText, SizeBytes: 4, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("base")))}
+	workspace := ExamRevisionStarterWorkspaceEntry{EntryID: NewStarterWorkspaceEntryID(), Kind: StarterWorkspaceEntryFile,
+		Path: "main.go", ObjectID: NewStarterWorkspaceObjectID(), ContentVersion: NewWorkspaceContentVersion(),
+		MediaType: "text/x-go", SizeBytes: 12, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("package main")))}
+	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 3,
+		SourceDraftRevision: 9, Title: "Algorithms", InstructionsMarkdown: "Old", Policy: policy,
+		Resources: []ExamRevisionResource{resource}, StarterWorkspace: []ExamRevisionStarterWorkspaceEntry{workspace},
+		PublishedByUserID: NewUserID(), PublishedAt: at.Add(-time.Hour), Kind: ExamRevisionPublicationStandard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := resource
+	replacement.FileRevisionID, replacement.RenditionID = NewFileRevisionID(), NewFileRenditionID()
+	replacement.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("fixed")))
+	corrected, err := NewLiveCorrectionExamRevision(base, NewExamRevisionID(), 4, "Fixed **instructions**",
+		[]ExamRevisionResource{replacement}, NewUserID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if corrected.Kind != ExamRevisionPublicationLiveCorrection || corrected.BaseRevisionID != base.ID ||
+		corrected.ExamID != base.ExamID || corrected.Title != base.Title || corrected.SourceDraftRevision != base.SourceDraftRevision ||
+		corrected.PolicyDigest != base.PolicyDigest || !bytes.Equal(corrected.Policy.Bytes, base.Policy.Bytes) ||
+		corrected.StarterWorkspaceDigest != base.StarterWorkspaceDigest || corrected.InstructionsMarkdown != "Fixed **instructions**" ||
+		corrected.ContentDigest == base.ContentDigest {
+		t.Fatalf("live correction=%#v base=%#v", corrected, base)
+	}
+	workspace.Path = "changed.go"
+	policy.Bytes[0] = '!'
+	if corrected.StarterWorkspace[0].Path != "main.go" || corrected.Policy.Bytes[0] != '{' {
+		t.Fatalf("live correction retained mutable base input: %#v", corrected)
+	}
+}
+
+func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T) {
+	t.Parallel()
+	if _, err := NewLiveCorrectionExamRevision(nil, NewExamRevisionID(), 2, "", nil, NewUserID(), time.Now().UTC()); err == nil {
+		t.Fatal("nil base was accepted")
+	}
+	policy, _ := NewExamRevisionPolicy(DefaultExamPolicySet())
+	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 2,
+		SourceDraftRevision: 1, Title: "Exam", Policy: policy, PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(),
+		Kind: ExamRevisionPublicationStandard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = NewLiveCorrectionExamRevision(base, NewExamRevisionID(), base.Number, "", nil, NewUserID(), time.Now().UTC()); err == nil {
+		t.Fatal("non-increasing Revision number was accepted")
+	}
+}
+
+func TestSameExamRevisionCandidatePresentationIgnoresStorageGenerations(t *testing.T) {
+	t.Parallel()
+
+	policy, err := NewExamRevisionPolicy(DefaultExamPolicySet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := ExamRevisionResource{ResourceID: NewExamResourceID(), FileEntryID: NewFileEntryID(), FileRevisionID: NewFileRevisionID(),
+		RenditionID: NewFileRenditionID(), DisplayName: "Reference", Position: 0, MediaType: ExamResourceMediaText,
+		SizeBytes: 4, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("base")))}
+	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 1,
+		SourceDraftRevision: 1, Title: "Exam", Policy: policy, Resources: []ExamRevisionResource{resource},
+		PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(), Kind: ExamRevisionPublicationStandard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := base.Clone()
+	candidate.Resources[0].FileRevisionID = NewFileRevisionID()
+	candidate.Resources[0].RenditionID = NewFileRenditionID()
+	if !SameExamRevisionCandidatePresentation(base, candidate) {
+		t.Fatal("same verified candidate presentation was treated as changed")
+	}
+	candidate.Resources[0].SHA256 = strings.Repeat("b", 64)
+	if SameExamRevisionCandidatePresentation(base, candidate) {
+		t.Fatal("changed verified content was treated as the same presentation")
 	}
 }

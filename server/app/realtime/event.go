@@ -94,6 +94,35 @@ type examSittingLifecycleChangedData struct {
 	ChangedAt     string `json:"changed_at"`
 }
 
+type examSittingContentCorrectedData struct {
+	ExamID             string `json:"exam_id"`
+	ExamSittingID      string `json:"exam_sitting_id"`
+	PreviousRevisionID string `json:"previous_revision_id"`
+	RevisionID         string `json:"revision_id"`
+	SittingRevision    int64  `json:"sitting_revision"`
+	EffectiveAt        string `json:"effective_at"`
+}
+
+// NewExamSittingContentCorrectedEvent constructs the content-free fact that
+// tells authorized Sitting subscribers to refetch authoritative presentation.
+func NewExamSittingContentCorrectedEvent(examID model.ExamID, sittingID model.ExamSittingID,
+	previousRevisionID, revisionID model.ExamRevisionID, sittingRevision int64, effectiveAt time.Time,
+) (RealtimeEvent, error) {
+	if !examID.IsValid() || !sittingID.IsValid() || !previousRevisionID.IsValid() || !revisionID.IsValid() ||
+		previousRevisionID == revisionID || sittingRevision < 1 || effectiveAt.IsZero() {
+		return RealtimeEvent{}, errors.New("Exam Sitting correction event requires valid bounded metadata")
+	}
+	data, err := json.Marshal(examSittingContentCorrectedData{
+		ExamID: examID.String(), ExamSittingID: sittingID.String(), PreviousRevisionID: previousRevisionID.String(),
+		RevisionID: revisionID.String(), SittingRevision: sittingRevision, EffectiveAt: model.TimeUTC(effectiveAt).Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting correction event: %w", err)
+	}
+	return RealtimeEvent{Name: "exam_sitting_content_corrected", Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
 // NewExamSittingLifecycleChangedEvent constructs the safe authoritative fact
 // emitted after one committed lifecycle transition or deadline extension.
 func NewExamSittingLifecycleChangedEvent(examID model.ExamID, sittingID model.ExamSittingID, state model.ExamSittingState,

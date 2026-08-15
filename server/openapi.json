@@ -1421,6 +1421,39 @@
         "responses": {"200": {"$ref": "#/components/responses/ExamSittingOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/correction-resource-stages": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "post": {
+        "operationId": "stageExamSittingCorrectionResourceContent",
+        "summary": "Stage one purpose-bound Exam Resource upload for a live Sitting correction",
+        "description": "The multipart body contains metadata first and content second. A successful response exposes only authoritative ready-stage metadata; storage and lease identities remain private.",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.correction.invalid", "exam.sitting.correction.conflict", "exam.sitting.correction.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "exam.sitting.correction.invalid_content", "exam.sitting.correction.stage_invalid", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {
+          "required": true,
+          "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ExamSittingCorrectionResourceStageMultipart"}}}
+        },
+        "responses": {"201": {"$ref": "#/components/responses/ExamSittingCorrectionResourceStageCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/corrections": {
+      "parameters": [{"$ref": "#/components/parameters/ExamID"}, {"$ref": "#/components/parameters/ExamSittingID"}],
+      "post": {
+        "operationId": "applyExamSittingCorrection",
+        "summary": "Create an immutable live correction and retarget one open or paused Sitting",
+        "description": "Resources is the complete desired ordered manifest. Omission removes an existing resource, array order becomes resource position, an item without stage_id retains its base content, and an item with stage_id selects that ready purpose-bound stage. Omitted instructions_markdown preserves the current instructions; a present empty string clears them. Policy, Starter Workspace, future default, and schedule cannot be changed here.",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.sitting.correction.invalid", "exam.sitting.correction.conflict", "exam.sitting.correction.unavailable", "exam.archived", "exam.sitting.revision_conflict", "exam.sitting.state_conflict", "exam.sitting.deadline_reached", "exam.sitting.correction.no_changes", "exam.sitting.correction.manifest_invalid", "exam.sitting.correction.stage_invalid", "exam.resource.limit", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ApplyExamSittingCorrection"},
+        "responses": {"201": {"$ref": "#/components/responses/ExamSittingCorrectionCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/exams/{exam_id}/draft": {
       "parameters": [{"$ref": "#/components/parameters/ExamID"}],
       "patch": {
@@ -1933,6 +1966,10 @@
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingManagerTransitionRequest"}}}
       },
+      "ApplyExamSittingCorrection": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApplyExamSittingCorrectionRequest"}}}
+      },
       "EditExamDraftText": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EditExamDraftTextRequest"}}}
@@ -2129,6 +2166,16 @@
         "description": "Bounded Exam Sitting collection",
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingListResponse"}}}
+      },
+      "ExamSittingCorrectionResourceStageCreated": {
+        "description": "Purpose-bound resource content staged and ready for one live Sitting correction",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingCorrectionResourceStageResponse"}}}
+      },
+      "ExamSittingCorrectionCreated": {
+        "description": "Immutable live correction created and the affected Sitting retargeted",
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamSittingCorrectionResponse"}}}
       },
       "ExamListOK": {
         "description": "Visible Exam collection",
@@ -2422,6 +2469,86 @@
         "properties": {
           "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExamSittingResponse"}},
           "next_cursor": {"type": "string", "description": "Opaque versioned cursor over descending scheduled start and Sitting identity; clients return it unchanged."}
+        }
+      },
+      "ExamSittingCorrectionResourceStageMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["base_revision_id", "target_kind", "media_type", "size", "sha256"],
+        "description": "For addition, replaces_resource_id must be omitted. For replacement, it is required and identifies a resource in the exact base Revision.",
+        "properties": {
+          "base_revision_id": {"$ref": "#/components/schemas/ID"},
+          "target_kind": {"type": "string", "enum": ["addition", "replacement"]},
+          "replaces_resource_id": {"$ref": "#/components/schemas/ID"},
+          "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"}
+        }
+      },
+      "ExamSittingCorrectionResourceStageMultipart": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["metadata", "content"],
+        "description": "Exactly two parts in order: metadata first as a non-file JSON part (maximum 32768 bytes), then content. The complete HTTP body is limited to 10 MiB plus 64 KiB multipart overhead.",
+        "properties": {
+          "metadata": {"$ref": "#/components/schemas/ExamSittingCorrectionResourceStageMetadata"},
+          "content": {"type": "string", "format": "binary"}
+        }
+      },
+      "ExamSittingCorrectionResourceStageResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stage_id", "resource_id", "media_type", "size", "sha256", "expires_at"],
+        "properties": {
+          "stage_id": {"$ref": "#/components/schemas/ID"},
+          "resource_id": {"$ref": "#/components/schemas/ID"},
+          "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "sha256": {"$ref": "#/components/schemas/SHA256"},
+          "expires_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ExamSittingCorrectionResourceRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resource_id", "display_name", "description_markdown"],
+        "description": "An item without stage_id retains the exact base content. An item with stage_id selects the ready stage bound to this resource and correction target.",
+        "properties": {
+          "resource_id": {"$ref": "#/components/schemas/ID"},
+          "display_name": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Trimmed UTF-8 with at most 255 Unicode scalar values."},
+          "description_markdown": {"type": "string", "maxLength": 16384, "description": "Authored Markdown encoded as UTF-8 and limited to 16384 bytes."},
+          "stage_id": {"$ref": "#/components/schemas/ID"}
+        }
+      },
+      "ApplyExamSittingCorrectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_sitting_revision", "expected_current_revision_id", "reason", "resources"],
+        "properties": {
+          "expected_sitting_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "expected_current_revision_id": {"$ref": "#/components/schemas/ID"},
+          "instructions_markdown": {"type": "string", "maxLength": 65536, "description": "Omitted preserves current instructions. A present empty string clears them; null is invalid. Authored Markdown is limited to 65536 UTF-8 bytes."},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Required already-trimmed private manager rationale; valid UTF-8, at most 1000 Unicode scalar values and 4000 bytes."},
+          "resources": {
+            "type": "array", "maxItems": 10,
+            "description": "Required complete desired resource manifest. Omitted base resources are removed and array order becomes resource position. Resource and non-empty stage identities must each be unique.",
+            "items": {"$ref": "#/components/schemas/ExamSittingCorrectionResourceRequest"}
+          }
+        }
+      },
+      "ExamSittingCorrectionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exam_id", "exam_sitting_id", "previous_revision_id", "revision_id", "revision_number", "sitting_revision", "sitting_state", "effective_at"],
+        "properties": {
+          "exam_id": {"$ref": "#/components/schemas/ID"},
+          "exam_sitting_id": {"$ref": "#/components/schemas/ID"},
+          "previous_revision_id": {"$ref": "#/components/schemas/ID"},
+          "revision_id": {"$ref": "#/components/schemas/ID"},
+          "revision_number": {"type": "integer", "format": "int64", "minimum": 1},
+          "sitting_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "sitting_state": {"$ref": "#/components/schemas/ExamSittingState"},
+          "effective_at": {"type": "string", "format": "date-time"}
         }
       },
       "EditExamDraftTextRequest": {

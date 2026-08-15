@@ -46,6 +46,10 @@ type ExamSittingID string
 // ExamResourceID identifies one supporting file attached to an Exam Draft.
 type ExamResourceID string
 
+// ExamCorrectionResourceStageID identifies one purpose-bound pending resource
+// upload for a single live Exam Sitting correction.
+type ExamCorrectionResourceStageID string
+
 // StarterWorkspaceEntryID identifies one logical file or directory in an Exam
 // Draft's Starter Workspace.
 type StarterWorkspaceEntryID string

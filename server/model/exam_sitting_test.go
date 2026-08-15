@@ -249,3 +249,45 @@ func TestExamSittingStateCapabilityPredicatesFailClosed(t *testing.T) {
 		}
 	}
 }
+
+func TestExamSittingRetargetRevisionIsLiveOnlyAndAtomic(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
+	for _, state := range []ExamSittingState{ExamSittingOpen, ExamSittingPaused} {
+		t.Run(string(state), func(t *testing.T) {
+			sitting, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(3*time.Hour), at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = sitting.Open(at.Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			if state == ExamSittingPaused {
+				if err = sitting.Pause(at.Add(70 * time.Minute)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			previousState, previousRevision := sitting.State, sitting.Revision
+			newRevisionID := NewExamRevisionID()
+			if err = sitting.RetargetRevision(newRevisionID, at.Add(80*time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			if sitting.ExamRevisionID != newRevisionID || sitting.State != previousState || sitting.Revision != previousRevision+1 ||
+				sitting.UpdatedAt != at.Add(80*time.Minute) {
+				t.Fatalf("retargeted Sitting=%#v", sitting)
+			}
+			before := *sitting
+			if err = sitting.RetargetRevision(newRevisionID, at.Add(90*time.Minute)); err == nil || *sitting != before {
+				t.Fatalf("same-Revision retarget error=%v Sitting=%#v", err, sitting)
+			}
+		})
+	}
+	scheduled, err := NewExamSitting(NewExamSittingID(), NewExamID(), NewExamRevisionID(), NewClassID(), at.Add(time.Hour), at.Add(3*time.Hour), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := *scheduled
+	if err = scheduled.RetargetRevision(NewExamRevisionID(), at.Add(time.Minute)); err == nil || *scheduled != before {
+		t.Fatalf("Scheduled retarget error=%v Sitting=%#v", err, scheduled)
+	}
+}

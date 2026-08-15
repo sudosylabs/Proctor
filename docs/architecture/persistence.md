@@ -86,6 +86,24 @@ sealing, Sitting closure, suspension/re-allow, and review finalization. The
 application never coordinates these guarantees through a raw transaction
 callback.
 
+Live correction separates fallible VFS transfer from atomic visibility. A
+purpose-bound PostgreSQL stage reserves opaque file identities and an upload
+lease before VFS writes; only a successfully verified rendition becomes Ready.
+One named Store operation then locks the Exam and Sitting, resolves exact
+idempotent replay, rechecks Open/Paused state and the PostgreSQL deadline,
+validates every referenced Ready stage against the Sitting and current
+Revision, writes the immutable `live_correction` Revision, consumes its stages,
+retargets only that Sitting, completes safe audit, and persists the bounded
+outcome in one transaction. The policy and Starter Workspace snapshots are
+copied exactly from the base Revision, while the Draft, future default, other
+Sittings, and attempt admission provenance remain unchanged. Pending,
+superseded, and expired stage objects are never authoritative and are reclaimed
+only after unknown outcomes and durable references are resolved. Reserving or
+replaying a stage establishes a bounded cleanup-protection interval; purge
+requires both physical command-outcome cleanup and expiry of that interval, so
+an in-flight replay cannot lose its stage between the database result and VFS
+work.
+
 Fresh Sitting schedule mutations lock and recheck the active Exam, current
 Manager relationship unless an explicit override was authorized, same-Exam
 sealed Revision, active Class lineage, and full Academic Period containment.

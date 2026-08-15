@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/store"
@@ -23,6 +24,7 @@ type FileContent interface {
 	FileRevisionContentPurger
 	starterWorkspaceObjectPurger
 	examresource.FileContent
+	examcorrection.Content
 	examworkspace.Content
 }
 

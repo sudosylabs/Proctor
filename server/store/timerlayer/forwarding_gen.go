@@ -17,6 +17,8 @@ import (
 type timedStores struct {
 	clusterDiscovery         store.ClusterDiscoveryStore
 	clusterDiscoveryOnce     sync.Once
+	examCorrection           store.ExamCorrectionStore
+	examCorrectionOnce       sync.Once
 	examResource             store.ExamResourceStore
 	examResourceOnce         sync.Once
 	examRevision             store.ExamRevisionStore
@@ -82,6 +84,11 @@ type timedStores struct {
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedExamCorrectionStore struct {
+	layer *Layer
+	next  store.ExamCorrectionStore
 }
 
 type timedExamResourceStore struct {
@@ -322,6 +329,16 @@ func (l *Layer) ExamResource() store.ExamResourceStore {
 		}
 	})
 	return l.stores.examResource
+}
+
+func (l *Layer) ExamCorrection() store.ExamCorrectionStore {
+	l.stores.examCorrectionOnce.Do(func() {
+		next := l.next.ExamCorrection()
+		if next != nil {
+			l.stores.examCorrection = &timedExamCorrectionStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examCorrection
 }
 
 func (l *Layer) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
@@ -595,6 +612,24 @@ func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) e
 func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
 		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
+func (s *timedExamCorrectionStore) ReserveResourceStage(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReservation, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResourceStage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodReserveResourceStage), func() (*store.ExamCorrectionResourceStage, error) {
+		return s.next.ReserveResourceStage(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamCorrectionStore) MarkResourceStageReady(arg0 context.Context, arg1 *store.ExamCorrectionResourceStageReadyInput) (*store.ExamCorrectionResourceStage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodMarkResourceStageReady), func() (*store.ExamCorrectionResourceStage, error) {
+		return s.next.MarkResourceStageReady(arg0, arg1)
+	})
+}
+
+func (s *timedExamCorrectionStore) Apply(arg0 context.Context, arg1 *store.ExamCorrectionApplication, arg2 *store.CommandIdempotency) (*store.ExamCorrectionResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamCorrection, methodApply), func() (*store.ExamCorrectionResult, error) {
+		return s.next.Apply(arg0, arg1, arg2)
 	})
 }
 
@@ -1987,6 +2022,7 @@ func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.Ins
 var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)
+	_ store.ExamCorrectionStore       = (*timedExamCorrectionStore)(nil)
 	_ store.ExamResourceStore         = (*timedExamResourceStore)(nil)
 	_ store.ExamRevisionStore         = (*timedExamRevisionStore)(nil)
 	_ store.ExamSittingStore          = (*timedExamSittingStore)(nil)

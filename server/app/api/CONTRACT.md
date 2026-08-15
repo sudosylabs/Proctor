@@ -202,6 +202,39 @@ files use `Cache-Control: private, no-store`. These operations provide only an
 authorized in-application content stream. Metadata never exposes VFS paths,
 object keys, or public URLs, and the API defines no download/export operation.
 
+## Live Sitting correction
+
+An Exam Manager corrects one Open or Paused Sitting through a two-step,
+purpose-bound surface. Both operations require `Idempotency-Key` and current
+Exam/Sitting management authorization.
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/correction-resource-stages` | metadata-first multipart upload | `201` ready stage metadata |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/corrections` | strict correction JSON | `201` immutable Revision and retarget result |
+
+Stage metadata names the exact `base_revision_id`, target kind (`addition` or
+`replacement`), optional replacement resource identity, media type, explicit
+size including zero, and lowercase SHA-256 digest. The multipart shape and
+10 MiB plus 64 KiB body limit are identical to Exam Resource authoring. A
+successful response contains only the purpose-bound stage and resource
+identities, authoritative ready rendition metadata, and expiry. File Entry,
+File Revision, rendition, upload-lease, VFS key, path, and URL identities never
+cross the transport boundary.
+
+The apply body carries the expected Sitting revision, expected current Exam
+Revision, required private manager reason, optional `instructions_markdown`,
+and a required complete resource manifest of at most ten items. Omitting
+`instructions_markdown` preserves it; a present empty string clears it and
+explicit `null` is invalid. Resource omission means removal, array order
+becomes position, an item without `stage_id` retains the exact base content,
+and an item with `stage_id` selects that ready purpose-bound stage. Resource
+and non-empty stage identities are unique. Unknown or duplicate JSON members,
+including policy, Starter Workspace, future-default, and schedule fields, are
+invalid. The response excludes the private reason, authored content, stages,
+and storage identities. This surface adds no content download route; current
+authoritative presentation remains a later protected delivery seam.
+
 ## Idempotent commands
 
 Routes declare `none`, `optional`, or `required` idempotency in the immutable

@@ -192,6 +192,34 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 	return revision, nil
 }
 
+// NewLiveCorrectionExamRevision derives one immutable live correction from an
+// already published Revision. Only candidate-visible instructions and the
+// complete ordered resource manifest may change; policy and Starter Workspace
+// remain pinned byte-for-byte to the base Revision.
+func NewLiveCorrectionExamRevision(base *ExamRevision, id ExamRevisionID, number int64, instructionsMarkdown string, resources []ExamRevisionResource, publishedBy UserID, at time.Time) (*ExamRevision, error) {
+	if base == nil {
+		return nil, errors.New("model: live correction requires a base Exam Revision")
+	}
+	if err := base.Validate(); err != nil || number <= base.Number {
+		return nil, errors.New("model: invalid live correction base or number")
+	}
+	return NewExamRevision(ExamRevisionSpecification{
+		ID:                   id,
+		ExamID:               base.ExamID,
+		Number:               number,
+		SourceDraftRevision:  base.SourceDraftRevision,
+		Title:                base.Title,
+		InstructionsMarkdown: instructionsMarkdown,
+		Policy:               cloneExamRevisionPolicy(base.Policy),
+		Resources:            append([]ExamRevisionResource(nil), resources...),
+		StarterWorkspace:     append([]ExamRevisionStarterWorkspaceEntry(nil), base.StarterWorkspace...),
+		PublishedByUserID:    publishedBy,
+		PublishedAt:          at,
+		BaseRevisionID:       base.ID,
+		Kind:                 ExamRevisionPublicationLiveCorrection,
+	})
+}
+
 func (revision *ExamRevision) Validate() error {
 	if revision == nil || !revision.ID.IsValid() || !revision.ExamID.IsValid() || revision.Number < 1 || revision.SourceDraftRevision < 1 ||
 		revision.Title == "" || strings.TrimSpace(revision.Title) != revision.Title || !revision.PublishedByUserID.IsValid() || revision.PublishedAt.IsZero() ||
@@ -228,6 +256,24 @@ func (revision *ExamRevision) Clone() *ExamRevision {
 	clone.Resources = append([]ExamRevisionResource(nil), revision.Resources...)
 	clone.StarterWorkspace = append([]ExamRevisionStarterWorkspaceEntry(nil), revision.StarterWorkspace...)
 	return &clone
+}
+
+// SameExamRevisionCandidatePresentation reports whether two immutable
+// snapshots present exactly the same live-correctable material. Opaque storage
+// generation identities are deliberately excluded: replacing bytes with the
+// same verified media, size, and digest is not a candidate-visible change.
+func SameExamRevisionCandidatePresentation(left, right *ExamRevision) bool {
+	if left == nil || right == nil || left.InstructionsMarkdown != right.InstructionsMarkdown || len(left.Resources) != len(right.Resources) {
+		return false
+	}
+	for index := range left.Resources {
+		l, r := left.Resources[index], right.Resources[index]
+		if l.ResourceID != r.ResourceID || l.DisplayName != r.DisplayName || l.DescriptionMarkdown != r.DescriptionMarkdown ||
+			l.Position != r.Position || l.MediaType != r.MediaType || l.SizeBytes != r.SizeBytes || l.SHA256 != r.SHA256 {
+			return false
+		}
+	}
+	return true
 }
 
 func validateExamRevisionResources(resources []ExamRevisionResource) error {

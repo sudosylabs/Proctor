@@ -23,6 +23,7 @@ var entityIDs = []idSpec{
 	{typeName: "ExamRevisionID", fieldName: "exam_revision_id", constructorSubject: "exam-revision"},
 	{typeName: "ExamSittingID", fieldName: "exam_sitting_id", constructorSubject: "exam-sitting"},
 	{typeName: "ExamResourceID", fieldName: "exam_resource_id", constructorSubject: "exam-resource"},
+	{typeName: "ExamCorrectionResourceStageID", fieldName: "exam_correction_resource_stage_id", constructorSubject: "exam-correction-resource-stage"},
 	{typeName: "StarterWorkspaceEntryID", fieldName: "starter_workspace_entry_id", constructorSubject: "starter-workspace-entry"},
 	{typeName: "StarterWorkspaceObjectID", fieldName: "starter_workspace_object_id", constructorSubject: "starter-workspace-object"},
 	{typeName: "UserID", fieldName: "user_id", constructorSubject: "user"},

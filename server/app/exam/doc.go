@@ -18,13 +18,15 @@
 // bounded exact retrieval and keyset-paginated catalog discovery, archive
 // lifecycle, immutable Revision publication, bounded Revision metadata
 // discovery, pre-open Sitting scheduling, rescheduling, discovery and
-// cancellation, and safe post-commit effects. Archived Exams remain readable
-// but reject new authoring mutations.
+// cancellation, manager and system Sitting lifecycle transitions, bounded
+// live instructions/resource correction through immutable Revisions, and safe
+// post-commit effects. Archived Exams remain readable but reject new authoring
+// mutations.
 //
 // The package does not own HTTP or WebSocket contracts, SQL, file bytes,
-// Attempt admission, Sitting opening/closing jobs, integrity evaluation, or
-// grading. It may depend inward on model and bounded store contracts plus
-// consumer-owned ports implemented by the parent application composition; it
-// never imports its parent, transports, concrete persistence, VFS, cluster
-// adapters, or platform services.
+// Attempt admission, Job execution, integrity evaluation, or grading. It may
+// depend inward on model and bounded store contracts plus consumer-owned ports
+// implemented by the parent application composition; it never imports its
+// parent, transports, concrete persistence, VFS, cluster adapters, or platform
+// services.
 package exam

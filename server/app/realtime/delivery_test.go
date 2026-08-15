@@ -123,6 +123,22 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	if got := string(opened.Data); !strings.Contains(got, `"reason_code":"scheduled_start_reached"`) {
 		t.Fatalf("opening lifecycle data = %s", got)
 	}
+	previousRevisionID, correctedRevisionID := model.NewExamRevisionID(), model.NewExamRevisionID()
+	correctedAt := time.Date(2026, 8, 14, 9, 5, 0, 123, time.UTC)
+	corrected, err := NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, correctedRevisionID, 7, correctedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if corrected.Name != "exam_sitting_content_corrected" || corrected.Action != model.ActionExamSittingView ||
+		corrected.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
+		t.Fatalf("corrected Sitting event = %#v", corrected)
+	}
+	if got := string(corrected.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","previous_revision_id":"`+previousRevisionID.String()+`","revision_id":"`+correctedRevisionID.String()+`","sitting_revision":7,"effective_at":"2026-08-14T09:05:00.000000123Z"}` {
+		t.Fatalf("corrected Sitting data = %s", got)
+	}
+	if _, err = NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, previousRevisionID, 7, correctedAt); err == nil {
+		t.Fatal("accepted a correction whose Revision did not change")
+	}
 	revisionID := model.NewExamRevisionID()
 	policyDigest := strings.Repeat("a", 64)
 	publishedAt := time.Date(2026, 8, 14, 9, 10, 0, 123, time.UTC)

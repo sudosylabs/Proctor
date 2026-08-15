@@ -267,6 +267,9 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 		return nil, err
 	}
 	if creating {
+		if _, err = tx.Exec(ctx, `INSERT INTO exam_resource_identities (id,exam_id,file_entry_id) VALUES (?,?,?)`, input.Resource.ID.String(), input.ExamID.String(), input.Resource.FileEntryID.String()); err != nil {
+			return nil, fmt.Errorf("create exam resource identity: %w", translateError("exam_resource", input.Resource.ID.String(), err))
+		}
 		if _, err = tx.Exec(ctx, `INSERT INTO exam_resources (id,exam_id,file_entry_id,selected_file_revision_id,display_name,description_markdown,position,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,NULL)`, input.Resource.ID.String(), input.ExamID.String(), input.Resource.FileEntryID.String(), r.RevisionID.String(), input.Resource.DisplayName, input.Resource.DescriptionMarkdown, input.Resource.Position, input.Resource.CreatedAt, input.ChangedAt); err != nil {
 			return nil, fmt.Errorf("attach exam resource: %w", translateError("exam_resource", input.Resource.ID.String(), err))
 		}

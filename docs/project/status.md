@@ -175,8 +175,8 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Planned product work
 
-- Continue Examination Core as complete vertical slices: live correction;
-  Attempt admission and Participation;
+- Continue Examination Core as complete vertical slices: Attempt admission,
+  correction-aware candidate presentation, and Participation;
   mutable Workspace and immutable Submission; then integrity policy, evidence,
   flags, and Submission Review.
 - Extend server-owned file handling for validated IDE preferences alongside

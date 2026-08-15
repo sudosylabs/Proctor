@@ -6,6 +6,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -287,7 +288,14 @@ func (s SQLFileStore) ListPurgeCandidates(ctx context.Context, input *store.File
 			JOIN file_revisions v ON v.id = l.file_revision_id AND v.availability = 'pending'
 			JOIN file_entries e ON e.id = v.file_entry_id
 			LEFT JOIN file_renditions r ON r.file_revision_id = v.id
-			WHERE v.purge_claim_id IS NOT NULL OR (l.consumed_at IS NULL AND l.expires_at <= CURRENT_TIMESTAMP - INTERVAL '24 hours')
+			WHERE (v.purge_claim_id IS NOT NULL OR (l.consumed_at IS NULL AND l.expires_at <= CURRENT_TIMESTAMP - INTERVAL '24 hours'))
+			  AND NOT EXISTS (
+			    SELECT 1 FROM exam_correction_resource_stages s
+			    JOIN command_outcomes o ON o.operation = ? AND o.outcome->>'stage_id' = s.id
+			    WHERE s.file_revision_id = v.id)
+			  AND NOT EXISTS (
+			    SELECT 1 FROM exam_correction_resource_stages s
+			    WHERE s.file_revision_id = v.id AND s.cleanup_protected_until > CURRENT_TIMESTAMP)
 			GROUP BY l.id, e.id, v.id
 			UNION ALL
 			SELECT 'archived:' || v.id AS cursor, 'archived_custom' AS kind, NULL AS lease_id,
@@ -302,7 +310,7 @@ func (s SQLFileStore) ListPurgeCandidates(ctx context.Context, input *store.File
 			  AND NOT EXISTS (SELECT 1 FROM file_legal_holds h WHERE h.file_entry_id = e.id)))
 			GROUP BY e.id, v.id
 		) candidates
-		WHERE cursor > ? ORDER BY cursor LIMIT ?`, input.After, input.Limit)
+		WHERE cursor > ? ORDER BY cursor LIMIT ?`, store.ExamCorrectionResourceStageOperation, input.After, input.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("list file purge candidates: %w", err)
 	}
@@ -330,12 +338,19 @@ func (s SQLFileStore) ClaimPurgeCandidate(ctx context.Context, candidate *store.
 		var err error
 		if candidate.Kind == store.FilePurgeCandidateExpiredLease {
 			err = tx.Get(ctx, &row, `SELECT v.purge_claim_id,
-			(v.purge_claim_id IS NOT NULL OR (l.consumed_at IS NULL AND l.expires_at <= CURRENT_TIMESTAMP - INTERVAL '24 hours')) AS eligible,
+			((v.purge_claim_id IS NOT NULL OR (l.consumed_at IS NULL AND l.expires_at <= CURRENT_TIMESTAMP - INTERVAL '24 hours'))
+			 AND NOT EXISTS (
+			   SELECT 1 FROM exam_correction_resource_stages s
+			   JOIN command_outcomes o ON o.operation = ? AND o.outcome->>'stage_id' = s.id
+			   WHERE s.file_revision_id = v.id)
+			 AND NOT EXISTS (
+			   SELECT 1 FROM exam_correction_resource_stages s
+			   WHERE s.file_revision_id = v.id AND s.cleanup_protected_until > CURRENT_TIMESTAMP)) AS eligible,
 			ARRAY(SELECT r.id FROM file_renditions r WHERE r.file_revision_id = v.id ORDER BY r.id) AS rendition_ids
 			FROM file_revisions v JOIN file_entries e ON e.id = v.file_entry_id
 			JOIN upload_leases l ON l.file_revision_id = v.id
 			WHERE v.id = ? AND v.file_entry_id = ? AND l.id = ? AND v.availability = 'pending'
-			FOR UPDATE OF v, e, l`, candidate.RevisionID.String(), candidate.EntryID.String(), candidate.LeaseID.String())
+			FOR UPDATE OF v, e, l`, store.ExamCorrectionResourceStageOperation, candidate.RevisionID.String(), candidate.EntryID.String(), candidate.LeaseID.String())
 		} else {
 			err = tx.Get(ctx, &row, `SELECT v.purge_claim_id,
 			(v.purge_claim_id IS NOT NULL OR (e.purpose = 'profile_picture_custom'
@@ -398,6 +413,33 @@ func (s SQLFileStore) CompletePurge(ctx context.Context, claim *store.FilePurgeC
 		if persistedClaimID != claim.ID {
 			return struct{}{}, store.NewErrConflict("file_revision", "purge_claim_changed", nil)
 		}
+		// Purpose-bound correction stages are disposable reservation state, but
+		// any physically present command outcome remains replayable. Claiming
+		// already required outcome cleanup to finish; repeat that fence before
+		// deleting only the abandoned stage metadata.
+		var correctionStage struct {
+			ID        string `db:"id"`
+			Protected bool   `db:"protected"`
+		}
+		stageErr := tx.Get(ctx, &correctionStage, `SELECT id,cleanup_protected_until>CURRENT_TIMESTAMP AS protected FROM exam_correction_resource_stages WHERE file_revision_id=? AND state IN ('pending','ready') FOR UPDATE`, candidate.RevisionID.String())
+		if stageErr != nil && !errors.Is(stageErr, sql.ErrNoRows) {
+			return struct{}{}, fmt.Errorf("lock abandoned correction resource stage: %w", stageErr)
+		}
+		if correctionStage.ID != "" {
+			if correctionStage.Protected {
+				return struct{}{}, store.NewErrConflict("exam_correction_resource_stage", "cleanup_protected", nil)
+			}
+			var retainedOutcome bool
+			if err := tx.Get(ctx, &retainedOutcome, `SELECT EXISTS (SELECT 1 FROM command_outcomes WHERE operation=? AND outcome->>'stage_id'=?)`, store.ExamCorrectionResourceStageOperation, correctionStage.ID); err != nil {
+				return struct{}{}, fmt.Errorf("check correction stage outcome retention: %w", err)
+			}
+			if retainedOutcome {
+				return struct{}{}, store.NewErrConflict("exam_correction_resource_stage", "command_outcome_retained", nil)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM exam_correction_resource_stages WHERE id=? AND state IN ('pending','ready')`, correctionStage.ID); err != nil {
+				return struct{}{}, fmt.Errorf("delete abandoned correction resource stage: %w", err)
+			}
+		}
 		if candidate.Kind == store.FilePurgeCandidateExpiredLease {
 			result, execErr := tx.Exec(ctx, `DELETE FROM upload_leases WHERE id = ? AND file_revision_id = ?`, candidate.LeaseID.String(), candidate.RevisionID.String())
 			if execErr != nil {
@@ -426,6 +468,9 @@ func (s SQLFileStore) CompletePurge(ctx context.Context, claim *store.FilePurgeC
 		}
 		if _, err := tx.Exec(ctx, `UPDATE file_entries e SET purge_claimed = FALSE WHERE e.id = ? AND NOT EXISTS (SELECT 1 FROM file_revisions v WHERE v.file_entry_id = e.id AND v.purge_claim_id IS NOT NULL)`, candidate.EntryID.String()); err != nil {
 			return struct{}{}, fmt.Errorf("release file entry purge tombstone: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM exam_resource_identities i WHERE i.file_entry_id = ? AND NOT EXISTS (SELECT 1 FROM exam_resources r WHERE r.exam_id=i.exam_id AND r.id=i.id AND r.file_entry_id=i.file_entry_id) AND NOT EXISTS (SELECT 1 FROM exam_revision_resources r WHERE r.exam_id=i.exam_id AND r.resource_id=i.id AND r.file_entry_id=i.file_entry_id)`, candidate.EntryID.String()); err != nil {
+			return struct{}{}, fmt.Errorf("delete abandoned exam resource identity: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM file_entries e WHERE e.id = ? AND e.current_revision_id IS NULL AND NOT EXISTS (SELECT 1 FROM file_revisions v WHERE v.file_entry_id = e.id) AND NOT EXISTS (SELECT 1 FROM users u WHERE u.default_profile_picture_file_id = e.id OR u.custom_profile_picture_file_id = e.id)`, candidate.EntryID.String()); err != nil {
 			return struct{}{}, fmt.Errorf("delete empty file entry: %w", err)
