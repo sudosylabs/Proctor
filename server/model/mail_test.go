@@ -70,6 +70,76 @@ func TestMailDeliveryExpiryTerminatesQueuedOrSendingAndDestroysPayload(t *testin
 	}
 }
 
+func TestMailDeliveryOperatorControlCancelsQueuedAndRetriesFailedInPlace(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	queued := queuedMailDeliveryFixture(at)
+	canceled, err := queued.Cancel(at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canceled.ID != queued.ID || canceled.MessageID != queued.MessageID ||
+		canceled.State != MailDeliveryCanceled || len(canceled.EncryptedPayload) != 0 ||
+		canceled.Revision != queued.Revision+1 {
+		t.Fatalf("Cancel() = %#v", canceled)
+	}
+	if _, err = canceled.Cancel(at.Add(2 * time.Second)); err == nil {
+		t.Fatal("Cancel() accepted a terminal delivery")
+	}
+
+	failed, err := queued.Start(at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed, err = failed.Fail("mail.transport.permanent", at.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retried, err := failed.OperatorRetry(at.Add(3 * time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.ID != failed.ID || retried.MessageID != failed.MessageID ||
+		retried.State != MailDeliveryQueued || !retried.FailedAt.IsZero() ||
+		retried.PublicFailureCode != MailDeliveryOperatorRetryCode ||
+		len(retried.EncryptedPayload) == 0 || retried.Revision != failed.Revision+1 {
+		t.Fatalf("OperatorRetry() = %#v", retried)
+	}
+	if _, err = failed.OperatorRetry(failed.Deadline); err == nil {
+		t.Fatal("OperatorRetry() accepted an expired delivery")
+	}
+}
+
+func TestMailDeliverySuppressionDestroysRecoverablePayload(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	for _, state := range []MailDeliveryState{MailDeliveryQueued, MailDeliverySending, MailDeliveryFailed} {
+		t.Run(string(state), func(t *testing.T) {
+			delivery := queuedMailDeliveryFixture(at)
+			if state != MailDeliveryQueued {
+				delivery = mustStartMailDelivery(t, delivery, at.Add(time.Second))
+			}
+			if state == MailDeliveryFailed {
+				var err error
+				delivery, err = delivery.Fail("mail.transport.permanent", at.Add(2*time.Second))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			suppressed, err := delivery.Suppress(MailDeliveryDisabledCode, at.Add(3*time.Second))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if suppressed.State != MailDeliverySuppressed || suppressed.PublicFailureCode != MailDeliveryDisabledCode ||
+				len(suppressed.EncryptedPayload) != 0 || suppressed.AcceptedAt.Valid || suppressed.FailedAt.Valid ||
+				suppressed.Revision != delivery.Revision+1 {
+				t.Fatalf("Suppress() = %#v", suppressed)
+			}
+			if _, err = suppressed.Suppress(MailDeliveryDisabledCode, at.Add(4*time.Second)); err == nil {
+				t.Fatal("Suppress() accepted terminal delivery")
+			}
+		})
+	}
+}
+
 func mustStartMailDelivery(t *testing.T, delivery *MailDelivery, at time.Time) *MailDelivery {
 	t.Helper()
 	started, err := delivery.Start(at)

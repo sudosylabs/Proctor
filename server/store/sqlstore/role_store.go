@@ -12,6 +12,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -222,6 +223,29 @@ func (s SQLRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpda
 		return nil, store.NewErrInvalidInput("role", "value", nil).Wrap(err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Role, error) {
+		var locked roleRow
+		if err := tx.Get(ctx, &locked, `SELECT id,created_at,updated_at,archived_at,name,display_name,description,permissions,built_in FROM roles WHERE id=$1 AND archived_at IS NULL FOR UPDATE`, candidate.ID.String()); err != nil {
+			return nil, translateError("role", candidate.ID.String(), err)
+		}
+		if locked.BuiltIn {
+			return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
+		}
+		if !locked.UpdatedAt.Equal(expectedUpdatedAt) {
+			return nil, store.NewErrConflict("role", "roles_revision", nil)
+		}
+		if !slices.Equal([]string(locked.Permissions), candidate.Permissions) {
+			var bound bool
+			if err := tx.Get(ctx, &bound, `SELECT EXISTS (
+				SELECT 1 FROM role_bindings
+				 WHERE role_id=$1 AND archived_at IS NULL
+				   AND (end_at IS NULL OR end_at>$2)
+			)`, candidate.ID.String(), at); err != nil {
+				return nil, fmt.Errorf("check role bindings before permission update: %w", err)
+			}
+			if bound {
+				return nil, store.NewErrConflict("role", "roles_permissions_bound", nil)
+			}
+		}
 		if err := updateRole(ctx, tx, candidate, expectedUpdatedAt); err != nil {
 			return nil, err
 		}

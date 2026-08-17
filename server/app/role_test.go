@@ -60,14 +60,40 @@ func (s *roleStoreFake) ArchiveWithAudit(_ context.Context, input *store.RoleArc
 }
 
 type roleAuthorizerFake struct {
-	events   *[]string
-	resource model.Resource
-	err      error
+	events        *[]string
+	resource      model.Resource
+	err           error
+	delegationErr error
 }
 
 func (a *roleAuthorizerFake) AuthorizeManage(context.Context, Invocation) (model.Resource, error) {
 	*a.events = append(*a.events, "authorize-manage")
 	return a.resource, a.err
+}
+
+func (a *roleAuthorizerFake) AuthorizeView(context.Context, Invocation) (model.Resource, error) {
+	*a.events = append(*a.events, "authorize-view")
+	return a.resource, a.err
+}
+
+func (a *roleAuthorizerFake) AuthorizeRoleBindingInstitution(context.Context, Invocation, model.Action) (model.Resource, error) {
+	*a.events = append(*a.events, "authorize-binding-institution")
+	return a.resource, a.err
+}
+
+func (a *roleAuthorizerFake) AuthorizeRoleBindingPreflight(context.Context, Invocation, model.Action) error {
+	*a.events = append(*a.events, "authorize-binding-preflight")
+	return a.err
+}
+
+func (a *roleAuthorizerFake) AuthorizeRoleBindingScope(context.Context, Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error) {
+	*a.events = append(*a.events, "authorize-binding-scope")
+	return a.resource, a.err
+}
+
+func (a *roleAuthorizerFake) CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error {
+	*a.events = append(*a.events, "authorize-delegation")
+	return a.delegationErr
 }
 
 type roleEffectsFake struct{ events *[]string }
@@ -98,10 +124,49 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 	if got.ID.String() != created.ID.String() || persistence.createInput.AuditEventID == "" {
 		t.Fatalf("result/input = %#v / %#v", got, persistence.createInput)
 	}
-	want := []string{"authorize-manage", "audit-begin", "store-create"}
+	want := []string{"authorize-manage", "authorize-delegation", "audit-begin", "store-create"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
+}
+
+func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T) {
+	t.Parallel()
+	denied := authorizationDeniedError("test")
+
+	t.Run("create", func(t *testing.T) {
+		events := []string{}
+		service := newRoleService(
+			&roleStoreFake{events: &events},
+			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, delegationErr: denied},
+			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
+		)
+		_, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
+		if !Is(err, "authorization.denied") {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if want := []string{"authorize-manage", "authorize-delegation"}; !reflect.DeepEqual(events, want) {
+			t.Fatalf("events = %v, want %v", events, want)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		events := []string{}
+		role := &model.Role{ID: model.NewRoleID(), Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)}}
+		permissions := []string{string(model.ActionClassView), string(model.ActionUserManage)}
+		service := newRoleService(
+			&roleStoreFake{events: &events, role: role},
+			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, delegationErr: denied},
+			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
+		)
+		_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), Permissions: &permissions})
+		if !Is(err, "authorization.denied") {
+			t.Fatalf("Update() error = %v", err)
+		}
+		if want := []string{"authorize-manage", "get-role", "authorize-delegation"}; !reflect.DeepEqual(events, want) {
+			t.Fatalf("events = %v, want %v", events, want)
+		}
+	})
 }
 
 func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {

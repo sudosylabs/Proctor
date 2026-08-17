@@ -343,6 +343,8 @@ CREATE TABLE mail_deliveries (
     failed_at timestamptz,
     public_failure_code varchar(128) NOT NULL DEFAULT ''
         CHECK (public_failure_code = '' OR public_failure_code ~ '^[a-z][a-z0-9_.-]{0,127}$'),
+    payload_key_id char(32)
+        CHECK (payload_key_id ~ '^[0-9a-f]{32}$'),
     encrypted_payload jsonb,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     CONSTRAINT mail_deliveries_occurrence_identity_fkey
@@ -354,6 +356,7 @@ CREATE TABLE mail_deliveries (
         ((state = 'accepted') = (accepted_at IS NOT NULL)) AND
         ((state = 'failed') = (failed_at IS NOT NULL)) AND
         ((state IN ('accepted', 'suppressed', 'canceled')) = (encrypted_payload IS NULL)) AND
+        ((payload_key_id IS NULL) = (encrypted_payload IS NULL)) AND
         (state <> 'queued' OR ((attempt_count = 0) = (public_failure_code = ''))) AND
         (state <> 'sending' OR (attempt_count > 0 AND public_failure_code = '')) AND
         (state <> 'accepted' OR (attempt_count > 0 AND public_failure_code = '' AND accepted_at = updated_at)) AND
@@ -364,6 +367,30 @@ CREATE TABLE mail_deliveries (
 
 CREATE INDEX mail_deliveries_state_deadline_idx
     ON mail_deliveries (state, deadline, created_at, id);
+
+CREATE INDEX mail_deliveries_operator_list_idx
+    ON mail_deliveries (created_at DESC, id DESC)
+    INCLUDE (state, template_key);
+
+CREATE INDEX mail_deliveries_terminal_retention_idx
+    ON mail_deliveries (state, updated_at, id);
+
+-- This bounded aggregate makes startup key-ring validation independent of
+-- delivery backlog size. Mail lifecycle transactions increment on enqueue and
+-- decrement when ciphertext is destroyed or retained history is deleted.
+CREATE TABLE mail_payload_keys (
+    key_id char(32) PRIMARY KEY CHECK (key_id ~ '^[0-9a-f]{32}$'),
+    active_references bigint NOT NULL CHECK (active_references >= 0)
+);
+
+-- One PostgreSQL-owned token bucket coordinates outbound sends across every
+-- application node in this installation. Ordinary work leaves four burst
+-- tokens available for credential delivery.
+CREATE TABLE mail_send_rate_limit (
+    singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    tokens double precision NOT NULL CHECK (tokens >= 0 AND tokens <= 20),
+    updated_at timestamptz NOT NULL
+);
 
 CREATE TABLE upload_leases (
     id varchar(26) PRIMARY KEY,
@@ -2141,7 +2168,7 @@ CREATE TABLE audit_events (
     session_id varchar(26) REFERENCES sessions(id),
     action varchar(128) NOT NULL,
     resource_type varchar(32) NOT NULL
-        CHECK (resource_type IN ('institution', 'academic_unit', 'academic_period', 'class', 'user', 'exam', 'exam_sitting', 'submission', 'mail_delivery')),
+        CHECK (resource_type IN ('institution', 'academic_unit', 'programme', 'programme_level', 'academic_period', 'class', 'user', 'exam', 'exam_sitting', 'submission', 'mail_delivery')),
     resource_id varchar(26) NOT NULL,
     scope_type varchar(32) NOT NULL
         CHECK (scope_type IN ('institution', 'academic_unit', 'class')),

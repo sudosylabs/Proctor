@@ -41,6 +41,7 @@ type Dependencies struct {
 	Mailer               AccountMailer
 	MailDeliverySender   MailDeliverySender
 	MailTemplateRenderer MailTemplateRenderer
+	MailDeliveryRecorder MailDeliveryRecorder
 	// MailSecretSealer is the concrete in-process cryptographic module for
 	// recoverable mail payloads. It is nil until an independent ring is configured.
 	MailSecretSealer *secretseal.Sealer

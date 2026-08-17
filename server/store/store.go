@@ -366,6 +366,7 @@ const (
 	MailDeliveryCompletionRetry    MailDeliveryCompletionKind = "retry"
 	MailDeliveryCompletionFailed   MailDeliveryCompletionKind = "failed"
 	MailDeliveryCompletionExpired  MailDeliveryCompletionKind = "expired"
+	MailDeliveryCompletionSuppress MailDeliveryCompletionKind = "suppress"
 )
 
 type MailDeliveryCompletion struct {
@@ -376,13 +377,88 @@ type MailDeliveryCompletion struct {
 	At                time.Time
 }
 
+// MailDeliveryListOptions is a bounded, server-side operator query. The
+// (BeforeCreatedAt, BeforeID) pair is the decoded opaque keyset cursor.
+type MailDeliveryListOptions struct {
+	States          []model.MailDeliveryState
+	TemplateKeys    []model.MailTemplateKey
+	CreatedAfter    time.Time
+	CreatedBefore   time.Time
+	BeforeCreatedAt time.Time
+	BeforeID        model.MailDeliveryID
+	Limit           int
+}
+
+// MailDeliveryMutation fences an audited operator transition against the
+// delivery revision observed after authorization.
+type MailDeliveryMutation struct {
+	ID               model.MailDeliveryID
+	ExpectedRevision int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
+type MailSendClass string
+
+const (
+	MailSendCredential MailSendClass = "credential"
+	MailSendOrdinary   MailSendClass = "ordinary"
+)
+
+type MailSendPermit struct {
+	Allowed    bool
+	RetryAfter time.Duration
+}
+
+// MailMaintenanceResult reports one bounded, convergent maintenance page.
+type MailMaintenanceResult struct {
+	Affected   int
+	More       bool
+	Deliveries []MailMaintenanceDelivery
+}
+
+// MailMaintenanceDelivery is the bounded, identifier-free observation for a
+// delivery transitioned by maintenance rather than the ordinary worker.
+type MailMaintenanceDelivery struct {
+	TemplateKey       model.MailTemplateKey
+	State             model.MailDeliveryState
+	PublicFailureCode string
+	AttemptCount      int
+	ProcessingLatency time.Duration
+}
+
+type MailQueueCount struct {
+	TemplateKey       model.MailTemplateKey
+	State             model.MailDeliveryState
+	PublicFailureCode string
+	Count             int64
+	OldestObservedAt  time.Time
+}
+
+// MailQueueSnapshot contains only bounded operational metadata. It never
+// includes recipients, rendered content, payloads, or provider responses.
+type MailQueueSnapshot struct {
+	Counts         []MailQueueCount
+	OldestQueuedAt time.Time
+	More           bool
+}
+
 // MailStore owns durable mail-domain state. It deliberately exposes named
 // lifecycle operations rather than a raw transaction callback.
 type MailStore interface {
 	EnqueueTest(context.Context, *MailTestEnqueue) (*model.MailDelivery, error)
 	GetDelivery(context.Context, model.MailDeliveryID) (*model.MailDelivery, error)
+	ListDeliveries(context.Context, MailDeliveryListOptions) ([]*model.MailDelivery, error)
 	StartDelivery(context.Context, model.MailDeliveryID, int64, time.Time) (*model.MailDelivery, error)
 	CompleteDelivery(context.Context, *MailDeliveryCompletion) (*model.MailDelivery, error)
+	CancelDelivery(context.Context, *MailDeliveryMutation) (*model.MailDelivery, error)
+	RetryDelivery(context.Context, *MailDeliveryMutation) (*model.MailDelivery, error)
+	AcquireSendPermit(context.Context, MailSendClass) (*MailSendPermit, error)
+	SuppressOutstanding(context.Context, string, int) (*MailMaintenanceResult, error)
+	SuppressExpired(context.Context, int) (*MailMaintenanceResult, error)
+	CleanupTerminal(context.Context, int) (*MailMaintenanceResult, error)
+	QueueSnapshot(context.Context) (*MailQueueSnapshot, error)
+	ActivePayloadKeyIDs(context.Context) ([]string, error)
 }
 
 type JobClaimRequest struct {
@@ -1335,9 +1411,11 @@ type RoleStore interface {
 // RoleBindingCreation is the durable input for creating a binding under an
 // already-persisted audit attempt.
 type RoleBindingCreation struct {
-	Binding      *model.RoleBinding
-	AuditEventID string
-	AuditAt      int64
+	Binding                 *model.RoleBinding
+	ExpectedRoleUpdatedAt   time.Time
+	ExpectedRolePermissions []string
+	AuditEventID            string
+	AuditAt                 int64
 }
 
 // RoleBindingEnd is the durable input for ending a binding under an

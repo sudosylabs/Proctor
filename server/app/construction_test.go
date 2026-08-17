@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -28,7 +29,34 @@ type constructionAuthenticationDiagnosticsStub struct{ authenticationDiagnostics
 type constructionRealtimeDiagnosticsStub struct{ realtimeDiagnostics }
 type constructionRecoveryDiagnosticsStub struct{ recoveryDiagnostics }
 
+type activeMailPayloadKeyStoreFake struct {
+	ids []string
+	err error
+}
+
+func (s activeMailPayloadKeyStoreFake) ActivePayloadKeyIDs(context.Context) ([]string, error) {
+	return append([]string(nil), s.ids...), s.err
+}
+
+type mailPayloadKeyRingFake map[string]bool
+
+func (r mailPayloadKeyRingFake) HasKey(keyID string) bool { return r[keyID] }
+
 func (constructionMailDeliverySenderStub) Enabled() bool { return false }
+
+func TestActiveMailPayloadKeysAreValidatedBeforeWorkersStart(t *testing.T) {
+	t.Parallel()
+	keyID := "0123456789abcdef0123456789abcdef"
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{ids: []string{keyID}}, mailPayloadKeyRingFake{keyID: true}); err != nil {
+		t.Fatalf("validateActiveMailPayloadKeys() = %v", err)
+	}
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{ids: []string{keyID}}, mailPayloadKeyRingFake{}); err == nil {
+		t.Fatal("missing active key was accepted")
+	}
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{err: errors.New("database unavailable")}, mailPayloadKeyRingFake{}); err == nil {
+		t.Fatal("persistence failure was accepted")
+	}
+}
 
 func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 	t.Parallel()

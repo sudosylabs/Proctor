@@ -397,11 +397,18 @@ The exact property and maintenance contract lives in
 [`templates/README.md`](templates/README.md).
 
 The controlled operator tracer uses `POST /api/v1/mail/test` with no request
-body and `GET /api/v1/mail/deliveries/{mail_delivery_id}` for its safe status.
-The enqueue operation requires `mail.manage`, a recent interactive Session,
-and the operator's own verified address; the status operation requires
-`mail.view`. SMTP delivery remains asynchronous and `accepted` means only that
-the configured transport accepted the message data.
+body. Operators with `mail.view` can inspect safe bounded delivery metadata at
+`GET /api/v1/mail/deliveries` and
+`GET /api/v1/mail/deliveries/{mail_delivery_id}`. The authorized
+`GET /api/v1/mail/metrics` projection exposes only bounded template, state,
+public-outcome, attempt, latency, queue, and mail-health metrics. A recent
+interactive Session
+with `mail.manage` may cancel queued delivery work or retry a failed, unexpired,
+still-relevant delivery through the nested `/cancel` and `/retry` operations;
+PATs cannot perform those mutations. The test enqueue additionally targets
+only the operator's own verified address. SMTP delivery remains asynchronous
+and `accepted` means only that the configured transport accepted the message
+data.
 
 ## Verify
 

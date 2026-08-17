@@ -37,6 +37,7 @@ type academicUnitMemberStore interface {
 
 type academicUnitMemberAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+	AuthorizePreflight(context.Context, Invocation, model.Action, model.ResourceType) error
 }
 
 type academicUnitMemberService struct {
@@ -56,7 +57,7 @@ func (a *App) ListAcademicUnitMembers(ctx context.Context, invocation Invocation
 }
 
 func (s *academicUnitMemberService) List(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
-	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(query.AcademicUnitID))
+	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(query.AcademicUnitID), model.ActionAcademicUnitMembersView)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +76,7 @@ func (a *App) CreateAcademicUnitMember(ctx context.Context, invocation Invocatio
 }
 
 func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
-	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(command.AcademicUnitID))
+	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(command.AcademicUnitID), model.ActionAcademicUnitMembersManage)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionAcademicUnitMembersManage,
 			Resource:   resource,
 			Operation:  "create_member",
 			Value:      candidate.Auditable(),
@@ -130,20 +131,25 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_member_id")
 	}
+	if err := s.authorization.AuthorizePreflight(
+		ctx, invocation, model.ActionAcademicUnitMembersManage, model.ResourceAcademicUnit,
+	); err != nil {
+		return nil, err
+	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, academicUnitMemberError(err)
 	}
-	resource, err := s.authorizeUnit(ctx, invocation, current.AcademicUnitID.String())
+	resource, err := s.authorizeUnit(ctx, invocation, current.AcademicUnitID.String(), model.ActionAcademicUnitMembersManage)
 	if err != nil {
-		return nil, err
+		return nil, concealMembershipAuthorizationError(err, "academic_unit_member")
 	}
 	return runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionAcademicUnitMembersManage,
 			Resource:   resource,
 			Operation:  "end_member",
 			Prior:      current.Auditable(),
@@ -159,12 +165,19 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	)
 }
 
-func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation Invocation, unitID string) (model.Resource, error) {
+func concealMembershipAuthorizationError(err error, resource string) error {
+	if Is(err, "authorization.denied") {
+		return NewError("resource.not_found").WithField("resource", resource)
+	}
+	return err
+}
+
+func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation Invocation, unitID string, action model.Action) (model.Resource, error) {
 	if !model.IsValidId(unitID) {
 		return model.Resource{}, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil

@@ -99,6 +99,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"mail.recipient_unverified":                            {status: http.StatusConflict},
 	"mail.recipient_ineligible":                            {status: http.StatusConflict},
 	"mail.test.rate_limited":                               {status: http.StatusTooManyRequests},
+	"mail.query.invalid":                                   {status: http.StatusBadRequest},
 	"mail.conflict":                                        {status: http.StatusConflict},
 	"mail.unavailable":                                     {status: http.StatusInternalServerError},
 	"exam.invalid":                                         {status: http.StatusBadRequest},

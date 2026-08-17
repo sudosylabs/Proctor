@@ -147,6 +147,20 @@ func TestOpenRejectsWrongBindingAndInvalidEnvelopeWithSafeErrors(t *testing.T) {
 	}
 }
 
+func TestHasKeyExposesOnlyRingMembership(t *testing.T) {
+	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: encodedKey(1), MaximumPlaintext: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := sealer.Seal(secretseal.Binding{Purpose: "mail.payload", Owner: "owner"}, []byte("secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sealer.HasKey(envelope.KeyID) || sealer.HasKey(strings.Repeat("0", 32)) || (*secretseal.Sealer)(nil).HasKey(envelope.KeyID) {
+		t.Fatal("HasKey did not report exact configured-key membership")
+	}
+}
+
 func TestFallbackKeyReadsSupportPrimaryRotation(t *testing.T) {
 	t.Parallel()
 

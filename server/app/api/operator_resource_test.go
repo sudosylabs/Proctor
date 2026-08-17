@@ -108,6 +108,12 @@ func TestRoleBindingResourceOwnsPathCommandAndAuthentication(t *testing.T) {
 	if unauthenticated.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated status = %d: %s", unauthenticated.Code, unauthenticated.Body.String())
 	}
+	weakAssurance := serveOperatorRequest(httpAPI, http.MethodDelete, path, "", true)
+	if weakAssurance.Code != http.StatusForbidden || !strings.Contains(weakAssurance.Body.String(), "authentication.strong_required") {
+		t.Fatalf("weak-assurance status = %d: %s", weakAssurance.Code, weakAssurance.Body.String())
+	}
+	principal.AuthenticationStrength = model.AuthenticationMultiFactor
+	httpAPI = newFocusedResourceAPI(t, logger, &academicUnitHTTPApplication{principal: principal}, roleBindingResource(bindings))
 	ended := serveOperatorRequest(httpAPI, http.MethodDelete, path, "", true)
 	if ended.Code != http.StatusOK || bindings.end.ID != bindingID.String() {
 		t.Fatalf("end status/command = %d/%#v: %s", ended.Code, bindings.end, ended.Body.String())

@@ -6,7 +6,9 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,7 +17,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -27,8 +31,13 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	encryptionKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{17}, 32))
 	helper := testlib.Setup(
 		t,
+		testlib.WithConfig(func(cfg *config.Config) {
+			cfg.Authentication.MFA.Enabled = true
+			cfg.Authentication.MFA.EncryptionKey = encryptionKey
+		}),
 		testlib.WithStore(persistence),
 	)
 	handler := helper.Handler()
@@ -153,6 +162,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		t, handler, created.Administrator.Username, password,
 		model.SessionClientCLI, "administrator-cli",
 	)
+	strengthenRoleAdministratorSession(t, handler, administratorLogin.Tokens.AccessToken)
 	authorizedRoleListRequestID := "authorized-role-list-test"
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/roles", nil)
 	listRequest.Header.Set(
@@ -377,6 +387,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		t, handler, secondAdministrator.Username, password,
 		model.SessionClientCLI, "second-administrator-cli",
 	)
+	strengthenRoleAdministratorSession(t, handler, secondLogin.Tokens.AccessToken)
 	removeLast := performJSONRequest(
 		handler,
 		http.MethodDelete,
@@ -395,26 +406,31 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var successes, failures, requestDecisionAudits int
+	var roleSuccesses, bindingSuccesses, bindingFailures, requestDecisionAudits int
 	for _, event := range events {
-		if event.Action != string(model.ActionRoleManage) {
-			continue
-		}
-		if event.RequestID == authorizedRoleListRequestID {
+		if event.Action == string(model.ActionRoleView) && event.RequestID == authorizedRoleListRequestID {
 			requestDecisionAudits++
 		}
-		switch event.Status {
-		case model.AuditStatusSuccess:
-			successes++
-		case model.AuditStatusFail:
-			failures++
+		switch event.Action {
+		case string(model.ActionRoleManage):
+			if event.Status == model.AuditStatusSuccess {
+				roleSuccesses++
+			}
+		case string(model.ActionRoleBindingManage):
+			switch event.Status {
+			case model.AuditStatusSuccess:
+				bindingSuccesses++
+			case model.AuditStatusFail:
+				bindingFailures++
+			}
 		}
 	}
-	if successes == 0 || failures == 0 {
+	if roleSuccesses == 0 || bindingSuccesses == 0 || bindingFailures == 0 {
 		t.Fatalf(
-			"role administration audit statuses successes=%d failures=%d",
-			successes,
-			failures,
+			"role administration audit statuses role_successes=%d binding_successes=%d binding_failures=%d",
+			roleSuccesses,
+			bindingSuccesses,
+			bindingFailures,
 		)
 	}
 	if requestDecisionAudits != 1 {
@@ -422,6 +438,55 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			"application use case wrote %d authorization decisions for one request",
 			requestDecisionAudits,
 		)
+	}
+}
+
+func strengthenRoleAdministratorSession(t *testing.T, handler http.Handler, accessToken string) {
+	t.Helper()
+	setupResponse := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/api/v1/users/me/mfa/setup",
+		nil,
+		accessToken,
+	)
+	if setupResponse.Code != http.StatusCreated {
+		t.Fatalf("MFA setup status = %d: %s", setupResponse.Code, setupResponse.Body.String())
+	}
+	var setup struct {
+		Secret string `json:"secret"`
+	}
+	if err := json.Unmarshal(setupResponse.Body.Bytes(), &setup); err != nil {
+		t.Fatal(err)
+	}
+	activation := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/api/v1/users/me/mfa/activate",
+		map[string]any{"code": integrationTOTP(t, setup.Secret, time.Now().UTC().Unix()/30)},
+		accessToken,
+	)
+	if activation.Code != http.StatusOK {
+		t.Fatalf("MFA activation status = %d: %s", activation.Code, activation.Body.String())
+	}
+	var recovery struct {
+		Codes []string `json:"recovery_codes"`
+	}
+	if err := json.Unmarshal(activation.Body.Bytes(), &recovery); err != nil {
+		t.Fatal(err)
+	}
+	if len(recovery.Codes) == 0 {
+		t.Fatal("MFA activation returned no recovery codes")
+	}
+	rechallenge := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/api/v1/users/me/mfa/challenge",
+		map[string]any{"code": recovery.Codes[0]},
+		accessToken,
+	)
+	if rechallenge.Code != http.StatusOK {
+		t.Fatalf("MFA challenge status = %d: %s", rechallenge.Code, rechallenge.Body.String())
 	}
 }
 

@@ -78,6 +78,7 @@ type borrowedMailer interface {
 	Enabled() bool
 	From() mailpkg.Address
 	Send(context.Context, mailpkg.Message) (mailpkg.Receipt, error)
+	Test(context.Context) error
 }
 
 type borrowedCluster interface {

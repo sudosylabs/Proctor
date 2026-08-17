@@ -46,7 +46,9 @@ type roleStore interface {
 }
 
 type roleAuthorizer interface {
+	AuthorizeView(context.Context, Invocation) (model.Resource, error)
 	AuthorizeManage(context.Context, Invocation) (model.Resource, error)
+	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
 }
 
 type roleEffects interface {
@@ -76,7 +78,7 @@ func (a *App) ListRoles(ctx context.Context, invocation Invocation, _ ListRolesQ
 }
 
 func (s *roleService) List(ctx context.Context, invocation Invocation) ([]*model.Role, error) {
-	if _, err := s.authorization.AuthorizeManage(ctx, invocation); err != nil {
+	if _, err := s.authorization.AuthorizeView(ctx, invocation); err != nil {
 		return nil, err
 	}
 	roles, err := s.roles.List(ctx)
@@ -98,7 +100,7 @@ func (s *roleService) Get(ctx context.Context, invocation Invocation, query GetR
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "role_id")
 	}
-	if _, err := s.authorization.AuthorizeManage(ctx, invocation); err != nil {
+	if _, err := s.authorization.AuthorizeView(ctx, invocation); err != nil {
 		return nil, err
 	}
 	role, err := s.roles.Get(ctx, id)
@@ -123,6 +125,11 @@ func (s *roleService) Create(ctx context.Context, invocation Invocation, command
 		BuiltIn: false,
 	}
 	if err := validateKnownPermissions(candidate.Permissions); err != nil {
+		return nil, err
+	}
+	if err := s.authorization.CanDelegateActionsAtScope(
+		ctx, invocation, candidate.Permissions, model.RoleScopeInstitution, resource.ID,
+	); err != nil {
 		return nil, err
 	}
 	return runAuditedMutation(
@@ -178,6 +185,13 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 	if err := validatePatchedPermissions(current.Permissions, command.Permissions); err != nil {
 		return nil, err
 	}
+	if added := addedRolePermissions(current.Permissions, candidate.Permissions); len(added) > 0 {
+		if err := s.authorization.CanDelegateActionsAtScope(
+			ctx, invocation, added, model.RoleScopeInstitution, resource.ID,
+		); err != nil {
+			return nil, err
+		}
+	}
 	updated, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -202,6 +216,20 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 	}
 	s.effects.AuthorizationChanged(ctx)
 	return updated, nil
+}
+
+func addedRolePermissions(current, candidate []string) []string {
+	present := make(map[string]struct{}, len(current))
+	for _, permission := range current {
+		present[permission] = struct{}{}
+	}
+	added := make([]string, 0, len(candidate))
+	for _, permission := range candidate {
+		if _, exists := present[permission]; !exists {
+			added = append(added, permission)
+		}
+	}
+	return added
 }
 
 func (a *App) ArchiveRole(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
@@ -257,6 +285,49 @@ type roleAuthorization struct {
 }
 
 func (a roleAuthorization) AuthorizeManage(ctx context.Context, invocation Invocation) (model.Resource, error) {
+	return a.authorizeInstitution(ctx, invocation, model.ActionRoleManage)
+}
+
+func (a roleAuthorization) AuthorizeView(ctx context.Context, invocation Invocation) (model.Resource, error) {
+	return a.authorizeInstitution(ctx, invocation, model.ActionRoleView)
+}
+
+func (a roleAuthorization) AuthorizeRoleBindingInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
+	return a.authorizeInstitution(ctx, invocation, action)
+}
+
+func (a roleAuthorization) AuthorizeRoleBindingPreflight(ctx context.Context, invocation Invocation, action model.Action) error {
+	return a.authorization.authorizeRoleBindingPreflight(ctx, invocation, action)
+}
+
+func (a roleAuthorization) AuthorizeRoleBindingScope(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	scopeType model.RoleScopeType,
+	scopeID string,
+) (model.Resource, error) {
+	return a.authorization.authorizeRoleBindingScope(ctx, invocation, action, scopeType, scopeID)
+}
+
+func (a roleAuthorization) CanDelegateActionsAtScope(
+	ctx context.Context,
+	invocation Invocation,
+	actions []string,
+	scopeType model.RoleScopeType,
+	scopeID string,
+) error {
+	allowed, err := a.authorization.canDelegateActionsAtScope(ctx, invocation.Principal(), actions, scopeType, scopeID)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return authorizationDeniedError("roleAuthorization.CanDelegateActionsAtScope")
+	}
+	return nil
+}
+
+func (a roleAuthorization) authorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, roleError(err)
@@ -265,7 +336,7 @@ func (a roleAuthorization) AuthorizeManage(ctx context.Context, invocation Invoc
 	if err := a.authorization.authorizeCurrentState(
 		ctx,
 		invocation.Principal(),
-		model.ActionRoleManage,
+		action,
 		resource,
 		invocation.RequestMetadata(),
 	); err != nil {

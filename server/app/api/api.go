@@ -427,7 +427,11 @@ type Application interface {
 
 type MailApplication interface {
 	SendTestMail(context.Context, application.Invocation) (application.MailDeliveryView, error)
+	GetMailMetrics(context.Context, application.Invocation) (application.MailMetricsSnapshot, error)
 	GetMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error)
+	ListMailDeliveries(context.Context, application.Invocation, application.ListMailDeliveriesQuery) (application.MailDeliveryPage, error)
+	CancelMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error)
+	RetryMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error)
 }
 
 type API struct {

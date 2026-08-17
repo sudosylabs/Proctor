@@ -42,14 +42,9 @@ type programmeLevelStore interface {
 	ArchiveWithAudit(context.Context, *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
 }
 
-type programmeOwnerReader interface {
-	Get(context.Context, string) (*model.Programme, error)
-}
-
 type programmeLevelService struct {
 	store         programmeLevelStore
-	programmes    programmeOwnerReader
-	authorization academicUnitAuthorizer
+	authorization scopedAcademicResourceAuthorizer
 	audit         mutationAuditor
 	now           func() time.Time
 	newID         func() string
@@ -57,13 +52,12 @@ type programmeLevelService struct {
 
 func newProgrammeLevelService(
 	persistence programmeLevelStore,
-	programmes programmeOwnerReader,
-	authorization academicUnitAuthorizer,
+	authorization scopedAcademicResourceAuthorizer,
 	audit mutationAuditor,
 	now func() time.Time,
 	newID func() string,
 ) *programmeLevelService {
-	return &programmeLevelService{store: persistence, programmes: programmes, authorization: authorization, audit: audit, now: now, newID: newID}
+	return &programmeLevelService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 
 func (a *App) GetProgrammeLevel(ctx context.Context, invocation Invocation, query GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
@@ -71,12 +65,16 @@ func (a *App) GetProgrammeLevel(ctx context.Context, invocation Invocation, quer
 }
 
 func (s *programmeLevelService) Get(ctx context.Context, invocation Invocation, query GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
-	level, _, err := s.levelAndProgramme(ctx, query.ID)
-	if err != nil {
+	id := strings.TrimSpace(query.ID)
+	if !model.IsValidId(id) {
+		return nil, NewError("request.invalid").WithField("field", "programme_level_id")
+	}
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgrammeLevel, ID: id}); err != nil {
 		return nil, err
 	}
-	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitView, level.ProgrammeID.String()); err != nil {
-		return nil, err
+	level, err := s.store.Get(ctx, id)
+	if err != nil {
+		return nil, programmeLevelError(err)
 	}
 	return level, nil
 }
@@ -90,7 +88,7 @@ func (s *programmeLevelService) List(ctx context.Context, invocation Invocation,
 	if !model.IsValidId(programmeID) {
 		return nil, NewError("request.invalid").WithField("field", "programme_id")
 	}
-	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitView, programmeID); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgramme, ID: programmeID}); err != nil {
 		return nil, err
 	}
 	var levels []*model.ProgrammeLevel
@@ -115,7 +113,11 @@ func (a *App) CreateProgrammeLevel(ctx context.Context, invocation Invocation, c
 
 func (s *programmeLevelService) Create(ctx context.Context, invocation Invocation, command CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
 	programmeID := strings.TrimSpace(command.ProgrammeID)
-	resource, err := s.authorizedProgramme(ctx, invocation, model.ActionAcademicUnitManage, programmeID)
+	if !model.IsValidId(programmeID) {
+		return nil, NewError("request.invalid").WithField("field", "programme_id")
+	}
+	resource := model.Resource{Type: model.ResourceProgramme, ID: programmeID}
+	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, resource)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +144,10 @@ func (s *programmeLevelService) Create(ctx context.Context, invocation Invocatio
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionProgrammeLevelManage,
 			Resource:   resource,
+			ScopeType:  scopeType,
+			ScopeID:    scopeID,
 			Operation:  "create",
 			Value:      candidate.Auditable(),
 		},
@@ -162,14 +166,11 @@ func (a *App) UpdateProgrammeLevel(ctx context.Context, invocation Invocation, c
 }
 
 func (s *programmeLevelService) Update(ctx context.Context, invocation Invocation, command UpdateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
-	current, programme, err := s.levelAndProgramme(ctx, command.ID)
+	current, scopeType, scopeID, err := s.levelForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return nil, err
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
-		return nil, err
-	}
+	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: current.ID.String()}
 	candidate := *current
 	if command.Name != nil {
 		candidate.Name = *command.Name
@@ -189,8 +190,10 @@ func (s *programmeLevelService) Update(ctx context.Context, invocation Invocatio
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionProgrammeLevelManage,
 			Resource:   resource,
+			ScopeType:  scopeType,
+			ScopeID:    scopeID,
 			Operation:  "patch",
 			Value:      candidate.Auditable(),
 			Prior:      current.Auditable(),
@@ -210,21 +213,20 @@ func (a *App) ArchiveProgrammeLevel(ctx context.Context, invocation Invocation, 
 }
 
 func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocation, command ArchiveProgrammeLevelCommand) error {
-	current, programme, err := s.levelAndProgramme(ctx, command.ID)
+	current, scopeType, scopeID, err := s.levelForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return err
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
-		return err
-	}
+	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: current.ID.String()}
 	_, err = runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionProgrammeLevelManage,
 			Resource:   resource,
+			ScopeType:  scopeType,
+			ScopeID:    scopeID,
 			Operation:  "archive",
 			Prior:      current.Auditable(),
 		},
@@ -240,41 +242,20 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 	return err
 }
 
-func (s *programmeLevelService) levelAndProgramme(ctx context.Context, id string) (*model.ProgrammeLevel, *model.Programme, error) {
+func (s *programmeLevelService) levelForMutation(ctx context.Context, invocation Invocation, id string) (*model.ProgrammeLevel, model.RoleScopeType, string, error) {
 	id = strings.TrimSpace(id)
 	if !model.IsValidId(id) {
-		return nil, nil, NewError("request.invalid").WithField("field", "programme_level_id")
+		return nil, "", "", NewError("request.invalid").WithField("field", "programme_level_id")
+	}
+	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, model.Resource{Type: model.ResourceProgrammeLevel, ID: id})
+	if err != nil {
+		return nil, "", "", err
 	}
 	level, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, nil, programmeLevelError(err)
+		return nil, "", "", programmeLevelError(err)
 	}
-	programme, err := s.programmes.Get(ctx, level.ProgrammeID.String())
-	if err != nil {
-		return nil, nil, programmeError(err)
-	}
-	return level, programme, nil
-}
-
-func (s *programmeLevelService) authorizedProgramme(ctx context.Context, invocation Invocation, action model.Action, id string) (model.Resource, error) {
-	id = strings.TrimSpace(id)
-	if !model.IsValidId(id) {
-		return model.Resource{}, NewError("request.invalid").WithField("field", "programme_id")
-	}
-	programme, err := s.programmes.Get(ctx, id)
-	if err != nil {
-		return model.Resource{}, programmeError(err)
-	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}
-	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
-		return model.Resource{}, err
-	}
-	return resource, nil
-}
-
-func (s *programmeLevelService) authorize(ctx context.Context, invocation Invocation, action model.Action, programmeID string) error {
-	_, err := s.authorizedProgramme(ctx, invocation, action, programmeID)
-	return err
+	return level, scopeType, scopeID, nil
 }
 
 func programmeLevelError(err error) error {

@@ -279,6 +279,10 @@ func validatePersistedResourceID(resourceType model.ResourceType, raw string) er
 		_, err = model.ParseInstitutionID(raw)
 	case model.ResourceAcademicUnit:
 		_, err = model.ParseAcademicUnitID(raw)
+	case model.ResourceProgramme:
+		_, err = model.ParseProgrammeID(raw)
+	case model.ResourceProgrammeLevel:
+		_, err = model.ParseProgrammeLevelID(raw)
 	case model.ResourceClass:
 		_, err = model.ParseClassID(raw)
 	case model.ResourceUser:

@@ -75,11 +75,14 @@ func (s *accessControlService) evaluate(
 		return false, unresolved, invalidTokenAppError()
 	}
 	definition, known := model.DefinitionForAction(action)
-	if !known || resource.Validate() != nil || definition.ResourceType != resource.Type {
+	if !known || resource.Validate() != nil || !definition.AcceptsResource(resource.Type) {
 		return false, unresolved, NewError("authorization.request.invalid")
 	}
 	if definition.RelationshipOnly {
 		return false, unresolved, NewError("authorization.request.invalid")
+	}
+	if principal.CredentialType == model.CredentialPersonalAccessToken && definition.PersonalAccessTokenForbidden {
+		return false, unresolved, nil
 	}
 	if resource.Type == model.ResourceAcademicPeriod {
 		allowed, coarse, appErr := s.academicPeriodCoarseAuthority(ctx, principal, action)
@@ -213,7 +216,7 @@ func personalAccessTokenAllows(
 		return true
 	}
 	switch resource.Type {
-	case model.ResourceAcademicUnit, model.ResourceAcademicPeriod, model.ResourceClass, model.ResourceExam:
+	case model.ResourceAcademicUnit, model.ResourceProgramme, model.ResourceProgrammeLevel, model.ResourceAcademicPeriod, model.ResourceClass, model.ResourceExam:
 		if resource.Type == model.ResourceAcademicPeriod && resolved.academicPeriodInstitutionOwned {
 			return action == model.ActionAcademicPeriodView
 		}
@@ -245,14 +248,34 @@ func (s *accessControlService) authorizeCurrentState(
 	resource model.Resource,
 	metadata model.RequestMetadata,
 ) error {
-	allowed, appErr := s.preauthorize(ctx, principal, action, resource, metadata)
+	_, _, appErr := s.authorizeCurrentStateWithScope(ctx, principal, action, resource, metadata)
+	return appErr
+}
+
+// authorizeCurrentStateWithScope returns the same resolved scope written to
+// the durable decision so a following mutation attempt can preserve the exact
+// action/resource/scope tuple without resolving the resource a second time.
+func (s *accessControlService) authorizeCurrentStateWithScope(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	metadata model.RequestMetadata,
+) (model.RoleScopeType, string, error) {
+	allowed, resolved, appErr := s.evaluate(ctx, principal, action, resource)
 	if appErr != nil {
-		return appErr
+		return "", "", appErr
+	}
+	scopeType, scopeID := authorizationAuditScope(resource, resolved)
+	if appErr = s.audit.RecordAuthorizationDecision(
+		ctx, principal, action, resource, scopeType, scopeID, metadata, allowed,
+	); appErr != nil {
+		return "", "", appErr
 	}
 	if !allowed {
-		return authorizationDeniedError("accessControlService.Authorize")
+		return "", "", authorizationDeniedError("accessControlService.Authorize")
 	}
-	return nil
+	return scopeType, scopeID, nil
 }
 
 // authorizeUserViewThroughClass evaluates the contextual class permission but
@@ -335,26 +358,6 @@ func (s *accessControlService) authorizeUserRead(
 	return authorizationDeniedError("accessControlService.authorizeUserRead")
 }
 
-func (s *accessControlService) preauthorize(
-	ctx context.Context,
-	principal model.Principal,
-	action model.Action,
-	resource model.Resource,
-	metadata model.RequestMetadata,
-) (bool, error) {
-	allowed, resolved, appErr := s.evaluate(ctx, principal, action, resource)
-	if appErr != nil {
-		return false, appErr
-	}
-	scopeType, scopeID := authorizationAuditScope(resource, resolved)
-	if appErr = s.audit.RecordAuthorizationDecision(
-		ctx, principal, action, resource, scopeType, scopeID, metadata, allowed,
-	); appErr != nil {
-		return false, appErr
-	}
-	return allowed, nil
-}
-
 func authorizationDeniedError(where string) error {
 	_ = where
 	return NewError("authorization.denied")
@@ -374,7 +377,7 @@ func authorizationAuditScope(
 			return model.RoleScopeInstitution, resolved.institutionID
 		}
 		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
-	case model.ResourceExam, model.ResourceExamSitting, model.ResourceSubmission:
+	case model.ResourceProgramme, model.ResourceProgrammeLevel, model.ResourceExam, model.ResourceExamSitting, model.ResourceSubmission:
 		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
 	case model.ResourceClass:
 		return model.RoleScopeClass, resource.ID

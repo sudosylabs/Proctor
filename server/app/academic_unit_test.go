@@ -180,7 +180,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 	}
 }
 
-func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testing.T) {
+func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmptyArray(t *testing.T) {
 	t.Parallel()
 
 	institution := &model.Institution{ID: model.InstitutionID(model.NewId())}
@@ -206,7 +206,7 @@ func TestAcademicUnitRootListUsesInstitutionManageAndReturnsEmptyArray(t *testin
 	if got == nil || len(got) != 0 {
 		t.Fatalf("List() = %#v, want non-nil empty result", got)
 	}
-	if gotAction != model.ActionInstitutionManage ||
+	if gotAction != model.ActionAcademicUnitView ||
 		gotResource != (model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}) {
 		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
 	}

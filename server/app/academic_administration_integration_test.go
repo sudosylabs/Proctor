@@ -425,8 +425,12 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		}
 	}
 	for _, action := range []model.Action{
-		model.ActionInstitutionManage,
 		model.ActionAcademicUnitManage,
+		model.ActionAcademicUnitMembersManage,
+		model.ActionProgrammeManage,
+		model.ActionProgrammeLevelManage,
+		model.ActionAcademicPeriodManage,
+		model.ActionClassManage,
 		model.ActionClassMembersManage,
 		model.ActionUserManage,
 		model.ActionSessionManage,

@@ -12,9 +12,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -85,6 +87,7 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 	input *store.RoleBindingCreation,
 ) (*model.RoleBinding, error) {
 	if input == nil || input.Binding == nil || !input.Binding.ID.IsZero() ||
+		input.ExpectedRoleUpdatedAt.IsZero() ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role_binding", "creation", nil)
 	}
@@ -99,6 +102,9 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 		return nil, store.NewErrInvalidInput("role_binding", "value", nil).Wrap(err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role binding save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
+		if err := lockExpectedRoleForBinding(ctx, tx, candidate.RoleID, input.ExpectedRoleUpdatedAt, input.ExpectedRolePermissions); err != nil {
+			return nil, err
+		}
 		if err := insertRoleBinding(ctx, tx, &candidate); err != nil {
 			return nil, err
 		}
@@ -113,6 +119,24 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 		}
 		return &candidate, nil
 	})
+}
+
+// lockExpectedRoleForBinding closes the read-check-write race between the
+// application delegation decision and the binding insert. Permission-changing
+// role updates take an exclusive lock on the same row; the exact snapshot is
+// rechecked while this shared lock is held through commit.
+func lockExpectedRoleForBinding(ctx context.Context, tx *sqlxTxWrapper, roleID model.RoleID, expectedUpdatedAt time.Time, expectedPermissions []string) error {
+	var row struct {
+		UpdatedAt   time.Time      `db:"updated_at"`
+		Permissions pq.StringArray `db:"permissions"`
+	}
+	if err := tx.Get(ctx, &row, `SELECT updated_at,permissions FROM roles WHERE id=$1 AND archived_at IS NULL FOR SHARE`, roleID.String()); err != nil {
+		return translateError("role", roleID.String(), err)
+	}
+	if !row.UpdatedAt.Equal(model.TimeUTC(expectedUpdatedAt)) || !slices.Equal([]string(row.Permissions), expectedPermissions) {
+		return store.NewErrConflict("role_binding", "role_bindings_role_snapshot", nil)
+	}
+	return nil
 }
 
 func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.RoleBinding) error {

@@ -34,6 +34,10 @@ func TestPersonalAccessTokenPrincipalValidation(t *testing.T) {
 	if principal.Validate() == nil {
 		t.Fatal("PAT principal with a relationship-only action was accepted")
 	}
+	principal.CredentialScopes = []string{string(ActionRoleBindingManage)}
+	if principal.Validate() == nil {
+		t.Fatal("PAT principal with an interactive-only action was accepted")
+	}
 }
 
 func modelTestID() string {

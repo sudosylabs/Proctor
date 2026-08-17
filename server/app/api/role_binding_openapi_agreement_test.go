@@ -20,18 +20,20 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 				PublicErrorCodes: principalContractCodes("request.invalid", "administration.unavailable"),
 			},
 			{
-				Key: "POST /api/v1/role-bindings", Auth: AuthPrincipalRequired,
+				Key: "POST /api/v1/role-bindings", Auth: AuthStrongRecentSessionRequired,
 				RequestBodyRef: "#/components/requestBodies/CreateRoleBinding", RequestSchema: "CreateRoleBindingRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/RoleBindingCreated", SuccessSchema: "RoleBindingResponse",
-				PublicErrorCodes: principalMutationContractCodes(
+				PublicErrorCodes: strongRecentSessionMutationErrorCodes(
+					"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable",
 					"request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict",
 					"role_binding.system_admin_requires_institution_scope", "administration.unavailable",
 				),
 			},
 			{
-				Key: "DELETE /api/v1/role-bindings/{role_binding_id}", Auth: AuthPrincipalRequired,
+				Key: "DELETE /api/v1/role-bindings/{role_binding_id}", Auth: AuthStrongRecentSessionRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/RoleBindingEnded", SuccessSchema: "RoleBindingResponse",
-				PublicErrorCodes: principalMutationContractCodes(
+				PublicErrorCodes: strongRecentSessionMutationErrorCodes(
+					"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable",
 					"request.invalid", "resource.not_found", "role_binding.conflict",
 					"role_binding.last_system_admin", "administration.unavailable",
 				),

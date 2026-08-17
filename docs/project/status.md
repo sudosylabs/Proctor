@@ -254,9 +254,23 @@ operator with `mail.manage` can enqueue the fixed `system.mail_test` message to
 their own verified address, atomically persisting its immutable occurrence,
 encrypted frozen payload, audit event, and delivery Job. Any node can deliver
 it with a stable Message-ID, record SMTP acceptance, destroy accepted
-ciphertext, and expose only a `mail.view`-protected safe status projection.
-Product-transition mail, operator retry/cancel/rekey, lifecycle cleanup, and
-bounded catalogs remain unimplemented.
+ciphertext, and expose only `mail.view`-protected safe projections. Institution
+operators can now page a bounded delivery work queue with state, template, and
+time filters; inspect one delivery; and use a recent interactive Session with
+`mail.manage` to cancel queued work or retry a failed, unexpired, still-relevant
+delivery. These controls revision-fence and update the same Delivery and Job,
+preserve occurrence and Message-ID identity, destroy canceled ciphertext, and
+complete payload-free audit atomically. PATs cannot perform the mutations.
+Delivery lifecycle hardening is also implemented: disabled installations
+converge outstanding work to terminal suppression without ciphertext or later
+resurrection; deadline and typed relevance fences run before sends; automatic
+retry uses the bounded jittered Job policy and a PostgreSQL-shared 10-per-second
+token bucket with burst and credential reserve; and a daily durable bounded
+cleanup enforces the 90/180-day metadata cutoffs without touching security
+audit. SMTP outage and queue delay now degrade only the mail subsystem, while
+bounded safe telemetry reports template, state, public outcome, attempts,
+latency, queue age, count, and health code. Product-transition mail and rekey
+remain unimplemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
@@ -315,10 +329,19 @@ Academic Unit membership plus their invitation-package-origin role binding;
 institution and Academic Unit role invitations use explicit typed purposes.
 CSV imports are asynchronous validated batches over the same invitation and
 progression commands, with row-level results and no raw invitation secrets in
-exports. Academic Periods now have explicit Institution or Academic Unit
-ownership and dedicated `academic_period.view` and `academic_period.manage`
-actions; Academic Unit scope applies to its subtree. The complete contract and
-implementation order are in
+exports. The closed authorization registry now distinguishes Academic Unit
+membership, Programme, Programme Level, Academic Period, Class, Class
+membership, progression, Access Policy, Invitation, onboarding batch,
+external-identity, Role, and Role Binding operations. Existing academic HTTP
+use cases authorize Programme, Programme Level, Academic Period, and Class
+resources through their actual Institution or Academic Unit lineage, including
+period applicability, subtree inheritance, sibling denial, and exact Class
+scope. Role Binding creation cannot exceed the caller's current action/scope
+authority, protected administrative delegation requires parent or Institution
+authority, and PAT creation applies the same current-role ceiling while
+excluding interactive-only actions. Existing installations receive the new
+grantable actions only through protected `system_admin` reconciliation; custom
+Roles remain unchanged. The complete contract and implementation order are in
 [Access and onboarding](../architecture/access-and-onboarding.md).
 
 Invitation-required policy cannot be activated until the transactional-mail

@@ -12,6 +12,7 @@ import (
 func constructIdentity(
 	deps Dependencies,
 	foundation applicationFoundation,
+	authorization *accessControlService,
 ) (identityConstruction, error) {
 	mfaApplication, err := newMFAApplicationService(
 		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
@@ -65,7 +66,7 @@ func constructIdentity(
 	}
 	personalAccessTokenAdministration, err := newPersonalAccessTokenAdministrationService(
 		deps.Store.PersonalAccessToken(), deps.Store.AcademicUnit(), deps.Store.Institution(),
-		personalAccessTokenAuditAdapter{audit: foundation.audit}, patPolicy, deps.RecentAuthenticationTTL,
+		personalAccessTokenAuditAdapter{audit: foundation.audit}, authorization, patPolicy, deps.RecentAuthenticationTTL,
 		model.NewCredentialToken, time.Now,
 	)
 	if err != nil {

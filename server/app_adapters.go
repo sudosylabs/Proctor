@@ -6,6 +6,9 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
+	"sync"
 	"time"
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
@@ -48,6 +51,7 @@ func applicationDependencies(
 		Mailer:               mailer,
 		MailDeliverySender:   mailer,
 		MailTemplateRenderer: mailTemplateRendererAdapter{renderer: mailRenderer},
+		MailDeliveryRecorder: newMailDeliveryRecorder(log, nil),
 		MailSecretSealer:     mailSecretSealer,
 		Registry:             externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent:          content,
@@ -196,6 +200,10 @@ func (a accountMailerAdapter) Send(ctx context.Context, message app.OutboundMail
 	default:
 		return app.MailTransportUnknown, err
 	}
+}
+
+func (a accountMailerAdapter) Probe(ctx context.Context) error {
+	return a.mailer.Test(ctx)
 }
 
 func (a accountMailerAdapter) SendCredentialMail(
@@ -365,6 +373,199 @@ func (d mlogRealtimeDiagnostics) ErrorContextWithEvent(
 
 type mlogRecoveryDiagnostics struct {
 	log runtimeLogger
+}
+
+type mailDeliveryMetricKey struct {
+	template model.MailTemplateKey
+	state    model.MailDeliveryState
+	code     string
+}
+
+type mailDeliveryMetricAggregate struct {
+	count             uint64
+	attempts          uint64
+	processingLatency time.Duration
+	maximumLatency    time.Duration
+}
+
+// operationalMailTelemetry is the production bounded metrics collector and
+// structured-log adapter. Its dimensions come only from closed template,
+// state, and public outcome vocabularies; it never retains identifiers,
+// recipients, or message content.
+type operationalMailTelemetry struct {
+	log runtimeLogger
+
+	mu           sync.Mutex
+	deliveries   map[mailDeliveryMetricKey]mailDeliveryMetricAggregate
+	queues       map[mailDeliveryMetricKey]app.MailQueueMetric
+	queueBuckets map[mailDeliveryMetricKey]string
+	health       string
+}
+
+type combinedMailDeliveryRecorder struct {
+	metrics app.MailDeliveryRecorder
+	logs    app.MailDeliveryRecorder
+}
+
+func newMailDeliveryRecorder(log runtimeLogger, metrics app.MailDeliveryRecorder) app.MailDeliveryRecorder {
+	operational := &operationalMailTelemetry{
+		log: log, deliveries: make(map[mailDeliveryMetricKey]mailDeliveryMetricAggregate),
+		queues:       make(map[mailDeliveryMetricKey]app.MailQueueMetric),
+		queueBuckets: make(map[mailDeliveryMetricKey]string),
+	}
+	if metrics == nil {
+		return operational
+	}
+	return combinedMailDeliveryRecorder{metrics: metrics, logs: operational}
+}
+
+func (r combinedMailDeliveryRecorder) RecordMailDelivery(ctx context.Context, metric app.MailDeliveryMetric) {
+	r.metrics.RecordMailDelivery(ctx, metric)
+	r.logs.RecordMailDelivery(ctx, metric)
+}
+
+func (r combinedMailDeliveryRecorder) RecordMailQueueSnapshot(ctx context.Context, metrics []app.MailQueueMetric) {
+	r.metrics.RecordMailQueueSnapshot(ctx, metrics)
+	r.logs.RecordMailQueueSnapshot(ctx, metrics)
+}
+
+func (r combinedMailDeliveryRecorder) RecordMailHealth(ctx context.Context, metric app.MailHealthMetric) {
+	r.metrics.RecordMailHealth(ctx, metric)
+	r.logs.RecordMailHealth(ctx, metric)
+}
+
+func (r combinedMailDeliveryRecorder) Snapshot() app.MailMetricsSnapshot {
+	return r.logs.Snapshot()
+}
+
+func (r *operationalMailTelemetry) RecordMailDelivery(ctx context.Context, metric app.MailDeliveryMetric) {
+	key := mailDeliveryMetricKey{template: metric.TemplateKey, state: metric.State, code: metric.OutcomeCode}
+	r.mu.Lock()
+	aggregate := r.deliveries[key]
+	aggregate.count++
+	aggregate.attempts += uint64(metric.AttemptCount)
+	aggregate.processingLatency += metric.ProcessingLatency
+	if metric.ProcessingLatency > aggregate.maximumLatency {
+		aggregate.maximumLatency = metric.ProcessingLatency
+	}
+	r.deliveries[key] = aggregate
+	r.mu.Unlock()
+	if r.log != nil {
+		r.log.InfoContext(ctx, "mail delivery outcome",
+			mlog.String("template_key", string(metric.TemplateKey)),
+			mlog.String("state", string(metric.State)),
+			mlog.String("outcome_code", metric.OutcomeCode),
+			mlog.Int("attempt_count", metric.AttemptCount),
+			mlog.Duration("processing_latency", metric.ProcessingLatency),
+		)
+	}
+}
+
+func (r *operationalMailTelemetry) RecordMailQueueSnapshot(ctx context.Context, metrics []app.MailQueueMetric) {
+	next := make(map[mailDeliveryMetricKey]app.MailQueueMetric, len(metrics))
+	for _, metric := range metrics {
+		key := mailDeliveryMetricKey{template: metric.TemplateKey, state: metric.State, code: metric.OutcomeCode}
+		next[key] = metric
+	}
+	r.mu.Lock()
+	previous := r.queues
+	r.queues = next
+	observations := make([]app.MailQueueMetric, 0, len(next)+len(previous))
+	for key, metric := range next {
+		bucket := mailQueueAgeBucket(metric.OldestAge)
+		prior, exists := previous[key]
+		priorBucket := r.queueBuckets[key]
+		r.queueBuckets[key] = bucket
+		if !exists || prior.Count != metric.Count || prior.HealthCode != metric.HealthCode ||
+			prior.Truncated != metric.Truncated || priorBucket != bucket {
+			observations = append(observations, metric)
+		}
+	}
+	for key, metric := range previous {
+		if _, exists := next[key]; exists {
+			continue
+		}
+		metric.Count = 0
+		metric.OldestAge = 0
+		observations = append(observations, metric)
+		delete(r.queueBuckets, key)
+	}
+	r.mu.Unlock()
+	if r.log == nil {
+		return
+	}
+	for _, metric := range observations {
+		bucket := mailQueueAgeBucket(metric.OldestAge)
+		r.log.InfoContext(ctx, "mail queue observation",
+			mlog.String("template_key", string(metric.TemplateKey)),
+			mlog.String("state", string(metric.State)),
+			mlog.String("outcome_code", metric.OutcomeCode),
+			mlog.Int64("count", metric.Count),
+			mlog.String("oldest_age_bucket", bucket),
+			mlog.String("health_code", metric.HealthCode),
+			mlog.Bool("truncated", metric.Truncated),
+		)
+	}
+}
+
+func (r *operationalMailTelemetry) RecordMailHealth(ctx context.Context, metric app.MailHealthMetric) {
+	r.mu.Lock()
+	changed := r.health != metric.Code
+	r.health = metric.Code
+	r.mu.Unlock()
+	if changed && r.log != nil {
+		r.log.InfoContext(ctx, "mail subsystem health", mlog.String("health_code", metric.Code))
+	}
+}
+
+func (r *operationalMailTelemetry) Snapshot() app.MailMetricsSnapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	snapshot := app.MailMetricsSnapshot{
+		Deliveries: make([]app.MailDeliveryMetricAggregate, 0, len(r.deliveries)),
+		Queues:     make([]app.MailQueueMetric, 0, len(r.queues)),
+		HealthCode: r.health,
+	}
+	for key, aggregate := range r.deliveries {
+		snapshot.Deliveries = append(snapshot.Deliveries, app.MailDeliveryMetricAggregate{
+			TemplateKey: key.template, State: key.state, OutcomeCode: key.code,
+			Count: aggregate.count, AttemptCount: aggregate.attempts,
+			ProcessingLatency: aggregate.processingLatency, MaximumProcessingLatency: aggregate.maximumLatency,
+		})
+	}
+	for _, metric := range r.queues {
+		snapshot.Queues = append(snapshot.Queues, metric)
+	}
+	sort.Slice(snapshot.Deliveries, func(i, j int) bool {
+		left, right := snapshot.Deliveries[i], snapshot.Deliveries[j]
+		if left.TemplateKey != right.TemplateKey {
+			return left.TemplateKey < right.TemplateKey
+		}
+		if left.State != right.State {
+			return left.State < right.State
+		}
+		return left.OutcomeCode < right.OutcomeCode
+	})
+	sort.Slice(snapshot.Queues, func(i, j int) bool {
+		left, right := snapshot.Queues[i], snapshot.Queues[j]
+		if left.TemplateKey != right.TemplateKey {
+			return left.TemplateKey < right.TemplateKey
+		}
+		if left.State != right.State {
+			return left.State < right.State
+		}
+		return left.OutcomeCode < right.OutcomeCode
+	})
+	return snapshot
+}
+
+func mailQueueAgeBucket(age time.Duration) string {
+	for _, boundary := range []time.Duration{5 * time.Minute, 15 * time.Minute, 30 * time.Minute, time.Hour, 3 * time.Hour, 12 * time.Hour, 24 * time.Hour} {
+		if age < boundary {
+			return fmt.Sprintf("lt_%s", boundary)
+		}
+	}
+	return "gte_24h"
 }
 
 func (d mlogRecoveryDiagnostics) ErrorContext(ctx context.Context, message string, err error) {

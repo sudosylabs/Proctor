@@ -66,6 +66,25 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	if queued.TargetUserID != operator.ID || queued.State != model.MailDeliveryQueued || queued.MaskedRecipient != "m***@example.edu" {
 		t.Fatalf("queued delivery = %#v", queued)
 	}
+	page, appErr := helper.App.ListMailDeliveries(ctx, invocation, application.ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, TemplateKeys: []model.MailTemplateKey{model.MailTemplateSystemTest}, Limit: 20})
+	if appErr != nil || len(page.Items) != 1 || page.Items[0].ID != queued.ID {
+		t.Fatalf("queued delivery page = %#v, %v", page, appErr)
+	}
+	canceled, appErr := helper.App.CancelMailDelivery(ctx, invocation, queued.ID)
+	if appErr != nil || canceled.State != model.MailDeliveryCanceled || canceled.ID != queued.ID || canceled.MessageID != queued.MessageID {
+		t.Fatalf("canceled delivery = %#v, %v", canceled, appErr)
+	}
+	durableCanceled, err := persistence.Mail().GetDelivery(ctx, queued.ID)
+	if err != nil || len(durableCanceled.EncryptedPayload) != 0 {
+		t.Fatalf("canceled durable delivery = %#v, %v", durableCanceled, err)
+	}
+	if _, appErr = helper.App.RetryMailDelivery(ctx, invocation, queued.ID); !application.Is(appErr, "mail.conflict") {
+		t.Fatalf("RetryMailDelivery(canceled) error = %v", appErr)
+	}
+	queued, appErr = helper.App.SendTestMail(ctx, invocation)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
 
 	startIntegrationServer(t, helper)
 	deadline := time.Now().Add(10 * time.Second)

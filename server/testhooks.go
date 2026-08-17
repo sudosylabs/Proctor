@@ -37,10 +37,13 @@ type TestingOverrides struct {
 	StoreLocalCache   localcachelayer.Cache
 	StoreCachePolicy  *localcachelayer.Policy
 	StoreCacheMetrics localcachelayer.Recorder
-	Cache             platform.Cache
-	Cluster           platform.Cluster
-	Mailer            platform.Mailer
-	Filesystem        vfspkg.FileSystem
+	// MailMetrics captures bounded mail outcome, queue, and health observations.
+	// A nil value keeps the production bounded operational telemetry recorder.
+	MailMetrics app.MailDeliveryRecorder
+	Cache       platform.Cache
+	Cluster     platform.Cluster
+	Mailer      platform.Mailer
+	Filesystem  vfspkg.FileSystem
 	// AllowMissingJobs is an explicit lifecycle-only test policy. Production
 	// construction always requires durable Job persistence and a Job runtime.
 	AllowMissingJobs bool

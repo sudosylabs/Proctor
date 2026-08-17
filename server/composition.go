@@ -137,6 +137,9 @@ func composeConsumers(
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("project application dependencies: %w", err), applicationPlatform.Close())
 	}
+	if input.overrides.MailMetrics != nil {
+		applicationDeps.MailDeliveryRecorder = newMailDeliveryRecorder(capabilities.logger, input.overrides.MailMetrics)
+	}
 	if capabilities.persistence != nil && capabilities.persistence.Installation() != nil {
 		bootstrapOutput := input.overrides.BootstrapSecretWriter
 		if bootstrapOutput == nil {

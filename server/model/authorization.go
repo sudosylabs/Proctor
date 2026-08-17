@@ -8,7 +8,10 @@
 
 package model
 
-import "sort"
+import (
+	"slices"
+	"sort"
+)
 
 // Action is a stable authorization contract. Actions describe domain
 // capabilities, never HTTP methods or route names.
@@ -49,14 +52,34 @@ const (
 	ActionSubmissionRelease         Action = "submission.release"
 	ActionSubmissionReleaseOverride Action = "submission.release.override"
 
-	ActionAcademicUnitView     Action = "academic_unit.view"
-	ActionAcademicUnitManage   Action = "academic_unit.manage"
-	ActionAcademicPeriodView   Action = "academic_period.view"
-	ActionAcademicPeriodManage Action = "academic_period.manage"
+	ActionAcademicUnitView          Action = "academic_unit.view"
+	ActionAcademicUnitManage        Action = "academic_unit.manage"
+	ActionAcademicUnitMembersView   Action = "academic_unit.members.view"
+	ActionAcademicUnitMembersManage Action = "academic_unit.members.manage"
+	ActionAcademicPeriodView        Action = "academic_period.view"
+	ActionAcademicPeriodManage      Action = "academic_period.manage"
+	ActionProgrammeView             Action = "programme.view"
+	ActionProgrammeManage           Action = "programme.manage"
+	ActionProgrammeLevelView        Action = "programme_level.view"
+	ActionProgrammeLevelManage      Action = "programme_level.manage"
 
-	ActionClassView          Action = "class.view"
-	ActionClassMembersView   Action = "class.members.view"
-	ActionClassMembersManage Action = "class.members.manage"
+	ActionClassView                 Action = "class.view"
+	ActionClassManage               Action = "class.manage"
+	ActionClassMembersView          Action = "class.members.view"
+	ActionClassMembersManage        Action = "class.members.manage"
+	ActionAcademicProgressionManage Action = "academic.progression.manage"
+
+	ActionAccessPolicyView       Action = "access_policy.view"
+	ActionAccessPolicyManage     Action = "access_policy.manage"
+	ActionInvitationView         Action = "invitation.view"
+	ActionInvitationCreate       Action = "invitation.create"
+	ActionInvitationManage       Action = "invitation.manage"
+	ActionOnboardingBatchView    Action = "onboarding_batch.view"
+	ActionOnboardingBatchManage  Action = "onboarding_batch.manage"
+	ActionExternalIdentityManage Action = "external_identity.manage"
+	ActionRoleView               Action = "role.view"
+	ActionRoleBindingView        Action = "role_binding.view"
+	ActionRoleBindingManage      Action = "role_binding.manage"
 )
 
 // ResourceType identifies an authorization target.
@@ -65,6 +88,8 @@ type ResourceType string
 const (
 	ResourceInstitution    ResourceType = "institution"
 	ResourceAcademicUnit   ResourceType = "academic_unit"
+	ResourceProgramme      ResourceType = "programme"
+	ResourceProgrammeLevel ResourceType = "programme_level"
 	ResourceAcademicPeriod ResourceType = "academic_period"
 	ResourceClass          ResourceType = "class"
 	ResourceUser           ResourceType = "user"
@@ -87,12 +112,22 @@ type Resource struct {
 type ActionDefinition struct {
 	Action                    Action
 	ResourceType              ResourceType
+	CompatibleResourceTypes   []ResourceType
 	InheritInstitutionScope   bool
 	InheritAcademicUnitScopes bool
 	// RelationshipOnly marks a recognized application/realtime capability that
 	// must be established from current domain state and can never be granted by
 	// a reusable Role or Personal Access Token scope.
 	RelationshipOnly bool
+	// PersonalAccessTokenForbidden keeps sensitive administration behind an
+	// interactive Session even though the action remains grantable to Roles.
+	PersonalAccessTokenForbidden bool
+}
+
+// AcceptsResource reports whether the action may authorize the actual target
+// resource or an owning scope used for a create or bounded collection.
+func (d ActionDefinition) AcceptsResource(resourceType ResourceType) bool {
+	return d.ResourceType == resourceType || slices.Contains(d.CompatibleResourceTypes, resourceType)
 }
 
 var actionDefinitions = map[Action]ActionDefinition{
@@ -102,7 +137,21 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionRoleManage: {
 		Action: ActionRoleManage, ResourceType: ResourceInstitution,
-		InheritInstitutionScope: true,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionRoleView: {
+		Action: ActionRoleView, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionRoleBindingView: {
+		Action: ActionRoleBindingView, ResourceType: ResourceInstitution,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionRoleBindingManage: {
+		Action: ActionRoleBindingManage, ResourceType: ResourceInstitution,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true,
 	},
 	ActionAuditView: {
 		Action: ActionAuditView, ResourceType: ResourceInstitution,
@@ -230,10 +279,20 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionAcademicUnitView: {
 		Action: ActionAcademicUnitView, ResourceType: ResourceAcademicUnit,
+		CompatibleResourceTypes: []ResourceType{ResourceInstitution},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionAcademicUnitManage: {
 		Action: ActionAcademicUnitManage, ResourceType: ResourceAcademicUnit,
+		CompatibleResourceTypes: []ResourceType{ResourceInstitution},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionAcademicUnitMembersView: {
+		Action: ActionAcademicUnitMembersView, ResourceType: ResourceAcademicUnit,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionAcademicUnitMembersManage: {
+		Action: ActionAcademicUnitMembersManage, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionAcademicPeriodView: {
@@ -244,8 +303,34 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionAcademicPeriodManage, ResourceType: ResourceAcademicPeriod,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
+	ActionProgrammeView: {
+		Action: ActionProgrammeView, ResourceType: ResourceProgramme,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionProgrammeManage: {
+		Action: ActionProgrammeManage, ResourceType: ResourceProgramme,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionProgrammeLevelView: {
+		Action: ActionProgrammeLevelView, ResourceType: ResourceProgrammeLevel,
+		CompatibleResourceTypes: []ResourceType{ResourceProgramme},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionProgrammeLevelManage: {
+		Action: ActionProgrammeLevelManage, ResourceType: ResourceProgrammeLevel,
+		CompatibleResourceTypes: []ResourceType{ResourceProgramme},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
 	ActionClassView: {
 		Action: ActionClassView, ResourceType: ResourceClass,
+		CompatibleResourceTypes: []ResourceType{ResourceProgrammeLevel, ResourceAcademicUnit},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionClassManage: {
+		Action: ActionClassManage, ResourceType: ResourceClass,
+		CompatibleResourceTypes: []ResourceType{ResourceProgrammeLevel},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionClassMembersView: {
@@ -255,6 +340,47 @@ var actionDefinitions = map[Action]ActionDefinition{
 	ActionClassMembersManage: {
 		Action: ActionClassMembersManage, ResourceType: ResourceClass,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionAcademicProgressionManage: {
+		Action: ActionAcademicProgressionManage, ResourceType: ResourceClass,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionAccessPolicyView: {
+		Action: ActionAccessPolicyView, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionAccessPolicyManage: {
+		Action: ActionAccessPolicyManage, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionInvitationView: {
+		Action: ActionInvitationView, ResourceType: ResourceInstitution,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionInvitationCreate: {
+		Action: ActionInvitationCreate, ResourceType: ResourceInstitution,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionInvitationManage: {
+		Action: ActionInvitationManage, ResourceType: ResourceInstitution,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionOnboardingBatchView: {
+		Action: ActionOnboardingBatchView, ResourceType: ResourceInstitution,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionOnboardingBatchManage: {
+		Action: ActionOnboardingBatchManage, ResourceType: ResourceInstitution,
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExternalIdentityManage: {
+		Action: ActionExternalIdentityManage, ResourceType: ResourceUser,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
 	},
 }
 
@@ -292,6 +418,13 @@ func IsGrantableAction(action string) bool {
 	return ok && !definition.RelationshipOnly
 }
 
+// IsPersonalAccessTokenAction reports whether a registered role-grantable
+// action may also appear in a PAT credential ceiling.
+func IsPersonalAccessTokenAction(action string) bool {
+	definition, ok := actionDefinitions[Action(action)]
+	return ok && !definition.RelationshipOnly && !definition.PersonalAccessTokenForbidden
+}
+
 // Validate checks that the resource identifies a supported authorization target.
 func (r Resource) Validate() error {
 	const where = "Resource.Validate"
@@ -299,7 +432,7 @@ func (r Resource) Validate() error {
 		return invalidModelError(where, "resource", "id", "must be a valid identifier", "")
 	}
 	switch r.Type {
-	case ResourceInstitution, ResourceAcademicUnit, ResourceAcademicPeriod, ResourceClass, ResourceUser, ResourceExam, ResourceExamSitting, ResourceSubmission, ResourceMailDelivery:
+	case ResourceInstitution, ResourceAcademicUnit, ResourceProgramme, ResourceProgrammeLevel, ResourceAcademicPeriod, ResourceClass, ResourceUser, ResourceExam, ResourceExamSitting, ResourceSubmission, ResourceMailDelivery:
 		return nil
 	default:
 		return invalidModelError(where, "resource", "type", "has an unknown value", "id="+r.ID)

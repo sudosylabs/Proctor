@@ -4,6 +4,7 @@
 package model
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -62,6 +63,64 @@ func TestJobActionsAreInstitutionScopedAndKnown(t *testing.T) {
 		}
 		if !IsKnownAction(string(action)) {
 			t.Fatalf("job action %q is not known", action)
+		}
+	}
+}
+
+func TestGranularAcademicAndOnboardingActionsAreClosedAndResourceTyped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		action       Action
+		resourceType ResourceType
+		patAllowed   bool
+	}{
+		{ActionAcademicUnitView, ResourceAcademicUnit, true},
+		{ActionAcademicUnitManage, ResourceAcademicUnit, true},
+		{ActionAcademicUnitMembersView, ResourceAcademicUnit, true},
+		{ActionAcademicUnitMembersManage, ResourceAcademicUnit, true},
+		{ActionAcademicPeriodView, ResourceAcademicPeriod, true},
+		{ActionAcademicPeriodManage, ResourceAcademicPeriod, true},
+		{ActionProgrammeView, ResourceProgramme, true},
+		{ActionProgrammeManage, ResourceProgramme, true},
+		{ActionProgrammeLevelView, ResourceProgrammeLevel, true},
+		{ActionProgrammeLevelManage, ResourceProgrammeLevel, true},
+		{ActionClassView, ResourceClass, true},
+		{ActionClassManage, ResourceClass, true},
+		{ActionClassMembersView, ResourceClass, true},
+		{ActionClassMembersManage, ResourceClass, true},
+		{ActionAcademicProgressionManage, ResourceClass, true},
+		{ActionAccessPolicyView, ResourceInstitution, false},
+		{ActionAccessPolicyManage, ResourceInstitution, false},
+		{ActionInvitationView, ResourceInstitution, true},
+		{ActionInvitationCreate, ResourceInstitution, true},
+		{ActionInvitationManage, ResourceInstitution, true},
+		{ActionOnboardingBatchView, ResourceInstitution, true},
+		{ActionOnboardingBatchManage, ResourceInstitution, true},
+		{ActionExternalIdentityManage, ResourceUser, false},
+		{ActionRoleView, ResourceInstitution, false},
+		{ActionRoleManage, ResourceInstitution, false},
+		{ActionRoleBindingView, ResourceInstitution, false},
+		{ActionRoleBindingManage, ResourceInstitution, false},
+	}
+
+	all := AllActions()
+	for _, test := range tests {
+		definition, ok := DefinitionForAction(test.action)
+		if !ok {
+			t.Fatalf("action %q is not registered", test.action)
+		}
+		if definition.ResourceType != test.resourceType {
+			t.Fatalf("action %q resource type = %q, want %q", test.action, definition.ResourceType, test.resourceType)
+		}
+		if !IsGrantableAction(string(test.action)) {
+			t.Fatalf("action %q is not role grantable", test.action)
+		}
+		if got := IsPersonalAccessTokenAction(string(test.action)); got != test.patAllowed {
+			t.Fatalf("action %q PAT eligibility = %v, want %v", test.action, got, test.patAllowed)
+		}
+		if !slices.Contains(all, string(test.action)) {
+			t.Fatalf("action %q missing from AllActions", test.action)
 		}
 	}
 }

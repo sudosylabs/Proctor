@@ -146,7 +146,7 @@ func (s *academicUnitCommandService) Create(
 	var authorized model.Resource
 	var action model.Action
 	if parentID == "" {
-		action = model.ActionInstitutionManage
+		action = model.ActionAcademicUnitManage
 		var err error
 		institution, err = s.authorization.AuthorizeInstallation(ctx, invocation, action)
 		if err != nil {
@@ -300,11 +300,13 @@ func (s *academicUnitCommandService) Update(
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit.invalid", err)
 	}
-	if command.ParentID != nil && !candidate.ParentID.IsZero() &&
-		candidate.ParentID != current.ParentID {
+	if command.ParentID != nil && candidate.ParentID != current.ParentID {
+		destination := model.Resource{Type: model.ResourceAcademicUnit, ID: candidate.ParentID.String()}
+		if candidate.ParentID.IsZero() {
+			destination = model.Resource{Type: model.ResourceInstitution, ID: current.InstitutionID.String()}
+		}
 		if err := s.authorization.Authorize(
-			ctx, invocation, model.ActionAcademicUnitManage,
-			model.Resource{Type: model.ResourceAcademicUnit, ID: candidate.ParentID.String()},
+			ctx, invocation, model.ActionAcademicUnitManage, destination,
 		); err != nil {
 			return nil, err
 		}

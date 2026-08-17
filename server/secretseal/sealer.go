@@ -135,6 +135,17 @@ type Sealer struct {
 	maximumPlaintext int
 }
 
+// HasKey reports whether this immutable ring can open envelopes bearing the
+// supplied non-secret key identifier. It does not validate ciphertext and is
+// intended for startup reconciliation of persisted envelope metadata.
+func (s *Sealer) HasKey(keyID string) bool {
+	if s == nil || !validKeyID(keyID) {
+		return false
+	}
+	_, ok := s.keys[keyID]
+	return ok
+}
+
 // New constructs an immutable key ring.
 func New(settings Settings) (*Sealer, error) {
 	if settings.MaximumPlaintext < 1 || settings.MaximumPlaintext > MaximumPlaintextBytes ||

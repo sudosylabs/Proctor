@@ -38,6 +38,11 @@ type academicUnitAuthorizer interface {
 	) (model.Resource, error)
 }
 
+type scopedAcademicResourceAuthorizer interface {
+	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+	AuthorizeWithScope(context.Context, Invocation, model.Action, model.Resource) (model.RoleScopeType, string, error)
+}
+
 func (a academicUnitAuthorization) Installation(
 	ctx context.Context,
 ) (model.Resource, error) {
@@ -66,6 +71,30 @@ func (a academicUnitAuthorization) Authorize(
 		resource,
 		invocation.RequestMetadata(),
 	)
+}
+
+func (a academicUnitAuthorization) AuthorizeWithScope(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+) (model.RoleScopeType, string, error) {
+	return a.authorization.authorizeCurrentStateWithScope(
+		ctx,
+		invocation.Principal(),
+		action,
+		resource,
+		invocation.RequestMetadata(),
+	)
+}
+
+func (a academicUnitAuthorization) AuthorizePreflight(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resourceType model.ResourceType,
+) error {
+	return a.authorization.authorizeResourcePreflight(ctx, invocation, action, resourceType)
 }
 
 func (a academicUnitAuthorization) AuthorizeInstallation(
@@ -183,7 +212,7 @@ func (s *academicUnitQueryService) List(
 	if parentID == "" {
 		var err error
 		institution, err = s.authorization.AuthorizeInstallation(
-			ctx, invocation, model.ActionInstitutionManage,
+			ctx, invocation, model.ActionAcademicUnitView,
 		)
 		if err != nil {
 			return nil, err
@@ -202,7 +231,8 @@ func (s *academicUnitQueryService) List(
 	return nonNilAcademicUnits(units), nil
 }
 
-// SearchAcademicUnits searches units by name. It requires institution.manage.
+// SearchAcademicUnits searches units by name through institution-scoped
+// academic_unit.view.
 func (a *App) SearchAcademicUnits(
 	ctx context.Context,
 	invocation Invocation,
@@ -217,7 +247,7 @@ func (s *academicUnitQueryService) Search(
 	query SearchAcademicUnitsQuery,
 ) ([]*model.AcademicUnit, error) {
 	institution, err := s.authorization.AuthorizeInstallation(
-		ctx, invocation, model.ActionInstitutionManage,
+		ctx, invocation, model.ActionAcademicUnitView,
 	)
 	if err != nil {
 		return nil, err

@@ -28,6 +28,24 @@ type userSettingsAuditAdapter struct{ audit *auditService }
 
 type mailAuditAdapter struct{ audit *auditService }
 
+func (a mailAuditAdapter) Fail(ctx context.Context, auditID, errorCode string) error {
+	return (mutationAuditAdapter{audit: a.audit}).Fail(ctx, auditID, errorCode)
+}
+
+func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (string, error) {
+	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.IsValidId(institution.ID) ||
+		delivery == nil || delivery.Validate() != nil || (operation != "cancel" && operation != "retry") {
+		return "", auditUnavailable(errors.New("mail control audit dependencies are invalid"))
+	}
+	event, appErr := a.audit.BeginCriticalActionAtScope(ctx, invocation.Principal(), model.ActionMailManage,
+		model.Resource{Type: model.ResourceMailDelivery, ID: delivery.ID.String()}, model.RoleScopeInstitution, institution.ID,
+		invocation.RequestMetadata(), map[string]any{"operation": operation, "value": delivery.Auditable()}, delivery.Auditable())
+	if appErr != nil {
+		return "", appErr
+	}
+	return event.ID.String(), nil
+}
+
 func (a mailAuditAdapter) PrepareTest(ctx context.Context, invocation Invocation, institution model.Resource, deliveryID model.MailDeliveryID) (*model.AuditEvent, error) {
 	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.IsValidId(institution.ID) || !deliveryID.IsValid() {
 		return nil, auditUnavailable(errors.New("mail audit dependencies are invalid"))

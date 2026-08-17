@@ -4,7 +4,9 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -27,6 +29,14 @@ func constructJobs(
 	}
 
 	defaultJobs := &defaultProfilePictureJobProposer{jobs: deps.Store.Job()}
+	// Enabled workers must be able to open every active payload before runtime
+	// construction. Disabled workers suppress payloads before decryption, so a
+	// deliberately absent or retired ring must not prevent that convergence.
+	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled() {
+		if err := validateActiveMailPayloadKeys(context.Background(), deps.Store.Mail(), deps.MailSecretSealer); err != nil {
+			return jobConstruction{}, err
+		}
+	}
 	definitions := buildApplicationJobDefinitions(deps, examinations, profiles, defaultJobs)
 	runtime, err := jobengine.New(jobengine.Config{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
@@ -46,7 +56,7 @@ func constructJobs(
 			deps.Store.Mail(), deps.Store.User(),
 			mailAuthorizationAdapter{authorization: access.authorization, institutions: deps.Store.Institution()},
 			mailAuditAdapter{audit: foundation.audit}, foundation.attempts,
-			deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailSecretSealer,
+			deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailDeliveryRecorder, deps.MailSecretSealer,
 			deps.RecentAuthenticationTTL, time.Now,
 		)
 		if err != nil {
@@ -66,6 +76,32 @@ func constructJobs(
 	return jobConstruction{runtime: runtime, operations: operations, mail: mailService}, nil
 }
 
+type activeMailPayloadKeyStore interface {
+	ActivePayloadKeyIDs(context.Context) ([]string, error)
+}
+
+func validateActiveMailPayloadKeys(ctx context.Context, persistence activeMailPayloadKeyStore, sealer interface{ HasKey(string) bool }) error {
+	if persistence == nil {
+		return errors.New("mail payload-key persistence is unavailable")
+	}
+	keyIDs, err := persistence.ActivePayloadKeyIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect active mail payload keys: %w", err)
+	}
+	if len(keyIDs) == 0 {
+		return nil
+	}
+	if sealer == nil {
+		return errors.New("active mail payload key ring is unavailable")
+	}
+	for _, keyID := range keyIDs {
+		if !sealer.HasKey(keyID) {
+			return errors.New("active mail payload key is unavailable")
+		}
+	}
+	return nil
+}
+
 type applicationJobDefinitions struct {
 	descriptors   []jobengine.Descriptor
 	recurrences   []jobengine.Recurrence
@@ -81,6 +117,11 @@ func buildApplicationJobDefinitions(
 	profiles profileFileConstruction,
 	defaultJobs *defaultProfilePictureJobProposer,
 ) applicationJobDefinitions {
+	mailEnabled := false
+	if deps.MailDeliverySender != nil {
+		mailEnabled = deps.MailDeliverySender.Enabled()
+	}
+	mailHealth := newMailHealth(mailEnabled)
 	defaultHandler := defaultProfilePictureHandler{generator: profiles.profilePictures}
 	reconciliationHandler := defaultProfilePictureReconciliationHandler{
 		users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
@@ -96,7 +137,8 @@ func buildApplicationJobDefinitions(
 		defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
 		filePurgeExpiredContentDescriptor(purgeHandler),
 		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
-		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, now: time.Now}),
+		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
+		mailCleanupDescriptor(mailCleanupHandler{mail: deps.Store.Mail(), recorder: deps.MailDeliveryRecorder}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
 		examSittingSealingDescriptor(examSittingSealingHandler{service: sealingUseCases}),
 		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: lifecycleUseCases}),
@@ -111,12 +153,15 @@ func buildApplicationJobDefinitions(
 		{Name: "file-purge-expired-content", Proposer: filePurgeExpiredContentProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "command-outcome-cleanup", Proposer: commandOutcomeCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
+		{Name: "mail-cleanup", Proposer: mailCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "exam-sitting-lifecycle-recovery", Proposer: examSittingLifecycleRecoveryProposer{jobs: deps.Store.Job(), now: time.Now}},
 	}
-	periodicTasks := []jobengine.PeriodicTask{{
-		Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval,
-		Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts},
-	}}
+	periodicTasks := []jobengine.PeriodicTask{
+		{Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval, Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts}},
+	}
+	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil {
+		periodicTasks = append(periodicTasks, jobengine.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})
+	}
 	return applicationJobDefinitions{descriptors: descriptors, recurrences: recurrences, periodicTasks: periodicTasks}
 }
 

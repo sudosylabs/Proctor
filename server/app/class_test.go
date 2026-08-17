@@ -55,7 +55,7 @@ func (*classStoreFake) ArchiveWithAudit(context.Context, *store.ClassArchive) (*
 func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newClassService(&classStoreFake{events: &events}, &classProgrammeLevelFake{events: &events}, &programmeOwnerFake{events: &events}, &programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
+	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
 	_, err := service.Get(context.Background(), Invocation{}, GetClassQuery{ID: model.NewId()})
 	if !Is(err, "authorization.denied") {
 		t.Fatalf("Get() error = %v", err)
@@ -68,7 +68,7 @@ func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	oldUnitID, newUnitID, programmeID, newLevelID := model.NewId(), model.NewId(), model.NewId(), model.NewId()
+	oldUnitID, newLevelID := model.NewId(), model.NewId()
 	current := &model.Class{
 		ID:               model.ClassID(model.NewId()),
 		CreatedAt:        model.TimeFromMillis(100),
@@ -80,7 +80,7 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 		DisplayName:      "Class A",
 	}
 	persistence := &classStoreFake{events: &events, current: current, unitID: oldUnitID}
-	service := newClassService(persistence, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(newLevelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(newUnitID)}}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	updated, err := service.Update(context.Background(), Invocation{}, UpdateClassCommand{ID: current.ID.String(), ProgrammeLevelID: &newLevelID})
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +91,7 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	if persistence.updateInput.ExpectedAcademicUnitID != oldUnitID || persistence.updateInput.ExpectedRevision != current.Revision {
 		t.Fatalf("update precondition = %#v", persistence.updateInput)
 	}
-	want := []string{"get-unit", "authorize", "get-class", "get-level", "get-programme", "authorize", "audit-begin", "store-update"}
+	want := []string{"authorize", "get-unit", "get-class", "authorize", "audit-begin", "store-update"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -114,7 +114,7 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			events := []string{}
-			service := newClassService(&classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewId())}, &classProgrammeLevelFake{events: &events}, &programmeOwnerFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
+			service := newClassService(&classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewId())}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
 			err := test.run(service)
 			appErr, ok := As(err)
 			if !ok || appErr.Code() != "resource.not_found" || appErr.Fields()["resource"] != "class" {
@@ -127,32 +127,22 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	levelID, programmeID := model.NewId(), model.NewId()
+	levelID := model.NewId()
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
-	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(model.NewId())}}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
+	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
 	_, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: model.NewId(), Name: "class-a", DisplayName: "Class A"})
 	if !Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
 		t.Fatalf("Create() error = %v, audit = %q", err, auditor.failCode)
 	}
 }
 
-type classProgrammeLevelFake struct {
-	events *[]string
-	level  *model.ProgrammeLevel
-}
-
-func (s *classProgrammeLevelFake) Get(context.Context, string) (*model.ProgrammeLevel, error) {
-	*s.events = append(*s.events, "get-level")
-	return s.level, nil
-}
-
 func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	unitID, programmeID, levelID, periodID, classID, auditID := model.NewId(), model.NewId(), model.NewId(), model.NewId(), model.NewId(), model.NewId()
+	levelID, periodID, classID, auditID := model.NewId(), model.NewId(), model.NewId(), model.NewId()
 	created := &model.Class{ID: model.ClassID(classID), ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID)}
 	persistence := &classStoreFake{events: &events, created: created}
-	service := newClassService(persistence, &classProgrammeLevelFake{events: &events, level: &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}}, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(unitID)}}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })
+	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })
 	got, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: periodID, Name: "class-a", DisplayName: "Class A"})
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)
@@ -163,7 +153,7 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 		persistence.createInput.AuditEventID != auditID {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
-	if !reflect.DeepEqual(events, []string{"get-level", "get-programme", "authorize", "audit-begin", "store-create"}) {
+	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create"}) {
 		t.Fatalf("events = %v", events)
 	}
 }

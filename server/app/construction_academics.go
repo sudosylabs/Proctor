@@ -23,6 +23,8 @@ func constructAccessAndAcademics(
 	if err != nil {
 		return accessAcademicConstruction{}, err
 	}
+	scopeResolver.programmes = deps.Store.Programme()
+	scopeResolver.programmeLevels = deps.Store.ProgrammeLevel()
 	authorization, err := newAccessControlService(
 		deps.Store.Role(), deps.Store.RoleBinding(), scopeResolver, foundation.audit,
 	)
@@ -54,16 +56,15 @@ func constructAccessAndAcademics(
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		programmeLevels: newProgrammeLevelService(
-			deps.Store.ProgrammeLevel(), deps.Store.Programme(),
-			academicAuthorization, mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
+			deps.Store.ProgrammeLevel(), academicAuthorization,
+			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		academicPeriods: newAcademicPeriodService(
 			deps.Store.AcademicPeriod(), academicAuthorization,
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		classes: newClassService(
-			deps.Store.Class(), deps.Store.ProgrammeLevel(),
-			deps.Store.Programme(), academicAuthorization,
+			deps.Store.Class(), academicAuthorization,
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		affiliations: newAffiliationService(

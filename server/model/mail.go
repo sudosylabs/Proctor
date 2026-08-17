@@ -24,6 +24,9 @@ type MailTemplateKey string
 type MailOccurrenceKind string
 type MailDeliveryState string
 
+func (key MailTemplateKey) IsValid() bool     { return key == MailTemplateSystemTest }
+func (state MailDeliveryState) IsValid() bool { return validMailDeliveryState(state) }
+
 const (
 	MailTemplateSystemTest     MailTemplateKey    = "system.mail_test"
 	MailOccurrenceOperatorTest MailOccurrenceKind = "operator_test"
@@ -35,7 +38,11 @@ const (
 	MailDeliverySuppressed MailDeliveryState = "suppressed"
 	MailDeliveryCanceled   MailDeliveryState = "canceled"
 
-	MailDeliveryExpiredCode = "mail.delivery.expired"
+	MailDeliveryExpiredCode       = "mail.delivery.expired"
+	MailDeliveryDisabledCode      = "mail.delivery.suppressed_disabled"
+	MailDeliveryObsoleteCode      = "mail.delivery.obsolete"
+	MailDeliveryCanceledCode      = "mail.delivery.canceled"
+	MailDeliveryOperatorRetryCode = "mail.operator.retry"
 )
 
 var (
@@ -201,6 +208,61 @@ func (d *MailDelivery) Expire(at time.Time) (*MailDelivery, error) {
 	result.UpdatedAt = at
 	result.PublicFailureCode = MailDeliveryExpiredCode
 	result.EncryptedPayload = nil
+	result.Revision++
+	return result, result.Validate()
+}
+
+// Suppress terminates delivery work that must no longer be sent. It is valid
+// for queued, currently claimed, or failed-but-still-recoverable work and
+// destroys the encrypted payload in the same transition.
+func (d *MailDelivery) Suppress(publicCode string, at time.Time) (*MailDelivery, error) {
+	at = TimeUTC(at)
+	if d == nil || (d.State != MailDeliveryQueued && d.State != MailDeliverySending && d.State != MailDeliveryFailed) ||
+		(publicCode != MailDeliveryDisabledCode && publicCode != MailDeliveryObsoleteCode && publicCode != MailDeliveryExpiredCode) ||
+		at.Before(d.UpdatedAt) {
+		return nil, errors.New("model: mail delivery cannot be suppressed")
+	}
+	result := d.Clone()
+	result.State = MailDeliverySuppressed
+	result.UpdatedAt = at
+	result.AcceptedAt = OptionalTime{}
+	result.FailedAt = OptionalTime{}
+	result.PublicFailureCode = publicCode
+	result.EncryptedPayload = nil
+	result.Revision++
+	return result, result.Validate()
+}
+
+// Cancel terminates queued delivery work and destroys the recoverable payload.
+// It preserves the delivery identity and stable Message-ID for operator history.
+func (d *MailDelivery) Cancel(at time.Time) (*MailDelivery, error) {
+	at = TimeUTC(at)
+	if d == nil || d.State != MailDeliveryQueued || at.Before(d.UpdatedAt) {
+		return nil, errors.New("model: mail delivery cannot be canceled")
+	}
+	result := d.Clone()
+	result.State = MailDeliveryCanceled
+	result.UpdatedAt = at
+	result.PublicFailureCode = MailDeliveryCanceledCode
+	result.EncryptedPayload = nil
+	result.Revision++
+	return result, result.Validate()
+}
+
+// OperatorRetry requeues a failed delivery in place. The immutable recipient,
+// payload and Message-ID remain frozen; the prior public failure stays in Job
+// attempt history while the delivery records a closed operator-retry marker.
+func (d *MailDelivery) OperatorRetry(at time.Time) (*MailDelivery, error) {
+	at = TimeUTC(at)
+	if d == nil || d.State != MailDeliveryFailed || d.AttemptCount >= MailMaximumAttempts ||
+		at.Before(d.UpdatedAt) || !at.Before(d.Deadline) || len(d.EncryptedPayload) == 0 {
+		return nil, errors.New("model: mail delivery cannot be retried by an operator")
+	}
+	result := d.Clone()
+	result.State = MailDeliveryQueued
+	result.UpdatedAt = at
+	result.FailedAt = OptionalTime{}
+	result.PublicFailureCode = MailDeliveryOperatorRetryCode
 	result.Revision++
 	return result, result.Validate()
 }

@@ -84,7 +84,7 @@ func resetTestStore(t *testing.T, sqlStore *SQLStore) {
 	t.Helper()
 	_, err := sqlStore.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			mail_deliveries, mail_occurrences, job_attempts, job_permanent_occurrences, jobs, external_login_states, installation_states, access_policies, command_outcomes, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, file_legal_holds, upload_leases, file_renditions,
+			mail_send_rate_limit, mail_payload_keys, mail_deliveries, mail_occurrences, job_attempts, job_permanent_occurrences, jobs, external_login_states, installation_states, access_policies, command_outcomes, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, file_legal_holds, upload_leases, file_renditions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users, file_revisions, file_entries,
 			classes, academic_periods, programme_levels, programmes,

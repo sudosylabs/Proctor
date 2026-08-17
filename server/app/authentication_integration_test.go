@@ -1293,7 +1293,7 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore
 	}
 	if _, err := persistence.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			external_login_states, installation_states, access_policies, audit_events, mfa_recovery_codes, mfa_credentials,
+			mail_payload_keys, external_login_states, installation_states, access_policies, audit_events, mfa_recovery_codes, mfa_credentials,
 			user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,

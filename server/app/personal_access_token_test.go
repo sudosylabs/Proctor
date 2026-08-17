@@ -24,6 +24,58 @@ func TestPersonalAccessTokenScopesRejectRelationshipOnlyParticipationAction(t *t
 	}
 }
 
+func TestPersonalAccessTokenScopesRejectInteractiveOnlyAdministration(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range []model.Action{
+		model.ActionAccessPolicyManage,
+		model.ActionExternalIdentityManage,
+		model.ActionRoleBindingManage,
+		model.ActionRoleManage,
+	} {
+		if _, err := normalizePersonalAccessTokenScopes([]string{string(action)}); !Is(err, "personal_access_token.invalid") {
+			t.Fatalf("scope %q error = %v, want personal_access_token.invalid", action, err)
+		}
+	}
+}
+
+func TestPersonalAccessTokenCreationCannotExceedCurrentRoleAuthority(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	userID := model.NewUserID()
+	unitID := model.NewAcademicUnitID()
+	tokens := &personalAccessTokenStoreFake{events: &[]string{}}
+	service, err := newPersonalAccessTokenAdministrationService(
+		tokens,
+		&personalAccessTokenAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
+		&personalAccessTokenInstitutionStoreFake{},
+		&personalAccessTokenAuditorFake{},
+		&personalAccessTokenScopeAuthorizerFake{allowed: false},
+		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
+		15*time.Minute,
+		func() string { return "must-not-be-generated" },
+		func() time.Time { return now },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.Create(
+		context.Background(),
+		NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}),
+		CreatePersonalAccessTokenCommand{
+			Scopes: []string{string(model.ActionClassManage)}, AcademicUnitID: unitID.String(),
+			ExpiresAt: now.Add(time.Hour).UnixMilli(),
+		},
+	)
+	if !Is(err, "personal_access_token.invalid") {
+		t.Fatalf("error = %v, want personal_access_token.invalid", err)
+	}
+	if tokens.saveCalls != 0 {
+		t.Fatalf("save calls = %d", tokens.saveCalls)
+	}
+}
+
 func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *testing.T) {
 	t.Parallel()
 
@@ -39,8 +91,9 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 		events: &events, institution: &model.Institution{ID: institutionID},
 	}
 	audit := &personalAccessTokenAuditorFake{events: &events}
+	authorization := &personalAccessTokenScopeAuthorizerFake{events: &events, allowed: true}
 	service, err := newPersonalAccessTokenAdministrationService(
-		tokens, units, institutions, audit,
+		tokens, units, institutions, audit, authorization,
 		PersonalAccessTokenPolicy{
 			MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3,
 		},
@@ -82,7 +135,7 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 	if got := fmt.Sprintf("%#v %#v %#v", audit.parameters, audit.prior, audit.result); strings.Contains(got, raw) {
 		t.Fatalf("raw credential entered audit data: %s", got)
 	}
-	if want := []string{"academic_unit", "institution", "audit_begin", "save", "audit_complete"}; !reflect.DeepEqual(events, want) {
+	if want := []string{"academic_unit", "authorize_scopes", "institution", "audit_begin", "save", "audit_complete"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
 }
@@ -184,6 +237,7 @@ func TestPersonalAccessTokenAdministrationRequiresFocusedDependencies(t *testing
 	units := &personalAccessTokenAcademicUnitStoreFake{}
 	institutions := &personalAccessTokenInstitutionStoreFake{}
 	audit := &personalAccessTokenAuditorFake{}
+	authorization := &personalAccessTokenScopeAuthorizerFake{allowed: true}
 	policy := PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: time.Hour, MaximumPerUser: 1}
 	generator := func() string { return "credential" }
 
@@ -192,22 +246,25 @@ func TestPersonalAccessTokenAdministrationRequiresFocusedDependencies(t *testing
 		make func() (*personalAccessTokenAdministrationService, error)
 	}{
 		{"token store", func() (*personalAccessTokenAdministrationService, error) {
-			return newPersonalAccessTokenAdministrationService(nil, units, institutions, audit, policy, time.Minute, generator, time.Now)
+			return newPersonalAccessTokenAdministrationService(nil, units, institutions, audit, authorization, policy, time.Minute, generator, time.Now)
 		}},
 		{"academic unit store", func() (*personalAccessTokenAdministrationService, error) {
-			return newPersonalAccessTokenAdministrationService(tokens, nil, institutions, audit, policy, time.Minute, generator, time.Now)
+			return newPersonalAccessTokenAdministrationService(tokens, nil, institutions, audit, authorization, policy, time.Minute, generator, time.Now)
 		}},
 		{"institution store", func() (*personalAccessTokenAdministrationService, error) {
-			return newPersonalAccessTokenAdministrationService(tokens, units, nil, audit, policy, time.Minute, generator, time.Now)
+			return newPersonalAccessTokenAdministrationService(tokens, units, nil, audit, authorization, policy, time.Minute, generator, time.Now)
 		}},
 		{"audit", func() (*personalAccessTokenAdministrationService, error) {
-			return newPersonalAccessTokenAdministrationService(tokens, units, institutions, nil, policy, time.Minute, generator, time.Now)
+			return newPersonalAccessTokenAdministrationService(tokens, units, institutions, nil, authorization, policy, time.Minute, generator, time.Now)
+		}},
+		{"authorization", func() (*personalAccessTokenAdministrationService, error) {
+			return newPersonalAccessTokenAdministrationService(tokens, units, institutions, audit, nil, policy, time.Minute, generator, time.Now)
 		}},
 		{"generator", func() (*personalAccessTokenAdministrationService, error) {
-			return newPersonalAccessTokenAdministrationService(tokens, units, institutions, audit, policy, time.Minute, nil, time.Now)
+			return newPersonalAccessTokenAdministrationService(tokens, units, institutions, audit, authorization, policy, time.Minute, nil, time.Now)
 		}},
 		{"clock", func() (*personalAccessTokenAdministrationService, error) {
-			return newPersonalAccessTokenAdministrationService(tokens, units, institutions, audit, policy, time.Minute, generator, nil)
+			return newPersonalAccessTokenAdministrationService(tokens, units, institutions, audit, authorization, policy, time.Minute, generator, nil)
 		}},
 	}
 	for _, test := range tests {
@@ -242,7 +299,7 @@ func mustPersonalAccessTokenAdministrationService(
 ) *personalAccessTokenAdministrationService {
 	t.Helper()
 	service, err := newPersonalAccessTokenAdministrationService(
-		tokens, units, institutions, audit,
+		tokens, units, institutions, audit, &personalAccessTokenScopeAuthorizerFake{allowed: true},
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return now },
 	)
@@ -250,6 +307,25 @@ func mustPersonalAccessTokenAdministrationService(
 		t.Fatal(err)
 	}
 	return service
+}
+
+type personalAccessTokenScopeAuthorizerFake struct {
+	events  *[]string
+	allowed bool
+	err     error
+}
+
+func (a *personalAccessTokenScopeAuthorizerFake) CanDelegateActionsAtScope(
+	context.Context,
+	model.Principal,
+	[]string,
+	model.RoleScopeType,
+	string,
+) (bool, error) {
+	if a.events != nil {
+		*a.events = append(*a.events, "authorize_scopes")
+	}
+	return a.allowed, a.err
 }
 
 func personalAccessTokenSessionPrincipal(userID model.UserID, authenticatedAt time.Time) model.Principal {

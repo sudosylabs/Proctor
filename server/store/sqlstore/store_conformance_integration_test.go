@@ -155,6 +155,80 @@ func TestMailStore(t *testing.T) {
 	StoreTest(t, storetest.TestMailStore)
 }
 
+func TestMailMaintenanceRetentionAndSharedRateLimit(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestMailStore(t, persistence)
+	ctx := context.Background()
+
+	var suppressedID, failedID string
+	if err := persistence.GetMaster().Get(ctx, &suppressedID, `SELECT id FROM mail_deliveries WHERE state='suppressed' ORDER BY id LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistence.GetMaster().Get(ctx, &failedID, `SELECT id FROM mail_deliveries WHERE state='accepted' ORDER BY id LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE mail_deliveries SET
+		created_at=statement_timestamp()-INTERVAL '101 days',message_date=statement_timestamp()-INTERVAL '101 days',
+		deadline=statement_timestamp()-INTERVAL '100 days',updated_at=statement_timestamp()-INTERVAL '100 days'
+		WHERE id=?`, suppressedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE mail_deliveries SET state='failed',accepted_at=NULL,
+		created_at=statement_timestamp()-INTERVAL '182 days',message_date=statement_timestamp()-INTERVAL '182 days',
+		deadline=statement_timestamp()-INTERVAL '181 days',updated_at=statement_timestamp()-INTERVAL '181 days',
+		failed_at=statement_timestamp()-INTERVAL '181 days',public_failure_code='mail.transport.permanent',
+		payload_key_id='11111111111111111111111111111111',
+		encrypted_payload='{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"retained"}'::jsonb WHERE id=?`, failedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.GetMaster().Exec(ctx, `INSERT INTO mail_payload_keys(key_id,active_references)
+		VALUES('11111111111111111111111111111111',1)
+		ON CONFLICT(key_id) DO UPDATE SET active_references=mail_payload_keys.active_references+1`); err != nil {
+		t.Fatal(err)
+	}
+	var auditsBefore int64
+	if err := persistence.GetMaster().Get(ctx, &auditsBefore, `SELECT COUNT(*) FROM audit_events`); err != nil {
+		t.Fatal(err)
+	}
+	first, err := persistence.Mail().CleanupTerminal(ctx, 1)
+	if err != nil || first.Affected != 1 || !first.More {
+		t.Fatalf("first cleanup = %#v, %v", first, err)
+	}
+	second, err := persistence.Mail().CleanupTerminal(ctx, 1)
+	if err != nil || second.Affected != 1 {
+		t.Fatalf("second cleanup = %#v, %v", second, err)
+	}
+	for _, id := range []string{suppressedID, failedID} {
+		if _, err = persistence.Mail().GetDelivery(ctx, model.MailDeliveryID(id)); !store.IsNotFound(err) {
+			t.Fatalf("retained delivery %s error = %v", id, err)
+		}
+	}
+	var auditsAfter int64
+	if err = persistence.GetMaster().Get(ctx, &auditsAfter, `SELECT COUNT(*) FROM audit_events`); err != nil || auditsAfter != auditsBefore {
+		t.Fatalf("audit retention before=%d after=%d err=%v", auditsBefore, auditsAfter, err)
+	}
+
+	if _, err = persistence.GetMaster().Exec(ctx, `DELETE FROM mail_send_rate_limit`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = persistence.GetMaster().Exec(ctx, `INSERT INTO mail_send_rate_limit(singleton,tokens,updated_at) VALUES(TRUE,5,statement_timestamp()+INTERVAL '1 hour')`); err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := persistence.Mail().AcquireSendPermit(ctx, store.MailSendOrdinary)
+	if err != nil || !ordinary.Allowed {
+		t.Fatalf("ordinary reserved permit = %#v, %v", ordinary, err)
+	}
+	ordinary, err = persistence.Mail().AcquireSendPermit(ctx, store.MailSendOrdinary)
+	if err != nil || ordinary.Allowed || ordinary.RetryAfter <= 0 {
+		t.Fatalf("ordinary reserve fence = %#v, %v", ordinary, err)
+	}
+	credential, err := persistence.Mail().AcquireSendPermit(ctx, store.MailSendCredential)
+	if err != nil || !credential.Allowed {
+		t.Fatalf("credential reserved permit = %#v, %v", credential, err)
+	}
+}
+
 func TestExamAuthoringStore(t *testing.T) {
 	StoreTest(t, storetest.TestExamAuthoringStore)
 	t.Run("bounded catalog plan", func(t *testing.T) {
@@ -280,8 +354,10 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='audit_events_resource_type_check'`); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(auditResourceConstraint, "'submission'") {
-				t.Fatalf("audit Submission resource constraint = %q", auditResourceConstraint)
+			for _, resourceType := range []string{"'programme'", "'programme_level'", "'submission'"} {
+				if !strings.Contains(auditResourceConstraint, resourceType) {
+					t.Fatalf("audit resource constraint missing %s: %q", resourceType, auditResourceConstraint)
+				}
 			}
 			var indexes []string
 			if err := persistence.GetMaster().Select(ctx, &indexes, `SELECT indexname FROM pg_indexes
@@ -1241,6 +1317,39 @@ func TestRoleBindingStore(t *testing.T) {
 
 func TestAuditStore(t *testing.T) {
 	StoreTest(t, storetest.TestAuditStore)
+}
+
+func TestAuditStoreAcceptsGranularAcademicResources(t *testing.T) {
+	persistence := openTestStore(t)
+	for _, test := range []struct {
+		name     string
+		action   model.Action
+		resource model.Resource
+	}{
+		{
+			name: "programme owner for programme level creation", action: model.ActionProgrammeLevelManage,
+			resource: model.Resource{Type: model.ResourceProgramme, ID: model.NewProgrammeID().String()},
+		},
+		{
+			name: "programme level", action: model.ActionProgrammeLevelManage,
+			resource: model.Resource{Type: model.ResourceProgrammeLevel, ID: model.NewProgrammeLevelID().String()},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			event := &model.AuditEvent{
+				Action: string(test.action), Resource: test.resource,
+				ScopeType: model.RoleScopeAcademicUnit, ScopeID: model.NewAcademicUnitID().String(),
+				Status: model.AuditStatusSuccess, NodeID: "node-test",
+			}
+			saved, err := persistence.Audit().Save(context.Background(), event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved.Resource != test.resource {
+				t.Fatalf("saved resource = %#v, want %#v", saved.Resource, test.resource)
+			}
+		})
+	}
 }
 
 func TestInstallationStore(t *testing.T) {

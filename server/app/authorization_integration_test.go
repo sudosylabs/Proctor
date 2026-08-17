@@ -143,9 +143,21 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sibling, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
+		InstitutionID: institution.ID, Name: "humanities", DisplayName: "Humanities",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	programme, err := persistence.Programme().Save(ctx, &model.Programme{
 		AcademicUnitID: child.ID, Name: "computer-science",
 		DisplayName: "Computer Science",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	siblingProgramme, err := persistence.Programme().Save(ctx, &model.Programme{
+		AcademicUnitID: sibling.ID, Name: "history", DisplayName: "History",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +217,10 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	}
 	role, err := persistence.Role().Save(ctx, &model.Role{
 		Name: "academic-unit-teacher", DisplayName: "Academic Unit Teacher",
-		Permissions: []string{string(model.ActionClassView)},
+		Permissions: []string{
+			string(model.ActionProgrammeView), string(model.ActionProgrammeLevelView),
+			string(model.ActionClassView),
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -223,6 +238,25 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	)
 	if permErr != nil || !allowed {
 		t.Fatalf("ancestor class permission = %v, %v", allowed, permErr)
+	}
+	for _, check := range []struct {
+		action   model.Action
+		resource model.Resource
+	}{
+		{model.ActionProgrammeView, model.Resource{Type: model.ResourceProgramme, ID: programme.ID.String()}},
+		{model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgrammeLevel, ID: level.ID.String()}},
+	} {
+		allowed, permErr = helper.App.Can(ctx, *principal, check.action, check.resource)
+		if permErr != nil || !allowed {
+			t.Fatalf("descendant %s permission = %v, %v", check.action, allowed, permErr)
+		}
+	}
+	allowed, permErr = helper.App.Can(
+		ctx, *principal, model.ActionProgrammeView,
+		model.Resource{Type: model.ResourceProgramme, ID: siblingProgramme.ID.String()},
+	)
+	if permErr != nil || allowed {
+		t.Fatalf("sibling programme permission = %v, %v", allowed, permErr)
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionInstitutionManage,

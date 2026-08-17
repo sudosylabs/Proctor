@@ -288,6 +288,11 @@ func testPersonalAccessTokenRejectsUnknownScope(t *testing.T, ss store.Store) {
 	); err == nil {
 		t.Fatal("Save() accepted an unknown action scope")
 	}
+	token = newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
+	token.Scopes = []string{string(model.ActionRoleBindingManage)}
+	if _, err := ss.PersonalAccessToken().Save(ctx, token, 10); err == nil {
+		t.Fatal("Save() accepted an interactive-only action scope")
+	}
 }
 
 func newPersonalAccessToken(

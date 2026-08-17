@@ -426,3 +426,23 @@ count, and closed public failure code. It never contains a full address,
 subject, rendered alternatives, template data, ciphertext, credentials, SMTP
 configuration, or provider response. `accepted` means SMTP accepted DATA, not
 that the message reached an inbox.
+
+`GET /api/v1/mail/deliveries` requires `mail.view` and returns the same safe
+projection through a bounded, opaque-cursor collection. Repeated `state` and
+`template_key` filters and optional millisecond `created_after` and
+`created_before` bounds are applied in persistence; `limit` defaults to 50 and
+is bounded at 200. Authorization completes before any delivery is inspected.
+
+`GET /api/v1/mail/metrics` requires `mail.view` and returns only bounded
+template/state/public-outcome aggregates, attempts, latency, queue count and
+age, truncation, and the closed mail-health code. It never exposes recipients,
+message content, payloads, provider responses, or delivery identifiers.
+
+`POST /api/v1/mail/deliveries/{mail_delivery_id}/cancel` and `/retry` accept no
+body and require `mail.manage` plus a recent interactive Session; PATs cannot
+satisfy either route. Cancellation is limited to queued or retry-waiting work.
+Retry is limited to failed, unexpired, still-relevant work. Both operations
+revision-fence and mutate the existing Delivery and its Job atomically, retain
+the same recipient, occurrence, and Message-ID, and complete a payload-free
+audit event in the same transaction. Sending or terminal races return
+`mail.conflict` and no endpoint creates arbitrary mail.

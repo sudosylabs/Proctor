@@ -28,6 +28,13 @@ type testStore struct{}
 type testCache struct{}
 type testMailer struct{}
 
+type unavailableMailer struct{ testMailer }
+
+func (unavailableMailer) Enabled() bool { return true }
+func (unavailableMailer) Test(context.Context) error {
+	return errors.New("smtp unavailable")
+}
+
 func (testStore) File() store.FileStore { return nil }
 func (testStore) Job() store.JobStore   { return nil }
 func (testStore) Mail() store.MailStore { return nil }
@@ -172,6 +179,27 @@ func TestServiceRequiresConstructedCapabilities(t *testing.T) {
 				t.Fatalf("New() error = %v, want required dependency failure", err)
 			}
 		})
+	}
+}
+
+func TestSMTPOutageDoesNotFailPlatformReadiness(t *testing.T) {
+	configuration, err := config.NewStore(
+		context.Background(),
+		config.NewMemoryStore(nil),
+		config.StoreOptions{LookupEnv: func(string) (string, bool) { return "", false }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources := completeOwnedResources(t, configuration)
+	resources.Mailer = unavailableMailer{}
+	service, err := acceptForTest(resources)
+	if err != nil {
+		t.Fatalf("Accept() failed general readiness for SMTP outage: %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err = service.CheckDependencies(context.Background()); err != nil {
+		t.Fatalf("CheckDependencies() failed general readiness for SMTP outage: %v", err)
 	}
 }
 

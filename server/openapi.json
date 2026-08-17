@@ -899,8 +899,8 @@
       },
       "post": {
         "operationId": "createRoleBinding", "summary": "Create a Role Binding",
-        "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_requires_institution_scope", "administration.unavailable"],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_requires_institution_scope", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
         "requestBody": {"$ref": "#/components/requestBodies/CreateRoleBinding"},
         "responses": {
@@ -915,8 +915,8 @@
       "parameters": [{"$ref": "#/components/parameters/RoleBindingID"}],
       "delete": {
         "operationId": "endRoleBinding", "summary": "End a Role Binding",
-        "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
         "responses": {
           "200": {"$ref": "#/components/responses/RoleBindingEnded"}, "400": {"$ref": "#/components/responses/BadRequest"},
@@ -2093,6 +2093,30 @@
         "responses": {"202": {"$ref": "#/components/responses/MailDeliveryAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/mail/metrics": {
+      "get": {
+        "operationId": "getMailMetrics", "summary": "Inspect bounded mail delivery metrics",
+        "x-proctor-auth": "principal_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MailMetricsOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/mail/deliveries": {
+      "get": {
+        "operationId": "listMailDeliveries", "summary": "List safe mail delivery metadata",
+        "x-proctor-auth": "principal_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "mail.query.invalid", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
+          {"name": "cursor", "in": "query", "schema": {"type": "string"}},
+          {"name": "state", "in": "query", "schema": {"type": "array", "items": {"$ref": "#/components/schemas/MailDeliveryState"}}},
+          {"name": "template_key", "in": "query", "schema": {"type": "array", "items": {"type": "string", "enum": ["system.mail_test"]}}},
+          {"name": "created_after", "in": "query", "schema": {"type": "integer", "format": "int64", "minimum": 1}},
+          {"name": "created_before", "in": "query", "schema": {"type": "integer", "format": "int64", "minimum": 1}}
+        ],
+        "responses": {"200": {"$ref": "#/components/responses/MailDeliveryListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/mail/deliveries/{mail_delivery_id}": {
       "parameters": [{"name": "mail_delivery_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}],
       "get": {
@@ -2100,6 +2124,24 @@
         "x-proctor-auth": "principal_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "mail.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": []}],
         "responses": {"200": {"$ref": "#/components/responses/MailDeliveryOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/mail/deliveries/{mail_delivery_id}/cancel": {
+      "parameters": [{"name": "mail_delivery_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}],
+      "post": {
+        "operationId": "cancelMailDelivery", "summary": "Cancel queued mail delivery work",
+        "x-proctor-auth": "recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.csrf.invalid", "audit.unavailable", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "mail.conflict", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MailDeliveryOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/mail/deliveries/{mail_delivery_id}/retry": {
+      "parameters": [{"name": "mail_delivery_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}],
+      "post": {
+        "operationId": "retryMailDelivery", "summary": "Retry a still-relevant failed mail delivery",
+        "x-proctor-auth": "recent_session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.csrf.invalid", "audit.unavailable", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "mail.conflict", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MailDeliveryOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
     "/api/v1/jobs/{job_id}": {
@@ -2902,6 +2944,8 @@
       "JobListOK": {"description": "Safe durable Job collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobListResponse"}}}},
       "JobAttemptListOK": {"description": "Safe Job Attempt collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobAttemptListResponse"}}}},
       "MailDeliveryOK": {"description": "Safe durable mail delivery status", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailDeliveryResponse"}}}},
+      "MailDeliveryListOK": {"description": "Bounded safe mail delivery collection", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailDeliveryListResponse"}}}},
+      "MailMetricsOK": {"description": "Bounded safe mail delivery metrics", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailMetricsResponse"}}}},
       "MailDeliveryAccepted": {"description": "Controlled test mail durably queued", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailDeliveryResponse"}}}},
       "InstallationStatusOK": {"description": "Installation status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationStatusResponse"}}}},
       "InstallationBootstrapCreated": {"description": "Installation bootstrapped", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationBootstrapResult"}}}},
@@ -4458,6 +4502,36 @@
           "template_key": {"type": "string", "enum": ["system.mail_test"]}, "template_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "masked_recipient": {"type": "string", "maxLength": 254},
           "state": {"$ref": "#/components/schemas/MailDeliveryState"}, "created_at": {"type": "integer", "format": "int64"}, "updated_at": {"type": "integer", "format": "int64"}, "message_date": {"type": "integer", "format": "int64"}, "deadline": {"type": "integer", "format": "int64"},
           "message_id": {"type": "string", "maxLength": 900}, "attempt_count": {"type": "integer", "minimum": 0, "maximum": 8}, "accepted_at": {"type": "integer", "format": "int64"}, "failed_at": {"type": "integer", "format": "int64"}, "public_failure_code": {"type": "string", "maxLength": 128}
+        }
+      },
+      "MailDeliveryListResponse": {
+        "type": "object", "additionalProperties": false, "required": ["items"],
+        "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/MailDeliveryResponse"}}, "next_cursor": {"type": "string"}}
+      },
+      "MailDeliveryMetricResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["template_key", "state", "outcome_code", "count", "attempt_count", "processing_latency_millis", "maximum_processing_latency_millis"],
+        "properties": {
+          "template_key": {"type": "string", "enum": ["system.mail_test"]}, "state": {"$ref": "#/components/schemas/MailDeliveryState"}, "outcome_code": {"type": "string", "maxLength": 128},
+          "count": {"type": "integer", "format": "int64", "minimum": 0}, "attempt_count": {"type": "integer", "format": "int64", "minimum": 0},
+          "processing_latency_millis": {"type": "integer", "format": "int64", "minimum": 0}, "maximum_processing_latency_millis": {"type": "integer", "format": "int64", "minimum": 0}
+        }
+      },
+      "MailQueueMetricResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["template_key", "state", "outcome_code", "count", "oldest_age_millis", "health_code", "truncated"],
+        "properties": {
+          "template_key": {"type": "string", "enum": ["system.mail_test"]}, "state": {"$ref": "#/components/schemas/MailDeliveryState"}, "outcome_code": {"type": "string", "maxLength": 128},
+          "count": {"type": "integer", "format": "int64", "minimum": 0}, "oldest_age_millis": {"type": "integer", "format": "int64", "minimum": 0},
+          "health_code": {"type": "string", "enum": ["mail.disabled", "mail.healthy", "mail.smtp_outage", "mail.queue_delayed"]}, "truncated": {"type": "boolean"}
+        }
+      },
+      "MailMetricsResponse": {
+        "type": "object", "additionalProperties": false, "required": ["deliveries", "queues", "health_code"],
+        "properties": {
+          "deliveries": {"type": "array", "maxItems": 512, "items": {"$ref": "#/components/schemas/MailDeliveryMetricResponse"}},
+          "queues": {"type": "array", "maxItems": 512, "items": {"$ref": "#/components/schemas/MailQueueMetricResponse"}},
+          "health_code": {"type": "string", "enum": ["", "mail.disabled", "mail.healthy", "mail.smtp_outage", "mail.queue_delayed"]}
         }
       },
       "UpdateUserProfileRequest": {

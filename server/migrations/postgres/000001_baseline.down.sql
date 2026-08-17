@@ -5,6 +5,8 @@
 -- normally be dropped and recreated rather than rolled back.
 
 DROP TABLE IF EXISTS cluster_discovery_nodes;
+DROP TABLE IF EXISTS mail_send_rate_limit;
+DROP TABLE IF EXISTS mail_payload_keys;
 DROP TABLE IF EXISTS mail_deliveries;
 DROP TABLE IF EXISTS mail_occurrences;
 DROP FUNCTION IF EXISTS reject_mail_occurrence_update();

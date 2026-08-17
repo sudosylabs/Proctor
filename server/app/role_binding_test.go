@@ -95,7 +95,7 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 	if got.ID != created.ID {
 		t.Fatalf("result = %#v", got)
 	}
-	want := []string{"authorize-manage", "get-role", "audit-begin", "store-create", "invalidate-authorization"}
+	want := []string{"authorize-binding-scope", "get-role", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -120,7 +120,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 	if !Is(err, "role_binding.system_admin_requires_institution_scope") {
 		t.Fatalf("error = %v", err)
 	}
-	want := []string{"authorize-manage", "get-role"}
+	want := []string{"authorize-binding-scope", "get-role"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -145,7 +145,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	if !Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("error = %v", err)
 	}
-	want := []string{"authorize-manage", "get-binding", "audit-begin", "store-end", "audit-fail"}
+	want := []string{"authorize-binding-preflight", "get-binding", "authorize-binding-scope", "audit-begin", "store-end", "audit-fail"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -167,7 +167,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 	if err != nil || len(got) != 1 {
 		t.Fatalf("list = %#v err=%v", got, err)
 	}
-	want := []string{"authorize-manage", "list-by-user"}
+	want := []string{"authorize-binding-institution", "list-by-user"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}

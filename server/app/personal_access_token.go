@@ -58,11 +58,16 @@ type personalAccessTokenAuditor interface {
 	) error
 }
 
+type personalAccessTokenScopeAuthorizer interface {
+	CanDelegateActionsAtScope(context.Context, model.Principal, []string, model.RoleScopeType, string) (bool, error)
+}
+
 type personalAccessTokenAdministrationService struct {
 	tokens                  store.PersonalAccessTokenStore
 	academicUnits           store.AcademicUnitStore
 	institutions            store.InstitutionStore
 	audit                   personalAccessTokenAuditor
+	authorization           personalAccessTokenScopeAuthorizer
 	policy                  PersonalAccessTokenPolicy
 	recentAuthenticationTTL time.Duration
 	newCredential           func() string
@@ -74,6 +79,7 @@ func newPersonalAccessTokenAdministrationService(
 	academicUnits store.AcademicUnitStore,
 	institutions store.InstitutionStore,
 	audit personalAccessTokenAuditor,
+	authorization personalAccessTokenScopeAuthorizer,
 	policy PersonalAccessTokenPolicy,
 	recentAuthenticationTTL time.Duration,
 	newCredential func() string,
@@ -91,6 +97,9 @@ func newPersonalAccessTokenAdministrationService(
 	if audit == nil {
 		return nil, errors.New("personal access token audit is required")
 	}
+	if authorization == nil {
+		return nil, errors.New("personal access token scope authorization is required")
+	}
 	if newCredential == nil {
 		return nil, errors.New("personal access token credential generator is required")
 	}
@@ -99,7 +108,7 @@ func newPersonalAccessTokenAdministrationService(
 	}
 	return &personalAccessTokenAdministrationService{
 		tokens: tokens, academicUnits: academicUnits, institutions: institutions,
-		audit: audit, policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
+		audit: audit, authorization: authorization, policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
 		newCredential: newCredential, now: now,
 	}, nil
 }
@@ -141,6 +150,27 @@ func (s *personalAccessTokenAdministrationService) Create(
 		if _, err := s.academicUnits.Get(ctx, command.AcademicUnitID); err != nil {
 			return nil, personalAccessTokenFailure("academic_unit", err)
 		}
+	}
+	targetScopeType := model.RoleScopeInstitution
+	targetScopeID := ""
+	if command.AcademicUnitID != "" {
+		targetScopeType = model.RoleScopeAcademicUnit
+		targetScopeID = command.AcademicUnitID
+	} else {
+		institution, err := s.institutions.GetSingleton(ctx)
+		if err != nil {
+			return nil, personalAccessTokenFailure("institution", err)
+		}
+		targetScopeID = institution.ID.String()
+	}
+	allowed, err := s.authorization.CanDelegateActionsAtScope(
+		ctx, principal, normalizedScopes, targetScopeType, targetScopeID,
+	)
+	if err != nil {
+		return nil, personalAccessTokenFailure("authorization", err)
+	}
+	if !allowed {
+		return nil, invalidPersonalAccessTokenRequest("scopes")
 	}
 
 	rawCredential := s.newCredential()
@@ -377,7 +407,7 @@ func normalizePersonalAccessTokenScopes(scopes []string) ([]string, error) {
 	result := append([]string(nil), scopes...)
 	sort.Strings(result)
 	for index, scope := range result {
-		if !model.IsGrantableAction(scope) ||
+		if !model.IsPersonalAccessTokenAction(scope) ||
 			(index > 0 && result[index-1] == scope) {
 			return nil, invalidPersonalAccessTokenRequest("scopes")
 		}

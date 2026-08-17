@@ -42,6 +42,7 @@ type classMemberClassStore interface {
 
 type classMemberAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+	AuthorizePreflight(context.Context, Invocation, model.Action, model.ResourceType) error
 }
 
 type classMemberService struct {
@@ -147,13 +148,18 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "class_member_id")
 	}
+	if err := s.authorization.AuthorizePreflight(
+		ctx, invocation, model.ActionClassMembersManage, model.ResourceClass,
+	); err != nil {
+		return nil, err
+	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, classMemberError(err)
 	}
 	resource, err := s.authorizeClass(ctx, invocation, current.ClassID.String(), model.ActionClassMembersManage)
 	if err != nil {
-		return nil, err
+		return nil, concealMembershipAuthorizationError(err, "class_member")
 	}
 	return runAuditedMutation(
 		ctx,

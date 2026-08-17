@@ -57,28 +57,20 @@ type classStore interface {
 	UpdateWithAudit(context.Context, *store.ClassUpdate) (*model.Class, error)
 	ArchiveWithAudit(context.Context, *store.ClassArchive) (*model.Class, error)
 }
-type classProgrammeLevelReader interface {
-	Get(context.Context, string) (*model.ProgrammeLevel, error)
-}
-type classProgrammeReader interface {
-	Get(context.Context, string) (*model.Programme, error)
-}
 type classAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+	scopedAcademicResourceAuthorizer
 }
 
 type classService struct {
 	store         classStore
-	levels        classProgrammeLevelReader
-	programmes    classProgrammeReader
 	authorization classAuthorizer
 	audit         mutationAuditor
 	now           func() time.Time
 	newID         func() string
 }
 
-func newClassService(persistence classStore, levels classProgrammeLevelReader, programmes classProgrammeReader, authorization classAuthorizer, audit mutationAuditor, now func() time.Time, newID func() string) *classService {
-	return &classService{store: persistence, levels: levels, programmes: programmes, authorization: authorization, audit: audit, now: now, newID: newID}
+func newClassService(persistence classStore, authorization classAuthorizer, audit mutationAuditor, now func() time.Time, newID func() string) *classService {
+	return &classService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 
 func (a *App) GetClass(ctx context.Context, invocation Invocation, query GetClassQuery) (*model.Class, error) {
@@ -104,11 +96,11 @@ func (a *App) ListClasses(ctx context.Context, invocation Invocation, query List
 }
 func (s *classService) List(ctx context.Context, invocation Invocation, query ListClassesQuery) ([]*model.Class, error) {
 	levelID := strings.TrimSpace(query.ProgrammeLevelID)
-	resource, err := s.programmeLevelResource(ctx, levelID)
-	if err != nil {
-		return nil, err
+	if !model.IsValidId(levelID) {
+		return nil, NewError("request.invalid").WithField("field", "programme_level_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitView, resource); err != nil {
+	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: levelID}
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, resource); err != nil {
 		return nil, err
 	}
 	classes, err := s.store.ListByProgrammeLevel(ctx, levelID)
@@ -130,7 +122,7 @@ func (s *classService) Search(ctx context.Context, invocation Invocation, query 
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitView, resource); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, resource); err != nil {
 		return nil, err
 	}
 	classes, err := s.store.SearchByAcademicUnit(ctx, unitID, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit))
@@ -148,11 +140,12 @@ func (a *App) CreateClass(ctx context.Context, invocation Invocation, command Cr
 }
 func (s *classService) Create(ctx context.Context, invocation Invocation, command CreateClassCommand) (*model.Class, error) {
 	levelID := strings.TrimSpace(command.ProgrammeLevelID)
-	resource, err := s.programmeLevelResource(ctx, levelID)
-	if err != nil {
-		return nil, err
+	if !model.IsValidId(levelID) {
+		return nil, NewError("request.invalid").WithField("field", "programme_level_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
+	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: levelID}
+	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionClassManage, resource)
+	if err != nil {
 		return nil, err
 	}
 	classID, err := model.ParseClassID(s.newID())
@@ -183,8 +176,10 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionClassManage,
 			Resource:   resource,
+			ScopeType:  scopeType,
+			ScopeID:    scopeID,
 			Operation:  "create",
 			Value:      candidate.Auditable(),
 		},
@@ -206,13 +201,13 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "class_id")
 	}
+	resource := model.Resource{Type: model.ResourceClass, ID: id}
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassManage, resource); err != nil {
+		return nil, err
+	}
 	unitID, err := s.store.GetAcademicUnitId(ctx, id)
 	if err != nil {
 		return nil, classError(err)
-	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
-		return nil, err
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -243,11 +238,8 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 		candidate.Description = *command.Description
 	}
 	if candidate.ProgrammeLevelID != current.ProgrammeLevelID {
-		destination, err := s.programmeLevelResource(ctx, candidate.ProgrammeLevelID.String())
-		if err != nil {
-			return nil, err
-		}
-		if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, destination); err != nil {
+		destination := model.Resource{Type: model.ResourceProgrammeLevel, ID: candidate.ProgrammeLevelID.String()}
+		if err := s.authorization.Authorize(ctx, invocation, model.ActionClassManage, destination); err != nil {
 			return nil, err
 		}
 	}
@@ -264,7 +256,7 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionClassManage,
 			Resource:   resource,
 			Operation:  "patch",
 			Value:      candidate.Auditable(),
@@ -292,13 +284,13 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 	if !model.IsValidId(id) {
 		return NewError("request.invalid").WithField("field", "class_id")
 	}
+	resource := model.Resource{Type: model.ResourceClass, ID: id}
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassManage, resource); err != nil {
+		return err
+	}
 	unitID, err := s.store.GetAcademicUnitId(ctx, id)
 	if err != nil {
 		return classError(err)
-	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
-		return err
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -309,7 +301,7 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionClassManage,
 			Resource:   resource,
 			Operation:  "archive",
 			Prior:      current.Auditable(),
@@ -334,21 +326,6 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 		classError,
 	)
 	return err
-}
-
-func (s *classService) programmeLevelResource(ctx context.Context, id string) (model.Resource, error) {
-	if !model.IsValidId(id) {
-		return model.Resource{}, NewError("request.invalid").WithField("field", "programme_level_id")
-	}
-	level, err := s.levels.Get(ctx, id)
-	if err != nil {
-		return model.Resource{}, programmeLevelError(err)
-	}
-	programme, err := s.programmes.Get(ctx, level.ProgrammeID.String())
-	if err != nil {
-		return model.Resource{}, programmeError(err)
-	}
-	return model.Resource{Type: model.ResourceAcademicUnit, ID: programme.AcademicUnitID.String()}, nil
 }
 
 func classError(err error) error {

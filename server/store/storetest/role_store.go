@@ -9,6 +9,7 @@ package storetest
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 
@@ -163,6 +164,35 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 		if updated.DisplayName != "Audited Teacher Updated" {
 			t.Fatalf("UpdateWithAudit() = %#v", updated)
+		}
+
+		institution := saveInstitution(t, ctx, ss)
+		user := saveUser(t, ctx, ss)
+		binding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+			UserID: user.ID, RoleID: updated.ID, ScopeType: model.RoleScopeInstitution,
+			ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at + 2),
+		})
+		if err != nil {
+			t.Fatalf("bind role before permission fence: %v", err)
+		}
+		permissionCandidate := updated.Clone()
+		permissionCandidate.Permissions = append(permissionCandidate.Permissions, string(model.ActionClassManage))
+		permissionAttempt := saveRoleAuditAttempt(t, ctx, ss)
+		if _, err := ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
+			Role: permissionCandidate, AuditEventID: permissionAttempt.ID.String(), AuditAt: at + 3,
+		}); !store.IsConflict(err) {
+			t.Fatalf("bound role permission UpdateWithAudit() error = %v, want conflict", err)
+		}
+		if _, err := ss.RoleBinding().End(ctx, binding.ID.String(), at+4); err != nil {
+			t.Fatalf("end historical binding: %v", err)
+		}
+		historicalAttempt := saveRoleAuditAttempt(t, ctx, ss)
+		permissionCandidate, err = ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
+			Role: permissionCandidate, AuditEventID: historicalAttempt.ID.String(), AuditAt: at + 5,
+		})
+		requireNoError(t, err)
+		if !slices.Contains(permissionCandidate.Permissions, string(model.ActionClassManage)) {
+			t.Fatalf("historically bound role permissions = %#v", permissionCandidate.Permissions)
 		}
 
 		if _, err := ss.Role().ArchiveWithAudit(ctx, &store.RoleArchive{

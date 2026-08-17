@@ -44,7 +44,7 @@ type programmeStore interface {
 
 type programmeService struct {
 	store         programmeStore
-	authorization academicUnitAuthorizer
+	authorization scopedAcademicResourceAuthorizer
 	audit         mutationAuditor
 	now           func() time.Time
 	newID         func() string
@@ -52,7 +52,7 @@ type programmeService struct {
 
 func newProgrammeService(
 	persistence programmeStore,
-	authorization academicUnitAuthorizer,
+	authorization scopedAcademicResourceAuthorizer,
 	audit mutationAuditor,
 	now func() time.Time,
 	newID func() string,
@@ -72,12 +72,13 @@ func (s *programmeService) Get(ctx context.Context, invocation Invocation, query
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "programme_id")
 	}
+	resource := model.Resource{Type: model.ResourceProgramme, ID: id}
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, resource); err != nil {
+		return nil, err
+	}
 	programme, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, programmeError(err)
-	}
-	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitView, programme.AcademicUnitID.String()); err != nil {
-		return nil, err
 	}
 	return programme, nil
 }
@@ -91,7 +92,7 @@ func (s *programmeService) List(ctx context.Context, invocation Invocation, quer
 	if !model.IsValidId(unitID) {
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
-	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitView, unitID); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}); err != nil {
 		return nil, err
 	}
 	var programmes []*model.Programme
@@ -120,7 +121,8 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitManage, resource); err != nil {
+	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, resource)
+	if err != nil {
 		return nil, err
 	}
 	programmeID, err := model.ParseProgrammeID(s.newID())
@@ -146,8 +148,10 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionProgrammeManage,
 			Resource:   resource,
+			ScopeType:  scopeType,
+			ScopeID:    scopeID,
 			Operation:  "create",
 			Value:      candidate.Auditable(),
 		},
@@ -166,7 +170,7 @@ func (a *App) UpdateProgramme(ctx context.Context, invocation Invocation, comman
 }
 
 func (s *programmeService) Update(ctx context.Context, invocation Invocation, command UpdateProgrammeCommand) (*model.Programme, error) {
-	current, err := s.getForMutation(ctx, invocation, command.ID)
+	current, scopeType, scopeID, err := s.getForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -184,14 +188,16 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("programme.invalid", err)
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: current.AcademicUnitID.String()}
+	resource := model.Resource{Type: model.ResourceProgramme, ID: current.ID.String()}
 	return runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionProgrammeManage,
 			Resource:   resource,
+			ScopeType:  scopeType,
+			ScopeID:    scopeID,
 			Operation:  "patch",
 			Value:      candidate.Auditable(),
 			Prior:      current.Auditable(),
@@ -211,18 +217,20 @@ func (a *App) ArchiveProgramme(ctx context.Context, invocation Invocation, comma
 }
 
 func (s *programmeService) Archive(ctx context.Context, invocation Invocation, command ArchiveProgrammeCommand) error {
-	current, err := s.getForMutation(ctx, invocation, command.ID)
+	current, scopeType, scopeID, err := s.getForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return err
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: current.AcademicUnitID.String()}
+	resource := model.Resource{Type: model.ResourceProgramme, ID: current.ID.String()}
 	_, err = runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionAcademicUnitManage,
+			Action:     model.ActionProgrammeManage,
 			Resource:   resource,
+			ScopeType:  scopeType,
+			ScopeID:    scopeID,
 			Operation:  "archive",
 			Prior:      current.Auditable(),
 		},
@@ -238,23 +246,20 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 	return err
 }
 
-func (s *programmeService) getForMutation(ctx context.Context, invocation Invocation, id string) (*model.Programme, error) {
+func (s *programmeService) getForMutation(ctx context.Context, invocation Invocation, id string) (*model.Programme, model.RoleScopeType, string, error) {
 	id = strings.TrimSpace(id)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "programme_id")
+		return nil, "", "", NewError("request.invalid").WithField("field", "programme_id")
+	}
+	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id})
+	if err != nil {
+		return nil, "", "", err
 	}
 	programme, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, programmeError(err)
+		return nil, "", "", programmeError(err)
 	}
-	if err := s.authorize(ctx, invocation, model.ActionAcademicUnitManage, programme.AcademicUnitID.String()); err != nil {
-		return nil, err
-	}
-	return programme, nil
-}
-
-func (s *programmeService) authorize(ctx context.Context, invocation Invocation, action model.Action, unitID string) error {
-	return s.authorization.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID})
+	return programme, scopeType, scopeID, nil
 }
 
 func programmeError(err error) error {

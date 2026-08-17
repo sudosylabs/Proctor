@@ -115,6 +115,55 @@ func TestAccessScopeResolverMapsAcademicPeriodOwnerScope(t *testing.T) {
 	}
 }
 
+func TestAccessScopeResolverMapsProgrammeAndLevelToOwningSubtree(t *testing.T) {
+	t.Parallel()
+
+	institutionID := model.NewInstitutionID()
+	rootID, unitID := model.NewAcademicUnitID(), model.NewAcademicUnitID()
+	programmeID, levelID := model.NewProgrammeID(), model.NewProgrammeLevelID()
+	now := model.NowUTC()
+	programme := &model.Programme{
+		ID: programmeID, AcademicUnitID: unitID, CreatedAt: now, UpdatedAt: now,
+		Revision: 1, Name: "computing", DisplayName: "Computing",
+	}
+	level := &model.ProgrammeLevel{
+		ID: levelID, ProgrammeID: programmeID, CreatedAt: now, UpdatedAt: now,
+		Revision: 1, Name: "year-one", DisplayName: "Year One",
+	}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{},
+		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
+			unitID.String(): {{ID: unitID, InstitutionID: institutionID}, {ID: rootID, InstitutionID: institutionID}},
+		}},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.programmes = &accessProgrammeStoreFake{programme: programme}
+	resolver.programmeLevels = &accessProgrammeLevelStoreFake{level: level}
+
+	for _, resource := range []model.Resource{
+		{Type: model.ResourceProgramme, ID: programmeID.String()},
+		{Type: model.ResourceProgrammeLevel, ID: levelID.String()},
+	} {
+		resolved, resolveErr := resolver.resolve(context.Background(), resource)
+		if resolveErr != nil {
+			t.Fatalf("resolve %s: %v", resource.Type, resolveErr)
+		}
+		if resolved.institutionID != institutionID.String() ||
+			resolved.targetAcademicUnitID != unitID.String() ||
+			len(resolved.academicUnitID) != 2 {
+			t.Fatalf("resolved %s = %#v", resource.Type, resolved)
+		}
+		if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
+			t.Fatalf("audit scope for %s = %s/%s", resource.Type, scope, id)
+		}
+	}
+}
+
 type accessAcademicPeriodStoreFake struct {
 	period  *model.AcademicPeriod
 	periods map[string]*model.AcademicPeriod
@@ -177,6 +226,42 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 	}
 	if periods.gets != 0 || units.listAncestors != 0 {
 		t.Fatalf("preflight inspected target or owner: period gets=%d unit ancestor reads=%d", periods.gets, units.listAncestors)
+	}
+}
+
+func TestAccessControlMembershipPreflightDeniesBeforeOpaqueTargetInspection(t *testing.T) {
+	t.Parallel()
+
+	institutionID := model.NewInstitutionID()
+	classes := &accessClassStoreFake{}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}},
+		&accessAcademicUnitStoreFake{}, classes, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := newAccessControlService(
+		&accessRoleStoreFake{}, &accessRoleBindingStoreFake{}, resolver, accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
+	}
+	invocation := NewInvocation(principal, model.RequestMetadata{})
+	if err := access.authorizeResourcePreflight(
+		context.Background(), invocation, model.ActionClassMembersManage, model.ResourceClass,
+	); !Is(err, "authorization.denied") {
+		t.Fatalf("preflight error = %v, want authorization.denied", err)
+	}
+	if classes.gets != 0 {
+		t.Fatalf("preflight inspected %d opaque class targets", classes.gets)
 	}
 }
 
@@ -458,6 +543,91 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	}
 }
 
+func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
+	t.Parallel()
+
+	institutionID := model.NewInstitutionID()
+	rootID, childID, siblingID := model.NewAcademicUnitID(), model.NewAcademicUnitID(), model.NewAcademicUnitID()
+	userID, roleID := model.NewUserID(), model.NewRoleID()
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}},
+		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
+			rootID.String():    {{ID: rootID, InstitutionID: institutionID}},
+			childID.String():   {{ID: childID, InstitutionID: institutionID}, {ID: rootID, InstitutionID: institutionID}},
+			siblingID.String(): {{ID: siblingID, InstitutionID: institutionID}},
+		}},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := newAccessControlService(
+		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{
+			string(model.ActionProgrammeManage), string(model.ActionRoleBindingManage),
+		}}}},
+		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{
+			UserID: userID, RoleID: roleID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: rootID.String(),
+		}}},
+		resolver,
+		accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
+	}
+
+	for name, test := range map[string]struct {
+		actions []string
+		target  model.AcademicUnitID
+		want    bool
+	}{
+		"ordinary descendant":  {[]string{string(model.ActionProgrammeManage)}, childID, true},
+		"protected descendant": {[]string{string(model.ActionRoleBindingManage)}, childID, true},
+		"protected same scope": {[]string{string(model.ActionRoleBindingManage)}, rootID, false},
+		"sibling":              {[]string{string(model.ActionProgrammeManage)}, siblingID, false},
+		"unowned action":       {[]string{string(model.ActionClassManage)}, childID, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, delegationErr := access.canDelegateActionsAtScope(
+				context.Background(), principal, test.actions,
+				model.RoleScopeAcademicUnit, test.target.String(),
+			)
+			if delegationErr != nil || got != test.want {
+				t.Fatalf("delegation = %v, %v; want %v", got, delegationErr, test.want)
+			}
+		})
+	}
+
+	principal.CredentialType = model.CredentialPersonalAccessToken
+	principal.SessionID = ""
+	principal.AuthenticationMethod = "personal_access_token"
+	principal.AuthenticationStrength = ""
+	principal.AuthenticatedAt = time.Time{}
+	principal.ClientType = model.SessionClientCLI
+	principal.CredentialScopes = []string{string(model.ActionProgrammeManage)}
+	principal.AcademicUnitID = rootID
+	if allowed, delegationErr := access.canDelegateActionsAtScope(
+		context.Background(), principal, []string{string(model.ActionProgrammeManage)},
+		model.RoleScopeAcademicUnit, childID.String(),
+	); delegationErr != nil || !allowed {
+		t.Fatalf("PAT descendant delegation = %v, %v", allowed, delegationErr)
+	}
+	principal.CredentialScopes = []string{string(model.ActionClassView)}
+	if allowed, delegationErr := access.canDelegateActionsAtScope(
+		context.Background(), principal, []string{string(model.ActionProgrammeManage)},
+		model.RoleScopeAcademicUnit, childID.String(),
+	); delegationErr != nil || allowed {
+		t.Fatalf("PAT action ceiling = %v, %v", allowed, delegationErr)
+	}
+}
+
 func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
 	t.Parallel()
 
@@ -544,7 +714,40 @@ func (s *accessAcademicUnitStoreFake) ListAncestors(_ context.Context, id string
 	return s.ancestors[id], s.err
 }
 
-type accessClassStoreFake struct{ store.ClassStore }
+type accessClassStoreFake struct {
+	store.ClassStore
+	gets int
+}
+
+func (s *accessClassStoreFake) Get(context.Context, string) (*model.Class, error) {
+	s.gets++
+	return nil, store.NewErrNotFound("class", "")
+}
+
+type accessProgrammeStoreFake struct {
+	store.ProgrammeStore
+	programme *model.Programme
+}
+
+func (s *accessProgrammeStoreFake) Get(context.Context, string) (*model.Programme, error) {
+	if s.programme == nil {
+		return nil, store.NewErrNotFound("programme", "")
+	}
+	return s.programme, nil
+}
+
+type accessProgrammeLevelStoreFake struct {
+	store.ProgrammeLevelStore
+	level *model.ProgrammeLevel
+}
+
+func (s *accessProgrammeLevelStoreFake) Get(context.Context, string) (*model.ProgrammeLevel, error) {
+	if s.level == nil {
+		return nil, store.NewErrNotFound("programme_level", "")
+	}
+	return s.level, nil
+}
+
 type accessUserStoreFake struct {
 	store.UserStore
 	user *model.User

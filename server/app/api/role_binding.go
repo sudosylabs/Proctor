@@ -60,11 +60,19 @@ func roleBindingResource(bindings RoleBindingApplication) resource {
 		"role-bindings",
 		principalRoute(http.MethodGet, apiPath(literal("role-bindings")),
 			operatorReadErrorCodes("request.invalid", "administration.unavailable"), module.list),
-		principalRoute(http.MethodPost, apiPath(literal("role-bindings")),
-			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_requires_institution_scope", "administration.unavailable"), module.create),
-		principalRoute(http.MethodDelete, apiPath(literal("role-bindings"), canonicalID("role_binding_id")),
-			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"), module.end),
+		strongRecentSessionRoute(http.MethodPost, apiPath(literal("role-bindings")),
+			roleBindingMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_requires_institution_scope", "administration.unavailable"), module.create),
+		strongRecentSessionRoute(http.MethodDelete, apiPath(literal("role-bindings"), canonicalID("role_binding_id")),
+			roleBindingMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"), module.end),
 	)
+}
+
+func roleBindingMutationErrorCodes(specific ...string) []string {
+	codes := operatorMutationErrorCodes(
+		"authentication.strong_required",
+		"authentication.reauthentication_required",
+	)
+	return append(codes, specific...)
 }
 
 func (module roleBindingResourceModule) list(request operationRequest) (operationResult, error) {

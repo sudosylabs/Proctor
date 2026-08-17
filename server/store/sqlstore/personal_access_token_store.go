@@ -67,7 +67,7 @@ func (s SQLPersonalAccessTokenStore) Save(
 		return nil, err
 	}
 	for _, scope := range candidate.Scopes {
-		if !model.IsKnownAction(scope) {
+		if !model.IsPersonalAccessTokenAction(scope) {
 			return nil, store.NewErrInvalidInput(
 				"personal_access_token",
 				"scopes",

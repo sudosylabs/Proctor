@@ -22,6 +22,9 @@ type mailStoreFake struct {
 	enqueue  *store.MailTestEnqueue
 	delivery *model.MailDelivery
 	gets     int
+	lists    int
+	mutates  int
+	permit   func() *store.MailSendPermit
 }
 
 func (s *mailStoreFake) EnqueueTest(_ context.Context, input *store.MailTestEnqueue) (*model.MailDelivery, error) {
@@ -35,6 +38,41 @@ func (s *mailStoreFake) GetDelivery(_ context.Context, id model.MailDeliveryID) 
 		return nil, store.NewErrNotFound("mail_delivery", id.String())
 	}
 	return s.delivery.Clone(), nil
+}
+func (s *mailStoreFake) ListDeliveries(_ context.Context, _ store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
+	s.lists++
+	if s.delivery == nil {
+		return []*model.MailDelivery{}, nil
+	}
+	return []*model.MailDelivery{s.delivery.Clone()}, nil
+}
+func (s *mailStoreFake) CancelDelivery(_ context.Context, input *store.MailDeliveryMutation) (*model.MailDelivery, error) {
+	s.mutates++
+	if s.delivery == nil || s.delivery.ID != input.ID || s.delivery.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("mail_delivery", "stale", nil)
+	}
+	next, err := s.delivery.Cancel(time.UnixMilli(input.AuditAt))
+	if err == nil {
+		s.delivery = next
+	}
+	return next, err
+}
+func (s *mailStoreFake) RetryDelivery(_ context.Context, input *store.MailDeliveryMutation) (*model.MailDelivery, error) {
+	s.mutates++
+	if s.delivery == nil || s.delivery.ID != input.ID || s.delivery.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("mail_delivery", "stale", nil)
+	}
+	next, err := s.delivery.OperatorRetry(time.UnixMilli(input.AuditAt))
+	if err == nil {
+		s.delivery = next
+	}
+	return next, err
+}
+func (s *mailStoreFake) AcquireSendPermit(context.Context, store.MailSendClass) (*store.MailSendPermit, error) {
+	if s.permit != nil {
+		return s.permit(), nil
+	}
+	return &store.MailSendPermit{Allowed: true}, nil
 }
 func (s *mailStoreFake) StartDelivery(_ context.Context, id model.MailDeliveryID, revision int64, at time.Time) (*model.MailDelivery, error) {
 	if s.delivery == nil || s.delivery.ID != id || s.delivery.Revision != revision {
@@ -61,6 +99,8 @@ func (s *mailStoreFake) CompleteDelivery(_ context.Context, input *store.MailDel
 		next, err = s.delivery.Fail(input.PublicFailureCode, input.At)
 	case store.MailDeliveryCompletionExpired:
 		next, err = s.delivery.Expire(input.At)
+	case store.MailDeliveryCompletionSuppress:
+		next, err = s.delivery.Suppress(input.PublicFailureCode, input.At)
 	}
 	if err == nil {
 		s.delivery = next
@@ -78,20 +118,38 @@ func (s mailUserStoreFake) Get(context.Context, string) (*model.User, error) {
 	return &copy, nil
 }
 
-type mailAuthorizerFake struct{ actions []model.Action }
+type mailAuthorizerFake struct {
+	actions []model.Action
+	err     error
+}
 
 func (a *mailAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
 	a.actions = append(a.actions, action)
+	if a.err != nil {
+		return model.Resource{}, a.err
+	}
 	return model.Resource{Type: model.ResourceInstitution, ID: model.NewInstitutionID().String()}, nil
 }
 
-type mailAuditFake struct{ calls int }
+type mailAuditFake struct {
+	calls      int
+	beginCalls int
+	failCalls  int
+}
 
 func (a *mailAuditFake) PrepareTest(_ context.Context, invocation Invocation, resource model.Resource, id model.MailDeliveryID) (*model.AuditEvent, error) {
 	a.calls++
 	principal := invocation.Principal()
 	return &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(model.ActionMailManage), Resource: model.Resource{Type: model.ResourceMailDelivery, ID: id.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: resource.ID, Status: model.AuditStatusSuccess, NodeID: "test", ClientType: string(principal.ClientType), AuthMethod: principal.AuthenticationMethod}, nil
 }
+func (a *mailAuditFake) PrepareControl(_ context.Context, _ Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (string, error) {
+	a.beginCalls++
+	if institution.Type != model.ResourceInstitution || delivery == nil || (operation != "cancel" && operation != "retry") {
+		return "", errors.New("unsafe mail audit")
+	}
+	return model.NewId(), nil
+}
+func (a *mailAuditFake) Fail(context.Context, string, string) error { a.failCalls++; return nil }
 
 type mailRendererFake struct{ content FrozenMailContent }
 
@@ -164,7 +222,7 @@ func TestMailServicePreparesOnlyControlledSelfRecipientAndAtomicIntent(t *testin
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@institution.test"}}
 	authorizer, auditor := &mailAuthorizerFake{}, &mailAuditFake{}
 	content := FrozenMailContent{Subject: "Fixed test", Text: "fixed text", HTML: "<p>fixed html</p>"}
-	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, authorizer, auditor, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{content}, sender, mailTestSealer(t), 15*time.Minute, func() time.Time { return at })
+	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, authorizer, auditor, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{content}, sender, NopMailDeliveryRecorder{}, mailTestSealer(t), 15*time.Minute, func() time.Time { return at })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,6 +241,28 @@ func TestMailServicePreparesOnlyControlledSelfRecipientAndAtomicIntent(t *testin
 	}
 	if view.MaskedRecipient != "o***@example.test" || view.State != model.MailDeliveryQueued || view.MessageID != persistence.enqueue.Delivery.MessageID {
 		t.Fatalf("view = %#v", view)
+	}
+}
+
+func TestMailMetricsRequiresMailViewAuthorization(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	principal := mailTestPrincipal(at)
+	authorizer := &mailAuthorizerFake{}
+	metrics := &recordingMailMetrics{health: []MailHealthMetric{{Code: MailHealthHealthy}}}
+	service, err := newMailService(
+		&mailStoreFake{}, mailUserStoreFake{mailTestUser(principal, at)}, authorizer, &mailAuditFake{},
+		&authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{},
+		&mailSenderFake{}, metrics, nil, 15*time.Minute, func() time.Time { return at },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Metrics(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
+		t.Fatal(err)
+	}
+	if len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionMailView {
+		t.Fatalf("metric authorization actions = %#v", authorizer.actions)
 	}
 }
 
@@ -205,7 +285,7 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
 	content := FrozenMailContent{Subject: "test", Text: "test"}
 	cache := &mailAttemptCacheFake{}
-	service, err := newMailService(persistence, mailUserStoreFake{user}, &mailAuthorizerFake{}, &mailAuditFake{}, &authenticationAttemptAccounting{cache: cache}, mailRendererFake{content}, sender, mailTestSealer(t), 15*time.Minute, func() time.Time { return at })
+	service, err := newMailService(persistence, mailUserStoreFake{user}, &mailAuthorizerFake{}, &mailAuditFake{}, &authenticationAttemptAccounting{cache: cache}, mailRendererFake{content}, sender, NopMailDeliveryRecorder{}, mailTestSealer(t), 15*time.Minute, func() time.Time { return at })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,6 +320,65 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	}
 }
 
+func TestMailOperatorReadsAuthorizeBeforeInspectionAndReturnOnlySafeViews(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	principal := mailTestPrincipal(at)
+	delivery := queuedMailDeliveryFixtureForApp(at)
+	persistence := &mailStoreFake{delivery: delivery}
+	authorizer := &mailAuthorizerFake{}
+	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, authorizer, &mailAuditFake{}, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{}, &mailSenderFake{}, NopMailDeliveryRecorder{}, nil, 15*time.Minute, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, appErr := service.List(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, Limit: 20})
+	if appErr != nil || len(page.Items) != 1 || persistence.lists != 1 || authorizer.actions[0] != model.ActionMailView {
+		t.Fatalf("List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
+	}
+	authorizer.err = NewError("authorization.denied")
+	if _, appErr = service.Get(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID); !Is(appErr, "authorization.denied") || persistence.gets != 0 {
+		t.Fatalf("denied Get() err=%v gets=%d", appErr, persistence.gets)
+	}
+	encoded, _ := json.Marshal(page)
+	for _, forbidden := range []string{"ciphertext", "secret", "encrypted_payload", "operator@example.test"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("safe page leaked %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestMailOperatorMutationsRequireRecentSessionAndAuditSameDelivery(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	principal := mailTestPrincipal(at)
+	delivery := queuedMailDeliveryFixtureForApp(at.Add(-time.Minute))
+	persistence := &mailStoreFake{delivery: delivery}
+	auditor := &mailAuditFake{}
+	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, &mailAuthorizerFake{}, auditor, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{}, &mailSenderFake{}, NopMailDeliveryRecorder{}, nil, 15*time.Minute, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	pat := principal
+	pat.SessionID = ""
+	pat.CredentialType = model.CredentialPersonalAccessToken
+	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
+	pat.AuthenticationStrength, pat.AuthenticatedAt = "", time.Time{}
+	if _, appErr := service.Cancel(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !Is(appErr, "authentication.invalid_token") || persistence.gets != 0 {
+		t.Fatalf("Cancel(PAT) err=%v gets=%d", appErr, persistence.gets)
+	}
+	stale := principal
+	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
+	if _, appErr := service.Cancel(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID); !Is(appErr, "authentication.reauthentication_required") || persistence.gets != 0 {
+		t.Fatalf("Cancel(stale) err=%v gets=%d", appErr, persistence.gets)
+	}
+	view, appErr := service.Cancel(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)
+	if appErr != nil || view.State != model.MailDeliveryCanceled || persistence.mutates != 1 || auditor.beginCalls != 1 {
+		t.Fatalf("Cancel() view=%#v err=%v mutates=%d audit=%d", view, appErr, persistence.mutates, auditor.beginCalls)
+	}
+}
+
+func queuedMailDeliveryFixtureForApp(at time.Time) *model.MailDelivery {
+	return &model.MailDelivery{ID: model.NewMailDeliveryID(), OccurrenceID: model.NewMailOccurrenceID(), JobID: model.NewJobID(), TargetUserID: model.NewUserID(), TemplateKey: model.MailTemplateSystemTest, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "o***@example.test", State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(24 * time.Hour), MessageID: "<mail." + model.NewId() + "@example.test>", EncryptedPayload: json.RawMessage(`{"ciphertext":"secret"}`), Revision: 1}
+}
+
 func TestMailServiceRejectsEnabledDeliveryWithoutSecretSealer(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	principal := mailTestPrincipal(at)
@@ -247,7 +386,7 @@ func TestMailServiceRejectsEnabledDeliveryWithoutSecretSealer(t *testing.T) {
 	_, err := newMailService(
 		&mailStoreFake{}, mailUserStoreFake{mailTestUser(principal, at)}, &mailAuthorizerFake{}, &mailAuditFake{},
 		&authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{content},
-		&mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}, nil,
+		&mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}, NopMailDeliveryRecorder{}, nil,
 		15*time.Minute, func() time.Time { return at },
 	)
 	if err == nil || !strings.Contains(err.Error(), "enabled mail requires secret sealing") {
@@ -289,6 +428,34 @@ func TestMailDeliveryHandlerExpiresQueuedDeliveryWithoutSending(t *testing.T) {
 	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { return delivery.Deadline }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
 		persistence.delivery.PublicFailureCode != model.MailDeliveryExpiredCode || len(persistence.delivery.EncryptedPayload) != 0 {
+		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	}
+}
+
+func TestMailDeliveryHandlerSuppressesDisabledWorkWithoutSealerOrSend(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	_, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	persistence := &mailStoreFake{delivery: delivery}
+	sender := &mailSenderFake{enabled: false}
+	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, now: func() time.Time { return at.Add(time.Second) }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
+		persistence.delivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(persistence.delivery.EncryptedPayload) != 0 {
+		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	}
+}
+
+func TestMailDeliveryHandlerRechecksDisabledStateAfterWaitingForPermit(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	sender := &mailSenderFake{enabled: true}
+	persistence := &mailStoreFake{delivery: delivery}
+	persistence.permit = func() *store.MailSendPermit {
+		sender.enabled = false
+		return &store.MailSendPermit{Allowed: true}
+	}
+	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { return at.Add(time.Second) }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
+		persistence.delivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(persistence.delivery.EncryptedPayload) != 0 {
 		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 	}
 }

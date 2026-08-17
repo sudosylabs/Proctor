@@ -38,11 +38,32 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})
 		requireNoError(t, err)
+		staleUpdatedAt := role.UpdatedAt
+		stalePermissions := append([]string(nil), role.Permissions...)
+		role.DisplayName = "Audited Updated"
+		role, err = ss.Role().Update(ctx, role)
+		requireNoError(t, err)
+		if _, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{
+			Binding: &model.RoleBinding{
+				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
+				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
+			},
+			ExpectedRoleUpdatedAt: staleUpdatedAt, ExpectedRolePermissions: stalePermissions,
+			AuditEventID: attempt.ID.String(), AuditAt: at,
+		}); !store.IsConflict(err) {
+			t.Fatalf("SaveWithAudit(stale role snapshot) error = %v, want conflict", err)
+		}
+		attempt, err = ss.Audit().Save(ctx, &model.AuditEvent{
+			Action: string(model.ActionRoleManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
+			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
+		})
+		requireNoError(t, err)
 		saved, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{
 			Binding: &model.RoleBinding{
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
 			},
+			ExpectedRoleUpdatedAt: role.UpdatedAt, ExpectedRolePermissions: append([]string(nil), role.Permissions...),
 			AuditEventID: attempt.ID.String(), AuditAt: at,
 		})
 		requireNoError(t, err)

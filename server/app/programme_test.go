@@ -50,16 +50,44 @@ func (s *programmeStoreFake) ArchiveWithAudit(_ context.Context, input *store.Pr
 }
 
 type programmeAuthorizerFake struct {
-	events   *[]string
-	action   model.Action
-	resource model.Resource
-	err      error
+	events       *[]string
+	action       model.Action
+	resource     model.Resource
+	scopeType    model.RoleScopeType
+	scopeID      string
+	err          error
+	preflightErr error
 }
 
 func (a *programmeAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
 	*a.events = append(*a.events, "authorize")
 	a.action, a.resource = action, resource
 	return a.err
+}
+
+func (a *programmeAuthorizerFake) AuthorizePreflight(_ context.Context, _ Invocation, action model.Action, resourceType model.ResourceType) error {
+	*a.events = append(*a.events, "authorize-preflight")
+	a.action = action
+	a.resource = model.Resource{Type: resourceType}
+	return a.preflightErr
+}
+
+func (a *programmeAuthorizerFake) AuthorizeWithScope(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+) (model.RoleScopeType, string, error) {
+	if err := a.Authorize(ctx, invocation, action, resource); err != nil {
+		return "", "", err
+	}
+	if resource.Type == model.ResourceClass {
+		return model.RoleScopeClass, resource.ID, nil
+	}
+	if a.scopeType.IsValid() && model.IsValidId(a.scopeID) {
+		return a.scopeType, a.scopeID, nil
+	}
+	return model.RoleScopeAcademicUnit, resource.ID, nil
 }
 
 func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {
@@ -124,7 +152,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)
 	}
-	if authorizer.action != model.ActionAcademicUnitManage || authorizer.resource != (model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}) {
+	if authorizer.action != model.ActionProgrammeManage || authorizer.resource != (model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}) {
 		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.resource)
 	}
 	if persistence.createInput == nil ||
@@ -157,7 +185,7 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	if updated.AcademicUnitID != current.AcademicUnitID || persistence.updateInput.Programme.AcademicUnitID != current.AcademicUnitID {
 		t.Fatalf("ownership changed: %#v", updated)
 	}
-	if !reflect.DeepEqual(events, []string{"get", "authorize", "audit-begin", "store-update"}) {
+	if !reflect.DeepEqual(events, []string{"authorize", "get", "audit-begin", "store-update"}) {
 		t.Fatalf("events = %v", events)
 	}
 }

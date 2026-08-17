@@ -124,6 +124,42 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 	)
 }
 
+func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	unitID, parentID, institutionID := model.NewId(), model.NewId(), model.NewId()
+	current := &model.AcademicUnit{
+		ID: model.AcademicUnitID(unitID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		InstitutionID: model.InstitutionID(institutionID), ParentID: model.AcademicUnitID(parentID),
+		Name: "computing", DisplayName: "Computing", Revision: 1,
+	}
+	persistence := &academicUnitMutationStore{events: &events, current: current}
+	denied := NewError("authorization.denied")
+	service := newAcademicUnitCommandService(
+		persistence,
+		academicUnitAuthorizerStub{authorize: func(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
+			events = append(events, "authorize-"+string(resource.Type)+"-"+resource.ID)
+			if action != model.ActionAcademicUnitManage {
+				t.Fatalf("action = %q", action)
+			}
+			if resource.Type == model.ResourceInstitution {
+				return denied
+			}
+			return nil
+		}},
+		&academicUnitCommandAuditor{events: &events}, &academicUnitCommandEffectsFake{events: &events},
+		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
+	)
+	emptyParent := ""
+	if _, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: unitID, ParentID: &emptyParent}); !Is(err, "authorization.denied") {
+		t.Fatalf("Update() error = %v, want authorization.denied", err)
+	}
+	assertAcademicUnitCreateEvents(t, events,
+		"authorize-academic_unit-"+unitID, "get", "authorize-institution-"+institutionID,
+	)
+}
+
 func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T) {
 	t.Parallel()
 

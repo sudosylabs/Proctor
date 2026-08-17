@@ -49,25 +49,14 @@ func (s *programmeLevelStoreFake) ArchiveWithAudit(_ context.Context, input *sto
 	return s.current, nil
 }
 
-type programmeOwnerFake struct {
-	events    *[]string
-	programme *model.Programme
-	err       error
-}
-
-func (s *programmeOwnerFake) Get(context.Context, string) (*model.Programme, error) {
-	*s.events = append(*s.events, "get-programme")
-	return s.programme, s.err
-}
-
 func TestProgrammeLevelCreatePreservesMissingProgrammeErrorContract(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	programmeID := model.NewId()
 	service := newProgrammeLevelService(
 		&programmeLevelStoreFake{events: &events},
-		&programmeOwnerFake{events: &events, err: store.NewErrNotFound("programme", programmeID)},
-		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewId,
+		&programmeAuthorizerFake{events: &events, err: NewError("resource.not_found").WithField("resource", "programme")},
+		&institutionAuditorFake{events: &events}, time.Now, model.NewId,
 	)
 
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programmeID})
@@ -75,7 +64,7 @@ func TestProgrammeLevelCreatePreservesMissingProgrammeErrorContract(t *testing.T
 	if !ok || failure.Code() != "resource.not_found" || failure.Fields()["resource"] != "programme" {
 		t.Fatalf("Create() error = %#v", err)
 	}
-	if !reflect.DeepEqual(events, []string{"get-programme"}) {
+	if !reflect.DeepEqual(events, []string{"authorize"}) {
 		t.Fatalf("events = %v", events)
 	}
 }
@@ -86,9 +75,11 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 	unitID, programmeID, levelID, auditID := model.NewId(), model.NewId(), model.NewId(), model.NewId()
 	created := &model.ProgrammeLevel{ID: model.ProgrammeLevelID(levelID), ProgrammeID: model.ProgrammeID(programmeID)}
 	persistence := &programmeLevelStoreFake{events: &events, created: created}
+	authorizer := &programmeAuthorizerFake{events: &events, scopeType: model.RoleScopeAcademicUnit, scopeID: unitID}
+	auditor := &institutionAuditorFake{events: &events, beginID: auditID}
 	service := newProgrammeLevelService(
-		persistence, &programmeOwnerFake{events: &events, programme: &model.Programme{ID: model.ProgrammeID(programmeID), AcademicUnitID: model.AcademicUnitID(unitID)}},
-		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID},
+		persistence,
+		authorizer, auditor,
 		func() time.Time { return time.UnixMilli(500) }, func() string { return levelID },
 	)
 	got, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{
@@ -103,7 +94,18 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 		persistence.createInput.AuditEventID != auditID {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
-	if !reflect.DeepEqual(events, []string{"get-programme", "authorize", "audit-begin", "store-create"}) {
+	wantResource := model.Resource{Type: model.ResourceProgramme, ID: programmeID}
+	if authorizer.action != model.ActionProgrammeLevelManage || authorizer.resource != wantResource ||
+		auditor.action != model.ActionProgrammeLevelManage || auditor.resource != wantResource ||
+		auditor.scopeType != model.RoleScopeAcademicUnit || auditor.scopeID != unitID {
+		t.Fatalf(
+			"authorization/audit pairing = %s %#v / %s %#v %s/%s, want %s %#v %s/%s",
+			authorizer.action, authorizer.resource, auditor.action, auditor.resource,
+			auditor.scopeType, auditor.scopeID, model.ActionProgrammeLevelManage, wantResource,
+			model.RoleScopeAcademicUnit, unitID,
+		)
+	}
+	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create"}) {
 		t.Fatalf("events = %v", events)
 	}
 }
@@ -111,15 +113,15 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
+	programmeID := model.NewId()
 	current := &model.ProgrammeLevel{
 		ID:        model.ProgrammeLevelID(model.NewId()),
 		CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
-		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
+		ProgrammeID: model.ProgrammeID(programmeID), Name: "year-1", DisplayName: "Year 1",
 	}
 	persistence := &programmeLevelStoreFake{events: &events, current: current}
 	service := newProgrammeLevelService(
-		persistence, &programmeOwnerFake{events: &events, programme: programme},
+		persistence,
 		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()},
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
@@ -131,7 +133,7 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 	if updated.ProgrammeID != current.ProgrammeID || persistence.updateInput.Level.ProgrammeID != current.ProgrammeID {
 		t.Fatalf("ownership changed: %#v", updated)
 	}
-	if !reflect.DeepEqual(events, []string{"get-level", "get-programme", "authorize", "audit-begin", "store-update"}) {
+	if !reflect.DeepEqual(events, []string{"authorize", "get-level", "audit-begin", "store-update"}) {
 		t.Fatalf("events = %v", events)
 	}
 }
@@ -139,9 +141,9 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
+	programme := &model.Programme{ID: model.ProgrammeID(model.NewId())}
 	service := newProgrammeLevelService(
-		&programmeLevelStoreFake{events: &events}, &programmeOwnerFake{events: &events, programme: programme},
+		&programmeLevelStoreFake{events: &events},
 		&programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, time.Now, model.NewId,
 	)
@@ -149,7 +151,7 @@ func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 	if !Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if !reflect.DeepEqual(events, []string{"get-programme", "authorize"}) {
+	if !reflect.DeepEqual(events, []string{"authorize"}) {
 		t.Fatalf("events = %v", events)
 	}
 }
@@ -157,18 +159,18 @@ func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	programme := &model.Programme{ID: model.ProgrammeID(model.NewId()), AcademicUnitID: model.AcademicUnitID(model.NewId())}
+	programme := &model.Programme{ID: model.ProgrammeID(model.NewId())}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newProgrammeLevelService(
 		&programmeLevelStoreFake{events: &events, createErr: store.NewErrConflict("programme_level", "programme_levels_programme_id_name_key", nil)},
-		&programmeOwnerFake{events: &events, programme: programme}, &programmeAuthorizerFake{events: &events},
+		&programmeAuthorizerFake{events: &events},
 		auditor, time.Now, model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID.String(), Name: "year-1", DisplayName: "Year 1"})
 	if !Is(err, "programme_level.conflict") || auditor.failCode != "programme_level.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
 	}
-	if !reflect.DeepEqual(events, []string{"get-programme", "authorize", "audit-begin", "store-create", "audit-fail"}) {
+	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create", "audit-fail"}) {
 		t.Fatalf("events = %v", events)
 	}
 }

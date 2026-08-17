@@ -85,4 +85,41 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	if persistence.endInput.ExpectedRevision != current.Revision || ended.Revision != current.Revision+1 {
 		t.Fatalf("end input/result = %#v / %#v", persistence.endInput, ended)
 	}
+	want := []string{"authorize-preflight", "get-member", "authorize", "audit-begin", "store-end"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	service := newAcademicUnitMemberService(
+		&academicUnitMemberStoreFake{events: &events},
+		&programmeAuthorizerFake{events: &events, preflightErr: NewError("authorization.denied")},
+		&institutionAuditorFake{events: &events}, time.Now, model.NewId,
+	)
+	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewId()}); !Is(err, "authorization.denied") {
+		t.Fatalf("End() error = %v, want authorization.denied", err)
+	}
+	if want := []string{"authorize-preflight"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	current := &model.AcademicUnitMember{
+		ID: model.NewAcademicUnitMemberID(), AcademicUnitID: model.NewAcademicUnitID(), UserID: model.NewUserID(),
+		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), StartsAt: model.NowUTC(), Revision: 1,
+	}
+	service := newAcademicUnitMemberService(
+		&academicUnitMemberStoreFake{events: &events, current: current},
+		&programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")},
+		&institutionAuditorFake{events: &events}, time.Now, model.NewId,
+	)
+	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID.String()}); !Is(err, "resource.not_found") {
+		t.Fatalf("End() error = %v, want concealed resource.not_found", err)
+	}
 }

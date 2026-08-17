@@ -249,9 +249,6 @@ func (s *Service) CheckDependencies(ctx context.Context) error {
 	if err := s.cluster.Ping(ctx); err != nil {
 		return fmt.Errorf("cluster: %w", err)
 	}
-	if err := s.mailer.Test(ctx); err != nil {
-		return fmt.Errorf("mail: %w", err)
-	}
 	if err := checkVFS(ctx, s.vfs); err != nil {
 		return fmt.Errorf("vfs: %w", err)
 	}

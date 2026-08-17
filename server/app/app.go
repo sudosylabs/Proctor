@@ -84,11 +84,11 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	identity, err := constructIdentity(deps, foundation)
+	access, err := constructAccessAndAcademics(deps, foundation)
 	if err != nil {
 		return nil, err
 	}
-	access, err := constructAccessAndAcademics(deps, foundation)
+	identity, err := constructIdentity(deps, foundation, access.authorization)
 	if err != nil {
 		return nil, err
 	}

@@ -337,9 +337,15 @@ catches abandoned ciphertext without changing independent security-audit
 retention.
 
 Unsafe template, encryption, or configuration state prevents server startup.
+Every mail-enabled node validates the bounded key-reference aggregate for
+active encrypted deliveries against its configured decryption ring before
+constructing workers. A disabled node may start without the ring because its
+workers suppress ciphertext before any decrypt attempt.
 SMTP outage and queue delay degrade the mail subsystem without making general
 HTTP readiness fail. Metrics expose bounded counts, age, latency, attempts,
 acceptance, suppression, expiry, and public failure class by template key.
+The authorized `mail.view` metrics projection is the operator-facing read path;
+its dimensions contain no delivery IDs or recipient/content data.
 Logs contain only safe IDs and closed codes, never recipients, bodies, template
 data, ciphertext, or SMTP dialogue.
 

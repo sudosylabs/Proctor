@@ -45,7 +45,10 @@ type roleBindingRoleStore interface {
 }
 
 type roleBindingAuthorizer interface {
-	AuthorizeManage(context.Context, Invocation) (model.Resource, error)
+	AuthorizeRoleBindingInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
+	AuthorizeRoleBindingPreflight(context.Context, Invocation, model.Action) error
+	AuthorizeRoleBindingScope(context.Context, Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error)
+	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
 }
 
 type roleBindingEffects interface {
@@ -80,15 +83,16 @@ func (a *App) ListRoleBindings(ctx context.Context, invocation Invocation, query
 }
 
 func (s *roleBindingService) List(ctx context.Context, invocation Invocation, query ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
-	if _, err := s.authorization.AuthorizeManage(ctx, invocation); err != nil {
-		return nil, err
-	}
 	userID := strings.TrimSpace(query.UserID)
 	scopeID := strings.TrimSpace(query.ScopeID)
 	switch {
 	case userID != "" && query.ScopeType == "" && scopeID == "":
 		if !model.IsValidId(userID) {
 			return nil, NewError("request.invalid").WithField("field", "user_id")
+		}
+		_, err := s.authorization.AuthorizeRoleBindingInstitution(ctx, invocation, model.ActionRoleBindingView)
+		if err != nil {
+			return nil, err
 		}
 		bindings, err := s.bindings.ListByUser(ctx, userID)
 		if err != nil {
@@ -99,6 +103,9 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 		}
 		return bindings, nil
 	case userID == "" && query.ScopeType.IsValid() && model.IsValidId(scopeID):
+		if _, err := s.authorization.AuthorizeRoleBindingScope(ctx, invocation, model.ActionRoleBindingView, query.ScopeType, scopeID); err != nil {
+			return nil, err
+		}
 		bindings, err := s.bindings.ListByScope(ctx, query.ScopeType, scopeID)
 		if err != nil {
 			return nil, roleBindingError(err)
@@ -117,10 +124,6 @@ func (a *App) CreateRoleBinding(ctx context.Context, invocation Invocation, comm
 }
 
 func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
-	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
-	if err != nil {
-		return nil, err
-	}
 	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "user_id")
@@ -135,6 +138,12 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	}
 	if command.StartAt < 0 || (command.EndAt != 0 && command.EndAt <= command.StartAt) {
 		return nil, NewError("request.invalid").WithField("field", "role_binding")
+	}
+	resource, err := s.authorization.AuthorizeRoleBindingScope(
+		ctx, invocation, model.ActionRoleBindingManage, command.ScopeType, scopeID,
+	)
+	if err != nil {
+		return nil, err
 	}
 	candidate := &model.RoleBinding{
 		UserID: userID, RoleID: roleID,
@@ -154,12 +163,24 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		candidate.ScopeType != model.RoleScopeInstitution {
 		return nil, NewError("role_binding.system_admin_requires_institution_scope")
 	}
+	delegatedPermissions := role.Permissions
+	if role.BuiltIn && role.Name == model.SystemAdministratorRoleName {
+		// Downgrade-preserved unknown permissions remain dormant and must not
+		// make the protected administrator Role impossible to bind. Every
+		// action recognized by this binary is still checked.
+		delegatedPermissions = model.AllActions()
+	}
+	if err := s.authorization.CanDelegateActionsAtScope(
+		ctx, invocation, delegatedPermissions, candidate.ScopeType, candidate.ScopeID,
+	); err != nil {
+		return nil, err
+	}
 	saved, err := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionRoleManage,
+			Action:     model.ActionRoleBindingManage,
 			Resource:   resource,
 			Operation:  "create_binding",
 			Value:      candidate.Auditable(),
@@ -167,7 +188,9 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
 			return s.bindings.SaveWithAudit(ctx, &store.RoleBindingCreation{
-				Binding: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
+				Binding: candidate, ExpectedRoleUpdatedAt: role.UpdatedAt,
+				ExpectedRolePermissions: append([]string(nil), role.Permissions...),
+				AuditEventID:            reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
 		roleBindingError,
@@ -188,20 +211,25 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "role_binding_id")
 	}
-	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
-	if err != nil {
+	if err := s.authorization.AuthorizeRoleBindingPreflight(ctx, invocation, model.ActionRoleBindingManage); err != nil {
 		return nil, err
 	}
 	current, err := s.bindings.Get(ctx, id)
 	if err != nil {
 		return nil, roleBindingError(err)
 	}
+	resource, err := s.authorization.AuthorizeRoleBindingScope(
+		ctx, invocation, model.ActionRoleBindingManage, current.ScopeType, current.ScopeID,
+	)
+	if err != nil {
+		return nil, err
+	}
 	ended, err := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
 			Invocation: invocation,
-			Action:     model.ActionRoleManage,
+			Action:     model.ActionRoleBindingManage,
 			Resource:   resource,
 			Operation:  "end_binding",
 			Value:      map[string]any{"role_binding_id": id},

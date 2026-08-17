@@ -1311,6 +1311,12 @@ func (s *timedMailStore) GetDelivery(arg0 context.Context, arg1 model.MailDelive
 	})
 }
 
+func (s *timedMailStore) ListDeliveries(arg0 context.Context, arg1 store.MailDeliveryListOptions) ([]*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListDeliveries), func() ([]*model.MailDelivery, error) {
+		return s.next.ListDeliveries(arg0, arg1)
+	})
+}
+
 func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 model.MailDeliveryID, arg2 int64, arg3 time.Time) (*model.MailDelivery, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartDelivery), func() (*model.MailDelivery, error) {
 		return s.next.StartDelivery(arg0, arg1, arg2, arg3)
@@ -1320,6 +1326,54 @@ func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 model.MailDeli
 func (s *timedMailStore) CompleteDelivery(arg0 context.Context, arg1 *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCompleteDelivery), func() (*model.MailDelivery, error) {
 		return s.next.CompleteDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) CancelDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCancelDelivery), func() (*model.MailDelivery, error) {
+		return s.next.CancelDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) RetryDelivery(arg0 context.Context, arg1 *store.MailDeliveryMutation) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodRetryDelivery), func() (*model.MailDelivery, error) {
+		return s.next.RetryDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) AcquireSendPermit(arg0 context.Context, arg1 store.MailSendClass) (*store.MailSendPermit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodAcquireSendPermit), func() (*store.MailSendPermit, error) {
+		return s.next.AcquireSendPermit(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) SuppressOutstanding(arg0 context.Context, arg1 string, arg2 int) (*store.MailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressOutstanding), func() (*store.MailMaintenanceResult, error) {
+		return s.next.SuppressOutstanding(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedMailStore) SuppressExpired(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodSuppressExpired), func() (*store.MailMaintenanceResult, error) {
+		return s.next.SuppressExpired(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) CleanupTerminal(arg0 context.Context, arg1 int) (*store.MailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCleanupTerminal), func() (*store.MailMaintenanceResult, error) {
+		return s.next.CleanupTerminal(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) QueueSnapshot(arg0 context.Context) (*store.MailQueueSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodQueueSnapshot), func() (*store.MailQueueSnapshot, error) {
+		return s.next.QueueSnapshot(arg0)
+	})
+}
+
+func (s *timedMailStore) ActivePayloadKeyIDs(arg0 context.Context) ([]string, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodActivePayloadKeyIDs), func() ([]string, error) {
+		return s.next.ActivePayloadKeyIDs(arg0)
 	})
 }
 
