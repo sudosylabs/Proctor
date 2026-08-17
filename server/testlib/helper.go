@@ -274,10 +274,12 @@ func (s *LifecycleStore) Session() store.SessionStore { return lifecycleSessionS
 func (s *LifecycleStore) SessionCredential() store.SessionCredentialStore {
 	return lifecycleSessionCredentialStore{}
 }
-func (s *LifecycleStore) Role() store.RoleStore                 { return lifecycleRoleStore{} }
-func (s *LifecycleStore) RoleBinding() store.RoleBindingStore   { return lifecycleRoleBindingStore{} }
-func (s *LifecycleStore) Audit() store.AuditStore               { return lifecycleAuditStore{} }
-func (s *LifecycleStore) Installation() store.InstallationStore { return nil }
+func (s *LifecycleStore) Role() store.RoleStore               { return lifecycleRoleStore{} }
+func (s *LifecycleStore) RoleBinding() store.RoleBindingStore { return lifecycleRoleBindingStore{} }
+func (s *LifecycleStore) Audit() store.AuditStore             { return lifecycleAuditStore{} }
+func (s *LifecycleStore) Installation() store.InstallationStore {
+	return lifecycleInstallationStore{}
+}
 func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	// Composition always requests discovery while constructing the cluster
 	// transport. Local-mode unit tests only need a no-op implementation.
@@ -352,3 +354,11 @@ type lifecycleAuditStore struct{ store.AuditStore }
 type lifecyclePersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }
 type lifecycleRoleStore struct{ store.RoleStore }
 type lifecycleRoleBindingStore struct{ store.RoleBindingStore }
+type lifecycleInstallationStore struct{ store.InstallationStore }
+
+func (lifecycleInstallationStore) ReconcileSystemAdministratorRole(
+	context.Context,
+	*store.SystemAdministratorRoleReconciliation,
+) (*store.SystemAdministratorRoleReconciliationResult, error) {
+	return &store.SystemAdministratorRoleReconciliationResult{}, nil
+}

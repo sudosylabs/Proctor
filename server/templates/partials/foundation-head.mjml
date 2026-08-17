@@ -1,0 +1,8 @@
+<mj-attributes>
+  <mj-all font-family="Arial, Helvetica, sans-serif" color="#202124" />
+  <mj-text font-size="16px" line-height="24px" padding="0" />
+  <mj-button background-color="#202124" color="#ffffff" border-radius="4px" font-size="16px" font-weight="600" padding="24px 0 0" inner-padding="12px 20px" />
+</mj-attributes>
+<mj-style inline="inline">
+  a { color: #174ea6; }
+</mj-style>

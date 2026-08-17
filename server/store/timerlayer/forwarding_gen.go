@@ -2386,6 +2386,12 @@ func (s *timedInstallationStore) Bootstrap(arg0 context.Context, arg1 *store.Ins
 	})
 }
 
+func (s *timedInstallationStore) ReconcileSystemAdministratorRole(arg0 context.Context, arg1 *store.SystemAdministratorRoleReconciliation) (*store.SystemAdministratorRoleReconciliationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodReconcileSystemAdministratorRole), func() (*store.SystemAdministratorRoleReconciliationResult, error) {
+		return s.next.ReconcileSystemAdministratorRole(arg0, arg1)
+	})
+}
+
 var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)

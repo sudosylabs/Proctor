@@ -58,6 +58,10 @@
       "message_id_domain": "localhost",
       "max_message_bytes": 26214400,
       "max_recipients": 100
+    },
+    "secret_sealing": {
+      "encryption_key": "",
+      "decryption_keys": []
     }
   },
   "vfs": {

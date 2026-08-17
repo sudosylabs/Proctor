@@ -198,7 +198,7 @@ func composeConsumers(
 	// 4. Assemble one inert lifecycle owner. No listener, goroutine, readiness,
 	// or transport lifecycle operation runs during composition.
 	node := &Server{components: runtimeComponents{
-		platform: applicationPlatform, settings: runtimeSettingsFromConfig(snapshot.Server),
+		platform: applicationPlatform, reconciler: application, settings: runtimeSettingsFromConfig(snapshot.Server),
 		logger: capabilities.logger, jobs: jobRuntime, transport: httpTransport,
 		websocket: webSocketHub, readiness: readiness, listen: net.Listen, newHTTP: newHTTPServer,
 	}}

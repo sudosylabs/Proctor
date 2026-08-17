@@ -125,12 +125,20 @@ type MailSMTP struct {
 	MaxRecipients   int      `json:"max_recipients"`
 }
 
+// SecretSealing configures a primary AES-256 encryption key and the bounded
+// fallback ring used to read values written before rotation.
+type SecretSealing struct {
+	EncryptionKey  string   `json:"encryption_key,omitempty"`
+	DecryptionKeys []string `json:"decryption_keys,omitempty"`
+}
+
 type Mail struct {
-	Enabled     bool     `json:"enabled"`
-	Backend     string   `json:"backend"`
-	FromAddress string   `json:"from_address"`
-	FromName    string   `json:"from_name,omitempty"`
-	SMTP        MailSMTP `json:"smtp"`
+	Enabled       bool          `json:"enabled"`
+	Backend       string        `json:"backend"`
+	FromAddress   string        `json:"from_address"`
+	FromName      string        `json:"from_name,omitempty"`
+	SMTP          MailSMTP      `json:"smtp"`
+	SecretSealing SecretSealing `json:"secret_sealing"`
 }
 
 type VFSLocal struct {
@@ -360,6 +368,10 @@ func (c Config) Clone() Config {
 		[]string(nil),
 		c.Cluster.Memberlist.SeedAddresses...,
 	)
+	cloned.Mail.SecretSealing.DecryptionKeys = append(
+		[]string(nil),
+		c.Mail.SecretSealing.DecryptionKeys...,
+	)
 	cloned.Authentication.MFA.DecryptionKeys = append(
 		[]string(nil),
 		c.Authentication.MFA.DecryptionKeys...,
@@ -408,6 +420,14 @@ func (c Config) Redacted() Config {
 	redacted.Cache.Redis.Password = redactSecret(redacted.Cache.Redis.Password)
 	redacted.Cluster.Memberlist.EncryptionKey = redactSecret(redacted.Cluster.Memberlist.EncryptionKey)
 	redacted.Mail.SMTP.Password = redactSecret(redacted.Mail.SMTP.Password)
+	redacted.Mail.SecretSealing.EncryptionKey = redactSecret(
+		redacted.Mail.SecretSealing.EncryptionKey,
+	)
+	for index := range redacted.Mail.SecretSealing.DecryptionKeys {
+		redacted.Mail.SecretSealing.DecryptionKeys[index] = redactSecret(
+			redacted.Mail.SecretSealing.DecryptionKeys[index],
+		)
+	}
 	redacted.VFS.S3.AccessKey = redactSecret(redacted.VFS.S3.AccessKey)
 	redacted.VFS.S3.SecretKey = redactSecret(redacted.VFS.S3.SecretKey)
 	redacted.VFS.S3.SessionToken = redactSecret(redacted.VFS.S3.SessionToken)
@@ -507,6 +527,7 @@ func (c Config) Validate() error {
 		}
 	}
 	validateAuthentication(c.Authentication, add)
+	validateSecretKeySeparation(c, add)
 
 	if c.Log.MaxFieldBytes < 256 || c.Log.MaxFieldBytes > 1<<20 {
 		add("log.max_field_bytes", "must be between 256 and 1048576")
@@ -657,6 +678,11 @@ func validateMail(mailConfig Mail, add func(string, string)) {
 	if mailConfig.Backend != "smtp" {
 		add("mail.backend", "must be smtp")
 	}
+	validateSecretSealing(
+		"mail.secret_sealing",
+		mailConfig.SecretSealing,
+		add,
+	)
 	if !mailConfig.Enabled {
 		return
 	}
@@ -708,6 +734,125 @@ func validateMail(mailConfig Mail, add func(string, string)) {
 	if mailConfig.SMTP.MaxRecipients < 1 || mailConfig.SMTP.MaxRecipients > 1000 {
 		add("mail.smtp.max_recipients", "must be between 1 and 1000")
 	}
+}
+
+func validateSecretSealing(
+	prefix string,
+	settings SecretSealing,
+	add func(string, string),
+) {
+	const maximumFallbackKeys = 8
+	if len(settings.DecryptionKeys) > maximumFallbackKeys {
+		add(
+			prefix+".decryption_keys",
+			"must contain at most 8 fallback keys",
+		)
+	}
+	if settings.EncryptionKey == "" && len(settings.DecryptionKeys) > 0 {
+		add(prefix+".encryption_key", "is required")
+	}
+	keys := make([]string, 0, 1+len(settings.DecryptionKeys))
+	keys = append(keys, settings.EncryptionKey)
+	keys = append(keys, settings.DecryptionKeys...)
+	seen := make(map[[32]byte]struct{}, len(keys))
+	for index, encoded := range keys {
+		if encoded == "" && index == 0 {
+			continue
+		}
+		field := prefix + ".encryption_key"
+		if index > 0 {
+			field = fmt.Sprintf("%s.decryption_keys[%d]", prefix, index-1)
+		}
+		material, ok := decodeCanonicalAES256Key(encoded)
+		if !ok {
+			add(field, "must be canonical standard base64 encoding of exactly 32 bytes")
+			continue
+		}
+		if _, duplicate := seen[material]; duplicate {
+			add(prefix+".decryption_keys", "must not contain duplicate decoded keys")
+			continue
+		}
+		seen[material] = struct{}{}
+	}
+}
+
+func validateSecretKeySeparation(c Config, add func(string, string)) {
+	reserved := make(map[[32]byte]struct{}, 2+len(c.Authentication.MFA.DecryptionKeys))
+	for _, encoded := range append(
+		[]string{c.Authentication.MFA.EncryptionKey},
+		c.Authentication.MFA.DecryptionKeys...,
+	) {
+		if material, ok := decodeAES256Key(encoded); ok {
+			reserved[material] = struct{}{}
+		}
+	}
+	memberlistKey := strings.TrimSpace(c.Cluster.Memberlist.EncryptionKey)
+	if len(memberlistKey) == base64.StdEncoding.EncodedLen(32) ||
+		len(memberlistKey) == base64.RawStdEncoding.EncodedLen(32) {
+		decoded, err := decodeMemberlistKey(memberlistKey)
+		if err == nil && len(decoded) == 32 {
+			var material [32]byte
+			copy(material[:], decoded)
+			reserved[material] = struct{}{}
+		}
+	}
+	mailKeys := make([]string, 0, 1+len(c.Mail.SecretSealing.DecryptionKeys))
+	mailKeys = append(mailKeys, c.Mail.SecretSealing.EncryptionKey)
+	mailKeys = append(mailKeys, c.Mail.SecretSealing.DecryptionKeys...)
+	for index, encoded := range mailKeys {
+		material, ok := decodeCanonicalAES256Key(encoded)
+		if !ok {
+			continue
+		}
+		if _, reused := reserved[material]; !reused {
+			continue
+		}
+		field := "mail.secret_sealing.encryption_key"
+		if index > 0 {
+			field = fmt.Sprintf("mail.secret_sealing.decryption_keys[%d]", index-1)
+		}
+		add(field, "must not reuse MFA or Memberlist key material")
+	}
+}
+
+func decodeCanonicalAES256Key(encoded string) ([32]byte, bool) {
+	var material [32]byte
+	if len(encoded) != base64.StdEncoding.EncodedLen(len(material)) {
+		return material, false
+	}
+	decoded, err := base64.StdEncoding.Strict().DecodeString(encoded)
+	if err != nil || len(decoded) != len(material) ||
+		base64.StdEncoding.EncodeToString(decoded) != encoded {
+		return material, false
+	}
+	copy(material[:], decoded)
+	return material, true
+}
+
+func decodeAES256Key(encoded string) ([32]byte, bool) {
+	var material [32]byte
+	var compact [44]byte
+	compactLength := 0
+	for index := range encoded {
+		character := encoded[index]
+		if character == '\r' || character == '\n' {
+			continue
+		}
+		if compactLength == len(compact) {
+			return material, false
+		}
+		compact[compactLength] = character
+		compactLength++
+	}
+	if compactLength != base64.StdEncoding.EncodedLen(len(material)) {
+		return material, false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(string(compact[:compactLength]))
+	if err != nil || len(decoded) != len(material) {
+		return material, false
+	}
+	copy(material[:], decoded)
+	return material, true
 }
 
 func validateVFS(vfsConfig VFS, add func(string, string)) {
@@ -928,7 +1073,15 @@ func validHostPort(address string) bool {
 }
 
 func decodeMemberlistKey(encoded string) ([]byte, error) {
-	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	trimmed := strings.TrimSpace(encoded)
+	switch len(trimmed) {
+	case base64.StdEncoding.EncodedLen(16),
+		base64.StdEncoding.EncodedLen(24),
+		base64.StdEncoding.EncodedLen(32):
+	default:
+		return nil, errors.New("must decode to 16, 24, or 32 bytes")
+	}
+	key, err := base64.StdEncoding.DecodeString(trimmed)
 	if err != nil {
 		return nil, errors.New("must be base64-encoded")
 	}

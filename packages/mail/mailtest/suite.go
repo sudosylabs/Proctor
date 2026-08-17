@@ -40,6 +40,9 @@ func Run(t *testing.T, factory Factory) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("Send() error = %v, want context.Canceled", err)
 		}
+		if outcome := mail.Classify(err); outcome != mail.OutcomeTemporary {
+			t.Fatalf("Classify(Send() error) = %q, want %q", outcome, mail.OutcomeTemporary)
+		}
 	})
 
 	t.Run("invalid message", func(t *testing.T) {
@@ -49,6 +52,9 @@ func Run(t *testing.T, factory Factory) {
 		_, err := sender.Send(context.Background(), message)
 		if !errors.Is(err, mail.ErrInvalidMessage) {
 			t.Fatalf("Send() error = %v, want ErrInvalidMessage", err)
+		}
+		if outcome := mail.Classify(err); outcome != mail.OutcomePermanent {
+			t.Fatalf("Classify(Send() error) = %q, want %q", outcome, mail.OutcomePermanent)
 		}
 	})
 

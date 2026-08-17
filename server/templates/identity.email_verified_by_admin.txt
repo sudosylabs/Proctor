@@ -1,0 +1,17 @@
+{{/*
+Template properties (templates.Properties):
+  .Copy.Subject — localized message subject
+  .Copy.Preheader — localized inbox preview
+  .Copy.Heading — localized visible heading
+  .Copy.Body — localized primary message
+  .Copy.ActionLabel — localized action label; empty when no action is offered
+  .Copy.Footer — localized closing and safety copy
+  .ActionURL — validated HTTPS action URL; empty when no action is offered
+*/}}
+{{.Copy.Heading}}
+
+{{.Copy.Body}}
+{{if .ActionURL}}
+{{.Copy.ActionLabel}}: {{.ActionURL}}
+{{end}}
+{{.Copy.Footer}}

@@ -11,6 +11,7 @@ import (
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -35,11 +36,14 @@ type FileContent interface {
 // composition package builds these from deployment configuration and concrete
 // adapters; App never holds platform.Service.
 type Dependencies struct {
-	Store       store.Catalog
-	Cache       authenticationCache
-	Mailer      AccountMailer
-	Registry    externalProviderSource
-	FileContent FileContent
+	Store  store.Catalog
+	Cache  authenticationCache
+	Mailer AccountMailer
+	// MailSecretSealer is the concrete in-process cryptographic module for
+	// recoverable mail payloads. It is nil until an independent ring is configured.
+	MailSecretSealer *secretseal.Sealer
+	Registry         externalProviderSource
+	FileContent      FileContent
 
 	NodeID    string
 	PublicURL string

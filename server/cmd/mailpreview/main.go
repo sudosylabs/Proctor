@@ -1,0 +1,72 @@
+// Copyright 2026 SudoSylabs
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Command mailpreview renders deterministic representative transactional mail.
+package main
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"html"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/sudosylabs/proctor/server/i18n"
+	mailtemplates "github.com/sudosylabs/proctor/server/templates"
+)
+
+func main() {
+	if err := run(os.Args[1:], os.Stderr); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string, stderr io.Writer) error {
+	flags := flag.NewFlagSet("mailpreview", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	output := flags.String("output", "", "directory that will receive deterministic previews")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || strings.TrimSpace(*output) == "" {
+		return errors.New("usage: mailpreview -output <directory>")
+	}
+	renderer, err := mailtemplates.DefaultRenderer()
+	if err != nil {
+		return fmt.Errorf("construct mail renderer: %w", err)
+	}
+	if err := os.MkdirAll(*output, 0o755); err != nil {
+		return fmt.Errorf("create preview directory: %w", err)
+	}
+
+	var index strings.Builder
+	index.WriteString("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Proctor mail previews</title></head><body>\n")
+	index.WriteString("<h1>Proctor transactional-mail previews</h1>\n<ul>\n")
+	for _, key := range i18n.AllKeys() {
+		message, renderErr := renderer.Render(mailtemplates.Request{
+			Key: key, RecipientLocale: "en", InstallationLocale: "en",
+			ActionURL: "https://proctor.example.test/representative#token=not-a-credential",
+		})
+		if renderErr != nil {
+			return fmt.Errorf("render preview %q: %w", key, renderErr)
+		}
+		base := string(key)
+		if err := os.WriteFile(filepath.Join(*output, base+".html"), []byte(message.HTML), 0o644); err != nil {
+			return fmt.Errorf("write HTML preview %q: %w", key, err)
+		}
+		if err := os.WriteFile(filepath.Join(*output, base+".txt"), []byte(message.Text), 0o644); err != nil {
+			return fmt.Errorf("write text preview %q: %w", key, err)
+		}
+		fmt.Fprintf(&index, "<li><a href=\"%s.html\">%s</a> — <a href=\"%s.txt\">text</a></li>\n",
+			html.EscapeString(base), html.EscapeString(message.Subject), html.EscapeString(base))
+	}
+	index.WriteString("</ul>\n</body></html>\n")
+	if err := os.WriteFile(filepath.Join(*output, "index.html"), []byte(index.String()), 0o644); err != nil {
+		return fmt.Errorf("write preview index: %w", err)
+	}
+	return nil
+}

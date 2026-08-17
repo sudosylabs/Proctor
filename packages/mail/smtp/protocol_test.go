@@ -14,21 +14,72 @@ import (
 	mailsmtp "github.com/sudosylabs/proctor/packages/mail/smtp"
 )
 
-func TestRecipientRejectionIsClassified(t *testing.T) {
+func TestRecipientRejectionOutcomeIsClassified(t *testing.T) {
 	t.Parallel()
 
-	address, wait := startSMTPServer(t, func(connection net.Conn) error {
-		return serveSMTP(connection, func(command string) string {
-			if strings.HasPrefix(command, "RCPT TO:") {
-				return "550 5.1.1 recipient rejected"
+	tests := []struct {
+		name     string
+		response string
+		outcome  mail.Outcome
+	}{
+		{name: "temporary", response: "450 4.2.0 mailbox busy", outcome: mail.OutcomeTemporary},
+		{name: "permanent", response: "550 5.1.1 recipient rejected", outcome: mail.OutcomePermanent},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			address, wait := startSMTPServer(t, func(connection net.Conn) error {
+				return serveSMTP(connection, func(command string) string {
+					if strings.HasPrefix(command, "RCPT TO:") {
+						return test.response
+					}
+					return ""
+				})
+			})
+			sender := newTestSender(t, address, mailsmtp.SecurityNone)
+			_, err := sender.Send(t.Context(), testMessage())
+			if !errors.Is(err, mail.ErrRejected) {
+				t.Fatal("Send() error does not match ErrRejected")
 			}
-			return ""
+			if outcome := mail.Classify(err); outcome != test.outcome {
+				t.Fatalf("Classify(Send() error) = %q, want %q", outcome, test.outcome)
+			}
+			wait()
 		})
-	})
+	}
+}
+
+func TestNetworkFailureBeforeTransmissionIsTemporary(t *testing.T) {
+	t.Parallel()
+
+	address, wait := startSMTPServer(t, func(net.Conn) error { return nil })
 	sender := newTestSender(t, address, mailsmtp.SecurityNone)
 	_, err := sender.Send(t.Context(), testMessage())
-	if !errors.Is(err, mail.ErrRejected) {
-		t.Fatalf("Send() error = %v, want ErrRejected", err)
+	if !errors.Is(err, mail.ErrConnection) {
+		t.Fatal("Send() error does not match ErrConnection")
+	}
+	if outcome := mail.Classify(err); outcome != mail.OutcomeTemporary {
+		t.Fatalf("Classify(Send() error) = %q, want %q", outcome, mail.OutcomeTemporary)
+	}
+	wait()
+}
+
+func TestConnectionLossAfterTransmissionIsAcceptanceUncertain(t *testing.T) {
+	t.Parallel()
+
+	address, wait := startSMTPServer(t, serveSMTPThenDropBeforeCommitResponse)
+	sender := newTestSender(t, address, mailsmtp.SecurityNone)
+	_, err := sender.Send(t.Context(), testMessage())
+	if !errors.Is(err, mail.ErrConnection) {
+		t.Fatal("Send() error does not match ErrConnection")
+	}
+	if outcome := mail.Classify(err); outcome != mail.OutcomeAcceptanceUncertain {
+		t.Fatalf(
+			"Classify(Send() error) = %q, want %q",
+			outcome,
+			mail.OutcomeAcceptanceUncertain,
+		)
 	}
 	wait()
 }
@@ -143,6 +194,56 @@ func serveSMTP(connection net.Conn, response func(command string) string) error 
 		}
 	}
 	return scanner.Err()
+}
+
+func serveSMTPThenDropBeforeCommitResponse(connection net.Conn) error {
+	reader := bufio.NewReader(connection)
+	writer := bufio.NewWriter(connection)
+	if _, err := writer.WriteString("220 test.example ESMTP ready\r\n"); err != nil {
+		return err
+	}
+	if err := writer.Flush(); err != nil {
+		return err
+	}
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		command := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		switch {
+		case strings.HasPrefix(command, "EHLO "):
+			if _, err := writer.WriteString("250-test.example\r\n250 SIZE 26214400\r\n"); err != nil {
+				return err
+			}
+		case strings.HasPrefix(command, "MAIL FROM:"), strings.HasPrefix(command, "RCPT TO:"):
+			if _, err := writer.WriteString("250 2.0.0 ok\r\n"); err != nil {
+				return err
+			}
+		case command == "DATA":
+			if _, err := writer.WriteString("354 send message\r\n"); err != nil {
+				return err
+			}
+			if err := writer.Flush(); err != nil {
+				return err
+			}
+			for {
+				line, err = reader.ReadString('\n')
+				if err != nil {
+					return err
+				}
+				if line == ".\r\n" {
+					return nil
+				}
+			}
+		default:
+			return fmt.Errorf("unexpected SMTP command %q", command)
+		}
+		if err := writer.Flush(); err != nil {
+			return err
+		}
+	}
 }
 
 func responseFor(response func(string) string, command string) string {

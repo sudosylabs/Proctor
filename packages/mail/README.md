@@ -21,6 +21,7 @@ The package owns:
 - SMTP with cleartext development mode, required STARTTLS, or implicit TLS;
 - PLAIN and LOGIN authentication over encrypted connections;
 - context cancellation and bounded connection lifetimes;
+- portable temporary, permanent, and acceptance-uncertain failure outcomes;
 - an in-memory sender and reusable conformance suite.
 
 The package deliberately does not own application templates, localization,
@@ -115,6 +116,37 @@ The sender supports:
 Credentials are rejected when transport security is disabled. Certificate
 verification is enabled by default. A custom `tls.Config` may be supplied for
 private school certificate authorities.
+
+## Delivery outcomes
+
+Every conforming sender classifies a failed send without requiring application
+code to understand its transport:
+
+```go
+switch mail.Classify(err) {
+case mail.OutcomeTemporary:
+	// The transport definitely did not accept the message; retry may succeed.
+case mail.OutcomePermanent:
+	// The same message cannot succeed without an external change.
+case mail.OutcomeAcceptanceUncertain:
+	// Transmission began and remote acceptance cannot be ruled out.
+case mail.OutcomeUnknown:
+	// The error came from a non-conforming sender.
+}
+```
+
+SMTP 4xx replies and failures before transmission are temporary. SMTP 5xx
+replies and local message validation failures are permanent. A connection loss
+while writing or committing `DATA` is acceptance-uncertain; a retry can produce
+a duplicate and should reuse the original Message-ID. Successful `DATA`
+completion remains the acceptance boundary, so a later `QUIT` failure does not
+turn success into an error.
+
+Outcome annotation preserves the existing portable errors. For example, a
+temporary recipient rejection still matches `mail.ErrRejected` through
+`errors.Is`. Transport implementers can use `mail.WithOutcome` when protocol
+state provides a more precise result than the conservative classifications of
+the existing errors.
 
 ## Attachments
 

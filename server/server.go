@@ -78,6 +78,12 @@ type runtimeJobs interface {
 	Close() error
 }
 
+// runtimeReconciler owns bounded durable startup convergence that must complete
+// after infrastructure is ready and before any worker or transport can serve.
+type runtimeReconciler interface {
+	ReconcileSystemAdministratorRole(context.Context) error
+}
+
 type runtimeReadiness interface {
 	Ready() bool
 	SetReady(bool)
@@ -160,15 +166,16 @@ func runtimeSettingsFromConfig(settings config.Server) runtimeSettings {
 }
 
 type runtimeComponents struct {
-	platform  runtimePlatform
-	settings  runtimeSettings
-	logger    runtimeLogger
-	jobs      runtimeJobs
-	transport runtimeTransport
-	websocket runtimeWebSocket
-	readiness runtimeReadiness
-	listen    func(string, string) (net.Listener, error)
-	newHTTP   func(httpServerSettings) httpRuntime
+	platform   runtimePlatform
+	reconciler runtimeReconciler
+	settings   runtimeSettings
+	logger     runtimeLogger
+	jobs       runtimeJobs
+	transport  runtimeTransport
+	websocket  runtimeWebSocket
+	readiness  runtimeReadiness
+	listen     func(string, string) (net.Listener, error)
+	newHTTP    func(httpServerSettings) httpRuntime
 }
 
 // lifecycleMilestones records only stages that the node successfully entered.
@@ -303,6 +310,17 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	s.recordStarted(func(m *lifecycleMilestones) { m.platformStarted = true })
 	if runCtx.Err() != nil {
 		return nil
+	}
+	if s.components.reconciler != nil {
+		if err := s.components.reconciler.ReconcileSystemAdministratorRole(runCtx); err != nil {
+			if gracefulCancellation(err, runCtx.Err()) {
+				return nil
+			}
+			return fmt.Errorf("reconcile protected built-in roles: %w", err)
+		}
+		if runCtx.Err() != nil {
+			return nil
+		}
 	}
 	if s.components.jobs != nil {
 		if err := s.components.jobs.Start(runCtx); err != nil {

@@ -10,6 +10,7 @@ import (
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/secretseal"
 )
 
 // App is the long-lived application facade. Construction receives only the
@@ -54,6 +55,7 @@ type App struct {
 	realtime                          *realtimeService
 	jobs                              *jobengine.Engine
 	jobOperations                     *jobOperationsService
+	mailSecretSealer                  *secretseal.Sealer
 
 	// Cross-cutting policy and ports still used by App-method facades that
 	// have not yet been extracted into focused services.

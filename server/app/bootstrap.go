@@ -9,6 +9,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,6 +38,7 @@ type BootstrapInstallationCommand struct {
 type installationStore interface {
 	Get(context.Context) (*model.InstallationState, error)
 	Bootstrap(context.Context, *store.InstallationBootstrap) (*model.InstallationBootstrapResult, error)
+	ReconcileSystemAdministratorRole(context.Context, *store.SystemAdministratorRoleReconciliation) (*store.SystemAdministratorRoleReconciliationResult, error)
 }
 
 type passwordHash interface {
@@ -65,6 +68,30 @@ func newBootstrapService(
 		rateLimitWindow: rateLimit.Window, maximumSourceAttempts: rateLimit.MaximumSourceAttempts,
 		nodeID: nodeID, now: now,
 	}
+}
+
+// ReconcileSystemAdministratorRole adds newly registered grantable actions to
+// the protected built-in Role before this node serves application traffic.
+func (a *App) ReconcileSystemAdministratorRole(ctx context.Context) error {
+	if a == nil || a.bootstrap == nil {
+		return errors.New("system-administrator Role reconciliation is unavailable")
+	}
+	return a.bootstrap.ReconcileSystemAdministratorRole(ctx)
+}
+
+func (s *bootstrapService) ReconcileSystemAdministratorRole(ctx context.Context) error {
+	_, err := s.installations.ReconcileSystemAdministratorRole(ctx, &store.SystemAdministratorRoleReconciliation{
+		RequiredPermissions: model.AllActions(),
+		ReconciledAt:        s.now().UnixMilli(),
+		AuditEvent: &model.AuditEvent{
+			Action: "role.system_admin.reconcile", Status: model.AuditStatusSuccess,
+			NodeID: s.nodeID, ClientType: "system",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("reconcile protected system-administrator Role: %w", err)
+	}
+	return nil
 }
 
 func (a *App) GetInstallationStatus(ctx context.Context, _ GetInstallationStatusQuery) (*model.InstallationStatus, error) {

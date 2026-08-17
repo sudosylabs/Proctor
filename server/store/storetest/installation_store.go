@@ -5,7 +5,9 @@ package storetest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 
@@ -17,6 +19,17 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	if _, err := ss.Installation().Get(ctx); !store.IsNotFound(err) {
 		t.Fatalf("Get(pristine) error = %v", err)
+	}
+	pristine, err := ss.Installation().ReconcileSystemAdministratorRole(
+		ctx,
+		testSystemAdministratorRoleReconciliation(0),
+	)
+	requireNoError(t, err)
+	if pristine == nil || pristine.Changed || pristine.Role != nil || len(pristine.AddedPermissions) != 0 {
+		t.Fatalf("ReconcileSystemAdministratorRole(pristine) = %#v", pristine)
+	}
+	if events, err := ss.Audit().List(ctx, store.AuditListOptions{Action: "role.system_admin.reconcile", Limit: 10}); err != nil || len(events) != 0 {
+		t.Fatalf("pristine reconciliation audit events=%#v error=%v", events, err)
 	}
 	mismatched := testInstallationBootstrap(97)
 	mismatched.DefaultProfilePictureJob.Command = defaultProfilePictureCommand(model.NewUserID())
@@ -143,6 +156,116 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		events[0].ActorID != winner.Administrator.ID {
 		t.Fatalf("bootstrap audit events = %#v", events)
 	}
+	customRole, err := ss.Role().Save(ctx, &model.Role{
+		Name: "reconciliation-control", DisplayName: "Reconciliation Control",
+		Permissions: []string{string(model.ActionClassView)},
+	})
+	requireNoError(t, err)
+	customRoleBefore := customRole.Clone()
+	bindingBefore, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID.String())
+	requireNoError(t, err)
+
+	type reconciliationOutcome struct {
+		result *store.SystemAdministratorRoleReconciliationResult
+		err    error
+	}
+	reconciliations := make(chan reconciliationOutcome, attempts)
+	for index := 0; index < attempts; index++ {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			result, err := ss.Installation().ReconcileSystemAdministratorRole(
+				ctx,
+				testSystemAdministratorRoleReconciliation(index+1),
+			)
+			reconciliations <- reconciliationOutcome{result: result, err: err}
+		}(index)
+	}
+	wait.Wait()
+	close(reconciliations)
+
+	reconciled := 0
+	missing := model.AllActions()[0]
+	for current := range reconciliations {
+		requireNoError(t, current.err)
+		if current.result == nil || current.result.Role == nil {
+			t.Fatalf("ReconcileSystemAdministratorRole() = %#v", current.result)
+		}
+		if current.result.Changed {
+			reconciled++
+			if !slices.Equal(current.result.AddedPermissions, []string{missing}) {
+				t.Fatalf("added permissions = %#v, want %q", current.result.AddedPermissions, missing)
+			}
+		}
+	}
+	if reconciled != 1 {
+		t.Fatalf("changed reconciliation outcomes = %d, want 1", reconciled)
+	}
+
+	protected, err := ss.Role().GetByName(ctx, model.SystemAdministratorRoleName)
+	requireNoError(t, err)
+	for _, permission := range model.AllActions() {
+		if !slices.Contains(protected.Permissions, permission) {
+			t.Fatalf("reconciled role omitted required permission %q: %#v", permission, protected.Permissions)
+		}
+	}
+	if !slices.Contains(protected.Permissions, "future.unknown") {
+		t.Fatalf("reconciliation removed an unknown downgrade permission: %#v", protected.Permissions)
+	}
+	customRole, err = ss.Role().Get(ctx, customRole.ID.String())
+	requireNoError(t, err)
+	if customRole.ID != customRoleBefore.ID || customRole.Name != customRoleBefore.Name ||
+		customRole.DisplayName != customRoleBefore.DisplayName ||
+		!customRole.UpdatedAt.Equal(customRoleBefore.UpdatedAt) ||
+		!slices.Equal(customRole.Permissions, customRoleBefore.Permissions) {
+		t.Fatalf("reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
+	}
+	bindingAfter, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID.String())
+	requireNoError(t, err)
+	if *bindingAfter != *bindingBefore {
+		t.Fatalf("reconciliation changed a Role Binding: before=%#v after=%#v", bindingBefore, bindingAfter)
+	}
+	reconciliationEvents, err := ss.Audit().List(ctx, store.AuditListOptions{
+		Action: "role.system_admin.reconcile", Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(reconciliationEvents) != 1 ||
+		reconciliationEvents[0].Status != model.AuditStatusSuccess ||
+		!reconciliationEvents[0].ActorID.IsZero() ||
+		reconciliationEvents[0].Resource.Type != model.ResourceInstitution ||
+		reconciliationEvents[0].Resource.ID != winner.Institution.ID.String() ||
+		reconciliationEvents[0].ScopeType != model.RoleScopeInstitution ||
+		reconciliationEvents[0].ScopeID != winner.Institution.ID.String() {
+		t.Fatalf("reconciliation audit events = %#v", reconciliationEvents)
+	}
+	var auditResult struct {
+		RoleID           string   `json:"role_id"`
+		AddedPermissions []string `json:"added_permissions"`
+	}
+	if err := json.Unmarshal(reconciliationEvents[0].Result, &auditResult); err != nil {
+		t.Fatal(err)
+	}
+	if auditResult.RoleID != protected.ID.String() || !slices.Equal(auditResult.AddedPermissions, []string{missing}) {
+		t.Fatalf("reconciliation audit result = %#v", auditResult)
+	}
+
+	noOp, err := ss.Installation().ReconcileSystemAdministratorRole(ctx, testSystemAdministratorRoleReconciliation(10))
+	requireNoError(t, err)
+	if noOp == nil || noOp.Role == nil || noOp.Changed || len(noOp.AddedPermissions) != 0 {
+		t.Fatalf("ReconcileSystemAdministratorRole(no-op) = %#v", noOp)
+	}
+	reconciliationEvents, err = ss.Audit().List(ctx, store.AuditListOptions{
+		Action: "role.system_admin.reconcile", Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(reconciliationEvents) != 1 {
+		t.Fatalf("no-op reconciliation wrote an audit event: %#v", reconciliationEvents)
+	}
+	invalid := testSystemAdministratorRoleReconciliation(11)
+	invalid.RequiredPermissions = []string{"future.unknown"}
+	if _, err := ss.Installation().ReconcileSystemAdministratorRole(ctx, invalid); err == nil {
+		t.Fatal("ReconcileSystemAdministratorRole() accepted an unknown required permission")
+	}
 	if _, err := ss.Installation().Bootstrap(ctx, testInstallationBootstrap(99)); !store.IsConflict(err) {
 		t.Fatalf("Bootstrap(initialized) error = %v", err)
 	}
@@ -166,6 +289,8 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 	if appErr != nil {
 		panic(appErr)
 	}
+	required := model.AllActions()
+	permissions := append([]string{"future.unknown"}, required[1:]...)
 	return &store.InstallationBootstrap{
 		Institution: institution, Administrator: creation.User, AdministratorSettings: creation.Settings,
 		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$MTIzNDU2Nzg5MDEyMzQ1Ng$MTIzNDU2Nzg5MDEyMzQ1Ng",
@@ -173,7 +298,7 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 			ID: model.RoleID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
 			UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 			Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
-			Permissions: model.AllActions(), BuiltIn: true,
+			Permissions: permissions, BuiltIn: true,
 		},
 		RoleBinding: &model.RoleBinding{
 			ID: model.RoleBindingID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
@@ -187,5 +312,16 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 			Parameters: parameters,
 		},
 		DefaultProfilePictureJob: creation.DefaultProfilePictureJob,
+	}
+}
+
+func testSystemAdministratorRoleReconciliation(index int) *store.SystemAdministratorRoleReconciliation {
+	return &store.SystemAdministratorRoleReconciliation{
+		RequiredPermissions: model.AllActions(),
+		ReconciledAt:        int64(index + 100),
+		AuditEvent: &model.AuditEvent{
+			Action: "role.system_admin.reconcile", Status: model.AuditStatusSuccess,
+			NodeID: fmt.Sprintf("store-test-%d", index), ClientType: "system",
+		},
 	}
 }

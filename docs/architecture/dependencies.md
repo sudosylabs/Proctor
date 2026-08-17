@@ -7,6 +7,8 @@ model ← store ← app/job ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
+secretseal ← app
+i18n ← templates ← cmd/mailpreview
 app ← app/api
 model ← filecontent
 packages/vfs ← filecontent
@@ -24,6 +26,9 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
 | `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
+| `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
+| `i18n` | Standard library and embedded server-owned locale catalogs | application, domain, persistence, transports, concrete adapters |
+| `templates` | `i18n`, standard-library HTML and text templating | application, persistence, transport, mail adapters |
 | `app` | `model`, `store`, `app/job`, `app/realtime`, `app/exam`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
@@ -31,6 +36,7 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
 | `server` | Construction dependencies | Business rules |
 | `cmd/proctor` | Module-root `server` | Independent infrastructure construction |
+| `cmd/mailpreview` | `templates`, `i18n`, standard library | application, persistence, infrastructure adapters, mail delivery |
 
 Tests and `testlib` may cross production boundaries for verification. An architecture test enforces the production allowlist.
 
@@ -53,11 +59,22 @@ product meaning and policy:
   validation, SMTP, and sender conformance. The server owns templates,
   localization, recipients, rate limits, retries, and durable delivery policy.
   Mail is not sent synchronously inside a durable business transaction.
+- `secretseal` owns versioned AES-256-GCM envelopes, bounded key rings,
+  authenticated purpose/owner binding, and safe cryptographic failures for
+  recoverable server application secrets. It has no persistence or
+  configuration dependency and is used directly as an in-process module, not
+  hidden behind a replaceable cryptography port.
+- `packages/guest` owns the exam-blind execution-host contract: readiness,
+  ensure and revoke, tree projection, one PTY, freeze, capacity, and typed
+  errors. The server owns the Execution Profile, placement, workspace
+  acknowledgement, the Attempt Terminal bridge, and when a grant may exist.
+  The Execution Host binary lives outside this repository and implements the
+  server side of that contract. Isolation machinery stays there.
 
-Identity, authorization, examinations, WebSockets, clustering, MFA, and a
-future coderunner remain server concerns until they have coherent
-Proctor-independent contracts, plausible external consumers, and their own
-compatibility policies.
+Identity, authorization, examinations, WebSockets, clustering, and MFA
+remain server concerns until they have coherent Proctor-independent
+contracts, plausible external consumers, and their own compatibility
+policies.
 
 ## Rationale
 

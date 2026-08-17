@@ -9,7 +9,7 @@ PROCTOR_TEST_S3_ENDPOINT ?= 127.0.0.1:$(PROCTOR_MINIO_PORT)
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT
 
-.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs conformance-postgres conformance-realtime
+.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs conformance-postgres conformance-realtime
 
 check: architecture openapi-agreement test test-race vet
 
@@ -33,6 +33,22 @@ vet:
 
 build:
 	go build ./...
+
+mail-templates-install:
+	cd templates && npm ci
+
+mail-templates-generate:
+	cd templates && npm run generate
+
+mail-templates-check:
+	cd templates && npm run check
+
+mail-templates-test:
+	cd templates && npm test
+
+mail-preview:
+	@test -n "$(OUTPUT)" || (echo 'usage: make -C server mail-preview OUTPUT=/path/to/previews' >&2; exit 2)
+	go run ./cmd/mailpreview -output "$(OUTPUT)"
 
 postgres-up:
 	$(COMPOSE) up --detach --wait postgres

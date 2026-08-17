@@ -140,6 +140,9 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "platform cannot select concrete adapters", from: serverModule + "/platform", imported: "github.com/sudosylabs/proctor/packages/cache/redis"},
 		{name: "command cannot bypass root composition", from: serverModule + "/cmd/proctor", imported: serverModule + "/app"},
 		{name: "command cannot open SQL directly", from: serverModule + "/cmd/proctor", imported: "database/sql"},
+		{name: "localization cannot import application", from: serverModule + "/i18n", imported: serverModule + "/app"},
+		{name: "mail templates cannot import transport", from: serverModule + "/templates", imported: repositoryModule + "/packages/mail"},
+		{name: "mail preview cannot import application", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/app"},
 		{name: "reusable module cannot import server", from: repositoryModule + "/packages/cache", imported: serverModule + "/model"},
 		{name: "unknown package is fail closed", from: serverModule + "/services", imported: "context"},
 	}
@@ -190,6 +193,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "cluster adapter may import cluster contracts", from: serverModule + "/cluster/memberlist", imported: serverModule + "/cluster"},
 		{name: "application may import password hashing library", from: serverModule + "/app", imported: "golang.org/x/crypto/argon2"},
 		{name: "root composition may import platform", from: serverModule, imported: serverModule + "/platform"},
+		{name: "mail templates may import localization", from: serverModule + "/templates", imported: serverModule + "/i18n"},
+		{name: "mail preview may import templates", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/templates"},
 		{name: "standard library remains available", from: serverModule + "/app", imported: "context"},
 		{name: "model build tools may import standard library", from: serverModule + "/model/internal/idgen", imported: "go/format"},
 	}
@@ -303,12 +308,22 @@ func forbiddenImport(from, imported string) bool {
 				serverModule+"/model",
 				repositoryModule+"/packages/vfs",
 			)
+	case from == serverModule+"/secretseal":
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			strings.HasPrefix(imported, repositoryModule+"/")
+	case from == serverModule+"/i18n":
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			strings.HasPrefix(imported, repositoryModule+"/")
+	case from == serverModule+"/templates":
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/i18n")
 	case applicationPackage(from):
 		return standardInfrastructureImport(imported) ||
 			(thirdPartyImport(imported) && imported != "golang.org/x/crypto/argon2") ||
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
 				imported != serverModule+"/model" && imported != serverModule+"/store" &&
 				imported != serverModule+"/app/job" && imported != serverModule+"/app/realtime" &&
+				imported != serverModule+"/secretseal" &&
 				!packageOrBelow(imported, serverModule+"/app/exam"))
 	case httpOrWebSocketPackage(from):
 		return standardInfrastructureImportExceptHTTP(imported) ||
@@ -332,6 +347,11 @@ func forbiddenImport(from, imported string) bool {
 			packageOrBelow(imported, serverModule+"/app") ||
 			packageOrBelow(imported, serverModule+"/websocket")
 	case strings.HasPrefix(from, serverModule+"/cmd/"):
+		if from == serverModule+"/cmd/mailpreview" {
+			return thirdPartyImport(imported) ||
+				(strings.HasPrefix(imported, repositoryModule+"/") &&
+					imported != serverModule+"/i18n" && imported != serverModule+"/templates")
+		}
 		return commandInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule)
 	case from == serverModule+"/config", from == serverModule+"/mlog", from == serverModule+"/migrations":
@@ -413,7 +433,10 @@ func knownProductionPackage(packagePath string) bool {
 		packageOrBelow(packagePath, serverModule+"/model/internal/idgen") ||
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
 		packagePath == serverModule+"/mlog" || packagePath == serverModule+"/migrations" ||
-		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" {
+		packagePath == serverModule+"/secretseal" ||
+		packagePath == serverModule+"/i18n" || packagePath == serverModule+"/templates" ||
+		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" ||
+		packagePath == serverModule+"/cmd/mailpreview" {
 		return true
 	}
 	return applicationPackage(packagePath) || httpOrWebSocketPackage(packagePath) ||

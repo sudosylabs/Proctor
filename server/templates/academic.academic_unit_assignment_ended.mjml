@@ -1,0 +1,20 @@
+<!--
+Template properties (templates.Properties):
+  .Copy.Subject — localized message subject
+  .Copy.Preheader — localized inbox preview
+  .Copy.Heading — localized visible heading
+  .Copy.Body — localized primary message
+  .Copy.ActionLabel — localized action label; empty when no action is offered
+  .Copy.Footer — localized closing and safety copy
+  .ActionURL — validated HTTPS action URL; empty when no action is offered
+-->
+<mjml>
+  <mj-head>
+    <mj-title>{{.Copy.Subject}}</mj-title>
+    <mj-preview>{{.Copy.Preheader}}</mj-preview>
+    <mj-include path="./partials/foundation-head.mjml" />
+  </mj-head>
+  <mj-body background-color="#f4f5f7">
+    <mj-include path="./partials/foundation-message.mjml" />
+  </mj-body>
+</mjml>

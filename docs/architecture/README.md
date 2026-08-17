@@ -18,6 +18,8 @@ change:
   atomic operations
 - [Identity and authentication](./identity.md) — accounts, sessions, tokens,
   MFA, CAS, and OIDC
+- [Access and onboarding](./access-and-onboarding.md) — bootstrap, access
+  policy, hosted authentication, desktop handoff, invitations, and batches
 - [Authorization and audit](./authorization.md) — actions, resources, scopes,
   enforcement, and durable decisions
 - [Configuration](./configuration.md) — deployment configuration and
@@ -29,8 +31,12 @@ change:
 - [Persistence](./persistence.md) — stores, layers, schema, and migrations
 - [File management](./files.md) — application metadata, VFS content, search,
   and live workspaces
+- [Execution environments](./execution.md) — attempt terminals, host
+  contract, projection, and deployment topology
 - [Durable jobs](./jobs.md) — finite background work, claiming, retries,
   cancellation, and traceability
+- [Transactional mail](./mail.md) — templates, durable delivery, recipients,
+  encryption, retries, and operator control
 - [Runtime and operations](./runtime.md) — effects, clustering, observability,
   naming, testing, and migration acceptance
 - [Security and privacy](./security.md) — data handling and operational

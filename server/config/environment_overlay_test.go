@@ -12,8 +12,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 95 {
-		t.Fatalf("environment override definitions = %d, want 95", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 97 {
+		t.Fatalf("environment override definitions = %d, want 97", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
@@ -231,6 +231,14 @@ func validBaseForEnvironmentOverride(key string) Config {
 		base.VFS.Backend = "s3"
 		base.VFS.S3.Endpoint = "127.0.0.1:9000"
 		base.VFS.S3.Bucket = "proctor"
+	case "PROCTOR_MAIL_ENABLED":
+		base.Mail.SecretSealing.EncryptionKey = base64.StdEncoding.EncodeToString(
+			[]byte("mail-primary-key-material-32-byt"),
+		)
+	case "PROCTOR_MAIL_SECRET_SEALING_DECRYPTION_KEYS":
+		base.Mail.SecretSealing.EncryptionKey = base64.StdEncoding.EncodeToString(
+			[]byte("mail-primary-key-material-32-byt"),
+		)
 	case "PROCTOR_AUTHENTICATION_MFA_ENABLED":
 		base.Authentication.MFA.Enabled = true
 		base.Authentication.MFA.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))

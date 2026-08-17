@@ -36,6 +36,13 @@ func (s *installationStoreFake) Bootstrap(_ context.Context, input *store.Instal
 	return s.result, s.err
 }
 
+func (s *installationStoreFake) ReconcileSystemAdministratorRole(
+	context.Context,
+	*store.SystemAdministratorRoleReconciliation,
+) (*store.SystemAdministratorRoleReconciliationResult, error) {
+	return &store.SystemAdministratorRoleReconciliationResult{}, nil
+}
+
 type passwordHasherFake struct {
 	events *[]string
 	hash   string
@@ -144,6 +151,9 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	}
 	if persistence.input.AuditEvent.NodeID != "node-a" || persistence.input.Role.BuiltIn != true {
 		t.Fatalf("bootstrap input = %#v", persistence.input)
+	}
+	if !reflect.DeepEqual(persistence.input.Role.Permissions, model.AllActions()) {
+		t.Fatalf("bootstrap system-administrator permissions = %#v, want %#v", persistence.input.Role.Permissions, model.AllActions())
 	}
 	if persistence.input.DefaultProfilePictureJob == nil ||
 		persistence.input.DefaultProfilePictureJob.DedupeKey != persistence.input.Administrator.ID.String() {

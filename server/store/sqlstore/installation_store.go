@@ -5,7 +5,10 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -99,6 +102,146 @@ func (s SQLInstallationStore) Bootstrap(
 		}
 		return prepared.InstallationBootstrapResult, nil
 	})
+}
+
+func (s SQLInstallationStore) ReconcileSystemAdministratorRole(
+	ctx context.Context,
+	input *store.SystemAdministratorRoleReconciliation,
+) (*store.SystemAdministratorRoleReconciliationResult, error) {
+	if err := validateSystemAdministratorRoleReconciliation(input); err != nil {
+		return nil, err
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "reconcile system-administrator role", func(ctx context.Context, tx *sqlxTxWrapper) (*store.SystemAdministratorRoleReconciliationResult, error) {
+		var state installationStateRow
+		if err := tx.Get(ctx, &state, `
+			SELECT initialized_at, institution_id, administrator_user_id
+			  FROM installation_states
+			 WHERE singleton = 1
+			 FOR UPDATE`); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				pristine, pristineErr := installationIsPristine(ctx, tx)
+				if pristineErr != nil {
+					return nil, pristineErr
+				}
+				if pristine {
+					return &store.SystemAdministratorRoleReconciliationResult{}, nil
+				}
+				return nil, store.NewErrConflict("installation", "initialized_state_missing", nil)
+			}
+			return nil, fmt.Errorf("get installation for role reconciliation: %w", err)
+		}
+		installation, err := state.model()
+		if err != nil {
+			return nil, err
+		}
+
+		var row roleRow
+		if err := tx.Get(ctx, &row, `
+			SELECT id, created_at, updated_at, archived_at, name, display_name,
+			       description, permissions, built_in
+			  FROM roles
+			 WHERE name = $1
+			 FOR UPDATE`, model.SystemAdministratorRoleName); err != nil {
+			return nil, fmt.Errorf("get protected role for reconciliation: %w", translateError("role", "name="+model.SystemAdministratorRoleName, err))
+		}
+		role, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		if !role.BuiltIn || role.IsArchived() {
+			return nil, store.NewErrConflict("role", "system_administrator_role_invalid", nil)
+		}
+
+		permissions, added := mergeRequiredPermissions(role.Permissions, input.RequiredPermissions)
+		if len(added) == 0 {
+			return &store.SystemAdministratorRoleReconciliationResult{Role: role}, nil
+		}
+		candidate := role.Clone()
+		candidate.Permissions = permissions
+		at := model.TimeFromMillis(input.ReconciledAt)
+		if !at.After(candidate.UpdatedAt) {
+			at = candidate.UpdatedAt.Add(time.Microsecond)
+		}
+		candidate.PrepareUpdate(at)
+		if err := candidate.Validate(); err != nil {
+			return nil, store.NewErrInvalidInput("role", "reconciliation", nil).Wrap(err)
+		}
+		updated := newRoleRow(candidate)
+		if _, err := tx.Exec(ctx, `
+			UPDATE roles
+			   SET updated_at = $1, permissions = $2
+			 WHERE id = $3 AND built_in = TRUE AND archived_at IS NULL`,
+			updated.UpdatedAt, updated.Permissions, updated.ID,
+		); err != nil {
+			return nil, fmt.Errorf("update protected role reconciliation: %w", translateError("role", candidate.ID.String(), err))
+		}
+
+		event := input.AuditEvent.Clone()
+		event.Resource = model.Resource{Type: model.ResourceInstitution, ID: installation.InstitutionID.String()}
+		event.ScopeType = model.RoleScopeInstitution
+		event.ScopeID = installation.InstitutionID.String()
+		event.Result, err = model.EncodeAuditData(map[string]any{
+			"role_id": candidate.ID.String(), "added_permissions": added,
+		})
+		if err != nil {
+			return nil, err
+		}
+		event.PrepareCreate(model.NewAuditEventID(), at)
+		if err := event.Validate(); err != nil {
+			return nil, store.NewErrInvalidInput("audit_event", "reconciliation", nil).Wrap(err)
+		}
+		if err := insertInstallationAudit(ctx, tx, event); err != nil {
+			return nil, fmt.Errorf("save protected role reconciliation audit: %w", err)
+		}
+		return &store.SystemAdministratorRoleReconciliationResult{
+			Role: candidate, Changed: true, AddedPermissions: added,
+		}, nil
+	})
+}
+
+func validateSystemAdministratorRoleReconciliation(input *store.SystemAdministratorRoleReconciliation) error {
+	if input == nil || input.ReconciledAt <= 0 || input.AuditEvent == nil ||
+		!input.AuditEvent.ID.IsZero() || input.AuditEvent.Action != "role.system_admin.reconcile" ||
+		input.AuditEvent.Status != model.AuditStatusSuccess || input.AuditEvent.NodeID == "" ||
+		!input.AuditEvent.ActorID.IsZero() || !input.AuditEvent.SessionID.IsZero() ||
+		len(input.RequiredPermissions) == 0 {
+		return store.NewErrInvalidInput("role", "system_administrator_reconciliation", nil)
+	}
+	seen := make(map[string]struct{}, len(input.RequiredPermissions))
+	for _, permission := range input.RequiredPermissions {
+		if !model.IsGrantableAction(permission) {
+			return store.NewErrInvalidInput("role", "required_permission", permission)
+		}
+		if _, exists := seen[permission]; exists {
+			return store.NewErrInvalidInput("role", "duplicate_required_permission", permission)
+		}
+		seen[permission] = struct{}{}
+	}
+	return nil
+}
+
+func mergeRequiredPermissions(existing, required []string) ([]string, []string) {
+	seen := make(map[string]struct{}, len(existing)+len(required))
+	merged := make([]string, 0, len(existing)+len(required))
+	for _, permission := range existing {
+		if _, duplicate := seen[permission]; duplicate {
+			continue
+		}
+		seen[permission] = struct{}{}
+		merged = append(merged, permission)
+	}
+	added := make([]string, 0, len(required))
+	for _, permission := range required {
+		if _, exists := seen[permission]; exists {
+			continue
+		}
+		seen[permission] = struct{}{}
+		merged = append(merged, permission)
+		added = append(added, permission)
+	}
+	sort.Strings(merged)
+	sort.Strings(added)
+	return merged, added
 }
 
 type preparedInstallationBootstrap struct {
@@ -324,7 +467,7 @@ func insertInstallationAudit(
 			:ip_address, :user_agent, :error_code, :parameters, :prior_state, :result
 		)`, &row); err != nil {
 		return fmt.Errorf(
-			"save bootstrap audit event: %w",
+			"save installation audit event: %w",
 			translateError("audit_event", event.ID.String(), err),
 		)
 	}

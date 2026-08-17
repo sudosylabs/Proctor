@@ -209,6 +209,12 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringEnvironmentOverride("PROCTOR_MAIL_SMTP_PASSWORD", func(cfg *Config) *string {
 		return &cfg.Mail.SMTP.Password
 	}),
+	stringEnvironmentOverride("PROCTOR_MAIL_SECRET_SEALING_ENCRYPTION_KEY", func(cfg *Config) *string {
+		return &cfg.Mail.SecretSealing.EncryptionKey
+	}),
+	stringListEnvironmentOverride("PROCTOR_MAIL_SECRET_SEALING_DECRYPTION_KEYS", func(cfg *Config) *[]string {
+		return &cfg.Mail.SecretSealing.DecryptionKeys
+	}),
 	stringEnvironmentOverride("PROCTOR_MAIL_SMTP_AUTHENTICATION", func(cfg *Config) *string {
 		return &cfg.Mail.SMTP.Authentication
 	}),

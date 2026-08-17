@@ -204,6 +204,7 @@ func assembleApplication(
 		realtime:                          foundation.realtime,
 		jobs:                              jobs.runtime,
 		jobOperations:                     jobs.operations,
+		mailSecretSealer:                  deps.MailSecretSealer,
 		recentAuthenticationTTL:           deps.RecentAuthenticationTTL,
 	}
 }

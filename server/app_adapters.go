@@ -32,14 +32,19 @@ func applicationDependencies(
 	if content == nil {
 		return app.Dependencies{}, errors.New("file content is nil")
 	}
+	mailSecretSealer, err := newMailSecretSealer(cfg.Mail)
+	if err != nil {
+		return app.Dependencies{}, err
+	}
 	return app.Dependencies{
-		Store:       capabilities.persistence,
-		Cache:       cache,
-		Mailer:      accountMailerAdapter{mailer: capabilities.mailer},
-		Registry:    externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
-		FileContent: content,
-		NodeID:      capabilities.nodeID,
-		PublicURL:   cfg.Server.PublicURL,
+		Store:            capabilities.persistence,
+		Cache:            cache,
+		Mailer:           accountMailerAdapter{mailer: capabilities.mailer},
+		MailSecretSealer: mailSecretSealer,
+		Registry:         externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
+		FileContent:      content,
+		NodeID:           capabilities.nodeID,
+		PublicURL:        cfg.Server.PublicURL,
 		Password: app.PasswordPolicy{
 			MinimumLength:    auth.Password.MinimumLength,
 			MaximumLength:    auth.Password.MaximumLength,

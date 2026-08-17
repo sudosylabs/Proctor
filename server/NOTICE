@@ -26,6 +26,24 @@ was behaviorally compared with Mattermost revision
 Proctor's corresponding walking-skeleton implementation was independently
 written and does not copy those Mattermost sources.
 
+Transactional mail template workflow behavioral reference
+---------------------------------------------------------
+
+Proctor's authored-MJML, tracked generated-HTML, reusable-partial, and
+freshness-checking workflow was behaviorally compared with Mattermost
+revision 8ce3c54a5ed76b2aa39a46cf8a1b517ea53ec0cc, principally:
+
+- server/templates/Makefile
+- server/templates/*.mjml
+- server/templates/partials/*.mjml
+- server/Makefile (`build-templates`)
+
+The referenced Mattermost template directory is under the Apache License 2.0
+exception stated by that revision's `server/LICENSE.txt`. Proctor's renderer,
+generator, localization catalog, copy, text alternatives, and visually neutral
+templates were independently written. No Mattermost visual template or loader
+source was copied.
+
 Mattermost model implementation
 -------------------------------
 

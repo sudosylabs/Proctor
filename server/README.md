@@ -233,6 +233,15 @@ When MFA is enabled, `authentication.mfa.encryption_key` must be a standard
 base64-encoded 32-byte key. Previous keys may remain in `decryption_keys`
 during rotation.
 
+Durable recoverable mail payloads use the independent
+`mail.secret_sealing.encryption_key`, canonical standard base64 for 32 bytes.
+Up to eight previous keys may remain in
+`mail.secret_sealing.decryption_keys` while durable payloads are re-encrypted.
+The ring may be absent until that durable workflow is active, including local
+development with SMTP enabled; a partially configured ring is rejected and any
+configured ring is validated during composition. MFA, Memberlist, and mail
+encryption keys are intentionally not interchangeable.
+
 The first external provider types are `cas` and `oidc`. Every enabled provider
 has a stable lowercase ID, display name, one matching protocol block, explicit
 claim mappings, optional home-organization allowlisting, and optional trusted
@@ -352,6 +361,24 @@ node may use its own memory cache or optional Redis as a shared disposable
 cache. Clustering does not require Redis. Multi-node configuration requires
 shared VFS rather than node-local storage, plus a shared encryption key and
 explicit bind/advertise addresses.
+
+### Transactional-mail templates
+
+The server owns localized transactional-mail copy and one MJML, tracked HTML,
+and plain-text source set per closed message key. Install the pinned build
+toolchain, regenerate HTML, check freshness, and render a delivery-free preview
+with:
+
+```sh
+make -C server mail-templates-install
+make -C server mail-templates-generate
+make -C server mail-templates-check
+make -C server mail-templates-test
+make -C server mail-preview OUTPUT=/tmp/proctor-mail-preview
+```
+
+The exact property and maintenance contract lives in
+[`templates/README.md`](templates/README.md).
 
 ## Verify
 

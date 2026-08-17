@@ -1349,9 +1349,29 @@ type InstallationBootstrap struct {
 	DefaultProfilePictureJob *model.Job
 }
 
+// SystemAdministratorRoleReconciliation is the complete durable input for
+// adding newly registered grantable actions to the protected built-in Role.
+// Existing permissions are preserved so a rolling downgrade does not destroy
+// actions unknown to the current binary.
+type SystemAdministratorRoleReconciliation struct {
+	RequiredPermissions []string
+	ReconciledAt        int64
+	AuditEvent          *model.AuditEvent
+}
+
+// SystemAdministratorRoleReconciliationResult reports the authoritative Role
+// after reconciliation. A nil Role with Changed false means the installation
+// is still pristine and therefore has nothing to reconcile.
+type SystemAdministratorRoleReconciliationResult struct {
+	Role             *model.Role
+	Changed          bool
+	AddedPermissions []string
+}
+
 // InstallationStore owns the cross-model transaction that makes a pristine
 // database into an initialized logical Proctor installation.
 type InstallationStore interface {
 	Get(context.Context) (*model.InstallationState, error)
 	Bootstrap(context.Context, *InstallationBootstrap) (*model.InstallationBootstrapResult, error)
+	ReconcileSystemAdministratorRole(context.Context, *SystemAdministratorRoleReconciliation) (*SystemAdministratorRoleReconciliationResult, error)
 }

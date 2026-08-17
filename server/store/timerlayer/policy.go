@@ -223,6 +223,8 @@ const (
 	methodValidateSchema                methodName = "validate_schema"
 )
 
+const methodReconcileSystemAdministratorRole methodName = "reconcile_system_administrator_role"
+
 func storeOperation(aggregate aggregateName, method methodName) Operation {
 	return Operation{name: string(aggregate) + "." + string(method)}
 }

@@ -239,6 +239,72 @@ VFS owns opaque bytes. Candidate access is protected in-application use, with
 no candidate download/export surface. The complete accepted contract and
 delivery order are in [Examinations](../architecture/examinations.md).
 
+## Transactional-mail foundation
+
+The transactional-mail product and delivery architecture are accepted. The
+transport now exposes portable temporary, permanent, and acceptance-uncertain
+outcomes; the server has an independently configured versioned secret-sealing
+module; and the complete initial catalog has localized English copy, authored
+MJML and text, tracked generated HTML, freshness checks, and deterministic
+previews. Durable mail occurrences, delivery Jobs, and product-transition
+integration are not implemented yet.
+
+The closed initial catalog includes identity, security, access-and-onboarding,
+academic, examination, candidate, and controlled operator-test messages.
+Application transitions will record encrypted per-recipient delivery intent
+and durable Jobs atomically, with bounded fan-out, relevance fencing,
+deadline-aware retries, safe operator control, and no user opt-outs. The
+complete contract and remaining delivery order are in
+[Transactional mail](../architecture/mail.md).
+
+The current verification and reset links name server-hosted routes whose pages
+do not exist. Those pages are explicitly deferred to the server-hosted page
+and design-system phase and must remain visible as an incomplete recovery
+journey. Ordinary transactional mail will not invent protected API links or a
+desktop URL scheme while the client navigation contract remains undefined.
+
+## Access and onboarding
+
+The access and onboarding architecture is accepted. Existing installations
+now reconcile the protected `system_admin` Role with every current grantable
+action before serving traffic, preserving unknown downgrade actions and all
+custom Roles and bindings. The remaining Access Policy, browser authorization,
+identity reconciliation, Invitation, and batch workflows are not implemented.
+
+The first administrator always bootstraps one local account with a one-use
+deployment secret before mutable access policy can take effect. Thereafter a
+PostgreSQL-owned singleton Access Policy composes local sign-in, invitation-
+only local onboarding, self-registration, and configured external providers;
+deployment configuration continues to own provider and mail secrets.
+
+The server will host discovery and every sign-in, registration, recovery,
+invitation, linking, and provider-selection page. The desktop Launch Window
+will accept and verify an installation URL, open only the discovered
+authorization endpoint in the system browser, and complete a short-lived
+single-use authorization-code flow through an exact loopback callback with
+state and PKCE. It will not render authentication forms or receive upstream
+provider credentials or tokens.
+
+One User may have an optional local password and multiple explicitly linked
+external identities. Email equality never merges accounts automatically. A
+durable pre-User Invitation owns its target email, typed purpose, relationship
+package, expiry, lifecycle, delivery identity, and atomic acceptance. Student
+invitations establish exact Class membership; teacher invitations establish
+Academic Unit membership plus their invitation-package-origin role binding;
+institution and Academic Unit role invitations use explicit typed purposes.
+CSV imports are asynchronous validated batches over the same invitation and
+progression commands, with row-level results and no raw invitation secrets in
+exports. Academic Periods will gain explicit Institution or Academic Unit
+ownership and a dedicated `academic_period.manage` action; Academic Unit scope
+applies to its subtree. The complete contract and implementation order are in
+[Access and onboarding](../architecture/access-and-onboarding.md).
+
+Invitation-required policy cannot be activated until the transactional-mail
+foundation can durably deliver invitation credentials. The hosted `/join` and
+account pages are deliberately deferred to the same future server-hosted design
+system phase as the recovery pages; this dependency does not block the domain,
+persistence, discovery, or authorization design.
+
 ## Implemented user settings
 
 The server-owned User Settings Document is implemented as one exact bounded
@@ -260,10 +326,10 @@ widen the User Settings module.
 
 - Choose and define the next external identity provider after CAS and OIDC:
   SAML/RENATER or LDAP.
-- Define account linking, profile ownership, affiliation reconciliation, and
-  provider-driven deprovisioning.
-- Decide whether roles may bind directly to programme and programme-level
-  scopes.
+- Define any future provider-directory synchronization for profile fields,
+  affiliations, relationship reconciliation, and deprovisioning. Interactive
+  sign-in and explicit linking do not grant a provider general directory
+  authority.
 - Define any dedicated proctor-assignment role beyond Exam Managers, candidate
   accommodations, review appeals, exact retention periods, and future
   manager-controlled export/deletion policy.
@@ -271,14 +337,29 @@ widen the User Settings module.
   queues or always performs authoritative HTTP resynchronization.
 - Decide whether generated client SDKs belong in this monorepo and which
   desktop languages are required.
-- Define the coderunner threat model, isolation boundary, resource limits,
-  supported languages, artifact model, and deployment topology.
+
+## Accepted execution-environment design
+
+The Execution Environment design is accepted but not implemented. An
+Execution Profile is authored on the Draft, frozen in the Revision, and
+defaults to off. The Attempt Workspace remains the durable authority; the
+environment is a Firecracker-isolated projection with one Attempt Terminal.
+`packages/guest` is the exam-blind client contract; the host binary lives in
+a separate repository; only the installation talks to hosts. The complete
+contract is in [Execution environments](../architecture/execution.md).
 
 ## Planned product work
 
-- Define the next product slice beyond the completed initial Examination Core;
-  grading, scores, rubrics, pass/fail decisions, and academic outcomes remain
-  deliberately outside the accepted core boundary until separately designed.
+- Implement the accepted access-and-onboarding architecture in its documented
+  order: scoped Academic Period ownership and actions, Access Policy and
+  discovery, browser authorization transactions, local and external credential
+  reconciliation, durable typed Invitations, then bounded CSV batch workflows.
+  Invitation-required activation and usable invite links remain gated on the
+  mail foundation and hosted-page design system respectively.
+- Implement the accepted transactional-mail architecture as verified vertical
+  slices, beginning with the durable operator test-mail tracer and migration of
+  verification and password-reset delivery. The recovery landing pages remain
+  a separately visible dependency of the future server-hosted design system.
 - Resource search remains deferred because an Exam initially has at most ten
   active resources.
 

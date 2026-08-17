@@ -81,6 +81,16 @@ type lifecycleJobs struct {
 	afterStart func()
 }
 
+type lifecycleReconciler struct {
+	err    error
+	events *lifecycleEvents
+}
+
+func (r *lifecycleReconciler) ReconcileSystemAdministratorRole(context.Context) error {
+	r.events.record("role-reconcile")
+	return r.err
+}
+
 func (j *lifecycleJobs) Start(context.Context) error {
 	j.events.record("jobs-start")
 	if j.afterStart != nil {
@@ -336,6 +346,30 @@ func TestServerJobStartupFailureClosesWorkersBeforeInfrastructure(t *testing.T) 
 		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
 	}
 	assertLifecycleEvents(t, events, "platform-start", "jobs-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
+}
+
+func TestServerReconcilesProtectedRoleBeforeStartingWorkers(t *testing.T) {
+	t.Parallel()
+
+	startErr := errors.New("role reconciliation unavailable")
+	events := &lifecycleEvents{}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform:   &lifecyclePlatform{events: events},
+		reconciler: &lifecycleReconciler{err: startErr, events: events},
+		jobs:       &lifecycleJobs{events: events},
+		websocket:  &lifecycleWebSocket{events: events},
+		transport:  &lifecycleTransport{events: events},
+		readiness:  &lifecycleReadiness{},
+	})
+
+	err := node.Start(context.Background())
+	if !errors.Is(err, startErr) {
+		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+	}
+	assertLifecycleEvents(t, events,
+		"platform-start", "role-reconcile", "jobs-close", "websocket-close",
+		"transport-close", "platform-close",
+	)
 }
 
 func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {

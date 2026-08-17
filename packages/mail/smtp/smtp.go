@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/smtp"
 	"net/textproto"
@@ -187,23 +188,23 @@ func (s *Sender) Send(ctx context.Context, message mail.Message) (mail.Receipt, 
 	defer cleanup()
 
 	if err := client.Mail(delivery.EnvelopeFrom); err != nil {
-		return mail.Receipt{}, s.smtpError(ctx, "mail-from", err)
+		return mail.Receipt{}, s.smtpError(ctx, "mail-from", err, false)
 	}
 	for _, recipient := range delivery.Recipients {
 		if err := client.Rcpt(recipient); err != nil {
-			return mail.Receipt{}, s.smtpError(ctx, "recipient", err)
+			return mail.Receipt{}, s.smtpError(ctx, "recipient", err, false)
 		}
 	}
 	data, err := client.Data()
 	if err != nil {
-		return mail.Receipt{}, s.smtpError(ctx, "data", err)
+		return mail.Receipt{}, s.smtpError(ctx, "data", err, false)
 	}
 	if _, err := data.Write(delivery.Data); err != nil {
 		_ = data.Close()
-		return mail.Receipt{}, s.smtpError(ctx, "write", err)
+		return mail.Receipt{}, s.smtpError(ctx, "write", err, true)
 	}
 	if err := data.Close(); err != nil {
-		return mail.Receipt{}, s.smtpError(ctx, "commit", err)
+		return mail.Receipt{}, s.smtpError(ctx, "commit", err, true)
 	}
 	// A successful DATA close is the SMTP acceptance boundary. A later QUIT
 	// failure must not invite callers to retry a message the server accepted.
@@ -226,7 +227,7 @@ func (s *Sender) Test(ctx context.Context) error {
 	}
 	defer cleanup()
 	if err := client.Quit(); err != nil {
-		return s.smtpError(ctx, "quit", err)
+		return s.smtpError(ctx, "quit", err, false)
 	}
 	return nil
 }
@@ -241,12 +242,12 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 		tlsDialer := tls.Dialer{NetDialer: dialer, Config: s.tlsConfig.Clone()}
 		connection, err = tlsDialer.DialContext(ctx, "tcp", s.address)
 		if err != nil {
-			return nil, nil, mail.Error("connect", classify(ctx, mail.ErrTLS, err))
+			return nil, nil, mail.Error("connect", classify(ctx, mail.ErrTLS, err, false))
 		}
 	} else {
 		connection, err = dialer.DialContext(ctx, "tcp", s.address)
 		if err != nil {
-			return nil, nil, mail.Error("connect", classify(ctx, mail.ErrConnection, err))
+			return nil, nil, mail.Error("connect", classify(ctx, mail.ErrConnection, err, false))
 		}
 	}
 
@@ -256,7 +257,7 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 	}
 	if err := connection.SetDeadline(deadline); err != nil {
 		_ = connection.Close()
-		return nil, nil, mail.Error("connect", classify(ctx, mail.ErrConnection, err))
+		return nil, nil, mail.Error("connect", classify(ctx, mail.ErrConnection, err, false))
 	}
 
 	stopWatcher := make(chan struct{})
@@ -278,7 +279,7 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 	if err != nil {
 		stop()
 		_ = connection.Close()
-		return nil, nil, mail.Error("greeting", classify(ctx, mail.ErrConnection, err))
+		return nil, nil, mail.Error("greeting", classify(ctx, mail.ErrConnection, err, false))
 	}
 	cleanup := func() {
 		stop()
@@ -288,7 +289,7 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 	if s.localName != "" {
 		if err := client.Hello(s.localName); err != nil {
 			cleanup()
-			return nil, nil, mail.Error("hello", classify(ctx, mail.ErrConnection, err))
+			return nil, nil, mail.Error("hello", classify(ctx, mail.ErrConnection, err, false))
 		}
 	}
 	if s.security == SecuritySTARTTLS {
@@ -298,7 +299,7 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 		}
 		if err := client.StartTLS(s.tlsConfig.Clone()); err != nil {
 			cleanup()
-			return nil, nil, mail.Error("starttls", classify(ctx, mail.ErrTLS, err))
+			return nil, nil, mail.Error("starttls", classify(ctx, mail.ErrTLS, err, false))
 		}
 	}
 	if s.authentication != AuthenticationNone {
@@ -309,7 +310,7 @@ func (s *Sender) connect(ctx context.Context) (*smtp.Client, func(), error) {
 		}
 		if err := client.Auth(auth); err != nil {
 			cleanup()
-			return nil, nil, mail.Error("authenticate", classify(ctx, mail.ErrAuthentication, err))
+			return nil, nil, mail.Error("authenticate", classify(ctx, mail.ErrAuthentication, err, false))
 		}
 	}
 	return client, cleanup, nil
@@ -351,23 +352,74 @@ func (s *Sender) auth(client *smtp.Client) (smtp.Auth, error) {
 	}
 }
 
-func (s *Sender) smtpError(ctx context.Context, operation string, err error) error {
+func (s *Sender) smtpError(
+	ctx context.Context,
+	operation string,
+	err error,
+	acceptancePossible bool,
+) error {
 	sentinel := mail.ErrConnection
 	var protocolError *textproto.Error
 	if errors.As(err, &protocolError) && protocolError.Code >= 400 {
 		sentinel = mail.ErrRejected
 	}
-	return mail.Error(operation, classify(ctx, sentinel, err))
+	return mail.Error(operation, classify(ctx, sentinel, err, acceptancePossible))
 }
 
-func classify(ctx context.Context, sentinel, err error) error {
-	if contextErr := ctx.Err(); contextErr != nil {
-		return contextErr
+func classify(ctx context.Context, sentinel, err error, acceptancePossible bool) error {
+	outcome, protocolWasDefinitive := protocolOutcome(err)
+	if !protocolWasDefinitive {
+		outcome = transportOutcome(sentinel, err, acceptancePossible)
 	}
-	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
-		return context.DeadlineExceeded
+	cause := err
+	if contextErr := ctx.Err(); contextErr != nil && !protocolWasDefinitive {
+		cause = contextErr
+		if acceptancePossible {
+			outcome = mail.OutcomeAcceptanceUncertain
+		} else {
+			outcome = mail.OutcomeTemporary
+		}
 	}
-	return fmt.Errorf("%w: %w", sentinel, err)
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) && !protocolWasDefinitive {
+		cause = context.DeadlineExceeded
+		if acceptancePossible {
+			outcome = mail.OutcomeAcceptanceUncertain
+		} else {
+			outcome = mail.OutcomeTemporary
+		}
+	}
+	return mail.WithOutcome(outcome, fmt.Errorf("%w: %w", sentinel, cause))
+}
+
+func transportOutcome(sentinel, err error, acceptancePossible bool) mail.Outcome {
+	if outcome, ok := protocolOutcome(err); ok {
+		return outcome
+	}
+	if acceptancePossible {
+		return mail.OutcomeAcceptanceUncertain
+	}
+
+	var networkError net.Error
+	if errors.As(err, &networkError) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return mail.OutcomeTemporary
+	}
+	if errors.Is(sentinel, mail.ErrConnection) {
+		return mail.OutcomeTemporary
+	}
+	return mail.OutcomePermanent
+}
+
+func protocolOutcome(err error) (mail.Outcome, bool) {
+	var protocolError *textproto.Error
+	if errors.As(err, &protocolError) {
+		switch {
+		case protocolError.Code >= 400 && protocolError.Code < 500:
+			return mail.OutcomeTemporary, true
+		case protocolError.Code >= 500 && protocolError.Code < 600:
+			return mail.OutcomePermanent, true
+		}
+	}
+	return mail.OutcomeUnknown, false
 }
 
 type loginAuth struct {
