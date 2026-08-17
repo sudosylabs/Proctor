@@ -18,9 +18,18 @@ type mutationAttempt struct {
 	Invocation Invocation
 	Action     model.Action
 	Resource   model.Resource
+	ScopeType  model.RoleScopeType
+	ScopeID    string
 	Operation  string
 	Value      map[string]any
 	Prior      map[string]any
+}
+
+type scopedMutationAuditor interface {
+	BeginAtScope(
+		context.Context, Invocation, model.Action, model.Resource,
+		model.RoleScopeType, string, string, map[string]any, map[string]any,
+	) (string, error)
 }
 
 // mutationAttemptReference is the complete audit input a named Store mutation
@@ -43,15 +52,29 @@ func runAuditedMutation[T any](
 	mapError func(error) error,
 ) (T, error) {
 	var zero T
-	auditID, err := auditor.Begin(
-		ctx,
-		attempt.Invocation,
-		attempt.Action,
-		attempt.Resource,
-		attempt.Operation,
-		attempt.Value,
-		attempt.Prior,
-	)
+	var auditID string
+	var err error
+	if attempt.ScopeType != "" || attempt.ScopeID != "" {
+		scoped, ok := auditor.(scopedMutationAuditor)
+		if !ok || !attempt.ScopeType.IsValid() || !model.IsValidId(attempt.ScopeID) {
+			return zero, NewError("audit.event.invalid")
+		}
+		auditID, err = scoped.BeginAtScope(
+			ctx, attempt.Invocation, attempt.Action, attempt.Resource,
+			attempt.ScopeType, attempt.ScopeID, attempt.Operation,
+			attempt.Value, attempt.Prior,
+		)
+	} else {
+		auditID, err = auditor.Begin(
+			ctx,
+			attempt.Invocation,
+			attempt.Action,
+			attempt.Resource,
+			attempt.Operation,
+			attempt.Value,
+			attempt.Prior,
+		)
+	}
 	if err != nil {
 		return zero, err
 	}

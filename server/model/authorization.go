@@ -25,6 +25,8 @@ const (
 	ActionSessionManage             Action = "session.manage"
 	ActionJobView                   Action = "job.view"
 	ActionJobManage                 Action = "job.manage"
+	ActionMailView                  Action = "mail.view"
+	ActionMailManage                Action = "mail.manage"
 	ActionExamCreate                Action = "exam.create"
 	ActionExamCreateOverride        Action = "exam.create.override"
 	ActionExamView                  Action = "exam.view"
@@ -47,8 +49,10 @@ const (
 	ActionSubmissionRelease         Action = "submission.release"
 	ActionSubmissionReleaseOverride Action = "submission.release.override"
 
-	ActionAcademicUnitView   Action = "academic_unit.view"
-	ActionAcademicUnitManage Action = "academic_unit.manage"
+	ActionAcademicUnitView     Action = "academic_unit.view"
+	ActionAcademicUnitManage   Action = "academic_unit.manage"
+	ActionAcademicPeriodView   Action = "academic_period.view"
+	ActionAcademicPeriodManage Action = "academic_period.manage"
 
 	ActionClassView          Action = "class.view"
 	ActionClassMembersView   Action = "class.members.view"
@@ -59,13 +63,15 @@ const (
 type ResourceType string
 
 const (
-	ResourceInstitution  ResourceType = "institution"
-	ResourceAcademicUnit ResourceType = "academic_unit"
-	ResourceClass        ResourceType = "class"
-	ResourceUser         ResourceType = "user"
-	ResourceExam         ResourceType = "exam"
-	ResourceExamSitting  ResourceType = "exam_sitting"
-	ResourceSubmission   ResourceType = "submission"
+	ResourceInstitution    ResourceType = "institution"
+	ResourceAcademicUnit   ResourceType = "academic_unit"
+	ResourceAcademicPeriod ResourceType = "academic_period"
+	ResourceClass          ResourceType = "class"
+	ResourceUser           ResourceType = "user"
+	ResourceExam           ResourceType = "exam"
+	ResourceExamSitting    ResourceType = "exam_sitting"
+	ResourceSubmission     ResourceType = "submission"
+	ResourceMailDelivery   ResourceType = "mail_delivery"
 )
 
 // Resource identifies the concrete object against which an action is checked.
@@ -128,6 +134,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionJobManage: {
 		Action: ActionJobManage, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true,
+	},
+	ActionMailView: {
+		Action: ActionMailView, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true,
+	},
+	ActionMailManage: {
+		Action: ActionMailManage, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true,
 	},
 	ActionExamCreate: {
@@ -222,6 +236,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionAcademicUnitManage, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
+	ActionAcademicPeriodView: {
+		Action: ActionAcademicPeriodView, ResourceType: ResourceAcademicPeriod,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionAcademicPeriodManage: {
+		Action: ActionAcademicPeriodManage, ResourceType: ResourceAcademicPeriod,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
 	ActionClassView: {
 		Action: ActionClassView, ResourceType: ResourceClass,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
@@ -277,7 +299,7 @@ func (r Resource) Validate() error {
 		return invalidModelError(where, "resource", "id", "must be a valid identifier", "")
 	}
 	switch r.Type {
-	case ResourceInstitution, ResourceAcademicUnit, ResourceClass, ResourceUser, ResourceExam, ResourceExamSitting, ResourceSubmission:
+	case ResourceInstitution, ResourceAcademicUnit, ResourceAcademicPeriod, ResourceClass, ResourceUser, ResourceExam, ResourceExamSitting, ResourceSubmission, ResourceMailDelivery:
 		return nil
 	default:
 		return invalidModelError(where, "resource", "type", "has an unknown value", "id="+r.ID)

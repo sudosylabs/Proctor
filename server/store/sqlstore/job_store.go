@@ -36,14 +36,6 @@ type jobHistoryCleanupOutcome struct {
 	empty  bool
 }
 
-func rawJobTransactionPolicy[T any](commit bool, commitError func(T, error) error) sqlTransactionPolicy[T] {
-	return sqlTransactionPolicy[T]{
-		beginError:  func(err error) error { return err },
-		commit:      commit,
-		commitError: commitError,
-	}
-}
-
 func permanentJobTransactionPolicy() sqlTransactionPolicy[*permanentJobEnqueueOutcome] {
 	return sqlTransactionPolicy[*permanentJobEnqueueOutcome]{
 		beginError: func(err error) error { return fmt.Errorf("begin permanent job enqueue: %w", err) },
@@ -280,7 +272,7 @@ func (s SQLJobStore) Heartbeat(ctx context.Context, input *store.JobHeartbeat) (
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.LeaseDuration <= 0 || input.LeaseDuration > time.Hour {
 		return nil, store.NewErrInvalidInput("job_attempt", "heartbeat", nil)
 	}
-	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.JobAttempt](true, func(_ *model.JobAttempt, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.JobAttempt, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.JobAttempt](true, func(_ *model.JobAttempt, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.JobAttempt, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -304,7 +296,7 @@ func (s SQLJobStore) Checkpoint(ctx context.Context, input *store.JobCheckpoint)
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() {
 		return nil, store.NewErrInvalidInput("job", "checkpoint", nil)
 	}
-	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -332,7 +324,7 @@ func (s SQLJobStore) ReserveWork(ctx context.Context, input *store.JobWorkReserv
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.Units <= 0 || input.Limit <= 0 || input.Units > input.Limit || input.Limit > 1_000_000 {
 		return nil, store.NewErrInvalidInput("job", "reserve_work", nil)
 	}
-	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*store.JobWorkReservationResult](true, func(_ *store.JobWorkReservationResult, err error) error {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*store.JobWorkReservationResult](true, func(_ *store.JobWorkReservationResult, err error) error {
 		return fmt.Errorf("commit job work reservation: %w", err)
 	}), func(ctx context.Context, tx *sqlxTxWrapper) (*store.JobWorkReservationResult, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
@@ -360,7 +352,7 @@ func (s SQLJobStore) Complete(ctx context.Context, input *store.JobCompletion) (
 	if input == nil || !input.AttemptID.IsValid() || !input.ClaimToken.IsValid() || input.RetryDelay < 0 || input.RetryDelay > 24*time.Hour {
 		return nil, store.NewErrInvalidInput("job", "completion", nil)
 	}
-	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -506,7 +498,7 @@ func (s SQLJobStore) CancellationRequested(ctx context.Context, attemptID model.
 	if !attemptID.IsValid() || !token.IsValid() {
 		return false, store.NewErrInvalidInput("job_attempt", "observe_cancellation", nil)
 	}
-	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[bool](false, nil), func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[bool](false, nil), func(ctx context.Context, tx *sqlxTxWrapper) (bool, error) {
 		now, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return false, err
@@ -535,7 +527,7 @@ func (s SQLJobStore) mutateOperatorJob(ctx context.Context, input *store.JobMuta
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("job", operation, nil)
 	}
-	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawJobTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.Job](true, func(_ *model.Job, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.Job, error) {
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err

@@ -12,8 +12,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 97 {
-		t.Fatalf("environment override definitions = %d, want 97", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 99 {
+		t.Fatalf("environment override definitions = %d, want 99", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
@@ -82,6 +82,7 @@ func TestEveryEnvironmentOverrideRoundTripsThroughStoreSet(t *testing.T) {
 			}
 			candidate := store.Get()
 			if definition.key == "PROCTOR_MAIL_FROM_NAME" {
+				candidate.Authentication.Bootstrap.DevelopmentMode = false
 				candidate.Server.PublicURL = "https://changed.example.edu"
 			} else {
 				candidate.Mail.FromName = "Changed by Store.Set"
@@ -93,6 +94,7 @@ func TestEveryEnvironmentOverrideRoundTripsThroughStoreSet(t *testing.T) {
 			persisted := store.GetPersisted()
 			want := initial.Clone()
 			if definition.key == "PROCTOR_MAIL_FROM_NAME" {
+				want.Authentication.Bootstrap.DevelopmentMode = false
 				want.Server.PublicURL = "https://changed.example.edu"
 			} else {
 				want.Mail.FromName = "Changed by Store.Set"
@@ -219,6 +221,10 @@ func validEnvironmentValue(
 func validBaseForEnvironmentOverride(key string) Config {
 	base := Default()
 	switch key {
+	case "PROCTOR_SERVER_PUBLIC_URL":
+		base.Authentication.Bootstrap.DevelopmentMode = false
+	case "PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE":
+		base.Authentication.Bootstrap.Secret = "operator-provided-bootstrap-secret-32-bytes"
 	case "PROCTOR_CACHE_BACKEND":
 		base.Cache.Backend = "redis"
 	case "PROCTOR_CLUSTER_BACKEND":

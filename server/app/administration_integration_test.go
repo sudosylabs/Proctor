@@ -8,10 +8,12 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -39,20 +41,22 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		status.Body.String() != "{\"initialized\":false}\n" {
 		t.Fatalf("pristine bootstrap status = %d: %s", status.Code, status.Body.String())
 	}
+	bootstrapRequest := map[string]any{
+		"bootstrap_secret": testlib.BootstrapSecret,
+		"institution": map[string]any{
+			"name": "northbridge", "display_name": "Northbridge University",
+		},
+		"administrator": map[string]any{
+			"username": "system-owner", "email": "system-owner@example.edu",
+			"display_name": "System Owner",
+		},
+		"password": password,
+	}
 	bootstrap := performJSONRequest(
 		handler,
 		http.MethodPost,
 		"/api/v1/bootstrap",
-		map[string]any{
-			"institution": map[string]any{
-				"name": "northbridge", "display_name": "Northbridge University",
-			},
-			"administrator": map[string]any{
-				"username": "system-owner", "email": "system-owner@example.edu",
-				"display_name": "System Owner",
-			},
-			"password": password,
-		},
+		bootstrapRequest,
 		"",
 	)
 	if bootstrap.Code != http.StatusCreated {
@@ -74,6 +78,14 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			ID        string              `json:"id"`
 			ScopeType model.RoleScopeType `json:"scope_type"`
 		} `json:"role_binding"`
+		AccessPolicy *struct {
+			Revision                         int64 `json:"revision"`
+			LocalLoginEnabled                bool  `json:"local_login_enabled"`
+			PublicRegistrationEnabled        bool  `json:"public_registration_enabled"`
+			InvitationAdmissionEnabled       bool  `json:"invitation_admission_enabled"`
+			InvitationLocalCredentialEnabled bool  `json:"invitation_local_credential_enabled"`
+			DesktopAuthorizationEnabled      bool  `json:"desktop_authorization_enabled"`
+		} `json:"access_policy"`
 	}
 	if err := json.Unmarshal(bootstrap.Body.Bytes(), &createdWire); err != nil {
 		t.Fatal(err)
@@ -89,8 +101,24 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		created.RoleBinding.ScopeType != model.RoleScopeInstitution {
 		t.Fatalf("bootstrap result = %#v", created)
 	}
+	if createdWire.AccessPolicy == nil || createdWire.AccessPolicy.Revision != 1 ||
+		!createdWire.AccessPolicy.LocalLoginEnabled || createdWire.AccessPolicy.PublicRegistrationEnabled ||
+		!createdWire.AccessPolicy.InvitationAdmissionEnabled ||
+		!createdWire.AccessPolicy.InvitationLocalCredentialEnabled ||
+		!createdWire.AccessPolicy.DesktopAuthorizationEnabled {
+		t.Fatalf("initial access policy = %#v", createdWire.AccessPolicy)
+	}
 	if len(created.Role.Permissions) != len(model.AllActions()) {
 		t.Fatalf("system administrator permissions = %#v", created.Role.Permissions)
+	}
+	replay := performJSONRequest(
+		handler, http.MethodPost, "/api/v1/bootstrap", bootstrapRequest, "",
+	)
+	if replay.Code != http.StatusCreated || replay.Body.String() != bootstrap.Body.String() {
+		t.Fatalf(
+			"exact bootstrap replay = %d: %s, want retained %d: %s",
+			replay.Code, replay.Body.String(), bootstrap.Code, bootstrap.Body.String(),
+		)
 	}
 	settings, err := persistence.UserSettings().Get(context.Background(), created.Administrator.ID)
 	if err != nil {
@@ -106,9 +134,10 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		http.MethodPost,
 		"/api/v1/bootstrap",
 		map[string]any{
-			"institution":   map[string]any{"name": "second", "display_name": "Second"},
-			"administrator": map[string]any{"username": "second", "email": "second@example.edu"},
-			"password":      password,
+			"bootstrap_secret": testlib.BootstrapSecret,
+			"institution":      map[string]any{"name": "second", "display_name": "Second"},
+			"administrator":    map[string]any{"username": "second", "email": "second@example.edu"},
+			"password":         password,
 		},
 		"",
 	); second.Code != http.StatusConflict {
@@ -393,6 +422,76 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			"application use case wrote %d authorization decisions for one request",
 			requestDecisionAudits,
 		)
+	}
+}
+
+type unknownBootstrapOutcomeStore struct {
+	store.Store
+	failNext atomic.Bool
+	calls    atomic.Int32
+}
+
+func (s *unknownBootstrapOutcomeStore) Installation() store.InstallationStore {
+	return unknownBootstrapOutcomeInstallation{delegate: s.Store.Installation(), owner: s}
+}
+
+type unknownBootstrapOutcomeInstallation struct {
+	delegate store.InstallationStore
+	owner    *unknownBootstrapOutcomeStore
+}
+
+func (s unknownBootstrapOutcomeInstallation) Get(ctx context.Context) (*model.InstallationState, error) {
+	return s.delegate.Get(ctx)
+}
+
+func (s unknownBootstrapOutcomeInstallation) Bootstrap(
+	ctx context.Context,
+	input *store.InstallationBootstrap,
+) (*model.InstallationBootstrapResult, error) {
+	s.owner.calls.Add(1)
+	result, err := s.delegate.Bootstrap(ctx, input)
+	if err == nil && s.owner.failNext.CompareAndSwap(true, false) {
+		return nil, errors.New("bootstrap commit outcome unknown")
+	}
+	return result, err
+}
+
+func (s unknownBootstrapOutcomeInstallation) ReconcileSystemAdministratorRole(
+	ctx context.Context,
+	input *store.SystemAdministratorRoleReconciliation,
+) (*store.SystemAdministratorRoleReconciliationResult, error) {
+	return s.delegate.ReconcileSystemAdministratorRole(ctx, input)
+}
+
+func TestBootstrapUnknownCommitOutcomeReconcilesThroughRealGraph(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	uncertain := &unknownBootstrapOutcomeStore{Store: persistence}
+	uncertain.failNext.Store(true)
+	helper := testlib.Setup(t, testlib.WithStore(uncertain))
+
+	response := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/bootstrap", map[string]any{
+		"bootstrap_secret": testlib.BootstrapSecret,
+		"institution":      map[string]any{"name": "unknown-outcome", "display_name": "Unknown Outcome"},
+		"administrator":    map[string]any{"username": "unknown-owner", "email": "unknown-owner@example.edu"},
+		"password":         "correct horse battery staple",
+	}, "")
+	if response.Code != http.StatusCreated || uncertain.calls.Load() < 2 {
+		t.Fatalf("bootstrap response=%d %s calls=%d", response.Code, response.Body.String(), uncertain.calls.Load())
+	}
+	var result struct {
+		AccessPolicy *struct {
+			Revision int64 `json:"revision"`
+		} `json:"access_policy"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.AccessPolicy == nil || result.AccessPolicy.Revision != 1 {
+		t.Fatalf("bootstrap result = %#v", result)
 	}
 }
 

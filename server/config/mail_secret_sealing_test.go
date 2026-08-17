@@ -89,8 +89,8 @@ func TestMailSecretSealingValidationIsStrictAndIndependent(t *testing.T) {
 
 	valid := Default()
 	valid.Mail.Enabled = true
-	if err := valid.Validate(); err != nil {
-		t.Fatalf("Validate(enabled mail without future durable key ring) = %v", err)
+	if err := valid.Validate(); err == nil || !strings.Contains(err.Error(), "mail.secret_sealing.encryption_key") {
+		t.Fatalf("Validate(enabled mail without durable key ring) = %v", err)
 	}
 	valid.Mail.SecretSealing.EncryptionKey = key(1)
 	valid.Mail.SecretSealing.DecryptionKeys = []string{key(2)}

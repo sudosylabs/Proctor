@@ -146,6 +146,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringEnvironmentOverride("PROCTOR_SERVER_PUBLIC_URL", func(cfg *Config) *string {
 		return &cfg.Server.PublicURL
 	}),
+	stringEnvironmentOverride("PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET", func(cfg *Config) *string {
+		return &cfg.Authentication.Bootstrap.Secret
+	}),
 	stringEnvironmentOverride("PROCTOR_DATABASE_DATA_SOURCE", func(cfg *Config) *string {
 		return &cfg.Database.DataSource
 	}),
@@ -406,6 +409,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	}),
 	boolEnvironmentOverride("PROCTOR_AUTHENTICATION_MFA_ENABLED", func(cfg *Config) *bool {
 		return &cfg.Authentication.MFA.Enabled
+	}),
+	boolEnvironmentOverride("PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE", func(cfg *Config) *bool {
+		return &cfg.Authentication.Bootstrap.DevelopmentMode
 	}),
 	intEnvironmentOverride("PROCTOR_DATABASE_MAX_OPEN_CONNECTIONS", func(cfg *Config) *int {
 		return &cfg.Database.MaxOpenConnections

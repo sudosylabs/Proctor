@@ -50,7 +50,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionID: institution.ID, Name: "sitting-period", DisplayName: "Sitting Period",
+		Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "sitting-period", DisplayName: "Sitting Period",
 		StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour),
 	})
 	if err != nil {

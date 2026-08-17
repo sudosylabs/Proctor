@@ -20,11 +20,15 @@ import (
 type constructionCatalogStub struct{ store.Catalog }
 type constructionCacheStub struct{ authenticationCache }
 type constructionMailerStub struct{ AccountMailer }
+type constructionMailDeliverySenderStub struct{ MailDeliverySender }
+type constructionMailTemplateRendererStub struct{ MailTemplateRenderer }
 type constructionRegistryStub struct{ externalProviderSource }
 type constructionFileContentStub struct{ FileContent }
 type constructionAuthenticationDiagnosticsStub struct{ authenticationDiagnostics }
 type constructionRealtimeDiagnosticsStub struct{ realtimeDiagnostics }
 type constructionRecoveryDiagnosticsStub struct{ recoveryDiagnostics }
+
+func (constructionMailDeliverySenderStub) Enabled() bool { return false }
 
 func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 	t.Parallel()
@@ -33,6 +37,8 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 		Store:                     constructionCatalogStub{},
 		Cache:                     constructionCacheStub{},
 		Mailer:                    constructionMailerStub{},
+		MailDeliverySender:        constructionMailDeliverySenderStub{},
+		MailTemplateRenderer:      constructionMailTemplateRendererStub{},
 		Registry:                  constructionRegistryStub{},
 		FileContent:               constructionFileContentStub{},
 		NodeID:                    "node-a",
@@ -52,6 +58,8 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 		{name: "store", missing: func(deps *Dependencies) { deps.Store = nil }, want: "store is required"},
 		{name: "cache", missing: func(deps *Dependencies) { deps.Cache = nil }, want: "cache is required"},
 		{name: "mailer", missing: func(deps *Dependencies) { deps.Mailer = nil }, want: "mailer is required"},
+		{name: "mail delivery sender", missing: func(deps *Dependencies) { deps.MailDeliverySender = nil }, want: "mail delivery sender is required"},
+		{name: "mail template renderer", missing: func(deps *Dependencies) { deps.MailTemplateRenderer = nil }, want: "mail template renderer is required"},
 		{name: "provider registry", missing: func(deps *Dependencies) { deps.Registry = nil }, want: "external provider registry is required"},
 		{name: "file content", missing: func(deps *Dependencies) { deps.FileContent = nil }, want: "file content is required"},
 		{name: "node ID", missing: func(deps *Dependencies) { deps.NodeID = "" }, want: "node ID is required"},
@@ -116,6 +124,7 @@ type constructionCatalogWithJobs struct {
 }
 
 func (catalog constructionCatalogWithJobs) Job() store.JobStore   { return catalog.jobs }
+func (constructionCatalogWithJobs) Mail() store.MailStore         { return nil }
 func (catalog constructionCatalogWithJobs) User() store.UserStore { return catalog.users }
 func (catalog constructionCatalogWithJobs) File() store.FileStore { return catalog.files }
 func (constructionCatalogWithJobs) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {

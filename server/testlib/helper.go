@@ -6,6 +6,7 @@ package testlib
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -84,6 +85,10 @@ type Helper struct {
 	handler          http.Handler
 }
 
+// BootstrapSecret is the explicit deployment-owned value used by real-graph
+// tests. Production never has a compiled-in bootstrap secret.
+const BootstrapSecret = "proctor-test-bootstrap-secret-32-bytes"
+
 // Handler returns the HTTP transport of the assembled graph.
 func (h *Helper) Handler() http.Handler {
 	return h.handler
@@ -107,6 +112,13 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 	)
 	if err != nil {
 		tb.Fatalf("create test configuration: %v", err)
+	}
+	testConfig := store.Get()
+	testConfig.Authentication.Bootstrap.DevelopmentMode = false
+	testConfig.Authentication.Bootstrap.Secret = BootstrapSecret
+	testConfig.Mail.SecretSealing.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
+	if _, _, err := store.Set(context.Background(), testConfig); err != nil {
+		tb.Fatalf("configure test bootstrap secret: %v", err)
 	}
 	if settings.updateConfig != nil {
 		cfg := store.Get()
@@ -210,7 +222,9 @@ func (s *LifecycleStore) Institution() store.InstitutionStore       { return lif
 func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore     { return lifecycleAcademicUnitStore{} }
 func (s *LifecycleStore) Programme() store.ProgrammeStore           { return nil }
 func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
-func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
+func (s *LifecycleStore) AcademicPeriod() store.AcademicPeriodStore {
+	return lifecycleAcademicPeriodStore{}
+}
 func (s *LifecycleStore) ExamAuthoring() store.ExamAuthoringStore {
 	return lifecycleExamAuthoringStore{}
 }
@@ -249,6 +263,7 @@ func (s *LifecycleStore) UserSettings() store.UserSettingsStore {
 }
 func (s *LifecycleStore) File() store.FileStore { return nil }
 func (s *LifecycleStore) Job() store.JobStore   { return nil }
+func (s *LifecycleStore) Mail() store.MailStore { return nil }
 func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore {
 	return lifecycleExternalIdentityStore{}
 }
@@ -326,6 +341,7 @@ type lifecycleUserStore struct{ store.UserStore }
 type lifecycleUserSettingsStore struct{ store.UserSettingsStore }
 type lifecycleInstitutionStore struct{ store.InstitutionStore }
 type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }
+type lifecycleAcademicPeriodStore struct{ store.AcademicPeriodStore }
 type lifecycleAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 type lifecycleExamAuthoringStore struct{ store.ExamAuthoringStore }
 type lifecycleExamResourceStore struct{ store.ExamResourceStore }

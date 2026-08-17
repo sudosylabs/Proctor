@@ -11,29 +11,31 @@ import (
 )
 
 type academicPeriodResponse struct {
-	ID            string `json:"id"`
-	CreateAt      int64  `json:"create_at"`
-	UpdateAt      int64  `json:"update_at"`
-	DeleteAt      int64  `json:"delete_at"`
-	InstitutionID string `json:"institution_id"`
-	Name          string `json:"name"`
-	DisplayName   string `json:"display_name"`
-	Description   string `json:"description"`
-	StartAt       int64  `json:"start_at"`
-	EndAt         int64  `json:"end_at"`
+	ID          string `json:"id"`
+	CreateAt    int64  `json:"create_at"`
+	UpdateAt    int64  `json:"update_at"`
+	DeleteAt    int64  `json:"delete_at"`
+	OwnerType   string `json:"owner_type"`
+	OwnerID     string `json:"owner_id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	StartAt     int64  `json:"start_at"`
+	EndAt       int64  `json:"end_at"`
 }
 
 type createAcademicPeriodRequest struct {
-	ID            string `json:"id"`
-	CreateAt      int64  `json:"create_at"`
-	UpdateAt      int64  `json:"update_at"`
-	DeleteAt      int64  `json:"delete_at"`
-	InstitutionID string `json:"institution_id"`
-	Name          string `json:"name"`
-	DisplayName   string `json:"display_name"`
-	Description   string `json:"description"`
-	StartAt       int64  `json:"start_at"`
-	EndAt         int64  `json:"end_at"`
+	ID          string `json:"id"`
+	CreateAt    int64  `json:"create_at"`
+	UpdateAt    int64  `json:"update_at"`
+	DeleteAt    int64  `json:"delete_at"`
+	OwnerType   string `json:"owner_type"`
+	OwnerID     string `json:"owner_id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	StartAt     int64  `json:"start_at"`
+	EndAt       int64  `json:"end_at"`
 }
 
 type updateAcademicPeriodRequest struct {
@@ -120,6 +122,7 @@ func (module academicPeriodResourceModule) create(request operationRequest) (ope
 		request.context,
 		request.invocation(),
 		application.CreateAcademicPeriodCommand{
+			OwnerType: body.OwnerType, OwnerID: body.OwnerID,
 			Name: body.Name, DisplayName: body.DisplayName,
 			Description: body.Description, StartAt: body.StartAt, EndAt: body.EndAt,
 			IdempotencyKey: request.idempotencyKey,
@@ -188,15 +191,16 @@ func academicPeriodResponseFromModel(period *model.AcademicPeriod) academicPerio
 		return academicPeriodResponse{}
 	}
 	return academicPeriodResponse{
-		ID:            period.ID.String(),
-		CreateAt:      model.MillisFromTime(period.CreatedAt),
-		UpdateAt:      model.MillisFromTime(period.UpdatedAt),
-		DeleteAt:      period.ArchivedAt.Millis(),
-		InstitutionID: period.InstitutionID.String(),
-		Name:          period.Name,
-		DisplayName:   period.DisplayName,
-		Description:   period.Description,
-		StartAt:       model.MillisFromTime(period.StartsAt),
-		EndAt:         model.MillisFromTime(period.EndsAt),
+		ID:          period.ID.String(),
+		CreateAt:    model.MillisFromTime(period.CreatedAt),
+		UpdateAt:    model.MillisFromTime(period.UpdatedAt),
+		DeleteAt:    period.ArchivedAt.Millis(),
+		OwnerType:   string(period.Owner.Type()),
+		OwnerID:     period.Owner.ID(),
+		Name:        period.Name,
+		DisplayName: period.DisplayName,
+		Description: period.Description,
+		StartAt:     model.MillisFromTime(period.StartsAt),
+		EndAt:       model.MillisFromTime(period.EndsAt),
 	}
 }

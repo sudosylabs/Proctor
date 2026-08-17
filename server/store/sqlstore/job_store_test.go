@@ -88,11 +88,11 @@ func TestJobTransactionPoliciesPreserveLegacyBranchSemantics(t *testing.T) {
 		})
 	}
 
-	raw := rawJobTransactionPolicy[bool](false, nil)
+	raw := rawSQLTransactionPolicy[bool](false, nil)
 	if raw.commit || raw.beginError(failure) != failure {
 		t.Fatalf("rollback-only observation policy = %#v", raw)
 	}
-	rawCommit := rawJobTransactionPolicy[bool](true, func(_ bool, err error) error { return err })
+	rawCommit := rawSQLTransactionPolicy[bool](true, func(_ bool, err error) error { return err })
 	if !rawCommit.commit || rawCommit.commitError(true, failure) != failure {
 		t.Fatalf("raw commit policy = %#v", rawCommit)
 	}

@@ -38,7 +38,7 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 	}
 
 	for iteration := 0; iteration < 20; iteration++ {
-		period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartsAt: model.TimeFromMillis(int64(1_800_000_000_000 + iteration*1_000_000)), EndsAt: model.TimeFromMillis(int64(1_800_000_500_000 + iteration*1_000_000))})
+		period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: fmt.Sprintf("period-%d", iteration), DisplayName: "Period", StartsAt: model.TimeFromMillis(int64(1_800_000_000_000 + iteration*1_000_000)), EndsAt: model.TimeFromMillis(int64(1_800_000_500_000 + iteration*1_000_000))})
 		if err != nil {
 			t.Fatal(err)
 		}

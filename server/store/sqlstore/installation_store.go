@@ -5,7 +5,9 @@ package sqlstore
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -22,9 +24,13 @@ type SQLInstallationStore struct {
 }
 
 type installationStateRow struct {
-	InitializedAt       time.Time `db:"initialized_at"`
-	InstitutionID       string    `db:"institution_id"`
-	AdministratorUserID string    `db:"administrator_user_id"`
+	InitializedAt               time.Time       `db:"initialized_at"`
+	InstitutionID               string          `db:"institution_id"`
+	AdministratorUserID         string          `db:"administrator_user_id"`
+	AccessPolicyID              string          `db:"access_policy_id"`
+	BootstrapSecretDigest       []byte          `db:"bootstrap_secret_digest"`
+	BootstrapCommandFingerprint []byte          `db:"bootstrap_command_fingerprint"`
+	BootstrapResult             json.RawMessage `db:"bootstrap_result"`
 }
 
 func newSQLInstallationStore(sqlStore *SQLStore) store.InstallationStore {
@@ -63,7 +69,7 @@ func (s SQLInstallationStore) Bootstrap(
 			return nil, err
 		}
 		if !pristine {
-			return nil, store.NewErrConflict("installation", "installation_already_initialized_or_not_pristine", nil)
+			return replayInstallationBootstrap(ctx, tx, input)
 		}
 
 		if err := insertInstallationInstitution(ctx, tx, prepared.Institution); err != nil {
@@ -87,16 +93,29 @@ func (s SQLInstallationStore) Bootstrap(
 		if err := insertInstallationRoleBinding(ctx, tx, prepared.RoleBinding); err != nil {
 			return nil, err
 		}
+		if err := insertInitialAccessPolicy(ctx, tx, prepared.AccessPolicy); err != nil {
+			return nil, err
+		}
 		if err := insertInstallationAudit(ctx, tx, prepared.auditEvent); err != nil {
 			return nil, err
 		}
+		bootstrapResult, err := json.Marshal(prepared.InstallationBootstrapResult)
+		if err != nil {
+			return nil, fmt.Errorf("encode retained bootstrap result: %w", err)
+		}
 		if _, err := tx.Exec(ctx, `
 		INSERT INTO installation_states (
-			singleton, initialized_at, institution_id, administrator_user_id
-		) VALUES (1, $1, $2, $3)`,
+			singleton, initialized_at, institution_id, administrator_user_id,
+			access_policy_id, bootstrap_secret_digest, bootstrap_command_fingerprint,
+			bootstrap_result
+		) VALUES (1, $1, $2, $3, $4, $5, $6, $7)`,
 			prepared.State.InitializedAt,
 			prepared.State.InstitutionID.String(),
 			prepared.State.AdministratorUserID.String(),
+			prepared.AccessPolicy.ID.String(),
+			input.BootstrapSecretDigest[:],
+			input.CommandFingerprint[:],
+			bootstrapResult,
 		); err != nil {
 			return nil, fmt.Errorf("save installation state: %w", translateError("installation", "singleton", err))
 		}
@@ -257,7 +276,9 @@ func prepareInstallationBootstrap(
 ) (*preparedInstallationBootstrap, error) {
 	if input == nil || input.Institution == nil || input.Administrator == nil ||
 		input.Role == nil || input.RoleBinding == nil || input.AuditEvent == nil ||
-		input.AdministratorSettings == nil || input.DefaultProfilePictureJob == nil || input.PasswordHash == "" {
+		input.AccessPolicy == nil || input.AdministratorSettings == nil ||
+		input.DefaultProfilePictureJob == nil || input.PasswordHash == "" ||
+		input.BootstrapSecretDigest == ([32]byte{}) || input.CommandFingerprint == ([32]byte{}) {
 		return nil, store.NewErrInvalidInput("installation", "bootstrap", nil)
 	}
 	institutionID, err := model.ParseInstitutionID(model.NewId())
@@ -323,6 +344,10 @@ func prepareInstallationBootstrap(
 	if err := binding.Validate(); err != nil {
 		return nil, err
 	}
+	if err := validateInitialAccessPolicyInput(input.AccessPolicy); err != nil {
+		return nil, err
+	}
+	accessPolicy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), at)
 	event := input.AuditEvent.Clone()
 	event.ID = ""
 	event.CreatedAt = time.Time{}
@@ -340,6 +365,7 @@ func prepareInstallationBootstrap(
 		"administrator": administrator.Auditable(),
 		"role":          role.Auditable(),
 		"role_binding":  binding.Auditable(),
+		"access_policy": accessPolicy.Auditable(),
 	})
 	if appErr != nil {
 		return nil, appErr
@@ -357,13 +383,96 @@ func prepareInstallationBootstrap(
 	return &preparedInstallationBootstrap{
 		InstallationBootstrapResult: &model.InstallationBootstrapResult{
 			State: state, Institution: institution, Administrator: &administrator,
-			Role: role, RoleBinding: &binding,
+			Role: role, RoleBinding: &binding, AccessPolicy: accessPolicy,
 		},
 		credential:               credential,
 		auditEvent:               event,
 		AdministratorSettings:    administratorSettings,
 		DefaultProfilePictureJob: input.DefaultProfilePictureJob,
 	}, nil
+}
+
+func validateInitialAccessPolicyInput(policy *model.AccessPolicy) error {
+	if err := policy.Validate(); err != nil {
+		return store.NewErrInvalidInput("access_policy", "initial", nil).Wrap(err)
+	}
+	if policy.Revision != 1 || !policy.LocalLoginEnabled ||
+		policy.PublicRegistrationEnabled || !policy.InvitationAdmissionEnabled ||
+		!policy.InvitationLocalCredentialEnabled || !policy.DesktopAuthorizationEnabled ||
+		len(policy.ProviderAdmissions) != 0 {
+		return store.NewErrInvalidInput("access_policy", "initial", nil)
+	}
+	return nil
+}
+
+func insertInitialAccessPolicy(
+	ctx context.Context,
+	executor sqlxExecutor,
+	policy *model.AccessPolicy,
+) error {
+	providers, err := json.Marshal(policy.ProviderAdmissions)
+	if err != nil {
+		return store.NewErrInvalidInput("access_policy", "provider_admissions", nil).Wrap(err)
+	}
+	if _, err := executor.Exec(ctx, `
+		INSERT INTO access_policies (
+			singleton, id, revision, created_at, updated_at,
+			local_login_enabled, public_registration_enabled,
+			invitation_admission_enabled, invitation_local_credential_enabled,
+			desktop_authorization_enabled, provider_admissions
+		) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		policy.ID.String(), policy.Revision, policy.CreatedAt, policy.UpdatedAt,
+		policy.LocalLoginEnabled, policy.PublicRegistrationEnabled,
+		policy.InvitationAdmissionEnabled, policy.InvitationLocalCredentialEnabled,
+		policy.DesktopAuthorizationEnabled, providers,
+	); err != nil {
+		return fmt.Errorf("save initial access policy: %w", translateError("access_policy", policy.ID.String(), err))
+	}
+	return nil
+}
+
+func replayInstallationBootstrap(
+	ctx context.Context,
+	executor sqlxExecutor,
+	input *store.InstallationBootstrap,
+) (*model.InstallationBootstrapResult, error) {
+	var state installationStateRow
+	if err := executor.Get(ctx, &state, `
+		SELECT initialized_at, institution_id, administrator_user_id,
+		       access_policy_id, bootstrap_secret_digest,
+		       bootstrap_command_fingerprint, bootstrap_result
+		  FROM installation_states
+		 WHERE singleton = 1`); err != nil {
+		return nil, store.NewErrConflict("installation", "installation_not_pristine", err)
+	}
+	if subtle.ConstantTimeCompare(state.BootstrapSecretDigest, input.BootstrapSecretDigest[:]) != 1 ||
+		subtle.ConstantTimeCompare(state.BootstrapCommandFingerprint, input.CommandFingerprint[:]) != 1 {
+		return nil, store.NewErrConflict("installation", "installation_already_initialized", nil)
+	}
+
+	var result model.InstallationBootstrapResult
+	if err := json.Unmarshal(state.BootstrapResult, &result); err != nil {
+		return nil, fmt.Errorf("decode retained bootstrap result: %w", err)
+	}
+	if err := validateRetainedBootstrapResult(&result, state); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func validateRetainedBootstrapResult(result *model.InstallationBootstrapResult, row installationStateRow) error {
+	if result == nil || result.State == nil || result.Institution == nil ||
+		result.Administrator == nil || result.Role == nil || result.RoleBinding == nil ||
+		result.AccessPolicy == nil || result.State.Validate() != nil ||
+		result.Institution.Validate() != nil || result.Administrator.Validate() != nil ||
+		result.Role.Validate() != nil || result.RoleBinding.Validate() != nil ||
+		result.AccessPolicy.Validate() != nil ||
+		result.State.InstitutionID.String() != row.InstitutionID ||
+		result.State.AdministratorUserID.String() != row.AdministratorUserID ||
+		result.AccessPolicy.ID.String() != row.AccessPolicyID {
+		return store.NewErrConflict("installation", "retained_bootstrap_result_invalid", nil)
+	}
+	return nil
 }
 
 func installationIsPristine(ctx context.Context, executor sqlxExecutor) (bool, error) {
@@ -373,7 +482,8 @@ func installationIsPristine(ctx context.Context, executor sqlxExecutor) (bool, e
 		    OR EXISTS (SELECT 1 FROM institutions)
 		    OR EXISTS (SELECT 1 FROM users)
 		    OR EXISTS (SELECT 1 FROM roles)
-		    OR EXISTS (SELECT 1 FROM role_bindings)`); err != nil {
+		    OR EXISTS (SELECT 1 FROM role_bindings)
+		    OR EXISTS (SELECT 1 FROM access_policies)`); err != nil {
 		return false, fmt.Errorf("check installation state: %w", err)
 	}
 	return !present, nil

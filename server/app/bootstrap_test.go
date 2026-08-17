@@ -23,6 +23,8 @@ type installationStoreFake struct {
 	input  *store.InstallationBootstrap
 	result *model.InstallationBootstrapResult
 	err    error
+	errors []error
+	calls  int
 }
 
 func (s *installationStoreFake) Get(context.Context) (*model.InstallationState, error) {
@@ -33,6 +35,10 @@ func (s *installationStoreFake) Get(context.Context) (*model.InstallationState, 
 func (s *installationStoreFake) Bootstrap(_ context.Context, input *store.InstallationBootstrap) (*model.InstallationBootstrapResult, error) {
 	*s.events = append(*s.events, "bootstrap")
 	s.input = input
+	s.calls++
+	if len(s.errors) >= s.calls && s.errors[s.calls-1] != nil {
+		return nil, s.errors[s.calls-1]
+	}
 	return s.result, s.err
 }
 
@@ -104,6 +110,10 @@ func bootstrapRateLimitPolicy(maximum int) LoginRateLimitPolicy {
 	return LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: maximum}
 }
 
+func bootstrapProtection() BootstrapProtectionPolicy {
+	return BootstrapProtectionPolicy{Secret: "operator-provided-bootstrap-secret-32-bytes"}
+}
+
 func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 	t.Parallel()
 	events := []string{}
@@ -112,6 +122,7 @@ func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 		&passwordHasherFake{events: &events},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
 		bootstrapRateLimitPolicy(10),
+		bootstrapProtection(),
 		"node-a",
 		time.Now,
 	)
@@ -135,13 +146,14 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 		&passwordHasherFake{events: &events, hash: "encoded"},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
 		bootstrapRateLimitPolicy(10),
+		bootstrapProtection(),
 		"node-a",
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	got, err := service.Bootstrap(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{RequestID: "req"}), BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com",
-		Password: "password-value", Source: "127.0.0.1",
+		Password: "password-value", BootstrapSecret: bootstrapProtection().Secret, Source: "127.0.0.1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -151,6 +163,14 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 	}
 	if persistence.input.AuditEvent.NodeID != "node-a" || persistence.input.Role.BuiltIn != true {
 		t.Fatalf("bootstrap input = %#v", persistence.input)
+	}
+	if persistence.input.AccessPolicy == nil || persistence.input.AccessPolicy.Revision != 1 ||
+		!persistence.input.AccessPolicy.LocalLoginEnabled ||
+		persistence.input.AccessPolicy.PublicRegistrationEnabled ||
+		!persistence.input.AccessPolicy.DesktopAuthorizationEnabled ||
+		persistence.input.BootstrapSecretDigest == ([32]byte{}) ||
+		persistence.input.CommandFingerprint == ([32]byte{}) {
+		t.Fatalf("bootstrap protection/policy input = %#v", persistence.input)
 	}
 	if !reflect.DeepEqual(persistence.input.Role.Permissions, model.AllActions()) {
 		t.Fatalf("bootstrap system-administrator permissions = %#v, want %#v", persistence.input.Role.Permissions, model.AllActions())
@@ -165,7 +185,7 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 		persistence.input.AdministratorSettings.FormatVersion != model.UserSettingsFormatVersion1 {
 		t.Fatalf("bootstrap administrator settings = %#v", persistence.input.AdministratorSettings)
 	}
-	want := []string{"get-status", "rate-limit", "hash-password", "bootstrap"}
+	want := []string{"rate-limit", "hash-password", "bootstrap"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -177,21 +197,23 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 	service := newBootstrapService(
 		&installationStoreFake{events: &events, state: &model.InstallationState{
 			InitializedAt: model.TimeFromMillis(1), InstitutionID: model.NewInstitutionID(), AdministratorUserID: model.NewUserID(),
-		}},
+		}, err: store.NewErrConflict("installation", "already", nil)},
 		&passwordHasherFake{events: &events},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
 		bootstrapRateLimitPolicy(10),
+		bootstrapProtection(),
 		"node-a",
 		time.Now,
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
+		BootstrapSecret: bootstrapProtection().Secret,
 	})
 	if !Is(err, "installation.already_initialized") {
 		t.Fatalf("error = %v", err)
 	}
-	want := []string{"get-status"}
+	want := []string{"rate-limit", "hash-password", "bootstrap"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -208,15 +230,97 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 		&passwordHasherFake{events: &events, hash: "encoded"},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
 		bootstrapRateLimitPolicy(10),
+		bootstrapProtection(),
 		"node-a",
 		time.Now,
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
+		BootstrapSecret: bootstrapProtection().Secret,
 	})
 	if !Is(err, "installation.already_initialized") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestBootstrapRejectsWrongSecretBeforePasswordHashingOrPersistence(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	service := newBootstrapService(
+		&installationStoreFake{events: &events},
+		&passwordHasherFake{events: &events, hash: "encoded"},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
+		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
+	)
+	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
+		InstitutionName: "northbridge", AdministratorUsername: "admin",
+		AdministratorEmail: "admin@example.com", Password: "password-value",
+		BootstrapSecret: "wrong-bootstrap-secret-that-is-still-long-enough", Source: "192.0.2.10:443",
+	})
+	if !Is(err, "installation.bootstrap_denied") {
+		t.Fatalf("error = %v", err)
+	}
+	if want := []string{"rate-limit"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestBootstrapReconcilesUnknownCommitByRepeatingTheFencedAggregate(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	committed := &model.InstallationBootstrapResult{State: &model.InstallationState{
+		InitializedAt: model.TimeFromMillis(1), InstitutionID: model.NewInstitutionID(),
+		AdministratorUserID: model.NewUserID(),
+	}}
+	persistence := &installationStoreFake{
+		events: &events, result: committed,
+		errors: []error{errors.New("commit outcome unknown"), nil},
+	}
+	service := newBootstrapService(
+		persistence, &passwordHasherFake{events: &events, hash: "encoded"},
+		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
+		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
+	)
+	result, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
+		InstitutionName: "northbridge", AdministratorUsername: "admin",
+		AdministratorEmail: "admin@example.com", Password: "password-value",
+		BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.10:443",
+	})
+	if err != nil || result != committed || persistence.calls != 2 {
+		t.Fatalf("result=%#v calls=%d error=%v", result, persistence.calls, err)
+	}
+}
+
+func TestBootstrapCommandFingerprintIsExactAndDeploymentSecretKeyed(t *testing.T) {
+	t.Parallel()
+
+	command := BootstrapInstallationCommand{
+		InstitutionName: "northbridge", AdministratorUsername: "admin",
+		AdministratorEmail: "admin@example.com", Password: "password-value",
+		BootstrapSecret: bootstrapProtection().Secret,
+	}
+	first, err := fingerprintBootstrapCommand(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := fingerprintBootstrapCommand(command)
+	if err != nil || first != second {
+		t.Fatalf("same command fingerprint = %x / %x, error=%v", first, second, err)
+	}
+	changedPassword := command
+	changedPassword.Password = "different-password"
+	passwordFingerprint, err := fingerprintBootstrapCommand(changedPassword)
+	if err != nil || passwordFingerprint == first {
+		t.Fatalf("changed password fingerprint = %x, error=%v", passwordFingerprint, err)
+	}
+	changedSecret := command
+	changedSecret.BootstrapSecret = "different-operator-bootstrap-secret-32-bytes"
+	secretFingerprint, err := fingerprintBootstrapCommand(changedSecret)
+	if err != nil || secretFingerprint == first {
+		t.Fatalf("changed secret fingerprint = %x, error=%v", secretFingerprint, err)
 	}
 }
 
@@ -230,13 +334,15 @@ func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
 		&passwordHasherFake{events: &events, hash: "encoded"},
 		bootstrapAttemptAccounting(t, cache),
 		bootstrapRateLimitPolicy(2),
+		bootstrapProtection(),
 		"node-a",
 		time.Now,
 	)
 	command := BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
-		Source: " 192.0.2.10:443 ",
+		BootstrapSecret: bootstrapProtection().Secret,
+		Source:          " 192.0.2.10:443 ",
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
 		if _, err := service.Bootstrap(context.Background(), Invocation{}, command); err != nil {
@@ -276,18 +382,20 @@ func TestBootstrapRateLimitFailureIsAdministrationUnavailableBeforeHashing(t *te
 		&passwordHasherFake{events: &events, hash: "encoded"},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events, err: cacheFailure}),
 		bootstrapRateLimitPolicy(2),
+		bootstrapProtection(),
 		"node-a",
 		time.Now,
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
-		Source: "192.0.2.10:443",
+		BootstrapSecret: bootstrapProtection().Secret,
+		Source:          "192.0.2.10:443",
 	})
 	if !Is(err, "administration.unavailable") || !errors.Is(err, cacheFailure) {
 		t.Fatalf("error = %v", err)
 	}
-	want := []string{"get-status", "rate-limit"}
+	want := []string{"rate-limit"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -302,18 +410,20 @@ func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
 		&passwordHasherFake{events: &events, hash: "encoded"},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
 		LoginRateLimitPolicy{},
+		bootstrapProtection(),
 		"node-a",
 		time.Now,
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
 		AdministratorEmail: "admin@example.com", Password: "password-value",
-		Source: "192.0.2.10:443",
+		BootstrapSecret: bootstrapProtection().Secret,
+		Source:          "192.0.2.10:443",
 	})
 	if !Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
 	}
-	want := []string{"get-status"}
+	want := []string{}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}

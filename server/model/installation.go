@@ -57,6 +57,7 @@ type InstallationBootstrapResult struct {
 	Administrator *User
 	Role          *Role
 	RoleBinding   *RoleBinding
+	AccessPolicy  *AccessPolicy
 }
 
 var _ Auditable = (*InstallationState)(nil)

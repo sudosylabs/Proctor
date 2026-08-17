@@ -122,6 +122,7 @@ type Options struct {
 	RoleBindings            RoleBindingApplication
 	AuditListings           AuditListingApplication
 	Bootstrap               BootstrapApplication
+	Mail                    MailApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
 	MaxBodyBytes            int64
@@ -412,6 +413,7 @@ type Application interface {
 	MFA
 	InstitutionApplication
 	JobOperationsApplication
+	MailApplication
 	ExamApplication
 	ExamRevisionApplication
 	ExamSittingApplication
@@ -421,6 +423,11 @@ type Application interface {
 	ExamAttemptApplication
 	ExamIntegrityReviewApplication
 	Realtime
+}
+
+type MailApplication interface {
+	SendTestMail(context.Context, application.Invocation) (application.MailDeliveryView, error)
+	GetMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error)
 }
 
 type API struct {
@@ -565,6 +572,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		roleBindingResource(options.RoleBindings),
 		auditResource(options.AuditListings),
 		jobResource(options.Application),
+		mailResource(options.Mail),
 		webSocketResource(webSocket),
 	}
 }

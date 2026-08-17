@@ -8,42 +8,80 @@ import (
 	"time"
 )
 
+// AcademicPeriodOwner identifies exactly one immutable owner. Institution
+// periods apply everywhere; Academic Unit periods apply to the owner's
+// subtree.
+type AcademicPeriodOwner struct {
+	InstitutionID  InstitutionID
+	AcademicUnitID AcademicUnitID
+}
+
+func NewInstitutionAcademicPeriodOwner(id InstitutionID) AcademicPeriodOwner {
+	return AcademicPeriodOwner{InstitutionID: id}
+}
+
+func NewAcademicUnitAcademicPeriodOwner(id AcademicUnitID) AcademicPeriodOwner {
+	return AcademicPeriodOwner{AcademicUnitID: id}
+}
+
+func (owner AcademicPeriodOwner) Validate() error {
+	institution := owner.InstitutionID.IsValid()
+	unit := owner.AcademicUnitID.IsValid()
+	if institution == unit {
+		return fmt.Errorf("model: academic period owner must contain exactly one institution or academic unit")
+	}
+	return nil
+}
+
+func (owner AcademicPeriodOwner) Resource() Resource {
+	if owner.InstitutionID.IsValid() {
+		return Resource{Type: ResourceInstitution, ID: owner.InstitutionID.String()}
+	}
+	if owner.AcademicUnitID.IsValid() {
+		return Resource{Type: ResourceAcademicUnit, ID: owner.AcademicUnitID.String()}
+	}
+	return Resource{}
+}
+
+func (owner AcademicPeriodOwner) Type() ResourceType { return owner.Resource().Type }
+func (owner AcademicPeriodOwner) ID() string         { return owner.Resource().ID }
+
 // AcademicPeriod is the time window in which classes and enrollments apply,
-// such as an academic year or semester. It is institution-wide rather than a
-// child of one programme. StartsAt is inclusive and EndsAt is exclusive.
+// such as an academic year or semester. StartsAt is inclusive and EndsAt is
+// exclusive.
 type AcademicPeriod struct {
-	ID            AcademicPeriodID
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	ArchivedAt    OptionalTime
-	Revision      int64
-	InstitutionID InstitutionID
-	Name          string
-	DisplayName   string
-	Description   string
-	StartsAt      time.Time
-	EndsAt        time.Time
+	ID          AcademicPeriodID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	ArchivedAt  OptionalTime
+	Revision    int64
+	Owner       AcademicPeriodOwner
+	Name        string
+	DisplayName string
+	Description string
+	StartsAt    time.Time
+	EndsAt      time.Time
 }
 
 // NewAcademicPeriod constructs a period with application-supplied identity and clock.
 func NewAcademicPeriod(
 	id AcademicPeriodID,
-	institutionID InstitutionID,
+	owner AcademicPeriodOwner,
 	name, displayName, description string,
 	startsAt, endsAt, at time.Time,
 ) (*AcademicPeriod, error) {
 	at = TimeUTC(at)
 	period := &AcademicPeriod{
-		ID:            id,
-		CreatedAt:     at,
-		UpdatedAt:     at,
-		Revision:      1,
-		InstitutionID: institutionID,
-		Name:          name,
-		DisplayName:   displayName,
-		Description:   description,
-		StartsAt:      TimeUTC(startsAt),
-		EndsAt:        TimeUTC(endsAt),
+		ID:          id,
+		CreatedAt:   at,
+		UpdatedAt:   at,
+		Revision:    1,
+		Owner:       owner,
+		Name:        name,
+		DisplayName: displayName,
+		Description: description,
+		StartsAt:    TimeUTC(startsAt),
+		EndsAt:      TimeUTC(endsAt),
 	}
 	sanitizeNamed(&period.Name, &period.DisplayName, &period.Description)
 	if err := period.Validate(); err != nil {
@@ -127,8 +165,8 @@ func (ap *AcademicPeriod) Validate() error {
 	if ap.UpdatedAt.Before(ap.CreatedAt) {
 		return invalidModelError(where, "academic_period", "updated_at", "must not precede created_at", details)
 	}
-	if !ap.InstitutionID.IsValid() {
-		return invalidModelError(where, "academic_period", "institution_id", "must be a valid identifier", details)
+	if err := ap.Owner.Validate(); err != nil {
+		return invalidModelError(where, "academic_period", "owner", "must identify exactly one institution or academic unit", details)
 	}
 	if ap.StartsAt.IsZero() {
 		return invalidModelError(where, "academic_period", "start_at", "must be set", details)
@@ -151,16 +189,17 @@ func (ap *AcademicPeriod) Auditable() map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"id":             ap.ID.String(),
-		"created_at":     MillisFromTime(ap.CreatedAt),
-		"updated_at":     MillisFromTime(ap.UpdatedAt),
-		"archived_at":    ap.ArchivedAt.Millis(),
-		"revision":       ap.Revision,
-		"institution_id": ap.InstitutionID.String(),
-		"name":           ap.Name,
-		"display_name":   ap.DisplayName,
-		"start_at":       MillisFromTime(ap.StartsAt),
-		"end_at":         MillisFromTime(ap.EndsAt),
+		"id":           ap.ID.String(),
+		"created_at":   MillisFromTime(ap.CreatedAt),
+		"updated_at":   MillisFromTime(ap.UpdatedAt),
+		"archived_at":  ap.ArchivedAt.Millis(),
+		"revision":     ap.Revision,
+		"owner_type":   string(ap.Owner.Type()),
+		"owner_id":     ap.Owner.ID(),
+		"name":         ap.Name,
+		"display_name": ap.DisplayName,
+		"start_at":     MillisFromTime(ap.StartsAt),
+		"end_at":       MillisFromTime(ap.EndsAt),
 	}
 }
 

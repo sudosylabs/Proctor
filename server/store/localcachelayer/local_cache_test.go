@@ -143,15 +143,15 @@ func TestLocalCacheReturnsDefensiveAcademicPeriodCopies(t *testing.T) {
 
 	wantName := "2026-2027"
 	period := &model.AcademicPeriod{
-		ID:            model.NewAcademicPeriodID(),
-		InstitutionID: model.NewInstitutionID(),
-		Name:          "2026-2027",
-		DisplayName:   wantName,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
-		StartsAt:      time.Now().UTC(),
-		EndsAt:        time.Now().UTC().Add(time.Hour),
-		Revision:      1,
+		ID:          model.NewAcademicPeriodID(),
+		Owner:       model.NewInstitutionAcademicPeriodOwner(model.NewInstitutionID()),
+		Name:        "2026-2027",
+		DisplayName: wantName,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+		StartsAt:    time.Now().UTC(),
+		EndsAt:      time.Now().UTC().Add(time.Hour),
+		Revision:    1,
 	}
 	underlying := &academicPeriodStub{period: period}
 	cache, err := localcachelayer.NewMemoryCache(8)
@@ -590,15 +590,15 @@ func TestLocalCacheGeneratedForwardingIsCurrent(t *testing.T) {
 func validAcademicPeriod() *model.AcademicPeriod {
 	now := time.Now().UTC()
 	return &model.AcademicPeriod{
-		ID:            model.NewAcademicPeriodID(),
-		InstitutionID: model.NewInstitutionID(),
-		Name:          "2026-2027",
-		DisplayName:   "2026-2027",
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		StartsAt:      now,
-		EndsAt:        now.Add(time.Hour),
-		Revision:      1,
+		ID:          model.NewAcademicPeriodID(),
+		Owner:       model.NewInstitutionAcademicPeriodOwner(model.NewInstitutionID()),
+		Name:        "2026-2027",
+		DisplayName: "2026-2027",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		StartsAt:    now,
+		EndsAt:      now.Add(time.Hour),
+		Revision:    1,
 	}
 }
 

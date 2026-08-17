@@ -21,6 +21,7 @@ func TestAccessScopeResolverRejectsArchivedAndIncompatibleResources(t *testing.T
 		&accessInstitutionStoreFake{institution: institution},
 		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -30,6 +31,19 @@ func TestAccessScopeResolverRejectsArchivedAndIncompatibleResources(t *testing.T
 	}
 	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceType("future"), ID: model.NewId()}); !Is(err, "authorization.request.invalid") {
 		t.Fatalf("incompatible resource error = %v", err)
+	}
+}
+
+func TestAccessScopeResolverRequiresAcademicPeriodReader(t *testing.T) {
+	t.Parallel()
+
+	_, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{}, &accessAcademicUnitStoreFake{}, &accessClassStoreFake{},
+		&accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{},
+		&accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{}, nil,
+	)
+	if err == nil {
+		t.Fatal("newAccessScopeResolver() accepted a nil Academic Period reader")
 	}
 }
 
@@ -49,6 +63,7 @@ func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
 		}}},
 		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{exam: exam}, &accessExamSittingStoreFake{},
 		&accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +77,181 @@ func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
 	}
 	if scope, id := authorizationAuditScope(model.Resource{Type: model.ResourceExam, ID: examID.String()}, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
 		t.Fatalf("audit scope = %s/%s", scope, id)
+	}
+}
+
+func TestAccessScopeResolverMapsAcademicPeriodOwnerScope(t *testing.T) {
+	t.Parallel()
+	institutionID := model.NewInstitutionID()
+	rootID, unitID := model.NewAcademicUnitID(), model.NewAcademicUnitID()
+	periodID := model.NewAcademicPeriodID()
+	period := &model.AcademicPeriod{
+		ID: periodID, Owner: model.NewAcademicUnitAcademicPeriodOwner(unitID),
+		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), Revision: 1,
+		Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
+	}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{},
+		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{unitID.String(): {
+			{ID: unitID, InstitutionID: institutionID}, {ID: rootID, InstitutionID: institutionID},
+		}}},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{period: period},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: periodID.String()}
+	resolved, err := resolver.resolve(context.Background(), resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.institutionID != institutionID.String() || resolved.targetAcademicUnitID != unitID.String() || len(resolved.academicUnitID) != 2 {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
+		t.Fatalf("audit scope = %s/%s", scope, id)
+	}
+}
+
+type accessAcademicPeriodStoreFake struct {
+	period  *model.AcademicPeriod
+	periods map[string]*model.AcademicPeriod
+	gets    int
+	err     error
+}
+
+func (s *accessAcademicPeriodStoreFake) Get(_ context.Context, id string) (*model.AcademicPeriod, error) {
+	s.gets++
+	if s.err != nil {
+		return nil, s.err
+	}
+	if period := s.periods[id]; period != nil {
+		return period, nil
+	}
+	if s.period == nil {
+		return nil, store.NewErrNotFound("academic_period", "missing")
+	}
+	return s.period, nil
+}
+
+func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T) {
+	t.Parallel()
+
+	institutionID := model.NewInstitutionID()
+	unitID := model.NewAcademicUnitID()
+	periods := &accessAcademicPeriodStoreFake{err: errors.New("academic period target must not be read")}
+	units := &accessAcademicUnitStoreFake{err: errors.New("academic period owner must not be read")}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}}, units,
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{}, periods,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := newAccessControlService(
+		&accessRoleStoreFake{}, &accessRoleBindingStoreFake{}, resolver, accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
+	}
+	invocation := NewInvocation(principal, model.RequestMetadata{})
+	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: model.NewAcademicPeriodID().String()}
+	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, resource, invocation.RequestMetadata()); !Is(err, "authorization.denied") {
+		t.Fatalf("target preflight error = %v, want authorization.denied", err)
+	}
+	period := &model.AcademicPeriod{
+		ID: model.NewAcademicPeriodID(), Owner: model.NewAcademicUnitAcademicPeriodOwner(unitID),
+		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), Revision: 1,
+		Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
+	}
+	if err := access.authorizeAcademicPeriodOwner(context.Background(), invocation, model.ActionAcademicPeriodManage, period); !Is(err, "authorization.denied") {
+		t.Fatalf("owner preflight error = %v, want authorization.denied", err)
+	}
+	if periods.gets != 0 || units.listAncestors != 0 {
+		t.Fatalf("preflight inspected target or owner: period gets=%d unit ancestor reads=%d", periods.gets, units.listAncestors)
+	}
+}
+
+func TestAccessControlAcademicPeriodScopeInheritanceAndInstitutionView(t *testing.T) {
+	t.Parallel()
+	institutionID := model.NewInstitutionID()
+	rootID, childID, siblingID := model.NewAcademicUnitID(), model.NewAcademicUnitID(), model.NewAcademicUnitID()
+	unitPeriodID, siblingPeriodID, institutionPeriodID := model.NewAcademicPeriodID(), model.NewAcademicPeriodID(), model.NewAcademicPeriodID()
+	now := model.NowUTC()
+	periods := map[string]*model.AcademicPeriod{
+		unitPeriodID.String(): {
+			ID: unitPeriodID, Owner: model.NewAcademicUnitAcademicPeriodOwner(childID), CreatedAt: now, UpdatedAt: now, Revision: 1,
+			Name: "unit", DisplayName: "Unit", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
+		},
+		siblingPeriodID.String(): {
+			ID: siblingPeriodID, Owner: model.NewAcademicUnitAcademicPeriodOwner(siblingID), CreatedAt: now, UpdatedAt: now, Revision: 1,
+			Name: "sibling", DisplayName: "Sibling", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
+		},
+		institutionPeriodID.String(): {
+			ID: institutionPeriodID, Owner: model.NewInstitutionAcademicPeriodOwner(institutionID), CreatedAt: now, UpdatedAt: now, Revision: 1,
+			Name: "institution", DisplayName: "Institution", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
+		},
+	}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}},
+		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
+			rootID.String():    {{ID: rootID, InstitutionID: institutionID}},
+			childID.String():   {{ID: childID, InstitutionID: institutionID}, {ID: rootID, InstitutionID: institutionID}},
+			siblingID.String(): {{ID: siblingID, InstitutionID: institutionID}},
+		}},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{periods: periods},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, roleID := model.NewUserID(), model.NewRoleID()
+	access, err := newAccessControlService(
+		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage)}}}},
+		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: rootID.String()}}},
+		resolver, accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{
+		UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: now, ClientType: model.SessionClientWeb,
+	}
+	unitResource := model.Resource{Type: model.ResourceAcademicPeriod, ID: unitPeriodID.String()}
+	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodView, unitResource); err != nil || !allowed {
+		t.Fatalf("descendant view = %v, %v", allowed, err)
+	}
+	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodManage, unitResource); err != nil || !allowed {
+		t.Fatalf("descendant manage = %v, %v", allowed, err)
+	}
+	siblingResource := model.Resource{Type: model.ResourceAcademicPeriod, ID: siblingPeriodID.String()}
+	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource); err != nil || allowed {
+		t.Fatalf("cross-subtree view = %v, %v", allowed, err)
+	}
+	invocation := NewInvocation(principal, model.RequestMetadata{})
+	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, unitResource, invocation.RequestMetadata()); err != nil {
+		t.Fatalf("preflight plus terminal descendant view = %v", err)
+	}
+	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource, invocation.RequestMetadata()); !Is(err, "authorization.denied") {
+		t.Fatalf("preflight plus terminal cross-subtree view = %v", err)
+	}
+	institutionResource := model.Resource{Type: model.ResourceAcademicPeriod, ID: institutionPeriodID.String()}
+	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodView, institutionResource); err != nil || !allowed {
+		t.Fatalf("applicable institution view = %v, %v", allowed, err)
+	}
+	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodManage, institutionResource); err != nil || allowed {
+		t.Fatalf("institution manage from unit = %v, %v", allowed, err)
 	}
 }
 
@@ -83,6 +273,7 @@ func TestAccessScopeResolverMapsExamSittingThroughOwningExam(t *testing.T) {
 		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
 		&accessExamAuthoringStoreFake{exam: exam}, &accessExamSittingStoreFake{snapshot: &store.ExamSittingSnapshot{Sitting: sitting}},
 		&accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +307,7 @@ func TestAccessScopeResolverMapsSubmissionToOwningAcademicUnit(t *testing.T) {
 			SubmissionID: submissionID, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 			AttemptID: model.NewExamAttemptID(), AcademicUnitID: unitID,
 		}},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +341,7 @@ func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
 		}},
 		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{exam: exam}, &accessExamSittingStoreFake{},
 		&accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +377,7 @@ func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing
 		}},
 		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 		&accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -224,6 +418,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 		}},
 		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 		&accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -270,6 +465,7 @@ func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
 		&accessInstitutionStoreFake{err: errors.New("database unavailable")},
 		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -293,6 +489,7 @@ func TestAccessControlPreservesIntrinsicSelfRead(t *testing.T) {
 		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{},
 		&accessUserStoreFake{user: user}, &accessClassMemberStoreFake{},
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -337,11 +534,14 @@ func (s *accessInstitutionStoreFake) GetSingleton(context.Context) (*model.Insti
 
 type accessAcademicUnitStoreFake struct {
 	store.AcademicUnitStore
-	ancestors map[string][]*model.AcademicUnit
+	ancestors     map[string][]*model.AcademicUnit
+	listAncestors int
+	err           error
 }
 
 func (s *accessAcademicUnitStoreFake) ListAncestors(_ context.Context, id string) ([]*model.AcademicUnit, error) {
-	return s.ancestors[id], nil
+	s.listAncestors++
+	return s.ancestors[id], s.err
 }
 
 type accessClassStoreFake struct{ store.ClassStore }

@@ -8,6 +8,9 @@ package model
 // NewInstitutionID returns a freshly generated institution identifier.
 func NewInstitutionID() InstitutionID { return InstitutionID(NewId()) }
 
+// NewAccessPolicyID returns a freshly generated access-policy identifier.
+func NewAccessPolicyID() AccessPolicyID { return AccessPolicyID(NewId()) }
+
 // NewAcademicUnitID returns a freshly generated academic-unit identifier.
 func NewAcademicUnitID() AcademicUnitID { return AcademicUnitID(NewId()) }
 
@@ -135,6 +138,12 @@ func NewMFARecoveryCodeID() MFARecoveryCodeID { return MFARecoveryCodeID(NewId()
 // NewAuditEventID returns a freshly generated audit-event identifier.
 func NewAuditEventID() AuditEventID { return AuditEventID(NewId()) }
 
+// NewMailOccurrenceID returns a freshly generated mail-occurrence identifier.
+func NewMailOccurrenceID() MailOccurrenceID { return MailOccurrenceID(NewId()) }
+
+// NewMailDeliveryID returns a freshly generated mail-delivery identifier.
+func NewMailDeliveryID() MailDeliveryID { return MailDeliveryID(NewId()) }
+
 // NewExternalLoginStateID returns a freshly generated external-login-state identifier.
 func NewExternalLoginStateID() ExternalLoginStateID { return ExternalLoginStateID(NewId()) }
 
@@ -153,6 +162,11 @@ func NewUploadLeaseID() UploadLeaseID { return UploadLeaseID(NewId()) }
 // ParseInstitutionID validates and converts the shared identifier representation.
 func ParseInstitutionID(value string) (InstitutionID, error) {
 	return parseID[InstitutionID](value, "institution_id")
+}
+
+// ParseAccessPolicyID validates and converts the shared identifier representation.
+func ParseAccessPolicyID(value string) (AccessPolicyID, error) {
+	return parseID[AccessPolicyID](value, "access_policy_id")
 }
 
 // ParseAcademicUnitID validates and converts the shared identifier representation.
@@ -360,6 +374,16 @@ func ParseAuditEventID(value string) (AuditEventID, error) {
 	return parseID[AuditEventID](value, "audit_event_id")
 }
 
+// ParseMailOccurrenceID validates and converts the shared identifier representation.
+func ParseMailOccurrenceID(value string) (MailOccurrenceID, error) {
+	return parseID[MailOccurrenceID](value, "mail_occurrence_id")
+}
+
+// ParseMailDeliveryID validates and converts the shared identifier representation.
+func ParseMailDeliveryID(value string) (MailDeliveryID, error) {
+	return parseID[MailDeliveryID](value, "mail_delivery_id")
+}
+
 // ParseExternalLoginStateID validates and converts the shared identifier representation.
 func ParseExternalLoginStateID(value string) (ExternalLoginStateID, error) {
 	return parseID[ExternalLoginStateID](value, "external_login_state_id")
@@ -387,6 +411,9 @@ func ParseUploadLeaseID(value string) (UploadLeaseID, error) {
 
 // IsZero reports whether the institution is the empty zero value.
 func (id InstitutionID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the access-policy is the empty zero value.
+func (id AccessPolicyID) IsZero() bool { return id == "" }
 
 // IsZero reports whether the academic-unit is the empty zero value.
 func (id AcademicUnitID) IsZero() bool { return id == "" }
@@ -511,6 +538,12 @@ func (id MFARecoveryCodeID) IsZero() bool { return id == "" }
 // IsZero reports whether the audit-event is the empty zero value.
 func (id AuditEventID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the mail-occurrence is the empty zero value.
+func (id MailOccurrenceID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the mail-delivery is the empty zero value.
+func (id MailDeliveryID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the external-login-state is the empty zero value.
 func (id ExternalLoginStateID) IsZero() bool { return id == "" }
 
@@ -528,6 +561,9 @@ func (id UploadLeaseID) IsZero() bool { return id == "" }
 
 // IsValid reports whether the institution is a canonical non-zero ID.
 func (id InstitutionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the access-policy is a canonical non-zero ID.
+func (id AccessPolicyID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the academic-unit is a canonical non-zero ID.
 func (id AcademicUnitID) IsValid() bool { return IsValidId(string(id)) }
@@ -652,6 +688,12 @@ func (id MFARecoveryCodeID) IsValid() bool { return IsValidId(string(id)) }
 // IsValid reports whether the audit-event is a canonical non-zero ID.
 func (id AuditEventID) IsValid() bool { return IsValidId(string(id)) }
 
+// IsValid reports whether the mail-occurrence is a canonical non-zero ID.
+func (id MailOccurrenceID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the mail-delivery is a canonical non-zero ID.
+func (id MailDeliveryID) IsValid() bool { return IsValidId(string(id)) }
+
 // IsValid reports whether the external-login-state is a canonical non-zero ID.
 func (id ExternalLoginStateID) IsValid() bool { return IsValidId(string(id)) }
 
@@ -669,6 +711,9 @@ func (id UploadLeaseID) IsValid() bool { return IsValidId(string(id)) }
 
 // String returns the institution wire/database representation.
 func (id InstitutionID) String() string { return string(id) }
+
+// String returns the access-policy wire/database representation.
+func (id AccessPolicyID) String() string { return string(id) }
 
 // String returns the academic-unit wire/database representation.
 func (id AcademicUnitID) String() string { return string(id) }
@@ -793,6 +838,12 @@ func (id MFARecoveryCodeID) String() string { return string(id) }
 // String returns the audit-event wire/database representation.
 func (id AuditEventID) String() string { return string(id) }
 
+// String returns the mail-occurrence wire/database representation.
+func (id MailOccurrenceID) String() string { return string(id) }
+
+// String returns the mail-delivery wire/database representation.
+func (id MailDeliveryID) String() string { return string(id) }
+
 // String returns the external-login-state wire/database representation.
 func (id ExternalLoginStateID) String() string { return string(id) }
 
@@ -810,6 +861,9 @@ func (id UploadLeaseID) String() string { return string(id) }
 
 // MarshalText encodes the institution as its canonical string.
 func (id InstitutionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the access-policy as its canonical string.
+func (id AccessPolicyID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the academic-unit as its canonical string.
 func (id AcademicUnitID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -934,6 +988,12 @@ func (id MFARecoveryCodeID) MarshalText() ([]byte, error) { return marshalID(id)
 // MarshalText encodes the audit-event as its canonical string.
 func (id AuditEventID) MarshalText() ([]byte, error) { return marshalID(id) }
 
+// MarshalText encodes the mail-occurrence as its canonical string.
+func (id MailOccurrenceID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the mail-delivery as its canonical string.
+func (id MailDeliveryID) MarshalText() ([]byte, error) { return marshalID(id) }
+
 // MarshalText encodes the external-login-state as its canonical string.
 func (id ExternalLoginStateID) MarshalText() ([]byte, error) { return marshalID(id) }
 
@@ -952,6 +1012,11 @@ func (id UploadLeaseID) MarshalText() ([]byte, error) { return marshalID(id) }
 // UnmarshalText decodes and validates the institution when non-empty.
 func (id *InstitutionID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseInstitutionID)
+}
+
+// UnmarshalText decodes and validates the access-policy when non-empty.
+func (id *AccessPolicyID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseAccessPolicyID)
 }
 
 // UnmarshalText decodes and validates the academic-unit when non-empty.
@@ -1159,6 +1224,16 @@ func (id *AuditEventID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseAuditEventID)
 }
 
+// UnmarshalText decodes and validates the mail-occurrence when non-empty.
+func (id *MailOccurrenceID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseMailOccurrenceID)
+}
+
+// UnmarshalText decodes and validates the mail-delivery when non-empty.
+func (id *MailDeliveryID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseMailDeliveryID)
+}
+
 // UnmarshalText decodes and validates the external-login-state when non-empty.
 func (id *ExternalLoginStateID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExternalLoginStateID)
@@ -1186,6 +1261,9 @@ func (id *UploadLeaseID) UnmarshalText(data []byte) error {
 
 // MarshalJSON encodes the institution as a JSON string.
 func (id InstitutionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the access-policy as a JSON string.
+func (id AccessPolicyID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
 // MarshalJSON encodes the academic-unit as a JSON string.
 func (id AcademicUnitID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
@@ -1310,6 +1388,12 @@ func (id MFARecoveryCodeID) MarshalJSON() ([]byte, error) { return marshalIDJSON
 // MarshalJSON encodes the audit-event as a JSON string.
 func (id AuditEventID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the mail-occurrence as a JSON string.
+func (id MailOccurrenceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the mail-delivery as a JSON string.
+func (id MailDeliveryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the external-login-state as a JSON string.
 func (id ExternalLoginStateID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1328,6 +1412,11 @@ func (id UploadLeaseID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id)
 // UnmarshalJSON decodes a JSON string into the institution.
 func (id *InstitutionID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseInstitutionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the access-policy.
+func (id *AccessPolicyID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseAccessPolicyID)
 }
 
 // UnmarshalJSON decodes a JSON string into the academic-unit.
@@ -1533,6 +1622,16 @@ func (id *MFARecoveryCodeID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the audit-event.
 func (id *AuditEventID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseAuditEventID)
+}
+
+// UnmarshalJSON decodes a JSON string into the mail-occurrence.
+func (id *MailOccurrenceID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseMailOccurrenceID)
+}
+
+// UnmarshalJSON decodes a JSON string into the mail-delivery.
+func (id *MailDeliveryID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseMailDeliveryID)
 }
 
 // UnmarshalJSON decodes a JSON string into the external-login-state.

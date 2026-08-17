@@ -30,6 +30,7 @@ type testMailer struct{}
 
 func (testStore) File() store.FileStore { return nil }
 func (testStore) Job() store.JobStore   { return nil }
+func (testStore) Mail() store.MailStore { return nil }
 func (testStore) UserSettings() store.UserSettingsStore {
 	return nil
 }
@@ -232,6 +233,7 @@ func TestAcceptReturnsTheValidatedConstructionSnapshot(t *testing.T) {
 	}
 	initial := configuration.Get()
 	initial.Server.PublicURL = "https://initial.example.test"
+	initial.Authentication.Bootstrap.DevelopmentMode = false
 	if _, _, err := configuration.Set(context.Background(), initial); err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
@@ -115,10 +116,11 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 	if input.constructors != nil {
 		constructors = *input.constructors
 	}
-	return composeConsumers(applicationPlatform, snapshot, capabilities, input, constructors)
+	return composeConsumers(ctx, applicationPlatform, snapshot, capabilities, input, constructors)
 }
 
 func composeConsumers(
+	ctx context.Context,
 	applicationPlatform runtimePlatform,
 	snapshot config.Config,
 	capabilities constructionCapabilities,
@@ -134,6 +136,18 @@ func composeConsumers(
 	applicationDeps, err := constructors.dependencies(capabilities, content)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("project application dependencies: %w", err), applicationPlatform.Close())
+	}
+	if capabilities.persistence != nil && capabilities.persistence.Installation() != nil {
+		bootstrapOutput := input.overrides.BootstrapSecretWriter
+		if bootstrapOutput == nil {
+			bootstrapOutput = os.Stderr
+		}
+		applicationDeps.BootstrapProtection, err = resolveBootstrapProtection(
+			ctx, snapshot, capabilities.persistence.Installation(), bootstrapOutput,
+		)
+		if err != nil {
+			return nil, errors.Join(fmt.Errorf("protect installation bootstrap: %w", err), applicationPlatform.Close())
+		}
 	}
 	application, err := constructors.application(applicationDeps)
 	if err != nil {
@@ -177,6 +191,7 @@ func composeConsumers(
 		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
 		SessionAdministrations: application, Roles: application, RoleBindings: application,
 		AuditListings: application, Bootstrap: application, BuildInfo: buildInfo,
+		Mail:      application,
 		PublicURL: snapshot.Server.PublicURL, MaxBodyBytes: snapshot.Server.MaxBodyBytes,
 		RecentAuthenticationTTL: snapshot.Authentication.RecentAuthenticationTTL.Duration,
 		NodeID:                  capabilities.nodeID, WebSocket: webSocketHub,

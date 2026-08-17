@@ -94,19 +94,14 @@ func (s *programmeLevelStore) SearchByProgramme(ctx context.Context, programmeID
 func (s *academicPeriodStore) Get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
 	return retryCall1(ctx, s.layer, func() (*model.AcademicPeriod, error) { return s.AcademicPeriodStore.Get(ctx, id) })
 }
-func (s *academicPeriodStore) GetByName(ctx context.Context, institutionID, name string) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStore) GetByOwnerName(ctx context.Context, owner model.Resource, name string) (*model.AcademicPeriod, error) {
 	return retryCall1(ctx, s.layer, func() (*model.AcademicPeriod, error) {
-		return s.AcademicPeriodStore.GetByName(ctx, institutionID, name)
+		return s.AcademicPeriodStore.GetByOwnerName(ctx, owner, name)
 	})
 }
-func (s *academicPeriodStore) ListByInstitution(ctx context.Context, institutionID string) ([]*model.AcademicPeriod, error) {
+func (s *academicPeriodStore) ListVisible(ctx context.Context, visibility store.AcademicPeriodVisibilityScope, query string, limit int) ([]*model.AcademicPeriod, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicPeriod, error) {
-		return s.AcademicPeriodStore.ListByInstitution(ctx, institutionID)
-	})
-}
-func (s *academicPeriodStore) SearchByInstitution(ctx context.Context, institutionID, query string, limit int) ([]*model.AcademicPeriod, error) {
-	return retryCall1(ctx, s.layer, func() ([]*model.AcademicPeriod, error) {
-		return s.AcademicPeriodStore.SearchByInstitution(ctx, institutionID, query, limit)
+		return s.AcademicPeriodStore.ListVisible(ctx, visibility, query, limit)
 	})
 }
 func (s *academicPeriodStore) CreateIdempotently(ctx context.Context, input *store.AcademicPeriodCreation, command *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {

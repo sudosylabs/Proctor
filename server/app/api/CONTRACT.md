@@ -409,3 +409,20 @@ candidate must establish a fresh authenticated connection generation.
 
 The OpenAPI document describes the wire contract only. It does not generate or
 dictate domain models, application commands, persistence rows, or handlers.
+
+## Controlled transactional-mail tracer
+
+`POST /api/v1/mail/test` accepts no request body, recipient, or message copy.
+It requires a recent interactive Session and `mail.manage`, and returns `202`
+with the safe durable Delivery projection after the occurrence, encrypted
+frozen payload, audit event, and Job commit atomically. A PAT cannot satisfy
+the route assurance. The recipient is always the principal's own verified
+address.
+
+`GET /api/v1/mail/deliveries/{mail_delivery_id}` requires `mail.view` and
+returns the same `no-store` projection. It contains safe identities, template
+key and digest, masked recipient, state, timestamps, stable Message-ID, attempt
+count, and closed public failure code. It never contains a full address,
+subject, rendered alternatives, template data, ciphertext, credentials, SMTP
+configuration, or provider response. `accepted` means SMTP accepted DATA, not
+that the message reached an inbox.

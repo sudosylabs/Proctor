@@ -47,7 +47,7 @@ func (s *hookStore) Institution() store.InstitutionStore       { return hookInst
 func (s *hookStore) AcademicUnit() store.AcademicUnitStore     { return hookAcademicUnitStore{} }
 func (s *hookStore) Programme() store.ProgrammeStore           { return nil }
 func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
-func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore { return nil }
+func (s *hookStore) AcademicPeriod() store.AcademicPeriodStore { return hookAcademicPeriodStore{} }
 func (s *hookStore) ExamAuthoring() store.ExamAuthoringStore {
 	return hookExamAuthoringStore{}
 }
@@ -152,6 +152,7 @@ type hookUserStore struct{ store.UserStore }
 type hookUserSettingsStore struct{ store.UserSettingsStore }
 type hookInstitutionStore struct{ store.InstitutionStore }
 type hookAcademicUnitStore struct{ store.AcademicUnitStore }
+type hookAcademicPeriodStore struct{ store.AcademicPeriodStore }
 type hookClassStore struct{ store.ClassStore }
 type hookClassMemberStore struct{ store.ClassMemberStore }
 type hookSessionStore struct{ store.SessionStore }

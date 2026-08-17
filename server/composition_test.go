@@ -128,7 +128,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			}
 
 			result, err := composeConsumers(
-				compositionPlatform{closer: platformCloser}, config.Default(),
+				context.Background(), compositionPlatform{closer: platformCloser}, config.Default(),
 				constructionCapabilities{}, compositionInput{}, constructors,
 			)
 			if result != nil {
@@ -193,7 +193,7 @@ func TestRealtimeHandlerRegistrationFailureUnwindsComposition(t *testing.T) {
 	}
 
 	result, err := composeConsumers(
-		compositionPlatform{closer: platformCloser},
+		context.Background(), compositionPlatform{closer: platformCloser},
 		config.Default(),
 		constructionCapabilities{cluster: transport},
 		compositionInput{},

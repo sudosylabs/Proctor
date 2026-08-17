@@ -36,7 +36,7 @@ func TestClassArchiveSerializesWithDependentCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: "2026", DisplayName: "2026", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(10_000_000)})
+	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "2026", DisplayName: "2026", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(10_000_000)})
 	if err != nil {
 		t.Fatal(err)
 	}

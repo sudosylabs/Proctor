@@ -76,6 +76,10 @@
     }
   },
   "authentication": {
+    "bootstrap": {
+      "secret": "",
+      "development_mode": true
+    },
     "password": {
       "minimum_length": 12,
       "maximum_length": 128,

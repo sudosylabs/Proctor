@@ -4,6 +4,7 @@
 package sqlstore
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -19,7 +20,8 @@ func TestAcademicPeriodRowRehydrationRejectsInvalidPersistedState(t *testing.T) 
 		CreatedAt:     time.Unix(10, 0).UTC(),
 		UpdatedAt:     time.Unix(11, 0).UTC(),
 		Revision:      1,
-		InstitutionID: model.NewInstitutionID().String(),
+		OwnerType:     string(model.ResourceInstitution),
+		InstitutionID: sql.NullString{String: model.NewInstitutionID().String(), Valid: true},
 		Name:          "period",
 		DisplayName:   "Period",
 		StartAt:       time.Unix(20, 0).UTC(),
@@ -32,7 +34,10 @@ func TestAcademicPeriodRowRehydrationRejectsInvalidPersistedState(t *testing.T) 
 		field string
 	}{
 		{name: "period id", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) { row.ID = "bad" }), field: "id"},
-		{name: "institution id", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) { row.InstitutionID = "bad" }), field: "institution_id"},
+		{name: "institution id", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) { row.InstitutionID.String = "bad" }), field: "institution_id"},
+		{name: "ambiguous owner", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) {
+			row.AcademicUnitID = sql.NullString{String: model.NewAcademicUnitID().String(), Valid: true}
+		}), field: "owner"},
 		{name: "domain state", row: replaceAcademicPeriodRow(valid, func(row *academicPeriodRow) { row.EndAt = row.StartAt }), field: "end_at"},
 	}
 	for _, test := range tests {
@@ -57,7 +62,8 @@ func TestAcademicPeriodRowRehydrationReturnsValidatedModel(t *testing.T) {
 		CreatedAt:     time.Unix(10, 0).UTC(),
 		UpdatedAt:     time.Unix(11, 0).UTC(),
 		Revision:      2,
-		InstitutionID: model.NewInstitutionID().String(),
+		OwnerType:     string(model.ResourceInstitution),
+		InstitutionID: sql.NullString{String: model.NewInstitutionID().String(), Valid: true},
 		Name:          "period",
 		DisplayName:   "Period",
 		Description:   "Description",
@@ -72,7 +78,7 @@ func TestAcademicPeriodRowRehydrationReturnsValidatedModel(t *testing.T) {
 	if err := got.Validate(); err != nil {
 		t.Fatalf("rehydrated academic period is invalid: %v", err)
 	}
-	if got.ID.String() != row.ID || got.InstitutionID.String() != row.InstitutionID || got.Revision != row.Revision {
+	if got.ID.String() != row.ID || got.Owner.InstitutionID.String() != row.InstitutionID.String || got.Revision != row.Revision {
 		t.Fatalf("model() = %#v, want row identity and ownership fields", got)
 	}
 }

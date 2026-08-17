@@ -13,10 +13,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -30,17 +33,19 @@ type SQLAcademicPeriodStore struct {
 const academicPeriodLifecycleLock = "proctor:academic-period-lifecycle"
 
 type academicPeriodRow struct {
-	ID            string       `db:"id"`
-	CreatedAt     time.Time    `db:"created_at"`
-	UpdatedAt     time.Time    `db:"updated_at"`
-	ArchivedAt    sql.NullTime `db:"archived_at"`
-	Revision      int64        `db:"revision"`
-	InstitutionID string       `db:"institution_id"`
-	Name          string       `db:"name"`
-	DisplayName   string       `db:"display_name"`
-	Description   string       `db:"description"`
-	StartAt       time.Time    `db:"start_at"`
-	EndAt         time.Time    `db:"end_at"`
+	ID             string         `db:"id"`
+	CreatedAt      time.Time      `db:"created_at"`
+	UpdatedAt      time.Time      `db:"updated_at"`
+	ArchivedAt     sql.NullTime   `db:"archived_at"`
+	Revision       int64          `db:"revision"`
+	OwnerType      string         `db:"owner_type"`
+	InstitutionID  sql.NullString `db:"institution_id"`
+	AcademicUnitID sql.NullString `db:"academic_unit_id"`
+	Name           string         `db:"name"`
+	DisplayName    string         `db:"display_name"`
+	Description    string         `db:"description"`
+	StartAt        time.Time      `db:"start_at"`
+	EndAt          time.Time      `db:"end_at"`
 }
 
 func academicPeriodSliceColumns() []string {
@@ -50,7 +55,9 @@ func academicPeriodSliceColumns() []string {
 		"academic_periods.updated_at",
 		"academic_periods.archived_at",
 		"academic_periods.revision",
+		"academic_periods.owner_type",
 		"academic_periods.institution_id",
+		"academic_periods.academic_unit_id",
 		"academic_periods.name",
 		"academic_periods.display_name",
 		"academic_periods.description",
@@ -142,10 +149,10 @@ func createAcademicPeriod(ctx context.Context, tx *sqlxTxWrapper, input *store.A
 	row := newAcademicPeriodRow(candidate)
 	if _, err := tx.NamedExec(ctx, `
 			INSERT INTO academic_periods (
-				id, created_at, updated_at, archived_at, revision, institution_id,
+				id, created_at, updated_at, archived_at, revision, owner_type, institution_id, academic_unit_id,
 				name, display_name, description, start_at, end_at
 			) VALUES (
-				:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
+				:id, :created_at, :updated_at, :archived_at, :revision, :owner_type, :institution_id, :academic_unit_id,
 				:name, :display_name, :description, :start_at, :end_at
 			)`, &row); err != nil {
 		return nil, fmt.Errorf("create academic period: %w", translateError("academic_period", candidate.ID.String(), err))
@@ -180,10 +187,10 @@ func (s SQLAcademicPeriodStore) Save(
 	row := newAcademicPeriodRow(&candidate)
 	if _, err := s.GetMaster().NamedExec(ctx, `
 		INSERT INTO academic_periods (
-			id, created_at, updated_at, archived_at, revision, institution_id,
+			id, created_at, updated_at, archived_at, revision, owner_type, institution_id, academic_unit_id,
 			name, display_name, description, start_at, end_at
 		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :institution_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :owner_type, :institution_id, :academic_unit_id,
 			:name, :display_name, :description, :start_at, :end_at
 		)`, &row); err != nil {
 		return nil, fmt.Errorf(
@@ -206,67 +213,73 @@ func (s SQLAcademicPeriodStore) Get(ctx context.Context, id string) (*model.Acad
 	return row.model()
 }
 
-func (s SQLAcademicPeriodStore) GetByName(
+func (s SQLAcademicPeriodStore) GetByOwnerName(
 	ctx context.Context,
-	institutionID string,
+	owner model.Resource,
 	name string,
 ) (*model.AcademicPeriod, error) {
+	if owner.Validate() != nil || (owner.Type != model.ResourceInstitution && owner.Type != model.ResourceAcademicUnit) {
+		return nil, store.NewErrInvalidInput("academic_period", "owner", owner)
+	}
 	var row academicPeriodRow
+	ownerColumn := "academic_periods.institution_id"
+	if owner.Type == model.ResourceAcademicUnit {
+		ownerColumn = "academic_periods.academic_unit_id"
+	}
 	query := s.academicPeriodsQuery.Where(sq.Eq{
-		"academic_periods.institution_id": institutionID,
-		"academic_periods.name":           name,
-		"academic_periods.archived_at":    nil,
+		"academic_periods.owner_type":  string(owner.Type),
+		ownerColumn:                    owner.ID,
+		"academic_periods.name":        name,
+		"academic_periods.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("academic_period", institutionID+"/"+name, err)
+		return nil, translateError("academic_period", owner.ID+"/"+name, err)
 	}
 	return row.model()
 }
 
-func (s SQLAcademicPeriodStore) ListByInstitution(
+func (s SQLAcademicPeriodStore) ListVisible(
 	ctx context.Context,
-	institutionID string,
-) ([]*model.AcademicPeriod, error) {
-	query := s.academicPeriodsQuery.
-		Where(sq.Eq{
-			"academic_periods.institution_id": institutionID,
-			"academic_periods.archived_at":    nil,
-		}).
-		OrderBy("academic_periods.start_at", "academic_periods.name", "academic_periods.id")
-
-	rows := []academicPeriodRow{}
-	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
-		return nil, fmt.Errorf("list academic periods by institution: %w", err)
-	}
-	periods := make([]*model.AcademicPeriod, 0, len(rows))
-	for _, row := range rows {
-		period, err := row.model()
-		if err != nil {
-			return nil, err
-		}
-		periods = append(periods, period)
-	}
-	return periods, nil
-}
-
-func (s SQLAcademicPeriodStore) SearchByInstitution(
-	ctx context.Context,
-	institutionID string,
+	visibility store.AcademicPeriodVisibilityScope,
 	term string,
 	limit int,
 ) ([]*model.AcademicPeriod, error) {
-	if limit < 1 || limit > 200 {
-		return nil, store.NewErrInvalidInput("academic_period", "limit", limit)
+	if !model.IsValidId(visibility.InstitutionID) || limit < 1 || limit > 200 ||
+		len(visibility.AcademicUnitRootIDs) > 256 || !validVisibilityIDs(visibility.AcademicUnitRootIDs) {
+		return nil, store.NewErrInvalidInput("academic_period", "visibility", visibility)
 	}
-	query := s.academicPeriodsQuery.Where(sq.Eq{
-		"academic_periods.institution_id": institutionID,
-		"academic_periods.archived_at":    nil,
-	}).Where("(academic_periods.name ILIKE ? OR academic_periods.display_name ILIKE ?)",
-		"%"+term+"%", "%"+term+"%").
-		OrderBy("academic_periods.start_at", "academic_periods.id").Limit(uint64(limit))
+	query := s.academicPeriodsQuery.Where(sq.Eq{"academic_periods.archived_at": nil})
+	if visibility.InstitutionWide {
+		query = query.Where(`(
+			(academic_periods.owner_type = ? AND academic_periods.institution_id = ?)
+			OR (academic_periods.owner_type = ? AND academic_periods.academic_unit_id IN (
+				SELECT id FROM academic_units WHERE institution_id = ? AND archived_at IS NULL
+			))
+		)`, model.ResourceInstitution, visibility.InstitutionID, model.ResourceAcademicUnit, visibility.InstitutionID)
+	} else if len(visibility.AcademicUnitRootIDs) > 0 {
+		query = query.Where(`(
+			(academic_periods.owner_type = ? AND academic_periods.institution_id = ?)
+			OR (academic_periods.owner_type = ? AND academic_periods.academic_unit_id IN (
+				WITH RECURSIVE visible_units AS (
+					SELECT id FROM academic_units WHERE id = ANY(?) AND institution_id = ? AND archived_at IS NULL
+					UNION ALL SELECT child.id FROM academic_units child
+					JOIN visible_units parent ON child.parent_id = parent.id
+					WHERE child.archived_at IS NULL
+				) SELECT id FROM visible_units
+			))
+		)`, model.ResourceInstitution, visibility.InstitutionID, model.ResourceAcademicUnit,
+			pq.Array(visibility.AcademicUnitRootIDs), visibility.InstitutionID)
+	} else {
+		query = query.Where("FALSE")
+	}
+	if term = strings.TrimSpace(term); term != "" {
+		pattern := "%" + term + "%"
+		query = query.Where("(academic_periods.name ILIKE ? OR academic_periods.display_name ILIKE ?)", pattern, pattern)
+	}
+	query = query.OrderBy("academic_periods.start_at", "academic_periods.name", "academic_periods.id").Limit(uint64(limit))
 	rows := []academicPeriodRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {
-		return nil, fmt.Errorf("search academic periods: %w", err)
+		return nil, fmt.Errorf("list visible academic periods: %w", err)
 	}
 	result := make([]*model.AcademicPeriod, 0, len(rows))
 	for _, row := range rows {
@@ -298,16 +311,19 @@ func (s SQLAcademicPeriodStore) Update(
 		UPDATE academic_periods
 		   SET updated_at = :updated_at,
 		       revision = :revision,
-		       institution_id = :institution_id,
 		       name = :name,
 		       display_name = :display_name,
 		       description = :description,
 		       start_at = :start_at,
 		       end_at = :end_at
 		 WHERE id = :id AND archived_at IS NULL
+		   AND owner_type = :owner_type
+		   AND institution_id IS NOT DISTINCT FROM :institution_id
+		   AND academic_unit_id IS NOT DISTINCT FROM :academic_unit_id
 		   AND revision = :expected_revision`, map[string]any{
 		"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
-		"revision": candidate.Revision, "institution_id": row.InstitutionID,
+		"revision": candidate.Revision, "owner_type": row.OwnerType,
+		"institution_id": row.InstitutionID, "academic_unit_id": row.AcademicUnitID,
 		"name": row.Name, "display_name": row.DisplayName, "description": row.Description,
 		"start_at": row.StartAt, "end_at": row.EndAt,
 		"expected_revision": candidate.Revision - 1,
@@ -342,10 +358,14 @@ func (s SQLAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *stor
 			UPDATE academic_periods
 			   SET updated_at = :updated_at, revision = :revision, name = :name, display_name = :display_name,
 			       description = :description, start_at = :start_at, end_at = :end_at
-			 WHERE id = :id AND institution_id = :institution_id AND archived_at IS NULL
+			 WHERE id = :id AND owner_type = :owner_type
+			   AND institution_id IS NOT DISTINCT FROM :institution_id
+			   AND academic_unit_id IS NOT DISTINCT FROM :academic_unit_id
+			   AND archived_at IS NULL
 			   AND revision = :expected_revision`, map[string]any{
 			"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
-			"revision": candidate.Revision, "institution_id": row.InstitutionID,
+			"revision": candidate.Revision, "owner_type": row.OwnerType,
+			"institution_id": row.InstitutionID, "academic_unit_id": row.AcademicUnitID,
 			"name": row.Name, "display_name": row.DisplayName, "description": row.Description,
 			"start_at": row.StartAt, "end_at": row.EndAt,
 			"expected_revision": candidate.Revision - 1,
@@ -353,10 +373,7 @@ func (s SQLAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *stor
 		if err != nil {
 			return nil, fmt.Errorf("update academic period: %w", translateError("academic_period", candidate.ID.String(), err))
 		}
-		if err := requireOwnedRevisionAffected(
-			ctx, tx, result, "academic_period", "academic_periods", "institution_id",
-			candidate.ID.String(), candidate.InstitutionID.String(),
-		); err != nil {
+		if err := requireRevisionAffected(ctx, tx, result, "academic_period", "academic_periods", candidate.ID.String()); err != nil {
 			return nil, err
 		}
 		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
@@ -488,19 +505,26 @@ func validateActiveAcademicPeriod(ctx context.Context, executor sqlxExecutor, id
 }
 
 func newAcademicPeriodRow(period *model.AcademicPeriod) academicPeriodRow {
-	return academicPeriodRow{
-		ID:            period.ID.String(),
-		CreatedAt:     UTCTime(period.CreatedAt),
-		UpdatedAt:     UTCTime(period.UpdatedAt),
-		ArchivedAt:    NullTimeFromOptional(period.ArchivedAt),
-		Revision:      period.Revision,
-		InstitutionID: period.InstitutionID.String(),
-		Name:          period.Name,
-		DisplayName:   period.DisplayName,
-		Description:   period.Description,
-		StartAt:       UTCTime(period.StartsAt),
-		EndAt:         UTCTime(period.EndsAt),
+	row := academicPeriodRow{
+		ID:          period.ID.String(),
+		CreatedAt:   UTCTime(period.CreatedAt),
+		UpdatedAt:   UTCTime(period.UpdatedAt),
+		ArchivedAt:  NullTimeFromOptional(period.ArchivedAt),
+		Revision:    period.Revision,
+		OwnerType:   string(period.Owner.Type()),
+		Name:        period.Name,
+		DisplayName: period.DisplayName,
+		Description: period.Description,
+		StartAt:     UTCTime(period.StartsAt),
+		EndAt:       UTCTime(period.EndsAt),
 	}
+	if period.Owner.InstitutionID.IsValid() {
+		row.InstitutionID = sql.NullString{String: period.Owner.InstitutionID.String(), Valid: true}
+	}
+	if period.Owner.AcademicUnitID.IsValid() {
+		row.AcademicUnitID = sql.NullString{String: period.Owner.AcademicUnitID.String(), Valid: true}
+	}
+	return row
 }
 
 func (row academicPeriodRow) model() (*model.AcademicPeriod, error) {
@@ -508,22 +532,41 @@ func (row academicPeriodRow) model() (*model.AcademicPeriod, error) {
 	if err != nil {
 		return nil, err
 	}
-	institutionID, err := parsePersistedID("academic_period", "institution_id", row.InstitutionID, model.ParseInstitutionID)
-	if err != nil {
-		return nil, err
+	var owner model.AcademicPeriodOwner
+	switch model.ResourceType(row.OwnerType) {
+	case model.ResourceInstitution:
+		if !row.InstitutionID.Valid || row.AcademicUnitID.Valid {
+			return nil, invalidPersistedState("academic_period", "owner", errors.New("invalid institution owner"))
+		}
+		institutionID, err := parsePersistedID("academic_period", "institution_id", row.InstitutionID.String, model.ParseInstitutionID)
+		if err != nil {
+			return nil, err
+		}
+		owner = model.NewInstitutionAcademicPeriodOwner(institutionID)
+	case model.ResourceAcademicUnit:
+		if row.InstitutionID.Valid || !row.AcademicUnitID.Valid {
+			return nil, invalidPersistedState("academic_period", "owner", errors.New("invalid academic unit owner"))
+		}
+		unitID, err := parsePersistedID("academic_period", "academic_unit_id", row.AcademicUnitID.String, model.ParseAcademicUnitID)
+		if err != nil {
+			return nil, err
+		}
+		owner = model.NewAcademicUnitAcademicPeriodOwner(unitID)
+	default:
+		return nil, invalidPersistedState("academic_period", "owner_type", errors.New("invalid owner type"))
 	}
 	period := &model.AcademicPeriod{
-		ID:            id,
-		CreatedAt:     row.CreatedAt.UTC(),
-		UpdatedAt:     row.UpdatedAt.UTC(),
-		ArchivedAt:    OptionalTimeFromNullTime(row.ArchivedAt),
-		Revision:      row.Revision,
-		InstitutionID: institutionID,
-		Name:          row.Name,
-		DisplayName:   row.DisplayName,
-		Description:   row.Description,
-		StartsAt:      row.StartAt.UTC(),
-		EndsAt:        row.EndAt.UTC(),
+		ID:          id,
+		CreatedAt:   row.CreatedAt.UTC(),
+		UpdatedAt:   row.UpdatedAt.UTC(),
+		ArchivedAt:  OptionalTimeFromNullTime(row.ArchivedAt),
+		Revision:    row.Revision,
+		Owner:       owner,
+		Name:        row.Name,
+		DisplayName: row.DisplayName,
+		Description: row.Description,
+		StartsAt:    row.StartAt.UTC(),
+		EndsAt:      row.EndAt.UTC(),
 	}
 	if err := validatePersistedModel("academic_period", period); err != nil {
 		return nil, err

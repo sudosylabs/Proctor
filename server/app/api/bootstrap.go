@@ -11,9 +11,10 @@ import (
 )
 
 type bootstrapRequest struct {
-	Institution   *bootstrapInstitutionRequest   `json:"institution"`
-	Administrator *bootstrapAdministratorRequest `json:"administrator"`
-	Password      string                         `json:"password"`
+	Institution     *bootstrapInstitutionRequest   `json:"institution"`
+	Administrator   *bootstrapAdministratorRequest `json:"administrator"`
+	Password        string                         `json:"password"`
+	BootstrapSecret string                         `json:"bootstrap_secret"`
 }
 
 type bootstrapInstitutionRequest struct {
@@ -48,11 +49,22 @@ type installationStateResponse struct {
 // existing clients and integration tests keep working while domain models no
 // longer serialize directly.
 type installationBootstrapResponse struct {
-	State         *installationStateResponse `json:"state"`
-	Institution   *institutionResponse       `json:"institution"`
-	Administrator *userProfileResponse       `json:"administrator"`
-	Role          *roleResponse              `json:"role"`
-	RoleBinding   *roleBindingResponse       `json:"role_binding"`
+	State         *installationStateResponse   `json:"state"`
+	Institution   *institutionResponse         `json:"institution"`
+	Administrator *userProfileResponse         `json:"administrator"`
+	Role          *roleResponse                `json:"role"`
+	RoleBinding   *roleBindingResponse         `json:"role_binding"`
+	AccessPolicy  *initialAccessPolicyResponse `json:"access_policy"`
+}
+
+type initialAccessPolicyResponse struct {
+	ID                               string `json:"id"`
+	Revision                         int64  `json:"revision"`
+	LocalLoginEnabled                bool   `json:"local_login_enabled"`
+	PublicRegistrationEnabled        bool   `json:"public_registration_enabled"`
+	InvitationAdmissionEnabled       bool   `json:"invitation_admission_enabled"`
+	InvitationLocalCredentialEnabled bool   `json:"invitation_local_credential_enabled"`
+	DesktopAuthorizationEnabled      bool   `json:"desktop_authorization_enabled"`
 }
 
 func installationStateResponseFromModel(state *model.InstallationState) *installationStateResponse {
@@ -90,12 +102,24 @@ func installationBootstrapResponseFromModel(result *model.InstallationBootstrapR
 		mapped := roleBindingResponseFromModel(result.RoleBinding)
 		binding = &mapped
 	}
+	var policy *initialAccessPolicyResponse
+	if result.AccessPolicy != nil {
+		policy = &initialAccessPolicyResponse{
+			ID: result.AccessPolicy.ID.String(), Revision: result.AccessPolicy.Revision,
+			LocalLoginEnabled:                result.AccessPolicy.LocalLoginEnabled,
+			PublicRegistrationEnabled:        result.AccessPolicy.PublicRegistrationEnabled,
+			InvitationAdmissionEnabled:       result.AccessPolicy.InvitationAdmissionEnabled,
+			InvitationLocalCredentialEnabled: result.AccessPolicy.InvitationLocalCredentialEnabled,
+			DesktopAuthorizationEnabled:      result.AccessPolicy.DesktopAuthorizationEnabled,
+		}
+	}
 	return installationBootstrapResponse{
 		State:         installationStateResponseFromModel(result.State),
 		Institution:   institution,
 		Administrator: administrator,
 		Role:          role,
 		RoleBinding:   binding,
+		AccessPolicy:  policy,
 	}
 }
 
@@ -118,6 +142,7 @@ func bootstrapResource(bootstrap BootstrapApplication) resource {
 			apiPath(literal("bootstrap")),
 			[]string{
 				"request.invalid", "installation.already_initialized", "installation.unavailable",
+				"installation.bootstrap_denied",
 				"authentication.password.invalid", "authentication.rate_limited",
 			},
 			module.install,
@@ -156,6 +181,7 @@ func (module bootstrapResourceModule) install(request operationRequest) (operati
 			AdministratorLocale:      input.Administrator.Locale,
 			AdministratorTimezone:    input.Administrator.Timezone,
 			Password:                 input.Password,
+			BootstrapSecret:          input.BootstrapSecret,
 			Source:                   request.request.RemoteAddr,
 		},
 	)

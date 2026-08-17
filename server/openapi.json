@@ -320,7 +320,7 @@
     "/api/v1/academic-periods": {
       "get": {
         "operationId": "listAcademicPeriods",
-        "summary": "List or search institution-defined Academic Periods",
+        "summary": "List or search Academic Periods visible through authorized owner scopes",
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": []}],
@@ -339,7 +339,7 @@
       },
       "post": {
         "operationId": "createAcademicPeriod",
-        "summary": "Create an institution-defined Academic Period",
+        "summary": "Create an Institution- or Academic-Unit-owned Academic Period",
         "x-proctor-auth": "principal_required",
         "x-proctor-idempotency": "optional",
         "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress"],
@@ -376,7 +376,7 @@
       },
       "patch": {
         "operationId": "updateAcademicPeriod",
-        "summary": "Update an Academic Period without changing its Institution owner",
+        "summary": "Update an Academic Period without changing its owner",
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "academic_period.invalid", "academic_period.conflict", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
@@ -953,12 +953,13 @@
       "post": {
         "operationId": "bootstrapInstallation", "summary": "Bootstrap the installation",
         "x-proctor-auth": "public",
-        "x-proctor-error-codes": ["request.invalid", "installation.already_initialized", "installation.unavailable", "authentication.password.invalid", "authentication.rate_limited"],
+        "x-proctor-error-codes": ["request.invalid", "installation.already_initialized", "installation.bootstrap_denied", "installation.unavailable", "authentication.password.invalid", "authentication.rate_limited"],
         "security": [],
         "requestBody": {"$ref": "#/components/requestBodies/BootstrapInstallation"},
         "responses": {
           "201": {"$ref": "#/components/responses/InstallationBootstrapCreated"},
           "400": {"$ref": "#/components/responses/BadRequest"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
           "409": {"$ref": "#/components/responses/Conflict"},
           "429": {"$ref": "#/components/responses/TooManyRequests"},
           "500": {"$ref": "#/components/responses/InternalError"}
@@ -2083,6 +2084,24 @@
         "responses": {"200": {"$ref": "#/components/responses/JobListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/mail/test": {
+      "post": {
+        "operationId": "sendControlledTestMail", "summary": "Enqueue a controlled test message to the operator's verified address",
+        "x-proctor-auth": "recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.csrf.invalid", "audit.unavailable", "authentication.reauthentication_required", "request.invalid", "mail.recipient_unverified", "mail.recipient_ineligible", "mail.test.rate_limited", "mail.conflict", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"202": {"$ref": "#/components/responses/MailDeliveryAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/mail/deliveries/{mail_delivery_id}": {
+      "parameters": [{"name": "mail_delivery_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}],
+      "get": {
+        "operationId": "getMailDelivery", "summary": "Get one safe mail delivery status",
+        "x-proctor-auth": "principal_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MailDeliveryOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/jobs/{job_id}": {
       "parameters": [{"name": "job_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}],
       "get": {
@@ -2882,6 +2901,8 @@
       "JobOK": {"description": "Safe durable Job projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobResponse"}}}},
       "JobListOK": {"description": "Safe durable Job collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobListResponse"}}}},
       "JobAttemptListOK": {"description": "Safe Job Attempt collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobAttemptListResponse"}}}},
+      "MailDeliveryOK": {"description": "Safe durable mail delivery status", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailDeliveryResponse"}}}},
+      "MailDeliveryAccepted": {"description": "Controlled test mail durably queued", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailDeliveryResponse"}}}},
       "InstallationStatusOK": {"description": "Installation status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationStatusResponse"}}}},
       "InstallationBootstrapCreated": {"description": "Installation bootstrapped", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationBootstrapResult"}}}},
       "HealthOK": {"description": "Health status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthResponse"}}}},
@@ -4046,13 +4067,14 @@
       "AcademicPeriodResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "create_at", "update_at", "delete_at", "institution_id", "name", "display_name", "description", "start_at", "end_at"],
+        "required": ["id", "create_at", "update_at", "delete_at", "owner_type", "owner_id", "name", "display_name", "description", "start_at", "end_at"],
         "properties": {
           "id": {"$ref": "#/components/schemas/ID"},
           "create_at": {"type": "integer", "format": "int64"},
           "update_at": {"type": "integer", "format": "int64"},
           "delete_at": {"type": "integer", "format": "int64"},
-          "institution_id": {"$ref": "#/components/schemas/ID"},
+          "owner_type": {"type": "string", "enum": ["institution", "academic_unit"]},
+          "owner_id": {"$ref": "#/components/schemas/ID"},
           "name": {"type": "string"},
           "display_name": {"type": "string"},
           "description": {"type": "string"},
@@ -4064,13 +4086,14 @@
       "CreateAcademicPeriodRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "display_name", "start_at", "end_at"],
+        "required": ["owner_type", "owner_id", "name", "display_name", "start_at", "end_at"],
         "properties": {
           "id": {"type": "string", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
           "create_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
           "update_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
           "delete_at": {"type": "integer", "format": "int64", "deprecated": true, "description": "Accepted and ignored for v1 compatibility."},
-          "institution_id": {"type": "string", "deprecated": true, "description": "Accepted and ignored; installation Institution is authoritative."},
+          "owner_type": {"type": "string", "enum": ["institution", "academic_unit"]},
+          "owner_id": {"$ref": "#/components/schemas/ID"},
           "name": {"type": "string"},
           "display_name": {"type": "string"},
           "description": {"type": "string"},
@@ -4347,11 +4370,12 @@
       },
       "BootstrapInstallationRequest": {
         "type": "object", "additionalProperties": false,
-        "required": ["institution", "administrator", "password"],
+        "required": ["institution", "administrator", "password", "bootstrap_secret"],
         "properties": {
           "institution": {"$ref": "#/components/schemas/BootstrapInstitutionRequest"},
           "administrator": {"$ref": "#/components/schemas/BootstrapAdministratorRequest"},
-          "password": {"type": "string"}
+          "password": {"type": "string"},
+          "bootstrap_secret": {"type": "string", "minLength": 1, "maxLength": 512, "writeOnly": true}
         }
       },
       "InstallationStateResponse": {
@@ -4370,7 +4394,18 @@
           "institution": {"$ref": "#/components/schemas/InstitutionResponse"},
           "administrator": {"$ref": "#/components/schemas/UserProfileResponse"},
           "role": {"$ref": "#/components/schemas/RoleResponse"},
-          "role_binding": {"$ref": "#/components/schemas/RoleBindingResponse"}
+          "role_binding": {"$ref": "#/components/schemas/RoleBindingResponse"},
+          "access_policy": {"$ref": "#/components/schemas/InitialAccessPolicyResponse"}
+        }
+      },
+      "InitialAccessPolicyResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "revision", "local_login_enabled", "public_registration_enabled", "invitation_admission_enabled", "invitation_local_credential_enabled", "desktop_authorization_enabled"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "revision": {"type": "integer", "format": "int64"},
+          "local_login_enabled": {"type": "boolean"}, "public_registration_enabled": {"type": "boolean"},
+          "invitation_admission_enabled": {"type": "boolean"}, "invitation_local_credential_enabled": {"type": "boolean"},
+          "desktop_authorization_enabled": {"type": "boolean"}
         }
       },
       "AuditListResponse": {
@@ -4413,6 +4448,17 @@
       "JobAttemptListResponse": {
         "type": "object", "additionalProperties": false, "required": ["items"],
         "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/JobAttemptResponse"}}, "next_cursor": {"type": "string"}}
+      },
+      "MailDeliveryState": {"type": "string", "enum": ["queued", "sending", "accepted", "failed", "suppressed", "canceled"]},
+      "MailDeliveryResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "occurrence_id", "target_user_id", "template_key", "template_digest", "masked_recipient", "state", "created_at", "updated_at", "message_date", "deadline", "message_id", "attempt_count"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "occurrence_id": {"$ref": "#/components/schemas/ID"}, "target_user_id": {"$ref": "#/components/schemas/ID"},
+          "template_key": {"type": "string", "enum": ["system.mail_test"]}, "template_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "masked_recipient": {"type": "string", "maxLength": 254},
+          "state": {"$ref": "#/components/schemas/MailDeliveryState"}, "created_at": {"type": "integer", "format": "int64"}, "updated_at": {"type": "integer", "format": "int64"}, "message_date": {"type": "integer", "format": "int64"}, "deadline": {"type": "integer", "format": "int64"},
+          "message_id": {"type": "string", "maxLength": 900}, "attempt_count": {"type": "integer", "minimum": 0, "maximum": 8}, "accepted_at": {"type": "integer", "format": "int64"}, "failed_at": {"type": "integer", "format": "int64"}, "public_failure_code": {"type": "string", "maxLength": 128}
+        }
       },
       "UpdateUserProfileRequest": {
         "type": "object", "additionalProperties": false,

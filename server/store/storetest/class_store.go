@@ -32,12 +32,42 @@ func TestClassStore(t *testing.T, ss store.Store) {
 	t.Run("RejectUnknownAcademicPeriod", func(t *testing.T) {
 		testClassStoreRejectUnknownAcademicPeriod(t, ss)
 	})
+	t.Run("EnforceAcademicPeriodApplicability", func(t *testing.T) {
+		testClassStoreEnforceAcademicPeriodApplicability(t, ss)
+	})
 	t.Run("EnforceScopedNameUniqueness", func(t *testing.T) {
 		testClassStoreEnforceScopedNameUniqueness(t, ss)
 	})
 	t.Run("SearchAndArchive", func(t *testing.T) {
 		testClassStoreSearchAndArchive(t, ss)
 	})
+}
+
+func testClassStoreEnforceAcademicPeriodApplicability(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	root := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "period-root")
+	child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), root.ID.String(), "period-child")
+	sibling := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "period-sibling")
+	programme := saveProgramme(t, ctx, ss, child.ID.String(), "period-programme")
+	level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "period-level")
+	applicable := saveAcademicUnitPeriod(t, ctx, ss, root.ID, "root-period", 1_800_000_000_000)
+	inapplicable := saveAcademicUnitPeriod(t, ctx, ss, sibling.ID, "sibling-period", 1_800_000_000_000)
+
+	if _, err := ss.Class().Save(ctx, &model.Class{
+		ProgrammeLevelID: level.ID, AcademicPeriodID: applicable.ID,
+		Name: "applicable", DisplayName: "Applicable",
+	}); err != nil {
+		t.Fatalf("descendant Class rejected owner-ancestor period: %v", err)
+	}
+	_, err := ss.Class().Save(ctx, &model.Class{
+		ProgrammeLevelID: level.ID, AcademicPeriodID: inapplicable.ID,
+		Name: "cross-subtree", DisplayName: "Cross Subtree",
+	})
+	var reference *store.ErrReference
+	if !errors.As(err, &reference) || reference.Constraint != "classes_academic_period_not_applicable" {
+		t.Fatalf("cross-subtree Class error = %v, want applicability reference", err)
+	}
 }
 
 func testClassStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {

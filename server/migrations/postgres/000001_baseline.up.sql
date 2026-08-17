@@ -87,18 +87,28 @@ CREATE TABLE academic_periods (
     updated_at timestamptz NOT NULL,
     archived_at timestamptz,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-    institution_id varchar(26) NOT NULL REFERENCES institutions(id),
+    owner_type varchar(32) NOT NULL CHECK (owner_type IN ('institution', 'academic_unit')),
+    institution_id varchar(26) REFERENCES institutions(id),
+    academic_unit_id varchar(26) REFERENCES academic_units(id),
     name varchar(64) NOT NULL,
     display_name varchar(512) NOT NULL,
     description varchar(4096) NOT NULL DEFAULT '',
     start_at timestamptz NOT NULL,
     end_at timestamptz NOT NULL,
+    CONSTRAINT academic_periods_owner_check CHECK (
+        (owner_type = 'institution' AND institution_id IS NOT NULL AND academic_unit_id IS NULL)
+        OR (owner_type = 'academic_unit' AND institution_id IS NULL AND academic_unit_id IS NOT NULL)
+    ),
     CONSTRAINT academic_periods_start_at_end_at_check CHECK (end_at > start_at),
     CONSTRAINT academic_periods_lifecycle_check CHECK (updated_at >= created_at)
 );
 
 CREATE UNIQUE INDEX academic_periods_institution_id_name_key
-    ON academic_periods (institution_id, name) WHERE archived_at IS NULL;
+    ON academic_periods (institution_id, name)
+    WHERE owner_type = 'institution' AND archived_at IS NULL;
+CREATE UNIQUE INDEX academic_periods_academic_unit_id_name_key
+    ON academic_periods (academic_unit_id, name)
+    WHERE owner_type = 'academic_unit' AND archived_at IS NULL;
 
 CREATE TABLE classes (
     id varchar(26) PRIMARY KEY,
@@ -289,6 +299,71 @@ CREATE TABLE user_settings_documents (
     CONSTRAINT user_settings_documents_source_size_check CHECK (octet_length(source) <= 262144),
     CONSTRAINT user_settings_documents_lifecycle_check CHECK (updated_at >= created_at)
 );
+
+-- One immutable logical occurrence owns one or more frozen recipient
+-- deliveries. The initial vertical slice creates only controlled one-recipient
+-- operator tests; the schema already keeps occurrence identity distinct from
+-- transport execution state.
+CREATE TABLE mail_occurrences (
+    id varchar(26) PRIMARY KEY,
+    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test')),
+    template_key varchar(128) NOT NULL CHECK (template_key = 'system.mail_test'),
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    created_at timestamptz NOT NULL,
+    CONSTRAINT mail_occurrences_identity_key UNIQUE (id, template_key, actor_user_id)
+);
+
+CREATE FUNCTION reject_mail_occurrence_update() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'mail occurrences are immutable' USING ERRCODE = '23514';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER mail_occurrences_reject_update
+    BEFORE UPDATE ON mail_occurrences
+    FOR EACH ROW EXECUTE FUNCTION reject_mail_occurrence_update();
+
+CREATE TABLE mail_deliveries (
+    id varchar(26) PRIMARY KEY,
+    occurrence_id varchar(26) NOT NULL,
+    job_id varchar(26) NOT NULL UNIQUE REFERENCES jobs(id),
+    target_user_id varchar(26) NOT NULL REFERENCES users(id),
+    template_key varchar(128) NOT NULL CHECK (template_key = 'system.mail_test'),
+    template_digest char(64) NOT NULL CHECK (template_digest ~ '^[0-9a-f]{64}$'),
+    masked_recipient varchar(254) NOT NULL
+        CHECK (masked_recipient ~ '^(\*{3}|[^*@[:space:]]\*{1,3})@[^*@[:space:]]+$'),
+    state varchar(24) NOT NULL CHECK (state IN ('queued', 'sending', 'accepted', 'failed', 'suppressed', 'canceled')),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    message_date timestamptz NOT NULL,
+    deadline timestamptz NOT NULL,
+    message_id varchar(900) NOT NULL UNIQUE,
+    attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 8),
+    accepted_at timestamptz,
+    failed_at timestamptz,
+    public_failure_code varchar(128) NOT NULL DEFAULT ''
+        CHECK (public_failure_code = '' OR public_failure_code ~ '^[a-z][a-z0-9_.-]{0,127}$'),
+    encrypted_payload jsonb,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    CONSTRAINT mail_deliveries_occurrence_identity_fkey
+        FOREIGN KEY (occurrence_id, template_key, target_user_id)
+        REFERENCES mail_occurrences(id, template_key, actor_user_id),
+    CONSTRAINT mail_deliveries_occurrence_recipient_key UNIQUE (occurrence_id, target_user_id),
+    CONSTRAINT mail_deliveries_lifecycle_check CHECK (
+        updated_at >= created_at AND message_date = created_at AND deadline > created_at AND
+        ((state = 'accepted') = (accepted_at IS NOT NULL)) AND
+        ((state = 'failed') = (failed_at IS NOT NULL)) AND
+        ((state IN ('accepted', 'suppressed', 'canceled')) = (encrypted_payload IS NULL)) AND
+        (state <> 'queued' OR ((attempt_count = 0) = (public_failure_code = ''))) AND
+        (state <> 'sending' OR (attempt_count > 0 AND public_failure_code = '')) AND
+        (state <> 'accepted' OR (attempt_count > 0 AND public_failure_code = '' AND accepted_at = updated_at)) AND
+        (state <> 'failed' OR (attempt_count > 0 AND public_failure_code <> '' AND failed_at = updated_at)) AND
+        (encrypted_payload IS NULL OR octet_length(encrypted_payload::text) <= 2097152)
+    )
+);
+
+CREATE INDEX mail_deliveries_state_deadline_idx
+    ON mail_deliveries (state, deadline, created_at, id);
 
 CREATE TABLE upload_leases (
     id varchar(26) PRIMARY KEY,
@@ -2066,7 +2141,7 @@ CREATE TABLE audit_events (
     session_id varchar(26) REFERENCES sessions(id),
     action varchar(128) NOT NULL,
     resource_type varchar(32) NOT NULL
-        CHECK (resource_type IN ('institution', 'academic_unit', 'class', 'user', 'exam', 'exam_sitting', 'submission')),
+        CHECK (resource_type IN ('institution', 'academic_unit', 'academic_period', 'class', 'user', 'exam', 'exam_sitting', 'submission', 'mail_delivery')),
     resource_id varchar(26) NOT NULL,
     scope_type varchar(32) NOT NULL
         CHECK (scope_type IN ('institution', 'academic_unit', 'class')),
@@ -2178,11 +2253,34 @@ CREATE TABLE command_outcomes (
 CREATE INDEX command_outcomes_expires_at_idx
     ON command_outcomes (expires_at, user_id, operation);
 
+CREATE TABLE access_policies (
+    singleton smallint PRIMARY KEY CHECK (singleton = 1),
+    id varchar(26) NOT NULL UNIQUE,
+    revision bigint NOT NULL CHECK (revision > 0),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    local_login_enabled boolean NOT NULL,
+    public_registration_enabled boolean NOT NULL,
+    invitation_admission_enabled boolean NOT NULL,
+    invitation_local_credential_enabled boolean NOT NULL,
+    desktop_authorization_enabled boolean NOT NULL,
+    provider_admissions jsonb NOT NULL DEFAULT '{}'::jsonb,
+    CONSTRAINT access_policies_lifecycle_check CHECK (updated_at >= created_at),
+    CONSTRAINT access_policies_provider_admissions_check CHECK (
+        jsonb_typeof(provider_admissions) = 'object' AND
+        octet_length(provider_admissions::text) <= 16384
+    )
+);
+
 CREATE TABLE installation_states (
     singleton smallint PRIMARY KEY CHECK (singleton = 1),
     initialized_at timestamptz NOT NULL,
     institution_id varchar(26) NOT NULL REFERENCES institutions(id),
-    administrator_user_id varchar(26) NOT NULL REFERENCES users(id)
+    administrator_user_id varchar(26) NOT NULL REFERENCES users(id),
+    access_policy_id varchar(26) NOT NULL REFERENCES access_policies(id),
+    bootstrap_secret_digest bytea NOT NULL CHECK (octet_length(bootstrap_secret_digest) = 32),
+    bootstrap_command_fingerprint bytea NOT NULL CHECK (octet_length(bootstrap_command_fingerprint) = 32),
+    bootstrap_result jsonb NOT NULL CHECK (octet_length(bootstrap_result::text) <= 65536)
 );
 
 -- ---------------------------------------------------------------------------
@@ -2223,6 +2321,22 @@ ALTER TABLE institutions
     ADD CONSTRAINT institutions_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE mail_occurrences
+    ADD CONSTRAINT mail_occurrences_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT mail_occurrences_actor_user_id_canonical_check
+    CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE mail_deliveries
+    ADD CONSTRAINT mail_deliveries_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT mail_deliveries_occurrence_id_canonical_check
+    CHECK (occurrence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT mail_deliveries_job_id_canonical_check
+    CHECK (job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT mail_deliveries_target_user_id_canonical_check
+    CHECK (target_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE command_outcomes
     ADD CONSTRAINT command_outcomes_user_id_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -2253,7 +2367,9 @@ ALTER TABLE academic_periods
     ADD CONSTRAINT academic_periods_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT academic_periods_institution_id_canonical_check
-    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+	CHECK (institution_id IS NULL OR institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT academic_periods_academic_unit_id_canonical_check
+	CHECK (academic_unit_id IS NULL OR academic_unit_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exams
     ADD CONSTRAINT exams_id_canonical_check
@@ -2705,8 +2821,14 @@ ALTER TABLE audit_events
     ADD CONSTRAINT audit_events_scope_id_canonical_check
     CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE access_policies
+    ADD CONSTRAINT access_policies_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE installation_states
     ADD CONSTRAINT installation_states_institution_id_canonical_check
     CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT installation_states_administrator_user_id_canonical_check
-    CHECK (administrator_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    CHECK (administrator_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT installation_states_access_policy_id_canonical_check
+    CHECK (access_policy_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');

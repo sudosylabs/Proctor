@@ -17,7 +17,7 @@ func TestCommandOutcomeStore(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	user := saveUser(t, ctx, ss)
-	period := &model.AcademicPeriod{InstitutionID: institution.ID, Name: "expiring-outcome", DisplayName: "Expiring Outcome", StartsAt: model.TimeFromMillis(10), EndsAt: model.TimeFromMillis(20)}
+	period := &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "expiring-outcome", DisplayName: "Expiring Outcome", StartsAt: model.TimeFromMillis(10), EndsAt: model.TimeFromMillis(20)}
 	period.PrepareCreate(model.NewAcademicPeriodID(), model.NowUTC())
 	audit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
 	command := &store.CommandIdempotency{UserID: user.ID, Operation: "academic_period.create.v1", KeyDigest: sha256.Sum256([]byte("expiring")), FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("command")), OutcomeVersion: 1, Retention: time.Millisecond, Wait: time.Second}

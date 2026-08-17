@@ -57,6 +57,7 @@ func constructAdministration(
 			foundation.hasher,
 			foundation.attempts,
 			deps.LoginRateLimit,
+			deps.BootstrapProtection,
 			deps.NodeID,
 			time.Now,
 		),

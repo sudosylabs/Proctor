@@ -157,7 +157,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionID: institution.ID, Name: "2026-2027", DisplayName: "2026-2027",
+		Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "2026-2027", DisplayName: "2026-2027",
 		StartsAt: model.TimeFromMillis(1_800_000_000_000), EndsAt: model.TimeFromMillis(1_830_000_000_000),
 	})
 	if err != nil {

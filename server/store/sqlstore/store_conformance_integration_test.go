@@ -105,6 +105,7 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"UserSettings", storetest.TestUserSettingsStore},
 		{"File", storetest.TestFileStore},
 		{"Job", storetest.TestJobStore},
+		{"Mail", storetest.TestMailStore},
 		{"ExternalIdentity", storetest.TestExternalIdentityStore},
 		{"ExternalLoginState", storetest.TestExternalLoginStateStore},
 		{"PasswordCredential", storetest.TestPasswordCredentialStore},
@@ -148,6 +149,10 @@ func TestProgrammeLevelStore(t *testing.T) {
 
 func TestAcademicPeriodStore(t *testing.T) {
 	StoreTest(t, storetest.TestAcademicPeriodStore)
+}
+
+func TestMailStore(t *testing.T) {
+	StoreTest(t, storetest.TestMailStore)
 }
 
 func TestExamAuthoringStore(t *testing.T) {

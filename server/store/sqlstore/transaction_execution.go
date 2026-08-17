@@ -19,6 +19,14 @@ type sqlTransactionPolicy[T any] struct {
 	commitError func(T, error) error
 }
 
+func rawSQLTransactionPolicy[T any](commit bool, commitError func(T, error) error) sqlTransactionPolicy[T] {
+	return sqlTransactionPolicy[T]{
+		beginError:  func(err error) error { return err },
+		commit:      commit,
+		commitError: commitError,
+	}
+}
+
 // runSQLTransaction owns the ordinary transaction lifecycle inside the
 // PostgreSQL adapter. Operation bodies retain domain locks, queries, error
 // translation, and result construction; application code never receives this

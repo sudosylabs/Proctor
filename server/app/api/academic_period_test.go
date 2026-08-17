@@ -43,12 +43,12 @@ func TestAcademicPeriodHTTPMapsDTOAndIgnoresServerOwnedCreateFields(t *testing.T
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	period := &model.AcademicPeriod{ID: model.AcademicPeriodID(model.NewId()), InstitutionID: model.InstitutionID(model.NewId()), Name: "2026-2027", DisplayName: "2026-2027", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(200)}
+	period := &model.AcademicPeriod{ID: model.AcademicPeriodID(model.NewId()), Owner: model.NewAcademicUnitAcademicPeriodOwner(model.NewAcademicUnitID()), Name: "2026-2027", DisplayName: "2026-2027", StartsAt: model.TimeFromMillis(100), EndsAt: model.TimeFromMillis(200)}
 	periods := &academicPeriodHTTPApplication{result: period}
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{principal: principal}, academicPeriodResource(periods),
 	)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/academic-periods", strings.NewReader(`{"id":"ignored","institution_id":"ignored","create_at":12,"name":"2026-2027","display_name":"2026-2027","start_at":100,"end_at":200}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/academic-periods", strings.NewReader(`{"id":"ignored","owner_type":"academic_unit","owner_id":"`+period.Owner.ID()+`","create_at":12,"name":"2026-2027","display_name":"2026-2027","start_at":100,"end_at":200}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -56,14 +56,14 @@ func TestAcademicPeriodHTTPMapsDTOAndIgnoresServerOwnedCreateFields(t *testing.T
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if periods.createCommand.Name != period.Name || periods.createCommand.StartAt != model.MillisFromTime(period.StartsAt) || periods.createCommand.EndAt != model.MillisFromTime(period.EndsAt) {
+	if periods.createCommand.OwnerType != string(model.ResourceAcademicUnit) || periods.createCommand.OwnerID != period.Owner.ID() || periods.createCommand.Name != period.Name || periods.createCommand.StartAt != model.MillisFromTime(period.StartsAt) || periods.createCommand.EndAt != model.MillisFromTime(period.EndsAt) {
 		t.Fatalf("create command = %#v", periods.createCommand)
 	}
 	var body academicPeriodResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.ID != period.ID.String() || body.InstitutionID != period.InstitutionID.String() {
+	if body.ID != period.ID.String() || body.OwnerType != string(model.ResourceAcademicUnit) || body.OwnerID != period.Owner.ID() {
 		t.Fatalf("response = %#v", body)
 	}
 }

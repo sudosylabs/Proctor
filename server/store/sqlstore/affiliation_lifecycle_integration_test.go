@@ -34,7 +34,7 @@ func TestStudentAffiliationEndSerializesWithEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(model.GetMillis() + 1_000_000)})
+	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(model.GetMillis() + 1_000_000)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -59,6 +59,7 @@ func TestStoreSetPersistsAndNotifies(t *testing.T) {
 		notifiedCurrent = current
 	})
 	candidate := store.Get()
+	candidate.Authentication.Bootstrap.DevelopmentMode = false
 	candidate.Server.PublicURL = "https://proctor.example.edu"
 	old, current, err := store.Set(context.Background(), candidate)
 	if err != nil {
@@ -87,6 +88,7 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 	t.Parallel()
 
 	initial := Default()
+	initial.Authentication.Bootstrap.DevelopmentMode = false
 	initial.Server.ListenAddress = "127.0.0.1:8000"
 	data, err := json.Marshal(initial)
 	if err != nil {
@@ -153,6 +155,7 @@ func TestEnvironmentOverridesAreEffectiveButNeverPersisted(t *testing.T) {
 		effective.Authentication.MFA.RecoveryCodeCount != 12 {
 		t.Fatal("effective configuration did not apply MFA settings")
 	}
+	effective.Authentication.Bootstrap.DevelopmentMode = false
 	effective.Server.PublicURL = "https://proctor.example.edu"
 	if _, _, err := store.Set(context.Background(), effective); err != nil {
 		t.Fatal(err)
@@ -229,6 +232,7 @@ func TestPersonalAccessTokenEnvironmentOverridesAreNeverPersisted(t *testing.T) 
 			effective.Authentication.PersonalAccessTokens,
 		)
 	}
+	effective.Authentication.Bootstrap.DevelopmentMode = false
 	effective.Server.PublicURL = "https://proctor.example.edu"
 	if _, _, err := store.Set(context.Background(), effective); err != nil {
 		t.Fatal(err)
@@ -254,6 +258,7 @@ func TestStoreReevaluatesEnvironmentAfterProtectingPriorOverrides(t *testing.T) 
 	t.Parallel()
 
 	initial := Default()
+	initial.Authentication.Bootstrap.DevelopmentMode = false
 	initial.Server.ListenAddress = "127.0.0.1:8000"
 	data, err := json.Marshal(initial)
 	if err != nil {
@@ -636,6 +641,7 @@ func TestListenerCanSafelyPerformAnotherConfigurationChange(t *testing.T) {
 		if !nested.CompareAndSwap(false, true) {
 			return
 		}
+		current.Authentication.Bootstrap.DevelopmentMode = false
 		current.Server.PublicURL = "https://nested.example.edu"
 		if _, _, err := store.Set(context.Background(), current); err != nil {
 			t.Errorf("nested Set() error = %v", err)

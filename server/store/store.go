@@ -272,6 +272,7 @@ type Catalog interface {
 	UserSettings() UserSettingsStore
 	File() FileStore
 	Job() JobStore
+	Mail() MailStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
 	UserToken() UserTokenStore
@@ -312,6 +313,7 @@ type Store interface {
 	UserSettings() UserSettingsStore
 	File() FileStore
 	Job() JobStore
+	Mail() MailStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
 	UserToken() UserTokenStore
@@ -345,6 +347,42 @@ type CommandOutcomeStore interface {
 
 type JobEnqueue struct {
 	Job *model.Job
+}
+
+// MailTestEnqueue is the named aggregate that commits one controlled test
+// occurrence, its encrypted recipient delivery, its delivery Job, and the
+// successful operator audit as one PostgreSQL transaction.
+type MailTestEnqueue struct {
+	Occurrence *model.MailOccurrence
+	Delivery   *model.MailDelivery
+	Job        *model.Job
+	AuditEvent *model.AuditEvent
+}
+
+type MailDeliveryCompletionKind string
+
+const (
+	MailDeliveryCompletionAccepted MailDeliveryCompletionKind = "accepted"
+	MailDeliveryCompletionRetry    MailDeliveryCompletionKind = "retry"
+	MailDeliveryCompletionFailed   MailDeliveryCompletionKind = "failed"
+	MailDeliveryCompletionExpired  MailDeliveryCompletionKind = "expired"
+)
+
+type MailDeliveryCompletion struct {
+	DeliveryID        model.MailDeliveryID
+	ExpectedRevision  int64
+	Kind              MailDeliveryCompletionKind
+	PublicFailureCode string
+	At                time.Time
+}
+
+// MailStore owns durable mail-domain state. It deliberately exposes named
+// lifecycle operations rather than a raw transaction callback.
+type MailStore interface {
+	EnqueueTest(context.Context, *MailTestEnqueue) (*model.MailDelivery, error)
+	GetDelivery(context.Context, model.MailDeliveryID) (*model.MailDelivery, error)
+	StartDelivery(context.Context, model.MailDeliveryID, int64, time.Time) (*model.MailDelivery, error)
+	CompleteDelivery(context.Context, *MailDeliveryCompletion) (*model.MailDelivery, error)
 }
 
 type JobClaimRequest struct {
@@ -761,7 +799,16 @@ type ProgrammeLevelStore interface {
 	Archive(context.Context, string, int64) (*model.ProgrammeLevel, error)
 }
 
-// AcademicPeriodStore persists institution-wide enrollment periods.
+// AcademicPeriodVisibilityScope constrains list/search to institution-owned
+// periods plus unit-owned periods visible through authorized subtree roots.
+type AcademicPeriodVisibilityScope struct {
+	InstitutionID       string
+	InstitutionWide     bool
+	AcademicUnitRootIDs []string
+}
+
+// AcademicPeriodStore persists institution- or Academic-Unit-owned enrollment
+// periods.
 type AcademicPeriodCreation struct {
 	Period       *model.AcademicPeriod
 	AuditEventID string
@@ -788,9 +835,8 @@ type AcademicPeriodStore interface {
 	ArchiveWithAudit(context.Context, *AcademicPeriodArchive) (*model.AcademicPeriod, error)
 	Save(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
 	Get(context.Context, string) (*model.AcademicPeriod, error)
-	GetByName(context.Context, string, string) (*model.AcademicPeriod, error)
-	ListByInstitution(context.Context, string) ([]*model.AcademicPeriod, error)
-	SearchByInstitution(context.Context, string, string, int) ([]*model.AcademicPeriod, error)
+	GetByOwnerName(context.Context, model.Resource, string) (*model.AcademicPeriod, error)
+	ListVisible(context.Context, AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error)
 	Update(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
 	Archive(context.Context, string, int64) (*model.AcademicPeriod, error)
 }
@@ -1339,12 +1385,15 @@ type AuditStore interface {
 // installation bootstrap transaction. PasswordHash is already encoded by the
 // application password hasher and must never be logged or audited.
 type InstallationBootstrap struct {
+	BootstrapSecretDigest    [sha256.Size]byte
+	CommandFingerprint       [sha256.Size]byte
 	Institution              *model.Institution
 	Administrator            *model.User
 	AdministratorSettings    *model.UserSettingsDocument
 	PasswordHash             string
 	Role                     *model.Role
 	RoleBinding              *model.RoleBinding
+	AccessPolicy             *model.AccessPolicy
 	AuditEvent               *model.AuditEvent
 	DefaultProfilePictureJob *model.Job
 }

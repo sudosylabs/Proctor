@@ -144,7 +144,7 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 		t.Fatal(err)
 	}
 	period := &model.AcademicPeriod{
-		ID: model.NewAcademicPeriodID(), InstitutionID: model.NewInstitutionID(),
+		ID: model.NewAcademicPeriodID(), Owner: model.NewInstitutionAcademicPeriodOwner(model.NewInstitutionID()),
 		Name: "2026", DisplayName: "2026", StartsAt: time.Now().UTC(),
 		EndsAt: time.Now().UTC().Add(time.Hour), CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(), Revision: 1,

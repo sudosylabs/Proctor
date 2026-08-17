@@ -36,6 +36,8 @@ type retryStores struct {
 	examAuthoringOnce        sync.Once
 	commandOutcome           store.CommandOutcomeStore
 	commandOutcomeOnce       sync.Once
+	mail                     store.MailStore
+	mailOnce                 sync.Once
 	job                      store.JobStore
 	jobOnce                  sync.Once
 	file                     store.FileStore
@@ -145,6 +147,11 @@ type examAuthoringStore struct {
 
 type commandOutcomeStore struct {
 	store.CommandOutcomeStore
+	layer *Layer
+}
+
+type mailStore struct {
+	store.MailStore
 	layer *Layer
 }
 
@@ -473,6 +480,16 @@ func (l *Layer) Job() store.JobStore {
 	return l.stores.job
 }
 
+func (l *Layer) Mail() store.MailStore {
+	l.stores.mailOnce.Do(func() {
+		next := l.Store.Mail()
+		if next != nil {
+			l.stores.mail = &mailStore{MailStore: next, layer: l}
+		}
+	})
+	return l.stores.mail
+}
+
 func (l *Layer) ExternalIdentity() store.ExternalIdentityStore {
 	l.stores.externalIdentityOnce.Do(func() {
 		next := l.Store.ExternalIdentity()
@@ -657,6 +674,7 @@ var (
 	_ store.ExamSubmissionStore       = (*examSubmissionStore)(nil)
 	_ store.ExamAuthoringStore        = (*examAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*commandOutcomeStore)(nil)
+	_ store.MailStore                 = (*mailStore)(nil)
 	_ store.JobStore                  = (*jobStore)(nil)
 	_ store.FileStore                 = (*fileStore)(nil)
 	_ store.InstitutionStore          = (*institutionStore)(nil)

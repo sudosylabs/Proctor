@@ -19,6 +19,9 @@ import (
 // InstitutionID identifies the singleton installation institution.
 type InstitutionID string
 
+// AccessPolicyID identifies the installation's revisioned access policy.
+type AccessPolicyID string
+
 // AcademicUnitID identifies a hierarchical academic unit.
 type AcademicUnitID string
 
@@ -144,6 +147,12 @@ type MFARecoveryCodeID string
 
 // AuditEventID identifies a durable audit event.
 type AuditEventID string
+
+// MailOccurrenceID identifies one immutable logical transactional notification.
+type MailOccurrenceID string
+
+// MailDeliveryID identifies one frozen single-recipient delivery.
+type MailDeliveryID string
 
 // ExternalLoginStateID identifies a one-use external login transaction.
 type ExternalLoginStateID string

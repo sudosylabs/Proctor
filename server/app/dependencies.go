@@ -36,9 +36,11 @@ type FileContent interface {
 // composition package builds these from deployment configuration and concrete
 // adapters; App never holds platform.Service.
 type Dependencies struct {
-	Store  store.Catalog
-	Cache  authenticationCache
-	Mailer AccountMailer
+	Store                store.Catalog
+	Cache                authenticationCache
+	Mailer               AccountMailer
+	MailDeliverySender   MailDeliverySender
+	MailTemplateRenderer MailTemplateRenderer
 	// MailSecretSealer is the concrete in-process cryptographic module for
 	// recoverable mail payloads. It is nil until an independent ring is configured.
 	MailSecretSealer *secretseal.Sealer
@@ -51,6 +53,7 @@ type Dependencies struct {
 	Password                PasswordPolicy
 	Sessions                SessionPolicy
 	LoginRateLimit          LoginRateLimitPolicy
+	BootstrapProtection     BootstrapProtectionPolicy
 	PersonalAccessToken     PersonalAccessTokenPolicy
 	AccountRecovery         AccountRecoveryPolicy
 	MFA                     MFAPolicy

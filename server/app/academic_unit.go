@@ -83,6 +83,22 @@ func (a academicUnitAuthorization) AuthorizeInstallation(
 	return resource, nil
 }
 
+func (a academicUnitAuthorization) AuthorizeAcademicPeriodOwner(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	period *model.AcademicPeriod,
+) error {
+	return a.authorization.authorizeAcademicPeriodOwner(ctx, invocation, action, period)
+}
+
+func (a academicUnitAuthorization) AuthorizeAcademicPeriodList(
+	ctx context.Context,
+	invocation Invocation,
+) (store.AcademicPeriodVisibilityScope, error) {
+	return a.authorization.authorizeAcademicPeriodList(ctx, invocation)
+}
+
 type academicUnitQueryService struct {
 	academicUnits academicUnitReader
 	authorization academicUnitAuthorizer

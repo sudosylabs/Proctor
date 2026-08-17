@@ -92,7 +92,7 @@ func (s SQLClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 		if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 			return nil, err
 		}
-		if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
+		if err := validateAcademicPeriodApplicable(ctx, tx, candidate.ProgrammeLevelID.String(), candidate.AcademicPeriodID.String()); err != nil {
 			return nil, err
 		}
 		row := newClassRow(&candidate)
@@ -142,7 +142,7 @@ func (s SQLClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 		if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 			return nil, err
 		}
-		if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
+		if err := validateAcademicPeriodApplicable(ctx, tx, candidate.ProgrammeLevelID.String(), candidate.AcademicPeriodID.String()); err != nil {
 			return nil, err
 		}
 		row := newClassRow(&candidate)
@@ -314,7 +314,7 @@ func (s SQLClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 		if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 			return nil, err
 		}
-		if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
+		if err := validateAcademicPeriodApplicable(ctx, tx, candidate.ProgrammeLevelID.String(), candidate.AcademicPeriodID.String()); err != nil {
 			return nil, err
 		}
 		result, err := tx.NamedExec(ctx, `
@@ -378,7 +378,7 @@ func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 		if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 			return nil, err
 		}
-		if err := validateActiveAcademicPeriod(ctx, tx, candidate.AcademicPeriodID.String()); err != nil {
+		if err := validateAcademicPeriodApplicable(ctx, tx, candidate.ProgrammeLevelID.String(), candidate.AcademicPeriodID.String()); err != nil {
 			return nil, err
 		}
 		result, err := tx.NamedExec(ctx, `UPDATE classes SET
@@ -570,65 +570,49 @@ func (s SQLClassStore) validateInstitution(
 	ctx context.Context,
 	class *model.Class,
 ) error {
-	var unitInstitutionID string
-	if err := s.GetMaster().Get(ctx, &unitInstitutionID, `
-		SELECT academic_units.institution_id
-		  FROM programme_levels
-		  JOIN programmes ON programmes.id = programme_levels.programme_id
-		  JOIN academic_units ON academic_units.id = programmes.academic_unit_id
-		 WHERE programme_levels.id = ?
-		   AND programme_levels.archived_at IS NULL
-		   AND programmes.archived_at IS NULL
-		   AND academic_units.archived_at IS NULL`,
-		class.ProgrammeLevelID.String(),
-	); err != nil {
-		var exists bool
-		if existsErr := s.GetMaster().Get(
-			ctx,
-			&exists,
-			"SELECT EXISTS (SELECT 1 FROM programme_levels WHERE id = ?)",
-			class.ProgrammeLevelID.String(),
-		); existsErr != nil {
-			return fmt.Errorf("check programme level reference: %w", existsErr)
-		}
-		constraint := "classes_active_hierarchy"
-		if !exists {
-			constraint = "classes_programme_level_id_fkey"
-		}
-		return store.NewErrReference(
-			"class",
-			constraint,
-			err,
-		)
+	return validateAcademicPeriodApplicable(
+		ctx, s.GetMaster(), class.ProgrammeLevelID.String(), class.AcademicPeriodID.String(),
+	)
+}
+
+func validateAcademicPeriodApplicable(ctx context.Context, executor sqlxExecutor, levelID, periodID string) error {
+	var applicable bool
+	if err := executor.Get(ctx, &applicable, `WITH RECURSIVE lineage AS (
+		SELECT au.id, au.parent_id, au.institution_id
+		  FROM programme_levels pl
+		  JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+		  JOIN academic_units au ON au.id = p.academic_unit_id AND au.archived_at IS NULL
+		 WHERE pl.id = ? AND pl.archived_at IS NULL
+		UNION ALL
+		SELECT parent.id, parent.parent_id, parent.institution_id
+		  FROM academic_units parent JOIN lineage child ON child.parent_id = parent.id
+		 WHERE parent.archived_at IS NULL
+	)
+	SELECT EXISTS (
+		SELECT 1 FROM academic_periods ap
+		 WHERE ap.id = ? AND ap.archived_at IS NULL
+		   AND (
+			(ap.owner_type = 'institution' AND ap.institution_id = (SELECT institution_id FROM lineage LIMIT 1))
+			OR (ap.owner_type = 'academic_unit' AND ap.academic_unit_id IN (SELECT id FROM lineage))
+		   )
+	)`, levelID, periodID); err != nil {
+		return fmt.Errorf("validate class academic period applicability: %w", err)
 	}
-	var periodInstitutionID string
-	if err := s.GetMaster().Get(ctx, &periodInstitutionID, `
-		SELECT institution_id
-		  FROM academic_periods
-		 WHERE id = ? AND archived_at IS NULL`,
-		class.AcademicPeriodID.String(),
-	); err != nil {
-		var exists bool
-		if existsErr := s.GetMaster().Get(
-			ctx,
-			&exists,
-			"SELECT EXISTS (SELECT 1 FROM academic_periods WHERE id = ?)",
-			class.AcademicPeriodID.String(),
-		); existsErr != nil {
-			return fmt.Errorf("check academic period reference: %w", existsErr)
+	if !applicable {
+		var levelExists, periodExists bool
+		if err := executor.Get(ctx, &levelExists, "SELECT EXISTS (SELECT 1 FROM programme_levels WHERE id = ?)", levelID); err != nil {
+			return fmt.Errorf("check class programme level reference: %w", err)
 		}
-		constraint := "classes_active_hierarchy"
-		if !exists {
-			constraint = "classes_academic_period_id_fkey"
+		if !levelExists {
+			return store.NewErrReference("class", "classes_programme_level_id_fkey", nil)
 		}
-		return store.NewErrReference("class", constraint, err)
-	}
-	if unitInstitutionID != periodInstitutionID {
-		return store.NewErrReference(
-			"class",
-			"classes_same_institution",
-			nil,
-		)
+		if err := executor.Get(ctx, &periodExists, "SELECT EXISTS (SELECT 1 FROM academic_periods WHERE id = ?)", periodID); err != nil {
+			return fmt.Errorf("check class academic period reference: %w", err)
+		}
+		if !periodExists {
+			return store.NewErrReference("class", "classes_academic_period_id_fkey", nil)
+		}
+		return store.NewErrReference("class", "classes_academic_period_not_applicable", nil)
 	}
 	return nil
 }

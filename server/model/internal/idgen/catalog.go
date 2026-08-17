@@ -14,6 +14,7 @@ type idSpec struct {
 // model/id.go so adding an identifier is still a deliberate domain decision.
 var entityIDs = []idSpec{
 	{typeName: "InstitutionID", fieldName: "institution_id", constructorSubject: "institution"},
+	{typeName: "AccessPolicyID", fieldName: "access_policy_id", constructorSubject: "access-policy"},
 	{typeName: "AcademicUnitID", fieldName: "academic_unit_id", constructorSubject: "academic-unit"},
 	{typeName: "ProgrammeID", fieldName: "programme_id", constructorSubject: "programme"},
 	{typeName: "ProgrammeLevelID", fieldName: "programme_level_id", constructorSubject: "programme-level"},
@@ -55,6 +56,8 @@ var entityIDs = []idSpec{
 	{typeName: "MFACredentialID", fieldName: "mfa_credential_id", constructorSubject: "MFA credential"},
 	{typeName: "MFARecoveryCodeID", fieldName: "mfa_recovery_code_id", constructorSubject: "MFA recovery-code"},
 	{typeName: "AuditEventID", fieldName: "audit_event_id", constructorSubject: "audit-event"},
+	{typeName: "MailOccurrenceID", fieldName: "mail_occurrence_id", constructorSubject: "mail-occurrence"},
+	{typeName: "MailDeliveryID", fieldName: "mail_delivery_id", constructorSubject: "mail-delivery"},
 	{typeName: "ExternalLoginStateID", fieldName: "external_login_state_id", constructorSubject: "external-login-state"},
 	{typeName: "FileEntryID", fieldName: "file_entry_id", constructorSubject: "file-entry"},
 	{typeName: "FileRevisionID", fieldName: "file_revision_id", constructorSubject: "file-revision"},

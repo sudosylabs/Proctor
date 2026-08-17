@@ -8,6 +8,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +31,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	password := "correct horse battery staple"
 
 	bootstrap := performJSONRequest(handler, http.MethodPost, "/api/v1/bootstrap", map[string]any{
+		"bootstrap_secret": testlib.BootstrapSecret,
 		"institution": map[string]any{
 			"name": "northbridge", "display_name": "Northbridge University",
 		},
@@ -84,6 +86,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	period := createIntegrationResource[model.AcademicPeriod](
 		t, handler, http.MethodPost, "/api/v1/academic-periods",
 		map[string]any{
+			"owner_type": "academic_unit", "owner_id": child.ID.String(),
 			"name": "2026-2027", "display_name": "2026-2027",
 			"start_at": now - 86_400_000, "end_at": now + 31_536_000_000,
 		},
@@ -495,8 +498,12 @@ func createIntegrationResource[T any](
 		}
 	case *model.AcademicPeriod:
 		decodeIntegrationResponse(t, response, &wire)
+		owner, err := parseIntegrationAcademicPeriodOwner(wire.OwnerType, wire.OwnerID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		*target = model.AcademicPeriod{
-			ID: model.AcademicPeriodID(wire.ID), InstitutionID: model.InstitutionID(wire.InstitutionID),
+			ID: model.AcademicPeriodID(wire.ID), Owner: owner,
 			Name: wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
 			StartsAt: model.TimeFromMillis(wire.StartAt), EndsAt: model.TimeFromMillis(wire.EndAt),
 			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
@@ -523,6 +530,8 @@ type wireAcademicResourceResponse struct {
 	UpdateAt         int64  `json:"update_at"`
 	DeleteAt         int64  `json:"delete_at"`
 	InstitutionID    string `json:"institution_id"`
+	OwnerType        string `json:"owner_type"`
+	OwnerID          string `json:"owner_id"`
 	ParentID         string `json:"parent_id"`
 	AcademicUnitID   string `json:"academic_unit_id"`
 	ProgrammeID      string `json:"programme_id"`
@@ -533,6 +542,19 @@ type wireAcademicResourceResponse struct {
 	Description      string `json:"description"`
 	StartAt          int64  `json:"start_at"`
 	EndAt            int64  `json:"end_at"`
+}
+
+func parseIntegrationAcademicPeriodOwner(ownerType, ownerID string) (model.AcademicPeriodOwner, error) {
+	switch model.ResourceType(ownerType) {
+	case model.ResourceInstitution:
+		id, err := model.ParseInstitutionID(ownerID)
+		return model.NewInstitutionAcademicPeriodOwner(id), err
+	case model.ResourceAcademicUnit:
+		id, err := model.ParseAcademicUnitID(ownerID)
+		return model.NewAcademicUnitAcademicPeriodOwner(id), err
+	default:
+		return model.AcademicPeriodOwner{}, fmt.Errorf("unknown academic period owner type %q", ownerType)
+	}
 }
 
 func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder, target any) {

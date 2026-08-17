@@ -55,22 +55,42 @@ func (a *institutionAuthorizerFake) Authorize(
 }
 
 type institutionAuditorFake struct {
-	events   *[]string
-	beginID  string
-	failCode string
+	events    *[]string
+	beginID   string
+	failCode  string
+	action    model.Action
+	resource  model.Resource
+	scopeType model.RoleScopeType
+	scopeID   string
 }
 
 func (a *institutionAuditorFake) Begin(
 	_ context.Context,
 	_ Invocation,
-	_ model.Action,
-	_ model.Resource,
+	action model.Action,
+	resource model.Resource,
 	_ string,
 	_ map[string]any,
 	_ map[string]any,
 ) (string, error) {
 	*a.events = append(*a.events, "audit-begin")
+	a.action, a.resource = action, resource
 	return a.beginID, nil
+}
+
+func (a *institutionAuditorFake) BeginAtScope(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	operation string,
+	value map[string]any,
+	prior map[string]any,
+) (string, error) {
+	a.scopeType, a.scopeID = scopeType, scopeID
+	return a.Begin(ctx, invocation, action, resource, operation, value, prior)
 }
 
 func (a *institutionAuditorFake) Fail(

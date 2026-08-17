@@ -45,11 +45,11 @@ func TestAcademicPeriodClassCanonicalIDConstraintsRejectNoncanonicalValues(t *te
 		t.Fatal(err)
 	}
 	period, err := persistence.AcademicPeriod().Save(ctx, &model.AcademicPeriod{
-		InstitutionID: institution.ID,
-		Name:          "period",
-		DisplayName:   "Period",
-		StartsAt:      model.TimeFromMillis(1),
-		EndsAt:        model.TimeFromMillis(model.GetMillis() + 1_000_000),
+		Owner:       model.NewInstitutionAcademicPeriodOwner(institution.ID),
+		Name:        "period",
+		DisplayName: "Period",
+		StartsAt:    model.TimeFromMillis(1),
+		EndsAt:      model.TimeFromMillis(model.GetMillis() + 1_000_000),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +69,7 @@ func TestAcademicPeriodClassCanonicalIDConstraintsRejectNoncanonicalValues(t *te
 	}{
 		{name: "academic period id", query: "UPDATE academic_periods SET id = 'bad' WHERE id = ?", id: period.ID.String(), constraint: "academic_periods_id_canonical_check"},
 		{name: "academic period institution id", query: "UPDATE academic_periods SET institution_id = 'bad' WHERE id = ?", id: period.ID.String(), constraint: "academic_periods_institution_id_canonical_check"},
+		{name: "academic period academic unit id", query: "UPDATE academic_periods SET owner_type = 'academic_unit', institution_id = NULL, academic_unit_id = 'bad' WHERE id = ?", id: period.ID.String(), constraint: "academic_periods_academic_unit_id_canonical_check"},
 		{name: "class id", query: "UPDATE classes SET id = 'bad' WHERE id = ?", id: class.ID.String(), constraint: "classes_id_canonical_check"},
 		{name: "class programme level id", query: "UPDATE classes SET programme_level_id = 'bad' WHERE id = ?", id: class.ID.String(), constraint: "classes_programme_level_id_canonical_check"},
 		{name: "class academic period id", query: "UPDATE classes SET academic_period_id = 'bad' WHERE id = ?", id: class.ID.String(), constraint: "classes_academic_period_id_canonical_check"},

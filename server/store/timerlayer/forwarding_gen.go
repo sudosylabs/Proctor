@@ -39,6 +39,8 @@ type timedStores struct {
 	examAuthoringOnce        sync.Once
 	commandOutcome           store.CommandOutcomeStore
 	commandOutcomeOnce       sync.Once
+	mail                     store.MailStore
+	mailOnce                 sync.Once
 	job                      store.JobStore
 	jobOnce                  sync.Once
 	file                     store.FileStore
@@ -149,6 +151,11 @@ type timedExamAuthoringStore struct {
 type timedCommandOutcomeStore struct {
 	layer *Layer
 	next  store.CommandOutcomeStore
+}
+
+type timedMailStore struct {
+	layer *Layer
+	next  store.MailStore
 }
 
 type timedJobStore struct {
@@ -474,6 +481,16 @@ func (l *Layer) Job() store.JobStore {
 		}
 	})
 	return l.stores.job
+}
+
+func (l *Layer) Mail() store.MailStore {
+	l.stores.mailOnce.Do(func() {
+		next := l.next.Mail()
+		if next != nil {
+			l.stores.mail = &timedMailStore{layer: l, next: next}
+		}
+	})
+	return l.stores.mail
 }
 
 func (l *Layer) ExternalIdentity() store.ExternalIdentityStore {
@@ -1282,6 +1299,30 @@ func (s *timedCommandOutcomeStore) DeleteExpired(arg0 context.Context, arg1 int)
 	})
 }
 
+func (s *timedMailStore) EnqueueTest(arg0 context.Context, arg1 *store.MailTestEnqueue) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodEnqueueTest), func() (*model.MailDelivery, error) {
+		return s.next.EnqueueTest(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) GetDelivery(arg0 context.Context, arg1 model.MailDeliveryID) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodGetDelivery), func() (*model.MailDelivery, error) {
+		return s.next.GetDelivery(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) StartDelivery(arg0 context.Context, arg1 model.MailDeliveryID, arg2 int64, arg3 time.Time) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartDelivery), func() (*model.MailDelivery, error) {
+		return s.next.StartDelivery(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedMailStore) CompleteDelivery(arg0 context.Context, arg1 *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodCompleteDelivery), func() (*model.MailDelivery, error) {
+		return s.next.CompleteDelivery(arg0, arg1)
+	})
+}
+
 func (s *timedJobStore) Enqueue(arg0 context.Context, arg1 *store.JobEnqueue) (*model.Job, bool, error) {
 	return timeStoreCall2(s.layer, storeOperation(aggregateJob, methodEnqueue), func() (*model.Job, bool, error) {
 		return s.next.Enqueue(arg0, arg1)
@@ -1696,21 +1737,15 @@ func (s *timedAcademicPeriodStore) Get(arg0 context.Context, arg1 string) (*mode
 	})
 }
 
-func (s *timedAcademicPeriodStore) GetByName(arg0 context.Context, arg1 string, arg2 string) (*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGetByName), func() (*model.AcademicPeriod, error) {
-		return s.next.GetByName(arg0, arg1, arg2)
+func (s *timedAcademicPeriodStore) GetByOwnerName(arg0 context.Context, arg1 model.Resource, arg2 string) (*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGetByOwnerName), func() (*model.AcademicPeriod, error) {
+		return s.next.GetByOwnerName(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedAcademicPeriodStore) ListByInstitution(arg0 context.Context, arg1 string) ([]*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodListByInstitution), func() ([]*model.AcademicPeriod, error) {
-		return s.next.ListByInstitution(arg0, arg1)
-	})
-}
-
-func (s *timedAcademicPeriodStore) SearchByInstitution(arg0 context.Context, arg1 string, arg2 string, arg3 int) ([]*model.AcademicPeriod, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodSearchByInstitution), func() ([]*model.AcademicPeriod, error) {
-		return s.next.SearchByInstitution(arg0, arg1, arg2, arg3)
+func (s *timedAcademicPeriodStore) ListVisible(arg0 context.Context, arg1 store.AcademicPeriodVisibilityScope, arg2 string, arg3 int) ([]*model.AcademicPeriod, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodListVisible), func() ([]*model.AcademicPeriod, error) {
+		return s.next.ListVisible(arg0, arg1, arg2, arg3)
 	})
 }
 
@@ -2406,6 +2441,7 @@ var (
 	_ store.ExamSubmissionStore       = (*timedExamSubmissionStore)(nil)
 	_ store.ExamAuthoringStore        = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*timedCommandOutcomeStore)(nil)
+	_ store.MailStore                 = (*timedMailStore)(nil)
 	_ store.JobStore                  = (*timedJobStore)(nil)
 	_ store.FileStore                 = (*timedFileStore)(nil)
 	_ store.InstitutionStore          = (*timedInstitutionStore)(nil)

@@ -40,6 +40,20 @@ func constructJobs(
 	}
 	defaultJobs.wake = runtime.Wake
 	profiles.profilePictures.reads.defaultJobs = defaultJobs
+	var mailService *mailService
+	if deps.Store.Mail() != nil {
+		mailService, err = newMailService(
+			deps.Store.Mail(), deps.Store.User(),
+			mailAuthorizationAdapter{authorization: access.authorization, institutions: deps.Store.Institution()},
+			mailAuditAdapter{audit: foundation.audit}, foundation.attempts,
+			deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailSecretSealer,
+			deps.RecentAuthenticationTTL, time.Now,
+		)
+		if err != nil {
+			return jobConstruction{}, err
+		}
+		mailService.wake = runtime.Wake
+	}
 
 	operations, err := newJobOperationsService(
 		runtime,
@@ -49,7 +63,7 @@ func constructJobs(
 	if err != nil {
 		return jobConstruction{}, err
 	}
-	return jobConstruction{runtime: runtime, operations: operations}, nil
+	return jobConstruction{runtime: runtime, operations: operations, mail: mailService}, nil
 }
 
 type applicationJobDefinitions struct {
@@ -82,6 +96,7 @@ func buildApplicationJobDefinitions(
 		defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
 		filePurgeExpiredContentDescriptor(purgeHandler),
 		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
+		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, now: time.Now}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
 		examSittingSealingDescriptor(examSittingSealingHandler{service: sealingUseCases}),
 		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: lifecycleUseCases}),

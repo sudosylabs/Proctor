@@ -5,10 +5,14 @@
 -- normally be dropped and recreated rather than rolled back.
 
 DROP TABLE IF EXISTS cluster_discovery_nodes;
+DROP TABLE IF EXISTS mail_deliveries;
+DROP TABLE IF EXISTS mail_occurrences;
+DROP FUNCTION IF EXISTS reject_mail_occurrence_update();
 DROP TABLE IF EXISTS job_attempts;
 DROP TABLE IF EXISTS job_permanent_occurrences;
 DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS installation_states;
+DROP TABLE IF EXISTS access_policies;
 DROP TABLE IF EXISTS command_outcomes;
 DROP TABLE IF EXISTS exam_sitting_live_corrections;
 DROP TABLE IF EXISTS exam_sitting_private_actions;

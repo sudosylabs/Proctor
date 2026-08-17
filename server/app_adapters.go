@@ -16,6 +16,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
+	"github.com/sudosylabs/proctor/server/templates"
 )
 
 // applicationDependencies projects platform capabilities and deployment
@@ -36,15 +37,22 @@ func applicationDependencies(
 	if err != nil {
 		return app.Dependencies{}, err
 	}
+	mailRenderer, err := templates.DefaultRenderer()
+	if err != nil {
+		return app.Dependencies{}, err
+	}
+	mailer := accountMailerAdapter{mailer: capabilities.mailer}
 	return app.Dependencies{
-		Store:            capabilities.persistence,
-		Cache:            cache,
-		Mailer:           accountMailerAdapter{mailer: capabilities.mailer},
-		MailSecretSealer: mailSecretSealer,
-		Registry:         externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
-		FileContent:      content,
-		NodeID:           capabilities.nodeID,
-		PublicURL:        cfg.Server.PublicURL,
+		Store:                capabilities.persistence,
+		Cache:                cache,
+		Mailer:               mailer,
+		MailDeliverySender:   mailer,
+		MailTemplateRenderer: mailTemplateRendererAdapter{renderer: mailRenderer},
+		MailSecretSealer:     mailSecretSealer,
+		Registry:             externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
+		FileContent:          content,
+		NodeID:               capabilities.nodeID,
+		PublicURL:            cfg.Server.PublicURL,
 		Password: app.PasswordPolicy{
 			MinimumLength:    auth.Password.MinimumLength,
 			MaximumLength:    auth.Password.MaximumLength,
@@ -67,6 +75,7 @@ func applicationDependencies(
 			MaximumAttempts:       auth.LoginRateLimit.MaximumAttempts,
 			MaximumSourceAttempts: auth.LoginRateLimit.MaximumSourceAttempts,
 		},
+		BootstrapProtection: app.BootstrapProtectionPolicy{Secret: cfg.Authentication.Bootstrap.Secret},
 		PersonalAccessToken: app.PersonalAccessTokenPolicy{
 			MinimumLifetime:        auth.PersonalAccessTokens.MinimumLifetime.Duration,
 			MaximumLifetime:        auth.PersonalAccessTokens.MaximumLifetime.Duration,
@@ -163,6 +172,32 @@ func (a accountMailerAdapter) Enabled() bool {
 	return a.mailer.Enabled()
 }
 
+func (a accountMailerAdapter) From() app.MailAddress {
+	from := a.mailer.From()
+	return app.MailAddress{Name: from.Name, Address: from.Address}
+}
+
+func (a accountMailerAdapter) Send(ctx context.Context, message app.OutboundMail) (app.MailTransportOutcome, error) {
+	_, err := a.mailer.Send(ctx, mailpkg.Message{
+		From: mailpkg.Address{Name: message.From.Name, Address: message.From.Address}, EnvelopeFrom: message.EnvelopeFrom,
+		To: []mailpkg.Address{{Name: message.To.Name, Address: message.To.Address}}, Subject: message.Subject,
+		Text: message.Text, HTML: message.HTML, Headers: message.Headers, MessageID: message.MessageID, Date: message.Date,
+	})
+	if err == nil {
+		return app.MailTransportUnknown, nil
+	}
+	switch mailpkg.Classify(err) {
+	case mailpkg.OutcomeTemporary:
+		return app.MailTransportTemporary, err
+	case mailpkg.OutcomePermanent:
+		return app.MailTransportPermanent, err
+	case mailpkg.OutcomeAcceptanceUncertain:
+		return app.MailTransportAcceptanceUncertain, err
+	default:
+		return app.MailTransportUnknown, err
+	}
+}
+
 func (a accountMailerAdapter) SendCredentialMail(
 	ctx context.Context,
 	displayName string,
@@ -182,6 +217,16 @@ func (a accountMailerAdapter) SendCredentialMail(
 		Date:    at,
 	})
 	return err
+}
+
+type mailTemplateRendererAdapter struct{ renderer *templates.Renderer }
+
+func (a mailTemplateRendererAdapter) RenderSystemMailTest(recipientLocale, installationLocale string) (app.FrozenMailContent, error) {
+	message, err := a.renderer.Render(templates.Request{Key: "system.mail_test", RecipientLocale: recipientLocale, InstallationLocale: installationLocale})
+	if err != nil {
+		return app.FrozenMailContent{}, err
+	}
+	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 // externalProviderRegistryAdapter exposes the platform registry through the

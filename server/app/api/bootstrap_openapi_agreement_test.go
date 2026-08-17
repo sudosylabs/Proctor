@@ -25,6 +25,7 @@ func TestBootstrapOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus: "201", SuccessRef: "#/components/responses/InstallationBootstrapCreated", SuccessSchema: "InstallationBootstrapResult",
 				PublicErrorCodes: []string{
 					"request.invalid", "installation.already_initialized", "installation.unavailable",
+					"installation.bootstrap_denied",
 					"authentication.password.invalid", "authentication.rate_limited",
 				},
 			},
@@ -36,13 +37,21 @@ func TestBootstrapOpenAPIAgreesWithRuntime(t *testing.T) {
 			},
 			{
 				Name: "BootstrapInstallationRequest", DTO: reflect.TypeOf(bootstrapRequest{}),
-				Required: []string{"institution", "administrator", "password"},
+				Required: []string{"institution", "administrator", "password", "bootstrap_secret"},
 			},
 			{
 				Name: "InstallationStateResponse", DTO: reflect.TypeOf(installationStateResponse{}),
 				Required: []string{"initialized_at", "institution_id", "administrator_user_id"},
 			},
 			{Name: "InstallationBootstrapResult", DTO: reflect.TypeOf(installationBootstrapResponse{})},
+			{
+				Name: "InitialAccessPolicyResponse", DTO: reflect.TypeOf(initialAccessPolicyResponse{}),
+				Required: []string{
+					"id", "revision", "local_login_enabled", "public_registration_enabled",
+					"invitation_admission_enabled", "invitation_local_credential_enabled",
+					"desktop_authorization_enabled",
+				},
+			},
 		},
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)

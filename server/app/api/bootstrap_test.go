@@ -76,7 +76,7 @@ func TestBootstrapResourceStrictDecodeAndDeclaredFailureThroughKernel(t *testing
 	}
 
 	failure := httptest.NewRecorder()
-	httpAPI.ServeHTTP(failure, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"institution":{"name":"northbridge","display_name":"Northbridge"},"administrator":{"username":"admin","email":"admin@example.edu"},"password":"secret"}`)))
+	httpAPI.ServeHTTP(failure, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"institution":{"name":"northbridge","display_name":"Northbridge"},"administrator":{"username":"admin","email":"admin@example.edu"},"password":"secret","bootstrap_secret":"deployment-secret"}`)))
 	if failure.Code != http.StatusInternalServerError || !bytes.Contains(failure.Body.Bytes(), []byte(`"code":"installation.unavailable"`)) {
 		t.Fatalf("bootstrap failure = %d %s", failure.Code, failure.Body.String())
 	}
@@ -110,6 +110,26 @@ func TestBootstrapStatusExposesOnlyInitializedFlag(t *testing.T) {
 	}
 }
 
+func TestBootstrapDeniedDoesNotEchoSecretOrAccountDetail(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	bootstrap := &recordingBootstrap{bootstrapErr: application.NewError("installation.bootstrap_denied")}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(bootstrap))
+	const secret = "wrong-secret-material-that-must-not-be-echoed"
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(
+		`{"institution":{"name":"northbridge","display_name":"Northbridge"},`+
+			`"administrator":{"username":"admin","email":"admin@example.edu"},`+
+			`"password":"password","bootstrap_secret":"`+secret+`"}`,
+	)))
+	if response.Code != http.StatusForbidden ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"code":"installation.bootstrap_denied"`)) ||
+		bytes.Contains(response.Body.Bytes(), []byte(secret)) ||
+		bytes.Contains(response.Body.Bytes(), []byte("admin@example.edu")) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 	t.Parallel()
 	institutionID := model.NewId()
@@ -138,6 +158,7 @@ func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 			ID: model.RoleBindingID(bindingID), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), UserID: model.UserID(adminID), RoleID: model.RoleID(roleID),
 			ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, StartsAt: model.TimeFromMillis(100),
 		},
+		AccessPolicy: model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.TimeFromMillis(100)),
 	}
 	encoded, err := json.Marshal(installationBootstrapResponseFromModel(result))
 	if err != nil {
@@ -167,9 +188,10 @@ func TestBootstrapUsesApplicationCommand(t *testing.T) {
 	}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(rec))
 	body, _ := json.Marshal(map[string]any{
-		"institution":   map[string]any{"name": "northbridge", "display_name": "Northbridge"},
-		"administrator": map[string]any{"username": "admin", "email": "admin@example.com"},
-		"password":      "correct-horse-battery",
+		"institution":      map[string]any{"name": "northbridge", "display_name": "Northbridge"},
+		"administrator":    map[string]any{"username": "admin", "email": "admin@example.com"},
+		"password":         "correct-horse-battery",
+		"bootstrap_secret": "deployment-bootstrap-secret",
 	})
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
@@ -180,7 +202,8 @@ func TestBootstrapUsesApplicationCommand(t *testing.T) {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
 	if rec.command.InstitutionName != "northbridge" || rec.command.AdministratorUsername != "admin" ||
-		rec.command.Password != "correct-horse-battery" || rec.command.Source == "" {
+		rec.command.Password != "correct-horse-battery" ||
+		rec.command.BootstrapSecret != "deployment-bootstrap-secret" || rec.command.Source == "" {
 		t.Fatalf("command = %#v", rec.command)
 	}
 }

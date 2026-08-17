@@ -24,7 +24,10 @@ the code and component contracts for that detail.
   cursor pagination.
 - Structural academic administration covers institution, academic units,
   programmes, programme levels, academic periods, classes, affiliations,
-  organizational membership, and effective-dated student enrollment.
+  organizational membership, and effective-dated student enrollment. Academic
+  Periods have immutable Institution or Academic Unit ownership, owner-scoped
+  canonical names and authorization, and Classes retain one exact Period that
+  must apply to their Programme lineage.
 - Identity includes local passwords, sessions and refresh rotation, account
   recovery, personal access tokens, TOTP MFA and recovery codes, administrative
   session management, direct CAS 3, and generic OIDC. Its application facade
@@ -246,12 +249,18 @@ transport now exposes portable temporary, permanent, and acceptance-uncertain
 outcomes; the server has an independently configured versioned secret-sealing
 module; and the complete initial catalog has localized English copy, authored
 MJML and text, tracked generated HTML, freshness checks, and deterministic
-previews. Durable mail occurrences, delivery Jobs, and product-transition
-integration are not implemented yet.
+previews. The first durable tracer is implemented: a recent institution
+operator with `mail.manage` can enqueue the fixed `system.mail_test` message to
+their own verified address, atomically persisting its immutable occurrence,
+encrypted frozen payload, audit event, and delivery Job. Any node can deliver
+it with a stable Message-ID, record SMTP acceptance, destroy accepted
+ciphertext, and expose only a `mail.view`-protected safe status projection.
+Product-transition mail, operator retry/cancel/rekey, lifecycle cleanup, and
+bounded catalogs remain unimplemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
-Application transitions will record encrypted per-recipient delivery intent
+Later application transitions will record encrypted per-recipient delivery intent
 and durable Jobs atomically, with bounded fan-out, relevance fencing,
 deadline-aware retries, safe operator control, and no user opt-outs. The
 complete contract and remaining delivery order are in
@@ -268,8 +277,20 @@ desktop URL scheme while the client navigation contract remains undefined.
 The access and onboarding architecture is accepted. Existing installations
 now reconcile the protected `system_admin` Role with every current grantable
 action before serving traffic, preserving unknown downgrade actions and all
-custom Roles and bindings. The remaining Access Policy, browser authorization,
-identity reconciliation, Invitation, and batch workflows are not implemented.
+custom Roles and bindings. Access Policy administration and discovery, browser
+authorization, identity reconciliation, Invitation, and batch workflows are
+not implemented.
+
+Bootstrap now requires a deployment-owned secret, rate-limits public proof attempts,
+and atomically creates the unverified first local administrator, protected
+Role and binding, initial User Settings and profile-picture Job, installation
+marker, audit, and conservative Access Policy revision 1. PostgreSQL fences
+concurrent nodes, retains an exact replay outcome, and rejects conflicting
+reuse. Production bootstrap requires an explicit secret; explicit loopback
+development may generate and display a temporary value once while pristine,
+outside logs.
+Access Policy administration, transition history, provider selection, and
+public discovery remain unimplemented.
 
 The first administrator always bootstraps one local account with a one-use
 deployment secret before mutable access policy can take effect. Thereafter a
@@ -294,9 +315,10 @@ Academic Unit membership plus their invitation-package-origin role binding;
 institution and Academic Unit role invitations use explicit typed purposes.
 CSV imports are asynchronous validated batches over the same invitation and
 progression commands, with row-level results and no raw invitation secrets in
-exports. Academic Periods will gain explicit Institution or Academic Unit
-ownership and a dedicated `academic_period.manage` action; Academic Unit scope
-applies to its subtree. The complete contract and implementation order are in
+exports. Academic Periods now have explicit Institution or Academic Unit
+ownership and dedicated `academic_period.view` and `academic_period.manage`
+actions; Academic Unit scope applies to its subtree. The complete contract and
+implementation order are in
 [Access and onboarding](../architecture/access-and-onboarding.md).
 
 Invitation-required policy cannot be activated until the transactional-mail
@@ -351,8 +373,9 @@ contract is in [Execution environments](../architecture/execution.md).
 ## Planned product work
 
 - Implement the accepted access-and-onboarding architecture in its documented
-  order: scoped Academic Period ownership and actions, Access Policy and
-  discovery, browser authorization transactions, local and external credential
+  order after scoped Academic Period ownership and protected initial policy:
+  Access Policy administration and discovery, browser authorization
+  transactions, local and external credential
   reconciliation, durable typed Invitations, then bounded CSV batch workflows.
   Invitation-required activation and usable invite links remain gated on the
   mail foundation and hosted-page design system respectively.

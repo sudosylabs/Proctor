@@ -21,7 +21,7 @@ func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	period, err := NewAcademicPeriod(
-		periodID, institutionID, "2026-2027", "2026–2027", "",
+		periodID, NewInstitutionAcademicPeriodOwner(institutionID), "2026-2027", "2026–2027", "",
 		time.UnixMilli(1788213600000).UTC(), time.UnixMilli(1819749600000).UTC(), at,
 	)
 	if err != nil {
@@ -32,7 +32,8 @@ func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 	}
 	audit := period.Auditable()
 	if audit["id"] != period.ID.String() ||
-		audit["institution_id"] != institutionID.String() ||
+		audit["owner_type"] != string(ResourceInstitution) ||
+		audit["owner_id"] != institutionID.String() ||
 		audit["created_at"] != MillisFromTime(at) ||
 		audit["start_at"] != MillisFromTime(period.StartsAt) ||
 		audit["end_at"] != MillisFromTime(period.EndsAt) {
@@ -74,6 +75,41 @@ func TestAcademicPeriodAndClassTypedLifecycle(t *testing.T) {
 	class.PrepareUpdate(at.Add(time.Second))
 	if err := class.Validate(); err != nil {
 		t.Fatalf("Class after PrepareUpdate: %v", err)
+	}
+}
+
+func TestAcademicPeriodRequiresExactlyOneOwner(t *testing.T) {
+	t.Parallel()
+	at := time.UnixMilli(1_700_000_000_000).UTC()
+	base := AcademicPeriod{
+		ID: NewAcademicPeriodID(), CreatedAt: at, UpdatedAt: at, Revision: 1,
+		Name: "2026", DisplayName: "2026", StartsAt: at, EndsAt: at.Add(time.Hour),
+	}
+	for name, owner := range map[string]AcademicPeriodOwner{
+		"missing": {},
+		"both": {
+			InstitutionID: NewInstitutionID(), AcademicUnitID: NewAcademicUnitID(),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := base
+			candidate.Owner = owner
+			if err := candidate.Validate(); err == nil {
+				t.Fatal("Validate() accepted an ambiguous owner")
+			}
+		})
+	}
+	for name, owner := range map[string]AcademicPeriodOwner{
+		"institution":   NewInstitutionAcademicPeriodOwner(NewInstitutionID()),
+		"academic unit": NewAcademicUnitAcademicPeriodOwner(NewAcademicUnitID()),
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := base
+			candidate.Owner = owner
+			if err := candidate.Validate(); err != nil {
+				t.Fatalf("Validate() = %v", err)
+			}
+		})
 	}
 }
 
@@ -228,15 +264,15 @@ func TestAcademicModelValidationReturnsPreciseTranslationIDs(t *testing.T) {
 		{
 			name: "academic period end",
 			err: (&AcademicPeriod{
-				ID:            AcademicPeriodID(NewId()),
-				CreatedAt:     at,
-				UpdatedAt:     at,
-				Revision:      1,
-				InstitutionID: InstitutionID(NewId()),
-				Name:          "2026-2027",
-				DisplayName:   "2026–2027",
-				StartsAt:      time.UnixMilli(100).UTC(),
-				EndsAt:        time.UnixMilli(100).UTC(),
+				ID:          AcademicPeriodID(NewId()),
+				CreatedAt:   at,
+				UpdatedAt:   at,
+				Revision:    1,
+				Owner:       NewInstitutionAcademicPeriodOwner(InstitutionID(NewId())),
+				Name:        "2026-2027",
+				DisplayName: "2026–2027",
+				StartsAt:    time.UnixMilli(100).UTC(),
+				EndsAt:      time.UnixMilli(100).UTC(),
 			}).Validate(),
 			code: "model.academic_period.is_valid.end_at.app_error",
 		},

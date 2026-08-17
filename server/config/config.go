@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const SchemaVersion = 1
@@ -200,6 +201,14 @@ type PersonalAccessTokens struct {
 	MaximumPerUser         int      `json:"maximum_per_user"`
 }
 
+// Bootstrap protects the one-time public installation initialization route.
+// DevelopmentMode permits process-generated secret material only while the
+// installation is pristine and both listener and public origin are loopback-only.
+type Bootstrap struct {
+	Secret          string `json:"secret,omitempty"`
+	DevelopmentMode bool   `json:"development_mode"`
+}
+
 // MFA contains operator-owned cryptographic and policy settings. The primary
 // key encrypts new TOTP secrets; decryption_keys permits online key rotation
 // while existing credentials are re-encrypted.
@@ -213,6 +222,7 @@ type MFA struct {
 }
 
 type Authentication struct {
+	Bootstrap               Bootstrap              `json:"bootstrap"`
 	Password                Password               `json:"password"`
 	Sessions                Sessions               `json:"sessions"`
 	RecentAuthenticationTTL Duration               `json:"recent_authentication_ttl"`
@@ -299,6 +309,7 @@ func Default() Config {
 			S3:      VFSS3{Secure: true},
 		},
 		Authentication: Authentication{
+			Bootstrap: Bootstrap{DevelopmentMode: true},
 			Password: Password{
 				MinimumLength:    12,
 				MaximumLength:    128,
@@ -439,6 +450,9 @@ func (c Config) Redacted() Config {
 			redacted.Authentication.MFA.DecryptionKeys[index],
 		)
 	}
+	redacted.Authentication.Bootstrap.Secret = redactSecret(
+		redacted.Authentication.Bootstrap.Secret,
+	)
 	for index := range redacted.Authentication.External.Providers {
 		provider := &redacted.Authentication.External.Providers[index]
 		if provider.OIDC != nil {
@@ -527,6 +541,7 @@ func (c Config) Validate() error {
 		}
 	}
 	validateAuthentication(c.Authentication, add)
+	validateBootstrap(c.Server, c.Authentication.Bootstrap, add)
 	validateSecretKeySeparation(c, add)
 
 	if c.Log.MaxFieldBytes < 256 || c.Log.MaxFieldBytes > 1<<20 {
@@ -685,6 +700,9 @@ func validateMail(mailConfig Mail, add func(string, string)) {
 	)
 	if !mailConfig.Enabled {
 		return
+	}
+	if mailConfig.SecretSealing.EncryptionKey == "" {
+		add("mail.secret_sealing.encryption_key", "is required when mail is enabled")
 	}
 	if !validMailbox(mailConfig.FromAddress) {
 		add("mail.from_address", "must be a plain email address")
@@ -1174,4 +1192,48 @@ func validatePublicURL(raw string, add func(string, string)) {
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		add("server.public_url", "query and fragment are forbidden")
 	}
+}
+
+func validateBootstrap(server Server, bootstrap Bootstrap, add func(string, string)) {
+	secret := bootstrap.Secret
+	if secret != "" {
+		if strings.TrimSpace(secret) != secret {
+			add("authentication.bootstrap.secret", "must not contain surrounding whitespace")
+		}
+		if len(secret) < 32 || len(secret) > 512 {
+			add("authentication.bootstrap.secret", "must be between 32 and 512 bytes")
+		}
+		if strings.ContainsFunc(secret, unicode.IsControl) {
+			add("authentication.bootstrap.secret", "must not contain control characters")
+		}
+	}
+
+	loopbackDevelopment := bootstrap.DevelopmentMode &&
+		isLiteralLoopbackListenAddress(server.ListenAddress) &&
+		isLoopbackPublicURL(server.PublicURL)
+	if bootstrap.DevelopmentMode && !loopbackDevelopment {
+		add("authentication.bootstrap.development_mode", "requires a loopback listener and loopback public URL")
+	}
+}
+
+func isLiteralLoopbackListenAddress(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func isLoopbackPublicURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

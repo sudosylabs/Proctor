@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -45,6 +46,9 @@ type TestingOverrides struct {
 	AllowMissingJobs bool
 	// BuildInfo replaces the served build information when any field is set.
 	BuildInfo api.BuildInfo
+	// BootstrapSecretWriter captures the explicit loopback-development secret.
+	// Production writes it directly to the controlling terminal.
+	BootstrapSecretWriter io.Writer
 }
 
 // TestingRuntime is a non-owning behavioral projection. Server owns lifecycle
@@ -61,6 +65,9 @@ type TestingRuntime struct {
 // so startup, readiness, shutdown, and cleanup behavior is identical to
 // production.
 func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRuntime, error) {
+	if overrides.BootstrapSecretWriter == nil {
+		overrides.BootstrapSecretWriter = io.Discard
+	}
 	result, err := composeNode(ctx, compositionInput{
 		overrides:        overrides,
 		allowMissingJobs: overrides.AllowMissingJobs,

@@ -24,6 +24,31 @@ type mutationAttemptAuditorFake struct {
 	attempt  mutationAttempt
 }
 
+func (a *mutationAttemptAuditorFake) BeginAtScope(
+	_ context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	operation string,
+	value map[string]any,
+	prior map[string]any,
+) (string, error) {
+	*a.events = append(*a.events, "begin-at-scope")
+	a.attempt = mutationAttempt{
+		Invocation: invocation,
+		Action:     action,
+		Resource:   resource,
+		ScopeType:  scopeType,
+		ScopeID:    scopeID,
+		Operation:  operation,
+		Value:      value,
+		Prior:      prior,
+	}
+	return a.beginID, a.beginErr
+}
+
 func (a *mutationAttemptAuditorFake) Begin(
 	_ context.Context,
 	invocation Invocation,
@@ -82,6 +107,39 @@ func TestMutationAttemptBeginFailurePreventsMutation(t *testing.T) {
 		t.Fatal("named mutation ran after begin failure")
 	}
 	if !reflect.DeepEqual(events, []string{"begin"}) {
+		t.Fatalf("events = %v", events)
+	}
+}
+
+func TestMutationAttemptUsesIndependentAuditScope(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	auditID := model.NewId()
+	scopeID := model.NewId()
+	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: model.NewId()}
+	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
+	got, err := runAuditedMutation(
+		context.Background(), auditor,
+		mutationAttempt{
+			Action: model.ActionAcademicPeriodManage, Resource: resource,
+			ScopeType: model.RoleScopeAcademicUnit, ScopeID: scopeID,
+			Operation: "create",
+		},
+		time.Now,
+		func(_ context.Context, reference mutationAttemptReference) (string, error) {
+			events = append(events, "mutate")
+			return reference.ID, nil
+		},
+		func(error) error { return nil },
+	)
+	if err != nil || got != auditID {
+		t.Fatalf("runAuditedMutation() = %q, %v", got, err)
+	}
+	if auditor.attempt.Resource != resource || auditor.attempt.ScopeType != model.RoleScopeAcademicUnit || auditor.attempt.ScopeID != scopeID {
+		t.Fatalf("scoped attempt = %#v", auditor.attempt)
+	}
+	if !reflect.DeepEqual(events, []string{"begin-at-scope", "mutate"}) {
 		t.Fatalf("events = %v", events)
 	}
 }

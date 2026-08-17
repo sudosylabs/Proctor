@@ -18,6 +18,7 @@ func constructAccessAndAcademics(
 		deps.Store.ExamAuthoring(),
 		deps.Store.ExamSitting(),
 		deps.Store.ExamSubmission(),
+		deps.Store.AcademicPeriod(),
 	)
 	if err != nil {
 		return accessAcademicConstruction{}, err

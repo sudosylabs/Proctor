@@ -5,11 +5,13 @@ package storetest
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -76,13 +78,15 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	}
 	outcomes := make(chan outcome, attempts)
 	var wait sync.WaitGroup
+	inputs := make([]*store.InstallationBootstrap, attempts)
 	for index := 0; index < attempts; index++ {
+		inputs[index] = testInstallationBootstrap(index)
 		wait.Add(1)
 		go func(index int) {
 			defer wait.Done()
 			result, err := ss.Installation().Bootstrap(
 				ctx,
-				testInstallationBootstrap(index),
+				inputs[index],
 			)
 			outcomes <- outcome{result: result, err: err}
 		}(index)
@@ -108,6 +112,28 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if winner == nil || conflicts != attempts-1 {
 		t.Fatalf("winner/conflicts = %#v/%d", winner, conflicts)
 	}
+	var winnerInput *store.InstallationBootstrap
+	for _, input := range inputs {
+		if input.Administrator.Email == winner.Administrator.Email {
+			winnerInput = input
+			break
+		}
+	}
+	replayed, err := ss.Installation().Bootstrap(ctx, winnerInput)
+	requireNoError(t, err)
+	if replayed.State.InstitutionID != winner.State.InstitutionID ||
+		replayed.State.AdministratorUserID != winner.State.AdministratorUserID ||
+		replayed.AccessPolicy.ID != winner.AccessPolicy.ID {
+		t.Fatalf("Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
+	}
+	if err := ss.User().UpdateLastLogin(ctx, winner.Administrator.ID.String(), winner.Administrator.CreatedAt.Add(time.Minute).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err = ss.Installation().Bootstrap(ctx, winnerInput)
+	requireNoError(t, err)
+	if replayed.Administrator.LastLoginAt.Valid {
+		t.Fatalf("exact replay returned mutable current administrator state: %#v", replayed.Administrator)
+	}
 	if winner.State.Validate() != nil ||
 		winner.Institution.ID != winner.State.InstitutionID ||
 		winner.Administrator.ID != winner.State.AdministratorUserID ||
@@ -115,6 +141,13 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		!winner.Role.BuiltIn ||
 		winner.RoleBinding.ScopeType != model.RoleScopeInstitution ||
 		winner.RoleBinding.ScopeID != winner.Institution.ID.String() ||
+		winner.AccessPolicy == nil || winner.AccessPolicy.Validate() != nil ||
+		winner.AccessPolicy.Revision != 1 || !winner.AccessPolicy.LocalLoginEnabled ||
+		winner.AccessPolicy.PublicRegistrationEnabled ||
+		!winner.AccessPolicy.InvitationAdmissionEnabled ||
+		!winner.AccessPolicy.InvitationLocalCredentialEnabled ||
+		!winner.AccessPolicy.DesktopAuthorizationEnabled ||
+		len(winner.AccessPolicy.ProviderAdmissions) != 0 ||
 		winner.Institution.IsArchived() ||
 		winner.Administrator.ArchivedAt.Valid ||
 		winner.Administrator.EmailVerified ||
@@ -133,6 +166,11 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if credential.PasswordHash == "" {
 		t.Fatal("bootstrap password hash was not persisted")
+	}
+	sessions, err := ss.Session().ListByUser(ctx, winner.Administrator.ID.String())
+	requireNoError(t, err)
+	if len(sessions) != 0 {
+		t.Fatalf("bootstrap created Sessions: %#v", sessions)
 	}
 	settings, err := ss.UserSettings().Get(ctx, winner.Administrator.ID)
 	requireNoError(t, err)
@@ -292,7 +330,9 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 	required := model.AllActions()
 	permissions := append([]string{"future.unknown"}, required[1:]...)
 	return &store.InstallationBootstrap{
-		Institution: institution, Administrator: creation.User, AdministratorSettings: creation.Settings,
+		BootstrapSecretDigest: sha256.Sum256([]byte(fmt.Sprintf("bootstrap-secret-%d", index))),
+		CommandFingerprint:    sha256.Sum256([]byte(fmt.Sprintf("bootstrap-command-%d", index))),
+		Institution:           institution, Administrator: creation.User, AdministratorSettings: creation.Settings,
 		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$MTIzNDU2Nzg5MDEyMzQ1Ng$MTIzNDU2Nzg5MDEyMzQ1Ng",
 		Role: &model.Role{
 			ID: model.RoleID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
@@ -305,6 +345,7 @@ func testInstallationBootstrap(index int) *store.InstallationBootstrap {
 			UpdatedAt: model.TimeFromMillis(1), ArchivedAt: model.OptionalTimeFromMillis(1),
 			EndsAt: model.OptionalTimeFromMillis(2),
 		},
+		AccessPolicy: model.NewInitialAccessPolicy(model.NewAccessPolicyID(), creation.User.CreatedAt),
 		AuditEvent: &model.AuditEvent{
 			ID: model.AuditEventID(model.NewId()), CreatedAt: model.TimeFromMillis(1),
 			UpdatedAt: model.TimeFromMillis(1),

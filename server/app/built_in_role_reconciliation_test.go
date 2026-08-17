@@ -40,6 +40,7 @@ func TestBootstrapServiceReconcilesSystemAdministratorRoleFromRegistry(t *testin
 		persistence, &passwordHasherFake{events: &events},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}),
 		LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 3},
+		bootstrapProtection(),
 		"node-reconcile", func() time.Time { return at },
 	)
 
@@ -71,6 +72,7 @@ func TestBootstrapServiceFailsStartupWhenSystemAdministratorRoleCannotReconcile(
 		persistence, &passwordHasherFake{events: &events},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}),
 		LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 3},
+		bootstrapProtection(),
 		"node-reconcile", model.NowUTC,
 	)
 

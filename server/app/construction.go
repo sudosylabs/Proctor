@@ -65,6 +65,7 @@ type profileFileConstruction struct {
 type jobConstruction struct {
 	runtime    *jobengine.Engine
 	operations *jobOperationsService
+	mail       *mailService
 }
 
 type administrationConstruction struct {
@@ -85,6 +86,12 @@ func validateApplicationDependencies(deps Dependencies) error {
 	}
 	if deps.Mailer == nil {
 		return errors.New("mailer is required")
+	}
+	if deps.MailDeliverySender == nil {
+		return errors.New("mail delivery sender is required")
+	}
+	if deps.MailTemplateRenderer == nil {
+		return errors.New("mail template renderer is required")
 	}
 	if deps.Registry == nil {
 		return errors.New("external provider registry is required")
@@ -204,6 +211,7 @@ func assembleApplication(
 		realtime:                          foundation.realtime,
 		jobs:                              jobs.runtime,
 		jobOperations:                     jobs.operations,
+		mail:                              jobs.mail,
 		mailSecretSealer:                  deps.MailSecretSealer,
 		recentAuthenticationTTL:           deps.RecentAuthenticationTTL,
 	}

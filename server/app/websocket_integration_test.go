@@ -62,6 +62,7 @@ func TestWebSocketIntegration(t *testing.T) {
 		http.MethodPost,
 		"/api/v1/bootstrap",
 		map[string]any{
+			"bootstrap_secret": testlib.BootstrapSecret,
 			"institution": map[string]any{
 				"name": "northbridge", "display_name": "Northbridge University",
 			},
@@ -324,6 +325,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		http.MethodPost,
 		"/api/v1/bootstrap",
 		map[string]any{
+			"bootstrap_secret": testlib.BootstrapSecret,
 			"institution": map[string]any{
 				"name": "northbridge", "display_name": "Northbridge University",
 			},

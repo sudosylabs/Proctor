@@ -27,8 +27,8 @@ func TestAcademicPeriodOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "DELETE /api/v1/academic-periods/{academic_period_id}", Auth: AuthPrincipalRequired, SuccessStatus: "204", SuccessRef: "#/components/responses/AcademicPeriodArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "academic_period.conflict", "administration.unavailable")},
 		},
 		Schemas: []openAPIAgreementSchema{
-			{Name: "AcademicPeriodResponse", DTO: reflect.TypeOf(academicPeriodResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "institution_id", "name", "display_name", "description", "start_at", "end_at"}},
-			{Name: "CreateAcademicPeriodRequest", DTO: reflect.TypeOf(createAcademicPeriodRequest{}), Required: []string{"name", "display_name", "start_at", "end_at"}},
+			{Name: "AcademicPeriodResponse", DTO: reflect.TypeOf(academicPeriodResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "owner_type", "owner_id", "name", "display_name", "description", "start_at", "end_at"}},
+			{Name: "CreateAcademicPeriodRequest", DTO: reflect.TypeOf(createAcademicPeriodRequest{}), Required: []string{"owner_type", "owner_id", "name", "display_name", "start_at", "end_at"}},
 			{Name: "UpdateAcademicPeriodRequest", DTO: reflect.TypeOf(updateAcademicPeriodRequest{})},
 		},
 	}

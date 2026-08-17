@@ -9,6 +9,10 @@ package app
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -32,7 +36,14 @@ type BootstrapInstallationCommand struct {
 	AdministratorLocale      string
 	AdministratorTimezone    string
 	Password                 string
+	BootstrapSecret          string
 	Source                   string
+}
+
+// BootstrapProtectionPolicy is the immutable deployment-owned proof used by
+// the public one-time bootstrap command. The service retains only its digest.
+type BootstrapProtectionPolicy struct {
+	Secret string
 }
 
 type installationStore interface {
@@ -51,6 +62,8 @@ type bootstrapService struct {
 	attempts              *authenticationAttemptAccounting
 	rateLimitWindow       time.Duration
 	maximumSourceAttempts int
+	bootstrapSecretDigest [sha256.Size]byte
+	bootstrapAvailable    bool
 	nodeID                string
 	now                   func() time.Time
 }
@@ -60,13 +73,16 @@ func newBootstrapService(
 	hasher passwordHash,
 	attempts *authenticationAttemptAccounting,
 	rateLimit LoginRateLimitPolicy,
+	protection BootstrapProtectionPolicy,
 	nodeID string,
 	now func() time.Time,
 ) *bootstrapService {
 	return &bootstrapService{
 		installations: installations, hasher: hasher, attempts: attempts,
 		rateLimitWindow: rateLimit.Window, maximumSourceAttempts: rateLimit.MaximumSourceAttempts,
-		nodeID: nodeID, now: now,
+		bootstrapSecretDigest: digestBootstrapSecret(protection.Secret),
+		bootstrapAvailable:    protection.Secret != "",
+		nodeID:                nodeID, now: now,
 	}
 }
 
@@ -121,15 +137,16 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 		strings.TrimSpace(command.AdministratorEmail) == "" || command.Password == "" {
 		return nil, NewError("request.invalid").WithField("field", "bootstrap")
 	}
-	status, err := s.GetStatus(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if status.Initialized {
-		return nil, NewError("installation.already_initialized")
-	}
 	if err := s.checkRateLimit(ctx, command.Source); err != nil {
 		return nil, err
+	}
+	providedDigest := digestBootstrapSecret(command.BootstrapSecret)
+	if !s.bootstrapAvailable || subtle.ConstantTimeCompare(providedDigest[:], s.bootstrapSecretDigest[:]) != 1 {
+		return nil, NewError("installation.bootstrap_denied")
+	}
+	fingerprint, err := fingerprintBootstrapCommand(command)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "bootstrap").Wrap(err)
 	}
 	hash, err := s.hasher.Hash(command.Password)
 	if err != nil {
@@ -149,7 +166,9 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "administrator").Wrap(err)
 	}
-	result, err := s.installations.Bootstrap(ctx, &store.InstallationBootstrap{
+	input := &store.InstallationBootstrap{
+		BootstrapSecretDigest: providedDigest,
+		CommandFingerprint:    fingerprint,
 		Institution: &model.Institution{
 			Name: command.InstitutionName, DisplayName: command.InstitutionDisplayName,
 			Description: command.InstitutionDescription,
@@ -164,7 +183,8 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 			Permissions: model.AllActions(),
 			BuiltIn:     true,
 		},
-		RoleBinding: &model.RoleBinding{},
+		RoleBinding:  &model.RoleBinding{},
+		AccessPolicy: model.NewInitialAccessPolicy(model.NewAccessPolicyID(), administrator.CreatedAt),
 		AuditEvent: &model.AuditEvent{
 			Action:     "installation.bootstrap",
 			RequestID:  metadata.RequestID,
@@ -175,14 +195,56 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 			UserAgent:  metadata.UserAgent,
 		},
 		DefaultProfilePictureJob: defaultPictureJob,
-	})
+	}
+	result, err := s.installations.Bootstrap(ctx, input)
 	if err != nil {
 		if store.IsConflict(err) {
 			return nil, NewError("installation.already_initialized").Wrap(err)
 		}
-		return nil, NewError("installation.unavailable").Wrap(err)
+		// The commit boundary may be ambiguous. Repeating the proof- and
+		// fingerprint-fenced named aggregate either returns the retained exact
+		// outcome or proves that this attempt did not win.
+		result, retryErr := s.installations.Bootstrap(ctx, input)
+		if retryErr == nil {
+			return result, nil
+		}
+		if store.IsConflict(retryErr) {
+			return nil, NewError("installation.already_initialized").Wrap(retryErr)
+		}
+		return nil, NewError("installation.unavailable").Wrap(errors.Join(err, retryErr))
 	}
 	return result, nil
+}
+
+func digestBootstrapSecret(secret string) [sha256.Size]byte {
+	return sha256.Sum256(append([]byte("proctor:installation-bootstrap-secret:v1\x00"), []byte(secret)...))
+}
+
+func fingerprintBootstrapCommand(command BootstrapInstallationCommand) ([sha256.Size]byte, error) {
+	payload, err := json.Marshal(struct {
+		InstitutionName, InstitutionDisplayName, InstitutionDescription   string
+		AdministratorUsername, AdministratorEmail                         string
+		AdministratorDisplayName, AdministratorFirstName                  string
+		AdministratorLastName, AdministratorLocale, AdministratorTimezone string
+		Password                                                          string
+	}{
+		command.InstitutionName, command.InstitutionDisplayName, command.InstitutionDescription,
+		command.AdministratorUsername, command.AdministratorEmail,
+		command.AdministratorDisplayName, command.AdministratorFirstName,
+		command.AdministratorLastName, command.AdministratorLocale, command.AdministratorTimezone,
+		command.Password,
+	})
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	// The raw deployment secret keys the fingerprint so the durable value does
+	// not become a fast offline password verifier if the database is exposed.
+	mac := hmac.New(sha256.New, []byte(command.BootstrapSecret))
+	_, _ = mac.Write([]byte("proctor:installation-bootstrap-command:v1\x00"))
+	_, _ = mac.Write(payload)
+	var fingerprint [sha256.Size]byte
+	copy(fingerprint[:], mac.Sum(nil))
+	return fingerprint, nil
 }
 
 func (s *bootstrapService) checkRateLimit(ctx context.Context, source string) error {

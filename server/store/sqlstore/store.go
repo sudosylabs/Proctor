@@ -91,6 +91,7 @@ type SQLStoreStores struct {
 	userSettings         store.UserSettingsStore
 	file                 store.FileStore
 	job                  store.JobStore
+	mail                 store.MailStore
 	externalIdentity     store.ExternalIdentityStore
 	externalLoginState   store.ExternalLoginStateStore
 	userToken            store.UserTokenStore
@@ -164,6 +165,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.userSettings = newSQLUserSettingsStore(sqlStore)
 	sqlStore.stores.file = newSQLFileStore(sqlStore)
 	sqlStore.stores.job = newSQLJobStore(sqlStore)
+	sqlStore.stores.mail = newSQLMailStore(sqlStore)
 	sqlStore.stores.externalIdentity = newSQLExternalIdentityStore(sqlStore)
 	sqlStore.stores.externalLoginState = newSQLExternalLoginStateStore(sqlStore)
 	sqlStore.stores.userToken = newSQLUserTokenStore(sqlStore)
@@ -274,6 +276,8 @@ func (ss *SQLStore) UserSettings() store.UserSettingsStore {
 func (ss *SQLStore) File() store.FileStore { return ss.stores.file }
 
 func (ss *SQLStore) Job() store.JobStore { return ss.stores.job }
+
+func (ss *SQLStore) Mail() store.MailStore { return ss.stores.mail }
 
 func (ss *SQLStore) ExternalIdentity() store.ExternalIdentityStore {
 	return ss.stores.externalIdentity

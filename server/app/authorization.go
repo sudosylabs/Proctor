@@ -32,10 +32,11 @@ type authorizationDecisionAudit interface {
 }
 
 type resolvedAuthorizationResource struct {
-	institutionID        string
-	academicUnitID       map[string]struct{}
-	targetAcademicUnitID string
-	classID              string
+	institutionID                  string
+	academicUnitID                 map[string]struct{}
+	targetAcademicUnitID           string
+	classID                        string
+	academicPeriodInstitutionOwned bool
 }
 
 func newAccessControlService(
@@ -80,23 +81,44 @@ func (s *accessControlService) evaluate(
 	if definition.RelationshipOnly {
 		return false, unresolved, NewError("authorization.request.invalid")
 	}
+	if resource.Type == model.ResourceAcademicPeriod {
+		allowed, coarse, appErr := s.academicPeriodCoarseAuthority(ctx, principal, action)
+		if appErr != nil {
+			return false, unresolved, appErr
+		}
+		if !allowed {
+			return false, coarse, nil
+		}
+	}
 	resolved, appErr := s.resolver.resolve(ctx, resource)
 	if appErr != nil {
 		return false, unresolved, appErr
 	}
+	allowed, appErr := s.evaluateResolved(ctx, principal, action, resource, definition, resolved)
+	return allowed, resolved, appErr
+}
+
+func (s *accessControlService) evaluateResolved(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	definition model.ActionDefinition,
+	resolved resolvedAuthorizationResource,
+) (bool, error) {
 	if principal.CredentialType == model.CredentialPersonalAccessToken &&
 		!personalAccessTokenAllows(principal, action, resource, resolved) {
-		return false, resolved, nil
+		return false, nil
 	}
 	if (action == model.ActionUserView || action == model.ActionUserProfilePictureManage) &&
 		principal.UserID.String() == resource.ID {
-		return true, resolved, nil
+		return true, nil
 	}
 	bindings, err := s.bindings.ListActiveByUser(
 		ctx, principal.UserID.String(), s.now().UnixMilli(),
 	)
 	if err != nil {
-		return false, unresolved, authorizationUnavailableError("accessControlService.Can.bindings", err)
+		return false, authorizationUnavailableError("accessControlService.Can.bindings", err)
 	}
 	roleIDs := make([]string, 0, len(bindings))
 	seen := make(map[string]struct{}, len(bindings))
@@ -109,7 +131,7 @@ func (s *accessControlService) evaluate(
 	}
 	roles, err := s.roles.GetByIds(ctx, roleIDs)
 	if err != nil {
-		return false, unresolved, authorizationUnavailableError("accessControlService.Can.roles", err)
+		return false, authorizationUnavailableError("accessControlService.Can.roles", err)
 	}
 	permissionByRole := make(map[string]map[string]struct{}, len(roles))
 	for _, role := range roles {
@@ -124,10 +146,49 @@ func (s *accessControlService) evaluate(
 			continue
 		}
 		if _, grants := permissionByRole[binding.RoleID.String()][string(action)]; grants {
-			return true, resolved, nil
+			return true, nil
 		}
 	}
-	return false, resolved, nil
+	return false, nil
+}
+
+func (s *accessControlService) authorizeAcademicPeriodOwner(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	period *model.AcademicPeriod,
+) error {
+	if period == nil || period.Validate() != nil {
+		return NewError("authorization.request.invalid")
+	}
+	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: period.ID.String()}
+	definition, known := model.DefinitionForAction(action)
+	if !known || definition.ResourceType != model.ResourceAcademicPeriod {
+		return NewError("authorization.request.invalid")
+	}
+	if appErr := s.authorizeAcademicPeriodPreflight(ctx, invocation, action, resource); appErr != nil {
+		return appErr
+	}
+	principal := invocation.Principal()
+	resolved, appErr := s.resolver.resolve(ctx, period.Owner.Resource())
+	if appErr != nil {
+		return appErr
+	}
+	allowed, appErr := s.evaluateResolved(ctx, principal, action, resource, definition, resolved)
+	if appErr != nil {
+		return appErr
+	}
+	scopeType, scopeID := authorizationAuditScope(resource, resolved)
+	if appErr = s.audit.RecordAuthorizationDecision(
+		ctx, principal, action, resource, scopeType, scopeID,
+		invocation.RequestMetadata(), allowed,
+	); appErr != nil {
+		return appErr
+	}
+	if !allowed {
+		return authorizationDeniedError("accessControlService.authorizeAcademicPeriodOwner")
+	}
+	return nil
 }
 
 // personalAccessTokenAllows is only a credential ceiling. It never grants an
@@ -152,7 +213,10 @@ func personalAccessTokenAllows(
 		return true
 	}
 	switch resource.Type {
-	case model.ResourceAcademicUnit, model.ResourceClass, model.ResourceExam:
+	case model.ResourceAcademicUnit, model.ResourceAcademicPeriod, model.ResourceClass, model.ResourceExam:
+		if resource.Type == model.ResourceAcademicPeriod && resolved.academicPeriodInstitutionOwned {
+			return action == model.ActionAcademicPeriodView
+		}
 		_, applies := resolved.academicUnitID[principal.AcademicUnitID.String()]
 		return applies
 	default:
@@ -305,6 +369,11 @@ func authorizationAuditScope(
 		return model.RoleScopeInstitution, resolved.institutionID
 	case model.ResourceAcademicUnit:
 		return model.RoleScopeAcademicUnit, resource.ID
+	case model.ResourceAcademicPeriod:
+		if resolved.targetAcademicUnitID == "" {
+			return model.RoleScopeInstitution, resolved.institutionID
+		}
+		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
 	case model.ResourceExam, model.ResourceExamSitting, model.ResourceSubmission:
 		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
 	case model.ResourceClass:
@@ -328,6 +397,9 @@ func roleBindingApplies(
 	case model.RoleScopeAcademicUnit:
 		if !definition.InheritAcademicUnitScopes {
 			return false
+		}
+		if resource.Type == model.ResourceAcademicPeriod && resolved.academicPeriodInstitutionOwned {
+			return definition.Action == model.ActionAcademicPeriodView
 		}
 		_, applies := resolved.academicUnitID[binding.ScopeID]
 		return applies

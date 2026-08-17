@@ -55,6 +55,7 @@ type App struct {
 	realtime                          *realtimeService
 	jobs                              *jobengine.Engine
 	jobOperations                     *jobOperationsService
+	mail                              *mailService
 	mailSecretSealer                  *secretseal.Sealer
 
 	// Cross-cutting policy and ports still used by App-method facades that

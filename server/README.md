@@ -143,7 +143,9 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
   `GET|PATCH|DELETE`, and nested `/children`, `/programmes`, and `/members`
 - programme resource `GET|PATCH|DELETE` and nested `/levels`
 - programme-level resource `GET|PATCH|DELETE` and nested `/classes`
-- `GET|POST /api/v1/academic-periods` and resource `GET|PATCH|DELETE`
+- `GET|POST /api/v1/academic-periods` and resource `GET|PATCH|DELETE`;
+  creation names an immutable Institution or Academic Unit owner and list
+  visibility is constrained by authorized owner scopes
 - class resource `GET|PATCH|DELETE` and nested `/members`
 - `GET /api/v1/users`, user resource `GET|PATCH`, `/enable`, `/disable`,
   nested `/affiliations`, `GET /sessions`, `DELETE /sessions/{session_id}`,
@@ -158,16 +160,30 @@ principal. PAT actions are intersected with current role permissions and, when
 configured, restricted to one academic-unit subtree; tokens never grant an
 action absent from current roles.
 Programme and programme-level operations authorize against their owning
-academic unit; academic periods are institution-managed. Membership lists
+academic unit. Academic periods authorize as first-class resources through
+their immutable Institution or Academic Unit owner; unit ownership applies to
+that unit's subtree. Membership lists
 default to records active now and accept `active_at`; `history=true` returns
 the retained effective-dated history.
 
 Bootstrap is explicit: normal account creation never promotes a “first user.”
-The successful transaction creates the institution, administrator and password
-credential, protected system-administrator role, institution binding,
-installation marker, and audit event together. A PostgreSQL advisory lock and
-pristine-state check make this safe when several application nodes start at
-once. The status response exposes only `initialized`.
+`POST /api/v1/bootstrap` requires the deployment-owned `bootstrap_secret`.
+The successful transaction creates the institution, unverified administrator
+and password credential, initial User Settings and profile-picture Job,
+protected system-administrator role and institution binding, conservative
+Access Policy revision 1, installation marker, and audit event together. A
+PostgreSQL advisory lock plus secret digest and command fingerprint make exact
+replay safe and conflicting concurrent attempts fail without partial state.
+The status response exposes only `initialized`, and bootstrap creates no
+Session.
+
+Production sets `authentication.bootstrap.secret` (or
+`PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET`) to an operator-generated value of at
+least 32 bytes. Only loopback listener plus loopback public-origin development
+may set `authentication.bootstrap.development_mode` without a secret; the
+server then prints a temporary value once to the controlling terminal while
+the installation is pristine. The secret is redacted from configuration
+display and structured logs.
 
 Electron/web login (`client_type` equal to `desktop` or `web`) returns the user
 and session but omits raw credentials from JSON. It sets host-only
@@ -237,10 +253,10 @@ Durable recoverable mail payloads use the independent
 `mail.secret_sealing.encryption_key`, canonical standard base64 for 32 bytes.
 Up to eight previous keys may remain in
 `mail.secret_sealing.decryption_keys` while durable payloads are re-encrypted.
-The ring may be absent until that durable workflow is active, including local
-development with SMTP enabled; a partially configured ring is rejected and any
-configured ring is validated during composition. MFA, Memberlist, and mail
-encryption keys are intentionally not interchangeable.
+The ring may be absent only while mail is disabled. Enabling mail requires a
+primary key; a partially or unsafely configured ring is rejected during
+startup. MFA, Memberlist, and mail encryption keys are intentionally not
+interchangeable.
 
 The first external provider types are `cas` and `oidc`. Every enabled provider
 has a stable lowercase ID, display name, one matching protocol block, explicit
@@ -379,6 +395,13 @@ make -C server mail-preview OUTPUT=/tmp/proctor-mail-preview
 
 The exact property and maintenance contract lives in
 [`templates/README.md`](templates/README.md).
+
+The controlled operator tracer uses `POST /api/v1/mail/test` with no request
+body and `GET /api/v1/mail/deliveries/{mail_delivery_id}` for its safe status.
+The enqueue operation requires `mail.manage`, a recent interactive Session,
+and the operator's own verified address; the status operation requires
+`mail.view`. SMTP delivery remains asynchronous and `accepted` means only that
+the configured transport accepted the message data.
 
 ## Verify
 

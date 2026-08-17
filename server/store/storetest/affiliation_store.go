@@ -116,7 +116,7 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	level, err := ss.ProgrammeLevel().Save(ctx, &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "affiliation-level", DisplayName: "Affiliation Level"})
 	requireNoError(t, err)
-	period, err := ss.AcademicPeriod().Save(ctx, &model.AcademicPeriod{InstitutionID: institution.ID, Name: "affiliation-period", DisplayName: "Affiliation Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(start + 10_000)})
+	period, err := ss.AcademicPeriod().Save(ctx, &model.AcademicPeriod{Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "affiliation-period", DisplayName: "Affiliation Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(start + 10_000)})
 	requireNoError(t, err)
 	class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "affiliation-class")
 	enrolledUser := saveUser(t, ctx, ss)

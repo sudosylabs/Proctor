@@ -26,6 +26,24 @@ type auditService struct {
 
 type userSettingsAuditAdapter struct{ audit *auditService }
 
+type mailAuditAdapter struct{ audit *auditService }
+
+func (a mailAuditAdapter) PrepareTest(ctx context.Context, invocation Invocation, institution model.Resource, deliveryID model.MailDeliveryID) (*model.AuditEvent, error) {
+	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.IsValidId(institution.ID) || !deliveryID.IsValid() {
+		return nil, auditUnavailable(errors.New("mail audit dependencies are invalid"))
+	}
+	principal := invocation.Principal()
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
+		return nil, invalidTokenAppError()
+	}
+	parameters, err := model.EncodeAuditData(map[string]string{"delivery_id": deliveryID.String(), "template_key": string(model.MailTemplateSystemTest)})
+	if err != nil {
+		return nil, domainInvalid("audit.event.invalid", err)
+	}
+	metadata := invocation.RequestMetadata()
+	return &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(model.ActionMailManage), Resource: model.Resource{Type: model.ResourceMailDelivery, ID: deliveryID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID, Status: model.AuditStatusSuccess, RequestID: metadata.RequestID, NodeID: a.audit.nodeID, ClientType: string(principal.ClientType), AuthMethod: principal.AuthenticationMethod, IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent, Parameters: parameters}, nil
+}
+
 func (a userSettingsAuditAdapter) PrepareReplacement(
 	ctx context.Context,
 	input userSettingsAuditInput,
