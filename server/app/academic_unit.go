@@ -97,6 +97,11 @@ func (a academicUnitAuthorization) AuthorizePreflight(
 	return a.authorization.authorizeResourcePreflight(ctx, invocation, action, resourceType)
 }
 
+func (a academicUnitAuthorization) AuthorizeUserRead(ctx context.Context, invocation Invocation, userID string) error {
+	_, err := a.authorization.authorizeUserRead(ctx, invocation, userID)
+	return err
+}
+
 func (a academicUnitAuthorization) AuthorizeInstallation(
 	ctx context.Context,
 	invocation Invocation,

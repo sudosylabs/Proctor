@@ -22,6 +22,7 @@ func constructAdministration(
 		accountStates: newAccountStateService(
 			deps.Store.User(),
 			profileAuthorization,
+			access.capabilities,
 			mutationAuditAdapter{audit: foundation.audit},
 			accountStateRealtimeEffects{effects: foundation.realtime},
 			time.Now,
@@ -44,6 +45,7 @@ func constructAdministration(
 			deps.Store.RoleBinding(),
 			deps.Store.Role(),
 			roleAuthorization,
+			access.capabilities,
 			mutationAuditAdapter{audit: foundation.audit},
 			roleBindingRealtimeEffects{effects: foundation.realtime},
 			time.Now,

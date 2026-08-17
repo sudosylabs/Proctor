@@ -146,6 +146,15 @@ func (s *Sealer) HasKey(keyID string) bool {
 	return ok
 }
 
+// PrimaryKeyID returns the non-secret identity of the key used for new
+// envelopes. It never exposes key material and is safe for fencing rotation.
+func (s *Sealer) PrimaryKeyID() string {
+	if s == nil {
+		return ""
+	}
+	return s.primaryKeyID
+}
+
 // New constructs an immutable key ring.
 func New(settings Settings) (*Sealer, error) {
 	if settings.MaximumPlaintext < 1 || settings.MaximumPlaintext > MaximumPlaintextBytes ||

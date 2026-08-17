@@ -44,6 +44,7 @@ type hookStore struct {
 }
 
 func (s *hookStore) Institution() store.InstitutionStore       { return hookInstitutionStore{} }
+func (s *hookStore) AccessPolicy() store.AccessPolicyStore     { return hookAccessPolicyStore{} }
 func (s *hookStore) AcademicUnit() store.AcademicUnitStore     { return hookAcademicUnitStore{} }
 func (s *hookStore) Programme() store.ProgrammeStore           { return nil }
 func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
@@ -149,6 +150,7 @@ type hookExamStarterWorkspaceStore struct {
 type hookAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 
 type hookUserStore struct{ store.UserStore }
+type hookAccessPolicyStore struct{ store.AccessPolicyStore }
 type hookUserSettingsStore struct{ store.UserSettingsStore }
 type hookInstitutionStore struct{ store.InstitutionStore }
 type hookAcademicUnitStore struct{ store.AcademicUnitStore }

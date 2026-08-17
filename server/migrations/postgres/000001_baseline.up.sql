@@ -193,7 +193,7 @@ CREATE TABLE job_attempts (
     id varchar(26) PRIMARY KEY,
     job_id varchar(26) NOT NULL REFERENCES jobs(id),
     number integer NOT NULL CHECK (number > 0),
-    status varchar(24) NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'canceled', 'lease_expired')),
+    status varchar(24) NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'canceled', 'lease_expired', 'incompatible')),
     node_id varchar(255) NOT NULL,
     claim_token char(64) NOT NULL UNIQUE,
     started_at timestamptz NOT NULL,
@@ -209,6 +209,7 @@ CREATE TABLE job_attempts (
 );
 
 CREATE INDEX job_attempts_expired_idx ON job_attempts (lease_expires_at, id) WHERE status = 'running';
+CREATE INDEX job_attempts_incompatible_node_idx ON job_attempts (job_id, node_id) WHERE status = 'incompatible';
 
 -- ---------------------------------------------------------------------------
 -- Identity domain
@@ -382,6 +383,35 @@ CREATE TABLE mail_payload_keys (
     key_id char(32) PRIMARY KEY CHECK (key_id ~ '^[0-9a-f]{32}$'),
     active_references bigint NOT NULL CHECK (active_references >= 0)
 );
+
+-- Fan-out expansion is delivered in later mail slices, but its frozen bundle
+-- is already an active encrypted value and therefore participates in the same
+-- bounded rekey/refcount contract from the first rotation implementation.
+CREATE TABLE mail_fanout_bundles (
+    id varchar(26) PRIMARY KEY,
+    payload_key_id char(32) NOT NULL CHECK (payload_key_id ~ '^[0-9a-f]{32}$'),
+    encrypted_payload jsonb NOT NULL
+        CHECK (octet_length(encrypted_payload::text) <= 4194304),
+    created_at timestamptz NOT NULL,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0)
+);
+
+-- One durable fence prevents an old-primary node from introducing work after
+-- a rotation begins. The active Job identity also rejects stale attempts even
+-- when a later operation promotes the same primary again.
+CREATE TABLE mail_key_state (
+    singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    required_primary_key_id char(32)
+        CHECK (required_primary_key_id ~ '^[0-9a-f]{32}$'),
+    active_rekey_job_id varchar(26) REFERENCES jobs(id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL,
+    CONSTRAINT mail_key_state_operation_check CHECK (
+        active_rekey_job_id IS NULL OR required_primary_key_id IS NOT NULL
+    )
+);
+
+INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at)
+VALUES (TRUE, NULL, NULL, clock_timestamp());
 
 -- One PostgreSQL-owned token bucket coordinates outbound sends across every
 -- application node in this installation. Ordinary work leaves four burst
@@ -1046,9 +1076,11 @@ CREATE TABLE sessions (
     user_id varchar(26) NOT NULL REFERENCES users(id),
     client_type varchar(16) NOT NULL CHECK (client_type IN ('desktop', 'cli', 'web')),
     device_id varchar(128) NOT NULL DEFAULT '',
-    device_name varchar(512) NOT NULL DEFAULT '',
-    authentication_method varchar(64) NOT NULL,
-    authentication_strength varchar(32) NOT NULL
+	device_name varchar(512) NOT NULL DEFAULT '',
+	authentication_method varchar(64) NOT NULL,
+	authentication_provider_id varchar(64) NOT NULL DEFAULT ''
+		CHECK (authentication_provider_id = '' OR authentication_provider_id ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),
+	authentication_strength varchar(32) NOT NULL
         CHECK (authentication_strength IN ('single_factor', 'multi_factor')),
     authenticated_at timestamptz NOT NULL,
     mfa_completed_at timestamptz,
@@ -1063,7 +1095,9 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_user_id_last_activity_at_idx
     ON sessions (user_id) WHERE archived_at IS NULL AND revoked_at IS NULL;
 CREATE INDEX sessions_expires_at_idx
-    ON sessions (expires_at) WHERE archived_at IS NULL AND revoked_at IS NULL;
+	ON sessions (expires_at) WHERE archived_at IS NULL AND revoked_at IS NULL;
+CREATE INDEX sessions_authentication_provider_id_idx
+	ON sessions (authentication_provider_id) WHERE archived_at IS NULL AND revoked_at IS NULL;
 
 -- An Attempt is the stable work identity for one candidate in one Sitting.
 -- Admission copies only logical workspace metadata; immutable starter bytes
@@ -2299,6 +2333,41 @@ CREATE TABLE access_policies (
     )
 );
 
+CREATE TABLE access_policy_transitions (
+    access_policy_id varchar(26) NOT NULL REFERENCES access_policies(id) ON DELETE CASCADE,
+    from_revision bigint NOT NULL CHECK (from_revision > 0),
+    to_revision bigint NOT NULL CHECK (to_revision = from_revision + 1),
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    changed_fields text[] NOT NULL,
+    changed_at timestamptz NOT NULL,
+    outcome varchar(16) NOT NULL CHECK (outcome = 'applied'),
+    PRIMARY KEY (access_policy_id, to_revision),
+    UNIQUE (access_policy_id, from_revision),
+    CONSTRAINT access_policy_transitions_changed_fields_check CHECK (
+        cardinality(changed_fields) BETWEEN 1 AND 7 AND
+        changed_fields <@ ARRAY[
+            'local_login_enabled', 'public_registration_enabled',
+            'invitation_admission_enabled', 'invitation_local_credential_enabled',
+            'desktop_authorization_enabled', 'provider_admissions',
+            'revoke_existing_sessions'
+        ]::text[]
+    ),
+    CONSTRAINT access_policy_transitions_access_policy_id_canonical_check
+        CHECK (access_policy_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    CONSTRAINT access_policy_transitions_actor_user_id_canonical_check
+        CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
+);
+
+CREATE FUNCTION reject_access_policy_transition_update() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'access policy transitions are append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER access_policy_transitions_append_only
+    BEFORE UPDATE ON access_policy_transitions
+    FOR EACH ROW EXECUTE FUNCTION reject_access_policy_transition_update();
+
 CREATE TABLE installation_states (
     singleton smallint PRIMARY KEY CHECK (singleton = 1),
     initialized_at timestamptz NOT NULL,
@@ -2363,6 +2432,14 @@ ALTER TABLE mail_deliveries
     CHECK (job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT mail_deliveries_target_user_id_canonical_check
     CHECK (target_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE mail_fanout_bundles
+    ADD CONSTRAINT mail_fanout_bundles_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE mail_key_state
+    ADD CONSTRAINT mail_key_state_active_rekey_job_id_canonical_check
+    CHECK (active_rekey_job_id IS NULL OR active_rekey_job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE command_outcomes
     ADD CONSTRAINT command_outcomes_user_id_canonical_check

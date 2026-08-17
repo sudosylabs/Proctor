@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/identityprovider"
 )
 
 const (
@@ -83,6 +85,12 @@ func validateExternalAuthentication(
 		add(
 			"authentication.external.login_state_ttl",
 			"must be between 1m and 30m",
+		)
+	}
+	if len(external.Providers) > identityprovider.MaximumCount {
+		add(
+			"authentication.external.providers",
+			fmt.Sprintf("must contain at most %d providers", identityprovider.MaximumCount),
 		)
 	}
 	seen := make(map[string]struct{}, len(external.Providers))

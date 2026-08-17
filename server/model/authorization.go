@@ -21,6 +21,7 @@ const (
 	ActionInstitutionManage         Action = "institution.manage"
 	ActionRoleManage                Action = "role.manage"
 	ActionAuditView                 Action = "audit.view"
+	ActionAcademicAuditView         Action = "academic_audit.view"
 	ActionUserView                  Action = "user.view"
 	ActionUserManage                Action = "user.manage"
 	ActionUserProfilePictureManage  Action = "user.profile_picture.manage"
@@ -30,6 +31,7 @@ const (
 	ActionJobManage                 Action = "job.manage"
 	ActionMailView                  Action = "mail.view"
 	ActionMailManage                Action = "mail.manage"
+	ActionMailRekey                 Action = "mail.rekey"
 	ActionExamCreate                Action = "exam.create"
 	ActionExamCreateOverride        Action = "exam.create.override"
 	ActionExamView                  Action = "exam.view"
@@ -157,9 +159,13 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionAuditView, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true,
 	},
+	ActionAcademicAuditView: {
+		Action: ActionAcademicAuditView, ResourceType: ResourceAcademicUnit,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
 	ActionUserView: {
 		Action: ActionUserView, ResourceType: ResourceUser,
-		InheritInstitutionScope: true,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionUserManage: {
 		Action: ActionUserManage, ResourceType: ResourceUser,
@@ -192,6 +198,10 @@ var actionDefinitions = map[Action]ActionDefinition{
 	ActionMailManage: {
 		Action: ActionMailManage, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true,
+	},
+	ActionMailRekey: {
+		Action: ActionMailRekey, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
 	},
 	ActionExamCreate: {
 		Action: ActionExamCreate, ResourceType: ResourceAcademicUnit,

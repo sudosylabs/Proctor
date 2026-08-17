@@ -19,6 +19,57 @@ import (
 
 const defaultMailDeliveryPageSize = 50
 
+type mailRekeyRequest struct {
+	RetiringKeyID string `json:"retiring_key_id"`
+}
+
+type mailRekeyResponse struct {
+	JobID         string `json:"job_id"`
+	PrimaryKeyID  string `json:"primary_key_id"`
+	RetiringKeyID string `json:"retiring_key_id"`
+	CreatedAt     int64  `json:"created_at"`
+}
+
+type mailRekeyProgressResponse struct {
+	Current int64  `json:"current"`
+	Total   int64  `json:"total"`
+	Stage   string `json:"stage"`
+}
+
+type mailRekeyProofResponse struct {
+	NonPrimaryReferences int64 `json:"non_primary_references"`
+	RetiringReferences   int64 `json:"retiring_references"`
+	RetirementSafe       bool  `json:"retirement_safe"`
+}
+
+type mailRekeyStatusResponse struct {
+	JobID           string                     `json:"job_id"`
+	Status          model.JobStatus            `json:"status"`
+	PrimaryKeyID    string                     `json:"primary_key_id"`
+	RetiringKeyID   string                     `json:"retiring_key_id"`
+	CreatedAt       int64                      `json:"created_at"`
+	UpdatedAt       int64                      `json:"updated_at"`
+	CompletedAt     int64                      `json:"completed_at,omitempty"`
+	PublicErrorCode string                     `json:"public_error_code,omitempty"`
+	AttemptCount    int                        `json:"attempt_count"`
+	MaximumAttempts int                        `json:"maximum_attempts"`
+	Processed       int64                      `json:"processed"`
+	Reencrypted     int64                      `json:"reencrypted"`
+	Progress        *mailRekeyProgressResponse `json:"progress,omitempty"`
+	Proof           *mailRekeyProofResponse    `json:"proof,omitempty"`
+}
+
+type mailPayloadKeyUsageResponse struct {
+	KeyID            string `json:"key_id"`
+	ActiveReferences int64  `json:"active_references"`
+}
+
+type mailKeyStateResponse struct {
+	PrimaryKeyID         string                        `json:"primary_key_id"`
+	RequiredPrimaryKeyID string                        `json:"required_primary_key_id,omitempty"`
+	Active               []mailPayloadKeyUsageResponse `json:"active"`
+}
+
 type mailDeliveryResponse struct {
 	ID                string                  `json:"id"`
 	OccurrenceID      string                  `json:"occurrence_id"`
@@ -79,6 +130,9 @@ type mailResourceModule struct{ mail MailApplication }
 func mailResource(application MailApplication) resource {
 	module := mailResourceModule{mail: application}
 	return newResource("mail",
+		strongRecentSessionRoute(http.MethodGet, apiPath(literal("mail"), literal("keys")), operatorReadErrorCodes("authentication.strong_required", "authentication.reauthentication_required", "mail.unavailable"), module.getKeyState),
+		strongRecentSessionRoute(http.MethodPost, apiPath(literal("mail"), literal("rekey")), operatorMutationErrorCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "mail.rekey.invalid", "mail.rekey.conflict", "mail.unavailable"), module.startRekey),
+		strongRecentSessionRoute(http.MethodGet, apiPath(literal("mail"), literal("rekey"), canonicalID("job_id")), operatorReadErrorCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "mail.unavailable"), module.getRekeyStatus),
 		recentSessionRoute(http.MethodPost, apiPath(literal("mail"), literal("test")), operatorMutationErrorCodes("authentication.reauthentication_required", "request.invalid", "mail.recipient_unverified", "mail.recipient_ineligible", "mail.test.rate_limited", "mail.conflict", "mail.unavailable"), module.sendTest),
 		principalRoute(http.MethodGet, apiPath(literal("mail"), literal("metrics")), operatorReadErrorCodes("mail.unavailable"), module.getMetrics),
 		principalRoute(http.MethodGet, apiPath(literal("mail"), literal("deliveries")), operatorReadErrorCodes("mail.query.invalid", "mail.unavailable"), module.listDeliveries),
@@ -86,6 +140,70 @@ func mailResource(application MailApplication) resource {
 		recentSessionRoute(http.MethodPost, apiPath(literal("mail"), literal("deliveries"), canonicalID("mail_delivery_id"), literal("cancel")), operatorMutationErrorCodes("authentication.reauthentication_required", "request.invalid", "resource.not_found", "mail.conflict", "mail.unavailable"), module.cancelDelivery),
 		recentSessionRoute(http.MethodPost, apiPath(literal("mail"), literal("deliveries"), canonicalID("mail_delivery_id"), literal("retry")), operatorMutationErrorCodes("authentication.reauthentication_required", "request.invalid", "resource.not_found", "mail.conflict", "mail.unavailable"), module.retryDelivery),
 	)
+}
+
+func (m mailResourceModule) getKeyState(request operationRequest) (operationResult, error) {
+	if m.mail == nil {
+		return operationResult{}, application.NewError("mail.unavailable")
+	}
+	view, appErr := m.mail.GetMailKeyState(request.context, request.invocation())
+	if appErr != nil {
+		return operationResult{}, appErr
+	}
+	response := mailKeyStateResponse{PrimaryKeyID: view.PrimaryKeyID,
+		RequiredPrimaryKeyID: view.RequiredPrimaryKeyID,
+		Active:               make([]mailPayloadKeyUsageResponse, 0, len(view.Active))}
+	for _, usage := range view.Active {
+		response.Active = append(response.Active, mailPayloadKeyUsageResponse{KeyID: usage.KeyID,
+			ActiveReferences: usage.ActiveReferences})
+	}
+	return jsonResult(http.StatusOK, response), nil
+}
+
+func (m mailResourceModule) startRekey(request operationRequest) (operationResult, error) {
+	if m.mail == nil {
+		return operationResult{}, application.NewError("mail.unavailable")
+	}
+	var body mailRekeyRequest
+	if err := request.decodeJSON(&body, "mail_rekey"); err != nil {
+		return operationResult{}, err
+	}
+	view, appErr := m.mail.StartMailRekey(request.context, request.invocation(), body.RetiringKeyID)
+	if appErr != nil {
+		return operationResult{}, appErr
+	}
+	return jsonResult(http.StatusAccepted, mailRekeyResponse{JobID: view.JobID.String(),
+		PrimaryKeyID: view.PrimaryKeyID, RetiringKeyID: view.RetiringKeyID, CreatedAt: view.CreatedAt.UnixMilli()}), nil
+}
+
+func (m mailResourceModule) getRekeyStatus(request operationRequest) (operationResult, error) {
+	if m.mail == nil {
+		return operationResult{}, application.NewError("mail.unavailable")
+	}
+	raw, err := request.params.RequireJobId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	view, appErr := m.mail.GetMailRekeyStatus(request.context, request.invocation(), model.JobID(raw))
+	if appErr != nil {
+		return operationResult{}, appErr
+	}
+	response := mailRekeyStatusResponse{JobID: view.JobID.String(), Status: view.Status,
+		PrimaryKeyID: view.PrimaryKeyID, RetiringKeyID: view.RetiringKeyID,
+		CreatedAt: model.MillisFromTime(view.CreatedAt), UpdatedAt: model.MillisFromTime(view.UpdatedAt),
+		PublicErrorCode: view.PublicErrorCode, AttemptCount: view.AttemptCount, MaximumAttempts: view.MaximumAttempts,
+		Processed: view.Processed, Reencrypted: view.Reencrypted}
+	if view.CompletedAt.Valid {
+		response.CompletedAt = view.CompletedAt.Millis()
+	}
+	if view.Progress != nil {
+		response.Progress = &mailRekeyProgressResponse{Current: view.Progress.Current, Total: view.Progress.Total, Stage: view.Progress.Stage}
+	}
+	if view.Proof != nil {
+		response.Proof = &mailRekeyProofResponse{NonPrimaryReferences: view.Proof.NonPrimaryReferences,
+			RetiringReferences: view.Proof.RetiringReferences, RetirementSafe: view.Proof.RetirementSafe}
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m mailResourceModule) getMetrics(request operationRequest) (operationResult, error) {

@@ -208,6 +208,44 @@ row uses the retiring key, and only then removes it. Key-ring configuration is
 immutable for a process and coordinated node restarts are required. A node may
 not run a mail worker when an active payload references an unavailable key.
 
+The durable rekey operation installs a PostgreSQL primary-key fence before it
+queues work. From that point, nodes still configured with the old primary may
+read and deliver values through their fallback ring, but cannot introduce a
+new old-key payload. Every transaction that creates an encrypted delivery or
+frozen fan-out bundle holds a shared lock on that fence through commit; fence
+promotion takes the exclusive lock. An insertion is therefore wholly before
+promotion and included by rekey, or wholly after promotion and required to use
+the new primary. One operator-visible Job pages delivery payloads and
+frozen fan-out bundles in stable identity order, authenticates the original
+domain binding, re-seals under the fenced primary, and checkpoints after each
+idempotent replacement. Its Job identity fences stale work if a later rotation
+starts. A node whose configured primary does not match the command relinquishes
+the claim with bounded backoff and cannot reclaim that Job under the same stable
+node identity; the incompatible Attempt remains visible without consuming the
+failure-attempt budget. Such a node may continue ordinary delivery through its
+fallback ring while a node with the fenced primary completes rekeying.
+
+Every replacement checkpoint publishes only processed and total counts plus
+the closed `reencrypting` stage. The mail-specific status projection decodes
+the typed checkpoint and, after success, the typed final proof; raw Job
+commands, checkpoints, result documents, ciphertext, payload identities, and
+recipient data remain private. Completion uses the bounded payload-key
+reference aggregate to prove
+that every active value uses the primary and that the named retiring key has
+zero references. Key IDs and aggregate counts are safe diagnostics; key
+material, payload owners, and ciphertext are not. Removing a fallback before
+that proof remains a startup failure rather than a partial worker mode.
+
+After a rotation Job succeeds with a valid zero-reference proof, the current
+fence remains authoritative while the next primary is staged. A restarted node
+may use a different configured primary only when it can still read the fenced
+primary and that completed proof remains durable; its new-primary writes are
+rejected until the next rekey command atomically advances the fence. Nodes on
+the previously required primary may continue writing until that command. A
+failed, canceled, corrupt, missing, or retention-deleted proof never authorizes
+promotion, and the Job carrying the current proof is retained until a later
+rotation replaces it.
+
 Ordinary mail may identify the necessary Class, Exam, Sitting, effective date,
 PAT description or expiry, and safe receipt identity. It never contains exam
 answers, Workspace content or paths, instructions or resources, scores,
@@ -326,6 +364,19 @@ retry Accepted or Suppressed delivery, or clone an occurrence. Human retry,
 cancellation, suppression override, rekey, and privileged verification
 override are durably audited. Automated attempts remain in mail and Job
 history rather than flooding security audit.
+
+Starting rekey is a critical attempt-to-terminal audit transition. The attempt
+commits before the named mail mutation; its successful completion commits in
+the same PostgreSQL transaction as the Job and primary-key fence. Active
+operation or unproven-promotion conflicts and unexpected persistence failures
+complete that attempt as failure through the shared audit service. If failure
+completion cannot be persisted, the operation fails closed.
+
+`POST /api/v1/mail/rekey` accepts only the retiring key ID and returns the safe
+Job identity, primary and retiring key IDs, and creation time. It never accepts
+or changes deployment key material. Operators inspect progress and the final
+zero-reference proof through the existing Job operations; configuration
+promotion and fallback removal remain explicit deployment actions.
 
 Safe mail projections contain masked recipient, target User ID where present,
 template key, state, safe timestamps, attempts, deadline, Message-ID, and a

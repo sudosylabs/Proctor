@@ -31,7 +31,10 @@ func TestMailStore(t *testing.T, ss store.Store) {
 	if stored.MessageID != created.MessageID || stored.MaskedRecipient != "o***@example.test" || stored.TargetUserID != user.ID {
 		t.Fatalf("GetDelivery() = %#v", stored)
 	}
-	audits, err := ss.Audit().List(ctx, store.AuditListOptions{Action: string(model.ActionMailManage), Limit: 10})
+	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
+		Action: string(model.ActionMailManage), Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+	})
 	requireNoError(t, err)
 	if len(audits) != 1 || audits[0].Resource.Type != model.ResourceMailDelivery || audits[0].Resource.ID != created.ID.String() {
 		t.Fatalf("mail audits = %#v", audits)
@@ -243,6 +246,7 @@ func TestMailStore(t *testing.T, ss store.Store) {
 			t.Fatalf("ActivePayloadKeyIDs() = %#v", keyIDs)
 		}
 	}
+	testMailRekeyStore(t, ctx, ss, user, institution)
 }
 
 func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, user *model.User, institution *model.Institution) {
@@ -363,4 +367,11 @@ func mailTestEnqueueFixture(t *testing.T, user *model.User, institution *model.I
 		Job:        job,
 		AuditEvent: &model.AuditEvent{ActorID: user.ID, Action: string(model.ActionMailManage), Resource: model.Resource{Type: model.ResourceMailDelivery, ID: deliveryID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "store-test", ClientType: string(model.SessionClientWeb), AuthMethod: "password", Parameters: parameters},
 	}
+}
+
+// MailTestEnqueueFixtureForSQLTest exposes the normal conformance fixture to
+// PostgreSQL-only lock-order tests without duplicating the aggregate input.
+func MailTestEnqueueFixtureForSQLTest(t *testing.T, user *model.User, institution *model.Institution, at time.Time) *store.MailTestEnqueue {
+	t.Helper()
+	return mailTestEnqueueFixture(t, user, institution, at)
 }

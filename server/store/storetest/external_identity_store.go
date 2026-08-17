@@ -88,8 +88,9 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			t.Fatalf("provisioned user settings = %#v", settings)
 		}
 		audits, err := ss.Audit().List(ctx, store.AuditListOptions{
-			Action: "authentication.external_provision",
-			Limit:  10,
+			Action:     "authentication.external_provision",
+			Limit:      10,
+			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		})
 		requireNoError(t, err)
 		if len(audits) != 1 ||
@@ -166,6 +167,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		subject := "mismatched-job-" + model.NewId()
 		before, err := ss.Audit().List(ctx, store.AuditListOptions{
 			Action: "authentication.external_provision", Limit: 100,
+			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		})
 		requireNoError(t, err)
 		_, err = ss.ExternalIdentity().ResolveOrProvision(
@@ -195,6 +197,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		}
 		after, err := ss.Audit().List(ctx, store.AuditListOptions{
 			Action: "authentication.external_provision", Limit: 100,
+			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		})
 		requireNoError(t, err)
 		if len(after) != len(before) {

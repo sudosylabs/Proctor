@@ -293,6 +293,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	viewOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorId: outsider.ID.String(), Action: string(model.ActionExamViewOverride),
 		Resource: &model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil || len(viewOverrideAudits) != 1 || viewOverrideAudits[0].Status != model.AuditStatusSuccess || viewOverrideAudits[0].ScopeType != model.RoleScopeInstitution || viewOverrideAudits[0].ScopeID != institution.ID.String() {
 		t.Fatalf("override list audits = %#v, %v", viewOverrideAudits, err)
@@ -309,6 +310,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	manageOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorId: outsider.ID.String(), Action: string(model.ActionExamManageOverride),
 		Resource: &model.Resource{Type: model.ResourceExam, ID: created.Exam.ID.String()}, Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil {
 		t.Fatal(err)

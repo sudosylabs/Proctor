@@ -97,6 +97,7 @@ type authenticationService struct {
 	passwords          store.PasswordCredentialStore
 	sessions           store.SessionStore
 	sessionCredentials store.SessionCredentialStore
+	accessPolicy       authenticationAccessPolicy
 	cache              authenticationCache
 	attempts           *authenticationAttemptAccounting
 	securityEffects    authenticationSecurityEffects
@@ -145,6 +146,7 @@ func newAuthenticationService(
 	passwords store.PasswordCredentialStore,
 	sessions store.SessionStore,
 	sessionCredentials store.SessionCredentialStore,
+	accessPolicy authenticationAccessPolicy,
 	cache authenticationCache,
 	attempts *authenticationAttemptAccounting,
 	securityEffects authenticationSecurityEffects,
@@ -168,6 +170,9 @@ func newAuthenticationService(
 	}
 	if sessionCredentials == nil {
 		return nil, errors.New("authentication session credential store is required")
+	}
+	if accessPolicy == nil {
+		return nil, errors.New("authentication access policy is required")
 	}
 	if cache == nil {
 		return nil, errors.New("authentication cache is required")
@@ -198,7 +203,7 @@ func newAuthenticationService(
 	}
 	return &authenticationService{
 		users: users, passwords: passwords, sessions: sessions,
-		sessionCredentials: sessionCredentials, cache: cache, attempts: attempts,
+		sessionCredentials: sessionCredentials, accessPolicy: accessPolicy, cache: cache, attempts: attempts,
 		securityEffects: securityEffects, hasher: hasher, mfa: mfa,
 		personalTokens: personalTokens, sessionPolicy: sessionPolicy,
 		loginRateLimit: loginRateLimit, diagnostics: diagnostics,
@@ -265,6 +270,14 @@ func (s *authenticationService) login(
 	receipt, err := s.checkLoginRateLimit(ctx, command.LoginID, command.Source)
 	if err != nil {
 		return nil, err
+	}
+	localLoginAllowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
+	if err != nil {
+		return nil, authenticationUnavailable(err)
+	}
+	if !localLoginAllowed {
+		s.hasher.VerifyDummy(command.Password)
+		return nil, invalidCredentialsAppError()
 	}
 	if command.LoginID == "" ||
 		len(command.LoginID) > model.UserEmailMaxLength ||
@@ -362,15 +375,16 @@ func (s *authenticationService) createSession(
 	accessExpiresAt := min(nowMillis+settings.AccessTTL.Milliseconds(), absoluteExpiresAt)
 	refreshExpiresAt := min(nowMillis+settings.RefreshTTL.Milliseconds(), absoluteExpiresAt)
 	session := &model.Session{
-		UserID:                 user.ID,
-		ClientType:             clientType,
-		DeviceID:               command.DeviceID,
-		DeviceName:             command.DeviceName,
-		AuthenticationMethod:   command.AuthenticationMethod,
-		AuthenticationStrength: strength,
-		AuthenticatedAt:        model.TimeFromMillis(authenticatedAt),
-		MFACompletedAt:         model.OptionalTimeFromMillis(mfaCompletedAt),
-		LastActivityAt:         model.TimeFromMillis(nowMillis),
+		UserID:                   user.ID,
+		ClientType:               clientType,
+		DeviceID:                 command.DeviceID,
+		DeviceName:               command.DeviceName,
+		AuthenticationMethod:     command.AuthenticationMethod,
+		AuthenticationProviderID: command.AuthenticationProviderID,
+		AuthenticationStrength:   strength,
+		AuthenticatedAt:          model.TimeFromMillis(authenticatedAt),
+		MFACompletedAt:           model.OptionalTimeFromMillis(mfaCompletedAt),
+		LastActivityAt:           model.TimeFromMillis(nowMillis),
 		IdleExpiresAt: model.TimeFromMillis(min(
 			nowMillis+settings.IdleTTL.Milliseconds(),
 			absoluteExpiresAt,
@@ -397,6 +411,12 @@ func (s *authenticationService) createSession(
 		settings.MaximumPerUser,
 	)
 	if saveErr != nil {
+		if errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) {
+			if command.AuthenticationProviderID != "" {
+				return nil, nil, invalidExternalAuthenticationError("authentication.create_session.policy")
+			}
+			return nil, nil, invalidCredentialsAppError()
+		}
 		var conflict *store.ErrConflict
 		if errors.As(saveErr, &conflict) &&
 			conflict.Constraint == "sessions_maximum_per_user" {

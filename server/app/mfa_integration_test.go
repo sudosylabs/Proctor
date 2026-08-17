@@ -55,6 +55,7 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	encryptionKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
 	helper := testlib.Setup(
 		t,
@@ -309,7 +310,7 @@ func TestMFAIntegration(t *testing.T) {
 
 	audits, err := persistence.Audit().List(
 		context.Background(),
-		store.AuditListOptions{Limit: 200},
+		store.AuditListOptions{Limit: 200, Visibility: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -203,6 +203,38 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 	}
 }
 
+func TestSessionRetainsAValidatedExternalProviderIdentity(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	valid := &Session{
+		UserID: NewUserID(), ClientType: SessionClientWeb,
+		AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc",
+		AuthenticationStrength: AuthenticationSingleFactor, AuthenticatedAt: at,
+		IdleExpiresAt: at.Add(time.Hour), ExpiresAt: at.Add(2 * time.Hour),
+	}
+	valid.PrepareCreate(NewSessionID(), at)
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("external Session rejected: %v", err)
+	}
+	local := *valid
+	local.AuthenticationMethod = "password"
+	local.AuthenticationProviderID = ""
+	if err := local.Validate(); err != nil {
+		t.Fatalf("local Session rejected: %v", err)
+	}
+	missingProvider := *valid
+	missingProvider.AuthenticationProviderID = ""
+	if err := missingProvider.Validate(); err == nil {
+		t.Fatal("external Session without an exact provider ID was accepted")
+	}
+	invalid := *valid
+	invalid.AuthenticationProviderID = ".campus"
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Session accepted an invalid external provider ID")
+	}
+}
+
 func TestSessionValidationAllowsLaterMFAUpgrade(t *testing.T) {
 	t.Parallel()
 
@@ -443,12 +475,13 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 			err: func() error {
 				at := TimeFromMillis(now)
 				s := &Session{
-					UserID:                 NewUserID(),
-					ClientType:             SessionClientDesktop,
-					AuthenticationMethod:   "oidc",
-					AuthenticationStrength: AuthenticationSingleFactor,
-					IdleExpiresAt:          at.Add(120 * time.Second),
-					ExpiresAt:              at.Add(60 * time.Second),
+					UserID:                   NewUserID(),
+					ClientType:               SessionClientDesktop,
+					AuthenticationMethod:     "oidc",
+					AuthenticationProviderID: "campus-oidc",
+					AuthenticationStrength:   AuthenticationSingleFactor,
+					IdleExpiresAt:            at.Add(120 * time.Second),
+					ExpiresAt:                at.Add(60 * time.Second),
 				}
 				s.PrepareCreate(NewSessionID(), at)
 				return s.Validate()

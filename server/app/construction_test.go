@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -30,31 +31,49 @@ type constructionRealtimeDiagnosticsStub struct{ realtimeDiagnostics }
 type constructionRecoveryDiagnosticsStub struct{ recoveryDiagnostics }
 
 type activeMailPayloadKeyStoreFake struct {
-	ids []string
-	err error
+	state *store.MailKeyState
+	err   error
 }
 
-func (s activeMailPayloadKeyStoreFake) ActivePayloadKeyIDs(context.Context) ([]string, error) {
-	return append([]string(nil), s.ids...), s.err
+func (s activeMailPayloadKeyStoreFake) InspectKeyState(context.Context) (*store.MailKeyState, error) {
+	return s.state, s.err
 }
 
-type mailPayloadKeyRingFake map[string]bool
+type mailPayloadKeyRingFake struct {
+	primary string
+	keys    map[string]bool
+}
 
-func (r mailPayloadKeyRingFake) HasKey(keyID string) bool { return r[keyID] }
+func (r mailPayloadKeyRingFake) HasKey(keyID string) bool { return r.keys[keyID] }
+func (r mailPayloadKeyRingFake) PrimaryKeyID() string     { return r.primary }
 
 func (constructionMailDeliverySenderStub) Enabled() bool { return false }
 
 func TestActiveMailPayloadKeysAreValidatedBeforeWorkersStart(t *testing.T) {
 	t.Parallel()
 	keyID := "0123456789abcdef0123456789abcdef"
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{ids: []string{keyID}}, mailPayloadKeyRingFake{keyID: true}); err != nil {
+	validState := &store.MailKeyState{RequiredPrimaryKeyID: keyID,
+		Active: []store.MailPayloadKeyUsage{{KeyID: keyID, ActiveReferences: 7}}}
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: keyID, keys: map[string]bool{keyID: true}}); err != nil {
 		t.Fatalf("validateActiveMailPayloadKeys() = %v", err)
 	}
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{ids: []string{keyID}}, mailPayloadKeyRingFake{}); err == nil {
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: keyID, keys: map[string]bool{}}); err == nil || !strings.Contains(err.Error(), keyID) || !strings.Contains(err.Error(), "7") {
 		t.Fatal("missing active key was accepted")
 	}
 	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{err: errors.New("database unavailable")}, mailPayloadKeyRingFake{}); err == nil {
 		t.Fatal("persistence failure was accepted")
+	}
+	otherPrimary := "11111111111111111111111111111111"
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{keyID: true, otherPrimary: true}}); err == nil || !strings.Contains(err.Error(), keyID) || !strings.Contains(err.Error(), otherPrimary) {
+		t.Fatal("stale configured primary was accepted")
+	}
+	promotable := *validState
+	promotable.PrimaryPromotionAllowed = true
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: &promotable}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{keyID: true, otherPrimary: true}}); err != nil {
+		t.Fatalf("staged next-primary restart was rejected: %v", err)
+	}
+	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: &promotable}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{otherPrimary: true}}); err == nil {
+		t.Fatal("staged next-primary restart without the required fallback was accepted")
 	}
 }
 
@@ -227,6 +246,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		},
 		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: constructionExamAttemptUseCasesStub{}}, profiles,
 		&defaultProfilePictureJobProposer{jobs: constructionJobStoreStub{}},
+		newMailHealth(false),
 	)
 	if _, err := jobengine.NewRegistry(definitions.descriptors); err != nil {
 		t.Fatalf("descriptor registry: %v", err)

@@ -107,7 +107,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 		Permissions: model.AllActions(),
 	})
 	requireNoError(t, err)
-	first := saveUser(t, ctx, ss)
+	first := saveUserWithPassword(t, ctx, ss)
 	firstBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserID: first.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
@@ -126,7 +126,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 		conflict.Constraint != "users_last_system_admin" {
 		t.Fatalf("disable last administrator error = %v", err)
 	}
-	second := saveUser(t, ctx, ss)
+	second := saveUserWithPassword(t, ctx, ss)
 	secondBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserID: second.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
@@ -158,9 +158,29 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	second.Username = "bbb-" + model.NewId()
 	second, err = createUser(t, ctx, ss, second)
 	requireNoError(t, err)
+	unitMember := newUser()
+	unitMember.Username = "unit-member-" + model.NewId()
+	unitMember, err = createUser(t, ctx, ss, unitMember)
+	requireNoError(t, err)
+	unitRoleHolder := newUser()
+	unitRoleHolder.Username = "unit-role-" + model.NewId()
+	unitRoleHolder, err = createUser(t, ctx, ss, unitRoleHolder)
+	requireNoError(t, err)
+	archivedRoleHolder := newUser()
+	archivedRoleHolder.Username = "zzz-archived-role-" + model.NewId()
+	archivedRoleHolder, err = createUser(t, ctx, ss, archivedRoleHolder)
+	requireNoError(t, err)
+	otherClassMember := newUser()
+	otherClassMember.Username = "yyy-class-member-" + model.NewId()
+	otherClassMember, err = createUser(t, ctx, ss, otherClassMember)
+	requireNoError(t, err)
 	activeAt := model.GetMillis() + 100
 	fixture := saveClassFixture(t, ctx, ss)
 	visibleClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "user-search-visible")
+	siblingUnit := saveAcademicUnit(t, ctx, ss, fixture.institution.ID.String(), "", "visibility-sibling-"+model.NewId())
+	siblingProgramme := saveProgramme(t, ctx, ss, siblingUnit.ID.String(), "visibility-sibling-programme-"+model.NewId())
+	siblingLevel := saveProgrammeLevel(t, ctx, ss, siblingProgramme.ID.String(), "visibility-sibling-level-"+model.NewId())
+	siblingClass := saveClass(t, ctx, ss, siblingLevel.ID.String(), fixture.period.ID.String(), "visibility-sibling-class-"+model.NewId())
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: first.ID, Kind: model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(activeAt - 10),
@@ -181,6 +201,44 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		ClassID: visibleClass.ID, UserID: second.ID, StartsAt: model.TimeFromMillis(activeAt + 10),
 	})
 	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
+		UserID: otherClassMember.ID, Kind: model.AffiliationStudent,
+		StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
+		ClassID: siblingClass.ID, UserID: otherClassMember.ID, StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: fixture.programme.AcademicUnitID, UserID: unitMember.ID,
+		StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	unitRole, err := ss.Role().Save(ctx, &model.Role{
+		Name: "unit-directory-" + model.NewId(), DisplayName: "Unit Directory",
+		Permissions: []string{string(model.ActionUserView)},
+	})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: unitRoleHolder.ID, RoleID: unitRole.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
+		StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	archivedRole, err := ss.Role().Save(ctx, &model.Role{
+		Name: "archived-directory-" + model.NewId(), DisplayName: "Archived Directory",
+		Permissions: []string{string(model.ActionUserView)},
+	})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: archivedRoleHolder.ID, RoleID: archivedRole.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String(),
+		StartsAt: model.TimeFromMillis(activeAt - 10),
+	})
+	requireNoError(t, err)
+	_, err = ss.Role().Archive(ctx, archivedRole.ID.String(), model.GetMillis())
+	requireNoError(t, err)
 	denied, err := ss.User().List(ctx, store.UserListOptions{Limit: 10})
 	requireNoError(t, err)
 	if len(denied) != 0 {
@@ -193,12 +251,121 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	if len(classVisible) != 1 || classVisible[0].ID != first.ID {
 		t.Fatalf("List(class visibility) = %#v, want only %s", classVisible, first.ID)
 	}
+	byHiddenEmail, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: activeAt},
+		Query:      first.Email, Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(byHiddenEmail) != 0 {
+		t.Fatalf("List(scoped email search) = %#v, want no email oracle", byHiddenEmail)
+	}
 	unitVisible, err := ss.User().List(ctx, store.UserListOptions{
 		Visibility: store.UserVisibilityScope{AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: activeAt}, Limit: 10,
 	})
 	requireNoError(t, err)
-	if len(unitVisible) != 1 || unitVisible[0].ID != first.ID {
-		t.Fatalf("List(academic-unit visibility) = %#v, want only %s", unitVisible, first.ID)
+	visibleIDs := map[model.UserID]bool{}
+	for _, user := range unitVisible {
+		visibleIDs[user.ID] = true
+	}
+	if len(unitVisible) != 3 || !visibleIDs[first.ID] || !visibleIDs[unitMember.ID] || !visibleIDs[unitRoleHolder.ID] {
+		t.Fatalf("List(academic-unit visibility) = %#v, want Class, unit-membership, and Role-Binding Users", unitVisible)
+	}
+	if visibleIDs[archivedRoleHolder.ID] {
+		t.Fatalf("List(academic-unit visibility) included holder of archived Role %s", archivedRoleHolder.ID)
+	}
+	classMemberVisible, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{
+			ClassMemberAcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: activeAt,
+		},
+		Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(classMemberVisible) != 1 || classMemberVisible[0].ID != first.ID {
+		t.Fatalf("List(class-member unit visibility) = %#v, want only current Class member %s", classMemberVisible, first.ID)
+	}
+	allClassMembers, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: activeAt}, Limit: 10,
+	})
+	requireNoError(t, err)
+	allClassMemberIDs := map[model.UserID]bool{}
+	for _, user := range allClassMembers {
+		allClassMemberIDs[user.ID] = true
+	}
+	if len(allClassMembers) != 2 || !allClassMemberIDs[first.ID] || !allClassMemberIDs[otherClassMember.ID] {
+		t.Fatalf("List(institution class-member visibility) = %#v, want current Class members %s and %s", allClassMembers, first.ID, otherClassMember.ID)
+	}
+	unionVisible, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{
+			AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()},
+			ClassIDs:            []string{siblingClass.ID.String()},
+			ActiveAt:            activeAt,
+		},
+		Limit: 10,
+	})
+	requireNoError(t, err)
+	unionIDs := map[model.UserID]bool{}
+	for _, user := range unionVisible {
+		unionIDs[user.ID] = true
+	}
+	if len(unionVisible) != 4 || !unionIDs[first.ID] || !unionIDs[unitMember.ID] ||
+		!unionIDs[unitRoleHolder.ID] || !unionIDs[otherClassMember.ID] {
+		t.Fatalf("List(union visibility) = %#v, want relationship subtree plus sibling Class roster", unionVisible)
+	}
+	match, err := ss.User().MatchVisibility(ctx, first.ID.String(), store.UserVisibilityScope{
+		ClassIDs: []string{visibleClass.ID.String()},
+		AcademicUnitRootIDs: []string{
+			siblingUnit.ID.String(), fixture.programme.AcademicUnitID.String(),
+		},
+		ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match.ScopeType != model.RoleScopeClass || match.ScopeID != visibleClass.ID.String() {
+		t.Fatalf("MatchVisibility(class) = %#v, want exact Class", match)
+	}
+	match, err = ss.User().MatchVisibility(ctx, unitRoleHolder.ID.String(), store.UserVisibilityScope{
+		AcademicUnitRootIDs: []string{
+			siblingUnit.ID.String(), fixture.programme.AcademicUnitID.String(),
+		},
+		ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match.ScopeType != model.RoleScopeAcademicUnit || match.ScopeID != fixture.programme.AcademicUnitID.String() {
+		t.Fatalf("MatchVisibility(unit) = %#v, want matching root", match)
+	}
+	match, err = ss.User().MatchVisibility(ctx, unitMember.ID.String(), store.UserVisibilityScope{
+		ClassMemberAcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match != (store.UserVisibilityMatch{}) {
+		t.Fatalf("MatchVisibility(class-member unit nonmember) = %#v, want no match", match)
+	}
+	match, err = ss.User().MatchVisibility(ctx, first.ID.String(), store.UserVisibilityScope{
+		ClassMemberAcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match.ScopeType != model.RoleScopeAcademicUnit || match.ScopeID != fixture.programme.AcademicUnitID.String() {
+		t.Fatalf("MatchVisibility(class-member unit member) = %#v, want matching roster root", match)
+	}
+	match, err = ss.User().MatchVisibility(ctx, first.ID.String(), store.UserVisibilityScope{
+		ClassMemberInstitutionWide: true, ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match.ScopeType != model.RoleScopeClass || match.ScopeID != visibleClass.ID.String() {
+		t.Fatalf("MatchVisibility(institution class member) = %#v, want actual Class", match)
+	}
+	match, err = ss.User().MatchVisibility(ctx, archivedRoleHolder.ID.String(), store.UserVisibilityScope{
+		AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match != (store.UserVisibilityMatch{}) {
+		t.Fatalf("MatchVisibility(archived Role holder) = %#v, want no match", match)
+	}
+	match, err = ss.User().MatchVisibility(ctx, second.ID.String(), store.UserVisibilityScope{
+		AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match != (store.UserVisibilityMatch{}) {
+		t.Fatalf("MatchVisibility(future relation) = %#v, want no match", match)
 	}
 	if _, err = ss.User().List(ctx, store.UserListOptions{
 		Visibility: store.UserVisibilityScope{ClassIDs: []string{"malformed"}, ActiveAt: activeAt}, Limit: 10,
@@ -233,6 +400,43 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	disabled := result.User
 	if disabled.DisabledAt.Millis() != at || disabled.Revision != first.Revision+1 {
 		t.Fatalf("SetDisabledWithAudit() = %#v", result)
+	}
+	scopedDefault, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: activeAt},
+		Limit:      10,
+	})
+	requireNoError(t, err)
+	scopedInclusive, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: activeAt},
+		Limit:      10, IncludeDisabled: true,
+	})
+	requireNoError(t, err)
+	if len(scopedDefault) != 0 || len(scopedInclusive) != 0 {
+		t.Fatalf("scoped disabled visibility default=%#v inclusive=%#v, want both empty", scopedDefault, scopedInclusive)
+	}
+	institutionClassMembersDefault, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: activeAt}, Limit: 10,
+	})
+	requireNoError(t, err)
+	institutionClassMembersInclusive, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility:      store.UserVisibilityScope{ClassMemberInstitutionWide: true, ActiveAt: activeAt},
+		Limit:           10,
+		IncludeDisabled: true,
+	})
+	requireNoError(t, err)
+	for label, users := range map[string][]*model.User{
+		"default": institutionClassMembersDefault, "inclusive": institutionClassMembersInclusive,
+	} {
+		if len(users) != 1 || users[0].ID != otherClassMember.ID {
+			t.Fatalf("institution class-member disabled visibility %s=%#v, want only enabled member %s", label, users, otherClassMember.ID)
+		}
+	}
+	match, err = ss.User().MatchVisibility(ctx, first.ID.String(), store.UserVisibilityScope{
+		ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: activeAt,
+	})
+	requireNoError(t, err)
+	if match != (store.UserVisibilityMatch{}) {
+		t.Fatalf("MatchVisibility(disabled user) = %#v, want no match", match)
 	}
 	active, err := ss.User().List(ctx, store.UserListOptions{Limit: 10, Visibility: store.UserVisibilityScope{InstitutionWide: true}})
 	requireNoError(t, err)
@@ -524,6 +728,13 @@ func saveUser(t *testing.T, ctx context.Context, ss store.Store) *model.User {
 	user, err := createUser(t, ctx, ss, newUser())
 	requireNoError(t, err)
 	return user
+}
+
+func saveUserWithPassword(t *testing.T, ctx context.Context, ss store.Store) *model.User {
+	t.Helper()
+	result, err := ss.User().Create(ctx, testUserCreation(newUser(), &model.PasswordCredential{PasswordHash: "encoded-password"}))
+	requireNoError(t, err)
+	return result.User
 }
 
 func createUser(t *testing.T, ctx context.Context, ss store.Store, input *model.User) (*model.User, error) {

@@ -351,6 +351,7 @@ func assertExamSittingOverrideAudit(t *testing.T, ctx context.Context, persisten
 	t.Helper()
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorId: actorID.String(), Action: string(action), Resource: &resource, Limit: 20,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil {
 		t.Fatal(err)

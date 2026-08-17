@@ -12,6 +12,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -195,41 +196,70 @@ func (s SQLUserStore) List(
 	options store.UserListOptions,
 ) ([]*model.User, error) {
 	if options.Limit < 1 || options.Limit > 200 ||
+		(options.ID != "" && !model.IsValidId(options.ID)) ||
 		(options.AfterUsername == "") != (options.AfterId == "") ||
 		(options.AfterId != "" && !model.IsValidId(options.AfterId)) ||
-		len(options.Visibility.ClassIDs)+len(options.Visibility.AcademicUnitRootIDs) > 256 ||
+		len(options.Visibility.ClassIDs)+len(options.Visibility.AcademicUnitRootIDs)+
+			len(options.Visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
 		!validVisibilityIDs(options.Visibility.ClassIDs) ||
-		!validVisibilityIDs(options.Visibility.AcademicUnitRootIDs) {
+		!validVisibilityIDs(options.Visibility.AcademicUnitRootIDs) ||
+		!validVisibilityIDs(options.Visibility.ClassMemberAcademicUnitRootIDs) {
 		return nil, store.NewErrInvalidInput("user", "list_options", nil)
 	}
 	query := s.usersQuery.Where(sq.Eq{"users.archived_at": nil})
+	if options.ID != "" {
+		query = query.Where(sq.Eq{"users.id": options.ID})
+	}
 	if !options.Visibility.InstitutionWide {
-		if len(options.Visibility.ClassIDs) == 0 && len(options.Visibility.AcademicUnitRootIDs) == 0 {
+		if len(options.Visibility.ClassIDs) == 0 && len(options.Visibility.AcademicUnitRootIDs) == 0 &&
+			len(options.Visibility.ClassMemberAcademicUnitRootIDs) == 0 && !options.Visibility.ClassMemberInstitutionWide {
 			query = query.Where("FALSE")
 		} else {
 			if options.Visibility.ActiveAt <= 0 {
 				return nil, store.NewErrInvalidInput("user", "visibility_active_at", nil)
 			}
 			activeAt := model.TimeFromMillis(options.Visibility.ActiveAt)
-			query = query.Where(`EXISTS (
+			query = query.Prefix(`WITH RECURSIVE user_allowed_units AS (
+				SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
+				UNION ALL SELECT child.id FROM academic_units child
+				JOIN user_allowed_units parent ON child.parent_id = parent.id
+				WHERE child.archived_at IS NULL
+			), class_member_allowed_units AS (
+				SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
+				UNION ALL SELECT child.id FROM academic_units child
+				JOIN class_member_allowed_units parent ON child.parent_id = parent.id
+				WHERE child.archived_at IS NULL
+			)`, pq.Array(options.Visibility.AcademicUnitRootIDs), pq.Array(options.Visibility.ClassMemberAcademicUnitRootIDs)).Where(`(
+			EXISTS (
+				SELECT 1 FROM academic_unit_members aum
+				WHERE aum.user_id = users.id AND aum.archived_at IS NULL
+				AND aum.start_at <= ? AND (aum.end_at IS NULL OR aum.end_at > ?)
+				AND aum.academic_unit_id IN (SELECT id FROM user_allowed_units)
+			) OR EXISTS (
 				SELECT 1 FROM class_members cm
 				JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
 				JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
 				JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
 				WHERE cm.user_id = users.id AND cm.archived_at IS NULL
 				AND cm.start_at <= ? AND (cm.end_at IS NULL OR cm.end_at > ?)
-				AND (cm.class_id = ANY(?) OR p.academic_unit_id IN (
-					WITH RECURSIVE allowed_units AS (
-						SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
-						UNION ALL SELECT child.id FROM academic_units child
-						JOIN allowed_units parent ON child.parent_id = parent.id
-						WHERE child.archived_at IS NULL
-					) SELECT id FROM allowed_units
-				))
-			)`, activeAt, activeAt, pq.Array(options.Visibility.ClassIDs), pq.Array(options.Visibility.AcademicUnitRootIDs))
+				AND (p.academic_unit_id IN (SELECT id FROM user_allowed_units)
+					OR cm.class_id = ANY(?) OR ?
+					OR p.academic_unit_id IN (SELECT id FROM class_member_allowed_units))
+			) OR EXISTS (
+				SELECT 1 FROM role_bindings rb
+				JOIN roles r ON r.id = rb.role_id AND r.archived_at IS NULL
+				LEFT JOIN classes c ON rb.scope_type = 'class' AND c.id = rb.scope_id AND c.archived_at IS NULL
+				LEFT JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+				LEFT JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+				WHERE rb.user_id = users.id AND rb.archived_at IS NULL
+				AND rb.start_at <= ? AND (rb.end_at IS NULL OR rb.end_at > ?)
+				AND ((rb.scope_type = 'academic_unit' AND rb.scope_id IN (SELECT id FROM user_allowed_units))
+					OR (rb.scope_type = 'class' AND p.academic_unit_id IN (SELECT id FROM user_allowed_units)))
+			))`, activeAt, activeAt, activeAt, activeAt, pq.Array(options.Visibility.ClassIDs),
+				options.Visibility.ClassMemberInstitutionWide, activeAt, activeAt)
 		}
 	}
-	if !options.IncludeDisabled {
+	if !options.IncludeDisabled || !options.Visibility.InstitutionWide {
 		query = query.Where(sq.Eq{"users.disabled_at": nil})
 	}
 	if options.MissingDefaultProfilePicture {
@@ -238,11 +268,18 @@ func (s SQLUserStore) List(
 	term := strings.TrimSpace(options.Query)
 	if term != "" {
 		pattern := "%" + term + "%"
-		query = query.Where(`(
-			users.username ILIKE ? OR users.email ILIKE ? OR
-			users.display_name ILIKE ? OR users.first_name ILIKE ? OR
-			users.last_name ILIKE ?
-		)`, pattern, pattern, pattern, pattern, pattern)
+		if options.Visibility.InstitutionWide {
+			query = query.Where(`(
+				users.username ILIKE ? OR users.email ILIKE ? OR
+				users.display_name ILIKE ? OR users.first_name ILIKE ? OR
+				users.last_name ILIKE ?
+			)`, pattern, pattern, pattern, pattern, pattern)
+		} else {
+			query = query.Where(`(
+				users.username ILIKE ? OR users.display_name ILIKE ? OR
+				users.first_name ILIKE ? OR users.last_name ILIKE ?
+			)`, pattern, pattern, pattern, pattern)
+		}
 	}
 	if options.AfterUsername != "" {
 		query = query.Where(
@@ -275,6 +312,127 @@ func validVisibilityIDs(ids []string) bool {
 		}
 	}
 	return true
+}
+
+func (s SQLUserStore) MatchVisibility(
+	ctx context.Context,
+	userID string,
+	visibility store.UserVisibilityScope,
+) (store.UserVisibilityMatch, error) {
+	if !model.IsValidId(userID) || visibility.InstitutionWide || visibility.ActiveAt <= 0 ||
+		len(visibility.ClassIDs)+len(visibility.AcademicUnitRootIDs)+len(visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
+		!validVisibilityIDs(visibility.ClassIDs) ||
+		!validVisibilityIDs(visibility.AcademicUnitRootIDs) ||
+		!validVisibilityIDs(visibility.ClassMemberAcademicUnitRootIDs) {
+		return store.UserVisibilityMatch{}, store.NewErrInvalidInput("user", "visibility_match", nil)
+	}
+	if len(visibility.ClassIDs) == 0 && len(visibility.AcademicUnitRootIDs) == 0 &&
+		len(visibility.ClassMemberAcademicUnitRootIDs) == 0 && !visibility.ClassMemberInstitutionWide {
+		return store.UserVisibilityMatch{}, nil
+	}
+
+	var match struct {
+		ScopeType model.RoleScopeType `db:"scope_type"`
+		ScopeID   string              `db:"scope_id"`
+	}
+	err := s.GetMaster().Get(ctx, &match, `
+		WITH RECURSIVE input AS (
+			SELECT ?::varchar AS user_id, ?::timestamptz AS active_at
+		), user_allowed_units(root_id, id) AS (
+			SELECT id, id FROM academic_units
+			WHERE id = ANY(?::varchar[]) AND archived_at IS NULL
+			UNION ALL
+			SELECT parent.root_id, child.id
+			FROM academic_units child
+			JOIN user_allowed_units parent ON child.parent_id = parent.id
+			WHERE child.archived_at IS NULL
+		), class_member_allowed_units(root_id, id) AS (
+			SELECT id, id FROM academic_units
+			WHERE id = ANY(?::varchar[]) AND archived_at IS NULL
+			UNION ALL
+			SELECT parent.root_id, child.id
+			FROM academic_units child
+			JOIN class_member_allowed_units parent ON child.parent_id = parent.id
+			WHERE child.archived_at IS NULL
+		), matches(scope_type, scope_id, priority) AS (
+			SELECT 'class', cm.class_id, 0
+			FROM class_members cm
+			JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
+			CROSS JOIN input i
+			WHERE cm.user_id = i.user_id AND cm.archived_at IS NULL
+			  AND cm.start_at <= i.active_at AND (cm.end_at IS NULL OR cm.end_at > i.active_at)
+			  AND cm.class_id = ANY(?::varchar[])
+			UNION ALL
+			SELECT 'class', cm.class_id, 1
+			FROM class_members cm
+			JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
+			JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+			JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+			CROSS JOIN input i
+			WHERE cm.user_id = i.user_id AND cm.archived_at IS NULL
+			  AND cm.start_at <= i.active_at AND (cm.end_at IS NULL OR cm.end_at > i.active_at)
+			  AND ?
+			UNION ALL
+			SELECT 'academic_unit', au.root_id, 2
+			FROM class_members cm
+			JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
+			JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+			JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+			JOIN class_member_allowed_units au ON au.id = p.academic_unit_id
+			CROSS JOIN input i
+			WHERE cm.user_id = i.user_id AND cm.archived_at IS NULL
+			  AND cm.start_at <= i.active_at AND (cm.end_at IS NULL OR cm.end_at > i.active_at)
+			UNION ALL
+			SELECT 'academic_unit', au.root_id, 2
+			FROM academic_unit_members aum
+			JOIN user_allowed_units au ON au.id = aum.academic_unit_id
+			CROSS JOIN input i
+			WHERE aum.user_id = i.user_id AND aum.archived_at IS NULL
+			  AND aum.start_at <= i.active_at AND (aum.end_at IS NULL OR aum.end_at > i.active_at)
+			UNION ALL
+			SELECT 'academic_unit', au.root_id, 2
+			FROM class_members cm
+			JOIN classes c ON c.id = cm.class_id AND c.archived_at IS NULL
+			JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+			JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+			JOIN user_allowed_units au ON au.id = p.academic_unit_id
+			CROSS JOIN input i
+			WHERE cm.user_id = i.user_id AND cm.archived_at IS NULL
+			  AND cm.start_at <= i.active_at AND (cm.end_at IS NULL OR cm.end_at > i.active_at)
+			UNION ALL
+			SELECT 'academic_unit', au.root_id, 2
+			FROM role_bindings rb
+			JOIN roles r ON r.id = rb.role_id AND r.archived_at IS NULL
+			JOIN user_allowed_units au ON rb.scope_type = 'academic_unit' AND au.id = rb.scope_id
+			CROSS JOIN input i
+			WHERE rb.user_id = i.user_id AND rb.archived_at IS NULL
+			  AND rb.start_at <= i.active_at AND (rb.end_at IS NULL OR rb.end_at > i.active_at)
+			UNION ALL
+			SELECT 'academic_unit', au.root_id, 2
+			FROM role_bindings rb
+			JOIN roles r ON r.id = rb.role_id AND r.archived_at IS NULL
+			JOIN classes c ON rb.scope_type = 'class' AND c.id = rb.scope_id AND c.archived_at IS NULL
+			JOIN programme_levels pl ON pl.id = c.programme_level_id AND pl.archived_at IS NULL
+			JOIN programmes p ON p.id = pl.programme_id AND p.archived_at IS NULL
+			JOIN user_allowed_units au ON au.id = p.academic_unit_id
+			CROSS JOIN input i
+			WHERE rb.user_id = i.user_id AND rb.archived_at IS NULL
+			  AND rb.start_at <= i.active_at AND (rb.end_at IS NULL OR rb.end_at > i.active_at)
+		)
+		SELECT matches.scope_type, matches.scope_id
+		FROM matches CROSS JOIN input i
+		JOIN users u ON u.id = i.user_id AND u.archived_at IS NULL AND u.disabled_at IS NULL
+		ORDER BY matches.priority, matches.scope_id
+		LIMIT 1`, userID, model.TimeFromMillis(visibility.ActiveAt),
+		pq.Array(visibility.AcademicUnitRootIDs), pq.Array(visibility.ClassMemberAcademicUnitRootIDs),
+		pq.Array(visibility.ClassIDs), visibility.ClassMemberInstitutionWide)
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.UserVisibilityMatch{}, nil
+	}
+	if err != nil {
+		return store.UserVisibilityMatch{}, fmt.Errorf("match user visibility: %w", err)
+	}
+	return store.UserVisibilityMatch{ScopeType: match.ScopeType, ScopeID: match.ScopeID}, nil
 }
 
 func (s SQLUserStore) get(
@@ -404,7 +562,8 @@ func (s SQLUserStore) SetDisabledWithAudit(
 	input *store.UserDisabledStateChange,
 ) (*store.UserDisabledStateResult, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 ||
-		input.ChangedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.ChangedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("user", "disabled_state_change", nil)
 	}
 	revocationReason := model.SanitizeUnicode(input.RevocationReason)
@@ -416,6 +575,30 @@ func (s SQLUserStore) SetDisabledWithAudit(
 		// user row. A login that commits first is included in the revocation; one
 		// that follows observes the disabled account.
 		if input.Disabled {
+			if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+				return nil, err
+			}
+			policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+			if err != nil {
+				return nil, err
+			}
+			at := model.TimeFromMillis(input.ChangedAt)
+			administrator, err := isActiveSystemAdministrator(ctx, tx, input.ID, at)
+			if err != nil {
+				return nil, err
+			}
+			if administrator {
+				remaining, pathErr := hasUsableSystemAdministratorAuthenticationPath(
+					ctx, tx, policy.Settings(), input.Capabilities, at,
+					systemAdministratorAuthenticationPathScope{ExcludedUserID: input.ID},
+				)
+				if pathErr != nil {
+					return nil, pathErr
+				}
+				if !remaining {
+					return nil, store.NewErrConflict("user", "users_last_system_admin", nil)
+				}
+			}
 			if err := lockUserSessions(ctx, tx, input.ID); err != nil {
 				return nil, err
 			}
@@ -499,53 +682,6 @@ func setUserDisabled(
 		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
 	}
 	updateTime := model.TimeFromMillis(updateAt)
-	if disabledAt != 0 {
-		disabledTime := model.TimeFromMillis(disabledAt)
-		if _, err := tx.Exec(
-			ctx,
-			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-			"proctor:system-administrator-bindings",
-		); err != nil {
-			return nil, fmt.Errorf("lock administrator bindings: %w", err)
-		}
-		var isAdministrator bool
-		if err := tx.Get(ctx, &isAdministrator, `
-			SELECT EXISTS (
-				SELECT 1
-				  FROM role_bindings rb
-				  JOIN roles r ON r.id = rb.role_id
-				 WHERE rb.user_id = $1
-				   AND r.name = $2 AND r.built_in = true AND r.archived_at IS NULL
-				   AND rb.scope_type = 'institution' AND rb.archived_at IS NULL
-				   AND rb.start_at <= $3
-				   AND (rb.end_at IS NULL OR rb.end_at > $3)
-			)`, id, model.SystemAdministratorRoleName, disabledTime); err != nil {
-			return nil, fmt.Errorf("check administrator binding: %w", err)
-		}
-		if isAdministrator {
-			var remaining bool
-			if err := tx.Get(ctx, &remaining, `
-				SELECT EXISTS (
-					SELECT 1
-					  FROM role_bindings rb
-					  JOIN roles r ON r.id = rb.role_id
-					  JOIN users u ON u.id = rb.user_id
-					 WHERE rb.user_id <> $1
-					   AND r.name = $2 AND r.built_in = true AND r.archived_at IS NULL
-					   AND rb.scope_type = 'institution' AND rb.archived_at IS NULL
-					   AND rb.start_at <= $3
-					   AND (rb.end_at IS NULL OR rb.end_at > $3)
-					   AND u.archived_at IS NULL AND u.disabled_at IS NULL
-				)`, id, model.SystemAdministratorRoleName, disabledTime); err != nil {
-				return nil, fmt.Errorf("check remaining administrator: %w", err)
-			}
-			if !remaining {
-				return nil, store.NewErrConflict(
-					"user", "users_last_system_admin", nil,
-				)
-			}
-		}
-	}
 	disabledTime := sql.NullTime{}
 	if disabledAt != 0 {
 		disabledTime = sql.NullTime{Time: updateTime, Valid: true}

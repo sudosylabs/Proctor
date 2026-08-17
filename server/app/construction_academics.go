@@ -35,8 +35,22 @@ func constructAccessAndAcademics(
 		authorization: authorization,
 		institutions:  deps.Store.Institution(),
 	}
+	capabilities := deploymentAccessPolicyCapabilities{
+		providers: deps.Registry, mail: deps.MailDeliverySender, health: foundation.mailHealth,
+	}
+	accessPolicies, err := newAccessPolicyService(
+		deps.Store.AccessPolicy(), deps.Store.Institution(), academicAuthorization,
+		capabilities,
+		mutationAuditAdapter{audit: foundation.audit},
+		accessPolicyRealtimeEffects{realtime: foundation.realtime},
+		accessPolicyEffectReporter{realtime: foundation.realtime},
+		deps.PublicURL, deps.RecentAuthenticationTTL, time.Now,
+	)
+	if err != nil {
+		return accessAcademicConstruction{}, err
+	}
 	return accessAcademicConstruction{
-		authorization: authorization,
+		authorization: authorization, capabilities: capabilities, accessPolicies: accessPolicies,
 		academicUnits: newAcademicUnitQueryService(
 			deps.Store.AcademicUnit(), academicAuthorization,
 		),

@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -543,6 +544,112 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	}
 }
 
+func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	institutionID := model.NewInstitutionID()
+	unitID := model.NewAcademicUnitID()
+	userID := model.NewUserID()
+	userViewRoleID, classMembersRoleID := model.NewRoleID(), model.NewRoleID()
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}},
+		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
+			unitID.String(): {{ID: unitID, InstitutionID: institutionID}},
+		}},
+		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization, err := newAccessControlService(
+		&accessRoleStoreFake{roles: []*model.Role{
+			{ID: userViewRoleID, Permissions: []string{string(model.ActionUserView)}},
+			{ID: classMembersRoleID, Permissions: []string{string(model.ActionClassMembersView)}},
+		}},
+		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{
+			{RoleID: userViewRoleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String()},
+			{RoleID: classMembersRoleID, UserID: userID, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String()},
+		}},
+		resolver, accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization.now = func() time.Time { return now }
+	principal := model.Principal{
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: now, ClientType: model.SessionClientWeb,
+	}
+
+	visibility, err := authorization.userVisibilityScope(context.Background(), principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if visibility.InstitutionWide || !visibility.ClassMemberInstitutionWide ||
+		!reflect.DeepEqual(visibility.AcademicUnitRootIDs, []string{unitID.String()}) ||
+		len(visibility.ClassMemberAcademicUnitRootIDs) != 0 || len(visibility.ClassIDs) != 0 ||
+		visibility.ActiveAt != now.UnixMilli() {
+		t.Fatalf("user visibility = %#v", visibility)
+	}
+}
+
+func TestUserReadMatchesInstitutionWideClassMemberVisibility(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	institutionID := model.NewInstitutionID()
+	viewerID, targetID := model.NewUserID(), model.NewUserID()
+	roleID := model.NewRoleID()
+	classID := model.NewClassID()
+	users := &accessUserStoreFake{match: store.UserVisibilityMatch{
+		ScopeType: model.RoleScopeClass, ScopeID: classID.String(),
+	}}
+	resolver, err := newAccessScopeResolver(
+		&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}},
+		&accessAcademicUnitStoreFake{}, &accessClassStoreFake{}, users, &accessClassMemberStoreFake{},
+		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+		&accessAcademicPeriodStoreFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization, err := newAccessControlService(
+		&accessRoleStoreFake{roles: []*model.Role{{
+			ID: roleID, Permissions: []string{string(model.ActionClassMembersView)},
+		}}},
+		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{
+			RoleID: roleID, UserID: viewerID, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(),
+		}}},
+		resolver, accessDecisionAuditFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization.now = func() time.Time { return now }
+	principal := model.Principal{
+		UserID: viewerID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: now, ClientType: model.SessionClientWeb,
+	}
+
+	fullProfile, err := authorization.authorizeUserRead(
+		context.Background(), NewInvocation(principal, model.RequestMetadata{}), targetID.String(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fullProfile || users.matchCalls != 1 || !users.matchVisibility.ClassMemberInstitutionWide ||
+		users.matchVisibility.InstitutionWide {
+		t.Fatalf("fullProfile=%t calls=%d visibility=%#v", fullProfile, users.matchCalls, users.matchVisibility)
+	}
+}
+
 func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
 	t.Parallel()
 
@@ -750,7 +857,10 @@ func (s *accessProgrammeLevelStoreFake) Get(context.Context, string) (*model.Pro
 
 type accessUserStoreFake struct {
 	store.UserStore
-	user *model.User
+	user            *model.User
+	match           store.UserVisibilityMatch
+	matchVisibility store.UserVisibilityScope
+	matchCalls      int
 }
 
 func (s *accessUserStoreFake) Get(context.Context, string) (*model.User, error) {
@@ -758,6 +868,12 @@ func (s *accessUserStoreFake) Get(context.Context, string) (*model.User, error) 
 		return nil, store.NewErrNotFound("user", "")
 	}
 	return s.user, nil
+}
+
+func (s *accessUserStoreFake) MatchVisibility(_ context.Context, _ string, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+	s.matchCalls++
+	s.matchVisibility = visibility
+	return s.match, nil
 }
 
 type accessClassMemberStoreFake struct{ store.ClassMemberStore }
@@ -818,6 +934,6 @@ func (accessDecisionAuditFake) RecordAuthorizationDecision(context.Context, mode
 	return nil
 }
 
-func (accessDecisionAuditFake) RecordUserSearchDecision(context.Context, model.Principal, model.Resource, model.RequestMetadata, bool) error {
+func (accessDecisionAuditFake) RecordUserSearchDecision(context.Context, model.Principal, model.Resource, model.RoleScopeType, string, model.RequestMetadata, bool) error {
 	return nil
 }

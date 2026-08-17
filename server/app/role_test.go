@@ -64,6 +64,7 @@ type roleAuthorizerFake struct {
 	resource      model.Resource
 	err           error
 	delegationErr error
+	bindingScope  store.UserVisibilityScope
 }
 
 func (a *roleAuthorizerFake) AuthorizeManage(context.Context, Invocation) (model.Resource, error) {
@@ -79,6 +80,14 @@ func (a *roleAuthorizerFake) AuthorizeView(context.Context, Invocation) (model.R
 func (a *roleAuthorizerFake) AuthorizeRoleBindingInstitution(context.Context, Invocation, model.Action) (model.Resource, error) {
 	*a.events = append(*a.events, "authorize-binding-institution")
 	return a.resource, a.err
+}
+
+func (a *roleAuthorizerFake) AuthorizeRoleBindingList(context.Context, Invocation, model.Action) (store.UserVisibilityScope, error) {
+	*a.events = append(*a.events, "authorize-binding-list")
+	if a.bindingScope.InstitutionWide || len(a.bindingScope.AcademicUnitRootIDs) > 0 || len(a.bindingScope.ClassIDs) > 0 {
+		return a.bindingScope, a.err
+	}
+	return store.UserVisibilityScope{InstitutionWide: true}, a.err
 }
 
 func (a *roleAuthorizerFake) AuthorizeRoleBindingPreflight(context.Context, Invocation, model.Action) error {

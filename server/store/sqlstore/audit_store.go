@@ -14,9 +14,11 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -175,9 +177,53 @@ func (s SQLAuditStore) List(
 	if options.Limit < 1 || options.Limit > 200 {
 		return nil, store.NewErrInvalidInput("audit_event", "limit", options.Limit)
 	}
+	if len(options.Visibility.AcademicUnitRootIDs) > 256 ||
+		len(options.Visibility.AllowedActions) > 256 ||
+		!validVisibilityIDs(options.Visibility.AcademicUnitRootIDs) ||
+		(options.Visibility.InstitutionWide && options.Visibility.AcademicInstitutionWide) ||
+		(options.Visibility.AcademicInstitutionWide && len(options.Visibility.AcademicUnitRootIDs) > 0) {
+		return nil, store.NewErrInvalidInput("audit_event", "visibility", nil)
+	}
+	for _, action := range options.Visibility.AllowedActions {
+		if strings.TrimSpace(action) == "" || len(action) > 128 {
+			return nil, store.NewErrInvalidInput("audit_event", "visibility_action", action)
+		}
+	}
 	query := s.auditsQuery.
 		OrderBy("audit_events.created_at DESC", "audit_events.id DESC").
 		Limit(uint64(options.Limit))
+	if !options.Visibility.InstitutionWide {
+		if len(options.Visibility.AllowedActions) == 0 {
+			query = query.Where("FALSE")
+		} else if options.Visibility.AcademicInstitutionWide {
+			query = query.Where(`
+				audit_events.action = ANY(?) AND (
+					(audit_events.scope_type = 'academic_unit' AND EXISTS (
+						SELECT 1 FROM academic_units au WHERE au.id = audit_events.scope_id
+					))
+					OR (audit_events.scope_type = 'class' AND EXISTS (
+						SELECT 1 FROM classes c WHERE c.id = audit_events.scope_id
+					))
+				)`, pq.Array(options.Visibility.AllowedActions))
+		} else if len(options.Visibility.AcademicUnitRootIDs) == 0 {
+			query = query.Where("FALSE")
+		} else {
+			query = query.Prefix(`WITH RECURSIVE allowed_units AS (
+				SELECT id FROM academic_units WHERE id = ANY(?)
+				UNION ALL SELECT child.id FROM academic_units child
+				JOIN allowed_units parent ON child.parent_id = parent.id
+			)`, pq.Array(options.Visibility.AcademicUnitRootIDs)).Where(`
+				audit_events.action = ANY(?) AND (
+					(audit_events.scope_type = 'academic_unit' AND audit_events.scope_id IN (SELECT id FROM allowed_units))
+					OR (audit_events.scope_type = 'class' AND EXISTS (
+						SELECT 1 FROM classes c
+						JOIN programme_levels pl ON pl.id = c.programme_level_id
+						JOIN programmes p ON p.id = pl.programme_id
+						WHERE c.id = audit_events.scope_id AND p.academic_unit_id IN (SELECT id FROM allowed_units)
+					))
+				)`, pq.Array(options.Visibility.AllowedActions))
+		}
+	}
 	if options.ActorId != "" {
 		query = query.Where(sq.Eq{"audit_events.actor_id": options.ActorId})
 	}

@@ -198,6 +198,9 @@ func (authenticationUserStore) Update(context.Context, *model.User) (*model.User
 func (authenticationUserStore) List(context.Context, store.UserListOptions) ([]*model.User, error) {
 	return nil, errors.New("unused")
 }
+func (authenticationUserStore) MatchVisibility(context.Context, string, store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+	return store.UserVisibilityMatch{}, errors.New("unused")
+}
 func (authenticationUserStore) SetDisabledWithAudit(context.Context, *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
 	return nil, errors.New("unused")
 }
@@ -450,6 +453,7 @@ func newTestAuthenticationServiceWithEffects(
 		persistence.PasswordCredential(),
 		persistence.Session(),
 		persistence.SessionCredential(),
+		allowAllAuthenticationAccessPolicy(),
 		cache,
 		mustAuthenticationAttemptAccounting(t, cache),
 		effects,
@@ -786,6 +790,49 @@ func TestLoginRejectsUnknownUserWithGenericFailure(t *testing.T) {
 	failure, ok := As(err)
 	if !ok || failure.Code() != "authentication.invalid_credentials" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(t *testing.T) {
+	t.Parallel()
+
+	persistence := newAuthenticationStoreFake()
+	service := newTestAuthenticationService(t, persistence)
+	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+		User: &model.User{Username: "policy-user", Email: "policy-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.accessPolicy = authenticationAccessPolicyFake{local: false}
+	result, err := service.login(context.Background(), LoginCommand{
+		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.5",
+	})
+	if result != nil || !Is(err, "authentication.invalid_credentials") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if len(persistence.sessions) != 0 {
+		t.Fatalf("disabled local login created %d sessions", len(persistence.sessions))
+	}
+}
+
+func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testing.T) {
+	t.Parallel()
+
+	persistence := newAuthenticationStoreFake()
+	service := newTestAuthenticationService(t, persistence)
+	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+		User: &model.User{Username: "terminal-policy-user", Email: "terminal-policy-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence.saveErr = store.ErrAuthenticationMethodDisabled
+	result, err := service.login(context.Background(), LoginCommand{
+		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.6",
+	})
+	if result != nil || !Is(err, "authentication.invalid_credentials") {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
 

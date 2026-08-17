@@ -26,6 +26,7 @@ type roleBindingStoreFake struct {
 	listErr      error
 	createErr    error
 	endErr       error
+	visibility   store.UserVisibilityScope
 }
 
 func (s *roleBindingStoreFake) Get(context.Context, string) (*model.RoleBinding, error) {
@@ -35,6 +36,12 @@ func (s *roleBindingStoreFake) Get(context.Context, string) (*model.RoleBinding,
 
 func (s *roleBindingStoreFake) ListByUser(context.Context, string) ([]*model.RoleBinding, error) {
 	*s.events = append(*s.events, "list-by-user")
+	return s.list, s.listErr
+}
+
+func (s *roleBindingStoreFake) ListVisibleByUser(_ context.Context, _ string, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
+	*s.events = append(*s.events, "list-visible-by-user")
+	s.visibility = visibility
 	return s.list, s.listErr
 }
 
@@ -81,6 +88,7 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 		&roleBindingStoreFake{events: &events, createResult: created},
 		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: created.RoleID, Name: "teacher"}},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
+		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleBindingEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
@@ -109,6 +117,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 		&roleBindingStoreFake{events: &events},
 		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: model.RoleID(roleID), Name: model.SystemAdministratorRoleName}},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
+		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
@@ -130,13 +139,17 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	binding := &model.RoleBinding{ID: model.NewRoleBindingID(), UserID: model.NewUserID()}
+	persistence := &roleBindingStoreFake{
+		events: &events, binding: binding,
+		endErr: store.NewErrConflict("role_binding", "role_bindings_last_system_admin", errors.New("last")),
+	}
 	service := newRoleBindingService(
-		&roleBindingStoreFake{
-			events: &events, binding: binding,
-			endErr: store.NewErrConflict("role_binding", "role_bindings_last_system_admin", errors.New("last")),
-		},
+		persistence,
 		&roleBindingRoleStoreFake{events: &events},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
+		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{
+			Descriptor: model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"},
+		}}}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
@@ -144,6 +157,9 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	_, err := service.End(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID.String()})
 	if !Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("error = %v", err)
+	}
+	if _, available := persistence.endInput.Capabilities.Providers["campus"]; !available {
+		t.Fatalf("Store capability snapshot = %#v, want configured campus provider", persistence.endInput.Capabilities)
 	}
 	want := []string{"authorize-binding-preflight", "get-binding", "authorize-binding-scope", "audit-begin", "store-end", "audit-fail"}
 	if !reflect.DeepEqual(events, want) {
@@ -159,6 +175,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 		&roleBindingStoreFake{events: &events, list: []*model.RoleBinding{{ID: model.NewRoleBindingID(), UserID: model.UserID(userID)}}},
 		&roleBindingRoleStoreFake{events: &events},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
+		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
@@ -167,8 +184,27 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 	if err != nil || len(got) != 1 {
 		t.Fatalf("list = %#v err=%v", got, err)
 	}
-	want := []string{"authorize-binding-institution", "list-by-user"}
+	want := []string{"authorize-binding-list", "list-visible-by-user"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	rootID := model.NewAcademicUnitID().String()
+	persistence := &roleBindingStoreFake{events: &events}
+	service := newRoleBindingService(
+		persistence, &roleBindingRoleStoreFake{events: &events},
+		&roleAuthorizerFake{events: &events, bindingScope: store.UserVisibilityScope{AcademicUnitRootIDs: []string{rootID}}},
+		&accessPolicyCapabilitiesFake{},
+		&institutionAuditorFake{events: &events}, &roleBindingEffectsFake{events: &events}, time.Now,
+	)
+	if _, err := service.List(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(persistence.visibility.AcademicUnitRootIDs, []string{rootID}) || persistence.visibility.InstitutionWide {
+		t.Fatalf("visibility = %#v", persistence.visibility)
 	}
 }

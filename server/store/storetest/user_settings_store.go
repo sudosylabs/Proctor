@@ -60,7 +60,10 @@ func TestUserSettingsStore(t *testing.T, ss store.Store) {
 	if !replayed.Replayed || replayed.Revision != replaced.Revision || !replayed.UpdatedAt.Equal(replaced.UpdatedAt) {
 		t.Fatalf("Replace(replay) = %#v, want %#v", replayed, replaced)
 	}
-	audits, err := ss.Audit().List(ctx, store.AuditListOptions{Action: "user.settings.replace", Limit: 10})
+	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
+		Action: "user.settings.replace", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+	})
 	requireNoError(t, err)
 	if len(audits) != 1 || audits[0].Status != model.AuditStatusSuccess {
 		t.Fatalf("settings replacement audits = %#v", audits)
@@ -83,7 +86,10 @@ func TestUserSettingsStore(t *testing.T, ss store.Store) {
 	if !noOpReplay.Replayed || noOpReplay.Changed || noOpReplay.Revision != stored.Revision {
 		t.Fatalf("Replace(no-op replay) = %#v", noOpReplay)
 	}
-	audits, err = ss.Audit().List(ctx, store.AuditListOptions{Action: "user.settings.replace", Limit: 10})
+	audits, err = ss.Audit().List(ctx, store.AuditListOptions{
+		Action: "user.settings.replace", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+	})
 	requireNoError(t, err)
 	if len(audits) != 1 {
 		t.Fatalf("no-op/replay wrote audit: %#v", audits)

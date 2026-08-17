@@ -78,7 +78,7 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "UserProfileResponse", DTO: reflect.TypeOf(userProfileResponse{}),
-				Required: []string{"id", "create_at", "update_at", "delete_at", "username", "email", "email_verified", "display_name", "first_name", "last_name", "locale", "timezone", "profile_picture_url"},
+				Required: []string{"id", "create_at", "update_at", "delete_at", "username", "display_name", "first_name", "last_name", "profile_picture_url"},
 			},
 			{Name: "UpdateUserProfileRequest", DTO: reflect.TypeOf(updateUserProfileRequest{})},
 		},

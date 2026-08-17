@@ -28,7 +28,7 @@ type accessControlService struct {
 
 type authorizationDecisionAudit interface {
 	RecordAuthorizationDecision(context.Context, model.Principal, model.Action, model.Resource, model.RoleScopeType, string, model.RequestMetadata, bool) error
-	RecordUserSearchDecision(context.Context, model.Principal, model.Resource, model.RequestMetadata, bool) error
+	RecordUserSearchDecision(context.Context, model.Principal, model.Resource, model.RoleScopeType, string, model.RequestMetadata, bool) error
 }
 
 type resolvedAuthorizationResource struct {
@@ -316,46 +316,47 @@ func (s *accessControlService) authorizeUserRead(
 	ctx context.Context,
 	invocation Invocation,
 	userID string,
-) error {
+) (bool, error) {
 	principal := invocation.Principal()
 	userResource := model.Resource{Type: model.ResourceUser, ID: userID}
-	allowed, appErr := s.Can(ctx, principal, model.ActionUserView, userResource)
-	if appErr != nil && !Is(appErr, "resource.not_found") {
-		return appErr
+	visibility, appErr := s.userVisibilityScope(ctx, principal)
+	if appErr != nil {
+		return false, appErr
 	}
-	if allowed {
-		return s.authorizeCurrentState(ctx, principal, model.ActionUserView, userResource, invocation.RequestMetadata())
+	if visibility.InstitutionWide {
+		appErr = s.authorizeCurrentState(ctx, principal, model.ActionUserView, userResource, invocation.RequestMetadata())
+		return appErr == nil, appErr
 	}
-	if appErr == nil {
-		classes, err := s.resolver.userClasses(ctx, userID, s.now().UnixMilli())
+	allowed := false
+	match := store.UserVisibilityMatch{}
+	if visibility.ClassMemberInstitutionWide || len(visibility.AcademicUnitRootIDs) > 0 ||
+		len(visibility.ClassMemberAcademicUnitRootIDs) > 0 || len(visibility.ClassIDs) > 0 {
+		var err error
+		match, err = s.resolver.users.MatchVisibility(ctx, userID, visibility)
 		if err != nil {
-			return err
+			return false, authorizationUnavailableError("accessControlService.authorizeUserRead.users", err)
 		}
-		for _, classResource := range classes {
-			allowed, err = s.Can(ctx, principal, model.ActionClassMembersView, classResource)
-			if err != nil {
-				return err
-			}
-			if allowed {
-				return s.authorizeUserViewThroughClass(ctx, principal, userResource, classResource, invocation.RequestMetadata())
-			}
-		}
-		return s.authorizeCurrentState(ctx, principal, model.ActionUserView, userResource, invocation.RequestMetadata())
+		allowed = (match.ScopeType == model.RoleScopeAcademicUnit || match.ScopeType == model.RoleScopeClass) &&
+			model.IsValidId(match.ScopeID)
 	}
-	// Missing/inactive targets are indistinguishable from existing but
-	// unauthorized targets. Record the denial against the attempted User.
 	institution, err := s.resolver.institutions.GetSingleton(ctx)
 	if err != nil {
-		return authorizationResourceError("institution", err)
+		return false, authorizationResourceError("institution", err)
+	}
+	scopeType, scopeID := model.RoleScopeInstitution, institution.ID.String()
+	if allowed {
+		scopeType, scopeID = match.ScopeType, match.ScopeID
 	}
 	if err := s.audit.RecordAuthorizationDecision(
 		ctx, principal, model.ActionUserView, userResource,
-		model.RoleScopeInstitution, institution.ID.String(),
-		invocation.RequestMetadata(), false,
+		scopeType, scopeID, invocation.RequestMetadata(), allowed,
 	); err != nil {
-		return err
+		return false, err
 	}
-	return authorizationDeniedError("accessControlService.authorizeUserRead")
+	if allowed {
+		return false, nil
+	}
+	return false, authorizationDeniedError("accessControlService.authorizeUserRead")
 }
 
 func authorizationDeniedError(where string) error {

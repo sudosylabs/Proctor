@@ -24,6 +24,7 @@ import (
 func TestAccountRecoveryIntegration(t *testing.T) {
 	dataSource := requireAuthenticationDatabase(t)
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -199,8 +200,9 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		t.Fatalf("password reset replay status = %d", resetReplay.Code)
 	}
 	audits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
-		Action: "authentication.password_reset.complete",
-		Limit:  10,
+		Action:     "authentication.password_reset.complete",
+		Limit:      10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil ||
 		len(audits) != 1 ||
@@ -224,6 +226,7 @@ func TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence(
 ) {
 	dataSource := requireAuthenticationDatabase(t)
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -252,6 +255,60 @@ func TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence(
 				want,
 			)
 		}
+	}
+}
+
+func TestCurrentAccessPolicyGatesLocalLoginAndPasswordRecoveryRealGraph(t *testing.T) {
+	dataSource := requireAuthenticationDatabase(t)
+	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
+	helper := testlib.Setup(t, testlib.WithConfig(func(cfg *config.Config) {
+		cfg.Server.PublicURL = "https://proctor.example.edu"
+		cfg.Authentication.AccountRecovery.RateLimit.MaximumAttempts = 20
+		cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts = 100
+	}), testlib.WithStore(persistence))
+	if _, err := persistence.Institution().Save(context.Background(), &model.Institution{
+		Name: "policy-recovery", DisplayName: "Policy Recovery",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const password = "correct horse battery staple"
+	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
+		Username: "policy-recovery-user", Email: "policy-recovery-user@example.edu",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	issued := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/password-reset/request",
+		map[string]any{"email": user.Email}, "")
+	if issued.Code != http.StatusAccepted || len(helper.Mailer.Deliveries()) != 1 {
+		t.Fatalf("initial reset status=%d deliveries=%d", issued.Code, len(helper.Mailer.Deliveries()))
+	}
+	resetToken := credentialFromDelivery(t, helper.Mailer.Deliveries()[0])
+	if _, err := persistence.GetMaster().Exec(context.Background(),
+		`UPDATE access_policies SET local_login_enabled=FALSE,
+		 invitation_local_credential_enabled=FALSE WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	login := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"login_id": user.Email, "password": password, "client_type": model.SessionClientWeb,
+	}, "")
+	if login.Code != http.StatusUnauthorized {
+		t.Fatalf("disabled local login status=%d: %s", login.Code, login.Body.String())
+	}
+	hidden := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/password-reset/request",
+		map[string]any{"email": user.Email}, "")
+	if hidden.Code != http.StatusAccepted || len(helper.Mailer.Deliveries()) != 1 {
+		t.Fatalf("disabled reset status=%d deliveries=%d", hidden.Code, len(helper.Mailer.Deliveries()))
+	}
+	completed := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/password-reset/complete",
+		map[string]any{"token": resetToken, "password": "new correct horse battery staple"}, "")
+	if completed.Code != http.StatusBadRequest {
+		t.Fatalf("disabled reset completion status=%d: %s", completed.Code, completed.Body.String())
+	}
+	retained, err := persistence.UserToken().GetByHash(context.Background(), model.HashToken(resetToken), model.UserTokenPasswordReset)
+	if err != nil || retained.ConsumedAt.Valid {
+		t.Fatalf("disabled reset retained token=%#v err=%v", retained, err)
 	}
 }
 

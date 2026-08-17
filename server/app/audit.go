@@ -28,6 +28,19 @@ type userSettingsAuditAdapter struct{ audit *auditService }
 
 type mailAuditAdapter struct{ audit *auditService }
 
+func (a mailAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource,
+	operation string, value, prior map[string]any,
+) (string, error) {
+	return (mutationAuditAdapter{audit: a.audit}).Begin(ctx, invocation, action, resource, operation, value, prior)
+}
+
+func (a mailAuditAdapter) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action,
+	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any,
+) (string, error) {
+	return (mutationAuditAdapter{audit: a.audit}).BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID,
+		operation, value, prior)
+}
+
 func (a mailAuditAdapter) Fail(ctx context.Context, auditID, errorCode string) error {
 	return (mutationAuditAdapter{audit: a.audit}).Fail(ctx, auditID, errorCode)
 }
@@ -373,12 +386,14 @@ func (s *auditService) RecordUserSearchDecision(
 	ctx context.Context,
 	principal model.Principal,
 	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
 	metadata model.RequestMetadata,
 	allowed bool,
 ) error {
 	return s.recordDecision(
 		ctx, principal, "user.search", resource,
-		model.RoleScopeInstitution, resource.ID, metadata, allowed,
+		scopeType, scopeID, metadata, allowed,
 	)
 }
 
@@ -430,6 +445,7 @@ func (s *auditService) List(
 	events, err := s.audits.List(ctx, store.AuditListOptions{
 		ActorId: query.ActorID, Action: query.Action, Resource: query.Resource,
 		BeforeTime: query.BeforeTime, BeforeId: query.BeforeID, Limit: query.Limit,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil {
 		return nil, auditUnavailable(err)

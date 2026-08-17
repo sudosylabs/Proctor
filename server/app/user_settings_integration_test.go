@@ -130,6 +130,7 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 	}
 	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		Action: "user.settings.replace", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil {
 		t.Fatal(err)

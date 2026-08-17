@@ -4,10 +4,52 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestExternalAuthenticationProviderCountIsBounded(t *testing.T) {
+	cfg := Default()
+	for index := range 64 {
+		cfg.Authentication.External.Providers = append(
+			cfg.Authentication.External.Providers,
+			validTestCASProvider(fmt.Sprintf("provider-%02d", index)),
+		)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("64 external providers: %v", err)
+	}
+
+	tooMany := cfg.Clone()
+	tooMany.Authentication.External.Providers = append(
+		tooMany.Authentication.External.Providers,
+		validTestCASProvider("provider-64"),
+	)
+	if len(cfg.Authentication.External.Providers) != 64 {
+		t.Fatal("Clone() exposed the provider list")
+	}
+	err := tooMany.Validate()
+	if err == nil || !strings.Contains(
+		err.Error(),
+		"authentication.external.providers: must contain at most 64 providers",
+	) {
+		t.Fatalf("65 external providers error = %v", err)
+	}
+}
+
+func validTestCASProvider(id string) ExternalAuthenticationProvider {
+	return ExternalAuthenticationProvider{
+		ID: id, Type: ExternalAuthenticationTypeCAS, DisplayName: id,
+		Enabled: true,
+		CAS: &CASProvider{
+			BaseURL: "http://127.0.0.1:8080/cas", ValidationPath: "/p3/serviceValidate",
+			Timeout: Duration{Duration: 5 * time.Second}, MaxResponseBytes: 64 * 1024,
+		},
+		Claims: ExternalClaimMapping{Subject: "user", Username: "uid", Email: "mail"},
+	}
+}
 
 func TestExternalAuthenticationConfiguration(t *testing.T) {
 	cfg := Default()

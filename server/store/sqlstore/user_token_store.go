@@ -90,6 +90,11 @@ func (s SQLUserTokenStore) Issue(
 	}
 
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "user token issue", func(ctx context.Context, tx *sqlxTxWrapper) (*model.UserToken, error) {
+		if candidate.Purpose == model.UserTokenPasswordReset {
+			if err := requireCurrentLocalLogin(ctx, tx); err != nil {
+				return nil, err
+			}
+		}
 		if err := lockUserTokenPurpose(
 			ctx, tx, candidate.UserID.String(), candidate.Purpose,
 		); err != nil {
@@ -209,6 +214,9 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		return nil, store.NewErrInvalidInput("user_token", "password_reset", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "password reset", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PasswordResetResult, error) {
+		if err := requireCurrentLocalLogin(ctx, tx); err != nil {
+			return nil, err
+		}
 		at := model.TimeFromMillis(now)
 		token, err := lockActiveUserToken(
 			ctx, tx, tokenHash, model.UserTokenPasswordReset, now,

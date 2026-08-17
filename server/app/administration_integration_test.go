@@ -401,7 +401,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 
 	events, err := persistence.Audit().List(
 		context.Background(),
-		store.AuditListOptions{Limit: 200},
+		store.AuditListOptions{Limit: 200, Visibility: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
 	if err != nil {
 		t.Fatal(err)

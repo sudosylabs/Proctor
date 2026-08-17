@@ -48,13 +48,19 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	updated.Revision++
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{{ID: model.NewSessionID()}}, RevokedTokenHashes: []string{"hash"}}}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
+	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{
+		Descriptor: model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"},
+	}}}}
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, capabilities, auditor, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.DisabledAt.Millis() != 500 || persistence.input.ExpectedRevision != 3 || !persistence.input.Disabled || persistence.input.AuditEventID == "" {
 		t.Fatalf("result/input = %#v / %#v", result, persistence.input)
+	}
+	if _, available := persistence.input.Capabilities.Providers["campus"]; !available {
+		t.Fatalf("Store capability snapshot = %#v, want configured campus provider", persistence.input.Capabilities)
 	}
 	want := []string{"authorize-manage", "get-user", "audit-begin", "store-set-disabled", "publish-revocation"}
 	if !reflect.DeepEqual(events, want) {
@@ -67,7 +73,7 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	events := []string{}
 	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
 	persistence := &accountStateStoreFake{events: &events, user: user, err: store.NewErrConflict("user", "users_revision", errors.New("stale"))}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, time.Now)
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, time.Now)
 	_, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
 	if !Is(err, "user.conflict") {
 		t.Fatalf("error = %v", err)
@@ -86,7 +92,7 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	updated.DisabledAt = model.OptionalTime{}
 	updated.Revision++
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: true})
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +110,7 @@ func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
+	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.UserID(userID)}, model.RequestMetadata{})
 	_, err := service.SetEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: userID, Enabled: false})
 	if !Is(err, "request.invalid") {

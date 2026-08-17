@@ -11,6 +11,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"net/url"
@@ -191,6 +192,14 @@ func (s *accountTokenService) RequestPasswordReset(
 	invocation Invocation,
 	command RequestPasswordResetCommand,
 ) error {
+	localLoginAllowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
+	if err != nil {
+		s.logHiddenRecoveryFailure(ctx, "password reset access policy lookup failed", err)
+		return nil
+	}
+	if !localLoginAllowed {
+		return nil
+	}
 	if !s.mailer.Enabled() {
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
@@ -329,6 +338,13 @@ func (s *accountTokenService) CompletePasswordReset(
 	); err != nil {
 		return nil, err
 	}
+	localLoginAllowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
+	if err != nil {
+		return nil, accountRecoveryStoreFailure(err)
+	}
+	if !localLoginAllowed {
+		return nil, invalidAccountCredential()
+	}
 	if !validRawCredential(command.Token) {
 		return nil, invalidAccountCredential()
 	}
@@ -359,6 +375,9 @@ func (s *accountTokenService) CompletePasswordReset(
 		event,
 	)
 	if err != nil {
+		if errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+			return nil, invalidAccountCredential()
+		}
 		if store.IsNotFound(err) {
 			return nil, invalidAccountCredential()
 		}

@@ -36,7 +36,9 @@ the code and component contracts for that detail.
 - Authorization uses current scoped role bindings with institution and
   academic-unit inheritance, exact class scope, durable fail-closed decision
   auditing, protected built-in administration, and persistence-constrained
-  scoped user visibility through one authoritative Access Control boundary.
+  scoped User and Role Binding visibility plus academic-only Audit Event
+  history through one authoritative Access Control boundary. Scoped directory
+  and audit projections omit account-security and request-security metadata.
 - Realtime behavior includes authenticated WebSockets, authorized
   subscriptions, bounded local replay, explicit resynchronization, local and
   Memberlist cluster transports, and best-effort cross-node fan-out.
@@ -269,8 +271,13 @@ token bucket with burst and credential reserve; and a daily durable bounded
 cleanup enforces the 90/180-day metadata cutoffs without touching security
 audit. SMTP outage and queue delay now degrade only the mail subsystem, while
 bounded safe telemetry reports template, state, public outcome, attempts,
-latency, queue age, count, and health code. Product-transition mail and rekey
-remain unimplemented.
+latency, queue age, count, and health code. Strong recently authenticated
+operators can now start one audited durable rekey Job after staged primary
+promotion. A PostgreSQL fence rejects old-primary writes; stable bounded pages
+re-encrypt active delivery payloads and frozen fan-out bundles; Job checkpoints,
+idempotent reference-counted replacement, stale-attempt fencing, and a final
+zero-reference proof allow the named fallback to be retired safely across
+nodes. Product-transition mail remains unimplemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
@@ -291,9 +298,8 @@ desktop URL scheme while the client navigation contract remains undefined.
 The access and onboarding architecture is accepted. Existing installations
 now reconcile the protected `system_admin` Role with every current grantable
 action before serving traffic, preserving unknown downgrade actions and all
-custom Roles and bindings. Access Policy administration and discovery, browser
-authorization, identity reconciliation, Invitation, and batch workflows are
-not implemented.
+custom Roles and bindings. Browser authorization, identity reconciliation,
+Invitation, and batch workflows are not implemented.
 
 Bootstrap now requires a deployment-owned secret, rate-limits public proof attempts,
 and atomically creates the unverified first local administrator, protected
@@ -303,8 +309,24 @@ concurrent nodes, retains an exact replay outcome, and rejects conflicting
 reuse. Production bootstrap requires an explicit secret; explicit loopback
 development may generate and display a temporary value once while pristine,
 outside logs.
-Access Policy administration, transition history, provider selection, and
-public discovery remain unimplemented.
+Access Policy administration is implemented with a revision-fenced singleton,
+bounded transition history, safe deployment-capability preflight, atomic
+last-System-Administrator and invitation-mail guards, durable audit, and a
+content-free realtime revision signal. Public `GET /api/v1/discovery` exposes
+only the canonical origin, installation and Institution presentation, enabled
+capabilities and providers, policy revision, and desktop protocol bounds.
+Provider removal disappears from discovery without changing durable policy;
+restoring the stable provider ID makes it available again.
+Existing local-password login and password-recovery issuance/completion now
+fail closed against the current policy, with generic public outcomes.
+External initiation, identity resolution or auto-provisioning, and Session
+issuance require the exact selected provider ID. Each terminal operation
+rechecks the authoritative PostgreSQL policy in its committing transaction;
+protocol names are never used as provider-identity fallbacks. Detailed
+`linked_only`, `invitation_required`, and `auto_provision` admission behavior
+remains part of the later Invitation and identity-reconciliation slices.
+This is a reset-only pre-release baseline: there is no supported upgrade path
+for development rows whose external Sessions lack an exact provider ID.
 
 The first administrator always bootstraps one local account with a one-use
 deployment secret before mutable access policy can take effect. Thereafter a
@@ -397,8 +419,7 @@ contract is in [Execution environments](../architecture/execution.md).
 
 - Implement the accepted access-and-onboarding architecture in its documented
   order after scoped Academic Period ownership and protected initial policy:
-  Access Policy administration and discovery, browser authorization
-  transactions, local and external credential
+  browser authorization transactions, local and external credential
   reconciliation, durable typed Invitations, then bounded CSV batch workflows.
   Invitation-required activation and usable invite links remain gated on the
   mail foundation and hosted-page design system respectively.

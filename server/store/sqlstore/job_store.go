@@ -232,7 +232,9 @@ func (s SQLJobStore) ClaimNext(ctx context.Context, request *store.JobClaimReque
 			}
 		}
 		var row jobRow
-		if err = tx.Get(ctx, &row, `SELECT `+jobColumns+` FROM jobs WHERE status = 'queued' AND available_at <= ? AND attempt_count < maximum_attempts AND type = ANY(?) ORDER BY available_at, created_at, id FOR UPDATE SKIP LOCKED LIMIT 1`, databaseNow, pq.Array(types)); err != nil {
+		if err = tx.Get(ctx, &row, `SELECT `+jobColumns+` FROM jobs WHERE status = 'queued' AND available_at <= ? AND attempt_count < maximum_attempts AND type = ANY(?)
+			AND NOT EXISTS (SELECT 1 FROM job_attempts WHERE job_attempts.job_id = jobs.id AND job_attempts.node_id = ? AND job_attempts.status = 'incompatible')
+			ORDER BY available_at, created_at, id FOR UPDATE SKIP LOCKED LIMIT 1`, databaseNow, pq.Array(types), strings.TrimSpace(request.NodeID)); err != nil {
 			claimableErr := translateError("job", "claimable", err)
 			if errors.Is(err, sql.ErrNoRows) && len(expiredJobIDs) > 0 {
 				return &jobClaimTransactionOutcome{postCommitErr: claimableErr}, nil
@@ -378,6 +380,9 @@ func (s SQLJobStore) Complete(ctx context.Context, input *store.JobCompletion) (
 			} else {
 				updated, err = job.Fail(input.PublicErrorCode, databaseNow)
 			}
+		case store.JobCompletionRelinquished:
+			attemptStatus = model.JobAttemptStatusIncompatible
+			updated, err = job.Relinquish(input.PublicErrorCode, databaseNow.Add(input.RetryDelay), databaseNow)
 		case store.JobCompletionPermanentFailure:
 			attemptStatus = model.JobAttemptStatusFailed
 			updated, err = job.Fail(input.PublicErrorCode, databaseNow)
@@ -580,7 +585,8 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 			conditions = append(conditions, `(type = ? AND ((status IN ('succeeded', 'canceled') AND completed_at <= ?) OR (status = 'failed' AND completed_at <= ?)))`)
 			arguments = append(arguments, string(policy.Type), databaseNow.Add(-policy.SucceededCanceledAge), databaseNow.Add(-policy.FailedAge))
 		}
-		query := `SELECT id, completed_at FROM jobs WHERE id <> ? AND status IN ('succeeded', 'failed', 'canceled') AND completed_at IS NOT NULL`
+		query := `SELECT id, completed_at FROM jobs WHERE id <> ? AND status IN ('succeeded', 'failed', 'canceled') AND completed_at IS NOT NULL
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')`
 		if !input.AfterCompletedAt.IsZero() {
 			query += ` AND (completed_at > ? OR (completed_at = ? AND id > ?))`
 		}
@@ -604,7 +610,8 @@ func (s SQLJobStore) DeleteTerminalHistory(ctx context.Context, input *store.Job
 		if _, err = tx.Exec(ctx, `DELETE FROM job_attempts WHERE job_id = ANY(?)`, pq.Array(ids)); err != nil {
 			return nil, fmt.Errorf("delete retained job attempts: %w", err)
 		}
-		deleted, err := tx.Exec(ctx, `DELETE FROM jobs WHERE id = ANY(?) AND id <> ? AND status IN ('succeeded', 'failed', 'canceled')`, pq.Array(ids), input.ExcludeJobID.String())
+		deleted, err := tx.Exec(ctx, `DELETE FROM jobs WHERE id = ANY(?) AND id <> ? AND status IN ('succeeded', 'failed', 'canceled')
+			AND id <> COALESCE((SELECT active_rekey_job_id FROM mail_key_state WHERE singleton = TRUE), '')`, pq.Array(ids), input.ExcludeJobID.String())
 		if err != nil {
 			return nil, fmt.Errorf("delete retained jobs: %w", err)
 		}

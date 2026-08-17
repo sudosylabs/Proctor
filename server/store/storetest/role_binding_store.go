@@ -82,9 +82,47 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			t.Fatalf("EndWithAudit = %#v", ended)
 		}
 	})
+	t.Run("ScopedUserProjection", func(t *testing.T) {
+		ctx := context.Background()
+		institution := saveInstitution(t, ctx, ss)
+		root := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "binding-root")
+		child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), root.ID.String(), "binding-child")
+		sibling := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "binding-sibling")
+		programme := saveProgramme(t, ctx, ss, child.ID.String(), "binding-programme")
+		level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "binding-level")
+		period := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "binding-period", 1_800_000_000_000)
+		class := saveClass(t, ctx, ss, level.ID.String(), period.ID.String(), "binding-class")
+		user := saveUser(t, ctx, ss)
+		role, err := ss.Role().Save(ctx, &model.Role{Name: "binding-scope-reader", DisplayName: "Reader", Permissions: []string{string(model.ActionClassView)}})
+		requireNoError(t, err)
+		start := model.GetMillis()
+		bindings := make([]*model.RoleBinding, 0, 4)
+		for _, scope := range []struct {
+			type_ model.RoleScopeType
+			id    string
+		}{
+			{model.RoleScopeInstitution, institution.ID.String()},
+			{model.RoleScopeAcademicUnit, child.ID.String()},
+			{model.RoleScopeAcademicUnit, sibling.ID.String()},
+			{model.RoleScopeClass, class.ID.String()},
+		} {
+			saved, saveErr := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: user.ID, RoleID: role.ID, ScopeType: scope.type_, ScopeID: scope.id, StartsAt: model.TimeFromMillis(start)})
+			requireNoError(t, saveErr)
+			bindings = append(bindings, saved)
+		}
+		visible, err := ss.RoleBinding().ListVisibleByUser(ctx, user.ID.String(), store.UserVisibilityScope{AcademicUnitRootIDs: []string{root.ID.String()}})
+		requireNoError(t, err)
+		seen := map[model.RoleBindingID]bool{}
+		for _, binding := range visible {
+			seen[binding.ID] = true
+		}
+		if len(visible) != 2 || !seen[bindings[1].ID] || !seen[bindings[3].ID] || seen[bindings[0].ID] || seen[bindings[2].ID] {
+			t.Fatalf("scoped bindings = %#v", visible)
+		}
+	})
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
-	user := saveUser(t, ctx, ss)
+	user := saveUserWithPassword(t, ctx, ss)
 	role, err := ss.Role().Save(ctx, &model.Role{
 		Name: "class-reader", DisplayName: "Class Reader",
 		Permissions: []string{string(model.ActionClassView)},
@@ -152,7 +190,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	if _, err := ss.RoleBinding().End(ctx, firstAdmin.ID.String(), start+10); !store.IsConflict(err) {
 		t.Fatalf("End(last system administrator) error = %v", err)
 	}
-	secondUser := saveUser(t, ctx, ss)
+	secondUser := saveUserWithPassword(t, ctx, ss)
 	secondAdmin, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserID: secondUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
@@ -161,7 +199,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	if _, err := ss.RoleBinding().End(ctx, firstAdmin.ID.String(), start+10); err != nil {
 		t.Fatalf("End(system administrator with successor) error = %v", err)
 	}
-	thirdUser := saveUser(t, ctx, ss)
+	thirdUser := saveUserWithPassword(t, ctx, ss)
 	thirdAdmin, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserID: thirdUser.ID, RoleID: adminRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),

@@ -24,6 +24,7 @@ type App struct {
 	accountTokens                     *accountTokenService
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
 	authorization                     *accessControlService
+	accessPolicies                    *accessPolicyService
 	academicUnits                     *academicUnitQueryService
 	academicUnitCommands              *academicUnitCommandService
 	institutions                      *institutionService

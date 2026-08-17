@@ -49,6 +49,49 @@ func StoreTest(t *testing.T, test func(*testing.T, store.Store)) {
 	test(t, sqlStore)
 }
 
+func PristineStoreTest(t *testing.T, test func(*testing.T, store.Store)) {
+	t.Helper()
+	sqlStore := openTestStore(t)
+	resetPristineTestStore(t, sqlStore)
+	test(t, sqlStore)
+}
+
+func StoreTestWithAuthenticationPolicy(
+	t *testing.T,
+	providerAdmissions map[string]model.ProviderAdmissionMode,
+	test func(*testing.T, store.Store),
+) {
+	t.Helper()
+	sqlStore := openTestStore(t)
+	resetPristineTestStore(t, sqlStore)
+	seedTestAuthenticationPolicy(t, sqlStore, providerAdmissions)
+	test(t, sqlStore)
+}
+
+func seedTestAuthenticationPolicy(t *testing.T, sqlStore *SQLStore, providerAdmissions map[string]model.ProviderAdmissionMode) {
+	t.Helper()
+	if providerAdmissions == nil {
+		providerAdmissions = map[string]model.ProviderAdmissionMode{}
+	}
+	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.NowUTC())
+	encoded, err := json.Marshal(providerAdmissions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO access_policies (
+		singleton, id, revision, created_at, updated_at, local_login_enabled,
+		public_registration_enabled, invitation_admission_enabled,
+		invitation_local_credential_enabled, desktop_authorization_enabled,
+		provider_admissions
+	) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)`, policy.ID.String(), policy.Revision,
+		policy.CreatedAt, policy.UpdatedAt, policy.LocalLoginEnabled,
+		policy.PublicRegistrationEnabled, policy.InvitationAdmissionEnabled,
+		policy.InvitationLocalCredentialEnabled, policy.DesktopAuthorizationEnabled,
+		encoded); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func openTestStore(t *testing.T) *SQLStore {
 	t.Helper()
 	settings := testSettings(t)
@@ -82,15 +125,24 @@ func openTestStore(t *testing.T) *SQLStore {
 
 func resetTestStore(t *testing.T, sqlStore *SQLStore) {
 	t.Helper()
+	resetPristineTestStore(t, sqlStore)
+	seedTestAuthenticationPolicy(t, sqlStore, nil)
+}
+
+func resetPristineTestStore(t *testing.T, sqlStore *SQLStore) {
+	t.Helper()
 	_, err := sqlStore.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			mail_send_rate_limit, mail_payload_keys, mail_deliveries, mail_occurrences, job_attempts, job_permanent_occurrences, jobs, external_login_states, installation_states, access_policies, command_outcomes, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, file_legal_holds, upload_leases, file_renditions,
+			mail_send_rate_limit, mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, job_attempts, job_permanent_occurrences, jobs, external_login_states, installation_states, access_policy_transitions, access_policies, command_outcomes, audit_events, user_tokens, personal_access_tokens, session_credentials, sessions, file_legal_holds, upload_leases, file_renditions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users, file_revisions, file_entries,
 			classes, academic_periods, programme_levels, programmes,
 			academic_units, institutions CASCADE`)
 	if err != nil {
 		t.Fatalf("reset SQL store: %v", err)
+	}
+	if _, err = sqlStore.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`); err != nil {
+		t.Fatalf("restore mail key state singleton: %v", err)
 	}
 }
 

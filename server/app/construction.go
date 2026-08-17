@@ -31,6 +31,7 @@ type applicationFoundation struct {
 	invalidator *authenticationCacheInvalidator
 	realtime    *realtimeService
 	audit       *auditService
+	mailHealth  *MailHealth
 }
 
 type identityConstruction struct {
@@ -44,6 +45,8 @@ type identityConstruction struct {
 
 type accessAcademicConstruction struct {
 	authorization        *accessControlService
+	capabilities         accessPolicyCapabilitySource
+	accessPolicies       *accessPolicyService
 	academicUnits        *academicUnitQueryService
 	academicUnitCommands *academicUnitCommandService
 	institutions         *institutionService
@@ -159,6 +162,7 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 		invalidator: invalidator,
 		realtime:    realtime,
 		audit:       audit,
+		mailHealth:  newMailHealth(deps.MailDeliverySender.Enabled()),
 	}, nil
 }
 
@@ -180,6 +184,7 @@ func assembleApplication(
 		accountTokens:                     identity.accountTokens,
 		personalAccessTokenAdministration: identity.personalAccessTokenAdministration,
 		authorization:                     access.authorization,
+		accessPolicies:                    access.accessPolicies,
 		academicUnits:                     access.academicUnits,
 		academicUnitCommands:              access.academicUnitCommands,
 		institutions:                      access.institutions,

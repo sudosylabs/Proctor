@@ -37,7 +37,11 @@ func constructJobs(
 			return jobConstruction{}, err
 		}
 	}
-	definitions := buildApplicationJobDefinitions(deps, examinations, profiles, defaultJobs)
+	mailHealth := foundation.mailHealth
+	if mailHealth == nil {
+		mailHealth = newMailHealth(deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled())
+	}
+	definitions := buildApplicationJobDefinitions(deps, examinations, profiles, defaultJobs, mailHealth)
 	runtime, err := jobengine.New(jobengine.Config{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
 		Diagnostics:   deps.RecoveryDiagnostics,
@@ -62,6 +66,7 @@ func constructJobs(
 		if err != nil {
 			return jobConstruction{}, err
 		}
+		mailService.rekeyJobs = deps.Store.Job()
 		mailService.wake = runtime.Wake
 	}
 
@@ -77,26 +82,43 @@ func constructJobs(
 }
 
 type activeMailPayloadKeyStore interface {
-	ActivePayloadKeyIDs(context.Context) ([]string, error)
+	InspectKeyState(context.Context) (*store.MailKeyState, error)
 }
 
-func validateActiveMailPayloadKeys(ctx context.Context, persistence activeMailPayloadKeyStore, sealer interface{ HasKey(string) bool }) error {
+func validateActiveMailPayloadKeys(ctx context.Context, persistence activeMailPayloadKeyStore, sealer interface {
+	HasKey(string) bool
+	PrimaryKeyID() string
+}) error {
 	if persistence == nil {
 		return errors.New("mail payload-key persistence is unavailable")
 	}
-	keyIDs, err := persistence.ActivePayloadKeyIDs(ctx)
+	state, err := persistence.InspectKeyState(ctx)
 	if err != nil {
 		return fmt.Errorf("inspect active mail payload keys: %w", err)
 	}
-	if len(keyIDs) == 0 {
+	if state == nil {
+		return errors.New("mail payload-key state is unavailable")
+	}
+	if state.RequiredPrimaryKeyID != "" {
+		if sealer == nil {
+			return fmt.Errorf("required mail primary key %s is unavailable", state.RequiredPrimaryKeyID)
+		}
+		if primary := sealer.PrimaryKeyID(); primary != state.RequiredPrimaryKeyID && !state.PrimaryPromotionAllowed {
+			return fmt.Errorf("configured mail primary key %s does not match required primary key %s", primary, state.RequiredPrimaryKeyID)
+		}
+		if !sealer.HasKey(state.RequiredPrimaryKeyID) {
+			return fmt.Errorf("required mail primary key %s is unavailable", state.RequiredPrimaryKeyID)
+		}
+	}
+	if len(state.Active) == 0 {
 		return nil
 	}
 	if sealer == nil {
 		return errors.New("active mail payload key ring is unavailable")
 	}
-	for _, keyID := range keyIDs {
-		if !sealer.HasKey(keyID) {
-			return errors.New("active mail payload key is unavailable")
+	for _, usage := range state.Active {
+		if !sealer.HasKey(usage.KeyID) {
+			return fmt.Errorf("active mail payload key %s is unavailable for %d references", usage.KeyID, usage.ActiveReferences)
 		}
 	}
 	return nil
@@ -116,12 +138,11 @@ func buildApplicationJobDefinitions(
 	examinations examinationConstruction,
 	profiles profileFileConstruction,
 	defaultJobs *defaultProfilePictureJobProposer,
+	mailHealth *MailHealth,
 ) applicationJobDefinitions {
-	mailEnabled := false
-	if deps.MailDeliverySender != nil {
-		mailEnabled = deps.MailDeliverySender.Enabled()
+	if mailHealth == nil {
+		mailHealth = newMailHealth(deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled())
 	}
-	mailHealth := newMailHealth(mailEnabled)
 	defaultHandler := defaultProfilePictureHandler{generator: profiles.profilePictures}
 	reconciliationHandler := defaultProfilePictureReconciliationHandler{
 		users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
@@ -139,6 +160,7 @@ func buildApplicationJobDefinitions(
 		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
 		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
 		mailCleanupDescriptor(mailCleanupHandler{mail: deps.Store.Mail(), recorder: deps.MailDeliveryRecorder}),
+		mailRekeyDescriptor(mailRekeyHandler{mail: deps.Store.Mail(), sealer: deps.MailSecretSealer}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
 		examSittingSealingDescriptor(examSittingSealingHandler{service: sealingUseCases}),
 		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: lifecycleUseCases}),

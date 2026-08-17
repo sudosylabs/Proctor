@@ -150,6 +150,10 @@ type mailAuditPreparer interface {
 
 type mailService struct {
 	mail                    mailStore
+	rekey                   mailRekeyStarter
+	keyState                mailKeyInspector
+	rekeyJobs               mailRekeyJobReader
+	rekeyAudit              mutationAuditor
 	users                   mailUserStore
 	authorization           mailAuthorizer
 	audit                   mailAuditPreparer
@@ -170,7 +174,12 @@ func newMailService(mailStore mailStore, users mailUserStore, authorization mail
 	if sender.Enabled() && sealer == nil {
 		return nil, errors.New("enabled mail requires secret sealing")
 	}
-	return &mailService{mail: mailStore, users: users, authorization: authorization, audit: audit, attempts: attempts, renderer: renderer, sender: sender, metrics: metrics, sealer: sealer, recentAuthenticationTTL: recentTTL, now: now}, nil
+	rekey, _ := mailStore.(mailRekeyStarter)
+	keyState, _ := mailStore.(mailKeyInspector)
+	rekeyAudit, _ := audit.(mutationAuditor)
+	return &mailService{mail: mailStore, rekey: rekey, keyState: keyState, rekeyAudit: rekeyAudit, users: users,
+		authorization: authorization, audit: audit, attempts: attempts, renderer: renderer,
+		sender: sender, metrics: metrics, sealer: sealer, recentAuthenticationTTL: recentTTL, now: now}, nil
 }
 
 func (a *App) SendTestMail(ctx context.Context, invocation Invocation) (MailDeliveryView, error) {

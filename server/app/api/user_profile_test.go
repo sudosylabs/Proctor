@@ -250,6 +250,77 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	}
 }
 
+func TestUserSearchTransportPreservesIncludeDisabledRequestForApplicationAuthorization(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := model.Principal{
+		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now(),
+	}
+	profiles := &userProfileHTTPApplication{}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, userProfileResource(profiles))
+	for _, test := range []struct {
+		name            string
+		query           string
+		includeDisabled bool
+	}{
+		{name: "default", query: "?limit=10"},
+		{name: "explicit", query: "?limit=10&include_disabled=true", includeDisabled: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/users"+test.query, nil)
+			request.Header.Set("Authorization", "Bearer credential")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+			}
+			if profiles.searchQuery.IncludeDisabled != test.includeDisabled {
+				t.Fatalf("IncludeDisabled = %t, want %t", profiles.searchQuery.IncludeDisabled, test.includeDisabled)
+			}
+		})
+	}
+}
+
+func TestScopedUserProfileOmitsAccountAndSecurityFields(t *testing.T) {
+	t.Parallel()
+	encoded, err := json.Marshal(userProfileResponseFromModel(&model.User{
+		ID: model.NewUserID(), Username: "student", DisplayName: "Student",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"email", "email_verified", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at"} {
+		if _, exposed := fields[forbidden]; exposed {
+			t.Fatalf("scoped field %q exposed: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestFullUserProfileRetainsFalseEmailVerification(t *testing.T) {
+	t.Parallel()
+	encoded, err := json.Marshal(userProfileResponseFromModel(&model.User{
+		ID: model.NewUserID(), Username: "student", Email: "student@example.edu",
+		DisplayName: "Student", EmailVerified: false, Locale: "fr", Timezone: "Europe/Paris",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields["email_verified"]) != "false" {
+		t.Fatalf("full unverified profile = %s, want explicit email_verified=false", encoded)
+	}
+}
+
 func TestProfilePictureIfMatchRequiresOneCanonicalStrongETag(t *testing.T) {
 	checksum := strings.Repeat("a", 64)
 	for _, test := range []struct {

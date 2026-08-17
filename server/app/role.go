@@ -296,6 +296,38 @@ func (a roleAuthorization) AuthorizeRoleBindingInstitution(ctx context.Context, 
 	return a.authorizeInstitution(ctx, invocation, action)
 }
 
+func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocation Invocation, action model.Action) (store.UserVisibilityScope, error) {
+	constraint, err := a.authorization.authorizedScopes(ctx, invocation.Principal(), action, model.ResourceInstitution)
+	if err != nil {
+		return store.UserVisibilityScope{}, err
+	}
+	institution, err := a.institutions.GetSingleton(ctx)
+	if err != nil {
+		return store.UserVisibilityScope{}, roleError(err)
+	}
+	allowed := constraint.InstitutionWide || len(constraint.AcademicUnitRootIDs) > 0 || len(constraint.ClassIDs) > 0
+	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
+	scopeType, scopeID := model.RoleScopeInstitution, institution.ID.String()
+	if len(constraint.AcademicUnitRootIDs) > 0 {
+		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: constraint.AcademicUnitRootIDs[0]}
+		scopeType, scopeID = model.RoleScopeAcademicUnit, resource.ID
+	} else if len(constraint.ClassIDs) > 0 {
+		resource = model.Resource{Type: model.ResourceClass, ID: constraint.ClassIDs[0]}
+		scopeType, scopeID = model.RoleScopeClass, resource.ID
+	}
+	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed); err != nil {
+		return store.UserVisibilityScope{}, err
+	}
+	if !allowed {
+		return store.UserVisibilityScope{}, authorizationDeniedError("roleAuthorization.AuthorizeRoleBindingList")
+	}
+	return store.UserVisibilityScope{
+		InstitutionWide:     constraint.InstitutionWide,
+		AcademicUnitRootIDs: append([]string(nil), constraint.AcademicUnitRootIDs...),
+		ClassIDs:            append([]string(nil), constraint.ClassIDs...),
+	}, nil
+}
+
 func (a roleAuthorization) AuthorizeRoleBindingPreflight(ctx context.Context, invocation Invocation, action model.Action) error {
 	return a.authorization.authorizeRoleBindingPreflight(ctx, invocation, action)
 }

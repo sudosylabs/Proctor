@@ -101,6 +101,39 @@ func TestJobStore(t *testing.T, ss store.Store) {
 		t.Fatalf("ListAttempts() = %#v", attempts)
 	}
 
+	relinquishable := mustJob(t, "worker:incompatible", model.NowUTC().Add(-time.Minute))
+	_, _, err = ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: relinquishable})
+	requireNoError(t, err)
+	relinquishToken := mustClaimToken(t)
+	relinquishClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{relinquishable.Type}, NodeID: "old-primary-node", ClaimToken: relinquishToken, LeaseDuration: time.Minute})
+	requireNoError(t, err)
+	relinquished, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: relinquishClaim.Attempt.ID, ClaimToken: relinquishToken, Kind: store.JobCompletionRelinquished, RetryDelay: time.Millisecond, PublicErrorCode: "worker.capability_mismatch"})
+	requireNoError(t, err)
+	if relinquished.Status != model.JobStatusQueued || relinquished.AttemptCount != 1 ||
+		relinquished.MaximumAttempts != relinquishable.MaximumAttempts+1 ||
+		relinquished.MaximumAttempts-relinquished.AttemptCount != relinquishable.MaximumAttempts {
+		t.Fatalf("relinquished completion = %#v", relinquished)
+	}
+	time.Sleep(3 * time.Millisecond)
+	if _, err = ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{relinquishable.Type}, NodeID: "old-primary-node", ClaimToken: mustClaimToken(t), LeaseDuration: time.Minute}); !store.IsNotFound(err) {
+		t.Fatalf("incompatible node reclaimed relinquished Job: %v", err)
+	}
+	compatibleToken := mustClaimToken(t)
+	compatibleClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{relinquishable.Type}, NodeID: "new-primary-node", ClaimToken: compatibleToken, LeaseDuration: time.Minute})
+	requireNoError(t, err)
+	if compatibleClaim.Job.ID != relinquishable.ID {
+		t.Fatalf("compatible node claimed Job %s, want %s", compatibleClaim.Job.ID, relinquishable.ID)
+	}
+	_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: compatibleClaim.Attempt.ID, ClaimToken: compatibleToken,
+		Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+	requireNoError(t, err)
+	incompatibleAttempts, err := ss.Job().ListAttempts(ctx, relinquishable.ID)
+	requireNoError(t, err)
+	if len(incompatibleAttempts) != 2 || incompatibleAttempts[0].Status != model.JobAttemptStatusIncompatible ||
+		incompatibleAttempts[1].Status != model.JobAttemptStatusSucceeded {
+		t.Fatalf("relinquished attempt history = %#v", incompatibleAttempts)
+	}
+
 	crashed := mustJob(t, "user:crashed", model.NowUTC().Add(-time.Minute))
 	_, _, err = ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: crashed})
 	requireNoError(t, err)

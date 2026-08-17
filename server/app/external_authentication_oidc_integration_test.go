@@ -109,6 +109,9 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	oidcServer.SetIssuer(issuer)
 
 	persistence := openAuthenticationStore(t, dataSource)
+	seedAuthenticationAccessPolicy(t, persistence, map[string]model.ProviderAdmissionMode{
+		providerID: model.ProviderAdmissionAutoProvision,
+	})
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -239,6 +242,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil || len(sessions) != 1 ||
 		sessions[0].AuthenticationMethod !=
 			config.ExternalAuthenticationTypeOIDC ||
+		sessions[0].AuthenticationProviderID != providerID ||
 		sessions[0].AuthenticationStrength !=
 			model.AuthenticationMultiFactor {
 		t.Fatalf("OIDC session = %#v, %v", sessions, err)
@@ -296,8 +300,9 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	loginAudits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{
-			Action: "authentication.external_login",
-			Limit:  10,
+			Action:     "authentication.external_login",
+			Limit:      10,
+			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		},
 	)
 	if err != nil || len(loginAudits) != 2 {

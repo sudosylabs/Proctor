@@ -64,6 +64,9 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	defer casServer.Close()
 
 	persistence := openAuthenticationStore(t, dataSource)
+	seedAuthenticationAccessPolicy(t, persistence, map[string]model.ProviderAdmissionMode{
+		providerID: model.ProviderAdmissionAutoProvision,
+	})
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -224,14 +227,16 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	)
 	if err != nil || len(sessions) != 1 ||
 		sessions[0].AuthenticationMethod != "cas" ||
+		sessions[0].AuthenticationProviderID != providerID ||
 		sessions[0].AuthenticationStrength != model.AuthenticationMultiFactor {
 		t.Fatalf("external sessions = %#v, %v", sessions, err)
 	}
 	audits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{
-			ActorId: user.ID.String(),
-			Limit:   10,
+			ActorId:    user.ID.String(),
+			Limit:      10,
+			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		},
 	)
 	if err != nil || len(audits) != 2 {

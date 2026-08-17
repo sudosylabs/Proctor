@@ -15,6 +15,11 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
+// ErrAuthenticationMethodDisabled reports that the current Access Policy no
+// longer permits the authentication method at the terminal durable commit.
+// It intentionally carries no provider or account detail.
+var ErrAuthenticationMethodDisabled = errors.New("authentication method is disabled by current access policy")
+
 // ErrInvalidInput reports that a repository received a model in a state it
 // cannot persist.
 type ErrInvalidInput struct {

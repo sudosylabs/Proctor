@@ -14,6 +14,10 @@ func constructIdentity(
 	foundation applicationFoundation,
 	authorization *accessControlService,
 ) (identityConstruction, error) {
+	authenticationAccess, err := newCurrentAuthenticationAccessPolicy(deps.Store.AccessPolicy())
+	if err != nil {
+		return identityConstruction{}, err
+	}
 	mfaApplication, err := newMFAApplicationService(
 		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
 		mfaAuditAdapter{audit: foundation.audit}, foundation.realtime, foundation.mfa,
@@ -36,6 +40,7 @@ func constructIdentity(
 		deps.Store.PasswordCredential(),
 		deps.Store.Session(),
 		deps.Store.SessionCredential(),
+		authenticationAccess,
 		deps.Cache,
 		foundation.attempts,
 		foundation.realtime,
@@ -56,7 +61,8 @@ func constructIdentity(
 		return identityConstruction{}, err
 	}
 	accountTokens, err := newAccountTokenService(
-		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), deps.Store.Institution(),
+		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), authenticationAccess,
+		deps.Store.Institution(),
 		deps.Mailer, foundation.attempts, foundation.hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
 		foundation.realtime, deps.RecoveryDiagnostics, deps.AccountRecovery, deps.PublicURL,
 		model.NewCredentialToken, time.Now,
@@ -88,6 +94,7 @@ func constructIdentity(
 		deps.Store.Institution(),
 		deps.Store.ExternalIdentity(),
 		deps.Store.Session(),
+		authenticationAccess,
 		foundation.attempts,
 		authentication,
 		foundation.invalidator,

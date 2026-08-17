@@ -55,6 +55,9 @@ func (s SQLMailStore) EnqueueTest(ctx context.Context, input *store.MailTestEnqu
 		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
 	}
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error { return fmt.Errorf("commit test mail enqueue: %w", err) }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return nil, err
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO mail_occurrences (id, kind, template_key, actor_user_id, created_at) VALUES (?, ?, ?, ?, ?)`, input.Occurrence.ID.String(), string(input.Occurrence.Kind), string(input.Occurrence.TemplateKey), input.Occurrence.ActorUserID.String(), input.Occurrence.CreatedAt); err != nil {
 			return nil, fmt.Errorf("insert mail occurrence: %w", translateError("mail_occurrence", input.Occurrence.ID.String(), err))
 		}
@@ -72,6 +75,25 @@ func (s SQLMailStore) EnqueueTest(ctx context.Context, input *store.MailTestEnqu
 		}
 		return input.Delivery.Clone(), nil
 	})
+}
+
+// requireMailPayloadPrimary takes a shared lock on the durable primary-key
+// fence for the lifetime of the caller's transaction. StartRekey takes the
+// corresponding exclusive lock, so every encrypted insertion is ordered
+// wholly before or wholly after promotion: an old-primary transaction cannot
+// commit behind the rekey page scan or zero-reference proof.
+func requireMailPayloadPrimary(ctx context.Context, tx *sqlxTxWrapper, payloadKeyID string) error {
+	var requiredPrimary sql.NullString
+	if err := tx.Get(ctx, &requiredPrimary, `SELECT required_primary_key_id FROM mail_key_state WHERE singleton = TRUE FOR SHARE`); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return invalidPersistedState("mail_rekey", "key_state", errors.New("mail primary-key fence is missing"))
+		}
+		return fmt.Errorf("lock mail primary-key fence: %w", err)
+	}
+	if requiredPrimary.Valid && requiredPrimary.String != payloadKeyID {
+		return store.NewErrConflict("mail_delivery", "stale_primary_key", nil)
+	}
+	return nil
 }
 
 func validateMailTestEnqueue(input *store.MailTestEnqueue) error {

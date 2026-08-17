@@ -39,6 +39,16 @@ lease expiry. Heartbeat, checkpoint, and terminal updates require the current
 token. An expired lease is reclaimable, and a former worker cannot commit job
 state after losing its fence.
 
+A handler may relinquish an immutable command when the claiming node lacks a
+required deployment capability but another node can execute it. Relinquishment
+records an `Incompatible` Attempt, requeues with the descriptor's bounded
+backoff, restores the consumed failure-attempt budget, and excludes that stable
+node identity from claiming the same Job again. This prevents a mixed-version
+or mixed-key node from hot-looping, starving a capable peer, or terminating
+shared work. If no capable node exists, the Job remains durably queued and the
+incompatible Attempt is operator-visible; it does not silently succeed or
+exhaust its failure policy.
+
 Recurring and delayed work uses `AvailableAt`. A stable deduplication key and
 database unique constraint make one logical occurrence win even when every
 node proposes it; scheduling does not require cluster leadership. Priority is
@@ -72,10 +82,12 @@ Progress is optional `Current`, `Total`, and a closed safe Stage code. A
 percentage is derived only when the total is known. Bounded jobs checkpoint a
 cursor and counts so a retry can resume safely.
 
-Job Attempts use `Running`, `Succeeded`, `Failed`, `Canceled`, and
-`LeaseExpired`. Lease expiry records lost ownership rather than inventing a
-handler error. A handler returns one of `Succeeded`, `RetryableFailure`,
-`PermanentFailure`, or `Canceled`. Transient dependency failures retry;
+Job Attempts use `Running`, `Succeeded`, `Failed`, `Canceled`, `LeaseExpired`,
+and `Incompatible`. Lease expiry records lost ownership rather than inventing
+a handler error, while Incompatible records a safe capability mismatch that
+does not consume the failure-attempt budget. A handler returns one of
+`Succeeded`, `RetryableFailure`, `Relinquished`, `PermanentFailure`, or
+`Canceled`. Transient dependency failures retry;
 invalid payload versions, rejected content, invariant failures, and unsupported
 operations fail permanently. Panics are contained and retry with a safe code
 until the attempt limit is exhausted.

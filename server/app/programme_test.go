@@ -65,6 +65,13 @@ func (a *programmeAuthorizerFake) Authorize(_ context.Context, _ Invocation, act
 	return a.err
 }
 
+func (a *programmeAuthorizerFake) AuthorizeUserRead(_ context.Context, _ Invocation, userID string) error {
+	*a.events = append(*a.events, "authorize")
+	a.action = model.ActionUserView
+	a.resource = model.Resource{Type: model.ResourceUser, ID: userID}
+	return a.err
+}
+
 func (a *programmeAuthorizerFake) AuthorizePreflight(_ context.Context, _ Invocation, action model.Action, resourceType model.ResourceType) error {
 	*a.events = append(*a.events, "authorize-preflight")
 	a.action = action

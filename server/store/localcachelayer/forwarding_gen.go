@@ -12,6 +12,8 @@ import (
 )
 
 type localCacheStores struct {
+	accessPolicy             store.AccessPolicyStore
+	accessPolicyOnce         sync.Once
 	clusterDiscovery         store.ClusterDiscoveryStore
 	clusterDiscoveryOnce     sync.Once
 	examAttempt              store.ExamAttemptStore
@@ -88,6 +90,11 @@ type localCacheStores struct {
 	auditOnce                sync.Once
 	installation             store.InstallationStore
 	installationOnce         sync.Once
+}
+
+type accessPolicyStore struct {
+	store.AccessPolicyStore
+	layer *Layer
 }
 
 type clusterDiscoveryStore struct {
@@ -640,6 +647,16 @@ func (l *Layer) Installation() store.InstallationStore {
 	return l.stores.installation
 }
 
+func (l *Layer) AccessPolicy() store.AccessPolicyStore {
+	l.stores.accessPolicyOnce.Do(func() {
+		next := l.Store.AccessPolicy()
+		if next != nil {
+			l.stores.accessPolicy = &accessPolicyStore{AccessPolicyStore: next, layer: l}
+		}
+	})
+	return l.stores.accessPolicy
+}
+
 func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 	l.stores.clusterDiscoveryOnce.Do(func() {
 		next := l.Store.ClusterDiscovery()
@@ -662,6 +679,7 @@ func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
 
 var (
 	_ store.Store                     = (*Layer)(nil)
+	_ store.AccessPolicyStore         = (*accessPolicyStore)(nil)
 	_ store.ClusterDiscoveryStore     = (*clusterDiscoveryStore)(nil)
 	_ store.ExamAttemptStore          = (*examAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore = (*examAttemptWorkspaceStore)(nil)

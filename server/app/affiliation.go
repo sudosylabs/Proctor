@@ -41,6 +41,7 @@ type affiliationEnrollmentReader interface {
 
 type affiliationAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+	AuthorizeUserRead(context.Context, Invocation, string) error
 }
 
 type affiliationService struct {
@@ -62,11 +63,13 @@ func (a *App) ListAffiliations(ctx context.Context, invocation Invocation, query
 
 func (s *affiliationService) List(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
 	userID := strings.TrimSpace(query.UserID)
-	resource, err := s.authorizeUser(ctx, invocation, userID)
-	if err != nil {
+	if !model.IsValidId(userID) {
+		return nil, NewError("request.invalid").WithField("field", "user_id")
+	}
+	if err := s.authorization.AuthorizeUserRead(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
-	affiliations, err := s.store.ListByUser(ctx, resource.ID)
+	affiliations, err := s.store.ListByUser(ctx, userID)
 	if err != nil {
 		return nil, affiliationError(err)
 	}

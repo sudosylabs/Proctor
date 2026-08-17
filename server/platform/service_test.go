@@ -369,6 +369,7 @@ func TestAcceptRejectsClosedConfigurationListenerRegistration(t *testing.T) {
 }
 
 func (testStore) Institution() store.InstitutionStore                   { return nil }
+func (testStore) AccessPolicy() store.AccessPolicyStore                 { return nil }
 func (testStore) AcademicUnit() store.AcademicUnitStore                 { return nil }
 func (testStore) Programme() store.ProgrammeStore                       { return nil }
 func (testStore) ProgrammeLevel() store.ProgrammeLevelStore             { return nil }

@@ -31,6 +31,7 @@ type accountTokenService struct {
 	users        store.UserStore
 	passwords    store.PasswordCredentialStore
 	tokens       store.UserTokenStore
+	accessPolicy authenticationAccessPolicy
 	institutions store.InstitutionStore
 	mailer       AccountMailer
 	attempts     *authenticationAttemptAccounting
@@ -48,6 +49,7 @@ func newAccountTokenService(
 	users store.UserStore,
 	passwords store.PasswordCredentialStore,
 	tokens store.UserTokenStore,
+	accessPolicy authenticationAccessPolicy,
 	institutions store.InstitutionStore,
 	mailer AccountMailer,
 	attempts *authenticationAttemptAccounting,
@@ -67,6 +69,7 @@ func newAccountTokenService(
 		{users == nil, "user store"},
 		{passwords == nil, "password credential store"},
 		{tokens == nil, "user token store"},
+		{accessPolicy == nil, "authentication access policy"},
 		{institutions == nil, "institution store"},
 		{mailer == nil, "account mailer"},
 		{attempts == nil, "authentication attempt accounting"},
@@ -83,7 +86,7 @@ func newAccountTokenService(
 		}
 	}
 	return &accountTokenService{
-		users: users, passwords: passwords, tokens: tokens,
+		users: users, passwords: passwords, tokens: tokens, accessPolicy: accessPolicy,
 		institutions: institutions, mailer: mailer, attempts: attempts,
 		hasher: hasher, audit: audit, effects: effects, diagnostics: diagnostics,
 		policy: policy, publicURL: publicURL, newToken: newToken, now: now,

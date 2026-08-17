@@ -15,6 +15,8 @@ import (
 )
 
 type timedStores struct {
+	accessPolicy             store.AccessPolicyStore
+	accessPolicyOnce         sync.Once
 	clusterDiscovery         store.ClusterDiscoveryStore
 	clusterDiscoveryOnce     sync.Once
 	examAttempt              store.ExamAttemptStore
@@ -91,6 +93,11 @@ type timedStores struct {
 	auditOnce                sync.Once
 	installation             store.InstallationStore
 	installationOnce         sync.Once
+}
+
+type timedAccessPolicyStore struct {
+	layer *Layer
+	next  store.AccessPolicyStore
 }
 
 type timedClusterDiscoveryStore struct {
@@ -643,6 +650,16 @@ func (l *Layer) Installation() store.InstallationStore {
 	return l.stores.installation
 }
 
+func (l *Layer) AccessPolicy() store.AccessPolicyStore {
+	l.stores.accessPolicyOnce.Do(func() {
+		next := l.next.AccessPolicy()
+		if next != nil {
+			l.stores.accessPolicy = &timedAccessPolicyStore{layer: l, next: next}
+		}
+	})
+	return l.stores.accessPolicy
+}
+
 func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 	l.stores.clusterDiscoveryOnce.Do(func() {
 		next := l.next.ClusterDiscovery()
@@ -690,6 +707,24 @@ func (l *Layer) ValidateSchema(arg0 context.Context) error {
 func (l *Layer) Close() error {
 	return timeStoreCall0(l, storeOperation(aggregateStore, methodClose), func() error {
 		return l.next.Close()
+	})
+}
+
+func (s *timedAccessPolicyStore) Get(arg0 context.Context, arg1 int) (*store.AccessPolicySnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodGet), func() (*store.AccessPolicySnapshot, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedAccessPolicyStore) Preflight(arg0 context.Context, arg1 *store.AccessPolicyPreflight) ([]store.AccessPolicyBlocker, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodPreflight), func() ([]store.AccessPolicyBlocker, error) {
+		return s.next.Preflight(arg0, arg1)
+	})
+}
+
+func (s *timedAccessPolicyStore) Replace(arg0 context.Context, arg1 *store.AccessPolicyReplacement, arg2 *store.CommandIdempotency) (*store.AccessPolicyReplacementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAccessPolicy, methodReplace), func() (*store.AccessPolicyReplacementResult, error) {
+		return s.next.Replace(arg0, arg1, arg2)
 	})
 }
 
@@ -1377,6 +1412,36 @@ func (s *timedMailStore) ActivePayloadKeyIDs(arg0 context.Context) ([]string, er
 	})
 }
 
+func (s *timedMailStore) InspectKeyState(arg0 context.Context) (*store.MailKeyState, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodInspectKeyState), func() (*store.MailKeyState, error) {
+		return s.next.InspectKeyState(arg0)
+	})
+}
+
+func (s *timedMailStore) StartRekey(arg0 context.Context, arg1 *store.MailRekeyStart) (*store.MailRekeyOperation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodStartRekey), func() (*store.MailRekeyOperation, error) {
+		return s.next.StartRekey(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) ListRekeyTargets(arg0 context.Context, arg1 *store.MailRekeyTargetPageRequest) (*store.MailRekeyTargetPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodListRekeyTargets), func() (*store.MailRekeyTargetPage, error) {
+		return s.next.ListRekeyTargets(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) ReplaceRekeyTarget(arg0 context.Context, arg1 *store.MailRekeyReplacement) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodReplaceRekeyTarget), func() (bool, error) {
+		return s.next.ReplaceRekeyTarget(arg0, arg1)
+	})
+}
+
+func (s *timedMailStore) ProveRekey(arg0 context.Context, arg1 *store.MailRekeyProofRequest) (*store.MailRekeyProof, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMail, methodProveRekey), func() (*store.MailRekeyProof, error) {
+		return s.next.ProveRekey(arg0, arg1)
+	})
+}
+
 func (s *timedJobStore) Enqueue(arg0 context.Context, arg1 *store.JobEnqueue) (*model.Job, bool, error) {
 	return timeStoreCall2(s.layer, storeOperation(aggregateJob, methodEnqueue), func() (*model.Job, bool, error) {
 		return s.next.Enqueue(arg0, arg1)
@@ -1917,6 +1982,12 @@ func (s *timedUserStore) List(arg0 context.Context, arg1 store.UserListOptions) 
 	})
 }
 
+func (s *timedUserStore) MatchVisibility(arg0 context.Context, arg1 string, arg2 store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodMatchVisibility), func() (store.UserVisibilityMatch, error) {
+		return s.next.MatchVisibility(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedUserStore) UpdateProfileWithAudit(arg0 context.Context, arg1 *store.UserProfileUpdate) (*model.User, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodUpdateProfileWithAudit), func() (*model.User, error) {
 		return s.next.UpdateProfileWithAudit(arg0, arg1)
@@ -2415,6 +2486,12 @@ func (s *timedRoleBindingStore) ListByUser(arg0 context.Context, arg1 string) ([
 	})
 }
 
+func (s *timedRoleBindingStore) ListVisibleByUser(arg0 context.Context, arg1 string, arg2 store.UserVisibilityScope) ([]*model.RoleBinding, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodListVisibleByUser), func() ([]*model.RoleBinding, error) {
+		return s.next.ListVisibleByUser(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedRoleBindingStore) ListByScope(arg0 context.Context, arg1 model.RoleScopeType, arg2 string) ([]*model.RoleBinding, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodListByScope), func() ([]*model.RoleBinding, error) {
 		return s.next.ListByScope(arg0, arg1, arg2)
@@ -2483,6 +2560,7 @@ func (s *timedInstallationStore) ReconcileSystemAdministratorRole(arg0 context.C
 
 var (
 	_ store.Store                     = (*Layer)(nil)
+	_ store.AccessPolicyStore         = (*timedAccessPolicyStore)(nil)
 	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)
 	_ store.ExamAttemptStore          = (*timedExamAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore = (*timedExamAttemptWorkspaceStore)(nil)

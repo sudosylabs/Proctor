@@ -300,7 +300,7 @@ func runHandler(ctx context.Context, handler Handler, execution Execution) (outc
 }
 
 func (r *Engine) complete(ctx context.Context, descriptor Descriptor, claim *store.JobClaim, outcome Outcome) {
-	failureWithoutCode := (outcome.Kind == OutcomeRetryableFailure || outcome.Kind == OutcomePermanentFailure) && outcome.PublicErrorCode == ""
+	failureWithoutCode := (outcome.Kind == OutcomeRetryableFailure || outcome.Kind == OutcomeRelinquished || outcome.Kind == OutcomePermanentFailure) && outcome.PublicErrorCode == ""
 	if failureWithoutCode || !descriptor.SupportsPublicErrorCode(outcome.PublicErrorCode) {
 		outcome = PermanentFailure("job.outcome.invalid", errors.New("handler returned an undeclared public error code"))
 	}
@@ -315,6 +315,9 @@ func (r *Engine) complete(ctx context.Context, descriptor Descriptor, claim *sto
 		}
 	case OutcomeRetryableFailure:
 		completion.Kind = store.JobCompletionRetryableFailure
+		completion.RetryDelay = retryDelay(descriptor, claim.Job.ID, claim.Attempt.Number)
+	case OutcomeRelinquished:
+		completion.Kind = store.JobCompletionRelinquished
 		completion.RetryDelay = retryDelay(descriptor, claim.Job.ID, claim.Attempt.Number)
 	case OutcomePermanentFailure:
 		completion.Kind = store.JobCompletionPermanentFailure

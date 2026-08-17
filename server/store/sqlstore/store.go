@@ -107,6 +107,7 @@ type SQLStoreStores struct {
 	roleBinding          store.RoleBindingStore
 	audit                store.AuditStore
 	installation         store.InstallationStore
+	accessPolicy         store.AccessPolicyStore
 	clusterDiscovery     store.ClusterDiscoveryStore
 	commandOutcome       store.CommandOutcomeStore
 }
@@ -181,6 +182,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.roleBinding = newSQLRoleBindingStore(sqlStore)
 	sqlStore.stores.audit = newSQLAuditStore(sqlStore)
 	sqlStore.stores.installation = newSQLInstallationStore(sqlStore)
+	sqlStore.stores.accessPolicy = newSQLAccessPolicyStore(sqlStore)
 	sqlStore.stores.clusterDiscovery = newSQLClusterDiscoveryStore(sqlStore)
 	sqlStore.stores.commandOutcome = newSQLCommandOutcomeStore(sqlStore)
 	return sqlStore, nil
@@ -337,6 +339,10 @@ func (ss *SQLStore) Audit() store.AuditStore {
 
 func (ss *SQLStore) Installation() store.InstallationStore {
 	return ss.stores.installation
+}
+
+func (ss *SQLStore) AccessPolicy() store.AccessPolicyStore {
+	return ss.stores.accessPolicy
 }
 
 func (ss *SQLStore) ClusterDiscovery() store.ClusterDiscoveryStore {

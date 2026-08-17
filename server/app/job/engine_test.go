@@ -216,6 +216,33 @@ func TestEngineSchedulesRetryWithBoundedDeterministicBackoff(t *testing.T) {
 	}
 }
 
+func TestEngineRelinquishesIncompatibleWorkWithoutConsumingItsRetryBudget(t *testing.T) {
+	t.Parallel()
+	claim := jobRunnerClaim(t)
+	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome {
+		return Relinquished("worker.capability_mismatch", errors.New("another node owns the required capability"))
+	}))
+	descriptor.PublicErrorCodes = append(descriptor.PublicErrorCodes, "worker.capability_mismatch")
+	registry, err := NewRegistry([]Descriptor{descriptor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &jobRunnerStoreFake{}
+	runner, err := newTestEngine(persistence, registry, "node-old", &jobDiagnosticsFake{}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.execute(context.Background(), descriptor, claim)
+
+	persistence.mu.Lock()
+	defer persistence.mu.Unlock()
+	if persistence.completion == nil || persistence.completion.Kind != store.JobCompletionRelinquished ||
+		persistence.completion.PublicErrorCode != "worker.capability_mismatch" || persistence.completion.RetryDelay <= 0 {
+		t.Fatalf("relinquished completion = %#v", persistence.completion)
+	}
+}
+
 func TestEngineContainsPanicsAsRetryableOutcomes(t *testing.T) {
 	t.Parallel()
 	claim := jobRunnerClaim(t)

@@ -38,14 +38,25 @@ func (s *userProfileStoreFake) UpdateProfileWithAudit(_ context.Context, input *
 }
 
 type userProfileAuthorizerFake struct {
-	events   *[]string
-	readErr  error
-	writeErr error
+	events      *[]string
+	searchScope store.UserVisibilityScope
+	fullRead    bool
+	readErr     error
+	writeErr    error
 }
 
 func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error) {
 	*a.events = append(*a.events, "authorize-search")
+	if a.searchScope.InstitutionWide || a.searchScope.ClassMemberInstitutionWide ||
+		len(a.searchScope.AcademicUnitRootIDs) > 0 || len(a.searchScope.ClassMemberAcademicUnitRootIDs) > 0 ||
+		len(a.searchScope.ClassIDs) > 0 {
+		return a.searchScope, nil
+	}
 	return store.UserVisibilityScope{ClassIDs: []string{"class-a"}, ActiveAt: 100}, nil
+}
+func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, Invocation, string) (bool, error) {
+	*a.events = append(*a.events, "authorize-read")
+	return a.fullRead, a.readErr
 }
 func (a *userProfileAuthorizerFake) AuthorizeRead(context.Context, Invocation, string) error {
 	*a.events = append(*a.events, "authorize-read")
@@ -96,4 +107,95 @@ func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
 	if !reflect.DeepEqual(persistence.listOptions.Visibility.ClassIDs, []string{"class-a"}) {
 		t.Fatalf("visibility = %#v", persistence.listOptions.Visibility)
 	}
+}
+
+func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		scope store.UserVisibilityScope
+	}{
+		{name: "academic unit", scope: store.UserVisibilityScope{
+			AcademicUnitRootIDs: []string{model.NewAcademicUnitID().String()}, ActiveAt: 100,
+		}},
+		{name: "institution class members", scope: store.UserVisibilityScope{
+			ClassMemberInstitutionWide: true, ActiveAt: 100,
+		}},
+	} {
+		for _, includeDisabled := range []bool{false, true} {
+			events := []string{}
+			persistence := &userProfileStoreFake{events: &events}
+			service := newUserProfileService(
+				persistence,
+				&userProfileAuthorizerFake{events: &events, searchScope: test.scope},
+				&institutionAuditorFake{events: &events}, time.Now,
+			)
+			if _, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{
+				Limit: 10, IncludeDisabled: includeDisabled,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if persistence.listOptions.IncludeDisabled {
+				t.Fatalf("%s scoped IncludeDisabled=%t reached persistence as true", test.name, includeDisabled)
+			}
+		}
+	}
+
+	events := []string{}
+	persistence := &userProfileStoreFake{events: &events}
+	service := newUserProfileService(
+		persistence,
+		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{InstitutionWide: true}},
+		&institutionAuditorFake{events: &events}, time.Now,
+	)
+	if _, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{
+		Limit: 10, IncludeDisabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !persistence.listOptions.IncludeDisabled {
+		t.Fatal("institution-wide IncludeDisabled=true was not preserved")
+	}
+}
+
+func TestScopedUserSearchReturnsOnlySafeDirectoryFields(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	user := &model.User{
+		ID: model.NewUserID(), Username: "student", Email: "private@example.edu", EmailVerified: true,
+		DisplayName: "Student", FirstName: "Private", LastName: "Person", Locale: "fr", Timezone: "Europe/Paris",
+		LastLoginAt: model.OptionalTimeFromMillis(100), LastActivityAt: model.OptionalTimeFromMillis(200),
+		DisabledAt: model.OptionalTimeFromMillis(300),
+	}
+	persistence := &userProfileStoreFake{events: &events, current: user}
+	service := newUserProfileService(
+		&userProfileSearchStoreFake{userProfileStoreFake: persistence, values: []*model.User{user}},
+		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{AcademicUnitRootIDs: []string{model.NewId()}, ActiveAt: 100}},
+		&institutionAuditorFake{events: &events}, time.Now,
+	)
+	users, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || users[0].Username != "student" || users[0].DisplayName != "Student" ||
+		users[0].Email != "" || users[0].EmailVerified || users[0].Locale != "" || users[0].Timezone != "" ||
+		users[0].LastLoginAt.Valid || users[0].LastActivityAt.Valid || users[0].DisabledAt.Valid ||
+		users[0].DefaultProfilePictureSeed != "" || !users[0].DefaultProfilePictureFileID.IsZero() ||
+		!users[0].CustomProfilePictureFileID.IsZero() {
+		t.Fatalf("scoped projection = %#v", users)
+	}
+	if user.Email != "private@example.edu" || !user.EmailVerified {
+		t.Fatal("scoped projection mutated the persisted User")
+	}
+}
+
+type userProfileSearchStoreFake struct {
+	*userProfileStoreFake
+	values []*model.User
+}
+
+func (s *userProfileSearchStoreFake) List(_ context.Context, options store.UserListOptions) ([]*model.User, error) {
+	*s.events = append(*s.events, "list-users")
+	s.listOptions = options
+	return s.values, nil
 }

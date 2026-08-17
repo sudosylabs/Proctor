@@ -17,7 +17,7 @@ import (
 
 func TestInstallationCanonicalIDConstraints(t *testing.T) {
 	persistence := openTestStore(t)
-	resetTestStore(t, persistence)
+	resetPristineTestStore(t, persistence)
 	ctx := context.Background()
 
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{

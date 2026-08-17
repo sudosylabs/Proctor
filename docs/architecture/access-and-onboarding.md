@@ -114,15 +114,41 @@ eligibility after validation.
 Every terminal login, recovery, invitation, identity-link, and desktop-code
 exchange rechecks current policy. Updates use expected revision and a preflight
 that describes safe blockers, then recheck invariants atomically at commit.
+Access Policy replacement, User disablement, and ending a `system_admin`
+binding share one PostgreSQL transaction fence. While holding it, each
+path-removing mutation re-reads current policy and counts only active
+administrators with an unarchived password permitted by local-login policy or
+an unarchived External Identity for an exact policy-enabled provider present
+in the immutable current validated deployment-capability snapshot supplied by
+the application. A node that omits a provider fails closed for that external
+path; durable policy and identity entries remain intact so restoring the same
+provider ID restores eligibility. Concurrent mutations therefore cannot each
+validate against a path the other removes.
+Each authorized replacement records a durable attempt before mutation;
+revision, blocker, persistence, and idempotency failures complete that attempt
+as failed, while fresh success and exact replay complete their respective
+attempts atomically with the retained outcome. Replay audit identifies the
+original attempt without re-emitting Session-revocation effects.
 Disabling an authentication method prevents new use and accepts an explicit
 choice whether to revoke existing Sessions authenticated by that method. It
-does not silently couple planned maintenance to Session revocation.
+does not silently couple planned maintenance to Session revocation. The
+preflight and replacement request field is `revoke_existing_sessions`; it is a
+one-shot transition choice included in idempotency, audit, and history rather
+than a persisted policy setting. When selected, the policy replacement and
+revocation of active Sessions authenticated by methods newly disabled by that exact
+transition commit atomically; Sessions using retained methods are untouched.
+External Sessions therefore retain both their method or protocol and the
+immutable configured provider ID. Only local Sessions keep an empty provider
+ID. Proctor has no released schema requiring an upgrade from protocol-only
+external Sessions: the pre-release baseline is resettable, and development
+databases using an earlier shape must be recreated. Runtime policy and
+revocation never guess a provider ID from `authentication_method`.
 
 Policy changes commit before cache invalidation and a content-free realtime
 event carrying only the new revision. PostgreSQL remains authoritative on every
 node. Mail outage after activation degrades the mail subsystem; enabling
-invitation-required admission is rejected when no durable invitation-delivery
-path is configured.
+invitation-required admission is rejected unless a durable
+invitation-delivery path is configured and healthy.
 
 ## Public discovery and server origin
 
@@ -136,6 +162,11 @@ A versioned same-origin public discovery document returns only:
 - Access Policy revision and available authentication capabilities;
 - enabled providers with ID, display name, and type;
 - supported desktop-authorization protocol and compatibility bounds.
+
+The v1 public document is `GET /api/v1/discovery`. Administrative policy read,
+preflight, and revision-fenced replacement are respectively
+`GET /api/v1/access-policy`, `POST /api/v1/access-policy/preflight`, and
+`PUT /api/v1/access-policy`; the replacement requires `Idempotency-Key`.
 
 The client pins the canonical origin for the complete transaction and refuses
 mix-up with another installation or issuer. Discovery never returns provider

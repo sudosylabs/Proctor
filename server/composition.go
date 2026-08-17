@@ -193,7 +193,7 @@ func composeConsumers(
 		Classes: application, Affiliations: application, AcademicUnitMembers: application,
 		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
 		SessionAdministrations: application, Roles: application, RoleBindings: application,
-		AuditListings: application, Bootstrap: application, BuildInfo: buildInfo,
+		AuditListings: application, Bootstrap: application, AccessPolicy: application, BuildInfo: buildInfo,
 		Mail:      application,
 		PublicURL: snapshot.Server.PublicURL, MaxBodyBytes: snapshot.Server.MaxBodyBytes,
 		RecentAuthenticationTTL: snapshot.Authentication.RecentAuthenticationTTL.Duration,

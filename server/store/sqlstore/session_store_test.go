@@ -18,7 +18,7 @@ func TestSessionRowConversion(t *testing.T) {
 		ID: model.NewSessionID(), CreatedAt: now, UpdatedAt: now.Add(time.Millisecond),
 		ArchivedAt: model.OptionalTimeFrom(now.Add(2 * time.Millisecond)),
 		UserID:     model.NewUserID(), ClientType: model.SessionClientDesktop,
-		DeviceID: "device", DeviceName: "Device", AuthenticationMethod: "password",
+		DeviceID: "device", DeviceName: "Device", AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc",
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt:        now,
 		LastActivityAt:         now.Add(4 * time.Millisecond),
@@ -37,7 +37,7 @@ func TestSessionRowConversion(t *testing.T) {
 		!got.UpdatedAt.Equal(session.UpdatedAt) ||
 		got.ArchivedAt.Millis() != session.ArchivedAt.Millis() ||
 		got.UserID != session.UserID ||
-		got.DeviceID != session.DeviceID ||
+		got.DeviceID != session.DeviceID || got.AuthenticationProviderID != session.AuthenticationProviderID ||
 		!got.AuthenticatedAt.Equal(session.AuthenticatedAt) ||
 		got.RevokedAt.Millis() != session.RevokedAt.Millis() ||
 		got.RevocationReason != session.RevocationReason {
@@ -88,6 +88,7 @@ func TestSessionRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		{name: "session id", row: replaceSessionRow(valid, func(row *sessionRow) { row.ID = "bad" }), field: "id"},
 		{name: "user id", row: replaceSessionRow(valid, func(row *sessionRow) { row.UserID = "bad" }), field: "user_id"},
 		{name: "domain state", row: replaceSessionRow(valid, func(row *sessionRow) { row.ClientType = "unknown" }), field: "client_type"},
+		{name: "provider identity", row: replaceSessionRow(valid, func(row *sessionRow) { row.AuthenticationProviderID = ".bad" }), field: "authentication_provider_id"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

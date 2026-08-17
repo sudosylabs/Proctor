@@ -116,7 +116,10 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	if len(durable.EncryptedPayload) != 0 || !durable.AcceptedAt.Valid {
 		t.Fatalf("accepted durable delivery retained recoverable payload: %#v", durable)
 	}
-	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{Action: string(model.ActionMailManage), Limit: 10})
+	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
+		Action: string(model.ActionMailManage), Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+	})
 	foundMutationAudit := false
 	for _, event := range audits {
 		if event.Resource.Type == model.ResourceMailDelivery && event.Resource.ID == queued.ID.String() && event.Status == model.AuditStatusSuccess {

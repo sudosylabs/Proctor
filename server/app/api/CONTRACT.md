@@ -43,6 +43,76 @@ OpenAPI entry omitted: invalid origin (403) and unavailable WebSocket service
 (503). Their declaration is an additive documentation correction for existing
 runtime behavior, not a new failure mode.
 
+## Access Policy and public discovery
+
+`GET /api/v1/discovery` is the versioned, unauthenticated, same-origin server
+discovery document. It returns only the canonical origin, installation and
+Institution presentation, current policy revision, enabled public capability
+flags, safe provider descriptors selected by both live deployment configuration
+and Access Policy, and the supported desktop-authorization protocol range. It
+never returns provider admission rules, local-invitation credential policy,
+mail capability, secrets, redirect URIs, claim rules, or recipient data. The
+response is `no-store`.
+
+`GET /api/v1/auth/providers` applies the same current-policy selection to the
+live configured provider catalog. Configured but policy-disabled providers are
+omitted; a policy read failure fails closed with `authentication.internal`
+rather than returning the deployment catalog.
+
+`GET /api/v1/access-policy` requires `access_policy.view` and returns the full
+policy, at most the newest 100 applied transition facts, and safe live provider
+and durable-mail capability metadata. Personal Access Tokens are forbidden by
+the action definition. `POST /api/v1/access-policy/preflight` and
+`PUT /api/v1/access-policy` require an interactive strong, recently
+authenticated Session and `access_policy.manage`; both accept the same complete
+closed settings object whose booleans and `provider_admissions` are required
+and non-null, exact positive `expected_revision`, and required
+one-shot `revoke_existing_sessions` choice. The replacement also requires
+`Idempotency-Key`; exact lost-response replay returns the retained response
+before current-revision checks, while reuse with different settings or a
+different revocation choice is an idempotency conflict.
+
+Preflight reports a non-null blocker list without mutation. Replacement repeats
+the blocker and revision checks in the authoritative PostgreSQL transaction,
+commits the durable audit and bounded transition history with the singleton
+policy, and only then publishes a best-effort realtime event containing the new
+revision. Stable blocker codes cover unavailable providers, unsupported
+auto-provisioning, disabled or unhealthy durable invitation delivery, and loss of the
+last usable System Administrator login path. Provider and mail deployment
+configuration remain process-owned and secrets never enter these DTOs.
+
+## Scoped User and audit visibility
+
+`GET /api/v1/users` and `GET /api/v1/users/{user_id}` derive directory
+visibility from current Academic Unit membership, Class membership, or Role
+Binding within the caller's authorized subtree. Search, keyset pagination, and
+exact reads apply that subtree constraint in PostgreSQL. A scoped directory
+projection retains only the User identity needed for academic administration;
+email and verification state, locale and timezone, login/activity state, and
+disabled state remain available only to the User themself or institution-wide
+`user.view`. Scoped search matches only fields present in that directory
+projection, so omitted email cannot become a lookup oracle. Visibility grants
+no `user.manage`, account-disable, credential, MFA, external-provider, or
+settings authority. Disabled Users are absent from scoped search, exact-profile,
+and profile-picture reads; `include_disabled=true` is honored only for
+institution-wide visibility and therefore cannot reveal scoped disablement.
+
+Affiliation history may be read only after the same contextual User check.
+Per-User Role Binding history is filtered to authorized Academic Unit
+descendants and Classes; Institution and sibling bindings are omitted.
+
+`GET /api/v1/audits` preserves full installation history for institution-wide
+`audit.view`. `academic_audit.view` instead constrains the query in PostgreSQL
+to academic, Invitation, onboarding-batch, Role Binding, and User-visibility
+decisions whose recorded scope resolves to an authoritative Academic Unit or
+Class. An Academic Unit grant remains subtree-only. An Institution grant spans
+all academic scopes but retains that scope-type fence and the closed academic
+action catalog; it does not become `audit.view`. Sibling events are excluded
+for subtree grants, and unrelated account, credential, MFA, provider, mail,
+and security events are always excluded. The response also omits Session,
+request, node, authentication, IP-address, User-Agent, and private audit-value
+metadata.
+
 ## Ownership and extension workflow
 
 `api.New` is the production construction boundary. Its broad `Options` value
@@ -411,6 +481,35 @@ The OpenAPI document describes the wire contract only. It does not generate or
 dictate domain models, application commands, persistence rows, or handlers.
 
 ## Controlled transactional-mail tracer
+
+`GET /api/v1/mail/keys` requires `mail.rekey` and a strong, recently
+authenticated interactive Session. It returns only the configured primary key
+identity, the durable required-primary fence when one exists, and a bounded
+list of active key identities with aggregate reference counts. PATs cannot
+satisfy the route. Ciphertext, plaintext, key material, envelope metadata,
+recipient data, and payload identities are never projected.
+
+`POST /api/v1/mail/rekey` requires the same `mail.rekey` authorization and
+strong-recent Session assurance, accepts exactly one `retiring_key_id`, and
+returns `202` with the safe durable Job identity, primary and retiring key
+identities, and creation time. The command, audit event, required-primary
+write fence, and Job commit atomically before workers are woken. The critical
+audit attempt is persisted before the Store mutation; successful terminal
+completion is part of that same Job-and-fence transaction, while conflicts or
+persistence failures complete the attempt separately and fail closed. A
+concurrent rotation returns `mail.rekey.conflict`; unknown, malformed, or
+current-primary retiring identities return `mail.rekey.invalid`. The request
+and response never carry encryption key material.
+
+`GET /api/v1/mail/rekey/{job_id}` requires the same `mail.rekey` authorization
+and strong-recent Session assurance. It returns the closed Job state and safe
+timestamps, attempt policy, primary and retiring key identities, processed and
+re-encrypted aggregate counts, optional typed `reencrypting` progress, and a
+typed zero-reference retirement proof only after success. It never returns raw
+Job command, checkpoint, or result documents, key material, ciphertext,
+payload identities, recipients, or rendered message content. An incompatible
+old-primary worker Attempt remains available through the ordinary Job Attempt
+history as a safe capability diagnostic.
 
 `POST /api/v1/mail/test` accepts no request body, recipient, or message copy.
 It requires a recent interactive Session and `mail.manage`, and returns `202`

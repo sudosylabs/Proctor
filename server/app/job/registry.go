@@ -53,6 +53,7 @@ type OutcomeKind string
 const (
 	OutcomeSucceeded        OutcomeKind = "succeeded"
 	OutcomeRetryableFailure OutcomeKind = "retryable_failure"
+	OutcomeRelinquished     OutcomeKind = "relinquished"
 	OutcomePermanentFailure OutcomeKind = "permanent_failure"
 	OutcomeCanceled         OutcomeKind = "canceled"
 )
@@ -67,6 +68,13 @@ type Outcome struct {
 
 func RetryableFailure(code string, err error) Outcome {
 	return Outcome{Kind: OutcomeRetryableFailure, PublicErrorCode: code, Err: err}
+}
+
+// Relinquished reports that the claiming node cannot execute the immutable
+// command, while another compatible node may. The attempt remains visible but
+// does not consume the Job's failure-attempt budget.
+func Relinquished(code string, err error) Outcome {
+	return Outcome{Kind: OutcomeRelinquished, PublicErrorCode: code, Err: err}
 }
 
 func PermanentFailure(code string, err error) Outcome {

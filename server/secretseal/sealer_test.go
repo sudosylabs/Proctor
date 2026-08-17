@@ -80,6 +80,23 @@ func TestSealerRoundTripUsesVersionedNondeterministicEnvelope(t *testing.T) {
 	}
 }
 
+func TestSealerProjectsOnlyPrimaryKeyIdentity(t *testing.T) {
+	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: encodedKey(9), MaximumPlaintext: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := sealer.Seal(secretseal.Binding{Purpose: "mail.delivery", Owner: "delivery_01"}, []byte("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sealer.PrimaryKeyID() != envelope.KeyID || sealer.PrimaryKeyID() == "" {
+		t.Fatalf("PrimaryKeyID() = %q, envelope key = %q", sealer.PrimaryKeyID(), envelope.KeyID)
+	}
+	if (*secretseal.Sealer)(nil).PrimaryKeyID() != "" {
+		t.Fatal("nil sealer exposed a primary key identity")
+	}
+}
+
 func TestOpenRejectsWrongBindingAndInvalidEnvelopeWithSafeErrors(t *testing.T) {
 	t.Parallel()
 

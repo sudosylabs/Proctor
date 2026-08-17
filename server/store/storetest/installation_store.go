@@ -30,7 +30,10 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if pristine == nil || pristine.Changed || pristine.Role != nil || len(pristine.AddedPermissions) != 0 {
 		t.Fatalf("ReconcileSystemAdministratorRole(pristine) = %#v", pristine)
 	}
-	if events, err := ss.Audit().List(ctx, store.AuditListOptions{Action: "role.system_admin.reconcile", Limit: 10}); err != nil || len(events) != 0 {
+	if events, err := ss.Audit().List(ctx, store.AuditListOptions{
+		Action: "role.system_admin.reconcile", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+	}); err != nil || len(events) != 0 {
 		t.Fatalf("pristine reconciliation audit events=%#v error=%v", events, err)
 	}
 	mismatched := testInstallationBootstrap(97)
@@ -47,7 +50,10 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if _, err := ss.Job().Get(ctx, mismatched.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
 		t.Fatalf("mismatched bootstrap Job was persisted: %v", err)
 	}
-	if events, err := ss.Audit().List(ctx, store.AuditListOptions{Action: "installation.bootstrap", Limit: 10}); err != nil || len(events) != 0 {
+	if events, err := ss.Audit().List(ctx, store.AuditListOptions{
+		Action: "installation.bootstrap", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+	}); err != nil || len(events) != 0 {
 		t.Fatalf("bootstrap audit survived mismatched Job rollback: events=%#v error=%v", events, err)
 	}
 	permanent := testInstallationBootstrap(98)
@@ -187,6 +193,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	}
 	events, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "installation.bootstrap", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	requireNoError(t, err)
 	if len(events) != 1 ||
@@ -265,6 +272,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	}
 	reconciliationEvents, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "role.system_admin.reconcile", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	requireNoError(t, err)
 	if len(reconciliationEvents) != 1 ||
@@ -294,6 +302,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	}
 	reconciliationEvents, err = ss.Audit().List(ctx, store.AuditListOptions{
 		Action: "role.system_admin.reconcile", Limit: 10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	requireNoError(t, err)
 	if len(reconciliationEvents) != 1 {

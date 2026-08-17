@@ -255,6 +255,44 @@ func TestRequestPasswordResetPreservesGenericResponseAndIssuedToken(t *testing.T
 	}
 }
 
+func TestRequestPasswordResetReportsMailUnavailableWhenLocalLoginRemainsEnabled(t *testing.T) {
+	t.Parallel()
+
+	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
+		users: &accountTokenUserStoreFake{}, passwords: &accountTokenPasswordStoreFake{},
+		tokens: &accountTokenStoreFake{}, institution: &model.Institution{ID: model.NewInstitutionID()},
+		mailer: &accountTokenMailerFake{enabled: false},
+	})
+	err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
+		Email: "student@example.edu", Source: "192.0.2.10",
+	})
+	if !Is(err, "authentication.account_recovery.unavailable") {
+		t.Fatalf("enabled-local disabled-mail error = %v", err)
+	}
+}
+
+func TestRequestPasswordResetIsGenericAndInertWhenCurrentPolicyDisablesLocalLogin(t *testing.T) {
+	t.Parallel()
+
+	user := &model.User{ID: model.NewUserID(), Email: "student@example.edu"}
+	tokens := &accountTokenStoreFake{}
+	mailer := &accountTokenMailerFake{enabled: false}
+	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
+		users: &accountTokenUserStoreFake{byEmail: user}, passwords: &accountTokenPasswordStoreFake{
+			credential: &model.PasswordCredential{UserID: user.ID},
+		}, tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
+		accessPolicy: authenticationAccessPolicyFake{local: false},
+	})
+	if err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
+		Email: user.Email, Source: "192.0.2.7",
+	}); err != nil {
+		t.Fatalf("disabled local recovery exposed failure: %v", err)
+	}
+	if tokens.issued != nil || len(mailer.messages) != 0 {
+		t.Fatalf("disabled local recovery issued=%#v messages=%#v", tokens.issued, mailer.messages)
+	}
+}
+
 func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 	t.Parallel()
 
@@ -310,6 +348,24 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 	}
 }
 
+func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t *testing.T) {
+	t.Parallel()
+
+	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
+		users: &accountTokenUserStoreFake{}, passwords: &accountTokenPasswordStoreFake{},
+		tokens: &accountTokenStoreFake{consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
+			return nil, store.ErrAuthenticationMethodDisabled
+		}},
+		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &accountTokenMailerFake{enabled: true},
+	})
+	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
+		Token: accountTokenTestRawToken, Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.8",
+	})
+	if result != nil || !Is(err, "authentication.account_token.invalid") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
 func TestAccountTokenCompletionConcealsTerminalTokenStates(t *testing.T) {
 	t.Parallel()
 
@@ -356,16 +412,17 @@ func TestAccountTokenCompletionRejectsMalformedCredentialGenerically(t *testing.
 const accountTokenTestRawToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 type accountTokenTestDependencies struct {
-	users       store.UserStore
-	passwords   store.PasswordCredentialStore
-	tokens      store.UserTokenStore
-	institution *model.Institution
-	mailer      AccountMailer
-	effects     accountTokenEffects
-	hasher      accountTokenPasswordHasher
-	attempts    *authenticationAttemptAccounting
-	rateLimit   LoginRateLimitPolicy
-	now         func() time.Time
+	users        store.UserStore
+	passwords    store.PasswordCredentialStore
+	tokens       store.UserTokenStore
+	institution  *model.Institution
+	mailer       AccountMailer
+	effects      accountTokenEffects
+	hasher       accountTokenPasswordHasher
+	attempts     *authenticationAttemptAccounting
+	rateLimit    LoginRateLimitPolicy
+	now          func() time.Time
+	accessPolicy authenticationAccessPolicy
 }
 
 func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *App {
@@ -389,10 +446,14 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 	if deps.now == nil {
 		deps.now = func() time.Time { return time.UnixMilli(1) }
 	}
+	if deps.accessPolicy == nil {
+		deps.accessPolicy = allowAllAuthenticationAccessPolicy()
+	}
 	service, err := newAccountTokenService(
 		deps.users,
 		deps.passwords,
 		deps.tokens,
+		deps.accessPolicy,
 		&accountTokenInstitutionStoreFake{institution: deps.institution},
 		deps.mailer,
 		deps.attempts,
@@ -575,7 +636,7 @@ func validAccountTokenConstructorArgs() accountTokenConstructorArgs {
 
 func (a accountTokenConstructorArgs) build() (*accountTokenService, error) {
 	return newAccountTokenService(
-		a.users, a.passwords, a.tokens, a.institutions, a.mailer, a.attempts,
+		a.users, a.passwords, a.tokens, allowAllAuthenticationAccessPolicy(), a.institutions, a.mailer, a.attempts,
 		a.hasher, a.audit, a.effects, a.diagnostics, AccountRecoveryPolicy{},
 		"https://proctor.example.edu", a.newToken, time.Now,
 	)

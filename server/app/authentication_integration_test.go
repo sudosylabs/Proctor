@@ -46,6 +46,7 @@ func (*failingBroadcastCluster) SendToNode(context.Context, string, *cluster.Mes
 func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 	dataSource := requireAuthenticationDatabase(t)
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithStore(persistence),
@@ -100,6 +101,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithStore(persistence),
@@ -288,7 +290,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	}
 	audits, err := persistence.Audit().List(
 		context.Background(),
-		store.AuditListOptions{Limit: 200},
+		store.AuditListOptions{Limit: 200, Visibility: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -377,6 +379,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -637,6 +640,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -785,6 +789,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
@@ -1293,7 +1298,7 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore
 	}
 	if _, err := persistence.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
-			mail_payload_keys, external_login_states, installation_states, access_policies, audit_events, mfa_recovery_codes, mfa_credentials,
+			mail_key_state, mail_fanout_bundles, mail_payload_keys, external_login_states, installation_states, access_policy_transitions, access_policies, audit_events, mfa_recovery_codes, mfa_credentials,
 			user_tokens, personal_access_tokens, session_credentials, sessions,
 			role_bindings, roles, class_members, academic_unit_members,
 			affiliations, password_credentials, external_identities, users,
@@ -1302,5 +1307,47 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore
 		_ = persistence.Close()
 		t.Fatal(err)
 	}
+	if _, err := persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`); err != nil {
+		_ = persistence.Close()
+		t.Fatal(err)
+	}
 	return persistence
+}
+
+// seedInitialAuthenticationAccessPolicy is for older real-graph fixtures that
+// deliberately build their Institution and Users directly instead of running
+// the installation bootstrap aggregate. Authentication is still exercised
+// against an authoritative PostgreSQL Access Policy in those fixtures.
+func seedInitialAuthenticationAccessPolicy(t *testing.T, persistence *sqlstore.SQLStore) {
+	seedAuthenticationAccessPolicy(t, persistence, nil)
+}
+
+func seedAuthenticationAccessPolicy(
+	t *testing.T,
+	persistence *sqlstore.SQLStore,
+	providerAdmissions map[string]model.ProviderAdmissionMode,
+) {
+	t.Helper()
+	if providerAdmissions == nil {
+		providerAdmissions = map[string]model.ProviderAdmissionMode{}
+	}
+	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.NowUTC())
+	providers, err := json.Marshal(providerAdmissions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.GetMaster().Exec(context.Background(), `
+		INSERT INTO access_policies (
+			singleton, id, revision, created_at, updated_at,
+			local_login_enabled, public_registration_enabled,
+			invitation_admission_enabled, invitation_local_credential_enabled,
+			desktop_authorization_enabled, provider_admissions
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)`,
+		policy.ID.String(), policy.Revision, policy.CreatedAt, policy.UpdatedAt,
+		policy.LocalLoginEnabled, policy.PublicRegistrationEnabled,
+		policy.InvitationAdmissionEnabled, policy.InvitationLocalCredentialEnabled,
+		policy.DesktopAuthorizationEnabled, providers,
+	); err != nil {
+		t.Fatal(err)
+	}
 }

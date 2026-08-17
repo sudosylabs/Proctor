@@ -193,8 +193,9 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 		t.Fatalf("reset session remained active: %#v %#v", resolved, resolvedSession)
 	}
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
-		Action: "authentication.password_reset.complete",
-		Limit:  10,
+		Action:     "authentication.password_reset.complete",
+		Limit:      10,
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	requireNoError(t, err)
 	if len(audits) != 1 ||

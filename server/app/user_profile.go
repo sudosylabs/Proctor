@@ -45,7 +45,7 @@ type userProfileStore interface {
 
 type userProfileAuthorizer interface {
 	AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error)
-	AuthorizeRead(context.Context, Invocation, string) error
+	AuthorizeProfileRead(context.Context, Invocation, string) (bool, error)
 	AuthorizeManage(context.Context, Invocation, string) error
 }
 
@@ -72,12 +72,16 @@ func (s *userProfileService) Search(ctx context.Context, invocation Invocation, 
 	if query.Limit == 0 {
 		query.Limit = defaultAdministrationListLimit
 	}
-	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterId: query.AfterID, Limit: query.Limit, IncludeDisabled: query.IncludeDisabled, Visibility: visibility})
+	includeDisabled := query.IncludeDisabled && visibility.InstitutionWide
+	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterId: query.AfterID, Limit: query.Limit, IncludeDisabled: includeDisabled, Visibility: visibility})
 	if err != nil {
 		return nil, userProfileError(err)
 	}
 	if users == nil {
 		users = []*model.User{}
+	}
+	if !visibility.InstitutionWide {
+		users = scopedUserDirectoryProjection(users)
 	}
 	return users, nil
 }
@@ -91,14 +95,47 @@ func (s *userProfileService) Get(ctx context.Context, invocation Invocation, que
 	if !model.IsValidId(id) {
 		return nil, NewError("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeRead(ctx, invocation, id); err != nil {
+	fullProfile, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id)
+	if err != nil {
 		return nil, err
 	}
 	user, err := s.users.Get(ctx, id)
 	if err != nil {
 		return nil, userProfileError(err)
 	}
-	return user, nil
+	if fullProfile {
+		return user, nil
+	}
+	return scopedUserProjection(user), nil
+}
+
+func scopedUserDirectoryProjection(users []*model.User) []*model.User {
+	result := make([]*model.User, 0, len(users))
+	for _, user := range users {
+		result = append(result, scopedUserProjection(user))
+	}
+	return result
+}
+
+// scopedUserProjection retains only the public directory identity required to
+// identify a person in academic administration. Account/security state and
+// client-local presentation preferences remain institution/self-only.
+func scopedUserProjection(user *model.User) *model.User {
+	if user == nil {
+		return nil
+	}
+	projected := *user
+	projected.Email = ""
+	projected.EmailVerified = false
+	projected.Locale = ""
+	projected.Timezone = ""
+	projected.LastLoginAt = model.OptionalTime{}
+	projected.LastActivityAt = model.OptionalTime{}
+	projected.DisabledAt = model.OptionalTime{}
+	projected.DefaultProfilePictureSeed = ""
+	projected.DefaultProfilePictureFileID = model.FileEntryID("")
+	projected.CustomProfilePictureFileID = model.FileEntryID("")
+	return &projected
 }
 
 func (a *App) UpdateUserProfile(ctx context.Context, invocation Invocation, command UpdateUserProfileCommand) (*model.User, error) {
@@ -173,15 +210,20 @@ func (a userProfileAuthorization) AuthorizeSearch(ctx context.Context, invocatio
 	return a.authorization.authorizeUserSearch(ctx, invocation)
 }
 
-func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation Invocation, userID string) error {
+func (a userProfileAuthorization) AuthorizeProfileRead(ctx context.Context, invocation Invocation, userID string) (bool, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
-		return invalidTokenAppError()
+		return false, invalidTokenAppError()
 	}
 	if principal.UserID.String() == userID {
-		return nil
+		return true, nil
 	}
 	return a.authorization.authorizeUserRead(ctx, invocation, userID)
+}
+
+func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation Invocation, userID string) error {
+	_, err := a.AuthorizeProfileRead(ctx, invocation, userID)
+	return err
 }
 
 func (a userProfileAuthorization) AuthorizeManage(ctx context.Context, invocation Invocation, userID string) error {

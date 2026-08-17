@@ -97,6 +97,10 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /api/v1/system/version`
 - `GET /api/v1/bootstrap` (public boolean installation status)
 - `POST /api/v1/bootstrap` (public only until the atomic bootstrap succeeds)
+- `GET /api/v1/discovery` (public safe access and desktop compatibility)
+- `GET /api/v1/access-policy` (authorized policy and bounded history)
+- `POST /api/v1/access-policy/preflight` and `PUT /api/v1/access-policy`
+  (strong recent Session; replacement also requires `Idempotency-Key`)
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
@@ -258,11 +262,36 @@ primary key; a partially or unsafely configured ring is rejected during
 startup. MFA, Memberlist, and mail encryption keys are intentionally not
 interchangeable.
 
+Mail-key rotation is staged: first deploy the new key as a readable fallback
+on every node; then restart every node with that key promoted to
+`encryption_key` and the old primary retained in `decryption_keys`; finally, a
+strong recently authenticated operator starts `POST /api/v1/mail/rekey` with
+the old key ID. The returned durable Job must succeed with zero retiring and
+non-primary references before the old key is removed from configuration and
+nodes are restarted again. Starting a node with the wrong promoted primary or
+without any still-referenced key fails closed. The operation and diagnostics
+contain key IDs and counts only, never key material.
+
+For a later rotation, the preceding successful zero-reference proof permits a
+node to restart with the next primary while retaining the currently fenced key
+as a fallback. Until the next rekey command advances the PostgreSQL fence, that
+node can deliver existing mail but cannot persist new encrypted payloads;
+nodes still using the fenced primary may continue to enqueue. Failed or
+missing proofs do not permit this staged promotion.
+
+Inspect safe progress and the final recorded retirement proof at
+`GET /api/v1/mail/rekey/{job_id}`. During a rolling deployment, an old-primary
+node relinquishes this Job with bounded backoff and cannot reclaim it under the
+same node identity; its incompatible Attempt does not consume the Job's
+failure budget, and a new-primary node completes the shared operation.
+
 The first external provider types are `cas` and `oidc`. Every enabled provider
 has a stable lowercase ID, display name, one matching protocol block, explicit
 claim mappings, optional home-organization allowlisting, and optional trusted
-MFA values. The checked-in example leaves the provider list empty so local
-development does not depend on an identity service.
+MFA values. An installation may define at most 64 external providers, matching
+the Access Policy and public provider-projection bounds. The checked-in example
+leaves the provider list empty so local development does not depend on an
+identity service.
 
 For CAS, `subject: "user"` selects `<cas:user>`; another released attribute may
 be selected explicitly. Proctor never assumes that `<cas:user>` is an ePPN and

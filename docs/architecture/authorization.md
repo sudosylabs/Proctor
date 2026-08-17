@@ -77,10 +77,21 @@ constraints before querying; purpose-specific Store operations apply those
 constraints with bounded keyset pagination rather than filtering unauthorized
 rows in application memory.
 
-User visibility is contextual: self-view does not imply self-management;
-cross-user access needs `user.view`/`user.manage` at institution scope or the
-implemented teacher-to-student class relationship. Audit records keep the
-target user and the academic authorization scope distinct.
+User visibility is contextual: self-view does not imply self-management.
+Institution-scoped `user.view` and `user.manage` retain full administrative
+meaning. Academic-unit-scoped `user.view` reaches only Users with a current
+Academic Unit membership, Class membership, or Role Binding in the authorized
+subtree, and its projection omits relationships outside that subtree. Because
+an Affiliation is institution-wide and carries no Academic Unit, it cannot
+anchor subtree visibility by itself; its history becomes readable only after
+another current relationship establishes contextual User visibility. Unit
+scope never reveals whether a global User is disabled: disabled Users are
+absent from scoped collection, exact-profile, and profile-picture reads, and
+an `include_disabled` request is effective only for Institution-wide
+visibility. Academic Unit administrators end relationships within scope rather
+than disabling the global User, changing canonical identity, or intervening in
+credentials. Audit records keep the target User and academic authorization
+scope distinct.
 The collection-level `user.search` audit-event action records a bounded
 User-search decision against the Institution; it is not a permission action.
 Authority is derived from current `user.view` and `class.members.view` grants
@@ -95,6 +106,16 @@ other User fields.
 Durable Job inspection uses institution-scoped `job.view`; cancellation and
 explicit retry use `job.manage`. These operator actions do not authorize a
 generic create operation or expose unfiltered payloads.
+
+Institution-wide `audit.view` remains distinct from `academic_audit.view`.
+The latter lists only academic mutations, Invitations, batches, and decisions
+whose scope resolves to an authoritative Academic Unit or Class. An Academic
+Unit grant is restricted to that unit's subtree; an Institution grant spans
+all such academic scopes without becoming unrestricted audit visibility. Both
+forms apply the closed academic-action catalog in persistence, so unrelated
+identity, provider, and security events remain excluded. Onboarding domain
+actions likewise expose actor/scope-filtered Job projections without granting
+generic Job inspection.
 
 Examination authorization begins with Exam, Exam Sitting, Exam Attempt, and
 Submission resources. Drafts and Revisions authorize through their Exam;

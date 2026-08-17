@@ -6,6 +6,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -16,11 +17,36 @@ import (
 )
 
 type recordingMailAPI struct {
-	sends   int
-	ids     []model.MailDeliveryID
-	view    application.MailDeliveryView
-	lists   int
-	metrics int
+	sends    int
+	ids      []model.MailDeliveryID
+	view     application.MailDeliveryView
+	lists    int
+	metrics  int
+	rekeys   []string
+	rekeyIDs []model.JobID
+}
+
+func (m *recordingMailAPI) GetMailKeyState(context.Context, application.Invocation) (application.MailKeyStateView, error) {
+	return application.MailKeyStateView{PrimaryKeyID: "22222222222222222222222222222222",
+		RequiredPrimaryKeyID: "22222222222222222222222222222222", Active: []application.MailPayloadKeyUsageView{{
+			KeyID: "11111111111111111111111111111111", ActiveReferences: 7,
+		}}}, nil
+}
+
+func (m *recordingMailAPI) StartMailRekey(_ context.Context, _ application.Invocation, retiringKeyID string) (application.MailRekeyView, error) {
+	m.rekeys = append(m.rekeys, retiringKeyID)
+	return application.MailRekeyView{JobID: model.NewJobID(), PrimaryKeyID: "22222222222222222222222222222222",
+		RetiringKeyID: retiringKeyID, CreatedAt: time.Unix(100, 0).UTC()}, nil
+}
+
+func (m *recordingMailAPI) GetMailRekeyStatus(_ context.Context, _ application.Invocation, jobID model.JobID) (application.MailRekeyStatusView, error) {
+	m.rekeyIDs = append(m.rekeyIDs, jobID)
+	return application.MailRekeyStatusView{JobID: jobID, Status: model.JobStatusSucceeded,
+		PrimaryKeyID: "22222222222222222222222222222222", RetiringKeyID: "11111111111111111111111111111111",
+		CreatedAt: time.Unix(100, 0).UTC(), UpdatedAt: time.Unix(103, 0).UTC(), CompletedAt: model.OptionalTimeFrom(time.Unix(103, 0).UTC()),
+		AttemptCount: 2, MaximumAttempts: 11, Processed: 9, Reencrypted: 8,
+		Progress: &application.MailRekeyProgressView{Current: 4, Total: 9, Stage: "reencrypting"},
+		Proof:    &application.MailRekeyProofView{RetirementSafe: true}}, nil
 }
 
 func (m *recordingMailAPI) GetMailMetrics(context.Context, application.Invocation) (application.MailMetricsSnapshot, error) {
@@ -103,5 +129,60 @@ func TestMailMetricsProjectsOnlyBoundedOperationalDimensions(t *testing.T) {
 	result, err := (mailResourceModule{mail: fake}).getMetrics(operationRequest{request: &http.Request{}})
 	if err != nil || result.status != http.StatusOK || fake.metrics != 1 {
 		t.Fatalf("getMetrics() = %#v, %v calls=%d", result, err, fake.metrics)
+	}
+}
+
+func TestMailRekeyAcceptsOnlyAKeyIdentityAndProjectsSafeOperation(t *testing.T) {
+	t.Parallel()
+	fake := &recordingMailAPI{}
+	module := mailResourceModule{mail: fake}
+	request, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/rekey",
+		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111"}`))
+	result, err := module.startRekey(operationRequest{request: request})
+	if err != nil || result.status != http.StatusAccepted || len(fake.rekeys) != 1 ||
+		fake.rekeys[0] != "11111111111111111111111111111111" {
+		t.Fatalf("startRekey() = %#v, %v calls=%#v", result, err, fake.rekeys)
+	}
+	response, ok := result.body.(mailRekeyResponse)
+	if !ok || response.JobID == "" || response.PrimaryKeyID != "22222222222222222222222222222222" ||
+		response.RetiringKeyID != fake.rekeys[0] || response.CreatedAt != 100000 {
+		t.Fatalf("safe rekey response = %#v", result.body)
+	}
+	invalid, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/rekey",
+		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111","encryption_key":"secret"}`))
+	if _, err = module.startRekey(operationRequest{request: invalid}); !application.Is(err, "request.invalid") || len(fake.rekeys) != 1 {
+		t.Fatalf("secret-bearing rekey body error = %v calls=%#v", err, fake.rekeys)
+	}
+	stateResult, err := module.getKeyState(operationRequest{request: &http.Request{}})
+	state, ok := stateResult.body.(mailKeyStateResponse)
+	if err != nil || !ok || state.PrimaryKeyID != "22222222222222222222222222222222" ||
+		state.RequiredPrimaryKeyID != state.PrimaryKeyID || len(state.Active) != 1 ||
+		state.Active[0].KeyID != "11111111111111111111111111111111" || state.Active[0].ActiveReferences != 7 {
+		t.Fatalf("key state response = %#v, %v", stateResult.body, err)
+	}
+}
+
+func TestMailRekeyStatusProjectsSafeProgressAndFinalProof(t *testing.T) {
+	t.Parallel()
+	jobID := model.NewJobID()
+	fake := &recordingMailAPI{}
+	result, err := (mailResourceModule{mail: fake}).getRekeyStatus(operationRequest{
+		request: &http.Request{}, params: Params{JobID: jobID.String()},
+	})
+	if err != nil || result.status != http.StatusOK || len(fake.rekeyIDs) != 1 || fake.rekeyIDs[0] != jobID {
+		t.Fatalf("getRekeyStatus() = %#v, %v ids=%#v", result, err, fake.rekeyIDs)
+	}
+	response, ok := result.body.(mailRekeyStatusResponse)
+	if !ok || response.JobID != jobID.String() || response.Status != model.JobStatusSucceeded ||
+		response.Progress == nil || response.Progress.Current != 4 || response.Progress.Total != 9 ||
+		response.Processed != 9 || response.Reencrypted != 8 || response.Proof == nil || !response.Proof.RetirementSafe ||
+		response.Proof.NonPrimaryReferences != 0 || response.Proof.RetiringReferences != 0 {
+		t.Fatalf("safe rekey status response = %#v", result.body)
+	}
+	encoded, _ := json.Marshal(response)
+	for _, forbidden := range []string{"ciphertext", "recipient", "encryption_key", "command", "checkpoint", "result"} {
+		if bytes.Contains(encoded, []byte(forbidden)) {
+			t.Fatalf("rekey status leaked %q: %s", forbidden, encoded)
+		}
 	}
 }

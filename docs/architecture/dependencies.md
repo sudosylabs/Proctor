@@ -3,6 +3,7 @@
 ## Dependency direction
 
 ~~~text
+identityprovider ← {model, config}
 model ← store ← app/job ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
@@ -20,7 +21,9 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 
 | Package | Allowed production dependencies | Forbidden examples |
 | --- | --- | --- |
-| `model` | Standard library and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
+| `identityprovider` | Standard library | Domain models, deployment configuration, application, persistence, transports |
+| `model` | Standard library, `identityprovider`, and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
+| `config` | Standard library and `identityprovider` | Domain models, application, persistence, transports |
 | `store` | `model` | `sqlstore`, HTTP, application services |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, transports, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |

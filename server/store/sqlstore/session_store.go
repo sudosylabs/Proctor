@@ -28,23 +28,24 @@ type SQLSessionStore struct {
 }
 
 type sessionRow struct {
-	ID                     string       `db:"id"`
-	CreatedAt              time.Time    `db:"created_at"`
-	UpdatedAt              time.Time    `db:"updated_at"`
-	ArchivedAt             sql.NullTime `db:"archived_at"`
-	UserID                 string       `db:"user_id"`
-	ClientType             string       `db:"client_type"`
-	DeviceID               string       `db:"device_id"`
-	DeviceName             string       `db:"device_name"`
-	AuthenticationMethod   string       `db:"authentication_method"`
-	AuthenticationStrength string       `db:"authentication_strength"`
-	AuthenticatedAt        time.Time    `db:"authenticated_at"`
-	MFACompletedAt         sql.NullTime `db:"mfa_completed_at"`
-	LastActivityAt         time.Time    `db:"last_activity_at"`
-	IdleExpiresAt          time.Time    `db:"idle_expires_at"`
-	ExpiresAt              time.Time    `db:"expires_at"`
-	RevokedAt              sql.NullTime `db:"revoked_at"`
-	RevocationReason       string       `db:"revocation_reason"`
+	ID                       string       `db:"id"`
+	CreatedAt                time.Time    `db:"created_at"`
+	UpdatedAt                time.Time    `db:"updated_at"`
+	ArchivedAt               sql.NullTime `db:"archived_at"`
+	UserID                   string       `db:"user_id"`
+	ClientType               string       `db:"client_type"`
+	DeviceID                 string       `db:"device_id"`
+	DeviceName               string       `db:"device_name"`
+	AuthenticationMethod     string       `db:"authentication_method"`
+	AuthenticationProviderID string       `db:"authentication_provider_id"`
+	AuthenticationStrength   string       `db:"authentication_strength"`
+	AuthenticatedAt          time.Time    `db:"authenticated_at"`
+	MFACompletedAt           sql.NullTime `db:"mfa_completed_at"`
+	LastActivityAt           time.Time    `db:"last_activity_at"`
+	IdleExpiresAt            time.Time    `db:"idle_expires_at"`
+	ExpiresAt                time.Time    `db:"expires_at"`
+	RevokedAt                sql.NullTime `db:"revoked_at"`
+	RevocationReason         string       `db:"revocation_reason"`
 }
 
 type sessionSaveTransactionResult struct {
@@ -68,6 +69,7 @@ func sessionSliceColumns() []string {
 		"sessions.device_id",
 		"sessions.device_name",
 		"sessions.authentication_method",
+		"sessions.authentication_provider_id",
 		"sessions.authentication_strength",
 		"sessions.authenticated_at",
 		"sessions.mfa_completed_at",
@@ -113,6 +115,11 @@ func (s SQLSessionStore) Save(
 	}
 
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "session save", func(ctx context.Context, tx *sqlxTxWrapper) (*sessionSaveTransactionResult, error) {
+		if err := requireCurrentAuthenticationMethod(
+			ctx, tx, candidate.AuthenticationMethod, candidate.AuthenticationProviderID,
+		); err != nil {
+			return nil, err
+		}
 		if err := lockUserSessions(ctx, tx, candidate.UserID.String()); err != nil {
 			return nil, err
 		}
@@ -215,13 +222,13 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO sessions (
 			id, created_at, updated_at, archived_at, user_id, client_type,
-			device_id, device_name, authentication_method,
+			device_id, device_name, authentication_method, authentication_provider_id,
 			authentication_strength, authenticated_at, mfa_completed_at,
 			last_activity_at, idle_expires_at, expires_at, revoked_at,
 			revocation_reason
 		) VALUES (
 			:id, :created_at, :updated_at, :archived_at, :user_id, :client_type,
-			:device_id, :device_name, :authentication_method,
+			:device_id, :device_name, :authentication_method, :authentication_provider_id,
 			:authentication_strength, :authenticated_at, :mfa_completed_at,
 			:last_activity_at, :idle_expires_at, :expires_at, :revoked_at,
 			:revocation_reason
@@ -364,7 +371,7 @@ func (s SQLSessionStore) RevokeWithAudit(
 		var row sessionRow
 		if err := tx.Get(ctx, &row, `
 		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
-		       device_id, device_name, authentication_method,
+		       device_id, device_name, authentication_method, authentication_provider_id,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
@@ -555,7 +562,7 @@ func revokeAllUserSessions(
 	rows := []sessionRow{}
 	if err := executor.Select(ctx, &rows, `
 		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
-		       device_id, device_name, authentication_method,
+		       device_id, device_name, authentication_method, authentication_provider_id,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
@@ -656,23 +663,24 @@ func selectActiveTokenHashes(
 
 func newSessionRow(session *model.Session) sessionRow {
 	return sessionRow{
-		ID:                     session.ID.String(),
-		CreatedAt:              UTCTime(session.CreatedAt),
-		UpdatedAt:              UTCTime(session.UpdatedAt),
-		ArchivedAt:             NullTimeFromOptional(session.ArchivedAt),
-		UserID:                 session.UserID.String(),
-		ClientType:             string(session.ClientType),
-		DeviceID:               session.DeviceID,
-		DeviceName:             session.DeviceName,
-		AuthenticationMethod:   session.AuthenticationMethod,
-		AuthenticationStrength: string(session.AuthenticationStrength),
-		AuthenticatedAt:        UTCTime(session.AuthenticatedAt),
-		MFACompletedAt:         NullTimeFromOptional(session.MFACompletedAt),
-		LastActivityAt:         UTCTime(session.LastActivityAt),
-		IdleExpiresAt:          UTCTime(session.IdleExpiresAt),
-		ExpiresAt:              UTCTime(session.ExpiresAt),
-		RevokedAt:              NullTimeFromOptional(session.RevokedAt),
-		RevocationReason:       session.RevocationReason,
+		ID:                       session.ID.String(),
+		CreatedAt:                UTCTime(session.CreatedAt),
+		UpdatedAt:                UTCTime(session.UpdatedAt),
+		ArchivedAt:               NullTimeFromOptional(session.ArchivedAt),
+		UserID:                   session.UserID.String(),
+		ClientType:               string(session.ClientType),
+		DeviceID:                 session.DeviceID,
+		DeviceName:               session.DeviceName,
+		AuthenticationMethod:     session.AuthenticationMethod,
+		AuthenticationProviderID: session.AuthenticationProviderID,
+		AuthenticationStrength:   string(session.AuthenticationStrength),
+		AuthenticatedAt:          UTCTime(session.AuthenticatedAt),
+		MFACompletedAt:           NullTimeFromOptional(session.MFACompletedAt),
+		LastActivityAt:           UTCTime(session.LastActivityAt),
+		IdleExpiresAt:            UTCTime(session.IdleExpiresAt),
+		ExpiresAt:                UTCTime(session.ExpiresAt),
+		RevokedAt:                NullTimeFromOptional(session.RevokedAt),
+		RevocationReason:         session.RevocationReason,
 	}
 }
 
@@ -686,23 +694,24 @@ func (row sessionRow) model() (*model.Session, error) {
 		return nil, err
 	}
 	session := &model.Session{
-		ID:                     id,
-		CreatedAt:              row.CreatedAt.UTC(),
-		UpdatedAt:              row.UpdatedAt.UTC(),
-		ArchivedAt:             OptionalTimeFromNullTime(row.ArchivedAt),
-		UserID:                 userID,
-		ClientType:             model.SessionClientType(row.ClientType),
-		DeviceID:               row.DeviceID,
-		DeviceName:             row.DeviceName,
-		AuthenticationMethod:   row.AuthenticationMethod,
-		AuthenticationStrength: model.AuthenticationStrength(row.AuthenticationStrength),
-		AuthenticatedAt:        row.AuthenticatedAt.UTC(),
-		MFACompletedAt:         OptionalTimeFromNullTime(row.MFACompletedAt),
-		LastActivityAt:         row.LastActivityAt.UTC(),
-		IdleExpiresAt:          row.IdleExpiresAt.UTC(),
-		ExpiresAt:              row.ExpiresAt.UTC(),
-		RevokedAt:              OptionalTimeFromNullTime(row.RevokedAt),
-		RevocationReason:       row.RevocationReason,
+		ID:                       id,
+		CreatedAt:                row.CreatedAt.UTC(),
+		UpdatedAt:                row.UpdatedAt.UTC(),
+		ArchivedAt:               OptionalTimeFromNullTime(row.ArchivedAt),
+		UserID:                   userID,
+		ClientType:               model.SessionClientType(row.ClientType),
+		DeviceID:                 row.DeviceID,
+		DeviceName:               row.DeviceName,
+		AuthenticationMethod:     row.AuthenticationMethod,
+		AuthenticationProviderID: row.AuthenticationProviderID,
+		AuthenticationStrength:   model.AuthenticationStrength(row.AuthenticationStrength),
+		AuthenticatedAt:          row.AuthenticatedAt.UTC(),
+		MFACompletedAt:           OptionalTimeFromNullTime(row.MFACompletedAt),
+		LastActivityAt:           row.LastActivityAt.UTC(),
+		IdleExpiresAt:            row.IdleExpiresAt.UTC(),
+		ExpiresAt:                row.ExpiresAt.UTC(),
+		RevokedAt:                OptionalTimeFromNullTime(row.RevokedAt),
+		RevocationReason:         row.RevocationReason,
 	}
 	if err := validatePersistedModel("session", session); err != nil {
 		return nil, err

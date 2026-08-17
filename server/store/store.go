@@ -288,6 +288,7 @@ type Catalog interface {
 	RoleBinding() RoleBindingStore
 	Audit() AuditStore
 	Installation() InstallationStore
+	AccessPolicy() AccessPolicyStore
 	ClusterDiscovery() ClusterDiscoveryStore
 	CommandOutcome() CommandOutcomeStore
 }
@@ -329,6 +330,7 @@ type Store interface {
 	RoleBinding() RoleBindingStore
 	Audit() AuditStore
 	Installation() InstallationStore
+	AccessPolicy() AccessPolicyStore
 	ClusterDiscovery() ClusterDiscoveryStore
 	CommandOutcome() CommandOutcomeStore
 
@@ -459,6 +461,11 @@ type MailStore interface {
 	CleanupTerminal(context.Context, int) (*MailMaintenanceResult, error)
 	QueueSnapshot(context.Context) (*MailQueueSnapshot, error)
 	ActivePayloadKeyIDs(context.Context) ([]string, error)
+	InspectKeyState(context.Context) (*MailKeyState, error)
+	StartRekey(context.Context, *MailRekeyStart) (*MailRekeyOperation, error)
+	ListRekeyTargets(context.Context, *MailRekeyTargetPageRequest) (*MailRekeyTargetPage, error)
+	ReplaceRekeyTarget(context.Context, *MailRekeyReplacement) (bool, error)
+	ProveRekey(context.Context, *MailRekeyProofRequest) (*MailRekeyProof, error)
 }
 
 type JobClaimRequest struct {
@@ -504,6 +511,7 @@ type JobCompletionKind string
 const (
 	JobCompletionSucceeded        JobCompletionKind = "succeeded"
 	JobCompletionRetryableFailure JobCompletionKind = "retryable_failure"
+	JobCompletionRelinquished     JobCompletionKind = "relinquished"
 	JobCompletionPermanentFailure JobCompletionKind = "permanent_failure"
 	JobCompletionCanceled         JobCompletionKind = "canceled"
 )
@@ -956,7 +964,10 @@ type ClassStore interface {
 	Archive(context.Context, string, int64) (*model.Class, error)
 }
 
+// UserListOptions is a bounded persistence query. IncludeDisabled is effective
+// only with an explicit InstitutionWide visibility scope.
 type UserListOptions struct {
+	ID                           string
 	Query                        string
 	AfterUsername                string
 	AfterId                      string
@@ -967,11 +978,30 @@ type UserListOptions struct {
 }
 
 // UserVisibilityScope constrains user list/search results in persistence.
+// Scoped and zero-value visibility always exclude disabled Users.
 type UserVisibilityScope struct {
+	// InstitutionWide and AcademicUnitRootIDs are user.view relationship
+	// visibility: current Academic Unit membership, Class membership, and
+	// active-Role bindings are visibility anchors.
 	InstitutionWide     bool
-	ClassIDs            []string
 	AcademicUnitRootIDs []string
-	ActiveAt            int64
+	// For UserStore directory queries, ClassMemberInstitutionWide,
+	// ClassMemberAcademicUnitRootIDs, and ClassIDs are class.members.view roster
+	// visibility. They expose current Class members only and never Academic Unit
+	// members or Role-Binding holders.
+	ClassMemberInstitutionWide     bool
+	ClassMemberAcademicUnitRootIDs []string
+	ClassIDs                       []string
+	ActiveAt                       int64
+}
+
+// UserVisibilityMatch identifies the authorized scope through which one User
+// is visible. It lets callers record the exact subtree/class decision without
+// assigning the target to an unrelated authorized scope when a principal has
+// more than one binding.
+type UserVisibilityMatch struct {
+	ScopeType model.RoleScopeType
+	ScopeID   string
 }
 
 type UserProfileUpdate struct {
@@ -989,6 +1019,7 @@ type UserDisabledStateChange struct {
 	ID               string
 	ExpectedRevision int64
 	Disabled         bool
+	Capabilities     AccessDeploymentCapabilities
 	ChangedAt        int64
 	RevocationReason string
 	AuditEventID     string
@@ -1029,6 +1060,7 @@ type UserStore interface {
 	GetByUsername(context.Context, string) (*model.User, error)
 	GetByEmail(context.Context, string) (*model.User, error)
 	List(context.Context, UserListOptions) ([]*model.User, error)
+	MatchVisibility(context.Context, string, UserVisibilityScope) (UserVisibilityMatch, error)
 	UpdateProfileWithAudit(context.Context, *UserProfileUpdate) (*model.User, error)
 	Update(context.Context, *model.User) (*model.User, error)
 	SetDisabledWithAudit(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
@@ -1423,6 +1455,7 @@ type RoleBindingCreation struct {
 type RoleBindingEnd struct {
 	ID           string
 	EndAt        int64
+	Capabilities AccessDeploymentCapabilities
 	AuditEventID string
 	AuditAt      int64
 }
@@ -1435,6 +1468,7 @@ type RoleBindingStore interface {
 	SaveWithAudit(context.Context, *RoleBindingCreation) (*model.RoleBinding, error)
 	Get(context.Context, string) (*model.RoleBinding, error)
 	ListByUser(context.Context, string) ([]*model.RoleBinding, error)
+	ListVisibleByUser(context.Context, string, UserVisibilityScope) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.RoleBinding, error)
 	End(context.Context, string, int64) (*model.RoleBinding, error)
@@ -1448,6 +1482,20 @@ type AuditListOptions struct {
 	BeforeTime int64
 	BeforeId   string
 	Limit      int
+	Visibility AuditVisibilityScope
+}
+
+// AuditVisibilityScope constrains audit history in persistence. InstitutionWide
+// explicitly retains operator visibility; its zero value denies all rows.
+// AcademicInstitutionWide permits only events whose scope resolves to an
+// Academic Unit or Class anywhere in the Institution and still requires the
+// closed application-selected AllowedActions catalog. AcademicUnitRootIDs name
+// current authorized subtrees. A subtree projection requires roots and actions.
+type AuditVisibilityScope struct {
+	InstitutionWide         bool
+	AcademicInstitutionWide bool
+	AcademicUnitRootIDs     []string
+	AllowedActions          []string
 }
 
 // AuditStore owns authoritative security records. Events are append-oriented;

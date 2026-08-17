@@ -103,6 +103,8 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 	}{
 		{name: "domain cannot import HTTP", from: serverModule + "/model", imported: "net/http"},
 		{name: "domain cannot import PostgreSQL client", from: serverModule + "/model", imported: "github.com/jackc/pgx/v5"},
+		{name: "identity-provider constraints cannot import domain", from: serverModule + "/identityprovider", imported: serverModule + "/model"},
+		{name: "identity-provider constraints cannot import configuration", from: serverModule + "/identityprovider", imported: serverModule + "/config"},
 		{name: "model build tools cannot import server code", from: serverModule + "/model/internal/idgen", imported: serverModule + "/app"},
 		{name: "model build tools cannot import third-party code", from: serverModule + "/model/internal/idgen", imported: "golang.org/x/tools/go/packages"},
 		{name: "store contracts cannot import SQL adapters", from: serverModule + "/store", imported: serverModule + "/store/sqlstore"},
@@ -166,6 +168,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		imported string
 	}{
 		{name: "store contracts may import domain", from: serverModule + "/store", imported: serverModule + "/model"},
+		{name: "domain may import identity-provider constraints", from: serverModule + "/model", imported: serverModule + "/identityprovider"},
+		{name: "configuration may import identity-provider constraints", from: serverModule + "/config", imported: serverModule + "/identityprovider"},
 		{name: "application may import store contracts", from: serverModule + "/app", imported: serverModule + "/store"},
 		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},
 		{name: "application may import Realtime child", from: serverModule + "/app", imported: serverModule + "/app/realtime"},
@@ -264,11 +268,13 @@ func forbiddenImport(from, imported string) bool {
 	switch {
 	case from == serverModule:
 		return false
+	case from == serverModule+"/identityprovider":
+		return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")
 	case packageOrBelow(from, serverModule+"/model/internal/idgen"):
 		return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")
 	case from == serverModule+"/model":
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
-			strings.HasPrefix(imported, repositoryModule+"/")
+			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/identityprovider")
 	case from == serverModule+"/store":
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			(strings.HasPrefix(imported, serverModule+"/") && imported != serverModule+"/model")
@@ -354,7 +360,9 @@ func forbiddenImport(from, imported string) bool {
 		}
 		return commandInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule)
-	case from == serverModule+"/config", from == serverModule+"/mlog", from == serverModule+"/migrations":
+	case from == serverModule+"/config":
+		return strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/identityprovider"
+	case from == serverModule+"/mlog", from == serverModule+"/migrations":
 		return strings.HasPrefix(imported, repositoryModule+"/")
 	default:
 		return true
@@ -429,7 +437,7 @@ func knownProductionPackage(packagePath string) bool {
 		packageOrBelow(packagePath, repositoryModule+"/packages/vfs") {
 		return true
 	}
-	if packagePath == serverModule || packagePath == serverModule+"/model" ||
+	if packagePath == serverModule || packagePath == serverModule+"/identityprovider" || packagePath == serverModule+"/model" ||
 		packageOrBelow(packagePath, serverModule+"/model/internal/idgen") ||
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
 		packagePath == serverModule+"/mlog" || packagePath == serverModule+"/migrations" ||

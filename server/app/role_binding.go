@@ -35,6 +35,7 @@ type EndRoleBindingCommand struct {
 type roleBindingStore interface {
 	Get(context.Context, string) (*model.RoleBinding, error)
 	ListByUser(context.Context, string) ([]*model.RoleBinding, error)
+	ListVisibleByUser(context.Context, string, store.UserVisibilityScope) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
 	SaveWithAudit(context.Context, *store.RoleBindingCreation) (*model.RoleBinding, error)
 	EndWithAudit(context.Context, *store.RoleBindingEnd) (*model.RoleBinding, error)
@@ -46,6 +47,7 @@ type roleBindingRoleStore interface {
 
 type roleBindingAuthorizer interface {
 	AuthorizeRoleBindingInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
+	AuthorizeRoleBindingList(context.Context, Invocation, model.Action) (store.UserVisibilityScope, error)
 	AuthorizeRoleBindingPreflight(context.Context, Invocation, model.Action) error
 	AuthorizeRoleBindingScope(context.Context, Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error)
 	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
@@ -59,6 +61,7 @@ type roleBindingService struct {
 	bindings      roleBindingStore
 	roles         roleBindingRoleStore
 	authorization roleBindingAuthorizer
+	capabilities  accessPolicyCapabilitySource
 	audit         mutationAuditor
 	effects       roleBindingEffects
 	now           func() time.Time
@@ -68,13 +71,14 @@ func newRoleBindingService(
 	bindings roleBindingStore,
 	roles roleBindingRoleStore,
 	authorization roleBindingAuthorizer,
+	capabilities accessPolicyCapabilitySource,
 	audit mutationAuditor,
 	effects roleBindingEffects,
 	now func() time.Time,
 ) *roleBindingService {
 	return &roleBindingService{
 		bindings: bindings, roles: roles, authorization: authorization,
-		audit: audit, effects: effects, now: now,
+		capabilities: capabilities, audit: audit, effects: effects, now: now,
 	}
 }
 
@@ -90,11 +94,11 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 		if !model.IsValidId(userID) {
 			return nil, NewError("request.invalid").WithField("field", "user_id")
 		}
-		_, err := s.authorization.AuthorizeRoleBindingInstitution(ctx, invocation, model.ActionRoleBindingView)
+		visibility, err := s.authorization.AuthorizeRoleBindingList(ctx, invocation, model.ActionRoleBindingView)
 		if err != nil {
 			return nil, err
 		}
-		bindings, err := s.bindings.ListByUser(ctx, userID)
+		bindings, err := s.bindings.ListVisibleByUser(ctx, userID, visibility)
 		if err != nil {
 			return nil, roleBindingError(err)
 		}
@@ -239,6 +243,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
 			return s.bindings.EndWithAudit(ctx, &store.RoleBindingEnd{
 				ID: id, EndAt: reference.MutationAtMillis,
+				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

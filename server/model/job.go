@@ -34,6 +34,7 @@ const (
 	JobTypeExamSittingSealing            JobType = "exam_sitting.sealing"
 	JobTypeMailDeliver                   JobType = "mail.deliver"
 	JobTypeMailCleanup                   JobType = "mail.cleanup"
+	JobTypeMailRekey                     JobType = "mail.rekey"
 
 	JobStatusQueued          JobStatus = "queued"
 	JobStatusRunning         JobStatus = "running"
@@ -47,6 +48,7 @@ const (
 	JobAttemptStatusFailed       JobAttemptStatus = "failed"
 	JobAttemptStatusCanceled     JobAttemptStatus = "canceled"
 	JobAttemptStatusLeaseExpired JobAttemptStatus = "lease_expired"
+	JobAttemptStatusIncompatible JobAttemptStatus = "incompatible"
 
 	// JobDedupeActive permits a new logical occurrence after the prior Job is
 	// terminal. JobDedupePermanent reserves the key across every lifecycle state.
@@ -190,6 +192,25 @@ func (j *Job) Retry(publicErrorCode string, availableAt, at time.Time) (*Job, er
 	return &result, result.Validate()
 }
 
+// Relinquish requeues a command that this node cannot execute and restores the
+// consumed claim slot. Attempt history still records the incompatible worker,
+// while the finite failure budget remains available to capable workers.
+func (j *Job) Relinquish(publicErrorCode string, availableAt, at time.Time) (*Job, error) {
+	if j == nil || j.Status != JobStatusRunning || j.MaximumAttempts == int(^uint(0)>>1) ||
+		!validPublicJobCode(publicErrorCode) || publicErrorCode == "" ||
+		!TimeUTC(availableAt).After(TimeUTC(at)) || TimeUTC(at).Before(j.UpdatedAt) {
+		return nil, fmt.Errorf("model: job cannot be relinquished")
+	}
+	result := *j
+	result.Status = JobStatusQueued
+	result.AvailableAt = TimeUTC(availableAt)
+	result.UpdatedAt = TimeUTC(at)
+	result.PublicErrorCode = strings.TrimSpace(publicErrorCode)
+	result.MaximumAttempts++
+	result.Revision++
+	return &result, result.Validate()
+}
+
 func (j *Job) Fail(publicErrorCode string, at time.Time) (*Job, error) {
 	if j == nil || (j.Status != JobStatusRunning && j.Status != JobStatusCancelRequested) || !validPublicJobCode(publicErrorCode) || publicErrorCode == "" || TimeUTC(at).Before(j.UpdatedAt) {
 		return nil, fmt.Errorf("model: job cannot fail")
@@ -315,13 +336,13 @@ var jobSafeCode = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
 var jobSafeStage = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 
 func validJobType(value JobType) bool {
-	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailCleanup
+	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailCleanup || value == JobTypeMailRekey
 }
 func validJobStatus(value JobStatus) bool {
 	return value == JobStatusQueued || value == JobStatusRunning || value == JobStatusCancelRequested || value == JobStatusSucceeded || value == JobStatusFailed || value == JobStatusCanceled
 }
 func validJobAttemptStatus(value JobAttemptStatus) bool {
-	return value == JobAttemptStatusRunning || value == JobAttemptStatusSucceeded || value == JobAttemptStatusFailed || value == JobAttemptStatusCanceled || value == JobAttemptStatusLeaseExpired
+	return value == JobAttemptStatusRunning || value == JobAttemptStatusSucceeded || value == JobAttemptStatusFailed || value == JobAttemptStatusCanceled || value == JobAttemptStatusLeaseExpired || value == JobAttemptStatusIncompatible
 }
 func validJobDocument(value json.RawMessage, optional bool) bool {
 	if len(value) == 0 {

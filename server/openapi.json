@@ -587,7 +587,7 @@
     },
     "/api/v1/users": {
       "get": {
-        "operationId": "searchUsers", "summary": "Search User profiles for institution administration",
+        "operationId": "searchUsers", "summary": "Search the authorized User directory",
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "user.invalid", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": []}],
@@ -596,7 +596,7 @@
           {"name": "after_username", "in": "query", "required": false, "schema": {"type": "string"}},
           {"name": "after_id", "in": "query", "required": false, "schema": {"type": "string"}},
           {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}},
-          {"name": "include_disabled", "in": "query", "required": false, "schema": {"type": "boolean", "default": false}}
+          {"name": "include_disabled", "in": "query", "required": false, "description": "Honored only for institution-wide user.view; scoped visibility always excludes disabled Users.", "schema": {"type": "boolean", "default": false}}
         ],
         "responses": {
           "200": {"$ref": "#/components/responses/UserProfileListOK"}, "400": {"$ref": "#/components/responses/BadRequest"},
@@ -928,7 +928,7 @@
     },
     "/api/v1/audits": {
       "get": {
-        "operationId": "listAuditEvents", "summary": "List Audit Events",
+        "operationId": "listAuditEvents", "summary": "List authorized institution or Academic Unit audit history",
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.query.invalid", "audit.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": []}],
@@ -937,6 +937,41 @@
           "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"},
           "500": {"$ref": "#/components/responses/InternalError"}
         }
+      }
+    },
+    "/api/v1/access-policy": {
+      "get": {
+        "operationId": "getAccessPolicy", "summary": "Get the revisioned Access Policy and bounded transition history",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "access_policy.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/AccessPolicyOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      },
+      "put": {
+        "operationId": "replaceAccessPolicy", "summary": "Revision-fenced replacement of the installation Access Policy",
+        "x-proctor-auth": "strong_recent_session_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.csrf.invalid", "audit.unavailable", "authentication.strong_required", "authentication.reauthentication_required", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "access_policy.invalid", "access_policy.revision_conflict", "access_policy.blocked", "access_policy.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ReplaceAccessPolicy"},
+        "responses": {"200": {"$ref": "#/components/responses/AccessPolicyOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/access-policy/preflight": {
+      "post": {
+        "operationId": "preflightAccessPolicy", "summary": "Evaluate an Access Policy replacement without mutating it",
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.csrf.invalid", "authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "access_policy.invalid", "access_policy.revision_conflict", "access_policy.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/PreflightAccessPolicy"},
+        "responses": {"200": {"$ref": "#/components/responses/AccessPolicyPreflightOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/discovery": {
+      "get": {
+        "operationId": "getPublicAccessDiscovery", "summary": "Get safe same-origin access and desktop compatibility discovery",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["access_policy.unavailable"], "security": [],
+        "responses": {"200": {"$ref": "#/components/responses/PublicAccessDiscoveryOK"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
       }
     },
     "/api/v1/bootstrap": {
@@ -1079,9 +1114,9 @@
     },
     "/api/v1/auth/providers": {
       "get": {
-        "operationId": "listAuthenticationProviders", "summary": "List configured external authentication providers",
-        "x-proctor-auth": "public", "x-proctor-error-codes": [], "security": [],
-        "responses": {"200": {"$ref": "#/components/responses/ExternalAuthenticationProviderListOK"}}
+        "operationId": "listAuthenticationProviders", "summary": "List external authentication providers selected by current Access Policy",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["authentication.internal"], "security": [],
+        "responses": {"200": {"$ref": "#/components/responses/ExternalAuthenticationProviderListOK"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
     "/api/v1/auth/providers/{provider_id}/login": {
@@ -2084,6 +2119,35 @@
         "responses": {"200": {"$ref": "#/components/responses/JobListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
       }
     },
+    "/api/v1/mail/keys": {
+      "get": {
+        "operationId": "inspectMailKeyState", "summary": "Inspect safe mail payload-key identities and active reference counts",
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.strong_required", "authentication.reauthentication_required", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MailKeyStateOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/mail/rekey": {
+      "post": {
+        "operationId": "startMailRekey", "summary": "Start a durable fenced mail payload-key rotation",
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.csrf.invalid", "audit.unavailable", "authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "mail.rekey.invalid", "mail.rekey.conflict", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/StartMailRekey"},
+        "responses": {"202": {"$ref": "#/components/responses/MailRekeyAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/v1/mail/rekey/{job_id}": {
+      "parameters": [{"name": "job_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}],
+      "get": {
+        "operationId": "getMailRekeyStatus", "summary": "Inspect safe progress and final retirement proof for one mail rekey Job",
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "mail.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/MailRekeyStatusOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
     "/api/v1/mail/test": {
       "post": {
         "operationId": "sendControlledTestMail", "summary": "Enqueue a controlled test message to the operator's verified address",
@@ -2387,6 +2451,10 @@
       }
     },
     "requestBodies": {
+      "StartMailRekey": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailRekeyRequest"}}}
+      },
       "CreateExam": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateExamRequest"}}}
@@ -2575,6 +2643,14 @@
       "ReplaceUserSettings": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserSettingsReplaceRequest"}}}
+      },
+      "PreflightAccessPolicy": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccessPolicySettingsRequest"}}}
+      },
+      "ReplaceAccessPolicy": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccessPolicySettingsRequest"}}}
       },
       "CreateRole": {
         "required": true,
@@ -2940,6 +3016,9 @@
       "RoleBindingCreated": {"description": "Role Binding created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleBindingResponse"}}}},
       "RoleBindingEnded": {"description": "Role Binding ended", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoleBindingResponse"}}}},
       "AuditListOK": {"description": "Audit Event collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuditListResponse"}}}},
+      "AccessPolicyOK": {"description": "Revisioned Access Policy, bounded transition history, and safe deployment capabilities", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccessPolicyResponse"}}}},
+      "AccessPolicyPreflightOK": {"description": "Safe blockers for the proposed Access Policy replacement", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccessPolicyPreflightResponse"}}}},
+      "PublicAccessDiscoveryOK": {"description": "Versioned same-origin safe access discovery", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublicAccessDiscoveryResponse"}}}},
       "JobOK": {"description": "Safe durable Job projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobResponse"}}}},
       "JobListOK": {"description": "Safe durable Job collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobListResponse"}}}},
       "JobAttemptListOK": {"description": "Safe Job Attempt collection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobAttemptListResponse"}}}},
@@ -2947,6 +3026,9 @@
       "MailDeliveryListOK": {"description": "Bounded safe mail delivery collection", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailDeliveryListResponse"}}}},
       "MailMetricsOK": {"description": "Bounded safe mail delivery metrics", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailMetricsResponse"}}}},
       "MailDeliveryAccepted": {"description": "Controlled test mail durably queued", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailDeliveryResponse"}}}},
+      "MailKeyStateOK": {"description": "Safe mail payload-key identities and active reference counts", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailKeyStateResponse"}}}},
+      "MailRekeyAccepted": {"description": "Durable fenced mail payload-key rotation accepted", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailRekeyResponse"}}}},
+      "MailRekeyStatusOK": {"description": "Safe typed mail rekey progress and final retirement proof", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailRekeyStatusResponse"}}}},
       "InstallationStatusOK": {"description": "Installation status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationStatusResponse"}}}},
       "InstallationBootstrapCreated": {"description": "Installation bootstrapped", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InstallationBootstrapResult"}}}},
       "HealthOK": {"description": "Health status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthResponse"}}}},
@@ -4268,7 +4350,8 @@
       },
       "UserProfileResponse": {
         "type": "object", "additionalProperties": false,
-        "required": ["id", "create_at", "update_at", "delete_at", "username", "email", "email_verified", "display_name", "first_name", "last_name", "locale", "timezone", "profile_picture_url"],
+        "description": "User directory projection. Email, verification, locale, timezone, activity, and disabled state are present only for self or institution-wide user.view authority.",
+        "required": ["id", "create_at", "update_at", "delete_at", "username", "display_name", "first_name", "last_name", "profile_picture_url"],
         "properties": {
           "id": {"$ref": "#/components/schemas/ID"}, "create_at": {"type": "integer", "format": "int64"},
           "update_at": {"type": "integer", "format": "int64"}, "delete_at": {"type": "integer", "format": "int64"},
@@ -4452,6 +4535,87 @@
           "desktop_authorization_enabled": {"type": "boolean"}
         }
       },
+      "ProviderAdmissionMode": {"type": "string", "enum": ["linked_only", "invitation_required", "auto_provision"]},
+      "AccessPolicySettingsRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expected_revision", "revoke_existing_sessions", "local_login_enabled", "public_registration_enabled", "invitation_admission_enabled", "invitation_local_credential_enabled", "desktop_authorization_enabled", "provider_admissions"],
+        "properties": {
+          "expected_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "revoke_existing_sessions": {"type": "boolean", "description": "One-shot choice to revoke active Sessions authenticated by methods newly disabled by this transition."},
+          "local_login_enabled": {"type": "boolean"},
+          "public_registration_enabled": {"type": "boolean"},
+          "invitation_admission_enabled": {"type": "boolean"},
+          "invitation_local_credential_enabled": {"type": "boolean"},
+          "desktop_authorization_enabled": {"type": "boolean"},
+          "provider_admissions": {"type": "object", "maxProperties": 64, "propertyNames": {"pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"}, "additionalProperties": {"$ref": "#/components/schemas/ProviderAdmissionMode"}}
+        }
+      },
+      "AccessPolicyTransitionResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["from_revision", "to_revision", "actor_user_id", "changed_fields", "changed_at", "outcome"],
+        "properties": {
+          "from_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "to_revision": {"type": "integer", "format": "int64", "minimum": 2},
+          "actor_user_id": {"$ref": "#/components/schemas/ID"},
+          "changed_fields": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "enum": ["local_login_enabled", "public_registration_enabled", "invitation_admission_enabled", "invitation_local_credential_enabled", "desktop_authorization_enabled", "provider_admissions", "revoke_existing_sessions"]}},
+          "changed_at": {"type": "integer", "format": "int64"},
+          "outcome": {"type": "string", "const": "applied"}
+        }
+      },
+      "AccessPolicyResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "revision", "created_at", "updated_at", "local_login_enabled", "public_registration_enabled", "invitation_admission_enabled", "invitation_local_credential_enabled", "desktop_authorization_enabled", "provider_admissions", "history", "available_providers", "durable_mail"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "created_at": {"type": "integer", "format": "int64"},
+          "updated_at": {"type": "integer", "format": "int64"},
+          "local_login_enabled": {"type": "boolean"},
+          "public_registration_enabled": {"type": "boolean"},
+          "invitation_admission_enabled": {"type": "boolean"},
+          "invitation_local_credential_enabled": {"type": "boolean"},
+          "desktop_authorization_enabled": {"type": "boolean"},
+          "provider_admissions": {"type": "object", "maxProperties": 64, "propertyNames": {"pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"}, "additionalProperties": {"$ref": "#/components/schemas/ProviderAdmissionMode"}},
+          "history": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/AccessPolicyTransitionResponse"}},
+          "available_providers": {"type": "array", "maxItems": 64, "items": {"$ref": "#/components/schemas/ExternalAuthenticationProviderResponse"}},
+          "durable_mail": {"type": "boolean"}
+        }
+      },
+      "AccessPolicyBlockerResponse": {
+        "type": "object", "additionalProperties": false, "required": ["code"],
+        "properties": {"code": {"type": "string", "enum": ["provider_unavailable", "provider_admission_unsupported", "invitation_delivery_unavailable", "last_system_administrator_path"]}, "provider_id": {"type": "string"}}
+      },
+      "AccessPolicyPreflightResponse": {
+        "type": "object", "additionalProperties": false, "required": ["blockers"],
+        "properties": {"blockers": {"type": "array", "maxItems": 66, "items": {"$ref": "#/components/schemas/AccessPolicyBlockerResponse"}}}
+      },
+      "PublicInstitutionPresentationResponse": {
+        "type": "object", "additionalProperties": false, "required": ["id", "name", "display_name"],
+        "properties": {"id": {"$ref": "#/components/schemas/ID"}, "name": {"type": "string"}, "display_name": {"type": "string"}}
+      },
+      "PublicAccessCapabilitiesResponse": {
+        "type": "object", "additionalProperties": false, "required": ["local_login", "public_registration", "invitation_admission", "desktop_authorization"],
+        "properties": {"local_login": {"type": "boolean"}, "public_registration": {"type": "boolean"}, "invitation_admission": {"type": "boolean"}, "desktop_authorization": {"type": "boolean"}}
+      },
+      "DesktopAuthorizationCompatibilityResponse": {
+        "type": "object", "additionalProperties": false, "required": ["protocol", "minimum_version", "maximum_version"],
+        "properties": {"protocol": {"type": "string", "const": "proctor-desktop-authorization"}, "minimum_version": {"type": "integer", "minimum": 1}, "maximum_version": {"type": "integer", "minimum": 1}}
+      },
+      "PublicAccessDiscoveryResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["discovery_version", "canonical_origin", "initialized", "capabilities", "providers", "desktop_authorization"],
+        "properties": {
+          "discovery_version": {"type": "integer", "const": 1},
+          "canonical_origin": {"type": "string", "format": "uri"},
+          "installation_id": {"$ref": "#/components/schemas/ID"},
+          "initialized": {"type": "boolean"},
+          "institution": {"$ref": "#/components/schemas/PublicInstitutionPresentationResponse"},
+          "policy_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "capabilities": {"$ref": "#/components/schemas/PublicAccessCapabilitiesResponse"},
+          "providers": {"type": "array", "maxItems": 64, "items": {"$ref": "#/components/schemas/ExternalAuthenticationProviderResponse"}},
+          "desktop_authorization": {"$ref": "#/components/schemas/DesktopAuthorizationCompatibilityResponse"}
+        }
+      },
       "AuditListResponse": {
         "type": "object", "additionalProperties": false,
         "required": ["events"],
@@ -4461,7 +4625,7 @@
         }
       },
       "JobStatus": {"type": "string", "enum": ["queued", "running", "cancel_requested", "succeeded", "failed", "canceled"]},
-      "JobAttemptStatus": {"type": "string", "enum": ["running", "succeeded", "failed", "canceled", "lease_expired"]},
+      "JobAttemptStatus": {"type": "string", "enum": ["running", "succeeded", "failed", "canceled", "lease_expired", "incompatible"]},
       "JobProgressResponse": {
         "type": "object", "additionalProperties": false, "required": ["current", "total", "stage"],
         "properties": {"current": {"type": "integer", "format": "int64", "minimum": 0}, "total": {"type": "integer", "format": "int64", "minimum": 1}, "stage": {"type": "string"}}
@@ -4492,6 +4656,72 @@
       "JobAttemptListResponse": {
         "type": "object", "additionalProperties": false, "required": ["items"],
         "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/JobAttemptResponse"}}, "next_cursor": {"type": "string"}}
+      },
+      "MailRekeyRequest": {
+        "type": "object", "additionalProperties": false, "required": ["retiring_key_id"],
+        "properties": {"retiring_key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}}
+      },
+      "MailRekeyResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["job_id", "primary_key_id", "retiring_key_id", "created_at"],
+        "properties": {
+          "job_id": {"$ref": "#/components/schemas/ID"},
+          "primary_key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "retiring_key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "created_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "MailRekeyProgress": {
+        "type": "object", "additionalProperties": false, "required": ["current", "total", "stage"],
+        "properties": {
+          "current": {"type": "integer", "format": "int64", "minimum": 0},
+          "total": {"type": "integer", "format": "int64", "minimum": 1},
+          "stage": {"type": "string", "enum": ["reencrypting"]}
+        }
+      },
+      "MailRekeyProof": {
+        "type": "object", "additionalProperties": false,
+        "required": ["non_primary_references", "retiring_references", "retirement_safe"],
+        "properties": {
+          "non_primary_references": {"type": "integer", "format": "int64", "minimum": 0},
+          "retiring_references": {"type": "integer", "format": "int64", "minimum": 0},
+          "retirement_safe": {"type": "boolean"}
+        }
+      },
+      "MailRekeyStatusResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["job_id", "status", "primary_key_id", "retiring_key_id", "created_at", "updated_at", "attempt_count", "maximum_attempts", "processed", "reencrypted"],
+        "properties": {
+          "job_id": {"$ref": "#/components/schemas/ID"},
+          "status": {"$ref": "#/components/schemas/JobStatus"},
+          "primary_key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "retiring_key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "created_at": {"type": "integer", "format": "int64"},
+          "updated_at": {"type": "integer", "format": "int64"},
+          "completed_at": {"type": "integer", "format": "int64"},
+          "public_error_code": {"type": "string", "maxLength": 128},
+          "attempt_count": {"type": "integer", "minimum": 0},
+          "maximum_attempts": {"type": "integer", "minimum": 1},
+          "processed": {"type": "integer", "format": "int64", "minimum": 0},
+          "reencrypted": {"type": "integer", "format": "int64", "minimum": 0},
+          "progress": {"$ref": "#/components/schemas/MailRekeyProgress"},
+          "proof": {"$ref": "#/components/schemas/MailRekeyProof"}
+        }
+      },
+      "MailPayloadKeyUsage": {
+        "type": "object", "additionalProperties": false, "required": ["key_id", "active_references"],
+        "properties": {
+          "key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "active_references": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "MailKeyStateResponse": {
+        "type": "object", "additionalProperties": false, "required": ["primary_key_id", "active"],
+        "properties": {
+          "primary_key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "required_primary_key_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "active": {"type": "array", "maxItems": 9, "items": {"$ref": "#/components/schemas/MailPayloadKeyUsage"}}
+        }
       },
       "MailDeliveryState": {"type": "string", "enum": ["queued", "sending", "accepted", "failed", "suppressed", "canceled"]},
       "MailDeliveryResponse": {

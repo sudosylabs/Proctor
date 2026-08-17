@@ -25,7 +25,7 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	userDefinition, ok := DefinitionForAction(ActionUserView)
 	if !ok || userDefinition.ResourceType != ResourceUser ||
 		!userDefinition.InheritInstitutionScope ||
-		userDefinition.InheritAcademicUnitScopes {
+		!userDefinition.InheritAcademicUnitScopes {
 		t.Fatalf("user-view definition = %#v, %v", userDefinition, ok)
 	}
 	if err := (Resource{Type: ResourceUser, ID: NewId()}).Validate(); err != nil {
@@ -102,6 +102,7 @@ func TestGranularAcademicAndOnboardingActionsAreClosedAndResourceTyped(t *testin
 		{ActionRoleManage, ResourceInstitution, false},
 		{ActionRoleBindingView, ResourceInstitution, false},
 		{ActionRoleBindingManage, ResourceInstitution, false},
+		{ActionAcademicAuditView, ResourceAcademicUnit, true},
 	}
 
 	all := AllActions()

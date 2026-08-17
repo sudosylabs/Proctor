@@ -542,6 +542,11 @@ func (s *userStore) GetByEmail(ctx context.Context, email string) (*model.User, 
 func (s *userStore) List(ctx context.Context, options store.UserListOptions) ([]*model.User, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.User, error) { return s.UserStore.List(ctx, options) })
 }
+func (s *userStore) MatchVisibility(ctx context.Context, userID string, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+	return retryCall1(ctx, s.layer, func() (store.UserVisibilityMatch, error) {
+		return s.UserStore.MatchVisibility(ctx, userID, visibility)
+	})
+}
 
 func (s *externalIdentityStore) Get(ctx context.Context, id string) (*model.ExternalIdentity, error) {
 	return retryCall1(ctx, s.layer, func() (*model.ExternalIdentity, error) { return s.ExternalIdentityStore.Get(ctx, id) })
@@ -678,6 +683,11 @@ func (s *roleBindingStore) Get(ctx context.Context, id string) (*model.RoleBindi
 func (s *roleBindingStore) ListByUser(ctx context.Context, userID string) ([]*model.RoleBinding, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.RoleBinding, error) {
 		return s.RoleBindingStore.ListByUser(ctx, userID)
+	})
+}
+func (s *roleBindingStore) ListVisibleByUser(ctx context.Context, userID string, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
+	return retryCall1(ctx, s.layer, func() ([]*model.RoleBinding, error) {
+		return s.RoleBindingStore.ListVisibleByUser(ctx, userID, visibility)
 	})
 }
 func (s *roleBindingStore) ListByScope(ctx context.Context, scopeType model.RoleScopeType, scopeID string) ([]*model.RoleBinding, error) {

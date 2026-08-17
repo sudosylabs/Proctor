@@ -141,3 +141,26 @@ func TestJobCancellationAndExplicitRetryLifecycle(t *testing.T) {
 		t.Fatal("non-terminal job accepted explicit retry")
 	}
 }
+
+func TestJobRelinquishPreservesTheFailureAttemptBudget(t *testing.T) {
+	at := time.Now().UTC()
+	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, json.RawMessage(`{"primary_key_id":"22222222222222222222222222222222","retiring_key_id":"11111111111111111111111111111111"}`), "mail-rekey:test", at, at, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	running, err := job.Start(at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	relinquished, err := running.Relinquish("worker.capability_mismatch", at.Add(3*time.Second), at.Add(2*time.Second))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if relinquished.Status != model.JobStatusQueued || relinquished.AttemptCount != 1 || relinquished.MaximumAttempts != 4 ||
+		relinquished.MaximumAttempts-relinquished.AttemptCount != job.MaximumAttempts-job.AttemptCount ||
+		relinquished.PublicErrorCode != "worker.capability_mismatch" {
+		t.Fatalf("Relinquish() = %#v", relinquished)
+	}
+}

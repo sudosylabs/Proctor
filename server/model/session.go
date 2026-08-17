@@ -42,24 +42,28 @@ const (
 //
 // Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
 // Soft archive uses the explicit optional ArchivedAt instant.
+// AuthenticationProviderID retains the immutable configured provider for an
+// external Session; it is empty only for local Sessions, while
+// AuthenticationMethod describes the local method or external protocol.
 type Session struct {
-	ID                     SessionID
-	CreatedAt              time.Time
-	UpdatedAt              time.Time
-	ArchivedAt             OptionalTime
-	UserID                 UserID
-	ClientType             SessionClientType
-	DeviceID               string
-	DeviceName             string
-	AuthenticationMethod   string
-	AuthenticationStrength AuthenticationStrength
-	AuthenticatedAt        time.Time
-	MFACompletedAt         OptionalTime
-	LastActivityAt         time.Time
-	IdleExpiresAt          time.Time
-	ExpiresAt              time.Time
-	RevokedAt              OptionalTime
-	RevocationReason       string
+	ID                       SessionID
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	ArchivedAt               OptionalTime
+	UserID                   UserID
+	ClientType               SessionClientType
+	DeviceID                 string
+	DeviceName               string
+	AuthenticationMethod     string
+	AuthenticationProviderID string
+	AuthenticationStrength   AuthenticationStrength
+	AuthenticatedAt          time.Time
+	MFACompletedAt           OptionalTime
+	LastActivityAt           time.Time
+	IdleExpiresAt            time.Time
+	ExpiresAt                time.Time
+	RevokedAt                OptionalTime
+	RevocationReason         string
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -93,6 +97,7 @@ func (s *Session) PrepareCreate(id SessionID, at time.Time) {
 	s.DeviceID = SanitizeUnicode(s.DeviceID)
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
 	s.AuthenticationMethod = SanitizeUnicode(s.AuthenticationMethod)
+	s.AuthenticationProviderID = SanitizeUnicode(s.AuthenticationProviderID)
 	s.RevocationReason = SanitizeUnicode(s.RevocationReason)
 }
 
@@ -106,6 +111,7 @@ func (s *Session) PrepareUpdate(at time.Time) {
 	s.DeviceID = SanitizeUnicode(s.DeviceID)
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
 	s.AuthenticationMethod = SanitizeUnicode(s.AuthenticationMethod)
+	s.AuthenticationProviderID = SanitizeUnicode(s.AuthenticationProviderID)
 	s.RevocationReason = SanitizeUnicode(s.RevocationReason)
 }
 
@@ -141,6 +147,12 @@ func (s *Session) Validate() error {
 		len(s.AuthenticationMethod) > SessionAuthenticationMaxLength ||
 		!validName.MatchString(s.AuthenticationMethod) {
 		return invalidModelError(where, "session", "authentication_method", "has an invalid format", details)
+	}
+	if s.AuthenticationProviderID == "" && s.AuthenticationMethod != "password" {
+		return invalidModelError(where, "session", "authentication_provider_id", "is required for an external authentication method", details)
+	}
+	if s.AuthenticationProviderID != "" && !IsValidIdentityProviderID(s.AuthenticationProviderID) {
+		return invalidModelError(where, "session", "authentication_provider_id", "has an invalid format", details)
 	}
 	if !s.AuthenticationStrength.IsValid() {
 		return invalidModelError(where, "session", "authentication_strength", "has an unknown value", details)
@@ -237,21 +249,22 @@ func (s *Session) Auditable() map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"id":                      s.ID.String(),
-		"created_at":              MillisFromTime(s.CreatedAt),
-		"updated_at":              MillisFromTime(s.UpdatedAt),
-		"archived_at":             s.ArchivedAt.Millis(),
-		"user_id":                 s.UserID.String(),
-		"client_type":             s.ClientType,
-		"device_id":               s.DeviceID,
-		"authentication_method":   s.AuthenticationMethod,
-		"authentication_strength": s.AuthenticationStrength,
-		"authenticated_at":        MillisFromTime(s.AuthenticatedAt),
-		"mfa_completed_at":        s.MFACompletedAt.Millis(),
-		"last_activity_at":        MillisFromTime(s.LastActivityAt),
-		"idle_expires_at":         MillisFromTime(s.IdleExpiresAt),
-		"expires_at":              MillisFromTime(s.ExpiresAt),
-		"revoked_at":              s.RevokedAt.Millis(),
+		"id":                         s.ID.String(),
+		"created_at":                 MillisFromTime(s.CreatedAt),
+		"updated_at":                 MillisFromTime(s.UpdatedAt),
+		"archived_at":                s.ArchivedAt.Millis(),
+		"user_id":                    s.UserID.String(),
+		"client_type":                s.ClientType,
+		"device_id":                  s.DeviceID,
+		"authentication_method":      s.AuthenticationMethod,
+		"authentication_provider_id": s.AuthenticationProviderID,
+		"authentication_strength":    s.AuthenticationStrength,
+		"authenticated_at":           MillisFromTime(s.AuthenticatedAt),
+		"mfa_completed_at":           s.MFACompletedAt.Millis(),
+		"last_activity_at":           MillisFromTime(s.LastActivityAt),
+		"idle_expires_at":            MillisFromTime(s.IdleExpiresAt),
+		"expires_at":                 MillisFromTime(s.ExpiresAt),
+		"revoked_at":                 s.RevokedAt.Millis(),
 	}
 }
 

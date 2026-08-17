@@ -30,7 +30,7 @@ func externalAuthenticationProviderResponses(
 }
 
 type externalAuthenticationEntryApplication interface {
-	ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
+	ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error)
 	BeginExternalAuthentication(context.Context, application.Invocation, application.BeginExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
 	CompleteExternalAuthentication(context.Context, application.Invocation, application.CompleteExternalAuthenticationCommand) (*model.ExternalAuthenticationCompletion, error)
 }
@@ -50,7 +50,7 @@ func externalAuthenticationResource(
 		publicRoute(
 			http.MethodGet,
 			apiPath(literal("auth"), literal("providers")),
-			nil,
+			[]string{"authentication.internal"},
 			module.listProviders,
 		),
 		protocolRoute(
@@ -84,10 +84,14 @@ func externalAuthenticationResource(
 	)
 }
 
-func (module externalAuthenticationResourceModule) listProviders(operationRequest) (operationResult, error) {
+func (module externalAuthenticationResourceModule) listProviders(request operationRequest) (operationResult, error) {
+	providers, err := module.authentication.ExternalAuthenticationProviders(request.context)
+	if err != nil {
+		return operationResult{}, err
+	}
 	return jsonResult(
 		http.StatusOK,
-		externalAuthenticationProviderResponses(module.authentication.ExternalAuthenticationProviders()),
+		externalAuthenticationProviderResponses(providers),
 	), nil
 }
 

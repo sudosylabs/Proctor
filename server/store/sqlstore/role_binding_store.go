@@ -276,6 +276,43 @@ func (s SQLRoleBindingStore) ListByUser(
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by user")
 }
 
+func (s SQLRoleBindingStore) ListVisibleByUser(
+	ctx context.Context,
+	userID string,
+	visibility store.UserVisibilityScope,
+) ([]*model.RoleBinding, error) {
+	if !model.IsValidId(userID) ||
+		len(visibility.AcademicUnitRootIDs)+len(visibility.ClassIDs) > 256 ||
+		!validVisibilityIDs(visibility.AcademicUnitRootIDs) || !validVisibilityIDs(visibility.ClassIDs) {
+		return nil, store.NewErrInvalidInput("role_binding", "visibility", nil)
+	}
+	query := s.bindingsQuery.Where(sq.Eq{
+		"role_bindings.user_id": userID, "role_bindings.archived_at": nil,
+	})
+	if !visibility.InstitutionWide {
+		if len(visibility.AcademicUnitRootIDs) == 0 && len(visibility.ClassIDs) == 0 {
+			query = query.Where("FALSE")
+		} else {
+			query = query.Prefix(`WITH RECURSIVE allowed_units AS (
+				SELECT id FROM academic_units WHERE id = ANY(?)
+				UNION ALL SELECT child.id FROM academic_units child
+				JOIN allowed_units parent ON child.parent_id = parent.id
+			)`, pq.Array(visibility.AcademicUnitRootIDs)).Where(`(
+				(role_bindings.scope_type = 'academic_unit' AND role_bindings.scope_id IN (SELECT id FROM allowed_units))
+				OR (role_bindings.scope_type = 'class' AND (
+					role_bindings.scope_id = ANY(?) OR EXISTS (
+						SELECT 1 FROM classes c
+						JOIN programme_levels pl ON pl.id = c.programme_level_id
+						JOIN programmes p ON p.id = pl.programme_id
+						WHERE c.id = role_bindings.scope_id AND p.academic_unit_id IN (SELECT id FROM allowed_units)
+					)
+				))
+			)`, pq.Array(visibility.ClassIDs))
+		}
+	}
+	return s.selectBindings(ctx, query.OrderBy("role_bindings.start_at", "role_bindings.id"), "list visible role bindings by user")
+}
+
 func (s SQLRoleBindingStore) ListByScope(
 	ctx context.Context,
 	scopeType model.RoleScopeType,
@@ -332,7 +369,7 @@ func (s SQLRoleBindingStore) End(
 		return nil, store.NewErrInvalidInput("role_binding", "end_at", endAt)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "role binding end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
-		return endRoleBinding(ctx, tx, id, endAt)
+		return endRoleBinding(ctx, tx, id, endAt, store.AccessDeploymentCapabilities{})
 	})
 }
 
@@ -341,11 +378,12 @@ func (s SQLRoleBindingStore) EndWithAudit(
 	input *store.RoleBindingEnd,
 ) (*model.RoleBinding, error) {
 	if input == nil || !model.IsValidId(input.ID) || input.EndAt <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("role_binding", "end", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role binding end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
-		ended, err := endRoleBinding(ctx, tx, input.ID, input.EndAt)
+		ended, err := endRoleBinding(ctx, tx, input.ID, input.EndAt, input.Capabilities)
 		if err != nil {
 			return nil, err
 		}
@@ -362,8 +400,11 @@ func (s SQLRoleBindingStore) EndWithAudit(
 	})
 }
 
-func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int64) (*model.RoleBinding, error) {
+func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int64, capabilities store.AccessDeploymentCapabilities) (*model.RoleBinding, error) {
 	at := model.TimeFromMillis(endAt)
+	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+		return nil, err
+	}
 	var current struct {
 		roleBindingRow
 		RoleName string `db:"role_name"`
@@ -381,33 +422,16 @@ func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int
 		return nil, translateError("role_binding", id, err)
 	}
 	if current.RoleName == model.SystemAdministratorRoleName {
-		if _, err := tx.Exec(
-			ctx,
-			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-			"proctor:system-administrator-bindings",
-		); err != nil {
-			return nil, fmt.Errorf("lock administrator bindings: %w", err)
+		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+		if err != nil {
+			return nil, err
 		}
-		var remaining bool
-		if err := tx.Get(ctx, &remaining, `
-			SELECT EXISTS (
-				SELECT 1
-				  FROM role_bindings rb
-				  JOIN roles r ON r.id = rb.role_id
-				  JOIN users u ON u.id = rb.user_id
-				 WHERE r.name = $1 AND r.built_in = true AND r.archived_at IS NULL
-				   AND u.archived_at IS NULL AND u.disabled_at IS NULL
-				   AND rb.id <> $2 AND rb.scope_type = 'institution'
-				   AND rb.scope_id = $3 AND rb.archived_at IS NULL
-				   AND rb.start_at <= $4
-				   AND (rb.end_at IS NULL OR rb.end_at > $4)
-			)`,
-			model.SystemAdministratorRoleName,
-			id,
-			current.ScopeID,
-			at,
-		); err != nil {
-			return nil, fmt.Errorf("check remaining administrator binding: %w", err)
+		remaining, err := hasUsableSystemAdministratorAuthenticationPath(
+			ctx, tx, policy.Settings(), capabilities, at,
+			systemAdministratorAuthenticationPathScope{ExcludedRoleBindingID: current.ID},
+		)
+		if err != nil {
+			return nil, err
 		}
 		if !remaining {
 			return nil, store.NewErrConflict(

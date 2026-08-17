@@ -41,9 +41,10 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := &externalAuthenticationService{
-		registry:    externalProviderSourceFake{provider: externalProviderFake{}},
-		loginStates: states,
-		attempts:    attempts,
+		registry:     externalProviderSourceFake{provider: externalProviderFake{}},
+		loginStates:  states,
+		accessPolicy: allowAllAuthenticationAccessPolicy(),
+		attempts:     attempts,
 		policy: ExternalAuthenticationPolicy{
 			PublicURL: "https://proctor.example.test", LoginStateTTL: 10 * time.Minute,
 			LoginRateLimit: LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 10},
@@ -64,6 +65,43 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 		states.saved.BindingHash != model.HashToken(bindingToken) ||
 		states.saved.ExpiresAt.UnixMilli() != at.Add(10*time.Minute).UnixMilli() {
 		t.Fatalf("result=%#v saved=%#v", result, states.saved)
+	}
+}
+
+func TestExternalAuthenticationBeginHidesProviderDisabledByCurrentPolicy(t *testing.T) {
+	t.Parallel()
+
+	provider := &recordingExternalProvider{}
+	service := externalAuthenticationBeginService(t, externalProviderSourceSet{
+		provider: provider, ids: map[string]bool{"campus": true},
+	}, newAuthenticationCacheFake(), 10)
+	service.accessPolicy = authenticationAccessPolicyFake{providers: map[string]bool{}}
+	result, err := service.begin(context.Background(), "campus", "/", model.SessionClientWeb, "", "", "192.0.2.9")
+	if result != nil || !Is(err, "authentication.external.provider_not_found") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if provider.beginCalls != 0 {
+		t.Fatalf("disabled provider began %d challenges", provider.beginCalls)
+	}
+}
+
+func TestExternalAuthenticationProviderListIncludesOnlyCurrentPolicySelections(t *testing.T) {
+	t.Parallel()
+
+	configured := []model.ExternalAuthenticationProvider{
+		{Id: "campus-a", DisplayName: "Campus A", Type: "oidc"},
+		{Id: "campus-b", DisplayName: "Campus B", Type: "cas"},
+	}
+	service := &externalAuthenticationService{
+		registry:     externalProviderSourceSet{descriptors: configured},
+		accessPolicy: authenticationAccessPolicyFake{providers: map[string]bool{"campus-b": true}},
+	}
+	providers, err := service.providers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(providers, configured[1:]) {
+		t.Fatalf("available providers = %#v, want %#v", providers, configured[1:])
 	}
 }
 
@@ -120,7 +158,7 @@ type externalAuthenticationConstructorArgs struct {
 func (a externalAuthenticationConstructorArgs) build() (*externalAuthenticationService, error) {
 	return newExternalAuthenticationService(
 		a.registry, a.loginStates, a.institutions, a.identities, a.sessions,
-		a.attempts, a.issuer, a.invalidator, a.audit, ExternalAuthenticationPolicy{},
+		allowAllAuthenticationAccessPolicy(), a.attempts, a.issuer, a.invalidator, a.audit, ExternalAuthenticationPolicy{},
 		a.diagnostics, a.newCredential, a.now,
 	)
 }
@@ -256,9 +294,10 @@ func externalAuthenticationBeginService(
 	t.Helper()
 	attempts := newExternalAuthenticationAttempts(t, cache)
 	return &externalAuthenticationService{
-		registry:    registry,
-		loginStates: &externalLoginStateStoreFake{},
-		attempts:    attempts,
+		registry:     registry,
+		loginStates:  &externalLoginStateStoreFake{},
+		accessPolicy: allowAllAuthenticationAccessPolicy(),
+		attempts:     attempts,
 		policy: ExternalAuthenticationPolicy{
 			PublicURL:     "https://proctor.example.test",
 			LoginStateTTL: 10 * time.Minute,
@@ -284,11 +323,14 @@ func newExternalAuthenticationAttempts(
 }
 
 type externalProviderSourceSet struct {
-	provider ExternalIdentityProvider
-	ids      map[string]bool
+	provider    ExternalIdentityProvider
+	ids         map[string]bool
+	descriptors []model.ExternalAuthenticationProvider
 }
 
-func (s externalProviderSourceSet) Descriptors() []model.ExternalAuthenticationProvider { return nil }
+func (s externalProviderSourceSet) Descriptors() []model.ExternalAuthenticationProvider {
+	return append([]model.ExternalAuthenticationProvider(nil), s.descriptors...)
+}
 func (s externalProviderSourceSet) Provider(id string) (ExternalIdentityProvider, bool) {
 	return s.provider, s.ids[id]
 }

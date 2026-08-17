@@ -144,6 +144,41 @@ func (s *accessControlService) authorizeUserSearch(
 	invocation Invocation,
 ) (store.UserVisibilityScope, error) {
 	principal := invocation.Principal()
+	visibility, err := s.userVisibilityScope(ctx, principal)
+	if err != nil {
+		return store.UserVisibilityScope{}, err
+	}
+	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	if err != nil {
+		return store.UserVisibilityScope{}, authorizationResourceError("institution", err)
+	}
+	allowed := visibility.InstitutionWide || visibility.ClassMemberInstitutionWide ||
+		len(visibility.ClassIDs) > 0 || len(visibility.AcademicUnitRootIDs) > 0 ||
+		len(visibility.ClassMemberAcademicUnitRootIDs) > 0
+	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
+	scopeType, scopeID := model.RoleScopeInstitution, institution.ID.String()
+	if len(visibility.AcademicUnitRootIDs) > 0 {
+		scopeType, scopeID = model.RoleScopeAcademicUnit, visibility.AcademicUnitRootIDs[0]
+	} else if len(visibility.ClassMemberAcademicUnitRootIDs) > 0 {
+		scopeType, scopeID = model.RoleScopeAcademicUnit, visibility.ClassMemberAcademicUnitRootIDs[0]
+	} else if len(visibility.ClassIDs) > 0 {
+		scopeType, scopeID = model.RoleScopeClass, visibility.ClassIDs[0]
+	}
+	if err := s.audit.RecordUserSearchDecision(
+		ctx, principal, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed,
+	); err != nil {
+		return store.UserVisibilityScope{}, err
+	}
+	if !allowed {
+		return store.UserVisibilityScope{}, authorizationDeniedError("accessControlService.authorizeUserSearch")
+	}
+	return visibility, nil
+}
+
+func (s *accessControlService) userVisibilityScope(
+	ctx context.Context,
+	principal model.Principal,
+) (store.UserVisibilityScope, error) {
 	userScope, err := s.authorizedScopes(ctx, principal, model.ActionUserView, model.ResourceUser)
 	if err != nil {
 		return store.UserVisibilityScope{}, err
@@ -153,24 +188,12 @@ func (s *accessControlService) authorizeUserSearch(
 		return store.UserVisibilityScope{}, err
 	}
 	visibility := store.UserVisibilityScope{
-		InstitutionWide:     userScope.InstitutionWide,
-		ClassIDs:            append([]string(nil), classScope.ClassIDs...),
-		AcademicUnitRootIDs: append([]string(nil), classScope.AcademicUnitRootIDs...),
-		ActiveAt:            s.now().UnixMilli(),
-	}
-	institution, err := s.resolver.institutions.GetSingleton(ctx)
-	if err != nil {
-		return store.UserVisibilityScope{}, authorizationResourceError("institution", err)
-	}
-	allowed := visibility.InstitutionWide || len(visibility.ClassIDs) > 0 || len(visibility.AcademicUnitRootIDs) > 0
-	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := s.audit.RecordUserSearchDecision(
-		ctx, principal, resource, invocation.RequestMetadata(), allowed,
-	); err != nil {
-		return store.UserVisibilityScope{}, err
-	}
-	if !allowed {
-		return store.UserVisibilityScope{}, authorizationDeniedError("accessControlService.authorizeUserSearch")
+		InstitutionWide:                userScope.InstitutionWide,
+		AcademicUnitRootIDs:            append([]string(nil), userScope.AcademicUnitRootIDs...),
+		ClassMemberInstitutionWide:     classScope.InstitutionWide,
+		ClassMemberAcademicUnitRootIDs: append([]string(nil), classScope.AcademicUnitRootIDs...),
+		ClassIDs:                       append([]string(nil), classScope.ClassIDs...),
+		ActiveAt:                       s.now().UnixMilli(),
 	}
 	return visibility, nil
 }

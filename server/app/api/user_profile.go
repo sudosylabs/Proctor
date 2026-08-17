@@ -15,23 +15,23 @@ import (
 )
 
 type userProfileResponse struct {
-	ID                      string `json:"id"`
-	CreateAt                int64  `json:"create_at"`
-	UpdateAt                int64  `json:"update_at"`
-	DeleteAt                int64  `json:"delete_at"`
-	Username                string `json:"username"`
-	Email                   string `json:"email"`
-	EmailVerified           bool   `json:"email_verified"`
-	DisplayName             string `json:"display_name"`
-	FirstName               string `json:"first_name"`
-	LastName                string `json:"last_name"`
-	Locale                  string `json:"locale"`
-	Timezone                string `json:"timezone"`
-	LastLoginAt             int64  `json:"last_login_at,omitempty"`
-	LastActivityAt          int64  `json:"last_activity_at,omitempty"`
-	DisabledAt              int64  `json:"disabled_at,omitempty"`
-	ProfilePictureURL       string `json:"profile_picture_url"`
-	ProfilePictureChangedAt int64  `json:"profile_picture_changed_at,omitempty"`
+	ID                      string  `json:"id"`
+	CreateAt                int64   `json:"create_at"`
+	UpdateAt                int64   `json:"update_at"`
+	DeleteAt                int64   `json:"delete_at"`
+	Username                string  `json:"username"`
+	Email                   *string `json:"email,omitempty"`
+	EmailVerified           *bool   `json:"email_verified,omitempty"`
+	DisplayName             string  `json:"display_name"`
+	FirstName               string  `json:"first_name"`
+	LastName                string  `json:"last_name"`
+	Locale                  *string `json:"locale,omitempty"`
+	Timezone                *string `json:"timezone,omitempty"`
+	LastLoginAt             int64   `json:"last_login_at,omitempty"`
+	LastActivityAt          int64   `json:"last_activity_at,omitempty"`
+	DisabledAt              int64   `json:"disabled_at,omitempty"`
+	ProfilePictureURL       string  `json:"profile_picture_url"`
+	ProfilePictureChangedAt int64   `json:"profile_picture_changed_at,omitempty"`
 }
 
 type updateUserProfileRequest struct {
@@ -236,25 +236,28 @@ func userProfileResponseFromModel(user *model.User) userProfileResponse {
 	if user.ProfilePictureChangedAt.Valid {
 		pictureURL += "?v=" + strconv.FormatInt(user.Revision, 10)
 	}
-	return userProfileResponse{
+	response := userProfileResponse{
 		ID:                      user.ID.String(),
 		CreateAt:                model.MillisFromTime(user.CreatedAt),
 		UpdateAt:                model.MillisFromTime(user.UpdatedAt),
 		DeleteAt:                user.ArchivedAt.Millis(),
 		Username:                user.Username,
-		Email:                   user.Email,
-		EmailVerified:           user.EmailVerified,
 		DisplayName:             user.DisplayName,
 		FirstName:               user.FirstName,
 		LastName:                user.LastName,
-		Locale:                  user.Locale,
-		Timezone:                user.Timezone,
 		LastLoginAt:             user.LastLoginAt.Millis(),
 		LastActivityAt:          user.LastActivityAt.Millis(),
 		DisabledAt:              user.DisabledAt.Millis(),
 		ProfilePictureURL:       pictureURL,
 		ProfilePictureChangedAt: user.ProfilePictureChangedAt.Millis(),
 	}
+	if user.Email != "" {
+		response.Email = &user.Email
+		response.EmailVerified = &user.EmailVerified
+		response.Locale = &user.Locale
+		response.Timezone = &user.Timezone
+	}
+	return response
 }
 
 func userProfileResponses(users []*model.User) []userProfileResponse {

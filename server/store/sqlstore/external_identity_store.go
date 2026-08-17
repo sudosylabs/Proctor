@@ -142,6 +142,9 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	provider := strings.ToLower(strings.TrimSpace(identity.Provider))
 	lastSeenAt := identity.LastSeenAt.Millis()
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity resolution", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityResolution, error) {
+		if err := requireCurrentExternalProvider(ctx, tx, provider); err != nil {
+			return nil, err
+		}
 		if _, err := tx.Exec(
 			ctx,
 			"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",

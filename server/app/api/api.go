@@ -122,6 +122,7 @@ type Options struct {
 	RoleBindings            RoleBindingApplication
 	AuditListings           AuditListingApplication
 	Bootstrap               BootstrapApplication
+	AccessPolicy            AccessPolicyApplication
 	Mail                    MailApplication
 	BuildInfo               BuildInfo
 	PublicURL               string
@@ -191,7 +192,7 @@ type Authentication interface {
 }
 
 type ExternalAuthentication interface {
-	ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider
+	ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error)
 	BeginExternalAuthentication(
 		context.Context,
 		application.Invocation,
@@ -426,6 +427,9 @@ type Application interface {
 }
 
 type MailApplication interface {
+	GetMailKeyState(context.Context, application.Invocation) (application.MailKeyStateView, error)
+	StartMailRekey(context.Context, application.Invocation, string) (application.MailRekeyView, error)
+	GetMailRekeyStatus(context.Context, application.Invocation, model.JobID) (application.MailRekeyStatusView, error)
 	SendTestMail(context.Context, application.Invocation) (application.MailDeliveryView, error)
 	GetMailMetrics(context.Context, application.Invocation) (application.MailMetricsSnapshot, error)
 	GetMailDelivery(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error)
@@ -544,9 +548,14 @@ func New(options Options) (*API, error) {
 }
 
 func productionResources(options Options, cookies browserCookies, webSocket WebSocketTransport) []resource {
+	accessPolicy := options.AccessPolicy
+	if accessPolicy == nil {
+		accessPolicy = unavailableAccessPolicyApplication{}
+	}
 	return []resource{
 		systemResource(options.Health, options.BuildInfo),
 		bootstrapResource(options.Bootstrap),
+		accessPolicyResource(accessPolicy),
 		authenticationResource(options.Application, cookies),
 		externalAuthenticationResource(options.Application, cookies),
 		userProfileResource(options.UserProfiles),

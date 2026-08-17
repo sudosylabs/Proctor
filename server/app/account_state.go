@@ -34,13 +34,16 @@ type accountStateEffects interface {
 type accountStateService struct {
 	users         accountStateStore
 	authorization accountStateAuthorizer
+	capabilities  accessPolicyCapabilitySource
 	audit         mutationAuditor
 	effects       accountStateEffects
 	now           func() time.Time
 }
 
-func newAccountStateService(users accountStateStore, authorization accountStateAuthorizer, audit mutationAuditor, effects accountStateEffects, now func() time.Time) *accountStateService {
-	return &accountStateService{users: users, authorization: authorization, audit: audit, effects: effects, now: now}
+func newAccountStateService(users accountStateStore, authorization accountStateAuthorizer, capabilities accessPolicyCapabilitySource,
+	audit mutationAuditor, effects accountStateEffects, now func() time.Time,
+) *accountStateService {
+	return &accountStateService{users: users, authorization: authorization, capabilities: capabilities, audit: audit, effects: effects, now: now}
 }
 
 func (a *App) SetUserEnabled(ctx context.Context, invocation Invocation, command SetUserEnabledCommand) (*model.User, error) {
@@ -78,7 +81,8 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserDisabledStateResult, error) {
 			return s.users.SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
 				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
-				ChangedAt: reference.MutationAtMillis, RevocationReason: "account disabled by administrator",
+				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
+				ChangedAt:    reference.MutationAtMillis, RevocationReason: "account disabled by administrator",
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

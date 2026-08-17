@@ -27,14 +27,15 @@ type authenticationPATResolver interface {
 }
 
 type sessionIssuance struct {
-	User                   *model.User
-	ClientType             model.SessionClientType
-	DeviceID               string
-	DeviceName             string
-	AuthenticationMethod   string
-	AuthenticationStrength model.AuthenticationStrength
-	AuthenticatedAt        int64
-	MFACompletedAt         int64
+	User                     *model.User
+	ClientType               model.SessionClientType
+	DeviceID                 string
+	DeviceName               string
+	AuthenticationMethod     string
+	AuthenticationProviderID string
+	AuthenticationStrength   model.AuthenticationStrength
+	AuthenticatedAt          int64
+	MFACompletedAt           int64
 }
 
 type authenticationSessionIssuer interface {

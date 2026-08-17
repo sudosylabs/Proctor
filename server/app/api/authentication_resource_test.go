@@ -47,6 +47,7 @@ func (applicationFake *authenticationEntryHTTPApplication) Logout(
 type externalAuthenticationEntryHTTPApplication struct {
 	externalAuthenticationEntryApplication
 	providers       []model.ExternalAuthenticationProvider
+	providersError  error
 	beginCommand    application.BeginExternalAuthenticationCommand
 	start           *model.ExternalAuthenticationStart
 	completeCommand application.CompleteExternalAuthenticationCommand
@@ -62,8 +63,8 @@ func (applicationFake *externalAuthenticationEntryHTTPApplication) CompleteExter
 	return applicationFake.completion, nil
 }
 
-func (applicationFake *externalAuthenticationEntryHTTPApplication) ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider {
-	return applicationFake.providers
+func (applicationFake *externalAuthenticationEntryHTTPApplication) ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error) {
+	return applicationFake.providers, applicationFake.providersError
 }
 
 func TestExternalAuthenticationCallbackReturnsValidatedRedirectAndCookies(t *testing.T) {
@@ -174,6 +175,26 @@ func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testi
 	httpAPI.ServeHTTP(logoutResponse, logoutRequest)
 	if logoutResponse.Code != http.StatusNoContent || authentication.logoutCalls != 1 {
 		t.Fatalf("logout status/calls = %d/%d: %s", logoutResponse.Code, authentication.logoutCalls, logoutResponse.Body.String())
+	}
+}
+
+func TestExternalAuthenticationProviderListFailsClosedWhenPolicyIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	logger, _ := newTestLogger(t)
+	cookies, err := newBrowserCookies("http://localhost:8065")
+	if err != nil {
+		t.Fatal(err)
+	}
+	applicationFake := &externalAuthenticationEntryHTTPApplication{
+		providers:      []model.ExternalAuthenticationProvider{{Id: "configured-but-unknown", Type: "oidc"}},
+		providersError: application.NewError("authentication.internal"),
+	}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, externalAuthenticationResource(applicationFake, cookies))
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", nil))
+	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "configured-but-unknown") {
+		t.Fatalf("provider-list failure = %d %s", response.Code, response.Body.String())
 	}
 }
 

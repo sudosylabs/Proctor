@@ -219,6 +219,7 @@ func NewLifecycleStore() *LifecycleStore {
 }
 
 func (s *LifecycleStore) Institution() store.InstitutionStore       { return lifecycleInstitutionStore{} }
+func (s *LifecycleStore) AccessPolicy() store.AccessPolicyStore     { return lifecycleAccessPolicyStore{} }
 func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore     { return lifecycleAcademicUnitStore{} }
 func (s *LifecycleStore) Programme() store.ProgrammeStore           { return nil }
 func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
@@ -338,6 +339,7 @@ var _ store.Store = (*LifecycleStore)(nil)
 // composition graph to validate focused service dependencies while keeping
 // lifecycle tests free of unrelated persistence behavior.
 type lifecycleUserStore struct{ store.UserStore }
+type lifecycleAccessPolicyStore struct{ store.AccessPolicyStore }
 type lifecycleUserSettingsStore struct{ store.UserSettingsStore }
 type lifecycleInstitutionStore struct{ store.InstitutionStore }
 type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }

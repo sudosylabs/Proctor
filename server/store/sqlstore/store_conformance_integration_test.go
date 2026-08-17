@@ -121,11 +121,24 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"RoleBinding", storetest.TestRoleBindingStore},
 		{"Audit", storetest.TestAuditStore},
 		{"Installation", storetest.TestInstallationStore},
+		{"AccessPolicy", func(t *testing.T, decorated store.Store) {
+			storetest.TestAccessPolicyStore(t, decorated)
+		}},
 		{"CommandOutcome", storetest.TestCommandOutcomeStore},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			resetTestStore(t, sqlStore)
+			switch test.name {
+			case "Installation", "AccessPolicy":
+				resetPristineTestStore(t, sqlStore)
+			case "ExternalIdentity":
+				resetPristineTestStore(t, sqlStore)
+				seedTestAuthenticationPolicy(t, sqlStore, map[string]model.ProviderAdmissionMode{
+					"campus-cas": model.ProviderAdmissionAutoProvision,
+				})
+			default:
+				resetTestStore(t, sqlStore)
+			}
 			test.run(t, decorated)
 		})
 	}
@@ -1264,7 +1277,9 @@ func TestJobStore(t *testing.T) {
 }
 
 func TestExternalIdentityStore(t *testing.T) {
-	StoreTest(t, storetest.TestExternalIdentityStore)
+	StoreTestWithAuthenticationPolicy(t, map[string]model.ProviderAdmissionMode{
+		"campus-cas": model.ProviderAdmissionAutoProvision,
+	}, storetest.TestExternalIdentityStore)
 }
 
 func TestExternalLoginStateStore(t *testing.T) {
@@ -1276,7 +1291,7 @@ func TestPasswordCredentialStore(t *testing.T) {
 }
 
 func TestUserTokenStore(t *testing.T) {
-	StoreTest(t, storetest.TestUserTokenStore)
+	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestUserTokenStore)
 }
 
 func TestPersonalAccessTokenStore(t *testing.T) {
@@ -1288,7 +1303,7 @@ func TestMFAStore(t *testing.T) {
 }
 
 func TestSessionStores(t *testing.T) {
-	StoreTest(t, storetest.TestSessionStores)
+	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestSessionStores)
 }
 
 func TestClusterDiscoveryStore(t *testing.T) {
@@ -1353,7 +1368,7 @@ func TestAuditStoreAcceptsGranularAcademicResources(t *testing.T) {
 }
 
 func TestInstallationStore(t *testing.T) {
-	StoreTest(t, storetest.TestInstallationStore)
+	PristineStoreTest(t, storetest.TestInstallationStore)
 }
 
 func TestCommandOutcomeStore(t *testing.T) {

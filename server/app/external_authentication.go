@@ -84,6 +84,7 @@ type externalAuthenticationService struct {
 	institutions   store.InstitutionStore
 	identities     store.ExternalIdentityStore
 	sessions       store.SessionStore
+	accessPolicy   authenticationAccessPolicy
 	attempts       *authenticationAttemptAccounting
 	authentication authenticationSessionIssuer
 	invalidator    authenticationInvalidator
@@ -100,6 +101,7 @@ func newExternalAuthenticationService(
 	institutions store.InstitutionStore,
 	identities store.ExternalIdentityStore,
 	sessions store.SessionStore,
+	accessPolicy authenticationAccessPolicy,
 	attempts *authenticationAttemptAccounting,
 	authentication authenticationSessionIssuer,
 	invalidator authenticationInvalidator,
@@ -114,6 +116,9 @@ func newExternalAuthenticationService(
 	}
 	if loginStates == nil || institutions == nil || identities == nil || sessions == nil {
 		return nil, errors.New("external authentication persistence is required")
+	}
+	if accessPolicy == nil {
+		return nil, errors.New("external authentication access policy is required")
 	}
 	if attempts == nil {
 		return nil, errors.New("external authentication attempt accounting is required")
@@ -138,18 +143,22 @@ func newExternalAuthenticationService(
 	}
 	return &externalAuthenticationService{
 		registry: registry, loginStates: loginStates, institutions: institutions,
-		identities: identities, sessions: sessions, attempts: attempts,
+		identities: identities, sessions: sessions, accessPolicy: accessPolicy, attempts: attempts,
 		authentication: authentication, invalidator: invalidator, audit: audit, policy: policy,
 		diagnostics: diagnostics, newCredential: newCredential, now: now,
 	}, nil
 }
 
-func (a *App) ExternalAuthenticationProviders() []model.ExternalAuthenticationProvider {
-	return a.externalAuthentication.providers()
+func (a *App) ExternalAuthenticationProviders(ctx context.Context) ([]model.ExternalAuthenticationProvider, error) {
+	return a.externalAuthentication.providers(ctx)
 }
 
-func (s *externalAuthenticationService) providers() []model.ExternalAuthenticationProvider {
-	return s.registry.Descriptors()
+func (s *externalAuthenticationService) providers(ctx context.Context) ([]model.ExternalAuthenticationProvider, error) {
+	providers, err := s.accessPolicy.AvailableExternalProviders(ctx, s.registry.Descriptors())
+	if err != nil {
+		return nil, authenticationUnavailable(err)
+	}
+	return providers, nil
 }
 
 // BeginExternalAuthenticationCommand starts a browser external login.
@@ -199,6 +208,13 @@ func (s *externalAuthenticationService) begin(
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
+		return nil, externalProviderNotFoundError("BeginExternalAuthentication")
+	}
+	allowed, err := s.accessPolicy.AllowsExternalProvider(ctx, providerID)
+	if err != nil {
+		return nil, authenticationUnavailable(err)
+	}
+	if !allowed {
 		return nil, externalProviderNotFoundError("BeginExternalAuthentication")
 	}
 	if returnTo == "" {
@@ -282,6 +298,13 @@ func (s *externalAuthenticationService) complete(
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
+		return nil, externalProviderNotFoundError("CompleteExternalAuthentication")
+	}
+	allowed, err := s.accessPolicy.AllowsExternalProvider(ctx, providerID)
+	if err != nil {
+		return nil, authenticationUnavailable(err)
+	}
+	if !allowed {
 		return nil, externalProviderNotFoundError("CompleteExternalAuthentication")
 	}
 	method := provider.Descriptor().Type
@@ -413,7 +436,9 @@ func (s *externalAuthenticationService) complete(
 	if err != nil {
 		var conflict *store.ErrConflict
 		errorCode := "authentication.external.internal"
-		if errors.As(err, &conflict) {
+		if errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+			errorCode = "authentication.external.invalid"
+		} else if errors.As(err, &conflict) {
 			errorCode = "authentication.external.account_conflict"
 		} else if store.IsNotFound(err) {
 			errorCode = "authentication.external.account_not_linked"
@@ -429,6 +454,8 @@ func (s *externalAuthenticationService) complete(
 			return nil, auditErr
 		}
 		switch {
+		case errors.Is(err, store.ErrAuthenticationMethodDisabled):
+			return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.policy")
 		case errors.As(err, &conflict):
 			return nil, NewError("authentication.external.account_conflict").Wrap(err)
 		case store.IsNotFound(err):
@@ -474,8 +501,9 @@ func (s *externalAuthenticationService) complete(
 		sessionIssuance{
 			User: resolution.User, ClientType: state.ClientType,
 			DeviceID: state.DeviceID, DeviceName: state.DeviceName,
-			AuthenticationMethod: method, AuthenticationStrength: assertion.AuthenticationStrength,
-			AuthenticatedAt: assertion.AuthenticatedAt, MFACompletedAt: mfaCompletedAt,
+			AuthenticationMethod: method, AuthenticationProviderID: providerID,
+			AuthenticationStrength: assertion.AuthenticationStrength,
+			AuthenticatedAt:        assertion.AuthenticatedAt, MFACompletedAt: mfaCompletedAt,
 		},
 	)
 	if sessionErr != nil {
