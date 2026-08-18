@@ -35,14 +35,21 @@ type userProfileResponse struct {
 }
 
 type updateUserProfileRequest struct {
-	Username      *string `json:"username,omitempty"`
-	Email         *string `json:"email,omitempty"`
-	EmailVerified *bool   `json:"email_verified,omitempty"`
-	DisplayName   *string `json:"display_name,omitempty"`
-	FirstName     *string `json:"first_name,omitempty"`
-	LastName      *string `json:"last_name,omitempty"`
-	Locale        *string `json:"locale,omitempty"`
-	Timezone      *string `json:"timezone,omitempty"`
+	Username    *string `json:"username,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	FirstName   *string `json:"first_name,omitempty"`
+	LastName    *string `json:"last_name,omitempty"`
+	Locale      *string `json:"locale,omitempty"`
+	Timezone    *string `json:"timezone,omitempty"`
+}
+
+type changeUserEmailRequest struct {
+	Email string `json:"email"`
+}
+
+type userEmailStateResponse struct {
+	ID            string `json:"id"`
+	EmailVerified bool   `json:"email_verified"`
 }
 
 type userProfileResourceModule struct {
@@ -53,16 +60,54 @@ func userProfileResource(profiles UserProfileApplication) resource {
 	module := userProfileResourceModule{profiles: profiles}
 	user := apiPath(literal("users"), canonicalID("user_id"))
 	picture := appendRoutePath(user, literal("profile-picture"))
+	email := appendRoutePath(user, literal("email"))
 	return newResource(
 		"user-profiles",
 		principalRoute(http.MethodGet, apiPath(literal("users")), userProfileReadCodes("request.invalid", "user.invalid"), module.search),
 		principalRoute(http.MethodGet, apiPath(literal("users"), literal("me")), userProfileReadCodes("resource.not_found"), module.current),
 		principalRoute(http.MethodGet, user, userProfileReadCodes("request.invalid", "resource.not_found"), module.get),
 		principalRoute(http.MethodPatch, user, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict"), module.update),
+		strongRecentSessionRoute(http.MethodPut, email, userProfileMutationCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable"), module.changeEmail),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(email, literal("verify")), userProfileMutationCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.conflict", "authentication.account_recovery.unavailable"), module.verifyEmail),
 		protocolRoute("profile-picture-download", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, picture, userProfilePrincipalCodes("request.invalid", "resource.not_found", "profile_picture.unavailable"), module.downloadPicture),
 		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"), module.uploadPicture),
 		principalRoute(http.MethodDelete, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"), module.removePicture),
 	)
+}
+
+func (module userProfileResourceModule) changeEmail(request operationRequest) (operationResult, error) {
+	userID, err := request.params.RequireUserId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body changeUserEmailRequest
+	if err = request.decodeJSON(&body, "changeUserEmail"); err != nil {
+		return operationResult{}, err
+	}
+	state, appErr := module.profiles.ChangeUserEmail(request.context, request.invocation(), application.ChangeUserEmailCommand{UserID: userID, Email: body.Email})
+	if appErr != nil {
+		return operationResult{}, appErr
+	}
+	return jsonResult(http.StatusOK, userEmailStateResponseFromApplication(state)), nil
+}
+
+func (module userProfileResourceModule) verifyEmail(request operationRequest) (operationResult, error) {
+	userID, err := request.params.RequireUserId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	state, appErr := module.profiles.VerifyUserEmailPrivileged(request.context, request.invocation(), application.VerifyUserEmailPrivilegedCommand{UserID: userID})
+	if appErr != nil {
+		return operationResult{}, appErr
+	}
+	return jsonResult(http.StatusOK, userEmailStateResponseFromApplication(state)), nil
+}
+
+func userEmailStateResponseFromApplication(state *application.UserEmailState) userEmailStateResponse {
+	if state == nil {
+		return userEmailStateResponse{}
+	}
+	return userEmailStateResponse{ID: state.UserID.String(), EmailVerified: state.EmailVerified}
 }
 
 func userProfileReadCodes(extra ...string) []string {
@@ -221,7 +266,7 @@ func (module userProfileResourceModule) update(request operationRequest) (operat
 	if err := request.decodeJSON(&body, "updateUserProfile"); err != nil {
 		return operationResult{}, err
 	}
-	user, err := module.profiles.UpdateUserProfile(request.context, request.invocation(), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, Email: body.Email, EmailVerified: body.EmailVerified, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
+	user, err := module.profiles.UpdateUserProfile(request.context, request.invocation(), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})
 	if err != nil {
 		return operationResult{}, err
 	}

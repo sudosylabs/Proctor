@@ -19,6 +19,7 @@ func TestSessionRowConversion(t *testing.T) {
 		ArchivedAt: model.OptionalTimeFrom(now.Add(2 * time.Millisecond)),
 		UserID:     model.NewUserID(), ClientType: model.SessionClientDesktop,
 		DeviceID: "device", DeviceName: "Device", AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc",
+		ExternalIdentityID:     model.NewExternalIdentityID(),
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt:        now,
 		LastActivityAt:         now.Add(4 * time.Millisecond),
@@ -37,7 +38,7 @@ func TestSessionRowConversion(t *testing.T) {
 		!got.UpdatedAt.Equal(session.UpdatedAt) ||
 		got.ArchivedAt.Millis() != session.ArchivedAt.Millis() ||
 		got.UserID != session.UserID ||
-		got.DeviceID != session.DeviceID || got.AuthenticationProviderID != session.AuthenticationProviderID ||
+		got.DeviceID != session.DeviceID || got.AuthenticationProviderID != session.AuthenticationProviderID || got.ExternalIdentityID != session.ExternalIdentityID ||
 		!got.AuthenticatedAt.Equal(session.AuthenticatedAt) ||
 		got.RevokedAt.Millis() != session.RevokedAt.Millis() ||
 		got.RevocationReason != session.RevocationReason {

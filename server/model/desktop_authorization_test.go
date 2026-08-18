@@ -122,7 +122,7 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 	transaction := pendingDesktopAuthorizationTransaction(at)
 	userID := NewUserID()
 	codeHash := HashToken(NewCredentialToken())
-	transaction.PrepareCodeIssued(userID, "oidc", "campus", AuthenticationMultiFactor,
+	transaction.PrepareCodeIssued(userID, "oidc", "campus", NewExternalIdentityID(), AuthenticationMultiFactor,
 		at.Add(-time.Minute), OptionalTimeFrom(at), codeHash, at.Add(30*time.Second), at)
 	if err := transaction.Validate(); err != nil {
 		t.Fatalf("issued transaction: %v", err)
@@ -167,7 +167,7 @@ func TestBrowserAuthenticationTransactionExpiryDestroysProofsAtAuthoritativeDead
 	}
 
 	issued := pendingDesktopAuthorizationTransaction(at)
-	issued.PrepareCodeIssued(NewUserID(), "oidc", "campus", AuthenticationSingleFactor,
+	issued.PrepareCodeIssued(NewUserID(), "oidc", "campus", NewExternalIdentityID(), AuthenticationSingleFactor,
 		at, OptionalTime{}, HashToken(NewCredentialToken()), at.Add(time.Minute), at)
 	issued.PrepareExpired(at.Add(2 * time.Minute))
 	if err := issued.Validate(); err != nil {

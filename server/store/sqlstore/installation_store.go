@@ -544,10 +544,10 @@ func insertInstallationRoleBinding(
 	row := newRoleBindingRow(binding)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO role_bindings (
-			id, created_at, updated_at, archived_at, user_id, role_id,
+			id, created_at, updated_at, archived_at, user_id, role_id, origin_invitation_id, origin_academic_unit_member_id,
 			scope_type, scope_id, start_at, end_at
 		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :user_id, :role_id,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :role_id, :origin_invitation_id, :origin_academic_unit_member_id,
 			:scope_type, :scope_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return fmt.Errorf(

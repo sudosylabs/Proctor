@@ -18,6 +18,8 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 		case model.APIURLSuffix + "/users",
 			model.APIURLSuffix + "/users/me",
 			model.APIURLSuffix + "/users/{user_id}",
+			model.APIURLSuffix + "/users/{user_id}/email",
+			model.APIURLSuffix + "/users/{user_id}/email/verify",
 			model.APIURLSuffix + "/users/{user_id}/profile-picture",
 			model.APIURLSuffix + "/users/{user_id}/disable",
 			model.APIURLSuffix + "/users/{user_id}/enable":
@@ -50,6 +52,17 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "administration.unavailable"),
 			},
 			{
+				Key: "PUT /api/v1/users/{user_id}/email", Auth: AuthStrongRecentSessionRequired,
+				RequestBodyRef: "#/components/requestBodies/ChangeUserEmail", RequestSchema: "ChangeUserEmailRequest",
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserEmailStateOK", SuccessSchema: "UserEmailStateResponse",
+				PublicErrorCodes: principalMutationContractCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable", "administration.unavailable"),
+			},
+			{
+				Key: "POST /api/v1/users/{user_id}/email/verify", Auth: AuthStrongRecentSessionRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/UserEmailStateOK", SuccessSchema: "UserEmailStateResponse",
+				PublicErrorCodes: principalMutationContractCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.conflict", "authentication.account_recovery.unavailable", "administration.unavailable"),
+			},
+			{
 				Key: "GET /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ProfilePictureOK", ExceptionalSuccess: true,
 				PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable"),
@@ -80,7 +93,9 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 				Name: "UserProfileResponse", DTO: reflect.TypeOf(userProfileResponse{}),
 				Required: []string{"id", "create_at", "update_at", "delete_at", "username", "display_name", "first_name", "last_name", "profile_picture_url"},
 			},
+			{Name: "UserEmailStateResponse", DTO: reflect.TypeOf(userEmailStateResponse{}), Required: []string{"id", "email_verified"}},
 			{Name: "UpdateUserProfileRequest", DTO: reflect.TypeOf(updateUserProfileRequest{})},
+			{Name: "ChangeUserEmailRequest", DTO: reflect.TypeOf(changeUserEmailRequest{}), Required: []string{"email"}},
 		},
 		OperationSelector: func(_ string, path string) bool { return selectedPath(path) },
 	}

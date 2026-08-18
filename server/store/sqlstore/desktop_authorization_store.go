@@ -37,6 +37,7 @@ type desktopAuthorizationRow struct {
 	UserID                       sql.NullString `db:"user_id"`
 	AuthenticationMethod         sql.NullString `db:"authentication_method"`
 	AuthenticationProviderID     sql.NullString `db:"authentication_provider_id"`
+	ExternalIdentityID           sql.NullString `db:"external_identity_id"`
 	AuthenticationStrength       sql.NullString `db:"authentication_strength"`
 	AuthenticatedAt              sql.NullTime   `db:"authenticated_at"`
 	MFACompletedAt               sql.NullTime   `db:"mfa_completed_at"`
@@ -50,7 +51,7 @@ type desktopAuthorizationRow struct {
 const desktopAuthorizationColumns = `id, created_at, updated_at, purpose, state, institution_id, issuer,
 handle_hash, browser_proof_hash, state_hash, callback_url, code_challenge,
 expected_authentication_method, expected_provider_id, client_type, device_id, device_name, expires_at,
-user_id, authentication_method, authentication_provider_id, authentication_strength, authenticated_at,
+user_id, authentication_method, authentication_provider_id, external_identity_id, authentication_strength, authenticated_at,
 mfa_completed_at, code_hash, code_expires_at, cancelled_at, exchanged_at, expired_at`
 
 func newSQLDesktopAuthorizationStore(sqlStore *SQLStore) store.DesktopAuthorizationStore {
@@ -112,6 +113,9 @@ func (s SQLDesktopAuthorizationStore) IssueCode(ctx context.Context, input *stor
 		if err := lockUserSessions(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
+		if err := requireExactExternalIdentity(ctx, tx, input.UserID, input.AuthenticationProviderID, input.ExternalIdentityID); err != nil {
+			return nil, err
+		}
 		var activeUserID string
 		if err := tx.Get(ctx, &activeUserID, `SELECT id FROM users
 			WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
@@ -120,7 +124,7 @@ func (s SQLDesktopAuthorizationStore) IssueCode(ctx context.Context, input *stor
 		var row desktopAuthorizationRow
 		err := tx.Get(ctx, &row, `UPDATE browser_authentication_transactions
 		   SET updated_at = terminal.at, state = 'code_issued', handle_hash = NULL, browser_proof_hash = NULL,
-		       user_id = ?, authentication_method = ?, authentication_provider_id = NULLIF(?, ''),
+		       user_id = ?, authentication_method = ?, authentication_provider_id = NULLIF(?, ''), external_identity_id = NULLIF(?, ''),
 		       authentication_strength = ?, authenticated_at = ?, mfa_completed_at = ?, code_hash = ?,
 		       code_expires_at = LEAST(terminal.at + (? * interval '1 millisecond'), expires_at)
 		  FROM (SELECT clock_timestamp() AS at) AS terminal
@@ -129,7 +133,7 @@ func (s SQLDesktopAuthorizationStore) IssueCode(ctx context.Context, input *stor
 		   AND expected_authentication_method = ? AND expected_provider_id IS NOT DISTINCT FROM NULLIF(?, '')
 		   AND created_at <= terminal.at AND expires_at > terminal.at
 		 RETURNING `+desktopAuthorizationColumns,
-			input.UserID.String(), input.AuthenticationMethod, input.AuthenticationProviderID,
+			input.UserID.String(), input.AuthenticationMethod, input.AuthenticationProviderID, input.ExternalIdentityID.String(),
 			input.AuthenticationStrength, model.TimeFromMillis(input.AuthenticatedAt), NullTimeFromOptional(model.OptionalTimeFromMillis(input.MFACompletedAt)), input.CodeHash,
 			input.CodeLifetime.Milliseconds(), input.HandleHash, input.BrowserProofHash, input.StateHash,
 			input.AuthenticationMethod, input.AuthenticationProviderID)
@@ -198,6 +202,9 @@ func (s SQLDesktopAuthorizationStore) Exchange(ctx context.Context, input *store
 		if err = lockUserSessions(ctx, tx, transaction.UserID.String()); err != nil {
 			return nil, err
 		}
+		if err = requireExactExternalIdentity(ctx, tx, transaction.UserID, transaction.AuthenticationProviderID, transaction.ExternalIdentityID); err != nil {
+			return nil, err
+		}
 		var activeUserID string
 		if err = tx.Get(ctx, &activeUserID, `SELECT id FROM users
 			WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL FOR UPDATE`, transaction.UserID.String()); err != nil {
@@ -212,6 +219,7 @@ func (s SQLDesktopAuthorizationStore) Exchange(ctx context.Context, input *store
 			UserID: transaction.UserID, ClientType: model.SessionClientDesktop,
 			DeviceID: transaction.DeviceID, DeviceName: transaction.DeviceName,
 			AuthenticationMethod: transaction.AuthenticationMethod, AuthenticationProviderID: transaction.AuthenticationProviderID,
+			ExternalIdentityID:     transaction.ExternalIdentityID,
 			AuthenticationStrength: transaction.AuthenticationStrength, AuthenticatedAt: transaction.AuthenticatedAt.Time,
 			MFACompletedAt: transaction.MFACompletedAt, LastActivityAt: now,
 			IdleExpiresAt: now.Add(input.IdleLifetime), ExpiresAt: now.Add(input.AbsoluteLifetime),
@@ -298,6 +306,10 @@ func validateDesktopAuthorizationCodeIssue(input *store.DesktopAuthorizationCode
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return store.NewErrInvalidInput("browser_authentication_transaction", "code_issue", nil)
 	}
+	if (input.AuthenticationProviderID == "" && !input.ExternalIdentityID.IsZero()) ||
+		(input.AuthenticationProviderID != "" && !input.ExternalIdentityID.IsValid()) {
+		return store.NewErrInvalidInput("browser_authentication_transaction", "external_identity_id", nil)
+	}
 	if (input.AuthenticationStrength == model.AuthenticationSingleFactor && input.MFACompletedAt != 0) ||
 		(input.AuthenticationStrength == model.AuthenticationMultiFactor &&
 			(input.MFACompletedAt < input.AuthenticatedAt || input.MFACompletedAt > input.AuditAt)) {
@@ -339,6 +351,7 @@ func (row desktopAuthorizationRow) model() (*model.BrowserAuthenticationTransact
 		ClientType: model.SessionClientType(row.ClientType), DeviceID: row.DeviceID, DeviceName: row.DeviceName,
 		ExpiresAt: row.ExpiresAt.UTC(), AuthenticationMethod: row.AuthenticationMethod.String,
 		AuthenticationProviderID: row.AuthenticationProviderID.String,
+		ExternalIdentityID:       model.ExternalIdentityID(row.ExternalIdentityID.String),
 		AuthenticationStrength:   model.AuthenticationStrength(row.AuthenticationStrength.String),
 		AuthenticatedAt:          OptionalTimeFromNullTime(row.AuthenticatedAt), MFACompletedAt: OptionalTimeFromNullTime(row.MFACompletedAt), CodeHash: row.CodeHash.String,
 		CodeExpiresAt: OptionalTimeFromNullTime(row.CodeExpiresAt), CancelledAt: OptionalTimeFromNullTime(row.CancelledAt),

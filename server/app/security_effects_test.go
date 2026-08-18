@@ -8,6 +8,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -136,7 +137,10 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 		authentication,
 		nil,
 		audit,
+		mutationAuditAdapter{audit: audit},
+		&accessPolicyCapabilitiesFake{},
 		ExternalAuthenticationPolicy{},
+		15*time.Minute,
 		&securityEffectsDiagnosticsFake{},
 		model.NewCredentialToken,
 		nil,

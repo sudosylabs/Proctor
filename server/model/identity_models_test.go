@@ -106,6 +106,16 @@ func TestRoleAndRoleBindingTypedLifecycle(t *testing.T) {
 	if binding.IsActiveAt(at.Add(time.Hour)) {
 		t.Fatal("binding should not be active at exclusive end time")
 	}
+
+	invitationBinding := &RoleBinding{UserID: NewUserID(), RoleID: role.ID, ScopeType: RoleScopeAcademicUnit,
+		ScopeID: NewAcademicUnitID().String(), OriginInvitationID: NewInvitationID(), OriginAcademicUnitMemberID: NewAcademicUnitMemberID()}
+	invitationBinding.PrepareCreate(NewRoleBindingID(), at)
+	if err := invitationBinding.Validate(); err != nil {
+		t.Fatalf("Invitation-origin binding Validate() = %v", err)
+	}
+	if invitationBinding.Auditable()["origin_invitation_id"] != invitationBinding.OriginInvitationID.String() {
+		t.Fatalf("Invitation-origin binding audit = %#v", invitationBinding.Auditable())
+	}
 }
 
 func TestInstallationStateTypedLifecycle(t *testing.T) {
@@ -209,7 +219,7 @@ func TestSessionRetainsAValidatedExternalProviderIdentity(t *testing.T) {
 	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	valid := &Session{
 		UserID: NewUserID(), ClientType: SessionClientWeb,
-		AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc",
+		AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc", ExternalIdentityID: NewExternalIdentityID(),
 		AuthenticationStrength: AuthenticationSingleFactor, AuthenticatedAt: at,
 		IdleExpiresAt: at.Add(time.Hour), ExpiresAt: at.Add(2 * time.Hour),
 	}
@@ -220,6 +230,7 @@ func TestSessionRetainsAValidatedExternalProviderIdentity(t *testing.T) {
 	local := *valid
 	local.AuthenticationMethod = "password"
 	local.AuthenticationProviderID = ""
+	local.ExternalIdentityID = ""
 	if err := local.Validate(); err != nil {
 		t.Fatalf("local Session rejected: %v", err)
 	}
@@ -227,6 +238,16 @@ func TestSessionRetainsAValidatedExternalProviderIdentity(t *testing.T) {
 	missingProvider.AuthenticationProviderID = ""
 	if err := missingProvider.Validate(); err == nil {
 		t.Fatal("external Session without an exact provider ID was accepted")
+	}
+	missingIdentity := *valid
+	missingIdentity.ExternalIdentityID = ""
+	if err := missingIdentity.Validate(); err == nil {
+		t.Fatal("external Session without an exact external identity was accepted")
+	}
+	localWithIdentity := local
+	localWithIdentity.ExternalIdentityID = NewExternalIdentityID()
+	if err := localWithIdentity.Validate(); err == nil {
+		t.Fatal("local Session with external identity provenance was accepted")
 	}
 	invalid := *valid
 	invalid.AuthenticationProviderID = ".campus"
@@ -479,6 +500,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 					ClientType:               SessionClientDesktop,
 					AuthenticationMethod:     "oidc",
 					AuthenticationProviderID: "campus-oidc",
+					ExternalIdentityID:       NewExternalIdentityID(),
 					AuthenticationStrength:   AuthenticationSingleFactor,
 					IdleExpiresAt:            at.Add(120 * time.Second),
 					ExpiresAt:                at.Add(60 * time.Second),

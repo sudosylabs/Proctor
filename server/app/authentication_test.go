@@ -192,9 +192,6 @@ func (s authenticationUserStore) GetByEmail(_ context.Context, email string) (*m
 }
 
 // Remaining UserStore methods are unused by the focused authentication paths.
-func (authenticationUserStore) Update(context.Context, *model.User) (*model.User, error) {
-	return nil, errors.New("unused")
-}
 func (authenticationUserStore) List(context.Context, store.UserListOptions) ([]*model.User, error) {
 	return nil, errors.New("unused")
 }
@@ -229,6 +226,14 @@ func (s authenticationPasswordStore) Update(_ context.Context, credential *model
 }
 
 func (authenticationPasswordStore) Save(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error) {
+	return nil, errors.New("unused")
+}
+
+func (authenticationPasswordStore) EnrollWithAudit(context.Context, *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
+	return nil, errors.New("unused")
+}
+
+func (authenticationPasswordStore) RemoveWithAudit(context.Context, *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
 	return nil, errors.New("unused")
 }
 

@@ -79,20 +79,23 @@ type externalAuthenticationAudit interface {
 }
 
 type externalAuthenticationService struct {
-	registry       externalProviderSource
-	loginStates    store.ExternalLoginStateStore
-	institutions   store.InstitutionStore
-	identities     store.ExternalIdentityStore
-	sessions       store.SessionStore
-	accessPolicy   authenticationAccessPolicy
-	attempts       *authenticationAttemptAccounting
-	authentication authenticationSessionIssuer
-	invalidator    authenticationInvalidator
-	audit          externalAuthenticationAudit
-	policy         ExternalAuthenticationPolicy
-	diagnostics    authenticationDiagnostics
-	newCredential  func() string
-	now            func() time.Time
+	registry                externalProviderSource
+	loginStates             store.ExternalLoginStateStore
+	institutions            store.InstitutionStore
+	identities              store.ExternalIdentityStore
+	sessions                store.SessionStore
+	accessPolicy            authenticationAccessPolicy
+	attempts                *authenticationAttemptAccounting
+	authentication          authenticationSessionIssuer
+	invalidator             authenticationInvalidator
+	audit                   externalAuthenticationAudit
+	mutationAudit           mutationAuditor
+	capabilities            accessPolicyCapabilitySource
+	policy                  ExternalAuthenticationPolicy
+	recentAuthenticationTTL time.Duration
+	diagnostics             authenticationDiagnostics
+	newCredential           func() string
+	now                     func() time.Time
 }
 
 func newExternalAuthenticationService(
@@ -106,7 +109,10 @@ func newExternalAuthenticationService(
 	authentication authenticationSessionIssuer,
 	invalidator authenticationInvalidator,
 	audit externalAuthenticationAudit,
+	mutationAudit mutationAuditor,
+	capabilities accessPolicyCapabilitySource,
 	policy ExternalAuthenticationPolicy,
+	recentAuthenticationTTL time.Duration,
 	diagnostics authenticationDiagnostics,
 	newCredential func() string,
 	now func() time.Time,
@@ -132,6 +138,9 @@ func newExternalAuthenticationService(
 	if audit == nil {
 		return nil, errors.New("audit service is required")
 	}
+	if mutationAudit == nil || capabilities == nil || recentAuthenticationTTL <= 0 {
+		return nil, errors.New("external authentication method lifecycle dependencies are required")
+	}
 	if diagnostics == nil {
 		return nil, errors.New("external authentication diagnostics are required")
 	}
@@ -144,7 +153,8 @@ func newExternalAuthenticationService(
 	return &externalAuthenticationService{
 		registry: registry, loginStates: loginStates, institutions: institutions,
 		identities: identities, sessions: sessions, accessPolicy: accessPolicy, attempts: attempts,
-		authentication: authentication, invalidator: invalidator, audit: audit, policy: policy,
+		authentication: authentication, invalidator: invalidator, audit: audit, mutationAudit: mutationAudit,
+		capabilities: capabilities, policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
 		diagnostics: diagnostics, newCredential: newCredential, now: now,
 	}, nil
 }
@@ -179,6 +189,59 @@ type CompleteExternalAuthenticationCommand struct {
 	Source     string
 }
 
+type BeginProviderConnectionCommand struct {
+	ProviderID string
+	ReturnTo   string
+	Source     string
+}
+
+func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation, command BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error) {
+	if err := requireStrongRecentSession(invocation.Principal(), a.externalAuthentication.now(), a.externalAuthentication.recentAuthenticationTTL); err != nil {
+		return nil, err
+	}
+	auditID, err := a.externalAuthentication.mutationAudit.Begin(ctx, invocation, model.ActionExternalIdentityManage,
+		model.Resource{Type: model.ResourceUser, ID: invocation.Principal().UserID.String()}, "connect_provider",
+		map[string]any{"provider": strings.ToLower(strings.TrimSpace(command.ProviderID))}, nil)
+	if err != nil {
+		return nil, err
+	}
+	start, appErr := a.externalAuthentication.beginForPurpose(ctx, command.ProviderID, command.ReturnTo,
+		model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeConnect,
+		invocation.Principal().UserID, auditID)
+	if appErr != nil {
+		if failErr := a.externalAuthentication.mutationAudit.Fail(ctx, auditID, appErrorCode(appErr)); failErr != nil {
+			return nil, failErr
+		}
+	}
+	return start, appErr
+}
+
+func appErrorCode(err error) string {
+	if appErr, ok := As(err); ok {
+		return appErr.Code()
+	}
+	return "authentication.internal"
+}
+
+func authenticationMethodMutationError(err error) error {
+	var conflict *store.ErrConflict
+	switch {
+	case errors.Is(err, store.ErrAuthenticationMethodDisabled):
+		return NewError("authentication.method.disabled")
+	case errors.Is(err, store.ErrLastUsableAuthenticationMethod):
+		return NewError("authentication.method.last_usable")
+	case store.IsNotFound(err):
+		return NewError("authentication.method.not_found")
+	case errors.As(err, &conflict):
+		if conflict.Constraint == "external_identities_provider_subject_key" {
+			return NewError("authentication.method.provider_conflict")
+		}
+		return NewError("authentication.method.conflict")
+	default:
+		return NewError("authentication.method.unavailable").Wrap(err)
+	}
+}
+
 func (a *App) BeginExternalAuthentication(
 	ctx context.Context,
 	_ Invocation,
@@ -205,6 +268,15 @@ func (s *externalAuthenticationService) begin(
 	deviceName string,
 	source string,
 ) (*model.ExternalAuthenticationStart, error) {
+	return s.beginForPurpose(ctx, providerID, returnTo, clientType, deviceID, deviceName, source,
+		model.ExternalAuthenticationPurposeLogin, "", "")
+}
+
+func (s *externalAuthenticationService) beginForPurpose(
+	ctx context.Context, providerID, returnTo string, clientType model.SessionClientType,
+	deviceID, deviceName, source string, purpose model.ExternalAuthenticationPurpose, targetUserID model.UserID,
+	auditEventID string,
+) (*model.ExternalAuthenticationStart, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
@@ -226,13 +298,14 @@ func (s *externalAuthenticationService) begin(
 		utf8.RuneCountInString(deviceName) > model.SessionDeviceNameMaxRunes {
 		return nil, NewError("authentication.external.request.invalid")
 	}
+	if purpose == model.ExternalAuthenticationPurposeConnect && !targetUserID.IsValid() {
+		return nil, invalidTokenAppError()
+	}
 	if appErr := s.checkInitiationRateLimit(ctx, providerID, source); appErr != nil {
 		return nil, appErr
 	}
 	stateToken := s.newCredential()
 	bindingToken := s.newCredential()
-	now := s.now().UnixMilli()
-	expiresAt := now + s.policy.LoginStateTTL.Milliseconds()
 	callbackURL, err := externalAuthenticationCallbackURL(
 		s.policy.PublicURL,
 		providerID,
@@ -257,18 +330,22 @@ func (s *externalAuthenticationService) begin(
 	if challenge == nil || challenge.RedirectURL == "" {
 		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"))
 	}
-	if _, err := s.loginStates.Save(ctx, &model.ExternalLoginState{
+	saved, err := s.loginStates.Save(ctx, &model.ExternalLoginState{
 		Provider: providerID, StateHash: model.HashToken(stateToken),
+		Purpose: purpose, TargetUserID: targetUserID, AuditEventID: auditEventID,
 		BindingHash: model.HashToken(bindingToken), ReturnTo: returnTo,
 		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
-		ExpiresAt: model.TimeFromMillis(expiresAt),
-	}); err != nil {
+	}, s.policy.LoginStateTTL)
+	if err != nil {
 		return nil, authenticationUnavailable(err)
+	}
+	if saved == nil || saved.ExpiresAt.IsZero() {
+		return nil, authenticationUnavailable(errors.New("external login state persistence returned an invalid deadline"))
 	}
 	return &model.ExternalAuthenticationStart{
 		RedirectURL: challenge.RedirectURL,
 		Binding:     bindingToken,
-		ExpiresAt:   expiresAt,
+		ExpiresAt:   saved.ExpiresAt.UnixMilli(),
 	}, nil
 }
 
@@ -317,10 +394,8 @@ func (s *externalAuthenticationService) complete(
 	}
 	stateHash := model.HashToken(stateToken)
 	state, err := s.loginStates.GetByStateHash(ctx, stateHash)
-	nowTime := s.now()
-	now := nowTime.UnixMilli()
 	if err != nil || state == nil || state.Provider != providerID ||
-		state.ClientType != model.SessionClientWeb || state.ConsumedAt.Valid || !state.ExpiresAt.After(nowTime) {
+		state.ClientType != model.SessionClientWeb || state.ConsumedAt.Valid {
 		if err != nil && !store.IsNotFound(err) {
 			return nil, authenticationUnavailable(err)
 		}
@@ -340,7 +415,6 @@ func (s *externalAuthenticationService) complete(
 		providerID,
 		stateHash,
 		model.HashToken(bindingToken),
-		now,
 	)
 	if err != nil {
 		if store.IsNotFound(err) {
@@ -350,10 +424,12 @@ func (s *externalAuthenticationService) complete(
 		}
 		return nil, authenticationUnavailable(err)
 	}
+	nowTime := s.now()
+	now := nowTime.UnixMilli()
 
 	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil {
-		return nil, authenticationUnavailable(err)
+		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(err))
 	}
 	assertion, providerErr := provider.Complete(
 		ctx,
@@ -377,9 +453,9 @@ func (s *externalAuthenticationService) complete(
 			institution.ID.String(),
 			errorCode,
 		); appErr != nil {
-			return nil, appErr
+			return nil, s.failConsumedProviderConnection(ctx, state, appErr)
 		}
-		return nil, NewError(errorCode).Wrap(providerErr)
+		return nil, s.failConsumedProviderConnection(ctx, state, NewError(errorCode).Wrap(providerErr))
 	}
 	if assertion == nil || assertion.ProviderId != providerID {
 		if auditErr := s.audit.RecordExternalAuthenticationFailure(
@@ -390,9 +466,12 @@ func (s *externalAuthenticationService) complete(
 			institution.ID.String(),
 			"authentication.external.invalid_assertion",
 		); auditErr != nil {
-			return nil, auditErr
+			return nil, s.failConsumedProviderConnection(ctx, state, auditErr)
 		}
-		return nil, authenticationUnavailable(errors.New("provider returned a mismatched assertion"))
+		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(errors.New("provider returned a mismatched assertion")))
+	}
+	if state.Purpose == model.ExternalAuthenticationPurposeConnect {
+		return s.completeProviderConnection(ctx, state, assertion, metadata, institution)
 	}
 	userCandidate := externalUserCandidate(assertion)
 	provisionParameters, appErr := model.EncodeAuditData(map[string]string{
@@ -463,6 +542,15 @@ func (s *externalAuthenticationService) complete(
 			return nil, authenticationUnavailable(err)
 		}
 	}
+	if resolution == nil || resolution.User == nil || resolution.Identity == nil ||
+		!resolution.Identity.ID.IsValid() || resolution.Identity.UserID != resolution.User.ID ||
+		resolution.Identity.Provider != providerID {
+		if auditErr := s.audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
+			institution.ID.String(), "authentication.external.internal"); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, authenticationUnavailable(errors.New("external identity resolution returned invalid provenance"))
+	}
 	if !resolution.User.IsActive() {
 		if appErr := s.audit.RecordExternalAuthenticationFailure(
 			ctx,
@@ -501,6 +589,7 @@ func (s *externalAuthenticationService) complete(
 			User: resolution.User, ClientType: state.ClientType,
 			DeviceID: state.DeviceID, DeviceName: state.DeviceName,
 			AuthenticationMethod: method, AuthenticationProviderID: providerID,
+			ExternalIdentityID:     resolution.Identity.ID,
 			AuthenticationStrength: assertion.AuthenticationStrength,
 			AuthenticatedAt:        assertion.AuthenticatedAt, MFACompletedAt: mfaCompletedAt,
 		},
@@ -537,6 +626,44 @@ func (s *externalAuthenticationService) complete(
 		User: resolution.User, Session: session, Tokens: tokens,
 		ReturnTo: state.ReturnTo,
 	}, nil
+}
+
+func (s *externalAuthenticationService) failConsumedProviderConnection(ctx context.Context, state *model.ExternalLoginState, failure error) error {
+	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeConnect || state.AuditEventID == "" {
+		return failure
+	}
+	if err := s.mutationAudit.Fail(ctx, state.AuditEventID, appErrorCode(failure)); err != nil {
+		return err
+	}
+	return failure
+}
+
+func (s *externalAuthenticationService) completeProviderConnection(
+	ctx context.Context, state *model.ExternalLoginState, assertion *model.ExternalAuthenticationAssertion,
+	metadata model.RequestMetadata, institution *model.Institution,
+) (*model.ExternalAuthenticationCompletion, error) {
+	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeConnect ||
+		!state.TargetUserID.IsValid() || !state.ConsumedAt.Valid || assertion == nil {
+		return nil, invalidExternalAuthenticationError("CompleteProviderConnection.state")
+	}
+	connectedAt := state.ConsumedAt.Time.Truncate(time.Millisecond)
+	result, err := s.identities.LinkWithAudit(ctx, &store.ExternalIdentityLink{
+		Identity: &model.ExternalIdentity{UserID: state.TargetUserID, Provider: state.Provider,
+			Subject: assertion.Subject, LastSeenAt: model.OptionalTimeFrom(connectedAt)},
+		Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
+		AuditEventID: state.AuditEventID, AuditAt: connectedAt.UnixMilli(),
+	})
+	if err != nil {
+		mapped := authenticationMethodMutationError(err)
+		if failErr := s.mutationAudit.Fail(ctx, state.AuditEventID, appErrorCode(mapped)); failErr != nil {
+			return nil, failErr
+		}
+		return nil, mapped
+	}
+	_ = metadata
+	_ = institution
+	_ = result
+	return &model.ExternalAuthenticationCompletion{ReturnTo: state.ReturnTo}, nil
 }
 
 func (s *externalAuthenticationService) checkInitiationRateLimit(

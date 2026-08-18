@@ -34,6 +34,7 @@ type Principal struct {
 	CredentialType           CredentialType
 	AuthenticationMethod     string
 	AuthenticationProviderID string
+	ExternalIdentityID       ExternalIdentityID
 	AuthenticationStrength   AuthenticationStrength
 	ClientType               SessionClientType
 	AuthenticatedAt          time.Time
@@ -67,14 +68,16 @@ func (p Principal) Validate() error {
 			!p.AcademicUnitID.IsZero() {
 			return errors.New("model: session principal is invalid")
 		}
-		if (p.AuthenticationMethod == "password" && p.AuthenticationProviderID != "") ||
-			(p.AuthenticationMethod != "password" && !IsValidIdentityProviderID(p.AuthenticationProviderID)) {
+		if (p.AuthenticationMethod == "password" && (p.AuthenticationProviderID != "" || !p.ExternalIdentityID.IsZero())) ||
+			(p.AuthenticationMethod != "password" &&
+				(!IsValidIdentityProviderID(p.AuthenticationProviderID) || !p.ExternalIdentityID.IsValid())) {
 			return errors.New("model: session principal authentication provider is invalid")
 		}
 		return nil
 	case CredentialPersonalAccessToken:
 		if !p.SessionID.IsZero() || p.AuthenticationStrength != "" ||
 			p.AuthenticationProviderID != "" ||
+			!p.ExternalIdentityID.IsZero() ||
 			!p.AuthenticatedAt.IsZero() || p.MFACompletedAt.Valid ||
 			p.ClientType != SessionClientCLI ||
 			len(p.CredentialScopes) == 0 ||

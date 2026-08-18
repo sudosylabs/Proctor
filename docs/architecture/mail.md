@@ -162,7 +162,9 @@ recipients through CC or BCC. Direct operations freeze User identity, address,
 display name, locale, timezone, safe template data, message date, and headers
 when the occurrence is created. Delivery never re-resolves the address. Email
 change explicitly freezes the old warning address and the new verification
-address.
+address. Its named aggregate accepts bounded lifetimes rather than caller-clock
+deadlines and derives the User-token, occurrence, delivery, and Job timestamps
+from one PostgreSQL clock sample inside the committing transaction.
 
 Sitting audience is the set of active students whose effective Class
 membership contains the Sitting's scheduled start. A bounded expansion Job

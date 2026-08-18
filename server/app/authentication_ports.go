@@ -33,6 +33,7 @@ type sessionIssuance struct {
 	DeviceName               string
 	AuthenticationMethod     string
 	AuthenticationProviderID string
+	ExternalIdentityID       model.ExternalIdentityID
 	AuthenticationStrength   model.AuthenticationStrength
 	AuthenticatedAt          int64
 	MFACompletedAt           int64

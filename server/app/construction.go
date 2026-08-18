@@ -39,6 +39,7 @@ type identityConstruction struct {
 	desktopAuthorization              *desktopAuthorizationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
+	authenticationMethods             *authenticationMethodService
 	mfaApplication                    *mfaApplicationService
 	accountTokens                     *accountTokenService
 	invitations                       *invitationService
@@ -180,6 +181,7 @@ func assembleApplication(
 		desktopAuthorization:              identity.desktopAuthorization,
 		selfSessions:                      identity.selfSessions,
 		externalAuthentication:            identity.externalAuthentication,
+		authenticationMethods:             identity.authenticationMethods,
 		mfaApplication:                    identity.mfaApplication,
 		accountTokens:                     identity.accountTokens,
 		invitations:                       identity.invitations,

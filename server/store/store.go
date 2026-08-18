@@ -1009,7 +1009,8 @@ type UserVisibilityMatch struct {
 }
 
 type UserProfileUpdate struct {
-	User             *model.User
+	UserID           model.UserID
+	Changes          model.UserProfileChanges
 	ExpectedRevision int64
 	AuditEventID     string
 	AuditAt          int64
@@ -1066,7 +1067,6 @@ type UserStore interface {
 	List(context.Context, UserListOptions) ([]*model.User, error)
 	MatchVisibility(context.Context, string, UserVisibilityScope) (UserVisibilityMatch, error)
 	UpdateProfileWithAudit(context.Context, *UserProfileUpdate) (*model.User, error)
-	Update(context.Context, *model.User) (*model.User, error)
 	SetDisabledWithAudit(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
 	UpdateLastLogin(context.Context, string, int64) error
 }
@@ -1112,6 +1112,34 @@ type ExternalIdentityResolutionRequest struct {
 	DefaultProfilePictureJob *model.Job
 }
 
+// ExternalIdentityLink is the proof-completed, application-prepared command
+// that attaches one immutable provider subject to the exact current User.
+type ExternalIdentityLink struct {
+	Identity     *model.ExternalIdentity
+	Capabilities AccessDeploymentCapabilities
+	AuditEventID string
+	AuditAt      int64
+}
+
+// ExternalIdentityUnlink removes one exact provider identity and revokes only
+// Sessions that authenticated through that provider.
+type ExternalIdentityUnlink struct {
+	ID               model.ExternalIdentityID
+	UserID           model.UserID
+	Capabilities     AccessDeploymentCapabilities
+	ChangedAt        int64
+	RevocationReason string
+	AuditEventID     string
+	AuditAt          int64
+}
+
+type AuthenticationMethodMutationResult struct {
+	Identity           *model.ExternalIdentity
+	PasswordCredential *model.PasswordCredential
+	RevokedSessions    []*model.Session
+	RevokedTokenHashes []string
+}
+
 // ExternalIdentityStore persists provider-subject links and owns the
 // transaction that either resolves an existing link or provisions a new user
 // and link without email-based account merging.
@@ -1121,20 +1149,33 @@ type ExternalIdentityStore interface {
 	GetByProviderSubject(context.Context, string, string) (*model.ExternalIdentity, error)
 	ListByUser(context.Context, string) ([]*model.ExternalIdentity, error)
 	ResolveOrProvision(context.Context, *ExternalIdentityResolutionRequest) (*ExternalIdentityResolution, error)
+	LinkWithAudit(context.Context, *ExternalIdentityLink) (*AuthenticationMethodMutationResult, error)
+	UnlinkWithAudit(context.Context, *ExternalIdentityUnlink) (*AuthenticationMethodMutationResult, error)
 }
 
 // ExternalLoginStateStore persists hashed, browser-bound, one-use login
 // transactions so any node may receive the provider callback.
 type ExternalLoginStateStore interface {
-	Save(context.Context, *model.ExternalLoginState) (*model.ExternalLoginState, error)
+	// Save applies lifetime to one authoritative database timestamp. Callers
+	// provide no absolute creation or expiry deadline.
+	Save(context.Context, *model.ExternalLoginState, time.Duration) (*model.ExternalLoginState, error)
 	GetByStateHash(context.Context, string) (*model.ExternalLoginState, error)
 	Consume(
 		context.Context,
 		string,
 		string,
 		string,
-		int64,
 	) (*model.ExternalLoginState, error)
+	Maintain(context.Context, int) (*ExternalLoginStateMaintenanceResult, error)
+}
+
+// ExternalLoginStateMaintenanceResult reports one bounded database-time pass.
+// Terminalized is the number of abandoned provider-connection audit attempts
+// completed as failures; Purged is safe state metadata removed after retention.
+type ExternalLoginStateMaintenanceResult struct {
+	Terminalized int
+	Purged       int
+	More         bool
 }
 
 type EmailVerificationResult struct {
@@ -1161,6 +1202,40 @@ type UserTokenMailIssue struct {
 	AuditEvent *model.AuditEvent
 }
 
+// UserEmailChange is the named transition that replaces the account address,
+// invalidates prior verification credentials, and commits the new verification
+// credential plus frozen old/new-address notifications atomically.
+type UserEmailChange struct {
+	UserID                                    model.UserID
+	ExpectedRevision                          int64
+	NewEmail                                  string
+	Token                                     *model.UserToken
+	TokenLifetime                             time.Duration
+	WarningLifetime                           time.Duration
+	WarningOccurrence, VerificationOccurrence *model.MailOccurrence
+	WarningDelivery, VerificationDelivery     *model.MailDelivery
+	WarningJob, VerificationJob               *model.Job
+	AuditEventID                              string
+	AuditAt                                   int64
+}
+
+type UserEmailChangeResult struct {
+	User  *model.User
+	Token *model.UserToken
+}
+
+// PrivilegedEmailVerification records a high-assurance administrator override
+// and its frozen user notice in one transaction.
+type PrivilegedEmailVerification struct {
+	UserID           model.UserID
+	ExpectedRevision int64
+	Occurrence       *model.MailOccurrence
+	Delivery         *model.MailDelivery
+	Job              *model.Job
+	AuditEventID     string
+	AuditAt          int64
+}
+
 // PasswordResetCompletion is the named aggregate that consumes one reset
 // credential, changes the password, revokes Sessions, completes the security
 // audit, and records the password-changed notification atomically.
@@ -1183,6 +1258,8 @@ type UserTokenStore interface {
 		context.Context,
 		*UserTokenMailIssue,
 	) (*model.UserToken, error)
+	ChangeEmail(context.Context, *UserEmailChange) (*UserEmailChangeResult, error)
+	VerifyEmailPrivileged(context.Context, *PrivilegedEmailVerification) (*model.User, error)
 	Get(context.Context, model.UserTokenID) (*model.UserToken, error)
 	GetByHash(
 		context.Context,
@@ -1206,6 +1283,21 @@ type UserTokenStore interface {
 // completing the already-recorded security audit attempt.
 type StudentClassInvitationIssue struct {
 	Invitation   *model.Invitation
+	Occurrence   *model.MailOccurrence
+	Delivery     *model.MailDelivery
+	DeliveryJob  *model.Job
+	AuditEventID string
+	AuditAt      int64
+}
+
+// TeacherAcademicUnitInvitationIssue atomically persists one exact teacher
+// relationship package, its recoverable credential delivery, and the
+// successful mutation audit.
+type TeacherAcademicUnitInvitationIssue struct {
+	Invitation *model.Invitation
+	// Lifetime is a bounded duration, never a node-selected absolute deadline.
+	// SQL derives the authoritative lifecycle from one PostgreSQL timestamp.
+	Lifetime     time.Duration
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
@@ -1244,6 +1336,35 @@ type StudentClassInvitationAcceptanceResult struct {
 	Replayed    bool
 }
 
+// TeacherAcademicUnitInvitationAcceptance is the complete prepared package
+// for one teacher claim. Persistence resolves existing relationships and adds
+// only missing effects inside the same transaction.
+type TeacherAcademicUnitInvitationAcceptance struct {
+	ClaimHash                string
+	AcceptedAt               int64
+	User                     *model.User
+	Settings                 *model.UserSettingsDocument
+	PasswordCredential       *model.PasswordCredential
+	DefaultProfilePictureJob *model.Job
+	Affiliation              *model.Affiliation
+	AcademicUnitMember       *model.AcademicUnitMember
+	RoleBinding              *model.RoleBinding
+	Occurrence               *model.MailOccurrence
+	Delivery                 *model.MailDelivery
+	DeliveryJob              *model.Job
+	AuditEvent               *model.AuditEvent
+	RequiredActions          []model.Action
+}
+
+type TeacherAcademicUnitInvitationAcceptanceResult struct {
+	Invitation         *model.Invitation
+	User               *model.User
+	Affiliation        *model.Affiliation
+	AcademicUnitMember *model.AcademicUnitMember
+	RoleBinding        *model.RoleBinding
+	Replayed           bool
+}
+
 type InvitationMaintenanceResult struct {
 	Expired int
 	Purged  int
@@ -1254,9 +1375,11 @@ type InvitationMaintenanceResult struct {
 // first-slice transitions. Raw claims never cross this boundary.
 type InvitationStore interface {
 	IssueStudentClass(context.Context, *StudentClassInvitationIssue) (*model.Invitation, error)
+	IssueTeacherAcademicUnit(context.Context, *TeacherAcademicUnitInvitationIssue) (*model.Invitation, error)
 	Get(context.Context, model.InvitationID) (*model.Invitation, error)
 	GetByClaimHash(context.Context, string) (*model.Invitation, error)
 	AcceptStudentClass(context.Context, *StudentClassInvitationAcceptance) (*StudentClassInvitationAcceptanceResult, error)
+	AcceptTeacherAcademicUnit(context.Context, *TeacherAcademicUnitInvitationAcceptance) (*TeacherAcademicUnitInvitationAcceptanceResult, error)
 	Maintain(context.Context, int) (*InvitationMaintenanceResult, error)
 }
 
@@ -1397,6 +1520,24 @@ type PasswordCredentialStore interface {
 	Save(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
 	GetByUser(context.Context, string) (*model.PasswordCredential, error)
 	Update(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
+	EnrollWithAudit(context.Context, *PasswordCredentialEnrollment) (*AuthenticationMethodMutationResult, error)
+	RemoveWithAudit(context.Context, *PasswordCredentialRemoval) (*AuthenticationMethodMutationResult, error)
+}
+
+type PasswordCredentialEnrollment struct {
+	Credential   *model.PasswordCredential
+	Capabilities AccessDeploymentCapabilities
+	AuditEventID string
+	AuditAt      int64
+}
+
+type PasswordCredentialRemoval struct {
+	UserID           model.UserID
+	Capabilities     AccessDeploymentCapabilities
+	ChangedAt        int64
+	RevocationReason string
+	AuditEventID     string
+	AuditAt          int64
 }
 
 // SessionRevocation is the complete durable input for revoking one session

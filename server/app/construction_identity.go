@@ -76,6 +76,7 @@ func constructIdentity(
 	}
 	invitations, err := newInvitationService(
 		deps.Store.Invitation(), deps.Store.Class(), deps.Store.AcademicPeriod(),
+		deps.Store.AcademicUnit(), deps.Store.Role(),
 		invitationAuthorizationAdapter{authorization: authorization},
 		accountMail, foundation.hasher, invitationAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit}, deps.NodeID, deps.PublicURL,
@@ -123,10 +124,21 @@ func constructIdentity(
 		authentication,
 		foundation.invalidator,
 		foundation.audit,
+		mutationAuditAdapter{audit: foundation.audit},
+		capabilities,
 		externalPolicy,
+		deps.RecentAuthenticationTTL,
 		deps.AuthenticationDiagnostics,
 		model.NewCredentialToken,
 		time.Now,
+	)
+	if err != nil {
+		return identityConstruction{}, err
+	}
+	authenticationMethods, err := newAuthenticationMethodService(
+		deps.Store.PasswordCredential(), deps.Store.ExternalIdentity(), deps.Registry,
+		capabilities, foundation.hasher, mutationAuditAdapter{audit: foundation.audit}, foundation.realtime,
+		deps.RecentAuthenticationTTL, time.Now,
 	)
 	if err != nil {
 		return identityConstruction{}, err
@@ -136,6 +148,7 @@ func constructIdentity(
 		desktopAuthorization:              desktopAuthorization,
 		selfSessions:                      selfSessions,
 		externalAuthentication:            externalAuthentication,
+		authenticationMethods:             authenticationMethods,
 		mfaApplication:                    mfaApplication,
 		accountTokens:                     accountTokens,
 		invitations:                       invitations,

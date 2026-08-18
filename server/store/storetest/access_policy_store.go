@@ -146,8 +146,12 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		}
 	}
 	campusCandidate, campusCredentials, _ := newSession(bootstrap.Administrator.ID.String())
+	campusIdentity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: bootstrap.Administrator.ID,
+		Provider: "campus", Subject: "access-policy-session-" + model.NewId(), LastSeenAt: model.OptionalTimeFrom(model.NowUTC())})
+	requireNoError(t, err)
 	campusCandidate.AuthenticationMethod = "oidc"
 	campusCandidate.AuthenticationProviderID = "campus"
+	campusCandidate.ExternalIdentityID = campusIdentity.ID
 	campusSession, _, err := ss.Session().Save(ctx, campusCandidate, campusCredentials, 10)
 	requireNoError(t, err)
 

@@ -2058,12 +2058,6 @@ func (s *timedUserStore) UpdateProfileWithAudit(arg0 context.Context, arg1 *stor
 	})
 }
 
-func (s *timedUserStore) Update(arg0 context.Context, arg1 *model.User) (*model.User, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodUpdate), func() (*model.User, error) {
-		return s.next.Update(arg0, arg1)
-	})
-}
-
 func (s *timedUserStore) SetDisabledWithAudit(arg0 context.Context, arg1 *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodSetDisabledWithAudit), func() (*store.UserDisabledStateResult, error) {
 		return s.next.SetDisabledWithAudit(arg0, arg1)
@@ -2118,9 +2112,21 @@ func (s *timedExternalIdentityStore) ResolveOrProvision(arg0 context.Context, ar
 	})
 }
 
-func (s *timedExternalLoginStateStore) Save(arg0 context.Context, arg1 *model.ExternalLoginState) (*model.ExternalLoginState, error) {
+func (s *timedExternalIdentityStore) LinkWithAudit(arg0 context.Context, arg1 *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodLinkWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.LinkWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedExternalIdentityStore) UnlinkWithAudit(arg0 context.Context, arg1 *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExternalIdentity, methodUnlinkWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.UnlinkWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedExternalLoginStateStore) Save(arg0 context.Context, arg1 *model.ExternalLoginState, arg2 time.Duration) (*model.ExternalLoginState, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodSave), func() (*model.ExternalLoginState, error) {
-		return s.next.Save(arg0, arg1)
+		return s.next.Save(arg0, arg1, arg2)
 	})
 }
 
@@ -2130,15 +2136,33 @@ func (s *timedExternalLoginStateStore) GetByStateHash(arg0 context.Context, arg1
 	})
 }
 
-func (s *timedExternalLoginStateStore) Consume(arg0 context.Context, arg1 string, arg2 string, arg3 string, arg4 int64) (*model.ExternalLoginState, error) {
+func (s *timedExternalLoginStateStore) Consume(arg0 context.Context, arg1 string, arg2 string, arg3 string) (*model.ExternalLoginState, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodConsume), func() (*model.ExternalLoginState, error) {
-		return s.next.Consume(arg0, arg1, arg2, arg3, arg4)
+		return s.next.Consume(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExternalLoginStateStore) Maintain(arg0 context.Context, arg1 int) (*store.ExternalLoginStateMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodMaintain), func() (*store.ExternalLoginStateMaintenanceResult, error) {
+		return s.next.Maintain(arg0, arg1)
 	})
 }
 
 func (s *timedUserTokenStore) Issue(arg0 context.Context, arg1 *store.UserTokenMailIssue) (*model.UserToken, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodIssue), func() (*model.UserToken, error) {
 		return s.next.Issue(arg0, arg1)
+	})
+}
+
+func (s *timedUserTokenStore) ChangeEmail(arg0 context.Context, arg1 *store.UserEmailChange) (*store.UserEmailChangeResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodChangeEmail), func() (*store.UserEmailChangeResult, error) {
+		return s.next.ChangeEmail(arg0, arg1)
+	})
+}
+
+func (s *timedUserTokenStore) VerifyEmailPrivileged(arg0 context.Context, arg1 *store.PrivilegedEmailVerification) (*model.User, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodVerifyEmailPrivileged), func() (*model.User, error) {
+		return s.next.VerifyEmailPrivileged(arg0, arg1)
 	})
 }
 
@@ -2172,6 +2196,12 @@ func (s *timedInvitationStore) IssueStudentClass(arg0 context.Context, arg1 *sto
 	})
 }
 
+func (s *timedInvitationStore) IssueTeacherAcademicUnit(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueTeacherAcademicUnit), func() (*model.Invitation, error) {
+		return s.next.IssueTeacherAcademicUnit(arg0, arg1)
+	})
+}
+
 func (s *timedInvitationStore) Get(arg0 context.Context, arg1 model.InvitationID) (*model.Invitation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGet), func() (*model.Invitation, error) {
 		return s.next.Get(arg0, arg1)
@@ -2187,6 +2217,12 @@ func (s *timedInvitationStore) GetByClaimHash(arg0 context.Context, arg1 string)
 func (s *timedInvitationStore) AcceptStudentClass(arg0 context.Context, arg1 *store.StudentClassInvitationAcceptance) (*store.StudentClassInvitationAcceptanceResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptStudentClass), func() (*store.StudentClassInvitationAcceptanceResult, error) {
 		return s.next.AcceptStudentClass(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) AcceptTeacherAcademicUnit(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationAcceptance) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptTeacherAcademicUnit), func() (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
+		return s.next.AcceptTeacherAcademicUnit(arg0, arg1)
 	})
 }
 
@@ -2433,6 +2469,18 @@ func (s *timedPasswordCredentialStore) GetByUser(arg0 context.Context, arg1 stri
 func (s *timedPasswordCredentialStore) Update(arg0 context.Context, arg1 *model.PasswordCredential) (*model.PasswordCredential, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodUpdate), func() (*model.PasswordCredential, error) {
 		return s.next.Update(arg0, arg1)
+	})
+}
+
+func (s *timedPasswordCredentialStore) EnrollWithAudit(arg0 context.Context, arg1 *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodEnrollWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.EnrollWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedPasswordCredentialStore) RemoveWithAudit(arg0 context.Context, arg1 *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodRemoveWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
+		return s.next.RemoveWithAudit(arg0, arg1)
 	})
 }
 

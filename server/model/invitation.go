@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -54,27 +56,32 @@ type InvitationProfileSuggestions struct {
 // package. ClaimHash is deliberately omitted from JSON; raw claims never enter
 // this model or durable state.
 type Invitation struct {
-	ID                    InvitationID
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	Revision              int64
-	Purpose               InvitationPurpose
-	State                 InvitationState
-	TargetEmail           string
-	ClassID               ClassID
-	AcademicPeriodID      AcademicPeriodID
-	IntendedStartsAt      time.Time
-	IntendedEndsAt        OptionalTime
-	Suggestions           InvitationProfileSuggestions
-	InviterUserID         UserID
-	ScopeType             RoleScopeType
-	ScopeID               string
-	ClaimHash             string `json:"-"`
-	ExpiresAt             time.Time
-	AcceptedAt            OptionalTime
-	AcceptedUserID        UserID
-	AcceptedAffiliationID AffiliationID
-	AcceptedClassMemberID ClassMemberID
+	ID                           InvitationID
+	CreatedAt                    time.Time
+	UpdatedAt                    time.Time
+	Revision                     int64
+	Purpose                      InvitationPurpose
+	State                        InvitationState
+	TargetEmail                  string
+	ClassID                      ClassID
+	AcademicPeriodID             AcademicPeriodID
+	AcademicUnitID               AcademicUnitID
+	RoleID                       RoleID
+	RoleActions                  []string
+	IntendedStartsAt             time.Time
+	IntendedEndsAt               OptionalTime
+	Suggestions                  InvitationProfileSuggestions
+	InviterUserID                UserID
+	ScopeType                    RoleScopeType
+	ScopeID                      string
+	ClaimHash                    string `json:"-"`
+	ExpiresAt                    time.Time
+	AcceptedAt                   OptionalTime
+	AcceptedUserID               UserID
+	AcceptedAffiliationID        AffiliationID
+	AcceptedClassMemberID        ClassMemberID
+	AcceptedAcademicUnitMemberID AcademicUnitMemberID
+	AcceptedRoleBindingID        RoleBindingID
 }
 
 // StudentClassInvitationInput is the complete immutable package selected by
@@ -84,6 +91,24 @@ type StudentClassInvitationInput struct {
 	TargetEmail      string
 	ClassID          ClassID
 	AcademicPeriodID AcademicPeriodID
+	IntendedStartsAt time.Time
+	IntendedEndsAt   OptionalTime
+	Suggestions      InvitationProfileSuggestions
+	InviterUserID    UserID
+	ScopeType        RoleScopeType
+	ScopeID          string
+	ClaimHash        string
+	IssuedAt         time.Time
+}
+
+// TeacherAcademicUnitInvitationInput freezes the exact organizational and
+// delegable Role package selected by an authorized inviter.
+type TeacherAcademicUnitInvitationInput struct {
+	ID               InvitationID
+	TargetEmail      string
+	AcademicUnitID   AcademicUnitID
+	RoleID           RoleID
+	RoleActions      []string
 	IntendedStartsAt time.Time
 	IntendedEndsAt   OptionalTime
 	Suggestions      InvitationProfileSuggestions
@@ -104,6 +129,29 @@ func NewStudentClassInvitation(input StudentClassInvitationInput) (*Invitation, 
 		Purpose: InvitationPurposeStudentClass, State: InvitationPending,
 		TargetEmail: normalizeInvitationEmail(input.TargetEmail),
 		ClassID:     input.ClassID, AcademicPeriodID: input.AcademicPeriodID,
+		IntendedStartsAt: TimeUTC(input.IntendedStartsAt),
+		IntendedEndsAt:   normalizeOptionalInvitationTime(input.IntendedEndsAt),
+		Suggestions:      normalizeInvitationSuggestions(input.Suggestions),
+		InviterUserID:    input.InviterUserID, ScopeType: input.ScopeType,
+		ScopeID: input.ScopeID, ClaimHash: input.ClaimHash,
+		ExpiresAt: issuedAt.Add(StudentClassInvitationLifetime),
+	}
+	if err := invitation.Validate(); err != nil {
+		return nil, err
+	}
+	return invitation, nil
+}
+
+// NewTeacherAcademicUnitInvitation constructs one immutable teacher
+// relationship package. RoleActions is an owned, canonical snapshot so later
+// Role changes cannot silently broaden an unclaimed Invitation.
+func NewTeacherAcademicUnitInvitation(input TeacherAcademicUnitInvitationInput) (*Invitation, error) {
+	issuedAt := TimeUTC(input.IssuedAt)
+	invitation := &Invitation{
+		ID: input.ID, CreatedAt: issuedAt, UpdatedAt: issuedAt, Revision: 1,
+		Purpose: InvitationPurposeTeacherAcademicUnit, State: InvitationPending,
+		TargetEmail: normalizeInvitationEmail(input.TargetEmail), AcademicUnitID: input.AcademicUnitID,
+		RoleID: input.RoleID, RoleActions: canonicalInvitationRoleActions(input.RoleActions),
 		IntendedStartsAt: TimeUTC(input.IntendedStartsAt),
 		IntendedEndsAt:   normalizeOptionalInvitationTime(input.IntendedEndsAt),
 		Suggestions:      normalizeInvitationSuggestions(input.Suggestions),
@@ -175,14 +223,48 @@ func (i *Invitation) Validate() error {
 			(i.IntendedEndsAt.Valid && !i.IntendedEndsAt.Time.After(i.IntendedStartsAt)) {
 			return invalidModelError(where, "invitation", "effective_bounds", "must form a valid half-open interval", details)
 		}
+		if i.AcademicUnitID.IsValid() || i.RoleID.IsValid() || len(i.RoleActions) != 0 {
+			return invalidModelError(where, "invitation", "student_class", "must not contain a teacher package", details)
+		}
+	}
+	if i.Purpose == InvitationPurposeTeacherAcademicUnit {
+		if !i.AcademicUnitID.IsValid() || !i.RoleID.IsValid() ||
+			i.ScopeType != RoleScopeAcademicUnit || i.ScopeID != i.AcademicUnitID.String() {
+			return invalidModelError(where, "invitation", "teacher_academic_unit", "must identify the exact Academic Unit and Role", details)
+		}
+		if len(i.RoleActions) == 0 || !slices.IsSorted(i.RoleActions) {
+			return invalidModelError(where, "invitation", "role_actions", "must be a nonempty canonical action snapshot", details)
+		}
+		for index, action := range i.RoleActions {
+			if !IsGrantableAction(action) || (index > 0 && i.RoleActions[index-1] == action) {
+				return invalidModelError(where, "invitation", "role_actions", "must contain unique grantable actions", details)
+			}
+		}
+		if i.IntendedStartsAt.IsZero() ||
+			(i.IntendedEndsAt.Valid && !i.IntendedEndsAt.Time.After(i.IntendedStartsAt)) {
+			return invalidModelError(where, "invitation", "effective_bounds", "must form a valid half-open interval", details)
+		}
+		if i.ClassID.IsValid() || i.AcademicPeriodID.IsValid() {
+			return invalidModelError(where, "invitation", "teacher_academic_unit", "must not contain a student package", details)
+		}
 	}
 	if i.State == InvitationAccepted {
-		if !i.AcceptedAt.Valid || !i.AcceptedUserID.IsValid() ||
-			!i.AcceptedAffiliationID.IsValid() || !i.AcceptedClassMemberID.IsValid() ||
+		if !i.AcceptedAt.Valid || !i.AcceptedUserID.IsValid() || !i.AcceptedAffiliationID.IsValid() ||
 			i.AcceptedAt.Time.Before(i.CreatedAt) || !i.AcceptedAt.Time.Before(i.ExpiresAt) {
 			return invalidModelError(where, "invitation", "acceptance", "must identify a User within the invitation lifetime", details)
 		}
-	} else if i.AcceptedAt.Valid || !i.AcceptedUserID.IsZero() || !i.AcceptedAffiliationID.IsZero() || !i.AcceptedClassMemberID.IsZero() {
+		switch i.Purpose {
+		case InvitationPurposeStudentClass:
+			if !i.AcceptedClassMemberID.IsValid() || i.AcceptedAcademicUnitMemberID.IsValid() || i.AcceptedRoleBindingID.IsValid() {
+				return invalidModelError(where, "invitation", "acceptance", "must identify the accepted Class package", details)
+			}
+		case InvitationPurposeTeacherAcademicUnit:
+			if i.AcceptedClassMemberID.IsValid() || !i.AcceptedAcademicUnitMemberID.IsValid() || !i.AcceptedRoleBindingID.IsValid() {
+				return invalidModelError(where, "invitation", "acceptance", "must identify the accepted Academic Unit package", details)
+			}
+		}
+	} else if i.AcceptedAt.Valid || !i.AcceptedUserID.IsZero() || !i.AcceptedAffiliationID.IsZero() ||
+		!i.AcceptedClassMemberID.IsZero() || !i.AcceptedAcademicUnitMemberID.IsZero() || !i.AcceptedRoleBindingID.IsZero() {
 		return invalidModelError(where, "invitation", "acceptance", "must be empty outside accepted state", details)
 	}
 	return nil
@@ -191,7 +273,7 @@ func (i *Invitation) Validate() error {
 // Accept applies the sole successful claim transition. Store transactions
 // remain responsible for authoritative policy and relationship rechecks.
 func (i *Invitation) Accept(userID UserID, affiliationID AffiliationID, classMemberID ClassMemberID, at time.Time) error {
-	if i == nil || i.State != InvitationPending || !userID.IsValid() || !affiliationID.IsValid() || !classMemberID.IsValid() {
+	if i == nil || i.Purpose != InvitationPurposeStudentClass || i.State != InvitationPending || !userID.IsValid() || !affiliationID.IsValid() || !classMemberID.IsValid() {
 		return fmt.Errorf("model: invitation cannot be accepted")
 	}
 	at = TimeUTC(at)
@@ -210,6 +292,30 @@ func (i *Invitation) Accept(userID UserID, affiliationID AffiliationID, classMem
 		return err
 	}
 	return nil
+}
+
+// AcceptTeacherAcademicUnit records the exact immutable outcome of applying a
+// teacher package. Replay reads these retained identities rather than mutable
+// latest relationship rows.
+func (i *Invitation) AcceptTeacherAcademicUnit(userID UserID, affiliationID AffiliationID, memberID AcademicUnitMemberID, bindingID RoleBindingID, at time.Time) error {
+	if i == nil || i.Purpose != InvitationPurposeTeacherAcademicUnit || i.State != InvitationPending ||
+		!userID.IsValid() || !affiliationID.IsValid() || !memberID.IsValid() || !bindingID.IsValid() {
+		return fmt.Errorf("model: teacher academic unit invitation cannot be accepted")
+	}
+	at = TimeUTC(at)
+	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
+		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
+		return fmt.Errorf("model: teacher academic unit invitation cannot be accepted at this time")
+	}
+	i.State = InvitationAccepted
+	i.AcceptedAt = OptionalTimeFrom(at)
+	i.AcceptedUserID = userID
+	i.AcceptedAffiliationID = affiliationID
+	i.AcceptedAcademicUnitMemberID = memberID
+	i.AcceptedRoleBindingID = bindingID
+	i.UpdatedAt = at
+	i.Revision++
+	return i.Validate()
 }
 
 // Expire terminalizes a pending Invitation only after its claim lifetime or
@@ -254,12 +360,22 @@ func (i *Invitation) Auditable() map[string]any {
 	return map[string]any{
 		"id": i.ID.String(), "purpose": i.Purpose, "state": i.State,
 		"class_id": i.ClassID.String(), "academic_period_id": i.AcademicPeriodID.String(),
+		"academic_unit_id": i.AcademicUnitID.String(), "role_id": i.RoleID.String(),
+		"role_actions":    append([]string(nil), i.RoleActions...),
 		"inviter_user_id": i.InviterUserID.String(), "scope_type": i.ScopeType,
 		"scope_id": i.ScopeID, "created_at": MillisFromTime(i.CreatedAt),
 		"updated_at": MillisFromTime(i.UpdatedAt), "expires_at": MillisFromTime(i.ExpiresAt),
 		"accepted_at": i.AcceptedAt.Millis(), "accepted_user_id": i.AcceptedUserID.String(),
 		"accepted_affiliation_id": i.AcceptedAffiliationID.String(), "accepted_class_member_id": i.AcceptedClassMemberID.String(),
+		"accepted_academic_unit_member_id": i.AcceptedAcademicUnitMemberID.String(),
+		"accepted_role_binding_id":         i.AcceptedRoleBindingID.String(),
 	}
+}
+
+func canonicalInvitationRoleActions(actions []string) []string {
+	result := append([]string(nil), actions...)
+	sort.Strings(result)
+	return result
 }
 
 func (p InvitationPurpose) IsValid() bool {

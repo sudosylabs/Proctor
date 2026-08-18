@@ -77,7 +77,7 @@ func TestSessionPrincipalRetainsExactExternalProviderIdentity(t *testing.T) {
 	principal := Principal{
 		UserID: NewUserID(), SessionID: NewSessionID(),
 		CredentialID: PrincipalCredentialID(NewId()), CredentialType: CredentialSessionAccess,
-		AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc",
+		AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc", ExternalIdentityID: NewExternalIdentityID(),
 		AuthenticationStrength: AuthenticationSingleFactor, ClientType: SessionClientWeb,
 		AuthenticatedAt: time.Now().UTC(),
 	}
@@ -87,6 +87,11 @@ func TestSessionPrincipalRetainsExactExternalProviderIdentity(t *testing.T) {
 	principal.AuthenticationProviderID = ""
 	if err := principal.Validate(); err == nil {
 		t.Fatal("external principal without an exact provider identity was accepted")
+	}
+	principal.AuthenticationProviderID = "0-campus.oidc"
+	principal.ExternalIdentityID = ""
+	if err := principal.Validate(); err == nil {
+		t.Fatal("external principal without exact identity provenance was accepted")
 	}
 }
 

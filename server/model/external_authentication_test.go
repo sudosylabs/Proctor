@@ -35,6 +35,9 @@ func TestExternalLoginStateLifecycle(t *testing.T) {
 		ExpiresAt:   TimeFromMillis(GetMillis() + 60_000),
 	}
 	state.PrepareCreate(NewExternalLoginStateID(), NowUTC())
+	if state.Purpose != ExternalAuthenticationPurposeLogin {
+		t.Fatalf("PrepareCreate() purpose = %q", state.Purpose)
+	}
 	if state.Provider != "campus-cas" {
 		t.Fatalf("PreSave() provider = %q", state.Provider)
 	}
@@ -44,6 +47,23 @@ func TestExternalLoginStateLifecycle(t *testing.T) {
 	state.ClientType = SessionClientCLI
 	if appErr := state.Validate(); appErr == nil {
 		t.Fatal("CLI external login state was accepted")
+	}
+}
+
+func TestExternalLoginStateConnectPurposeRequiresExactUser(t *testing.T) {
+	state := &ExternalLoginState{
+		Provider: "campus", Purpose: ExternalAuthenticationPurposeConnect,
+		TargetUserID: NewUserID(), AuditEventID: NewAuditEventID().String(), StateHash: HashToken(NewCredentialToken()),
+		BindingHash: HashToken(NewCredentialToken()), ReturnTo: "/account/security",
+		ClientType: SessionClientWeb, ExpiresAt: TimeFromMillis(GetMillis() + 60_000),
+	}
+	state.PrepareCreate(NewExternalLoginStateID(), NowUTC())
+	if err := state.Validate(); err != nil {
+		t.Fatalf("Validate(connect) = %v", err)
+	}
+	state.TargetUserID = ""
+	if err := state.Validate(); err == nil {
+		t.Fatal("connect state without target User was accepted")
 	}
 }
 

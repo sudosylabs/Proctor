@@ -77,6 +77,8 @@ func externalAuthenticationResource(
 				"request.invalid", "authentication.external.invalid", "authentication.external.provider_not_found",
 				"authentication.external.rejected", "authentication.external.unavailable",
 				"authentication.external.account_conflict", "authentication.external.account_not_linked",
+				"authentication.method.disabled", "authentication.method.last_usable", "authentication.method.not_found",
+				"authentication.method.provider_conflict", "authentication.method.conflict", "authentication.method.unavailable",
 				"authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable",
 			},
 			module.complete,

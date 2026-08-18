@@ -28,9 +28,13 @@ func (key MailTemplateKey) IsValid() bool {
 	switch key {
 	case MailTemplateSystemTest,
 		MailTemplateIdentityVerifyEmail,
+		MailTemplateIdentityEmailChangeVerifyNew,
+		MailTemplateIdentityEmailChangeWarningOld,
+		MailTemplateIdentityEmailVerifiedByAdmin,
 		MailTemplateIdentityPasswordReset,
 		MailTemplateIdentityPasswordChanged,
 		MailTemplateAccessStudentClassInvitation,
+		MailTemplateAccessTeacherAcademicUnitInvitation,
 		MailTemplateAccessInvitationAccepted:
 		return true
 	default:
@@ -40,12 +44,16 @@ func (key MailTemplateKey) IsValid() bool {
 func (state MailDeliveryState) IsValid() bool { return validMailDeliveryState(state) }
 
 const (
-	MailTemplateSystemTest                   MailTemplateKey = "system.mail_test"
-	MailTemplateIdentityVerifyEmail          MailTemplateKey = "identity.verify_email"
-	MailTemplateIdentityPasswordReset        MailTemplateKey = "identity.password_reset"
-	MailTemplateIdentityPasswordChanged      MailTemplateKey = "identity.password_changed"
-	MailTemplateAccessStudentClassInvitation MailTemplateKey = "access.student_class_invitation"
-	MailTemplateAccessInvitationAccepted     MailTemplateKey = "access.invitation_accepted"
+	MailTemplateSystemTest                          MailTemplateKey = "system.mail_test"
+	MailTemplateIdentityVerifyEmail                 MailTemplateKey = "identity.verify_email"
+	MailTemplateIdentityPasswordReset               MailTemplateKey = "identity.password_reset"
+	MailTemplateIdentityPasswordChanged             MailTemplateKey = "identity.password_changed"
+	MailTemplateIdentityEmailChangeWarningOld       MailTemplateKey = "identity.email_change_warning_old"
+	MailTemplateIdentityEmailChangeVerifyNew        MailTemplateKey = "identity.email_change_verify_new"
+	MailTemplateIdentityEmailVerifiedByAdmin        MailTemplateKey = "identity.email_verified_by_admin"
+	MailTemplateAccessStudentClassInvitation        MailTemplateKey = "access.student_class_invitation"
+	MailTemplateAccessTeacherAcademicUnitInvitation MailTemplateKey = "access.teacher_academic_unit_invitation"
+	MailTemplateAccessInvitationAccepted            MailTemplateKey = "access.invitation_accepted"
 
 	MailOccurrenceOperatorTest   MailOccurrenceKind = "operator_test"
 	MailOccurrenceAccountToken   MailOccurrenceKind = "account_token"
@@ -95,11 +103,12 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 	case MailOccurrenceOperatorTest:
 		return key == MailTemplateSystemTest
 	case MailOccurrenceAccountToken:
-		return key == MailTemplateIdentityVerifyEmail || key == MailTemplateIdentityPasswordReset
+		return key == MailTemplateIdentityVerifyEmail || key == MailTemplateIdentityPasswordReset || key == MailTemplateIdentityEmailChangeVerifyNew
 	case MailOccurrenceSecurityNotice:
-		return key == MailTemplateIdentityPasswordChanged
+		return key == MailTemplateIdentityPasswordChanged || key == MailTemplateIdentityEmailChangeWarningOld || key == MailTemplateIdentityEmailVerifiedByAdmin
 	case MailOccurrenceInvitation:
-		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessInvitationAccepted
+		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessTeacherAcademicUnitInvitation ||
+			key == MailTemplateAccessInvitationAccepted
 	default:
 		return false
 	}

@@ -132,10 +132,11 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "oidc", AuthenticationProviderID: "campus",
+		ExternalIdentityID:     model.NewExternalIdentityID(),
 		AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: at.Add(-time.Minute), MFACompletedAt: model.OptionalTimeFrom(at)}
 	persistence.issueResult = pendingDesktopAuthorizationTransactionForApp(at, callback, "oidc", "campus")
-	persistence.issueResult.PrepareCodeIssued(principal.UserID, "oidc", "campus", model.AuthenticationMultiFactor,
+	persistence.issueResult.PrepareCodeIssued(principal.UserID, "oidc", "campus", principal.ExternalIdentityID, model.AuthenticationMultiFactor,
 		principal.AuthenticatedAt, principal.MFACompletedAt, model.HashToken(code), at.Add(time.Minute), at)
 	approved, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Handle: handle, BrowserProof: proof, State: state})

@@ -107,7 +107,9 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"Job", storetest.TestJobStore},
 		{"Mail", storetest.TestMailStore},
 		{"ExternalIdentity", storetest.TestExternalIdentityStore},
-		{"ExternalLoginState", storetest.TestExternalLoginStateStore},
+		{"ExternalLoginState", func(t *testing.T, decorated store.Store) {
+			storetest.TestExternalLoginStateStore(t, decorated, externalLoginStateSQLProbe(sqlStore))
+		}},
 		{"DesktopAuthorization", func(t *testing.T, decorated store.Store) {
 			storetest.TestDesktopAuthorizationStore(t, decorated, desktopAuthorizationSQLProbe(sqlStore))
 		}},
@@ -1306,11 +1308,24 @@ func TestExternalIdentityStore(t *testing.T) {
 }
 
 func TestExternalLoginStateStore(t *testing.T) {
-	StoreTest(t, storetest.TestExternalLoginStateStore)
+	StoreTest(t, func(t *testing.T, persistence store.Store) {
+		storetest.TestExternalLoginStateStore(t, persistence, externalLoginStateSQLProbe(persistence.(*SQLStore)))
+	})
+}
+
+func externalLoginStateSQLProbe(sqlStore *SQLStore) storetest.ExternalLoginStateSQLProbe {
+	return storetest.ExternalLoginStateSQLProbe{Backdate: func(t *testing.T, id model.ExternalLoginStateID, createdAt, expiresAt time.Time) {
+		t.Helper()
+		if _, err := sqlStore.GetMaster().Exec(context.Background(), `UPDATE external_login_states SET created_at=?, updated_at=?, expires_at=? WHERE id=?`, createdAt, createdAt, expiresAt, id.String()); err != nil {
+			t.Fatal(err)
+		}
+	}}
 }
 
 func TestPasswordCredentialStore(t *testing.T) {
-	StoreTest(t, storetest.TestPasswordCredentialStore)
+	StoreTestWithAuthenticationPolicy(t, map[string]model.ProviderAdmissionMode{
+		"campus-cas": model.ProviderAdmissionLinkedOnly,
+	}, storetest.TestPasswordCredentialStore)
 }
 
 func TestUserTokenStore(t *testing.T) {

@@ -35,7 +35,8 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 	bindingToken := "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY"
 	generated := []string{stateToken, bindingToken}
 	next := 0
-	states := &externalLoginStateStoreFake{}
+	databaseAt := at.Add(-2 * time.Hour)
+	states := &externalLoginStateStoreFake{storeNow: databaseAt}
 	attempts, err := newAuthenticationAttemptAccounting(newAuthenticationCacheFake())
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +64,9 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 	if result.Binding != bindingToken || states.saved == nil ||
 		states.saved.StateHash != model.HashToken(stateToken) ||
 		states.saved.BindingHash != model.HashToken(bindingToken) ||
-		states.saved.ExpiresAt.UnixMilli() != at.Add(10*time.Minute).UnixMilli() {
+		!states.saved.CreatedAt.IsZero() || !states.saved.ExpiresAt.IsZero() ||
+		states.saveLifetime != 10*time.Minute ||
+		result.ExpiresAt != databaseAt.Add(10*time.Minute).UnixMilli() {
 		t.Fatalf("result=%#v saved=%#v", result, states.saved)
 	}
 }
@@ -84,6 +87,109 @@ func TestExternalAuthenticationOrdinaryLoginRejectsDesktopBeforeProviderOrPersis
 	}
 	if provider.beginCalls != 0 || states.saved != nil {
 		t.Fatalf("desktop ordinary login reached provider/persistence: provider=%d state=%#v", provider.beginCalls, states.saved)
+	}
+}
+
+func TestProviderConnectionStartRequiresStrongRecentAndBindsExactUser(t *testing.T) {
+	now := time.UnixMilli(30_000)
+	states := &externalLoginStateStoreFake{}
+	events := []string{}
+	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}
+	provider := &recordingExternalProvider{}
+	service := externalAuthenticationBeginService(t, externalProviderSourceSet{provider: provider, ids: map[string]bool{"campus": true}}, newAuthenticationCacheFake(), 10)
+	service.loginStates, service.mutationAudit = states, auditor
+	service.capabilities = &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}}}}
+	service.recentAuthenticationTTL, service.now = 15*time.Minute, func() time.Time { return now }
+	application := &App{externalAuthentication: service}
+	principal := userSettingsSessionPrincipal(now)
+	principal.AuthenticationStrength = model.AuthenticationMultiFactor
+	principal.MFACompletedAt = model.OptionalTimeFrom(now)
+	_, err := application.BeginProviderConnection(context.Background(), NewInvocation(principal, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus", ReturnTo: "/account/security", Source: "127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if states.saved == nil || states.saved.Purpose != model.ExternalAuthenticationPurposeConnect || states.saved.TargetUserID != principal.UserID || states.saved.AuditEventID != auditor.beginID {
+		t.Fatalf("saved state = %#v", states.saved)
+	}
+	weak := principal
+	weak.AuthenticationStrength = model.AuthenticationSingleFactor
+	weak.MFACompletedAt = model.OptionalTime{}
+	states.saved = nil
+	if _, err = application.BeginProviderConnection(context.Background(), NewInvocation(weak, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus"}); !Is(err, "authentication.strong_required") {
+		t.Fatalf("weak start error = %v", err)
+	}
+	if states.saved != nil {
+		t.Fatal("weak start persisted state")
+	}
+}
+
+func TestProviderConnectionCallbackLinksOnlyTransactionUserWithoutSession(t *testing.T) {
+	for _, nodeOffset := range []time.Duration{-2 * time.Hour, 2 * time.Hour} {
+		t.Run(nodeOffset.String(), func(t *testing.T) {
+			databaseNow := time.UnixMilli(40_000)
+			nodeNow := databaseNow.Add(nodeOffset)
+			stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+			target := model.NewUserID()
+			state := &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeConnect,
+				TargetUserID: target, AuditEventID: model.NewAuditEventID().String(), StateHash: model.HashToken(stateToken),
+				BindingHash: model.HashToken(bindingToken), ReturnTo: "/account/security", ClientType: model.SessionClientWeb,
+				ExpiresAt: databaseNow.Add(time.Minute)}
+			states := &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow}
+			identities := &providerConnectionIdentityStoreFake{}
+			institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
+			if err != nil {
+				t.Fatal(err)
+			}
+			issuer := &providerConnectionSessionIssuerFake{}
+			provider := providerConnectionProvider{state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject-never-exposed"}}
+			service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider}, loginStates: states,
+				institutions: providerConnectionInstitutionStoreFake{institution: institution}, identities: identities,
+				accessPolicy: allowAllAuthenticationAccessPolicy(), authentication: issuer,
+				mutationAudit: &accessPolicyAuditFake{}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}}}},
+				policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return nodeNow }}
+			completion, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if identities.linked == nil || identities.linked.Identity.UserID != target || identities.linked.Identity.Subject != provider.assertion.Subject ||
+				identities.linked.AuditEventID != state.AuditEventID || identities.linked.AuditAt != databaseNow.UnixMilli() ||
+				!identities.linked.Identity.LastSeenAt.Valid || !identities.linked.Identity.LastSeenAt.Time.Equal(databaseNow) {
+				t.Fatalf("link = %#v", identities.linked)
+			}
+			if states.consumeCalls != 1 || issuer.calls != 0 || completion.Tokens != nil || completion.Session != nil || completion.ReturnTo != state.ReturnTo {
+				t.Fatalf("completion=%#v consume calls=%d session calls=%d", completion, states.consumeCalls, issuer.calls)
+			}
+		})
+	}
+}
+
+func TestProviderConnectionCallbackTerminalizesAttemptWhenProviderRejectsAfterConsumption(t *testing.T) {
+	now := time.UnixMilli(45_000)
+	stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+	auditID := model.NewAuditEventID().String()
+	state := &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeConnect,
+		TargetUserID: model.NewUserID(), AuditEventID: auditID, StateHash: model.HashToken(stateToken),
+		BindingHash: model.HashToken(bindingToken), ReturnTo: "/account/security", ClientType: model.SessionClientWeb,
+		ExpiresAt: now.Add(time.Minute)}
+	events := []string{}
+	auditor := &mutationAttemptAuditorFake{events: &events}
+	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := providerConnectionProvider{state: stateToken, completeErr: ErrExternalAuthenticationRejected}
+	service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider},
+		loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state},
+		institutions: providerConnectionInstitutionStoreFake{institution: institution},
+		accessPolicy: allowAllAuthenticationAccessPolicy(), audit: externalAuditFake{}, mutationAudit: auditor,
+		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return now }}
+
+	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
+	if result != nil || !Is(err, "authentication.external.rejected") {
+		t.Fatalf("completion result=%#v err=%v", result, err)
+	}
+	if auditor.failID != auditID || auditor.failCode != "authentication.external.rejected" {
+		t.Fatalf("terminal audit id=%q code=%q", auditor.failID, auditor.failCode)
 	}
 }
 
@@ -198,9 +304,12 @@ type externalAuthenticationConstructorArgs struct {
 }
 
 func (a externalAuthenticationConstructorArgs) build() (*externalAuthenticationService, error) {
+	events := []string{}
 	return newExternalAuthenticationService(
 		a.registry, a.loginStates, a.institutions, a.identities, a.sessions,
-		allowAllAuthenticationAccessPolicy(), a.attempts, a.issuer, a.invalidator, a.audit, ExternalAuthenticationPolicy{},
+		allowAllAuthenticationAccessPolicy(), a.attempts, a.issuer, a.invalidator, a.audit,
+		&mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()},
+		&accessPolicyCapabilitiesFake{}, ExternalAuthenticationPolicy{}, 15*time.Minute,
 		a.diagnostics, a.newCredential, a.now,
 	)
 }
@@ -441,9 +550,12 @@ func (externalProviderFake) Complete(context.Context, ExternalProviderCompleteRe
 
 type externalLoginStateStoreFake struct {
 	store.ExternalLoginStateStore
-	saved        *model.ExternalLoginState
-	get          *model.ExternalLoginState
-	consumeCalls int
+	saved         *model.ExternalLoginState
+	saveLifetime  time.Duration
+	storeNow      time.Time
+	get           *model.ExternalLoginState
+	consumeCalls  int
+	consumeResult *model.ExternalLoginState
 }
 
 type externalInstitutionStoreFake struct{ store.InstitutionStore }
@@ -454,6 +566,52 @@ type externalSessionIssuerFake struct{}
 
 func (externalSessionIssuerFake) createSession(context.Context, sessionIssuance) (*model.Session, *model.AuthenticationTokens, error) {
 	return nil, nil, nil
+}
+
+type providerConnectionSessionIssuerFake struct{ calls int }
+
+func (s *providerConnectionSessionIssuerFake) createSession(context.Context, sessionIssuance) (*model.Session, *model.AuthenticationTokens, error) {
+	s.calls++
+	return nil, nil, errors.New("provider connection must not create a session")
+}
+
+type providerConnectionIdentityStoreFake struct {
+	store.ExternalIdentityStore
+	linked *store.ExternalIdentityLink
+}
+
+func (s *providerConnectionIdentityStoreFake) LinkWithAudit(_ context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
+	s.linked = input
+	return &store.AuthenticationMethodMutationResult{Identity: input.Identity}, nil
+}
+
+type providerConnectionInstitutionStoreFake struct {
+	store.InstitutionStore
+	institution *model.Institution
+}
+
+func (s providerConnectionInstitutionStoreFake) GetSingleton(context.Context) (*model.Institution, error) {
+	return s.institution, nil
+}
+
+type providerConnectionProvider struct {
+	state       string
+	assertion   *model.ExternalAuthenticationAssertion
+	completeErr error
+}
+
+func (p providerConnectionProvider) Descriptor() model.ExternalAuthenticationProvider {
+	return model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"}
+}
+func (providerConnectionProvider) AutoProvision() bool { return false }
+func (providerConnectionProvider) Begin(context.Context, ExternalProviderBeginRequest) (*ExternalProviderBeginResponse, error) {
+	return nil, errors.New("unused")
+}
+func (p providerConnectionProvider) State(model.ExternalAuthenticationCallback) (string, error) {
+	return p.state, nil
+}
+func (p providerConnectionProvider) Complete(context.Context, ExternalProviderCompleteRequest) (*model.ExternalAuthenticationAssertion, error) {
+	return p.assertion, p.completeErr
 }
 
 type externalInvalidatorFake struct{}
@@ -473,9 +631,17 @@ func (externalAuditFake) CompleteCriticalAction(context.Context, string, model.A
 	return nil, nil
 }
 
-func (s *externalLoginStateStoreFake) Save(_ context.Context, state *model.ExternalLoginState) (*model.ExternalLoginState, error) {
+func (s *externalLoginStateStoreFake) Save(_ context.Context, state *model.ExternalLoginState, lifetime time.Duration) (*model.ExternalLoginState, error) {
 	s.saved = state
-	return state, nil
+	s.saveLifetime = lifetime
+	result := *state
+	at := s.storeNow
+	if at.IsZero() {
+		at = model.NowUTC()
+	}
+	result.ExpiresAt = model.TimeUTC(at).Add(lifetime)
+	result.PrepareCreate(model.NewExternalLoginStateID(), at)
+	return &result, nil
 }
 
 func (s *externalLoginStateStoreFake) GetByStateHash(context.Context, string) (*model.ExternalLoginState, error) {
@@ -485,8 +651,20 @@ func (s *externalLoginStateStoreFake) GetByStateHash(context.Context, string) (*
 	return s.get, nil
 }
 
-func (s *externalLoginStateStoreFake) Consume(context.Context, string, string, string, int64) (*model.ExternalLoginState, error) {
+func (s *externalLoginStateStoreFake) Consume(context.Context, string, string, string) (*model.ExternalLoginState, error) {
 	s.consumeCalls++
+	if s.consumeResult != nil {
+		result := *s.consumeResult
+		if !result.ConsumedAt.Valid {
+			at := s.storeNow
+			if at.IsZero() {
+				at = model.NowUTC()
+			}
+			result.ConsumedAt = model.OptionalTimeFrom(at)
+			result.UpdatedAt = model.TimeUTC(at)
+		}
+		return &result, nil
+	}
 	return nil, errors.New("desktop state must not be consumed")
 }
 

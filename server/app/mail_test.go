@@ -263,6 +263,33 @@ func TestDirectMailPreparerFreezesEncryptedCredentialPayload(t *testing.T) {
 	}
 }
 
+func TestDirectMailPreparerSelectsTeacherInvitationTemplate(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	unitID := model.NewAcademicUnitID()
+	invitation, err := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
+		ID: model.NewInvitationID(), TargetEmail: "teacher@example.test", AcademicUnitID: unitID,
+		RoleID: model.NewRoleID(), RoleActions: []string{string(model.ActionAcademicUnitView)}, IntendedStartsAt: at,
+		InviterUserID: model.NewUserID(), ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer, err := newDirectMailPreparer(mailRendererFake{content: FrozenMailContent{Subject: "Invite", Text: "Invite", HTML: "<p>Invite</p>"}},
+		&mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}, mailTestSealer(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := preparer.PrepareInvitation(invitation, "https://proctor.example.test/join#token=secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Delivery.TemplateKey != model.MailTemplateAccessTeacherAcademicUnitInvitation ||
+		prepared.Occurrence.TemplateKey != model.MailTemplateAccessTeacherAcademicUnitInvitation {
+		t.Fatalf("teacher Invitation mail = %#v", prepared)
+	}
+}
+
 func TestDirectMailPreparerCreatesTerminalSuppressedIntentWhenDisabled(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	principal := mailTestPrincipal(at)

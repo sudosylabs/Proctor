@@ -10,8 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -265,12 +268,12 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 				return nil, err
 			}
 		}
-		invitationCredential := templateKey == model.MailTemplateAccessStudentClassInvitation
+		invitationCredential := isInvitationCredentialTemplate(templateKey)
 		if invitationCredential {
 			if !route.TargetInvitationID.Valid {
 				return nil, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
 			}
-			if _, err := lockActiveStudentClassInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
+			if _, err := lockActiveInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
 				return nil, err
 			}
 		}
@@ -310,7 +313,7 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 			}
 		}
 		if invitationCredential {
-			relevant, relevanceErr := activeStudentClassInvitationMail(ctx, tx, current, databaseNow)
+			relevant, relevanceErr := activeInvitationMail(ctx, tx, current, databaseNow)
 			if relevanceErr != nil {
 				return nil, relevanceErr
 			}
@@ -351,6 +354,8 @@ func recoveryTokenPurpose(key model.MailTemplateKey) (model.UserTokenPurpose, bo
 	switch key {
 	case model.MailTemplateIdentityVerifyEmail:
 		return model.UserTokenEmailVerification, true
+	case model.MailTemplateIdentityEmailChangeVerifyNew:
+		return model.UserTokenEmailVerification, true
 	case model.MailTemplateIdentityPasswordReset:
 		return model.UserTokenPasswordReset, true
 	default:
@@ -374,8 +379,8 @@ func suppressInvitationCredentialMail(
 	}
 	var rows []mailDeliveryRow
 	if err := tx.Select(ctx, &rows, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries
-		WHERE target_invitation_id=? AND template_key=? ORDER BY id FOR UPDATE`,
-		invitationID.String(), string(model.MailTemplateAccessStudentClassInvitation)); err != nil {
+		WHERE target_invitation_id=? AND template_key IN (?,?) ORDER BY id FOR UPDATE`,
+		invitationID.String(), string(model.MailTemplateAccessStudentClassInvitation), string(model.MailTemplateAccessTeacherAcademicUnitInvitation)); err != nil {
 		return fmt.Errorf("lock target credential deliveries: %w", err)
 	}
 	for index := range rows {
@@ -440,29 +445,82 @@ func activeRecoveryTokenMail(ctx context.Context, executor sqlxExecutor, deliver
 	return tokenID != "", nil
 }
 
-func lockActiveStudentClassInvitationMail(ctx context.Context, executor sqlxExecutor, invitationID string) (bool, error) {
-	var pending bool
-	if err := executor.Get(ctx, &pending, `SELECT state='pending' FROM invitations WHERE id=? FOR SHARE`, invitationID); err != nil {
+func lockActiveInvitationMail(ctx context.Context, executor sqlxExecutor, invitationID string) (bool, error) {
+	var invitation struct {
+		Pending        bool           `db:"pending"`
+		Purpose        string         `db:"purpose"`
+		AcademicUnitID sql.NullString `db:"academic_unit_id"`
+		RoleID         sql.NullString `db:"role_id"`
+		RoleActions    pq.StringArray `db:"role_actions"`
+	}
+	if err := executor.Get(ctx, &invitation, `SELECT state='pending' pending,purpose,academic_unit_id,role_id,role_actions
+		FROM invitations WHERE id=? FOR SHARE`, invitationID); err != nil {
 		return false, translateError("invitation", invitationID, err)
 	}
-	return pending, nil
+	if invitation.Purpose != string(model.InvitationPurposeTeacherAcademicUnit) {
+		return invitation.Pending, nil
+	}
+	if !invitation.AcademicUnitID.Valid || !invitation.RoleID.Valid {
+		return false, invalidPersistedState("invitation", "teacher_package", errors.New("teacher Invitation package is incomplete"))
+	}
+	// Invitation acceptance takes these locks in the same order. Academic Unit
+	// hierarchy changes share the advisory lock, while Role updates/archival
+	// take an exclusive row lock. Holding the exact package lineage through the
+	// delivery transition prevents a credential from starting against a stale
+	// Unit or permission snapshot.
+	if err := lockAcademicUnitHierarchy(ctx, executor); err != nil {
+		return false, err
+	}
+	var unitActive bool
+	if err := executor.Get(ctx, &unitActive, `SELECT EXISTS(
+		SELECT 1 FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE)`, invitation.AcademicUnitID.String); err != nil {
+		return false, fmt.Errorf("lock teacher Invitation Academic Unit mail lineage: %w", err)
+	}
+	var currentPermissions pq.StringArray
+	if err := executor.Get(ctx, &currentPermissions, `SELECT permissions FROM roles
+		WHERE id=? AND archived_at IS NULL AND built_in=FALSE FOR SHARE`, invitation.RoleID.String); err != nil {
+		if isNoRows(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("lock teacher Invitation Role mail lineage: %w", err)
+	}
+	current := append([]string(nil), currentPermissions...)
+	slices.Sort(current)
+	return invitation.Pending && unitActive && slices.Equal(current, []string(invitation.RoleActions)), nil
 }
 
-func activeStudentClassInvitationMail(ctx context.Context, executor sqlxExecutor, delivery *model.MailDelivery, at time.Time) (bool, error) {
-	if delivery == nil || !delivery.TargetInvitationID.IsValid() || delivery.TemplateKey != model.MailTemplateAccessStudentClassInvitation {
+func activeInvitationMail(ctx context.Context, executor sqlxExecutor, delivery *model.MailDelivery, at time.Time) (bool, error) {
+	if delivery == nil || !delivery.TargetInvitationID.IsValid() || !isInvitationCredentialTemplate(delivery.TemplateKey) {
 		return false, invalidPersistedState("mail_delivery", "invitation_target", errors.New("invitation credential delivery target is invalid"))
 	}
 	var active bool
-	if err := executor.Get(ctx, &active, `SELECT EXISTS(
+	if delivery.TemplateKey == model.MailTemplateAccessStudentClassInvitation {
+		if err := executor.Get(ctx, &active, `SELECT EXISTS(
 		SELECT 1 FROM invitations i
 		JOIN classes c ON c.id=i.class_id AND c.archived_at IS NULL
 		JOIN academic_periods ap ON ap.id=i.academic_period_id AND ap.archived_at IS NULL
 		WHERE i.id=? AND i.state='pending' AND i.expires_at>? AND (i.intended_end_at IS NULL OR i.intended_end_at>?)
 		  AND ap.end_at>? AND c.academic_period_id=i.academic_period_id
 	)`, delivery.TargetInvitationID.String(), model.TimeUTC(at), model.TimeUTC(at), model.TimeUTC(at)); err != nil {
-		return false, fmt.Errorf("check Invitation mail relevance: %w", err)
+			return false, fmt.Errorf("check student Invitation mail relevance: %w", err)
+		}
+		return active, nil
+	}
+	if err := executor.Get(ctx, &active, `SELECT EXISTS(
+		SELECT 1 FROM invitations i
+		JOIN academic_units au ON au.id=i.academic_unit_id AND au.archived_at IS NULL
+		JOIN roles r ON r.id=i.role_id AND r.archived_at IS NULL AND r.built_in=FALSE
+		WHERE i.id=? AND i.purpose='teacher_academic_unit' AND i.state='pending' AND i.expires_at>?
+		AND (i.intended_end_at IS NULL OR i.intended_end_at>?)
+		AND (SELECT array_agg(value ORDER BY value) FROM unnest(r.permissions) value)=i.role_actions
+	)`, delivery.TargetInvitationID.String(), model.TimeUTC(at), model.TimeUTC(at)); err != nil {
+		return false, fmt.Errorf("check teacher Invitation mail relevance: %w", err)
 	}
 	return active, nil
+}
+
+func isInvitationCredentialTemplate(key model.MailTemplateKey) bool {
+	return key == model.MailTemplateAccessStudentClassInvitation || key == model.MailTemplateAccessTeacherAcademicUnitInvitation
 }
 
 func (s SQLMailStore) CompleteDelivery(ctx context.Context, input *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
@@ -544,12 +602,12 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 				return nil, err
 			}
 		}
-		invitationCredential := templateKey == model.MailTemplateAccessStudentClassInvitation
+		invitationCredential := isInvitationCredentialTemplate(templateKey)
 		if invitationCredential {
 			if !route.TargetInvitationID.Valid {
 				return nil, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
 			}
-			if _, err := lockActiveStudentClassInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
+			if _, err := lockActiveInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
 				return nil, err
 			}
 		}
@@ -578,7 +636,7 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 			}
 		}
 		if operation == "retry" && invitationCredential {
-			relevant, relevanceErr := activeStudentClassInvitationMail(ctx, tx, current, databaseNow)
+			relevant, relevanceErr := activeInvitationMail(ctx, tx, current, databaseNow)
 			if relevanceErr != nil {
 				return nil, relevanceErr
 			}

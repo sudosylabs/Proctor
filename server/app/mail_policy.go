@@ -32,7 +32,11 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		model.MailTemplateIdentityVerifyEmail,
 		model.MailTemplateIdentityPasswordReset,
 		model.MailTemplateIdentityPasswordChanged,
+		model.MailTemplateIdentityEmailChangeWarningOld,
+		model.MailTemplateIdentityEmailChangeVerifyNew,
+		model.MailTemplateIdentityEmailVerifiedByAdmin,
 		model.MailTemplateAccessStudentClassInvitation,
+		model.MailTemplateAccessTeacherAcademicUnitInvitation,
 		model.MailTemplateAccessInvitationAccepted:
 		// Purpose-bound credential deliveries receive their authoritative
 		// multi-node relevance fence in MailStore.StartDelivery. The remaining

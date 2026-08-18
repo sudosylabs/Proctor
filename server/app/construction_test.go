@@ -160,12 +160,13 @@ func TestJobRecipePreservesLifecycleOnlyGraphs(t *testing.T) {
 
 type constructionCatalogWithJobs struct {
 	store.Catalog
-	jobs         store.JobStore
-	users        store.UserStore
-	files        store.FileStore
-	institutions store.InstitutionStore
-	desktop      store.DesktopAuthorizationStore
-	invitations  store.InvitationStore
+	jobs                store.JobStore
+	users               store.UserStore
+	files               store.FileStore
+	institutions        store.InstitutionStore
+	desktop             store.DesktopAuthorizationStore
+	externalLoginStates store.ExternalLoginStateStore
+	invitations         store.InvitationStore
 }
 
 func (catalog constructionCatalogWithJobs) Job() store.JobStore   { return catalog.jobs }
@@ -182,6 +183,9 @@ func (catalog constructionCatalogWithJobs) Institution() store.InstitutionStore 
 func (catalog constructionCatalogWithJobs) DesktopAuthorization() store.DesktopAuthorizationStore {
 	return catalog.desktop
 }
+func (catalog constructionCatalogWithJobs) ExternalLoginState() store.ExternalLoginStateStore {
+	return catalog.externalLoginStates
+}
 func (catalog constructionCatalogWithJobs) Invitation() store.InvitationStore {
 	return catalog.invitations
 }
@@ -197,6 +201,7 @@ type constructionInvitationStoreStub struct{ store.InvitationStore }
 type constructionDesktopAuthorizationStoreStub struct {
 	store.DesktopAuthorizationStore
 }
+type constructionExternalLoginStateStoreStub struct{ store.ExternalLoginStateStore }
 type constructionCommandOutcomeStoreStub struct{}
 type constructionExamSittingUseCasesStub struct{ examSittingUseCases }
 type constructionExamAttemptUseCasesStub struct{ examAttemptUseCases }
@@ -214,7 +219,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 			Store: constructionCatalogWithJobs{
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
-				desktop: constructionDesktopAuthorizationStoreStub{}, invitations: constructionInvitationStoreStub{},
+				desktop: constructionDesktopAuthorizationStoreStub{}, externalLoginStates: constructionExternalLoginStateStoreStub{}, invitations: constructionInvitationStoreStub{},
 			},
 			NodeID: "node-a", RecoveryDiagnostics: constructionRecoveryDiagnosticsStub{},
 		},
@@ -250,7 +255,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 			Store: constructionCatalogWithJobs{
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
-				desktop: constructionDesktopAuthorizationStoreStub{}, invitations: constructionInvitationStoreStub{},
+				desktop: constructionDesktopAuthorizationStoreStub{}, externalLoginStates: constructionExternalLoginStateStoreStub{}, invitations: constructionInvitationStoreStub{},
 			},
 			FileContent: constructionFileContentStub{},
 		},
@@ -345,6 +350,13 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	}
 	if runner, ok := desktopPeriodic.Runner.(desktopAuthorizationMaintenancePeriodicRunner); !ok || runner.transactions == nil {
 		t.Fatalf("Desktop authorization maintenance runner = %#v", desktopPeriodic.Runner)
+	}
+	externalPeriodic, exists := periodicByName["external-authentication-maintenance"]
+	if !exists || externalPeriodic.Interval != externalAuthenticationMaintenanceInterval {
+		t.Fatalf("External authentication maintenance periodic task = %#v", externalPeriodic)
+	}
+	if runner, ok := externalPeriodic.Runner.(externalAuthenticationMaintenancePeriodicRunner); !ok || runner.states == nil {
+		t.Fatalf("External authentication maintenance runner = %#v", externalPeriodic.Runner)
 	}
 	if _, exists = descriptors[model.JobType("authentication.desktop_authorization_maintenance")]; exists {
 		t.Fatal("Desktop authorization maintenance must not create a durable Job descriptor")

@@ -264,6 +264,16 @@ func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 	if err := requireAffected(result, "academic_unit_member", id); err != nil {
 		return nil, err
 	}
+	if _, err = tx.Exec(ctx, `UPDATE role_bindings rb SET updated_at=?,end_at=?
+		WHERE rb.origin_academic_unit_member_id=? AND rb.origin_invitation_id IS NOT NULL
+		AND rb.archived_at IS NULL AND rb.start_at<? AND (rb.end_at IS NULL OR rb.end_at>?)`, at, at, id, at, at); err != nil {
+		return nil, fmt.Errorf("end Invitation-origin Role Bindings: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE role_bindings rb SET updated_at=?,archived_at=?
+		WHERE rb.origin_academic_unit_member_id=? AND rb.origin_invitation_id IS NOT NULL
+		AND rb.archived_at IS NULL AND rb.start_at>=? AND (rb.end_at IS NULL OR rb.end_at>?)`, at, at, id, at, at); err != nil {
+		return nil, fmt.Errorf("archive future Invitation-origin Role Bindings: %w", err)
+	}
 	current.UpdatedAt = at
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1

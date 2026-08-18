@@ -30,22 +30,24 @@ type SQLRoleBindingStore struct {
 // roleBindingRow is the legacy integer-millisecond column layout. Domain
 // RoleBinding uses time.Time / OptionalTime; conversion is at this boundary.
 type roleBindingRow struct {
-	ID         string              `db:"id"`
-	CreatedAt  time.Time           `db:"created_at"`
-	UpdatedAt  time.Time           `db:"updated_at"`
-	ArchivedAt sql.NullTime        `db:"archived_at"`
-	UserID     string              `db:"user_id"`
-	RoleID     string              `db:"role_id"`
-	ScopeType  model.RoleScopeType `db:"scope_type"`
-	ScopeID    string              `db:"scope_id"`
-	StartAt    time.Time           `db:"start_at"`
-	EndAt      sql.NullTime        `db:"end_at"`
+	ID                         string              `db:"id"`
+	CreatedAt                  time.Time           `db:"created_at"`
+	UpdatedAt                  time.Time           `db:"updated_at"`
+	ArchivedAt                 sql.NullTime        `db:"archived_at"`
+	UserID                     string              `db:"user_id"`
+	RoleID                     string              `db:"role_id"`
+	OriginInvitationID         sql.NullString      `db:"origin_invitation_id"`
+	OriginAcademicUnitMemberID sql.NullString      `db:"origin_academic_unit_member_id"`
+	ScopeType                  model.RoleScopeType `db:"scope_type"`
+	ScopeID                    string              `db:"scope_id"`
+	StartAt                    time.Time           `db:"start_at"`
+	EndAt                      sql.NullTime        `db:"end_at"`
 }
 
 func roleBindingSliceColumns() []string {
 	return []string{
 		"role_bindings.id", "role_bindings.created_at", "role_bindings.updated_at",
-		"role_bindings.archived_at", "role_bindings.user_id", "role_bindings.role_id",
+		"role_bindings.archived_at", "role_bindings.user_id", "role_bindings.role_id", "role_bindings.origin_invitation_id", "role_bindings.origin_academic_unit_member_id",
 		"role_bindings.scope_type", "role_bindings.scope_id",
 		"role_bindings.start_at", "role_bindings.end_at",
 	}
@@ -179,10 +181,10 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 	row := newRoleBindingRow(candidate)
 	if _, err := tx.NamedExec(ctx, `
 		INSERT INTO role_bindings (
-			id, created_at, updated_at, archived_at, user_id, role_id,
+			id, created_at, updated_at, archived_at, user_id, role_id, origin_invitation_id, origin_academic_unit_member_id,
 			scope_type, scope_id, start_at, end_at
 		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :user_id, :role_id,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :role_id, :origin_invitation_id, :origin_academic_unit_member_id,
 			:scope_type, :scope_id, :start_at, :end_at
 		)`, &row); err != nil {
 		return fmt.Errorf(
@@ -203,6 +205,16 @@ func validateRoleBindingReferences(
 	}{
 		{"users", binding.UserID.String(), "role_bindings_user_id_fkey"},
 		{"roles", binding.RoleID.String(), "role_bindings_role_id_fkey"},
+	}
+	if binding.OriginInvitationID.IsValid() {
+		var originExists bool
+		if err := executor.Get(ctx, &originExists, `SELECT EXISTS(SELECT 1 FROM invitations
+			WHERE id=$1 AND purpose='teacher_academic_unit' AND academic_unit_id=$2)`, binding.OriginInvitationID.String(), binding.ScopeID); err != nil {
+			return fmt.Errorf("validate Role Binding Invitation origin: %w", err)
+		}
+		if !originExists {
+			return store.NewErrReference("role_binding", "role_bindings_origin_invitation_id_fkey", sql.ErrNoRows)
+		}
 	}
 	switch binding.ScopeType {
 	case model.RoleScopeInstitution:
@@ -447,7 +459,7 @@ func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int
 		UPDATE role_bindings
 		   SET updated_at = GREATEST(updated_at, $1), end_at = $1
 		 WHERE id = $2
-		RETURNING id, created_at, updated_at, archived_at, user_id, role_id,
+		RETURNING id, created_at, updated_at, archived_at, user_id, role_id, origin_invitation_id, origin_academic_unit_member_id,
 		          scope_type, scope_id, start_at, end_at`, at, id); err != nil {
 		return nil, translateError("role_binding", id, err)
 	}
@@ -459,7 +471,9 @@ func newRoleBindingRow(binding *model.RoleBinding) roleBindingRow {
 		ID: binding.ID.String(), CreatedAt: UTCTime(binding.CreatedAt),
 		UpdatedAt: UTCTime(binding.UpdatedAt), ArchivedAt: NullTimeFromOptional(binding.ArchivedAt),
 		UserID: binding.UserID.String(), RoleID: binding.RoleID.String(),
-		ScopeType: binding.ScopeType, ScopeID: binding.ScopeID,
+		OriginInvitationID:         nullableID(binding.OriginInvitationID.String()),
+		OriginAcademicUnitMemberID: nullableID(binding.OriginAcademicUnitMemberID.String()),
+		ScopeType:                  binding.ScopeType, ScopeID: binding.ScopeID,
 		StartAt: UTCTime(binding.StartsAt), EndAt: NullTimeFromOptional(binding.EndsAt),
 	}
 }
@@ -483,8 +497,9 @@ func (row roleBindingRow) model() (*model.RoleBinding, error) {
 	value := &model.RoleBinding{
 		ID: id, CreatedAt: row.CreatedAt.UTC(),
 		UpdatedAt: row.UpdatedAt.UTC(), ArchivedAt: OptionalTimeFromNullTime(row.ArchivedAt),
-		UserID: userID, RoleID: roleID,
-		ScopeType: row.ScopeType, ScopeID: row.ScopeID,
+		UserID: userID, RoleID: roleID, OriginInvitationID: model.InvitationID(row.OriginInvitationID.String),
+		OriginAcademicUnitMemberID: model.AcademicUnitMemberID(row.OriginAcademicUnitMemberID.String),
+		ScopeType:                  row.ScopeType, ScopeID: row.ScopeID,
 		StartsAt: row.StartAt.UTC(), EndsAt: OptionalTimeFromNullTime(row.EndAt),
 	}
 	if err := validatePersistedModel("role_binding", value); err != nil {

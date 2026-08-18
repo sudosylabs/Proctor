@@ -20,6 +20,17 @@ const (
 	ExternalCallbackMaxValueLength = 8192
 )
 
+type ExternalAuthenticationPurpose string
+
+const (
+	ExternalAuthenticationPurposeLogin   ExternalAuthenticationPurpose = "login"
+	ExternalAuthenticationPurposeConnect ExternalAuthenticationPurpose = "connect"
+)
+
+func (p ExternalAuthenticationPurpose) IsValid() bool {
+	return p == ExternalAuthenticationPurposeLogin || p == ExternalAuthenticationPurposeConnect
+}
+
 var ErrInvalidExternalAuthenticationCallback = errors.New(
 	"external authentication callback is invalid",
 )
@@ -111,18 +122,21 @@ func (c ExternalAuthenticationCallback) OptionalSingleValue(
 //
 // StateHash and BindingHash are deliberately excluded from JSON.
 type ExternalLoginState struct {
-	ID          ExternalLoginStateID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	Provider    string
-	StateHash   string `json:"-"`
-	BindingHash string `json:"-"`
-	ReturnTo    string
-	ClientType  SessionClientType
-	DeviceID    string
-	DeviceName  string
-	ExpiresAt   time.Time
-	ConsumedAt  OptionalTime
+	ID           ExternalLoginStateID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Provider     string
+	Purpose      ExternalAuthenticationPurpose
+	TargetUserID UserID
+	AuditEventID string
+	StateHash    string `json:"-"`
+	BindingHash  string `json:"-"`
+	ReturnTo     string
+	ClientType   SessionClientType
+	DeviceID     string
+	DeviceName   string
+	ExpiresAt    time.Time
+	ConsumedAt   OptionalTime
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -135,6 +149,9 @@ func (s *ExternalLoginState) PrepareCreate(id ExternalLoginStateID, at time.Time
 	s.CreatedAt = at
 	s.UpdatedAt = at
 	s.Provider = strings.ToLower(SanitizeUnicode(s.Provider))
+	if s.Purpose == "" {
+		s.Purpose = ExternalAuthenticationPurposeLogin
+	}
 	s.ReturnTo = strings.TrimSpace(SanitizeUnicode(s.ReturnTo))
 	s.DeviceID = SanitizeUnicode(s.DeviceID)
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
@@ -167,6 +184,11 @@ func (s *ExternalLoginState) Validate() error {
 			"has an invalid format",
 			details,
 		)
+	}
+	if !s.Purpose.IsValid() ||
+		(s.Purpose == ExternalAuthenticationPurposeLogin && (!s.TargetUserID.IsZero() || s.AuditEventID != "")) ||
+		(s.Purpose == ExternalAuthenticationPurposeConnect && (!s.TargetUserID.IsValid() || !IsValidId(s.AuditEventID))) {
+		return invalidModelError(where, "external_login_state", "purpose", "has an invalid target", details)
 	}
 	if !IsValidTokenHash(s.StateHash) || !IsValidTokenHash(s.BindingHash) {
 		return invalidModelError(
@@ -234,13 +256,15 @@ func (s *ExternalLoginState) Auditable() map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"id":          s.ID.String(),
-		"created_at":  MillisFromTime(s.CreatedAt),
-		"updated_at":  MillisFromTime(s.UpdatedAt),
-		"provider":    s.Provider,
-		"client_type": s.ClientType,
-		"expires_at":  MillisFromTime(s.ExpiresAt),
-		"consumed_at": s.ConsumedAt.Millis(),
+		"id":             s.ID.String(),
+		"created_at":     MillisFromTime(s.CreatedAt),
+		"updated_at":     MillisFromTime(s.UpdatedAt),
+		"provider":       s.Provider,
+		"purpose":        s.Purpose,
+		"target_user_id": s.TargetUserID.String(),
+		"client_type":    s.ClientType,
+		"expires_at":     MillisFromTime(s.ExpiresAt),
+		"consumed_at":    s.ConsumedAt.Millis(),
 	}
 }
 

@@ -29,10 +29,11 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	const (
-		providerID         = "campus-cas"
-		ticket             = "ST-sensitive-ticket"
-		linkedSubject      = "opaque-sensitive-subject"
-		conflictingSubject = "opaque-conflicting-subject"
+		providerID           = "campus-cas"
+		connectionProviderID = "research-cas"
+		ticket               = "ST-sensitive-ticket"
+		linkedSubject        = "opaque-sensitive-subject"
+		conflictingSubject   = "opaque-conflicting-subject"
 	)
 	subject := linkedSubject
 	var validatedService string
@@ -65,32 +66,38 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 
 	persistence := openAuthenticationStore(t, dataSource)
 	seedAuthenticationAccessPolicy(t, persistence, map[string]model.ProviderAdmissionMode{
-		providerID: model.ProviderAdmissionAutoProvision,
+		providerID:           model.ProviderAdmissionAutoProvision,
+		connectionProviderID: model.ProviderAdmissionLinkedOnly,
 	})
+	casProvider := config.ExternalAuthenticationProvider{
+		ID: providerID, Type: "cas", DisplayName: "Campus CAS",
+		Enabled: true, AutoProvision: true,
+		CAS: &config.CASProvider{
+			BaseURL:          casServer.URL + "/cas",
+			ValidationPath:   "/p3/serviceValidate",
+			Timeout:          config.Duration{Duration: 5 * time.Second},
+			MaxResponseBytes: 64 * 1024,
+		},
+		Claims: config.ExternalClaimMapping{
+			Subject: "user", Username: "uid", Email: "mail",
+			FirstName: "givenName", LastName: "sn",
+			HomeOrganization:         "schacHomeOrganization",
+			AllowedHomeOrganizations: []string{"example.edu"},
+			TrustEmail:               true,
+			MultiFactorAttribute:     "authnContext",
+			MultiFactorValues:        []string{"mfa"},
+		},
+	}
+	connectionProvider := casProvider
+	connectionProvider.ID = connectionProviderID
+	connectionProvider.DisplayName = "Research CAS"
+	connectionProvider.AutoProvision = false
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
 			cfg.Server.PublicURL = "https://proctor.example.test"
 			cfg.Authentication.LoginRateLimit.MaximumSourceAttempts = 100
-			cfg.Authentication.External.Providers = []config.ExternalAuthenticationProvider{{
-				ID: providerID, Type: "cas", DisplayName: "Campus CAS",
-				Enabled: true, AutoProvision: true,
-				CAS: &config.CASProvider{
-					BaseURL:          casServer.URL + "/cas",
-					ValidationPath:   "/p3/serviceValidate",
-					Timeout:          config.Duration{Duration: 5 * time.Second},
-					MaxResponseBytes: 64 * 1024,
-				},
-				Claims: config.ExternalClaimMapping{
-					Subject: "user", Username: "uid", Email: "mail",
-					FirstName: "givenName", LastName: "sn",
-					HomeOrganization:         "schacHomeOrganization",
-					AllowedHomeOrganizations: []string{"example.edu"},
-					TrustEmail:               true,
-					MultiFactorAttribute:     "authnContext",
-					MultiFactorValues:        []string{"mfa"},
-				},
-			}}
+			cfg.Authentication.External.Providers = []config.ExternalAuthenticationProvider{casProvider, connectionProvider}
 		}),
 		testlib.WithStore(persistence),
 	)
@@ -115,8 +122,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	var providerList []model.ExternalAuthenticationProvider
 	if providers.Code != http.StatusOK ||
 		json.Unmarshal(providers.Body.Bytes(), &providerList) != nil ||
-		len(providerList) != 1 ||
-		providerList[0].Id != providerID ||
+		len(providerList) != 2 ||
 		strings.Contains(providers.Body.String(), casServer.URL) {
 		t.Fatalf("provider discovery status=%d body=%s", providers.Code, providers.Body.String())
 	}
@@ -178,7 +184,6 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	for _, cookie := range callback.Result().Cookies() {
 		if cookie.Name == api.BrowserAccessCookieName {
 			accessCookie = cookie
-			break
 		}
 	}
 	if accessCookie == nil || !accessCookie.HttpOnly {
@@ -228,6 +233,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil || len(sessions) != 1 ||
 		sessions[0].AuthenticationMethod != "cas" ||
 		sessions[0].AuthenticationProviderID != providerID ||
+		sessions[0].ExternalIdentityID != identity.ID ||
 		sessions[0].AuthenticationStrength != model.AuthenticationMultiFactor {
 		t.Fatalf("external sessions = %#v, %v", sessions, err)
 	}
@@ -256,6 +262,75 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	helper.Handler().ServeHTTP(me, meRequest)
 	if me.Code != http.StatusOK {
 		t.Fatalf("cookie-authenticated current user = %d: %s", me.Code, me.Body.String())
+	}
+
+	connectRequest := httptest.NewRequest(http.MethodPost,
+		"/api/v1/authentication-methods/providers/"+connectionProviderID+"/connect",
+		strings.NewReader(`{"return_to":"/connected"}`))
+	connectRequest.Header.Set("Content-Type", "application/json")
+	connectRequest.Header.Set("Authorization", "Bearer "+accessCookie.Value)
+	connect := httptest.NewRecorder()
+	helper.Handler().ServeHTTP(connect, connectRequest)
+	if connect.Code != http.StatusCreated {
+		t.Fatalf("provider connection begin = %d: %s", connect.Code, connect.Body.String())
+	}
+	var connectionStart struct {
+		RedirectURL string `json:"redirect_url"`
+		ExpiresAt   int64  `json:"expires_at"`
+	}
+	if err = json.Unmarshal(connect.Body.Bytes(), &connectionStart); err != nil {
+		t.Fatal(err)
+	}
+	connectionURL, err := url.Parse(connectionStart.RedirectURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connectionService, err := url.Parse(connectionURL.Query().Get("service"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	connectionStateToken := connectionService.Query().Get("state")
+	connectionState, err := persistence.ExternalLoginState().GetByStateHash(
+		context.Background(), model.HashToken(connectionStateToken),
+	)
+	if err != nil || connectionState.ExpiresAt.Sub(connectionState.CreatedAt) != 10*time.Minute ||
+		connectionStart.ExpiresAt != connectionState.ExpiresAt.UnixMilli() {
+		t.Fatalf("provider connection state = %#v response expiry=%d error=%v", connectionState, connectionStart.ExpiresAt, err)
+	}
+	connectionQuery := connectionService.Query()
+	connectionQuery.Set("ticket", ticket)
+	connectionCallbackRequest := httptest.NewRequest(http.MethodGet,
+		connectionService.Path+"?"+connectionQuery.Encode(), nil)
+	for _, cookie := range connect.Result().Cookies() {
+		if cookie.Name == api.BrowserExternalLoginCookieName {
+			connectionCallbackRequest.AddCookie(cookie)
+		}
+	}
+	connectionCallback := httptest.NewRecorder()
+	helper.Handler().ServeHTTP(connectionCallback, connectionCallbackRequest)
+	if connectionCallback.Code != http.StatusSeeOther || connectionCallback.Header().Get("Location") != "/connected" {
+		t.Fatalf("provider connection callback = %d location=%q body=%s", connectionCallback.Code,
+			connectionCallback.Header().Get("Location"), connectionCallback.Body.String())
+	}
+	connectedIdentity, err := persistence.ExternalIdentity().GetByProviderSubject(context.Background(), connectionProviderID, linkedSubject)
+	if err != nil || connectedIdentity.UserID != user.ID {
+		t.Fatalf("connected identity = %#v, %v", connectedIdentity, err)
+	}
+	connectedSessions, err := persistence.Session().ListActiveByUser(context.Background(), user.ID.String(), model.GetMillis())
+	if err != nil || len(connectedSessions) != 1 {
+		t.Fatalf("provider connection created a Session: %#v, %v", connectedSessions, err)
+	}
+	unlinkRequest := httptest.NewRequest(http.MethodDelete,
+		"/api/v1/authentication-methods/providers/"+connectedIdentity.ID.String(), nil)
+	unlinkRequest.Header.Set("Authorization", "Bearer "+accessCookie.Value)
+	unlink := httptest.NewRecorder()
+	helper.Handler().ServeHTTP(unlink, unlinkRequest)
+	if unlink.Code != http.StatusNoContent {
+		t.Fatalf("provider unlink = %d: %s", unlink.Code, unlink.Body.String())
+	}
+	retainedSession, err := persistence.Session().Get(context.Background(), sessions[0].ID.String())
+	if err != nil || retainedSession.RevokedAt.Valid {
+		t.Fatalf("unrelated provider Session was revoked: %#v, %v", retainedSession, err)
 	}
 
 	replayRequest := httptest.NewRequest(http.MethodGet, callbackPath, nil)

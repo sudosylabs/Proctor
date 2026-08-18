@@ -215,9 +215,18 @@ func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, act
 	if !p.Enabled() || invitation == nil || invitation.Validate() != nil || invitation.State != model.InvitationPending {
 		return nil, errors.New("invitation mail input is invalid")
 	}
+	var key model.MailTemplateKey
+	switch invitation.Purpose {
+	case model.InvitationPurposeStudentClass:
+		key = model.MailTemplateAccessStudentClassInvitation
+	case model.InvitationPurposeTeacherAcademicUnit:
+		key = model.MailTemplateAccessTeacherAcademicUnitInvitation
+	default:
+		return nil, errors.New("invitation mail purpose is not implemented")
+	}
 	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
 		invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()),
-		model.MailOccurrenceInvitation, model.MailTemplateAccessStudentClassInvitation, actionURL,
+		model.MailOccurrenceInvitation, key, actionURL,
 		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential)
 }
 

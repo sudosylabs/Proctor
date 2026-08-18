@@ -26,15 +26,13 @@ type GetUserProfileQuery struct {
 }
 
 type UpdateUserProfileCommand struct {
-	ID            string
-	Username      *string
-	Email         *string
-	EmailVerified *bool
-	DisplayName   *string
-	FirstName     *string
-	LastName      *string
-	Locale        *string
-	Timezone      *string
+	ID          string
+	Username    *string
+	DisplayName *string
+	FirstName   *string
+	LastName    *string
+	Locale      *string
+	Timezone    *string
 }
 
 type userProfileStore interface {
@@ -154,9 +152,10 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 	if err != nil {
 		return nil, userProfileError(err)
 	}
+	changes := model.UserProfileChanges{Username: command.Username, DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName, Locale: command.Locale, Timezone: command.Timezone}
 	candidate := *current
 	expectedRevision := current.Revision
-	candidate.Patch(&model.UserPatch{Username: command.Username, Email: command.Email, EmailVerified: command.EmailVerified, DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName, Locale: command.Locale, Timezone: command.Timezone})
+	candidate.ApplyProfileChanges(&changes)
 	at := s.now()
 	candidate.PrepareUpdate(at)
 	if err := candidate.Validate(); err != nil {
@@ -177,7 +176,7 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.User, error) {
 			return s.users.UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
-				User: &candidate, ExpectedRevision: expectedRevision,
+				UserID: current.ID, Changes: changes, ExpectedRevision: expectedRevision,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

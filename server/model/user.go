@@ -117,51 +117,40 @@ func (u *User) PrepareUpdate(at time.Time) {
 	}
 }
 
-// UserPatch carries optional profile field updates.
-type UserPatch struct {
-	Username      *string `json:"username,omitempty"`
-	Email         *string `json:"email,omitempty"`
-	EmailVerified *bool   `json:"email_verified,omitempty"`
-	DisplayName   *string `json:"display_name,omitempty"`
-	FirstName     *string `json:"first_name,omitempty"`
-	LastName      *string `json:"last_name,omitempty"`
-	Locale        *string `json:"locale,omitempty"`
-	Timezone      *string `json:"timezone,omitempty"`
+// UserProfileChanges carries only the fields that the generic profile command
+// owns. Mailbox and verification state intentionally have no representation
+// here; they change only through the named UserToken aggregates.
+type UserProfileChanges struct {
+	Username    *string `json:"username,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	FirstName   *string `json:"first_name,omitempty"`
+	LastName    *string `json:"last_name,omitempty"`
+	Locale      *string `json:"locale,omitempty"`
+	Timezone    *string `json:"timezone,omitempty"`
 }
 
-// Patch applies non-nil fields from p. Changing email without an explicit
-// EmailVerified value clears verification.
-func (u *User) Patch(p *UserPatch) {
-	if u == nil || p == nil {
+// ApplyProfileChanges applies the non-nil generic profile fields from changes.
+func (u *User) ApplyProfileChanges(changes *UserProfileChanges) {
+	if u == nil || changes == nil {
 		return
 	}
-	if p.Username != nil {
-		u.Username = *p.Username
+	if changes.Username != nil {
+		u.Username = *changes.Username
 	}
-	if p.Email != nil {
-		if strings.ToLower(strings.TrimSpace(*p.Email)) != u.Email &&
-			p.EmailVerified == nil {
-			u.EmailVerified = false
-		}
-		u.Email = *p.Email
+	if changes.DisplayName != nil {
+		u.DisplayName = *changes.DisplayName
 	}
-	if p.EmailVerified != nil {
-		u.EmailVerified = *p.EmailVerified
+	if changes.FirstName != nil {
+		u.FirstName = *changes.FirstName
 	}
-	if p.DisplayName != nil {
-		u.DisplayName = *p.DisplayName
+	if changes.LastName != nil {
+		u.LastName = *changes.LastName
 	}
-	if p.FirstName != nil {
-		u.FirstName = *p.FirstName
+	if changes.Locale != nil {
+		u.Locale = *changes.Locale
 	}
-	if p.LastName != nil {
-		u.LastName = *p.LastName
-	}
-	if p.Locale != nil {
-		u.Locale = *p.Locale
-	}
-	if p.Timezone != nil {
-		u.Timezone = *p.Timezone
+	if changes.Timezone != nil {
+		u.Timezone = *changes.Timezone
 	}
 }
 

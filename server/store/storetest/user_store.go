@@ -609,31 +609,22 @@ func testUserStoreNormalizedLookups(t *testing.T, ss store.Store) {
 
 func testUserStoreUpdate(t *testing.T, ss store.Store) {
 	ctx := context.Background()
-	user := saveUser(t, ctx, ss)
-	stale := *user
-	user.DisplayName = "Updated User"
-	user.EmailVerified = true
-	updated, err := ss.User().Update(ctx, user)
+	input := newUser()
+	input.EmailVerified = true
+	updated, err := createUser(t, ctx, ss, input)
 	requireNoError(t, err)
-	if updated.DisplayName != "Updated User" || !updated.EmailVerified || updated.Revision != user.Revision+1 {
-		t.Fatalf("Update() = %#v", updated)
-	}
-	stale.DisplayName = "Stale User"
-	if _, err := ss.User().Update(ctx, &stale); !store.IsConflict(err) {
-		t.Fatalf("stale Update() error = %v", err)
-	}
 
 	activityAt := model.GetMillis() + 100
 	requireNoError(t, ss.User().UpdateLastLogin(ctx, updated.ID.String(), activityAt))
-	auditedCandidate := *updated
-	auditedCandidate.DisplayName = "Audited User"
+	displayName := "Audited User"
 	auditAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
 	audited, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
-		User: &auditedCandidate, ExpectedRevision: updated.Revision,
+		UserID: updated.ID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
 		AuditEventID: auditAttempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
-	if audited.DisplayName != "Audited User" || audited.Revision != updated.Revision+1 {
+	if audited.DisplayName != "Audited User" || audited.Revision != updated.Revision+1 ||
+		audited.Email != updated.Email || audited.EmailVerified != updated.EmailVerified {
 		t.Fatalf("UpdateProfileWithAudit() = %#v", audited)
 	}
 	completed, err := ss.Audit().Get(ctx, auditAttempt.ID.String())
@@ -642,10 +633,9 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 		t.Fatalf("profile update audit = %#v", completed)
 	}
 
-	rolledBack := *audited
-	rolledBack.DisplayName = "Must Roll Back"
+	rolledBackName := "Must Roll Back"
 	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
-		User: &rolledBack, ExpectedRevision: audited.Revision,
+		UserID: audited.ID, Changes: model.UserProfileChanges{DisplayName: &rolledBackName}, ExpectedRevision: audited.Revision,
 		AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
 	}); err == nil {
 		t.Fatal("UpdateProfileWithAudit() succeeded without its audit attempt")
@@ -659,15 +649,18 @@ func testUserStoreUpdate(t *testing.T, ss store.Store) {
 
 	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, updated.ID.String())
 	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
-		User: updated, ExpectedRevision: updated.Revision,
+		UserID: updated.ID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
 		AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
 		t.Fatalf("stale UpdateProfileWithAudit() error = %v", err)
 	}
-	missing := *updated
-	missing.ID = model.UserID(model.NewId())
-	if _, err := ss.User().Update(ctx, &missing); !store.IsNotFound(err) {
-		t.Fatalf("Update(missing) error = %v", err)
+	missingID := model.UserID(model.NewId())
+	missingAttempt := saveUserProfileAuditAttempt(t, ctx, ss, missingID.String())
+	if _, err := ss.User().UpdateProfileWithAudit(ctx, &store.UserProfileUpdate{
+		UserID: missingID, Changes: model.UserProfileChanges{DisplayName: &displayName}, ExpectedRevision: updated.Revision,
+		AuditEventID: missingAttempt.ID.String(), AuditAt: model.GetMillis(),
+	}); !store.IsNotFound(err) {
+		t.Fatalf("UpdateProfileWithAudit(missing) error = %v", err)
 	}
 }
 

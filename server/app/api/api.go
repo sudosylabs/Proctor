@@ -220,6 +220,8 @@ type UserProfileApplication interface {
 	SearchUsers(context.Context, application.Invocation, application.SearchUsersQuery) ([]*model.User, error)
 	GetUserProfile(context.Context, application.Invocation, application.GetUserProfileQuery) (*model.User, error)
 	UpdateUserProfile(context.Context, application.Invocation, application.UpdateUserProfileCommand) (*model.User, error)
+	ChangeUserEmail(context.Context, application.Invocation, application.ChangeUserEmailCommand) (*application.UserEmailState, error)
+	VerifyUserEmailPrivileged(context.Context, application.Invocation, application.VerifyUserEmailPrivilegedCommand) (*application.UserEmailState, error)
 	UploadProfilePicture(context.Context, application.Invocation, application.UploadProfilePictureCommand) (*model.User, error)
 	RemoveProfilePicture(context.Context, application.Invocation, application.RemoveProfilePictureCommand) (*model.User, error)
 	GetProfilePicture(context.Context, application.Invocation, application.GetProfilePictureQuery) (*application.ProfilePictureContent, error)
@@ -411,6 +413,7 @@ type Application interface {
 	Authentication
 	DesktopAuthorization
 	ExternalAuthentication
+	authenticationMethodApplication
 	Sessions
 	PersonalAccessTokens
 	MFA
@@ -566,6 +569,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		bootstrapResource(options.Bootstrap),
 		accessPolicyResource(accessPolicy),
 		authenticationResource(options.Application, cookies),
+		authenticationMethodResource(options.Application, cookies),
 		desktopAuthorizationResource(options.Application),
 		externalAuthenticationResource(options.Application, cookies),
 		userProfileResource(options.UserProfiles),

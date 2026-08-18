@@ -33,10 +33,15 @@ type RoleBinding struct {
 	ArchivedAt OptionalTime
 	UserID     UserID
 	RoleID     RoleID
-	ScopeType  RoleScopeType
-	ScopeID    string
-	StartsAt   time.Time
-	EndsAt     OptionalTime // absent means open-ended
+	// OriginInvitationID identifies the teacher package that first created
+	// this binding. Ordinary and independently administered bindings leave it
+	// empty so ending package membership cannot affect them.
+	OriginInvitationID         InvitationID
+	OriginAcademicUnitMemberID AcademicUnitMemberID
+	ScopeType                  RoleScopeType
+	ScopeID                    string
+	StartsAt                   time.Time
+	EndsAt                     OptionalTime // absent means open-ended
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -88,6 +93,13 @@ func (rb *RoleBinding) Validate() error {
 	}
 	if !rb.RoleID.IsValid() {
 		return invalidModelError(where, "role_binding", "role_id", "must be a valid identifier", details)
+	}
+	if !rb.OriginInvitationID.IsZero() && !rb.OriginInvitationID.IsValid() {
+		return invalidModelError(where, "role_binding", "origin_invitation_id", "must be empty or a valid identifier", details)
+	}
+	if rb.OriginInvitationID.IsValid() != rb.OriginAcademicUnitMemberID.IsValid() ||
+		(!rb.OriginInvitationID.IsZero() && rb.ScopeType != RoleScopeAcademicUnit) {
+		return invalidModelError(where, "role_binding", "origin_package", "must identify one complete Academic Unit Invitation package", details)
 	}
 	if !rb.ScopeType.IsValid() {
 		return invalidModelError(where, "role_binding", "scope_type", "has an unknown value", details)
@@ -148,16 +160,18 @@ func (rb *RoleBinding) Auditable() map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"id":          rb.ID.String(),
-		"created_at":  MillisFromTime(rb.CreatedAt),
-		"updated_at":  MillisFromTime(rb.UpdatedAt),
-		"archived_at": rb.ArchivedAt.Millis(),
-		"user_id":     rb.UserID.String(),
-		"role_id":     rb.RoleID.String(),
-		"scope_type":  rb.ScopeType,
-		"scope_id":    rb.ScopeID,
-		"start_at":    MillisFromTime(rb.StartsAt),
-		"end_at":      rb.EndsAt.Millis(),
+		"id":                             rb.ID.String(),
+		"created_at":                     MillisFromTime(rb.CreatedAt),
+		"updated_at":                     MillisFromTime(rb.UpdatedAt),
+		"archived_at":                    rb.ArchivedAt.Millis(),
+		"user_id":                        rb.UserID.String(),
+		"role_id":                        rb.RoleID.String(),
+		"origin_invitation_id":           rb.OriginInvitationID.String(),
+		"origin_academic_unit_member_id": rb.OriginAcademicUnitMemberID.String(),
+		"scope_type":                     rb.ScopeType,
+		"scope_id":                       rb.ScopeID,
+		"start_at":                       MillisFromTime(rb.StartsAt),
+		"end_at":                         rb.EndsAt.Millis(),
 	}
 }
 

@@ -61,7 +61,7 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "")
+	session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	session, _, err = persistence.Session().Save(ctx, session, sessionCredentials, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -367,9 +367,9 @@ func TestRecoveryDeliveryRelevanceUsesPostgreSQLTime(t *testing.T) {
 }
 
 // TestUserTokenIssueSerializesWithTargetChange proves Issue rechecks the exact
-// persisted mailbox while holding a User-row lock. The profile update is
-// paused after owning that row; Issue must wait and then reject its stale
-// target without persisting any token or delivery intent.
+// persisted mailbox behind the same token-purpose fence as the named email
+// transition. The transition is paused after owning the fence; Issue must wait
+// and then reject its stale target without persisting token or delivery intent.
 func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -417,10 +417,30 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 	}()
 
 	updated := make(chan error, 1)
-	changed := *user
-	changed.Email = "token-target-changed@example.edu"
+	changedEmail := "token-target-changed@example.edu"
+	changeAt := model.NowUTC()
+	changeToken := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
+		TokenHash: model.HashToken(model.NewCredentialToken()), Target: changedEmail, ExpiresAt: changeAt.Add(time.Hour)}
+	changeToken.PrepareCreate(model.NewUserTokenID(), changeAt)
+	warningOccurrence, warningDelivery, warningJob := authenticationPolicyTestMail(t, user.ID, model.NewMailOccurrenceID(),
+		model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver,
+		changeAt, changeAt.Add(24*time.Hour))
+	verificationOccurrence, verificationDelivery, verificationJob := authenticationPolicyTestMail(t, user.ID, model.MailOccurrenceID(changeToken.ID.String()),
+		model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew, model.JobTypeMailDeliverCredential,
+		changeAt, changeAt.Add(time.Hour))
+	changeAudit := authenticationPolicyTestAudit("user.email.change", user.ID.String(), institution.ID.String())
+	changeAudit.Status = model.AuditStatusAttempt
+	changeAudit, err = persistence.Audit().Save(ctx, changeAudit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := &store.UserEmailChange{UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: changedEmail, Token: changeToken,
+		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
+		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
+		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
+		AuditEventID: changeAudit.ID.String(), AuditAt: model.GetMillis()}
 	go func() {
-		_, updateErr := persistence.User().Update(ctx, &changed)
+		_, updateErr := persistence.UserToken().ChangeEmail(ctx, change)
 		updated <- updateErr
 	}()
 	updatePID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE users")
@@ -437,7 +457,7 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 		_, issueErr := persistence.UserToken().Issue(ctx, input)
 		issued <- issueErr
 	}()
-	_ = waitForBlockedMailQuery(t, ctx, persistence, updatePID, "FROM users")
+	_ = waitForBlockedMailQuery(t, ctx, persistence, updatePID, "pg_advisory_xact_lock")
 	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
 		t.Fatal(err)
 	}

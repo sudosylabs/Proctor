@@ -7,6 +7,7 @@ package app_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -113,6 +114,86 @@ func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 			"display_name": "Invited Student", "locale": "en", "timezone": "UTC"}, "")
 	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"replayed":true`) {
 		t.Fatalf("acceptance replay = %d: %s", replay.Code, replay.Body.String())
+	}
+}
+
+func TestTeacherAcademicUnitInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	primaryStore := openAuthenticationStore(t, dataSource)
+	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
+	configure := func(nodeID string) func(*config.Config) {
+		return func(cfg *config.Config) {
+			cfg.Cluster.NodeID = nodeID
+			cfg.Server.ListenAddress = "127.0.0.1:0"
+			cfg.Server.PublicURL = "https://proctor.example.edu"
+			cfg.Authentication.AccountRecovery.RateLimit.MaximumAttempts = 20
+			cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts = 100
+		}
+	}
+	primary := testlib.Setup(t, testlib.WithConfig(configure("teacher-invitation-node-a")), testlib.WithStore(primaryStore))
+	secondary := testlib.Setup(t, testlib.WithConfig(configure("teacher-invitation-node-b")), testlib.WithStore(secondaryStore))
+	startIntegrationServer(t, primary)
+	startIntegrationServer(t, secondary)
+
+	const adminPassword = "bootstrap correct horse battery staple"
+	bootstrap := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/bootstrap", map[string]any{
+		"bootstrap_secret": testlib.BootstrapSecret,
+		"institution":      map[string]any{"name": "teacher-invitation-university", "display_name": "Teacher Invitation University"},
+		"administrator":    map[string]any{"username": "teacher-invitation-admin", "email": "teacher-invitation-admin@example.edu"},
+		"password":         adminPassword,
+	}, "")
+	if bootstrap.Code != http.StatusCreated {
+		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
+	}
+	login := loginIntegrationUser(t, primary.Handler(), "teacher-invitation-admin", adminPassword, model.SessionClientCLI, "teacher-invitation-admin-cli")
+	token := login.Tokens.AccessToken
+	unit := createIntegrationResource[model.AcademicUnit](t, primary.Handler(), http.MethodPost, "/api/v1/academic-units",
+		map[string]any{"name": "teacher-science", "display_name": "Teacher Science"}, token)
+	roleResponse := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/roles", map[string]any{
+		"name": "invited-teacher", "display_name": "Invited Teacher",
+		"permissions": []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeView)},
+	}, token)
+	if roleResponse.Code != http.StatusCreated {
+		t.Fatalf("create teacher Role = %d: %s", roleResponse.Code, roleResponse.Body.String())
+	}
+	var role struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(roleResponse.Body.Bytes(), &role); err != nil {
+		t.Fatal(err)
+	}
+	issue := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/academic-units/"+unit.ID.String()+"/invitations/teacher",
+		map[string]any{"email": " invited.teacher@example.edu ", "role_id": role.ID, "suggested_username": "invited-teacher",
+			"suggested_display_name": "Invited Teacher", "suggested_locale": "en"}, token)
+	if issue.Code != http.StatusCreated || strings.Contains(issue.Body.String(), "invited.teacher@example.edu") || strings.Contains(issue.Body.String(), "token") {
+		t.Fatalf("issue teacher invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
+	}
+	deliveries := waitForInvitationDeliveries(t, primary, secondary, 1)
+	claim := credentialFromDelivery(t, deliveries[0])
+	accept := performJSONRequest(secondary.Handler(), http.MethodPost, "/api/v1/invitations/teacher-academic-unit/accept",
+		map[string]any{"claim": claim, "password": "teacher correct horse battery staple", "username": "invited-teacher",
+			"display_name": "Invited Teacher", "locale": "en", "timezone": "UTC"}, "")
+	if accept.Code != http.StatusOK {
+		t.Fatalf("accept teacher invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
+	}
+	accepted, err := secondaryStore.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
+	if err != nil || accepted.State != model.InvitationAccepted || !accepted.AcceptedAcademicUnitMemberID.IsValid() || !accepted.AcceptedRoleBindingID.IsValid() {
+		t.Fatalf("accepted teacher invitation = %#v, %v", accepted, err)
+	}
+	binding, err := primaryStore.RoleBinding().Get(context.Background(), accepted.AcceptedRoleBindingID.String())
+	if err != nil || binding.UserID != accepted.AcceptedUserID || binding.RoleID.String() != role.ID || binding.OriginInvitationID != accepted.ID {
+		t.Fatalf("teacher package Role Binding = %#v, %v", binding, err)
+	}
+	if notice := waitForInvitationDeliveryContaining(t, primary, secondary, "Invitation accepted"); notice == nil {
+		t.Fatal("teacher acceptance notice lacks semantic copy")
+	}
+	replay := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/invitations/teacher-academic-unit/accept",
+		map[string]any{"claim": claim, "password": "teacher correct horse battery staple", "username": "invited-teacher"}, "")
+	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"replayed":true`) {
+		t.Fatalf("teacher acceptance replay = %d: %s", replay.Code, replay.Body.String())
 	}
 }
 

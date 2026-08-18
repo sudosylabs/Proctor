@@ -32,7 +32,8 @@ func (s *userProfileStoreFake) List(_ context.Context, options store.UserListOpt
 func (s *userProfileStoreFake) UpdateProfileWithAudit(_ context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	*s.events = append(*s.events, "store-update")
 	s.updateInput = input
-	updated := *input.User
+	updated := *s.current
+	updated.ApplyProfileChanges(&input.Changes)
 	updated.Revision = input.ExpectedRevision + 1
 	return &updated, nil
 }
@@ -78,12 +79,12 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	persistence := &userProfileStoreFake{events: &events, current: current}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
-	email := "new@example.edu"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID.String(), Email: &email})
+	displayName := "Updated Student"
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID.String(), DisplayName: &displayName})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Email != email || updated.EmailVerified || persistence.updateInput.ExpectedRevision != 3 || persistence.updateInput.User.Revision != 3 || updated.Revision != 4 {
+	if updated.Email != current.Email || !updated.EmailVerified || updated.DisplayName != displayName || persistence.updateInput.ExpectedRevision != 3 || persistence.updateInput.UserID != current.ID || persistence.updateInput.Changes.DisplayName == nil || *persistence.updateInput.Changes.DisplayName != displayName || updated.Revision != 4 {
 		t.Fatalf("updated/input = %#v / %#v", updated, persistence.updateInput)
 	}
 	want := []string{"authorize-manage", "get-user", "audit-begin", "store-update"}

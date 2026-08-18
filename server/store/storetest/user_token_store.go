@@ -11,6 +11,7 @@ package storetest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -51,6 +52,213 @@ func TestUserTokenStore(t *testing.T, ss store.Store) {
 	t.Run("AuditFailureRollsBackCredentialState", func(t *testing.T) {
 		testUserTokenAuditFailureRollsBack(t, ss)
 	})
+	t.Run("EmailChangeCommitsAddressTokenAndBothFrozenDeliveries", func(t *testing.T) {
+		testUserEmailChangeAtomic(t, ss)
+	})
+	t.Run("EmailChangeUsesOneDatabaseClockForTokenAndMail", func(t *testing.T) {
+		testUserEmailChangeUsesDatabaseClock(t, ss)
+	})
+	t.Run("ConcurrentEmailChangeHasOneWinner", func(t *testing.T) {
+		testConcurrentUserEmailChange(t, ss)
+	})
+	t.Run("PrivilegedEmailVerificationCommitsNotice", func(t *testing.T) {
+		testPrivilegedEmailVerificationAtomic(t, ss)
+	})
+}
+
+func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	_ = saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	preparedAt := time.Date(2099, 1, 2, 3, 4, 5, 0, time.UTC)
+	tokenLifetime, warningLifetime := 37*time.Minute, 19*time.Hour
+	newEmail := model.NewId() + "@database-clock.example.edu"
+	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
+		TokenHash: model.HashToken(model.NewCredentialToken()), Target: newEmail, ExpiresAt: preparedAt.Add(tokenLifetime)}
+	token.PrepareCreate(model.NewUserTokenID(), preparedAt)
+	warningOccurrence, warningDelivery, warningJob := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(),
+		model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver,
+		preparedAt, preparedAt.Add(warningLifetime))
+	verificationOccurrence, verificationDelivery, verificationJob := userTokenMailFixture(t, user.ID, model.MailOccurrenceID(token.ID.String()),
+		model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew, model.JobTypeMailDeliverCredential,
+		preparedAt, preparedAt.Add(tokenLifetime))
+	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+
+	command := &store.UserEmailChange{
+		UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: newEmail, Token: token,
+		TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
+		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
+		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
+		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+	}
+	result, err := ss.UserToken().ChangeEmail(ctx, command)
+	requireNoError(t, err)
+	if result.Token.CreatedAt.Equal(preparedAt) || result.Token.ExpiresAt.Sub(result.Token.CreatedAt) != tokenLifetime ||
+		!result.User.UpdatedAt.Equal(result.Token.CreatedAt) {
+		t.Fatalf("database-clock User/token = %#v / %#v", result.User, result.Token)
+	}
+	for _, expected := range []struct {
+		deliveryID model.MailDeliveryID
+		jobID      model.JobID
+		lifetime   time.Duration
+	}{
+		{warningDelivery.ID, warningJob.ID, warningLifetime},
+		{verificationDelivery.ID, verificationJob.ID, tokenLifetime},
+	} {
+		delivery, getErr := ss.Mail().GetDelivery(ctx, expected.deliveryID)
+		requireNoError(t, getErr)
+		job, getErr := ss.Job().Get(ctx, expected.jobID)
+		requireNoError(t, getErr)
+		if !delivery.CreatedAt.Equal(result.Token.CreatedAt) || !delivery.UpdatedAt.Equal(result.Token.CreatedAt) ||
+			!delivery.MessageDate.Equal(result.Token.CreatedAt) || delivery.Deadline.Sub(delivery.CreatedAt) != expected.lifetime ||
+			!job.CreatedAt.Equal(result.Token.CreatedAt) || !job.UpdatedAt.Equal(result.Token.CreatedAt) ||
+			!job.AvailableAt.Equal(result.Token.CreatedAt) || (job.CompletedAt.Valid && !job.CompletedAt.Time.Equal(result.Token.CreatedAt)) {
+			t.Fatalf("database-clock delivery/job = %#v / %#v, token=%#v", delivery, job, result.Token)
+		}
+	}
+	for _, invalidLifetime := range []struct {
+		name    string
+		token   time.Duration
+		warning time.Duration
+	}{
+		{name: "short token", token: time.Minute, warning: warningLifetime},
+		{name: "long token", token: 31 * 24 * time.Hour, warning: warningLifetime},
+		{name: "short warning", token: tokenLifetime, warning: time.Second},
+		{name: "long warning", token: tokenLifetime, warning: 25 * time.Hour},
+		{name: "sub-millisecond", token: tokenLifetime + time.Nanosecond, warning: warningLifetime},
+	} {
+		t.Run(invalidLifetime.name, func(t *testing.T) {
+			invalid := *command
+			invalid.TokenLifetime, invalid.WarningLifetime = invalidLifetime.token, invalidLifetime.warning
+			_, invalidErr := ss.UserToken().ChangeEmail(ctx, &invalid)
+			var typed *store.ErrInvalidInput
+			if !errors.As(invalidErr, &typed) {
+				t.Fatalf("invalid bounded lifetime error = %v", invalidErr)
+			}
+		})
+	}
+}
+
+func testConcurrentUserEmailChange(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	_ = saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	build := func(suffix string) *store.UserEmailChange {
+		at := model.TimeUTC(time.Now().Add(time.Second))
+		email := model.NewId() + suffix + "@example.edu"
+		token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification, TokenHash: model.HashToken(model.NewCredentialToken()), Target: email, ExpiresAt: at.Add(time.Hour)}
+		token.PrepareCreate(model.NewUserTokenID(), at)
+		warningOccurrence, warningDelivery, warningJob := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
+		verifyOccurrence, verifyDelivery, verifyJob := userTokenMailFixture(t, user.ID, model.MailOccurrenceID(token.ID.String()), model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew, model.JobTypeMailDeliverCredential, at, token.ExpiresAt)
+		audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+		return &store.UserEmailChange{UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: email, Token: token,
+			TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
+			WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
+			VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
+			AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)}
+	}
+	inputs := []*store.UserEmailChange{build("a"), build("b")}
+	errs := make(chan error, 2)
+	var ready sync.WaitGroup
+	ready.Add(2)
+	start := make(chan struct{})
+	for _, input := range inputs {
+		go func(candidate *store.UserEmailChange) {
+			ready.Done()
+			<-start
+			_, err := ss.UserToken().ChangeEmail(ctx, candidate)
+			errs <- err
+		}(input)
+	}
+	ready.Wait()
+	close(start)
+	wins, conflicts := 0, 0
+	for range inputs {
+		err := <-errs
+		if err == nil {
+			wins++
+		} else if store.IsConflict(err) {
+			conflicts++
+		} else {
+			t.Fatalf("concurrent ChangeEmail error = %v", err)
+		}
+	}
+	if wins != 1 || conflicts != 1 {
+		t.Fatalf("concurrent outcomes wins=%d conflicts=%d", wins, conflicts)
+	}
+}
+
+func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	_ = saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	at := model.TimeUTC(time.Now().Add(time.Second))
+	newEmail := model.NewId() + "@new.example.edu"
+	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification, TokenHash: model.HashToken(model.NewCredentialToken()), Target: newEmail, ExpiresAt: at.Add(time.Hour)}
+	token.PrepareCreate(model.NewUserTokenID(), at)
+	warningOccurrence, warningDelivery, warningJob := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
+	verifyOccurrence, verifyDelivery, verifyJob := userTokenMailFixture(t, user.ID, model.MailOccurrenceID(token.ID.String()), model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew, model.JobTypeMailDeliverCredential, at, token.ExpiresAt)
+	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+	result, err := ss.UserToken().ChangeEmail(ctx, &store.UserEmailChange{UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: newEmail, Token: token,
+		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
+		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
+		VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
+		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	if result.User.Email != newEmail || result.User.EmailVerified || result.User.Revision != user.Revision+1 || result.Token.Target != newEmail {
+		t.Fatalf("email change result = %#v", result)
+	}
+	for _, expected := range []*model.MailDelivery{warningDelivery, verifyDelivery} {
+		delivery, getErr := ss.Mail().GetDelivery(ctx, expected.ID)
+		requireNoError(t, getErr)
+		if delivery.TemplateKey != expected.TemplateKey || len(delivery.EncryptedPayload) == 0 {
+			t.Fatalf("%s delivery = %#v", expected.TemplateKey, delivery)
+		}
+	}
+	second, _ := saveLocalUser(t, ctx, ss)
+	secondAt := at.Add(time.Second)
+	conflictToken := &model.UserToken{UserID: second.ID, Purpose: model.UserTokenEmailVerification, TokenHash: model.HashToken(model.NewCredentialToken()), Target: newEmail, ExpiresAt: secondAt.Add(time.Hour)}
+	conflictToken.PrepareCreate(model.NewUserTokenID(), secondAt)
+	conflictWarningOccurrence, conflictWarningDelivery, conflictWarningJob := userTokenMailFixture(t, second.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver, secondAt, secondAt.Add(24*time.Hour))
+	conflictVerifyOccurrence, conflictVerifyDelivery, conflictVerifyJob := userTokenMailFixture(t, second.ID, model.MailOccurrenceID(conflictToken.ID.String()), model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew, model.JobTypeMailDeliverCredential, secondAt, conflictToken.ExpiresAt)
+	conflictAudit := saveUserProfileAuditAttempt(t, ctx, ss, second.ID.String())
+	_, err = ss.UserToken().ChangeEmail(ctx, &store.UserEmailChange{UserID: second.ID, ExpectedRevision: second.Revision, NewEmail: newEmail, Token: conflictToken,
+		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
+		WarningOccurrence: conflictWarningOccurrence, WarningDelivery: conflictWarningDelivery, WarningJob: conflictWarningJob,
+		VerificationOccurrence: conflictVerifyOccurrence, VerificationDelivery: conflictVerifyDelivery, VerificationJob: conflictVerifyJob,
+		AuditEventID: conflictAudit.ID.String(), AuditAt: model.MillisFromTime(secondAt)})
+	if !store.IsConflict(err) {
+		t.Fatalf("duplicate email change error = %v, want conflict", err)
+	}
+	unchanged, getErr := ss.User().Get(ctx, second.ID.String())
+	requireNoError(t, getErr)
+	if unchanged.Email != second.Email || unchanged.Revision != second.Revision {
+		t.Fatalf("rolled-back User = %#v", unchanged)
+	}
+	if _, getErr = ss.UserToken().GetByHash(ctx, conflictToken.TokenHash, conflictToken.Purpose); !store.IsNotFound(getErr) {
+		t.Fatalf("rolled-back token lookup = %v", getErr)
+	}
+}
+
+func testPrivilegedEmailVerificationAtomic(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	_ = saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	at := model.TimeUTC(time.Now().Add(time.Second))
+	occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailVerifiedByAdmin, model.JobTypeMailDeliver, at, at.Add(24*time.Hour))
+	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+	verified, err := ss.UserToken().VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{UserID: user.ID, ExpectedRevision: user.Revision,
+		Occurrence: occurrence, Delivery: delivery, Job: job,
+		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	if !verified.EmailVerified || verified.Revision != user.Revision+1 {
+		t.Fatalf("verified user = %#v", verified)
+	}
+	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityEmailVerifiedByAdmin}, Limit: 10})
+	requireNoError(t, err)
+	if len(deliveries) != 1 || len(deliveries[0].EncryptedPayload) == 0 {
+		t.Fatalf("privileged verification deliveries = %#v", deliveries)
+	}
 }
 
 func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Store) {
@@ -60,9 +268,8 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 	t.Run("changed verification target", func(t *testing.T) {
 		user, _ := saveLocalUser(t, ctx, ss)
 		token := newUserToken(user, model.UserTokenEmailVerification)
-		user.Email = model.NewId() + "@changed.example.edu"
-		_, err := ss.User().Update(ctx, user)
-		requireNoError(t, err)
+		user = changeUserEmailForTest(t, ctx, ss, user, model.NewId()+"@changed.example.edu")
+		var err error
 		if _, err = issueUserToken(t, ss, ctx, token,
 			userTokenAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String())); !store.IsNotFound(err) {
 			t.Fatalf("changed-target Issue() error = %v, want not found", err)
@@ -321,9 +528,7 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 		),
 	)
 	requireNoError(t, err)
-	changedUser.Email = model.NewId() + "@changed.example.edu"
-	_, err = ss.User().Update(ctx, changedUser)
-	requireNoError(t, err)
+	changedUser = changeUserEmailForTest(t, ctx, ss, changedUser, model.NewId()+"@changed.example.edu")
 	if _, err := ss.UserToken().ConsumeEmailVerification(
 		ctx,
 		changedToken.TokenHash,
@@ -332,6 +537,31 @@ func testEmailVerificationIsTargetBoundAndSingleUse(t *testing.T, ss store.Store
 	); !store.IsNotFound(err) {
 		t.Fatalf("changed-target consumption error = %v, want not found", err)
 	}
+}
+
+func changeUserEmailForTest(t *testing.T, ctx context.Context, ss store.Store, user *model.User, newEmail string) *model.User {
+	t.Helper()
+	at := model.TimeUTC(time.Now().Add(time.Second))
+	tokenLifetime, warningLifetime := time.Hour, 24*time.Hour
+	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
+		TokenHash: model.HashToken(model.NewCredentialToken()), Target: newEmail, ExpiresAt: at.Add(tokenLifetime)}
+	token.PrepareCreate(model.NewUserTokenID(), at)
+	warningOccurrence, warningDelivery, warningJob := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(),
+		model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver,
+		at, at.Add(warningLifetime))
+	verificationOccurrence, verificationDelivery, verificationJob := userTokenMailFixture(t, user.ID, model.MailOccurrenceID(token.ID.String()),
+		model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew, model.JobTypeMailDeliverCredential,
+		at, at.Add(tokenLifetime))
+	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+	result, err := ss.UserToken().ChangeEmail(ctx, &store.UserEmailChange{
+		UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: newEmail, Token: token,
+		TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
+		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
+		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
+		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+	})
+	requireNoError(t, err)
+	return result.User
 }
 
 func findUserTokenDelivery(t *testing.T, ctx context.Context, ss store.Store, tokenID model.UserTokenID, key model.MailTemplateKey) *model.MailDelivery {

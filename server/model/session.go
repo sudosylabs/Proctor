@@ -42,9 +42,9 @@ const (
 //
 // Domain time is UTC time.Time. Optional lifecycle instants use OptionalTime.
 // Soft archive uses the explicit optional ArchivedAt instant.
-// AuthenticationProviderID retains the immutable configured provider for an
-// external Session; it is empty only for local Sessions, while
-// AuthenticationMethod describes the local method or external protocol.
+// AuthenticationProviderID and ExternalIdentityID retain the exact immutable
+// provider path that established an external Session. Both are empty for a
+// local Session. AuthenticationMethod describes the local method or protocol.
 type Session struct {
 	ID                       SessionID
 	CreatedAt                time.Time
@@ -56,6 +56,7 @@ type Session struct {
 	DeviceName               string
 	AuthenticationMethod     string
 	AuthenticationProviderID string
+	ExternalIdentityID       ExternalIdentityID
 	AuthenticationStrength   AuthenticationStrength
 	AuthenticatedAt          time.Time
 	MFACompletedAt           OptionalTime
@@ -153,6 +154,12 @@ func (s *Session) Validate() error {
 	}
 	if s.AuthenticationProviderID != "" && !IsValidIdentityProviderID(s.AuthenticationProviderID) {
 		return invalidModelError(where, "session", "authentication_provider_id", "has an invalid format", details)
+	}
+	if s.AuthenticationProviderID == "" && !s.ExternalIdentityID.IsZero() {
+		return invalidModelError(where, "session", "external_identity_id", "must be empty for local authentication", details)
+	}
+	if s.AuthenticationProviderID != "" && !s.ExternalIdentityID.IsValid() {
+		return invalidModelError(where, "session", "external_identity_id", "is required for external authentication", details)
 	}
 	if !s.AuthenticationStrength.IsValid() {
 		return invalidModelError(where, "session", "authentication_strength", "has an unknown value", details)
@@ -258,6 +265,7 @@ func (s *Session) Auditable() map[string]any {
 		"device_id":                  s.DeviceID,
 		"authentication_method":      s.AuthenticationMethod,
 		"authentication_provider_id": s.AuthenticationProviderID,
+		"external_identity_id":       s.ExternalIdentityID.String(),
 		"authentication_strength":    s.AuthenticationStrength,
 		"authenticated_at":           MillisFromTime(s.AuthenticatedAt),
 		"mfa_completed_at":           s.MFACompletedAt.Millis(),

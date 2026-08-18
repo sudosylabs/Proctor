@@ -334,7 +334,8 @@ protocol names are never used as provider-identity fallbacks. Detailed
 `linked_only`, `invitation_required`, and `auto_provision` admission behavior
 remains part of the later Invitation and identity-reconciliation slices.
 This is a reset-only pre-release baseline: there is no supported upgrade path
-for development rows whose external Sessions lack an exact provider ID.
+for development rows whose external Sessions lack an exact provider ID and
+`ExternalIdentityID`.
 
 The server-side Proctor Desktop Authorization protocol is implemented. A
 purpose-bound PostgreSQL transaction pins installation, exact local/external
@@ -346,6 +347,24 @@ mix-up, concurrent exchange, replay, expiry, and current-policy/provider checks
 fail closed. The `/authorize/desktop` hosted page and Desktop Launch Window/UI
 remain explicitly unimplemented design-system/client work, so the repository
 does not yet claim an end-to-end user journey.
+
+Authentication-method lifecycle APIs are implemented. A strong, recent Web
+Session can enroll a policy-permitted password only for a verified mailbox,
+start a provider connection pinned to the exact current User, remove the local
+password, or unlink one external identity. Provider callbacks link only the
+proved immutable subject; profile email and username never merge accounts.
+Named PostgreSQL transactions recheck current policy, configured provider
+capabilities, active User state, another usable method, and the shared
+last-system-administrator fence before committing the audit and mutation.
+Removal archives the exact method and revokes only Sessions carrying the exact
+removed identity or local password provenance; a second identity at the same
+provider is unaffected. Provider-connection rejection, invalid assertion, and
+post-consumption failure terminalize the original critical audit, while bounded
+periodic reconciliation fails abandoned expired attempts and purges their safe
+state metadata after 24 hours. Public method listings and audit projections omit provider
+subjects, hashes, claims, and credentials. The hosted
+`/account/connect-provider` page remains deferred with the other server-hosted
+design-system pages.
 
 The first durable Invitation vertical slice is implemented for
 `student_class`. Issue freezes the normalized mailbox, exact Class and Academic
@@ -360,6 +379,19 @@ student affiliation and exact Class membership, Invitation consumption,
 successful audit, and semantic acceptance mail. Exact claim replay is
 idempotent. Neither API responses nor audit/report projections contain the raw
 claim, target mailbox, or generated link.
+
+The `teacher_academic_unit` Invitation slice is also implemented. Issue
+freezes one exact active Academic Unit, selected non-built-in Role, canonical
+action snapshot, effective bounds, inviter, and normalized mailbox only after
+the inviter passes both membership-management authorization and the
+scope/action delegation ceiling. Acceptance repeats those checks under the
+academic-hierarchy, User, Role, and Role-Binding fences, then atomically
+creates or resolves the verified local User and initial settings work, teacher
+Affiliation, Academic Unit membership, package-origin Role Binding, audit, and
+semantic acceptance mail. Compatible packages reuse relationships and add
+only missing bindings; existing Users do not receive another welcome. Exact
+replay returns the originally committed relationship IDs, and ending the
+package membership ends only bindings carrying Invitation provenance.
 
 The first administrator always bootstraps one local account with a one-use
 deployment secret before mutable access policy can take effect. Thereafter a

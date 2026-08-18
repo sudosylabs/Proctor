@@ -28,6 +28,26 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			}
 			return references
 		},
+		ArchiveTeacherUnitBeforeAccept: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
+			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_unit_archive", "academic_units", "UPDATE academic_units", 8154700260827, func() error {
+				_, err := secondary.AcademicUnit().Archive(ctx, unit.ID.String(), model.GetMillis())
+				return err
+			}, operation)
+		},
+		ArchiveTeacherUnitBeforeMail: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
+			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_mail_unit_archive", "academic_units", "UPDATE academic_units", 8154700260828, func() error {
+				_, err := secondary.AcademicUnit().Archive(ctx, unit.ID.String(), model.GetMillis())
+				return err
+			}, operation)
+		},
+		MutateTeacherRoleBeforeMail: func(t *testing.T, ctx context.Context, role *model.Role, operation func() error) error {
+			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_mail_role_update", "roles", "UPDATE roles", 8154700260829, func() error {
+				candidate := role.Clone()
+				candidate.Permissions = []string{string(model.ActionProgrammeManage)}
+				_, err := secondary.Role().Update(ctx, candidate)
+				return err
+			}, operation)
+		},
 		DisableInviterBeforeIssue: func(t *testing.T, ctx context.Context, inviter *model.User, operation func() error) error {
 			audit := saveInvitationAuthorityAudit(t, ctx, secondary, inviter.ID, string(model.ActionUserManage), model.ResourceUser, inviter.ID.String(), model.RoleScopeInstitution, invitationTestInstitutionID(t, ctx, secondary).String())
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_disable", "users", "UPDATE users", 8154700260822, func() error {

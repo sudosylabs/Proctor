@@ -212,7 +212,7 @@ func identityAndSystemErrorContracts() map[string][]string {
 		"POST /api/v1/auth/password-reset/complete":                       {"request.invalid", "authentication.password.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.account_token.invalid", "authentication.account_recovery.unavailable"},
 		"GET /api/v1/auth/providers":                                      {"authentication.internal"},
 		"GET /api/v1/auth/providers/{provider_id}/login":                  {"request.invalid", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.unavailable", "authentication.external.rejected", "authentication.internal"},
-		"GET /api/v1/auth/providers/{provider_id}/callback":               {"request.invalid", "authentication.external.invalid", "authentication.external.provider_not_found", "authentication.external.rejected", "authentication.external.unavailable", "authentication.external.account_conflict", "authentication.external.account_not_linked", "authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable"},
+		"GET /api/v1/auth/providers/{provider_id}/callback":               {"request.invalid", "authentication.external.invalid", "authentication.external.provider_not_found", "authentication.external.rejected", "authentication.external.unavailable", "authentication.external.account_conflict", "authentication.external.account_not_linked", "authentication.method.disabled", "authentication.method.last_usable", "authentication.method.not_found", "authentication.method.provider_conflict", "authentication.method.conflict", "authentication.method.unavailable", "authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable"},
 		"GET /api/v1/users/me/sessions":                                   sessionErrorCodes("authentication.internal"),
 		"POST /api/v1/users/me/sessions/revoke":                           sessionMutationErrorCodes("request.invalid", "session.id.invalid", "session.not_found", "authentication.internal"),
 		"POST /api/v1/users/me/sessions/revoke-all":                       sessionMutationErrorCodes("authentication.internal"),
@@ -292,7 +292,8 @@ func academicUnitOperation(_ string, path string) bool {
 	if !strings.HasPrefix(path, model.APIURLSuffix+"/academic-units") {
 		return false
 	}
-	return !strings.HasSuffix(path, "/classes") && !strings.HasSuffix(path, "/members") && !strings.Contains(path, "/programmes")
+	return !strings.HasSuffix(path, "/classes") && !strings.HasSuffix(path, "/members") &&
+		!strings.Contains(path, "/programmes") && !strings.Contains(path, "/invitations")
 }
 
 func principalContractCodes(extra ...string) []string {

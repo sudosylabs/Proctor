@@ -243,6 +243,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		sessions[0].AuthenticationMethod !=
 			config.ExternalAuthenticationTypeOIDC ||
 		sessions[0].AuthenticationProviderID != providerID ||
+		sessions[0].ExternalIdentityID != identity.ID ||
 		sessions[0].AuthenticationStrength !=
 			model.AuthenticationMultiFactor {
 		t.Fatalf("OIDC session = %#v, %v", sessions, err)

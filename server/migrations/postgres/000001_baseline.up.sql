@@ -301,19 +301,22 @@ CREATE TABLE user_settings_documents (
     CONSTRAINT user_settings_documents_lifecycle_check CHECK (updated_at >= created_at)
 );
 
--- A student Invitation exists before its recipient has a User row. It freezes
--- one exact Class relationship package and stores only a domain-separated
+-- An Invitation exists before its recipient has a User row. It freezes one
+-- exact relationship package and stores only a domain-separated
 -- digest of the 256-bit claim delivered by mail.
 CREATE TABLE invitations (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-    purpose varchar(32) NOT NULL CHECK (purpose = 'student_class'),
+    purpose varchar(32) NOT NULL CHECK (purpose IN ('student_class', 'teacher_academic_unit')),
     state varchar(24) NOT NULL CHECK (state IN ('pending', 'accepted', 'revoked', 'expired', 'superseded')),
     target_email varchar(254) NOT NULL CHECK (target_email = lower(btrim(target_email))),
-    class_id varchar(26) NOT NULL REFERENCES classes(id),
-    academic_period_id varchar(26) NOT NULL REFERENCES academic_periods(id),
+    class_id varchar(26) REFERENCES classes(id),
+    academic_period_id varchar(26) REFERENCES academic_periods(id),
+    academic_unit_id varchar(26) REFERENCES academic_units(id),
+    role_id varchar(26),
+    role_actions text[] NOT NULL DEFAULT '{}',
     intended_start_at timestamptz NOT NULL,
     intended_end_at timestamptz,
     suggested_username varchar(64) NOT NULL DEFAULT '',
@@ -322,7 +325,7 @@ CREATE TABLE invitations (
     suggested_last_name varchar(256) NOT NULL DEFAULT '',
     suggested_locale varchar(35) NOT NULL DEFAULT '',
     inviter_user_id varchar(26) NOT NULL REFERENCES users(id),
-    scope_type varchar(32) NOT NULL CHECK (scope_type = 'class'),
+    scope_type varchar(32) NOT NULL CHECK (scope_type IN ('class', 'academic_unit')),
     scope_id varchar(26) NOT NULL,
     claim_hash char(64) NOT NULL UNIQUE CHECK (claim_hash ~ '^[0-9a-f]{64}$'),
     expires_at timestamptz NOT NULL,
@@ -330,12 +333,22 @@ CREATE TABLE invitations (
     accepted_user_id varchar(26) REFERENCES users(id),
     accepted_affiliation_id varchar(26),
     accepted_class_member_id varchar(26),
-    CONSTRAINT invitations_exact_class_scope_check CHECK (scope_id = class_id),
+    accepted_academic_unit_member_id varchar(26),
+    accepted_role_binding_id varchar(26),
+    CONSTRAINT invitations_package_check CHECK (
+        (purpose = 'student_class' AND class_id IS NOT NULL AND academic_period_id IS NOT NULL
+            AND academic_unit_id IS NULL AND role_id IS NULL AND role_actions = '{}' AND scope_type = 'class' AND scope_id = class_id) OR
+        (purpose = 'teacher_academic_unit' AND class_id IS NULL AND academic_period_id IS NULL
+            AND academic_unit_id IS NOT NULL AND role_id IS NOT NULL AND cardinality(role_actions) > 0
+            AND scope_type = 'academic_unit' AND scope_id = academic_unit_id)
+    ),
     CONSTRAINT invitations_effective_bounds_check CHECK (intended_end_at IS NULL OR intended_end_at > intended_start_at),
     CONSTRAINT invitations_lifetime_check CHECK (expires_at = created_at + interval '7 days'),
     CONSTRAINT invitations_lifecycle_check CHECK (
         updated_at >= created_at AND
-        ((state = 'accepted') = (accepted_at IS NOT NULL AND accepted_user_id IS NOT NULL AND accepted_affiliation_id IS NOT NULL AND accepted_class_member_id IS NOT NULL)) AND
+        ((state = 'accepted') = (accepted_at IS NOT NULL AND accepted_user_id IS NOT NULL AND accepted_affiliation_id IS NOT NULL AND
+            ((purpose = 'student_class' AND accepted_class_member_id IS NOT NULL AND accepted_academic_unit_member_id IS NULL AND accepted_role_binding_id IS NULL) OR
+             (purpose = 'teacher_academic_unit' AND accepted_class_member_id IS NULL AND accepted_academic_unit_member_id IS NOT NULL AND accepted_role_binding_id IS NOT NULL)))) AND
         (accepted_at IS NULL OR (accepted_at >= created_at AND accepted_at < expires_at))
     )
 );
@@ -343,6 +356,10 @@ CREATE TABLE invitations (
 CREATE UNIQUE INDEX invitations_pending_student_period_key
     ON invitations (target_email, academic_period_id)
     WHERE state = 'pending' AND purpose = 'student_class';
+
+CREATE UNIQUE INDEX invitations_pending_teacher_package_key
+    ON invitations (target_email, academic_unit_id, role_id)
+    WHERE state = 'pending' AND purpose = 'teacher_academic_unit';
 
 -- One immutable logical occurrence owns one or more frozen recipient
 -- deliveries. Occurrence actors and recipient targets are deliberately
@@ -352,7 +369,9 @@ CREATE TABLE mail_occurrences (
     kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation')),
     template_key varchar(128) NOT NULL CHECK (template_key IN (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
-        'identity.password_changed', 'access.student_class_invitation',
+        'identity.password_changed', 'identity.email_change_warning_old',
+        'identity.email_change_verify_new', 'identity.email_verified_by_admin',
+        'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.invitation_accepted'
     )),
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
@@ -379,7 +398,9 @@ CREATE TABLE mail_deliveries (
     target_invitation_id varchar(26),
     template_key varchar(128) NOT NULL CHECK (template_key IN (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
-        'identity.password_changed', 'access.student_class_invitation',
+        'identity.password_changed', 'identity.email_change_warning_old',
+        'identity.email_change_verify_new', 'identity.email_verified_by_admin',
+        'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.invitation_accepted'
     )),
     template_digest char(64) NOT NULL CHECK (template_digest ~ '^[0-9a-f]{64}$'),
@@ -1092,7 +1113,9 @@ ALTER TABLE invitations
     ADD CONSTRAINT invitations_accepted_affiliation_id_fkey
     FOREIGN KEY (accepted_affiliation_id) REFERENCES affiliations(id),
     ADD CONSTRAINT invitations_accepted_class_member_id_fkey
-    FOREIGN KEY (accepted_class_member_id) REFERENCES class_members(id);
+    FOREIGN KEY (accepted_class_member_id) REFERENCES class_members(id),
+    ADD CONSTRAINT invitations_accepted_academic_unit_member_id_fkey
+    FOREIGN KEY (accepted_academic_unit_member_id) REFERENCES academic_unit_members(id);
 
 CREATE TABLE roles (
     id varchar(26) PRIMARY KEY,
@@ -1109,6 +1132,9 @@ CREATE TABLE roles (
 
 CREATE UNIQUE INDEX roles_name_key ON roles (name) WHERE archived_at IS NULL;
 
+ALTER TABLE invitations
+    ADD CONSTRAINT invitations_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(id);
+
 CREATE TABLE role_bindings (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -1116,6 +1142,10 @@ CREATE TABLE role_bindings (
     archived_at timestamptz,
     user_id varchar(26) NOT NULL REFERENCES users(id),
     role_id varchar(26) NOT NULL REFERENCES roles(id),
+    -- Kept as a canonical provenance identifier without a foreign key because
+    -- terminal Invitation rows are retention-bounded while Role history is not.
+    origin_invitation_id varchar(26),
+    origin_academic_unit_member_id varchar(26) REFERENCES academic_unit_members(id),
     scope_type varchar(32) NOT NULL CHECK (scope_type IN ('institution', 'academic_unit', 'class')),
     scope_id varchar(26) NOT NULL,
     start_at timestamptz NOT NULL,
@@ -1136,6 +1166,14 @@ CREATE INDEX role_bindings_user_id_start_at_end_at_idx
     ON role_bindings (user_id, start_at, end_at)
     WHERE archived_at IS NULL;
 
+CREATE INDEX role_bindings_origin_invitation_id_idx
+    ON role_bindings (origin_invitation_id)
+    WHERE origin_invitation_id IS NOT NULL;
+
+ALTER TABLE invitations
+    ADD CONSTRAINT invitations_accepted_role_binding_id_fkey
+    FOREIGN KEY (accepted_role_binding_id) REFERENCES role_bindings(id);
+
 CREATE TABLE sessions (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -1148,6 +1186,7 @@ CREATE TABLE sessions (
 	authentication_method varchar(64) NOT NULL,
 	authentication_provider_id varchar(64) NOT NULL DEFAULT ''
 		CHECK (authentication_provider_id = '' OR authentication_provider_id ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),
+	external_identity_id varchar(26) REFERENCES external_identities(id),
 	authentication_strength varchar(32) NOT NULL
         CHECK (authentication_strength IN ('single_factor', 'multi_factor')),
     authenticated_at timestamptz NOT NULL,
@@ -1157,7 +1196,11 @@ CREATE TABLE sessions (
     expires_at timestamptz NOT NULL,
     revoked_at timestamptz,
     revocation_reason varchar(1024) NOT NULL DEFAULT '',
-    CONSTRAINT sessions_lifecycle_check CHECK (updated_at >= created_at)
+    CONSTRAINT sessions_lifecycle_check CHECK (updated_at >= created_at),
+	CONSTRAINT sessions_authentication_identity_check CHECK (
+		(authentication_provider_id = '' AND external_identity_id IS NULL) OR
+		(authentication_provider_id <> '' AND external_identity_id IS NOT NULL)
+	)
 );
 
 CREATE INDEX sessions_user_id_last_activity_at_idx
@@ -1166,6 +1209,8 @@ CREATE INDEX sessions_expires_at_idx
 	ON sessions (expires_at) WHERE archived_at IS NULL AND revoked_at IS NULL;
 CREATE INDEX sessions_authentication_provider_id_idx
 	ON sessions (authentication_provider_id) WHERE archived_at IS NULL AND revoked_at IS NULL;
+CREATE INDEX sessions_external_identity_id_idx
+	ON sessions (external_identity_id) WHERE external_identity_id IS NOT NULL AND archived_at IS NULL AND revoked_at IS NULL;
 
 -- An Attempt is the stable work identity for one candidate in one Sitting.
 -- Admission copies only logical workspace metadata; immutable starter bytes
@@ -2237,6 +2282,9 @@ CREATE TABLE external_login_states (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     provider varchar(64) NOT NULL,
+	purpose varchar(16) NOT NULL CHECK (purpose IN ('login', 'connect')),
+	target_user_id varchar(26) REFERENCES users(id),
+	audit_event_id varchar(26),
     state_hash char(64) NOT NULL,
     binding_hash char(64) NOT NULL,
     return_to varchar(2048) NOT NULL,
@@ -2249,7 +2297,11 @@ CREATE TABLE external_login_states (
         CHECK (
             expires_at > created_at AND
             (consumed_at IS NULL OR (consumed_at >= created_at AND consumed_at < expires_at))
-        )
+		),
+	CONSTRAINT external_login_states_purpose_target_check CHECK (
+		(purpose = 'login' AND target_user_id IS NULL AND audit_event_id IS NULL) OR
+		(purpose = 'connect' AND target_user_id IS NOT NULL AND audit_event_id IS NOT NULL)
+	)
 );
 
 CREATE UNIQUE INDEX external_login_states_state_hash_key
@@ -2280,6 +2332,7 @@ CREATE TABLE browser_authentication_transactions (
     user_id varchar(26) REFERENCES users(id),
     authentication_method varchar(64),
     authentication_provider_id varchar(64),
+	external_identity_id varchar(26) REFERENCES external_identities(id),
     authentication_strength varchar(32),
     authenticated_at timestamptz,
     mfa_completed_at timestamptz,
@@ -2298,13 +2351,15 @@ CREATE TABLE browser_authentication_transactions (
     CONSTRAINT browser_authentication_transactions_state_shape_check CHECK (
         (state = 'pending' AND handle_hash IS NOT NULL AND browser_proof_hash IS NOT NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
-         user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND
+         user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
          code_expires_at IS NULL AND cancelled_at IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'code_issued' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
          user_id IS NOT NULL AND authentication_method = expected_authentication_method AND
          authentication_provider_id IS NOT DISTINCT FROM expected_provider_id AND
+		 ((authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
+		  (authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
          authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
          ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
           (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
@@ -2313,13 +2368,15 @@ CREATE TABLE browser_authentication_transactions (
          cancelled_at IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'cancelled' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
-         user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND
+         user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
          code_expires_at IS NULL AND cancelled_at = updated_at AND exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'exchanged' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
          user_id IS NOT NULL AND authentication_method = expected_authentication_method AND
          authentication_provider_id IS NOT DISTINCT FROM expected_provider_id AND
+		 ((authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
+		  (authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
          authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
          ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
           (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
@@ -2328,10 +2385,12 @@ CREATE TABLE browser_authentication_transactions (
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND code_hash IS NULL AND
          code_expires_at IS NULL AND cancelled_at IS NULL AND exchanged_at IS NULL AND
          expired_at = updated_at AND updated_at <= expires_at AND
-		 ((user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND
+		 ((user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
 		   authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND updated_at = expires_at) OR
           (user_id IS NOT NULL AND authentication_method = expected_authentication_method AND
            authentication_provider_id IS NOT DISTINCT FROM expected_provider_id AND
+		   ((authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
+		    (authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
            authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
            ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
             (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at))))
@@ -2394,6 +2453,10 @@ CREATE INDEX audit_events_resource_type_resource_id_created_at_id_idx
     ON audit_events (resource_type, resource_id, created_at DESC, id DESC);
 CREATE INDEX audit_events_status_created_at_id_idx
     ON audit_events (created_at, id) WHERE status = 'attempt';
+
+ALTER TABLE external_login_states
+    ADD CONSTRAINT external_login_states_audit_event_id_fkey
+    FOREIGN KEY (audit_event_id) REFERENCES audit_events(id);
 
 CREATE TABLE exam_sitting_private_actions (
     audit_event_id varchar(26) PRIMARY KEY REFERENCES audit_events(id),
@@ -2587,6 +2650,10 @@ ALTER TABLE invitations
     CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT invitations_academic_period_id_canonical_check
     CHECK (academic_period_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT invitations_academic_unit_id_canonical_check
+    CHECK (academic_unit_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT invitations_role_id_canonical_check
+    CHECK (role_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT invitations_inviter_user_id_canonical_check
     CHECK (inviter_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT invitations_scope_id_canonical_check
@@ -2596,7 +2663,11 @@ ALTER TABLE invitations
     ADD CONSTRAINT invitations_accepted_affiliation_id_canonical_check
     CHECK (accepted_affiliation_id IS NULL OR accepted_affiliation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT invitations_accepted_class_member_id_canonical_check
-    CHECK (accepted_class_member_id IS NULL OR accepted_class_member_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    CHECK (accepted_class_member_id IS NULL OR accepted_class_member_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT invitations_accepted_academic_unit_member_id_canonical_check
+    CHECK (accepted_academic_unit_member_id IS NULL OR accepted_academic_unit_member_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT invitations_accepted_role_binding_id_canonical_check
+    CHECK (accepted_role_binding_id IS NULL OR accepted_role_binding_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE mail_occurrences
     ADD CONSTRAINT mail_occurrences_id_canonical_check
@@ -3045,6 +3116,10 @@ ALTER TABLE role_bindings
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT role_bindings_role_id_canonical_check
     CHECK (role_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT role_bindings_origin_invitation_id_canonical_check
+    CHECK (origin_invitation_id IS NULL OR origin_invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT role_bindings_origin_academic_unit_member_id_canonical_check
+    CHECK (origin_academic_unit_member_id IS NULL OR origin_academic_unit_member_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT role_bindings_scope_id_canonical_check
     CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
@@ -3052,7 +3127,9 @@ ALTER TABLE sessions
     ADD CONSTRAINT sessions_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT sessions_user_id_canonical_check
-    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT sessions_external_identity_id_canonical_check
+	CHECK (external_identity_id IS NULL OR external_identity_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE session_credentials
     ADD CONSTRAINT session_credentials_id_canonical_check
@@ -3094,7 +3171,11 @@ ALTER TABLE mfa_recovery_codes
 
 ALTER TABLE external_login_states
     ADD CONSTRAINT external_login_states_id_canonical_check
-    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+	CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT external_login_states_target_user_id_canonical_check
+	CHECK (target_user_id IS NULL OR target_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT external_login_states_audit_event_id_canonical_check
+	CHECK (audit_event_id IS NULL OR audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE browser_authentication_transactions
     ADD CONSTRAINT browser_authentication_transactions_id_canonical_check
@@ -3102,7 +3183,9 @@ ALTER TABLE browser_authentication_transactions
     ADD CONSTRAINT browser_authentication_transactions_institution_id_canonical_check
     CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT browser_authentication_transactions_user_id_canonical_check
-    CHECK (user_id IS NULL OR user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    CHECK (user_id IS NULL OR user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT browser_authentication_transactions_external_identity_id_canonical_check
+	CHECK (external_identity_id IS NULL OR external_identity_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE audit_events
     ADD CONSTRAINT audit_events_id_canonical_check

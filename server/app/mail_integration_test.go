@@ -42,8 +42,13 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	operator := bootstrap.Administrator
-	operator.EmailVerified = true
-	operator, err := persistence.User().Update(ctx, operator)
+	// This fixture needs a verified mail operator. Production mailbox state is
+	// changed only through the named UserToken aggregates.
+	_, err := persistence.GetMaster().Exec(ctx, `UPDATE users SET email_verified = TRUE WHERE id = ?`, operator.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator, err = persistence.User().Get(ctx, operator.ID.String())
 	if err != nil {
 		t.Fatal(err)
 	}

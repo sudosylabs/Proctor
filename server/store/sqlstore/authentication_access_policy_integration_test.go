@@ -38,12 +38,17 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	localSession, localCredentials := authenticationPolicyTestSession(user.ID, "password", "")
+	identity, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus",
+		Subject: "policy-fence-subject", LastSeenAt: model.OptionalTimeFrom(model.NowUTC())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localSession, localCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	savedLocal, _, err := persistence.Session().Save(ctx, localSession, localCredentials, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	externalSession, externalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus")
+	externalSession, externalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
 	savedExternal, _, err := persistence.Session().Save(ctx, externalSession, externalCredentials, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -79,11 +84,11 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blockedLocal, blockedLocalCredentials := authenticationPolicyTestSession(user.ID, "password", "")
+	blockedLocal, blockedLocalCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 	if _, _, err = persistence.Session().Save(ctx, blockedLocal, blockedLocalCredentials, 10); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled local session error = %v", err)
 	}
-	blockedExternal, blockedExternalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus")
+	blockedExternal, blockedExternalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
 	if _, _, err = persistence.Session().Save(ctx, blockedExternal, blockedExternalCredentials, 10); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled provider session error = %v", err)
 	}
@@ -117,23 +122,23 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 		}
 	}
 
-	identity, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus",
+	disabledIdentity, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus",
 		Subject: "subject", LastSeenAt: model.OptionalTimeFrom(model.NowUTC())})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = persistence.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
-		Provider: identity.Provider, Subject: identity.Subject, LastSeenAt: model.OptionalTimeFrom(model.NowUTC()),
+		Provider: disabledIdentity.Provider, Subject: disabledIdentity.Subject, LastSeenAt: model.OptionalTimeFrom(model.NowUTC()),
 	}}); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled provider resolution error = %v", err)
 	}
 }
 
-func authenticationPolicyTestSession(userID model.UserID, method, providerID string) (*model.Session, []*model.SessionCredential) {
+func authenticationPolicyTestSession(userID model.UserID, method, providerID string, identityID model.ExternalIdentityID) (*model.Session, []*model.SessionCredential) {
 	now := model.NowUTC()
 	absolute := now.Add(24 * time.Hour)
 	return &model.Session{UserID: userID, ClientType: model.SessionClientWeb, AuthenticationMethod: method,
-			AuthenticationProviderID: providerID, AuthenticationStrength: model.AuthenticationSingleFactor,
+			AuthenticationProviderID: providerID, ExternalIdentityID: identityID, AuthenticationStrength: model.AuthenticationSingleFactor,
 			AuthenticatedAt: now, LastActivityAt: now, IdleExpiresAt: now.Add(time.Hour), ExpiresAt: absolute},
 		[]*model.SessionCredential{{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(15 * time.Minute)},
 			{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: absolute}}

@@ -210,6 +210,9 @@ func TestIdentityMailCatalogAcceptsCredentialAndSecurityOccurrences(t *testing.T
 		kind MailOccurrenceKind
 	}{
 		{MailTemplateIdentityVerifyEmail, MailOccurrenceAccountToken},
+		{MailTemplateIdentityEmailChangeVerifyNew, MailOccurrenceAccountToken},
+		{MailTemplateIdentityEmailChangeWarningOld, MailOccurrenceSecurityNotice},
+		{MailTemplateIdentityEmailVerifiedByAdmin, MailOccurrenceSecurityNotice},
 		{MailTemplateIdentityPasswordReset, MailOccurrenceAccountToken},
 		{MailTemplateIdentityPasswordChanged, MailOccurrenceSecurityNotice},
 	} {

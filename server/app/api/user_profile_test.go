@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,14 +19,26 @@ import (
 )
 
 type userProfileHTTPApplication struct {
-	result         *model.User
-	values         []*model.User
-	searchQuery    application.SearchUsersQuery
-	updateCommand  application.UpdateUserProfileCommand
-	uploadCommand  application.UploadProfilePictureCommand
-	removeCommand  application.RemoveProfilePictureCommand
-	pictureQuery   application.GetProfilePictureQuery
-	pictureContent *application.ProfilePictureContent
+	result             *model.User
+	values             []*model.User
+	searchQuery        application.SearchUsersQuery
+	updateCommand      application.UpdateUserProfileCommand
+	changeEmailCommand application.ChangeUserEmailCommand
+	verifyEmailCommand application.VerifyUserEmailPrivilegedCommand
+	uploadCommand      application.UploadProfilePictureCommand
+	removeCommand      application.RemoveProfilePictureCommand
+	pictureQuery       application.GetProfilePictureQuery
+	pictureContent     *application.ProfilePictureContent
+}
+
+func (a *userProfileHTTPApplication) ChangeUserEmail(_ context.Context, _ application.Invocation, command application.ChangeUserEmailCommand) (*application.UserEmailState, error) {
+	a.changeEmailCommand = command
+	return &application.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
+}
+
+func (a *userProfileHTTPApplication) VerifyUserEmailPrivileged(_ context.Context, _ application.Invocation, command application.VerifyUserEmailPrivilegedCommand) (*application.UserEmailState, error) {
+	a.verifyEmailCommand = command
+	return &application.UserEmailState{UserID: a.result.ID, EmailVerified: a.result.EmailVerified}, nil
 }
 
 type accountStateHTTPApplication struct {
@@ -247,6 +260,72 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	httpAPI.ServeHTTP(pictureResponse, pictureRequest)
 	if pictureResponse.Code != http.StatusNotModified || profiles.pictureQuery.UserID != userID || profiles.pictureQuery.Size != 128 || pictureResponse.Header().Get("Cache-Control") != "private, max-age=86400" || pictureResponse.Header().Get("Content-Length") != "4" {
 		t.Fatalf("profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
+	}
+}
+
+func TestGenericUserProfilePatchRejectsEmailSecurityFields(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
+	profiles := &userProfileHTTPApplication{result: &model.User{ID: model.NewUserID()}}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, userProfileResource(profiles))
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/users/"+model.NewId(), strings.NewReader(`{"email":"redirect@example.edu","email_verified":true}`))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || profiles.updateCommand.ID != "" {
+		t.Fatalf("security-field PATCH status=%d command=%#v body=%s", response.Code, profiles.updateCommand, response.Body.String())
+	}
+}
+
+func TestEmailMutationResponsesUseNarrowAccountStateProjection(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	now := time.Now()
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
+		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now), ClientType: model.SessionClientWeb}
+	userID := model.NewUserID()
+	profiles := &userProfileHTTPApplication{result: &model.User{ID: userID, CreatedAt: now.Add(-time.Hour), UpdatedAt: now,
+		Revision: 9, Username: "private-user", Email: "private@example.edu", EmailVerified: false,
+		DisplayName: "Private User", Locale: "fr", Timezone: "Europe/Paris",
+		LastLoginAt: model.OptionalTimeFrom(now.Add(-time.Minute)), LastActivityAt: model.OptionalTimeFrom(now)}}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, userProfileResource(profiles))
+
+	for _, test := range []struct {
+		name, method, path, body string
+		verified                 bool
+	}{
+		{name: "change", method: http.MethodPut, path: "/api/v1/users/" + userID.String() + "/email", body: `{"email":"new@example.edu"}`},
+		{name: "privileged verify", method: http.MethodPost, path: "/api/v1/users/" + userID.String() + "/email/verify", verified: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			profiles.result.EmailVerified = test.verified
+			request := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
+			request.Header.Set("Authorization", "Bearer credential")
+			if test.body != "" {
+				request.Header.Set("Content-Type", "application/json")
+			}
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
+				t.Fatal(err)
+			}
+			if string(fields["id"]) != `"`+userID.String()+`"` || string(fields["email_verified"]) != fmt.Sprintf("%t", test.verified) {
+				t.Fatalf("narrow state response = %s", response.Body.Bytes())
+			}
+			for _, forbidden := range []string{"email", "username", "display_name", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at", "create_at", "update_at", "delete_at"} {
+				if _, exposed := fields[forbidden]; exposed {
+					t.Fatalf("email mutation exposed %q: %s", forbidden, response.Body.Bytes())
+				}
+			}
+		})
 	}
 }
 

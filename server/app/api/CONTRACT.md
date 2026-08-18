@@ -91,15 +91,46 @@ issued only through this purpose-bound approval and PKCE/code exchange. The
 pinned issuer is HTTPS except when composition explicitly grants a validated
 localhost or literal-loopback HTTP development origin.
 
-The Job runtime proposes a permanently deduplicated maintenance occurrence
-each UTC minute. Its durable handler terminalizes expired pending/code-issued
-transactions with proof destruction and purges all terminal safe metadata
-after 24 hours through bounded, multi-node-safe PostgreSQL pages; protocol
-writes do not perform opportunistic cleanup scans.
+The runtime invokes bounded Desktop-authorization maintenance periodically on
+every node. PostgreSQL row locking makes concurrent invocations safe without a
+durable Job, Attempt, occurrence, or permanent-deduplication ledger. Each pass
+terminalizes expired pending/code-issued transactions with proof destruction
+and purges terminal safe metadata after 24 hours; protocol writes do not
+perform opportunistic cleanup scans.
+
+Provider-connection redirects retain their one critical audit attempt across
+the callback. Rejection, invalid assertion, and post-consumption failures
+terminalize it immediately. A separate bounded, non-durable periodic task uses
+PostgreSQL time and row claiming to fail abandoned expired connection attempts
+and purge retained state after 24 hours, even when no authentication request is
+writing. Start passes a bounded lifetime rather than a node-computed deadline;
+creation, expiry, and one-use callback consumption are all evaluated against
+authoritative PostgreSQL time.
 
 The `/authorize/desktop` hosted page and Desktop UI are deliberately absent.
 Their later implementation must consume this protocol without adding provider
 tokens, Session credentials, or raw proofs to URLs, logs, or audit data.
+
+## Authentication-method lifecycle
+
+`GET /api/v1/authentication-methods` requires an authenticated Session and
+returns only whether a password exists plus safe linked-provider descriptors.
+It never returns a password hash, provider subject, claims, or credentials.
+`PUT` and `DELETE /api/v1/authentication-methods/password`,
+`POST /api/v1/authentication-methods/providers/{provider_id}/connect`, and
+`DELETE /api/v1/authentication-methods/providers/{external_identity_id}` all
+require a strong, recently authenticated interactive Session. Personal Access
+Tokens cannot satisfy that assurance.
+
+Password enrollment requires current local-login policy and a verified User
+mailbox. Provider connection creates a purpose-bound external-authentication
+state pinned to the exact current User; only proof of the selected immutable
+provider subject completes the link. Profile email or username equality never
+selects a User. Removal rechecks current policy, deployment capabilities,
+active User state, and another usable method in PostgreSQL, then archives the
+exact method and revokes only Sessions authenticated through it. Responses,
+Problem Details, logs, and audit values expose neither provider subjects nor
+credential material.
 
 `GET /api/v1/access-policy` requires `access_policy.view` and returns the full
 policy, at most the newest 100 applied transition facts, and safe live provider
@@ -138,6 +169,17 @@ no `user.manage`, account-disable, credential, MFA, external-provider, or
 settings authority. Disabled Users are absent from scoped search, exact-profile,
 and profile-picture reads; `include_disabled=true` is honored only for
 institution-wide visibility and therefore cannot reveal scoped disablement.
+
+Generic User-profile PATCH cannot mutate the email address or verification
+state. `PUT /api/v1/users/{user_id}/email` is the explicit strong, recent
+interactive-session transition; it authorizes `user.manage`, normalizes and
+uniqueness-checks the new address, marks it unverified, and durably records the
+old-address warning plus new-address verification intent before returning.
+`POST /api/v1/users/{user_id}/email/verify` is the distinct strong, recent
+privileged override and records its own user notice. Neither endpoint accepts
+an administrator identity or private reason for inclusion in mail. Both
+responses are the narrow `{id, email_verified}` transition state; they never
+return the target mailbox or the broader User-profile projection.
 
 Affiliation history may be read only after the same contextual User check.
 Per-User Role Binding history is filtered to authorized Academic Unit
@@ -179,6 +221,23 @@ the bounded `invitation.*` vocabulary and do not disclose which internal check
 failed. The hosted `/join` page that captures and immediately removes the URL
 fragment is explicitly not implemented; it remains part of the server-hosted
 design-system phase.
+
+## Teacher Academic Unit Invitations
+
+`POST /api/v1/academic-units/{academic_unit_id}/invitations/teacher` requires
+an authenticated principal and authorizes `invitation.create`,
+`academic_unit.members.manage`, and delegation of every action in the selected
+custom Role at the exact Academic Unit. Its closed request freezes the
+recipient, Role, canonical action snapshot, effective bounds, and bounded
+profile suggestions. The safe `201` projection contains the Academic Unit,
+Role, and actions but never the mailbox, claim digest, raw claim, or action URL.
+
+`POST /api/v1/invitations/teacher-academic-unit/accept` is public and applies
+the same claim/password secrecy and bounded-error rules as student acceptance.
+Its purpose-specific result identifies the User, Affiliation, Academic Unit
+membership, package-origin Role Binding, and Invitation by ID only, plus exact
+replay status. It issues no Session. The hosted `/join` page remains outside
+this transport slice.
 
 ## Ownership and extension workflow
 
@@ -240,6 +299,7 @@ The Exam Manager catalog follows the same opaque-cursor rule with its own
 versioned grant-time and User-identity payload. It is ordered by grant time and
 User identity, returns relationship provenance and creator/owner indicators,
 and never expands User profiles.
+
 
 The Exam Revision catalog is ordered by immutable Revision number and identity,
 both descending. Its `next_cursor` is a versioned opaque URL-safe token carrying

@@ -68,6 +68,7 @@ type BrowserAuthenticationTransaction struct {
 	UserID                   UserID
 	AuthenticationMethod     string
 	AuthenticationProviderID string
+	ExternalIdentityID       ExternalIdentityID
 	AuthenticationStrength   AuthenticationStrength
 	AuthenticatedAt          OptionalTime
 	MFACompletedAt           OptionalTime
@@ -96,6 +97,7 @@ func (t *BrowserAuthenticationTransaction) PrepareCodeIssued(
 	userID UserID,
 	method string,
 	providerID string,
+	externalIdentityID ExternalIdentityID,
 	strength AuthenticationStrength,
 	authenticatedAt time.Time,
 	mfaCompletedAt OptionalTime,
@@ -114,6 +116,7 @@ func (t *BrowserAuthenticationTransaction) PrepareCodeIssued(
 	t.UserID = userID
 	t.AuthenticationMethod = method
 	t.AuthenticationProviderID = providerID
+	t.ExternalIdentityID = externalIdentityID
 	t.AuthenticationStrength = strength
 	t.AuthenticatedAt = OptionalTimeFrom(authenticatedAt)
 	t.MFACompletedAt = mfaCompletedAt
@@ -205,7 +208,7 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 		if !IsValidTokenHash(t.HandleHash) || !IsValidTokenHash(t.BrowserProofHash) ||
 			!IsValidTokenHash(t.StateHash) || !IsValidCredentialToken(t.CodeChallenge) ||
 			ValidateDesktopAuthorizationCallback(t.CallbackURL) != nil ||
-			!t.UserID.IsZero() || t.AuthenticationMethod != "" || t.AuthenticationProviderID != "" ||
+			!t.UserID.IsZero() || t.AuthenticationMethod != "" || t.AuthenticationProviderID != "" || !t.ExternalIdentityID.IsZero() ||
 			t.AuthenticationStrength != "" || t.AuthenticatedAt.Valid || t.MFACompletedAt.Valid || t.CodeHash != "" ||
 			t.CodeExpiresAt.Valid || t.CancelledAt.Valid || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid pending state", details)
@@ -214,6 +217,7 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 		if t.HandleHash != "" || t.BrowserProofHash != "" || !IsValidTokenHash(t.StateHash) ||
 			ValidateDesktopAuthorizationCallback(t.CallbackURL) != nil || !IsValidCredentialToken(t.CodeChallenge) ||
 			!t.UserID.IsValid() || !validAuthenticationPath(t.AuthenticationMethod, t.AuthenticationProviderID) ||
+			!validAuthenticationIdentity(t.AuthenticationProviderID, t.ExternalIdentityID) ||
 			t.AuthenticationMethod != t.ExpectedAuthenticationMethod || t.AuthenticationProviderID != t.ExpectedProviderID ||
 			!t.AuthenticationStrength.IsValid() || !t.AuthenticatedAt.Valid || t.AuthenticatedAt.Time.After(t.UpdatedAt) ||
 			(t.AuthenticationStrength == AuthenticationMultiFactor && (!t.MFACompletedAt.Valid || t.MFACompletedAt.Time.Before(t.AuthenticatedAt.Time) || t.MFACompletedAt.Time.After(t.UpdatedAt))) ||
@@ -233,6 +237,7 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.StateHash != "" || t.CallbackURL != "" ||
 			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !t.UserID.IsValid() ||
 			!validAuthenticationPath(t.AuthenticationMethod, t.AuthenticationProviderID) ||
+			!validAuthenticationIdentity(t.AuthenticationProviderID, t.ExternalIdentityID) ||
 			!t.AuthenticationStrength.IsValid() || !t.AuthenticatedAt.Valid || t.CancelledAt.Valid ||
 			(t.AuthenticationStrength == AuthenticationMultiFactor && !t.MFACompletedAt.Valid) ||
 			(t.AuthenticationStrength == AuthenticationSingleFactor && t.MFACompletedAt.Valid) ||
@@ -242,9 +247,10 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	case BrowserAuthenticationStateExpired:
 		proofsDestroyed := t.HandleHash == "" && t.BrowserProofHash == "" && t.StateHash == "" &&
 			t.CallbackURL == "" && t.CodeChallenge == "" && t.CodeHash == "" && !t.CodeExpiresAt.Valid
-		noResolvedUser := t.UserID.IsZero() && t.AuthenticationMethod == "" && t.AuthenticationProviderID == "" &&
+		noResolvedUser := t.UserID.IsZero() && t.AuthenticationMethod == "" && t.AuthenticationProviderID == "" && t.ExternalIdentityID.IsZero() &&
 			t.AuthenticationStrength == "" && !t.AuthenticatedAt.Valid && !t.MFACompletedAt.Valid
 		resolvedUser := t.UserID.IsValid() && validAuthenticationPath(t.AuthenticationMethod, t.AuthenticationProviderID) &&
+			validAuthenticationIdentity(t.AuthenticationProviderID, t.ExternalIdentityID) &&
 			t.AuthenticationMethod == t.ExpectedAuthenticationMethod && t.AuthenticationProviderID == t.ExpectedProviderID &&
 			t.AuthenticationStrength.IsValid() && t.AuthenticatedAt.Valid && !t.AuthenticatedAt.Time.After(t.UpdatedAt) &&
 			((t.AuthenticationStrength == AuthenticationSingleFactor && !t.MFACompletedAt.Valid) ||
@@ -267,6 +273,13 @@ func validAuthenticationPath(method, providerID string) bool {
 	}
 	return method != "" && len(method) <= SessionAuthenticationMaxLength &&
 		validName.MatchString(method) && IsValidIdentityProviderID(providerID)
+}
+
+func validAuthenticationIdentity(providerID string, identityID ExternalIdentityID) bool {
+	if providerID == "" {
+		return identityID.IsZero()
+	}
+	return identityID.IsValid()
 }
 
 // ValidateDesktopAuthorizationIssuer validates the installation origin pinned
@@ -309,6 +322,7 @@ func (t *BrowserAuthenticationTransaction) Auditable() map[string]any {
 		"expected_provider_id":           t.ExpectedProviderID,
 		"user_id":                        t.UserID.String(), "authentication_method": t.AuthenticationMethod,
 		"authentication_provider_id": t.AuthenticationProviderID,
+		"external_identity_id":       t.ExternalIdentityID.String(),
 		"created_at":                 MillisFromTime(t.CreatedAt), "updated_at": MillisFromTime(t.UpdatedAt),
 		"expires_at": MillisFromTime(t.ExpiresAt), "authenticated_at": t.AuthenticatedAt.Millis(),
 		"mfa_completed_at": t.MFACompletedAt.Millis(),

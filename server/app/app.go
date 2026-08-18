@@ -21,6 +21,7 @@ type App struct {
 	desktopAuthorization              *desktopAuthorizationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
+	authenticationMethods             *authenticationMethodService
 	mfaApplication                    *mfaApplicationService
 	accountTokens                     *accountTokenService
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService

@@ -6,6 +6,7 @@ package storetest
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -13,6 +14,161 @@ import (
 )
 
 func TestExternalIdentityStore(t *testing.T, ss store.Store) {
+	t.Run("ConcurrentSessionIssuanceCannotSurviveExactIdentityUnlink", func(t *testing.T) {
+		ctx := context.Background()
+		user := saveUser(t, ctx, ss)
+		_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$concurrent-fallback"})
+		requireNoError(t, err)
+		identity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
+			Subject: "concurrent-session-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())})
+		requireNoError(t, err)
+		candidate, credentials, _ := newSession(user.ID.String())
+		candidate.AuthenticationMethod = "oidc"
+		candidate.AuthenticationProviderID = identity.Provider
+		candidate.ExternalIdentityID = identity.ID
+		audit := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
+		start := make(chan struct{})
+		var saved *model.Session
+		var saveErr, unlinkErr error
+		var wait sync.WaitGroup
+		wait.Add(2)
+		go func() {
+			defer wait.Done()
+			<-start
+			saved, _, saveErr = ss.Session().Save(ctx, candidate, credentials, 10)
+		}()
+		go func() {
+			defer wait.Done()
+			<-start
+			_, unlinkErr = ss.ExternalIdentity().UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{ID: identity.ID,
+				UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
+				ChangedAt: model.GetMillis(), RevocationReason: "external identity unlinked", AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()})
+		}()
+		close(start)
+		wait.Wait()
+		requireNoError(t, unlinkErr)
+		if saveErr != nil && !errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) {
+			t.Fatalf("concurrent Session Save error = %v", saveErr)
+		}
+		if saved != nil {
+			persisted, getErr := ss.Session().Get(ctx, saved.ID.String())
+			requireNoError(t, getErr)
+			if !persisted.RevokedAt.Valid {
+				t.Fatalf("concurrent exact-identity Session survived unlink: %#v", persisted)
+			}
+		}
+	})
+
+	t.Run("AuditedLinkIsUniqueAcrossConcurrentUsers", func(t *testing.T) {
+		ctx := context.Background()
+		first := saveUser(t, ctx, ss)
+		second := saveUser(t, ctx, ss)
+		subject := "concurrent-subject-" + model.NewId()
+		users := []model.UserID{first.ID, second.ID}
+		attempts := []*model.AuditEvent{
+			saveAuthenticationMethodAuditAttempt(t, ctx, ss, first.ID.String(), "connect_provider"),
+			saveAuthenticationMethodAuditAttempt(t, ctx, ss, second.ID.String(), "connect_provider"),
+		}
+		capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{
+			"campus-cas": {},
+		}}
+		start := make(chan struct{})
+		errs := make([]error, len(users))
+		var wg sync.WaitGroup
+		for i := range users {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				<-start
+				_, errs[index] = ss.ExternalIdentity().LinkWithAudit(ctx, &store.ExternalIdentityLink{
+					Identity: &model.ExternalIdentity{UserID: users[index], Provider: "campus-cas", Subject: subject,
+						LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
+					Capabilities: capabilities, AuditEventID: attempts[index].ID.String(), AuditAt: model.GetMillis(),
+				})
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		succeeded, conflicted := 0, 0
+		for _, err := range errs {
+			if err == nil {
+				succeeded++
+				continue
+			}
+			var conflict *store.ErrConflict
+			if errors.As(err, &conflict) && conflict.Constraint == "external_identities_provider_subject_key" {
+				conflicted++
+				continue
+			}
+			t.Fatalf("LinkWithAudit() concurrent error = %v", err)
+		}
+		if succeeded != 1 || conflicted != 1 {
+			t.Fatalf("LinkWithAudit() outcomes success=%d conflict=%d errors=%v", succeeded, conflicted, errs)
+		}
+	})
+
+	t.Run("UnlinkRevokesOnlyExactIdentitySessions", func(t *testing.T) {
+		ctx := context.Background()
+		user := saveUser(t, ctx, ss)
+		_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$another-method"})
+		requireNoError(t, err)
+		otherIdentity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID,
+			Provider: "campus-cas", Subject: "other-revocation-subject-" + model.NewId(),
+			LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())})
+		requireNoError(t, err)
+		capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{
+			"campus-cas": {},
+		}}
+		linkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "connect_provider")
+		linked, err := ss.ExternalIdentity().LinkWithAudit(ctx, &store.ExternalIdentityLink{
+			Identity: &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
+				Subject: "revocation-subject-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
+			Capabilities: capabilities, AuditEventID: linkAttempt.ID.String(), AuditAt: model.GetMillis(),
+		})
+		requireNoError(t, err)
+
+		passwordSession, passwordCredentials, _ := newSession(user.ID.String())
+		passwordSession, _, err = ss.Session().Save(ctx, passwordSession, passwordCredentials, 10)
+		requireNoError(t, err)
+		providerSession, providerCredentials, _ := newSession(user.ID.String())
+		providerSession.AuthenticationMethod = "oidc"
+		providerSession.AuthenticationProviderID = "campus-cas"
+		providerSession.ExternalIdentityID = linked.Identity.ID
+		providerSession, _, err = ss.Session().Save(ctx, providerSession, providerCredentials, 10)
+		requireNoError(t, err)
+		otherProviderSession, otherProviderCredentials, _ := newSession(user.ID.String())
+		otherProviderSession.AuthenticationMethod = "oidc"
+		otherProviderSession.AuthenticationProviderID = "campus-cas"
+		otherProviderSession.ExternalIdentityID = otherIdentity.ID
+		otherProviderSession, _, err = ss.Session().Save(ctx, otherProviderSession, otherProviderCredentials, 10)
+		requireNoError(t, err)
+
+		unlinkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
+		result, err := ss.ExternalIdentity().UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{
+			ID: linked.Identity.ID, UserID: user.ID, Capabilities: capabilities, ChangedAt: model.GetMillis(),
+			RevocationReason: "external identity unlinked", AuditEventID: unlinkAttempt.ID.String(), AuditAt: model.GetMillis(),
+		})
+		requireNoError(t, err)
+		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != providerSession.ID || len(result.RevokedTokenHashes) != 2 {
+			t.Fatalf("UnlinkWithAudit() revocations = %#v", result)
+		}
+		retained, err := ss.Session().Get(ctx, passwordSession.ID.String())
+		requireNoError(t, err)
+		if retained.RevokedAt.Valid {
+			t.Fatalf("password Session was revoked = %#v", retained)
+		}
+		retained, err = ss.Session().Get(ctx, otherProviderSession.ID.String())
+		requireNoError(t, err)
+		if retained.RevokedAt.Valid {
+			t.Fatalf("other identity Session was revoked = %#v", retained)
+		}
+		revoked, err := ss.Session().Get(ctx, providerSession.ID.String())
+		requireNoError(t, err)
+		if !revoked.RevokedAt.Valid || revoked.RevocationReason != "external identity unlinked" {
+			t.Fatalf("provider Session was not revoked = %#v", revoked)
+		}
+	})
+
 	t.Run("SaveGetAndList", func(t *testing.T) {
 		ctx := context.Background()
 		user := saveUser(t, ctx, ss)

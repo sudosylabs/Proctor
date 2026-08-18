@@ -15,10 +15,13 @@ import (
 )
 
 type InvitationSQLProbe struct {
-	DisableInviterBeforeIssue func(*testing.T, context.Context, *model.User, func() error) error
-	EndBindingBeforeAccept    func(*testing.T, context.Context, *model.RoleBinding, func() error) error
-	ArchiveRoleBeforeAccept   func(*testing.T, context.Context, *model.Role, func() error) error
-	PayloadKeyReferences      func(*testing.T, context.Context, string) int64
+	DisableInviterBeforeIssue      func(*testing.T, context.Context, *model.User, func() error) error
+	EndBindingBeforeAccept         func(*testing.T, context.Context, *model.RoleBinding, func() error) error
+	ArchiveRoleBeforeAccept        func(*testing.T, context.Context, *model.Role, func() error) error
+	PayloadKeyReferences           func(*testing.T, context.Context, string) int64
+	ArchiveTeacherUnitBeforeAccept func(*testing.T, context.Context, *model.AcademicUnit, func() error) error
+	ArchiveTeacherUnitBeforeMail   func(*testing.T, context.Context, *model.AcademicUnit, func() error) error
+	MutateTeacherRoleBeforeMail    func(*testing.T, context.Context, *model.Role, func() error) error
 }
 
 func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLProbe) {
@@ -26,6 +29,7 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 	if len(probes) > 0 {
 		probe = probes[0]
 	}
+	TestTeacherAcademicUnitInvitationStore(t, ss, probe)
 	t.Run("IssueStudentClassAtomic", func(t *testing.T) {
 		testInvitationIssueStudentClassAtomic(t, ss)
 	})

@@ -20,6 +20,10 @@ import (
 // It intentionally carries no provider or account detail.
 var ErrAuthenticationMethodDisabled = errors.New("authentication method is disabled by current access policy")
 
+// ErrLastUsableAuthenticationMethod reports that removing a credential would
+// leave the User without a method admitted by current policy and deployment.
+var ErrLastUsableAuthenticationMethod = errors.New("cannot remove the last usable authentication method")
+
 // ErrInvalidInput reports that a repository received a model in a state it
 // cannot persist.
 type ErrInvalidInput struct {

@@ -447,40 +447,26 @@ func (s SQLUserStore) get(
 	return row.model()
 }
 
-func (s SQLUserStore) Update(ctx context.Context, user *model.User) (*model.User, error) {
-	if user == nil || user.Revision <= 0 {
-		return nil, store.NewErrInvalidInput("user", "value", nil)
-	}
-	candidate := *user
-	expectedRevision := candidate.Revision
-	candidate.PrepareUpdate(model.NowUTC())
-	candidate.Revision++
-	if err := candidate.Validate(); err != nil {
-		return nil, err
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "user update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.User, error) {
-		if err := updateUserProfile(ctx, tx, &candidate, expectedRevision); err != nil {
-			return nil, err
-		}
-		return getUserByID(ctx, tx, candidate.ID.String())
-	})
-}
-
 func (s SQLUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
-	if input == nil || input.User == nil || input.ExpectedRevision <= 0 ||
+	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("user", "profile_update", nil)
 	}
-	candidate := *input.User
-	if candidate.Revision != input.ExpectedRevision {
-		return nil, store.NewErrInvalidInput("user", "revision", candidate.Revision)
-	}
-	candidate.PrepareUpdate(model.TimeFromMillis(input.AuditAt))
-	candidate.Revision = input.ExpectedRevision + 1
-	if err := candidate.Validate(); err != nil {
-		return nil, store.NewErrInvalidInput("user", "value", nil).Wrap(err)
-	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user profile update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.User, error) {
+		current, err := getUserByIDForUpdate(ctx, tx, input.UserID.String())
+		if err != nil {
+			return nil, err
+		}
+		if current.Revision != input.ExpectedRevision {
+			return nil, store.NewErrConflict("user", "user_changed", nil)
+		}
+		candidate := *current
+		candidate.ApplyProfileChanges(&input.Changes)
+		candidate.PrepareUpdate(model.TimeFromMillis(input.AuditAt))
+		candidate.Revision = input.ExpectedRevision + 1
+		if err := candidate.Validate(); err != nil {
+			return nil, store.NewErrInvalidInput("user", "value", nil).Wrap(err)
+		}
 		if err := updateUserProfile(ctx, tx, &candidate, input.ExpectedRevision); err != nil {
 			return nil, err
 		}
@@ -497,6 +483,22 @@ func (s SQLUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.U
 		}
 		return updated, nil
 	})
+}
+
+func getUserByIDForUpdate(ctx context.Context, executor sqlxExecutor, id string) (*model.User, error) {
+	var row userRow
+	if err := executor.Get(ctx, &row, `
+		SELECT id, created_at, updated_at, archived_at, revision, username, email,
+		       email_verified, display_name, first_name, last_name, locale,
+		       timezone, last_login_at, last_activity_at, disabled_at,
+		       default_profile_picture_seed, default_profile_picture_file_id,
+		       custom_profile_picture_file_id, profile_picture_changed_at
+		  FROM users
+		 WHERE id = ? AND archived_at IS NULL
+		 FOR UPDATE`, id); err != nil {
+		return nil, translateError("user", id, err)
+	}
+	return row.model()
 }
 
 func getUserByID(ctx context.Context, executor sqlxExecutor, id string) (*model.User, error) {
@@ -522,8 +524,6 @@ func updateUserProfile(ctx context.Context, executor sqlxExecutor, candidate *mo
 		   SET updated_at = GREATEST(updated_at, :updated_at),
 		       revision = :revision,
 		       username = :username,
-		       email = :email,
-		       email_verified = :email_verified,
 		       display_name = :display_name,
 		       first_name = :first_name,
 		       last_name = :last_name,

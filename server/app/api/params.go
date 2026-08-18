@@ -47,6 +47,7 @@ type Params struct {
 	ClassMemberId           string
 	PersonalAccessTokenId   string
 	SessionID               string
+	ExternalIdentityID      string
 	ReturnTo                string
 	ClientType              string
 	DeviceId                string
@@ -84,6 +85,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		ClassMemberId:           strings.TrimSpace(variables["class_member_id"]),
 		PersonalAccessTokenId:   strings.TrimSpace(variables["personal_access_token_id"]),
 		SessionID:               strings.TrimSpace(variables["session_id"]),
+		ExternalIdentityID:      strings.TrimSpace(variables["external_identity_id"]),
 		ReturnTo:                strings.TrimSpace(query.Get("return_to")),
 		ClientType:              strings.TrimSpace(query.Get("client_type")),
 		DeviceId:                strings.TrimSpace(query.Get("device_id")),
@@ -91,6 +93,10 @@ func ParamsFromRequest(request *http.Request) Params {
 		ConnectionId:            strings.TrimSpace(query.Get("connection_id")),
 		SequenceNumber:          strings.TrimSpace(query.Get("sequence_number")),
 	}
+}
+
+func (p Params) RequireExternalIdentityID() (string, error) {
+	return requirePathId("external_identity_id", p.ExternalIdentityID)
 }
 
 func (p Params) RequireProviderId() (string, error) {

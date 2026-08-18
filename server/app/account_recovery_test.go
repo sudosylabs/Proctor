@@ -563,6 +563,19 @@ type accountTokenStoreFake struct {
 	byHashErr              error
 	consumeVerificationErr error
 	consumeReset           func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error)
+	emailChange            *store.UserEmailChange
+	privilegedVerification *store.PrivilegedEmailVerification
+}
+
+func (s *accountTokenStoreFake) ChangeEmail(_ context.Context, input *store.UserEmailChange) (*store.UserEmailChangeResult, error) {
+	s.emailChange = input
+	user := &model.User{ID: input.UserID, Email: input.NewEmail}
+	return &store.UserEmailChangeResult{User: user, Token: input.Token}, nil
+}
+
+func (s *accountTokenStoreFake) VerifyEmailPrivileged(_ context.Context, input *store.PrivilegedEmailVerification) (*model.User, error) {
+	s.privilegedVerification = input
+	return &model.User{ID: input.UserID, EmailVerified: true}, nil
 }
 
 func (s *accountTokenStoreFake) Issue(

@@ -185,6 +185,8 @@ func buildApplicationJobDefinitions(
 		{Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval, Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts}},
 		{Name: "desktop-authorization-maintenance", Interval: desktopAuthorizationMaintenanceInterval,
 			Runner: desktopAuthorizationMaintenancePeriodicRunner{transactions: deps.Store.DesktopAuthorization()}},
+		{Name: "external-authentication-maintenance", Interval: externalAuthenticationMaintenanceInterval,
+			Runner: externalAuthenticationMaintenancePeriodicRunner{states: deps.Store.ExternalLoginState()}},
 	}
 	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil {
 		periodicTasks = append(periodicTasks, jobengine.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})

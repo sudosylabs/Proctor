@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,13 +15,20 @@ import (
 )
 
 type invitationStoreFake struct {
-	invitation *model.Invitation
-	issued     *store.StudentClassInvitationIssue
-	accepted   *store.StudentClassInvitationAcceptance
+	invitation      *model.Invitation
+	issued          *store.StudentClassInvitationIssue
+	accepted        *store.StudentClassInvitationAcceptance
+	teacherIssued   *store.TeacherAcademicUnitInvitationIssue
+	teacherAccepted *store.TeacherAcademicUnitInvitationAcceptance
 }
 
 func (f *invitationStoreFake) IssueStudentClass(_ context.Context, input *store.StudentClassInvitationIssue) (*model.Invitation, error) {
 	f.issued = input
+	f.invitation = input.Invitation
+	return input.Invitation, nil
+}
+func (f *invitationStoreFake) IssueTeacherAcademicUnit(_ context.Context, input *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
+	f.teacherIssued = input
 	f.invitation = input.Invitation
 	return input.Invitation, nil
 }
@@ -39,6 +47,13 @@ func (f *invitationStoreFake) AcceptStudentClass(_ context.Context, input *store
 	_ = accepted.Accept(input.User.ID, input.Affiliation.ID, input.ClassMember.ID, model.TimeFromMillis(input.AcceptedAt))
 	return &store.StudentClassInvitationAcceptanceResult{Invitation: &accepted, User: input.User, Affiliation: input.Affiliation, ClassMember: input.ClassMember}, nil
 }
+func (f *invitationStoreFake) AcceptTeacherAcademicUnit(_ context.Context, input *store.TeacherAcademicUnitInvitationAcceptance) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
+	f.teacherAccepted = input
+	accepted := *f.invitation
+	_ = accepted.AcceptTeacherAcademicUnit(input.User.ID, input.Affiliation.ID, input.AcademicUnitMember.ID, input.RoleBinding.ID, model.TimeFromMillis(input.AcceptedAt))
+	return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: &accepted, User: input.User,
+		Affiliation: input.Affiliation, AcademicUnitMember: input.AcademicUnitMember, RoleBinding: input.RoleBinding}, nil
+}
 func (f *invitationStoreFake) Maintain(context.Context, int) (*store.InvitationMaintenanceResult, error) {
 	return &store.InvitationMaintenanceResult{}, nil
 }
@@ -55,14 +70,109 @@ func (f invitationPeriodStoreFake) Get(context.Context, string) (*model.Academic
 	return f.period, nil
 }
 
+type invitationAcademicUnitStoreFake struct{ unit *model.AcademicUnit }
+
+func (f invitationAcademicUnitStoreFake) Get(context.Context, string) (*model.AcademicUnit, error) {
+	return f.unit, nil
+}
+
+type invitationRoleStoreFake struct{ role *model.Role }
+
+func (f invitationRoleStoreFake) Get(context.Context, string) (*model.Role, error) {
+	return f.role, nil
+}
+
 type invitationAuthorizerFake struct {
-	actions []model.Action
-	err     error
+	actions            []model.Action
+	delegatedActions   []string
+	delegatedScopeType model.RoleScopeType
+	delegatedScopeID   string
+	err                error
 }
 
 func (f *invitationAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
 	f.actions = append(f.actions, action)
 	return f.err
+}
+func (f *invitationAuthorizerFake) CanDelegateActionsAtScope(_ context.Context, _ Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
+	f.delegatedActions = append([]string(nil), actions...)
+	f.delegatedScopeType = scopeType
+	f.delegatedScopeID = scopeID
+	return f.err
+}
+
+func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	unitID, roleID, inviterID := model.NewAcademicUnitID(), model.NewRoleID(), model.NewUserID()
+	role := &model.Role{ID: roleID, Name: "teacher", DisplayName: "Teacher",
+		Permissions: []string{string(model.ActionProgrammeManage), string(model.ActionAcademicUnitView)}}
+	persistence := &invitationStoreFake{}
+	authorizer := &invitationAuthorizerFake{}
+	mail := &invitationMailPreparerFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
+		invitationRoleStoreFake{role: role}, authorizer, mail, now)
+	view, err := service.IssueTeacherAcademicUnit(context.Background(),
+		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
+		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(),
+			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
+	if err != nil {
+		t.Fatalf("IssueTeacherAcademicUnit() error = %v", err)
+	}
+	if view.AcademicUnitID != unitID || view.RoleID != roleID || persistence.teacherIssued == nil ||
+		persistence.teacherIssued.Lifetime != model.StudentClassInvitationLifetime ||
+		!slices.Equal(persistence.teacherIssued.Invitation.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}) {
+		t.Fatalf("teacher issue view/input = %#v / %#v", view, persistence.teacherIssued)
+	}
+	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}) ||
+		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeAcademicUnit ||
+		authorizer.delegatedScopeID != unitID.String() {
+		t.Fatalf("teacher issue authorization = %v / %v / %s", authorizer.actions, authorizer.delegatedActions, authorizer.delegatedScopeID)
+	}
+}
+
+func TestInvitationServiceRejectsInertTeacherRoleAction(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	unitID, roleID := model.NewAcademicUnitID(), model.NewRoleID()
+	persistence := &invitationStoreFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
+		invitationRoleStoreFake{role: &model.Role{ID: roleID, Name: "inert", DisplayName: "Inert", Permissions: []string{string(model.ActionRoleManage)}}},
+		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
+	_, err := service.IssueTeacherAcademicUnit(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(), RoleID: roleID.String()})
+	if !Is(err, "invitation.role_not_delegable") || persistence.teacherIssued != nil {
+		t.Fatalf("IssueTeacherAcademicUnit() = %v / %#v", err, persistence.teacherIssued)
+	}
+}
+
+func TestInvitationServiceAcceptsTeacherPackageArtifacts(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	unitID, roleID, inviterID := model.NewAcademicUnitID(), model.NewRoleID(), model.NewUserID()
+	raw := model.NewCredentialToken()
+	invitation, err := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
+		ID: model.NewInvitationID(), TargetEmail: "teacher@example.edu", AcademicUnitID: unitID, RoleID: roleID,
+		RoleActions: []string{string(model.ActionAcademicUnitView)}, IntendedStartsAt: now,
+		InviterUserID: inviterID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
+		ClaimHash: model.HashInvitationClaim(raw), IssuedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &invitationStoreFake{invitation: invitation}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now.Add(time.Minute))
+	result, err := service.AcceptTeacherAcademicUnit(context.Background(), Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
+		Claim: raw, Password: "correct horse battery staple", Username: "teacher-one", Source: "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("AcceptTeacherAcademicUnit() error = %v", err)
+	}
+	accepted := persistence.teacherAccepted
+	if accepted == nil || accepted.Affiliation.Kind != model.AffiliationTeacher || accepted.AcademicUnitMember.AcademicUnitID != unitID ||
+		accepted.RoleBinding.RoleID != roleID || accepted.RoleBinding.ScopeType != model.RoleScopeAcademicUnit ||
+		accepted.RoleBinding.ScopeID != unitID.String() || accepted.RoleBinding.OriginInvitationID != invitation.ID ||
+		result.AcademicUnitMember == nil || result.RoleBinding == nil {
+		t.Fatalf("teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	}
 }
 
 type invitationMailPreparerFake struct {
@@ -105,13 +215,28 @@ func invitationPreparedMail(actor, targetUser model.UserID, targetInvitation mod
 	}
 }
 
+func newInvitationServiceForTest(t *testing.T, persistence store.InvitationStore, units invitationAcademicUnitReader,
+	roles invitationRoleReader, authorization invitationAuthorizer, mail invitationMailPreparer, now time.Time,
+) *invitationService {
+	t.Helper()
+	events := []string{}
+	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, units, roles,
+		authorization, mail, invitationHasherFake{}, &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}, invitationAttemptLimiterFake{},
+		"node-1", "https://proctor.example.edu", model.NewCredentialToken, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
+}
+
 func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 	now := model.TimeFromMillis(1_800_000_000_000)
 	periodID, classID := model.NewAcademicPeriodID(), model.NewClassID()
 	authorizer := &invitationAuthorizerFake{err: NewError("authorization.denied")}
 	mail := &invitationMailPreparerFake{disabled: true}
 	service, err := newInvitationService(&invitationStoreFake{}, invitationClassStoreFake{&model.Class{ID: classID, AcademicPeriodID: periodID}},
-		invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}}, authorizer, mail,
+		invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}},
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail,
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
 		model.NewCredentialToken, func() time.Time { return now })
 	if err != nil {
@@ -136,7 +261,7 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 	}
 	persistence := &invitationStoreFake{invitation: invitation}
 	mail := &invitationMailPreparerFake{disabled: true}
-	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, &invitationAuthorizerFake{}, mail,
+	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
 		model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
 	if err != nil {
@@ -173,7 +298,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}
 	raw := model.NewCredentialToken()
 	service, err := newInvitationService(persistence, invitationClassStoreFake{class}, invitationPeriodStoreFake{period},
-		authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu", func() string { return raw }, func() time.Time { return now })
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu", func() string { return raw }, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("newInvitationService() error = %v", err)
 	}
@@ -214,10 +339,25 @@ func TestInvitationAttemptAccountingLimitsClaimAndSourceBeforeValidation(t *test
 	limiter := invitationAttemptAccounting{attempts: accounting, policy: LoginRateLimitPolicy{
 		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 2,
 	}}
-	if err = limiter.Check(context.Background(), model.HashInvitationClaim("malformed"), "127.0.0.1"); err != nil {
+	identity := model.HashInvitationClaim("malformed")
+	if err = limiter.Check(context.Background(), identity, "127.0.0.1"); err != nil {
 		t.Fatalf("first Check() error = %v", err)
 	}
-	err = limiter.Check(context.Background(), model.HashInvitationClaim("malformed"), "127.0.0.1")
+	purpose, _ := authenticationAttemptPurposeInvitation.keySegment()
+	identityLimit := authenticationAttemptLimit{dimension: authenticationAttemptDimensionIdentity, identity: identity}
+	intent := authenticationAttemptIntent{purpose: authenticationAttemptPurposeInvitation, qualifier: invitationAcceptanceAttemptQualifier}
+	expectedKey := "authentication/attempts/" + purpose + "/identity/" + digestAuthenticationAttempt(intent, identityLimit)
+	legacyIntent := intent
+	legacyIntent.qualifier = "student-class-accept"
+	legacyKey := "authentication/attempts/" + purpose + "/identity/" + digestAuthenticationAttempt(legacyIntent, identityLimit)
+	entries := accounting.cache.(*expiringAuthenticationAttemptCache).snapshot()
+	if _, ok := entries[expectedKey]; !ok {
+		t.Fatalf("purpose-neutral Invitation acceptance counter was not recorded: %#v", entries)
+	}
+	if _, ok := entries[legacyKey]; ok {
+		t.Fatalf("teacher-capable Invitation accounting used legacy student qualifier: %#v", entries)
+	}
+	err = limiter.Check(context.Background(), identity, "127.0.0.1")
 	failure, ok := As(err)
 	if !ok || failure.Code() != "authentication.rate_limited" {
 		t.Fatalf("second Check() error = %v", err)

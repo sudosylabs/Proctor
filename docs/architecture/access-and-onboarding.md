@@ -137,12 +137,15 @@ one-shot transition choice included in idempotency, audit, and history rather
 than a persisted policy setting. When selected, the policy replacement and
 revocation of active Sessions authenticated by methods newly disabled by that exact
 transition commit atomically; Sessions using retained methods are untouched.
-External Sessions therefore retain both their method or protocol and the
-immutable configured provider ID. Only local Sessions keep an empty provider
-ID. Proctor has no released schema requiring an upgrade from protocol-only
-external Sessions: the pre-release baseline is resettable, and development
-databases using an earlier shape must be recreated. Runtime policy and
-revocation never guess a provider ID from `authentication_method`.
+External Sessions therefore retain their method or protocol, immutable
+configured provider ID, and exact `ExternalIdentityID`. Unlinking one identity
+revokes only Sessions carrying that exact identity, including Desktop Sessions
+approved through such a Web Session; other identities for the same provider
+remain usable. Only local Sessions keep both external fields empty. Proctor has
+no released schema requiring an upgrade from provider-only external Sessions:
+the pre-release baseline is resettable, and development databases using an
+earlier shape must be recreated. Runtime policy and revocation never guess a
+provider or identity from `authentication_method`.
 
 Policy changes commit before cache invalidation and a content-free realtime
 event carrying only the new revision. PostgreSQL remains authoritative on every
@@ -222,6 +225,18 @@ minimum resolved identity needed for its terminal effect. A host-only Secure,
 HttpOnly, SameSite=Lax cookie scoped to the authentication path carries an
 opaque browser proof, never encoded User, Invitation, provider, purpose, or
 redirect state.
+
+The hosted `/account/connect-provider` orchestration remains part of the later
+server-page phase. Until that page exists, the implemented API starts the
+provider-protocol leg directly: `ExternalLoginState` carries a closed
+`connect` purpose, the exact current User, and the durable audit attempt across
+the provider redirect. It can complete only by attaching the proved immutable
+subject to that User and never creates a Session. This is not a second hosted
+browser-orchestration model; the future page must wrap the same terminal
+contract in `BrowserAuthenticationTransaction`. The application supplies only
+the validated bounded state lifetime; one PostgreSQL timestamp establishes
+creation and expiry, and callback consumption uses PostgreSQL time rather than
+the initiating or callback node clock.
 
 The terminal purpose is closed:
 
@@ -564,6 +579,12 @@ Session issuance, desktop authorization, Invitation acceptance, identity link
 changes, policy denial after authentication, and administrative reconciliation;
 ordinary invalid public traffic remains counters and bounded diagnostics rather
 than attacker-controlled audit volume.
+
+Provider-connection state follows the same bounded runtime-maintenance model.
+An expired abandoned `connect` state terminalizes its existing critical audit
+attempt as failed before safe state metadata is purged after 24 hours. Provider
+rejection, invalid assertion, and any post-consumption failure terminalize that
+same attempt synchronously; they never leave a false in-progress audit.
 
 Verification includes Store conformance and real PostgreSQL integration for
 bootstrap atomicity, Access Policy fencing, provider removal/re-enable,

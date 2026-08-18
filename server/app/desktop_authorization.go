@@ -197,6 +197,7 @@ func (s *desktopAuthorizationService) Approve(ctx context.Context, invocation In
 		HandleHash: model.HashToken(command.Handle), BrowserProofHash: model.HashToken(command.BrowserProof),
 		StateHash: model.HashToken(command.State), UserID: principal.UserID,
 		AuthenticationMethod: principal.AuthenticationMethod, AuthenticationProviderID: principal.AuthenticationProviderID,
+		ExternalIdentityID:     principal.ExternalIdentityID,
 		AuthenticationStrength: principal.AuthenticationStrength, AuthenticatedAt: principal.AuthenticatedAt.UnixMilli(),
 		MFACompletedAt: principal.MFACompletedAt.Millis(), CodeHash: model.HashToken(code),
 		CodeLifetime: s.policy.CodeLifetime,
