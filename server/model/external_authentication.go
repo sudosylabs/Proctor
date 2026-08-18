@@ -23,12 +23,14 @@ const (
 type ExternalAuthenticationPurpose string
 
 const (
-	ExternalAuthenticationPurposeLogin   ExternalAuthenticationPurpose = "login"
-	ExternalAuthenticationPurposeConnect ExternalAuthenticationPurpose = "connect"
+	ExternalAuthenticationPurposeLogin               ExternalAuthenticationPurpose = "login"
+	ExternalAuthenticationPurposeConnect             ExternalAuthenticationPurpose = "connect"
+	ExternalAuthenticationPurposeInvitationAdmission ExternalAuthenticationPurpose = "invitation_admission"
 )
 
 func (p ExternalAuthenticationPurpose) IsValid() bool {
-	return p == ExternalAuthenticationPurposeLogin || p == ExternalAuthenticationPurposeConnect
+	return p == ExternalAuthenticationPurposeLogin || p == ExternalAuthenticationPurposeConnect ||
+		p == ExternalAuthenticationPurposeInvitationAdmission
 }
 
 var ErrInvalidExternalAuthenticationCallback = errors.New(
@@ -128,6 +130,7 @@ type ExternalLoginState struct {
 	Provider     string
 	Purpose      ExternalAuthenticationPurpose
 	TargetUserID UserID
+	InvitationID InvitationID
 	AuditEventID string
 	StateHash    string `json:"-"`
 	BindingHash  string `json:"-"`
@@ -186,8 +189,9 @@ func (s *ExternalLoginState) Validate() error {
 		)
 	}
 	if !s.Purpose.IsValid() ||
-		(s.Purpose == ExternalAuthenticationPurposeLogin && (!s.TargetUserID.IsZero() || s.AuditEventID != "")) ||
-		(s.Purpose == ExternalAuthenticationPurposeConnect && (!s.TargetUserID.IsValid() || !IsValidId(s.AuditEventID))) {
+		(s.Purpose == ExternalAuthenticationPurposeLogin && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || s.AuditEventID != "")) ||
+		(s.Purpose == ExternalAuthenticationPurposeConnect && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !IsValidId(s.AuditEventID))) ||
+		(s.Purpose == ExternalAuthenticationPurposeInvitationAdmission && (!s.TargetUserID.IsZero() || !s.InvitationID.IsValid() || s.AuditEventID != "")) {
 		return invalidModelError(where, "external_login_state", "purpose", "has an invalid target", details)
 	}
 	if !IsValidTokenHash(s.StateHash) || !IsValidTokenHash(s.BindingHash) {

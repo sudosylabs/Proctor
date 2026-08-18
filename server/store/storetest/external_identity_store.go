@@ -5,9 +5,11 @@ package storetest
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -218,7 +220,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 				Provider: "campus-cas", Subject: "new-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
-				User: creation.User, Settings: creation.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+				User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
 					Action:    "authentication.external_provision",
 					ScopeType: model.RoleScopeInstitution,
 					ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
@@ -254,15 +256,18 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			audits[0].Resource.ID != resolved.User.ID.String() {
 			t.Fatalf("provision audits = %#v", audits)
 		}
+		changedClaims := newUser()
+		originalUsername := resolved.User.Username
 		again, err := ss.ExternalIdentity().ResolveOrProvision(
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "new-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(now + 100),
-			}},
+			}, User: changedClaims, Capabilities: externalIdentityCapabilities(false)},
 		)
 		requireNoError(t, err)
 		if again.Provisioned || again.User.ID != resolved.User.ID ||
-			again.Identity.LastSeenAt.Millis() != now+100 {
+			again.Identity.LastSeenAt.Millis() != now+100 ||
+			again.User.Username != originalUsername || again.User.Username == changedClaims.Username {
 			t.Fatalf("ResolveOrProvision(existing) = %#v", again)
 		}
 	})
@@ -283,7 +288,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "different-subject",
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			}, User: creation.User, Settings: creation.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+			}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
 				Action:    "authentication.external_provision",
 				ScopeType: model.RoleScopeInstitution,
 				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
@@ -330,7 +335,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: subject,
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			}, User: creation.User, Settings: creation.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+			}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
 				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess,
 				NodeID: "test-node", AuthMethod: "cas",
@@ -363,7 +368,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		permanent.DefaultProfilePictureJob.DedupePolicy = model.JobDedupePermanent
 		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
 			Identity: &model.ExternalIdentity{Provider: "campus-cas", Subject: "permanent-job-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
-			User:     permanent.User, Settings: permanent.Settings, AutoProvision: true, ProvisionAudit: &model.AuditEvent{
+			User:     permanent.User, Settings: permanent.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
 				Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "test-node", AuthMethod: "cas",
 			}, DefaultProfilePictureJob: permanent.DefaultProfilePictureJob,
@@ -373,15 +378,268 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		}
 	})
 
-	t.Run("ProvisioningDisabled", func(t *testing.T) {
+	t.Run("ConfiguredProviderWithoutAutoProvisionCapabilityFailsClosed", func(t *testing.T) {
 		_, err := ss.ExternalIdentity().ResolveOrProvision(
 			context.Background(), &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 				Provider: "campus-cas", Subject: "unlinked",
 				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-			}},
+			}, Capabilities: externalIdentityCapabilities(false)},
 		)
-		if !store.IsNotFound(err) {
+		if !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 			t.Fatalf("ResolveOrProvision(unlinked) error = %v", err)
 		}
 	})
+
+	t.Run("ConfiguredProviderRemovalPreservesDurableLink", func(t *testing.T) {
+		ctx := context.Background()
+		user := saveUser(t, ctx, ss)
+		identity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
+			UserID: user.ID, Provider: "campus-cas", Subject: "removed-provider-" + model.NewId(),
+			LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
+		})
+		requireNoError(t, err)
+		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
+			Identity: &model.ExternalIdentity{Provider: identity.Provider, Subject: identity.Subject,
+				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
+			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+		})
+		if !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+			t.Fatalf("removed provider resolution error = %v", err)
+		}
+		preserved, getErr := ss.ExternalIdentity().GetByProviderSubject(ctx, identity.Provider, identity.Subject)
+		requireNoError(t, getErr)
+		if preserved.ID != identity.ID || preserved.UserID != user.ID {
+			t.Fatalf("removed provider changed durable link = %#v", preserved)
+		}
+	})
+}
+
+// TestExternalIdentityAdmissionMode verifies the terminal admission decision
+// against a Store whose authoritative Access Policy is seeded with mode.
+func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.ProviderAdmissionMode) {
+	t.Helper()
+	ctx := context.Background()
+	var invitation *model.Invitation
+	var institution *model.Institution
+	if mode == model.ProviderAdmissionInvitationRequired {
+		fixture, class, inviter, _, _, issuedAt := invitationAcceptanceStoreFixture(t, ctx, ss, "provider-admission")
+		issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
+		var err error
+		invitation, err = ss.Invitation().IssueStudentClass(ctx, issue)
+		requireNoError(t, err)
+		institution, err = ss.Institution().GetSingleton(ctx)
+		requireNoError(t, err)
+	} else {
+		institution = saveInstitution(t, ctx, ss)
+	}
+	existingUser := saveUser(t, ctx, ss)
+	existingIdentity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
+		UserID: existingUser.ID, Provider: "campus-cas", Subject: "existing-" + model.NewId(),
+		LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
+	})
+	requireNoError(t, err)
+
+	resolved, err := ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{
+		Identity: &model.ExternalIdentity{Provider: existingIdentity.Provider, Subject: existingIdentity.Subject,
+			LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
+		Capabilities: externalIdentityCapabilities(false),
+	})
+	requireNoError(t, err)
+	if resolved.Provisioned || resolved.User.ID != existingUser.ID || resolved.Identity.ID != existingIdentity.ID {
+		t.Fatalf("%s existing immutable link resolution = %#v", mode, resolved)
+	}
+
+	candidate := newUser()
+	if invitation != nil {
+		candidate.Email = invitation.TargetEmail
+		candidate.EmailVerified = true
+	}
+	creation := testUserCreation(candidate, nil)
+	request := &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
+		Provider: "campus-cas", Subject: "unlinked-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
+	}, User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true), ProvisionAudit: &model.AuditEvent{
+		Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "admission-mode-test", AuthMethod: "cas",
+	}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob}
+	if invitation != nil {
+		request.InvitationID = invitation.ID
+		establishExternalAdmissionPolicyAdministrator(t, ctx, ss, existingUser.ID, institution.ID)
+		replaceExternalAdmissionPolicy(t, ctx, ss, existingUser.ID, institution.ID, false)
+		blocked, blockedErr := ss.ExternalIdentity().ResolveOrProvision(ctx, request)
+		if blocked != nil || !store.IsNotFound(blockedErr) {
+			t.Fatalf("globally disabled invitation admission = %#v, %v", blocked, blockedErr)
+		}
+		if _, getErr := ss.User().Get(ctx, creation.User.ID.String()); !store.IsNotFound(getErr) {
+			t.Fatalf("globally disabled invitation admission persisted User: %v", getErr)
+		}
+		replaceExternalAdmissionPolicy(t, ctx, ss, existingUser.ID, institution.ID, true)
+	}
+	admitted, err := ss.ExternalIdentity().ResolveOrProvision(ctx, request)
+	if mode == model.ProviderAdmissionAutoProvision {
+		requireNoError(t, err)
+		if !admitted.Provisioned || admitted.User.ID != creation.User.ID {
+			t.Fatalf("auto_provision admission = %#v", admitted)
+		}
+		assertRelationshipFreeUser(t, ctx, ss, admitted.User.ID)
+		assertConcurrentExternalAutoProvision(t, ctx, ss, institution)
+		return
+	}
+	if mode == model.ProviderAdmissionInvitationRequired {
+		requireNoError(t, err)
+		if !admitted.Provisioned || admitted.User.ID != creation.User.ID || admitted.User.Email != invitation.TargetEmail {
+			t.Fatalf("invitation_required admission = %#v", admitted)
+		}
+		current, getErr := ss.Invitation().Get(ctx, invitation.ID)
+		requireNoError(t, getErr)
+		if current.State != model.InvitationPending || current.AcceptedAt.Valid || current.AcceptedUserID.IsValid() {
+			t.Fatalf("admission consumed Invitation = %#v", current)
+		}
+		assertRelationshipFreeUser(t, ctx, ss, admitted.User.ID)
+		unclaimed := testUserCreation(newUser(), nil)
+		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
+			Provider: "campus-cas", Subject: "unclaimed-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
+		}, User: unclaimed.User, Settings: unclaimed.Settings, Capabilities: externalIdentityCapabilities(true),
+			ProvisionAudit: &model.AuditEvent{Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
+				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "admission-mode-test", AuthMethod: "cas"},
+			DefaultProfilePictureJob: unclaimed.DefaultProfilePictureJob})
+		if !store.IsNotFound(err) {
+			t.Fatalf("invitation_required unclaimed admission error = %v", err)
+		}
+		return
+	}
+	if !store.IsNotFound(err) || admitted != nil {
+		t.Fatalf("%s unlinked admission = %#v, %v", mode, admitted, err)
+	}
+	if _, getErr := ss.ExternalIdentity().GetByProviderSubject(ctx, request.Identity.Provider, request.Identity.Subject); !store.IsNotFound(getErr) {
+		t.Fatalf("%s persisted an unlinked identity: %v", mode, getErr)
+	}
+}
+
+func establishExternalAdmissionPolicyAdministrator(
+	t *testing.T,
+	ctx context.Context,
+	ss store.Store,
+	userID model.UserID,
+	institutionID model.InstitutionID,
+) {
+	t.Helper()
+	_, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
+		UserID: userID, PasswordHash: "$argon2id$external-admission-policy-test",
+	})
+	requireNoError(t, err)
+	role, err := ss.Role().Save(ctx, &model.Role{
+		Name: model.SystemAdministratorRoleName, DisplayName: "System Administrator",
+		Permissions: model.AllActions(), BuiltIn: true,
+	})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: userID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institutionID.String(), StartsAt: model.NowUTC().Add(-time.Second),
+	})
+	requireNoError(t, err)
+}
+
+func replaceExternalAdmissionPolicy(
+	t *testing.T,
+	ctx context.Context,
+	ss store.Store,
+	actorID model.UserID,
+	institutionID model.InstitutionID,
+	enabled bool,
+) {
+	t.Helper()
+	snapshot, err := ss.AccessPolicy().Get(ctx, 1)
+	requireNoError(t, err)
+	settings := snapshot.Policy.Settings()
+	settings.InvitationAdmissionEnabled = enabled
+	settings.InvitationLocalCredentialEnabled = enabled
+	capabilities := externalIdentityCapabilities(true)
+	capabilities.DurableMail = true
+	event, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		ActorID: actorID, Action: string(model.ActionAccessPolicyManage),
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(),
+		Status: model.AuditStatusAttempt, NodeID: "external-identity-store-test",
+	})
+	requireNoError(t, err)
+	nonce := model.NewId()
+	command := &store.CommandIdempotency{
+		UserID: actorID, Operation: "access_policy.replace.v1",
+		KeyDigest: sha256.Sum256([]byte("external-admission-key:" + nonce)), FingerprintVersion: 1,
+		Fingerprint: sha256.Sum256([]byte("external-admission-command:" + nonce)), OutcomeVersion: 1,
+		Retention: time.Hour, Wait: time.Second,
+	}
+	result, err := ss.AccessPolicy().Replace(ctx, &store.AccessPolicyReplacement{
+		Preflight: store.AccessPolicyPreflight{
+			ExpectedRevision: snapshot.Policy.Revision, Settings: settings,
+			Capabilities: capabilities, CheckedAt: model.NowUTC(),
+		},
+		ActorID: actorID, AuditEventID: event.ID.String(), AuditAt: model.MillisFromTime(event.CreatedAt),
+	}, command)
+	requireNoError(t, err)
+	if result == nil || !result.Changed || result.Snapshot.Policy.InvitationAdmissionEnabled != enabled {
+		t.Fatalf("invitation admission replacement = %#v", result)
+	}
+}
+
+func assertConcurrentExternalAutoProvision(t *testing.T, ctx context.Context, ss store.Store, institution *model.Institution) {
+	t.Helper()
+	subject := "concurrent-auto-provision-" + model.NewId()
+	requests := make([]*store.ExternalIdentityResolutionRequest, 2)
+	for index := range requests {
+		creation := testUserCreation(newUser(), nil)
+		requests[index] = &store.ExternalIdentityResolutionRequest{
+			Identity: &model.ExternalIdentity{Provider: "campus-cas", Subject: subject,
+				LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis())},
+			User: creation.User, Settings: creation.Settings, Capabilities: externalIdentityCapabilities(true),
+			ProvisionAudit: &model.AuditEvent{Action: "authentication.external_provision",
+				ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess,
+				NodeID: "concurrent-admission-mode-test", AuthMethod: "cas"},
+			DefaultProfilePictureJob: creation.DefaultProfilePictureJob,
+		}
+	}
+	results := make([]*store.ExternalIdentityResolution, len(requests))
+	errs := make([]error, len(requests))
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	for index := range requests {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			results[index], errs[index] = ss.ExternalIdentity().ResolveOrProvision(ctx, requests[index])
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+	for _, err := range errs {
+		requireNoError(t, err)
+	}
+	if results[0].User.ID != results[1].User.ID || results[0].Identity.ID != results[1].Identity.ID ||
+		results[0].Provisioned == results[1].Provisioned {
+		t.Fatalf("concurrent auto-provision outcomes = %#v", results)
+	}
+	assertRelationshipFreeUser(t, ctx, ss, results[0].User.ID)
+}
+
+func assertRelationshipFreeUser(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID) {
+	t.Helper()
+	affiliations, err := ss.Affiliation().ListByUser(ctx, userID.String())
+	requireNoError(t, err)
+	academicMemberships, err := ss.AcademicUnitMember().ListByUser(ctx, userID.String())
+	requireNoError(t, err)
+	classMemberships, err := ss.ClassMember().ListByUser(ctx, userID.String())
+	requireNoError(t, err)
+	bindings, err := ss.RoleBinding().ListByUser(ctx, userID.String())
+	requireNoError(t, err)
+	if len(affiliations) != 0 || len(academicMemberships) != 0 || len(classMemberships) != 0 || len(bindings) != 0 {
+		t.Fatalf("auto-provisioned User gained authority: affiliations=%#v academic_memberships=%#v class_memberships=%#v role_bindings=%#v",
+			affiliations, academicMemberships, classMemberships, bindings)
+	}
+}
+
+func externalIdentityCapabilities(autoProvision bool) store.AccessDeploymentCapabilities {
+	return store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{
+		"campus-cas": {AutoProvision: autoProvision},
+	}}
 }

@@ -15,6 +15,7 @@ import (
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -763,11 +764,11 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	if _, err = persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: unitUser.ID.String(), ExpectedRevision: unitUser.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: "visibility regression fixture",
 		AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
-	}); err != nil {
+	})); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/api/v1/users?limit=50", "/api/v1/users?limit=50&include_disabled=true"} {

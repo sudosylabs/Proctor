@@ -1307,6 +1307,21 @@ func TestExternalIdentityStore(t *testing.T) {
 	}, storetest.TestExternalIdentityStore)
 }
 
+func TestExternalIdentityAdmissionModes(t *testing.T) {
+	for _, mode := range []model.ProviderAdmissionMode{
+		model.ProviderAdmissionLinkedOnly,
+		model.ProviderAdmissionInvitationRequired,
+		model.ProviderAdmissionAutoProvision,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			persistence := openTestStore(t)
+			resetPristineTestStore(t, persistence)
+			seedTestAuthenticationPolicy(t, persistence, map[string]model.ProviderAdmissionMode{"campus-cas": mode})
+			storetest.TestExternalIdentityAdmissionMode(t, persistence, mode)
+		})
+	}
+}
+
 func TestExternalLoginStateStore(t *testing.T) {
 	StoreTest(t, func(t *testing.T, persistence store.Store) {
 		storetest.TestExternalLoginStateStore(t, persistence, externalLoginStateSQLProbe(persistence.(*SQLStore)))

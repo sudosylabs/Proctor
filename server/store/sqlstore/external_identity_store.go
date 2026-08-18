@@ -136,14 +136,40 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 	identity := request.Identity
 	if identity == nil || !identity.ID.IsZero() ||
 		identity.Provider == "" || identity.Subject == "" ||
-		!identity.LastSeenAt.Valid {
+		!identity.LastSeenAt.Valid || !validAccessDeploymentCapabilities(request.Capabilities) {
 		return nil, store.NewErrInvalidInput("external_identity", "resolution", nil)
 	}
 	provider := strings.ToLower(strings.TrimSpace(identity.Provider))
+	capability, configured := request.Capabilities.Providers[provider]
+	if !configured {
+		return nil, store.ErrAuthenticationMethodDisabled
+	}
 	lastSeenAt := identity.LastSeenAt.Millis()
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity resolution", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityResolution, error) {
-		if err := requireCurrentExternalProvider(ctx, tx, provider); err != nil {
+		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+		if err != nil {
 			return nil, err
+		}
+		admission, allowed := policy.ProviderAdmissions[provider]
+		if !allowed {
+			return nil, store.ErrAuthenticationMethodDisabled
+		}
+		if request.InvitationID.IsValid() {
+			if !policy.InvitationAdmissionEnabled || admission != model.ProviderAdmissionInvitationRequired ||
+				request.User == nil || !request.User.EmailVerified {
+				return nil, store.NewErrNotFound("external_identity", provider)
+			}
+			var targetEmail string
+			if err := tx.Get(ctx, &targetEmail, `
+				SELECT target_email FROM invitations
+				 WHERE id=? AND state='pending' AND created_at<=clock_timestamp() AND expires_at>clock_timestamp()
+				   AND (intended_end_at IS NULL OR intended_end_at>clock_timestamp())
+				 FOR SHARE`, request.InvitationID.String()); err != nil {
+				return nil, translateError("invitation", request.InvitationID.String(), err)
+			}
+			if request.User.Email != targetEmail {
+				return nil, store.NewErrNotFound("external_identity", provider)
+			}
 		}
 		if _, err := tx.Exec(
 			ctx,
@@ -169,14 +195,24 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 		if !store.IsNotFound(err) {
 			return nil, err
 		}
-		if !request.AutoProvision {
+		switch admission {
+		case model.ProviderAdmissionAutoProvision:
+			if request.InvitationID.IsValid() || !capability.AutoProvision {
+				return nil, store.ErrAuthenticationMethodDisabled
+			}
+		case model.ProviderAdmissionInvitationRequired:
+			if !request.InvitationID.IsValid() {
+				return nil, store.NewErrNotFound("external_identity", provider)
+			}
+		case model.ProviderAdmissionLinkedOnly:
 			return nil, store.NewErrNotFound("external_identity", provider)
+		default:
+			return nil, store.ErrAuthenticationMethodDisabled
 		}
 		if request.User == nil || request.Settings == nil || request.ProvisionAudit == nil ||
 			!request.ProvisionAudit.ID.IsZero() || request.DefaultProfilePictureJob == nil {
 			return nil, store.NewErrInvalidInput("external_identity", "provisioning", nil)
 		}
-
 		at := model.TimeFromMillis(lastSeenAt)
 		if at.IsZero() {
 			at = model.NowUTC()

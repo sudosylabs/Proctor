@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -15,6 +16,13 @@ type externalAuthenticationProviderResponse struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`
 	Type        string `json:"type"`
+}
+
+type externalAuthenticationStartRequest struct {
+	InvitationClaim string `json:"invitation_claim"`
+	ReturnTo        string `json:"return_to,omitempty"`
+	DeviceID        string `json:"device_id,omitempty"`
+	DeviceName      string `json:"device_name,omitempty"`
 }
 
 func externalAuthenticationProviderResponses(
@@ -68,6 +76,20 @@ func externalAuthenticationResource(
 			module.begin,
 		),
 		protocolRoute(
+			"external-authentication-login-post-redirect",
+			RouteProtocolRedirect,
+			AuthPublic,
+			http.MethodPost,
+			apiPath(literal("auth"), literal("providers"), providerID("provider_id"), literal("login")),
+			[]string{
+				"request.invalid", "authentication.external.request.invalid",
+				"authentication.external.provider_not_found", "authentication.external.account_not_linked",
+				"authentication.rate_limited", "authentication.rate_limit_unavailable",
+				"authentication.external.unavailable", "authentication.external.rejected", "authentication.internal",
+			},
+			module.beginFromBody,
+		),
+		protocolRoute(
 			"external-authentication-callback-redirect",
 			RouteProtocolRedirect,
 			AuthPublic,
@@ -84,6 +106,34 @@ func externalAuthenticationResource(
 			module.complete,
 		),
 	)
+}
+
+func (module externalAuthenticationResourceModule) beginFromBody(request operationRequest) (protocolResult, error) {
+	providerID, appErr := request.params.RequireProviderId()
+	if appErr != nil {
+		return protocolResult{}, appErr
+	}
+	var body externalAuthenticationStartRequest
+	if err := request.decodeJSON(&body, "begin_external_authentication"); err != nil {
+		return protocolResult{}, err
+	}
+	if !model.IsValidCredentialToken(body.InvitationClaim) {
+		return protocolResult{}, invalidRequestError("invitation_claim", errors.New("must be a valid Invitation claim"))
+	}
+	start, err := module.authentication.BeginExternalAuthentication(request.context,
+		application.NewInvocation(model.Principal{}, request.metadata), application.BeginExternalAuthenticationCommand{
+			ProviderID: providerID, InvitationClaim: body.InvitationClaim, ReturnTo: body.ReturnTo,
+			ClientType: model.SessionClientWeb, DeviceID: body.DeviceID, DeviceName: body.DeviceName,
+			Source: request.request.RemoteAddr,
+		})
+	if err != nil {
+		return protocolResult{}, err
+	}
+	headers := captureResponseHeaders(func(writer http.ResponseWriter) {
+		module.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
+	})
+	headers.Set("Cache-Control", "no-store")
+	return redirectProtocolResult(start.RedirectURL).withHeaders(headers), nil
 }
 
 func (module externalAuthenticationResourceModule) listProviders(request operationRequest) (operationResult, error) {

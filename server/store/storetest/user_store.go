@@ -28,9 +28,36 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	t.Run("EnablementRevocationAndAuditAreAtomic", func(t *testing.T) {
 		testUserStoreEnablementRevocationAndAuditAreAtomic(t, ss)
 	})
+	t.Run("DisabledMailRecordsTerminalAccountNotice", func(t *testing.T) {
+		testUserStoreDisabledMailRecordsTerminalAccountNotice(t, ss)
+	})
 	t.Run("ProtectLastAdministrator", func(t *testing.T) {
 		testUserStoreProtectLastAdministrator(t, ss)
 	})
+}
+
+func testUserStoreDisabledMailRecordsTerminalAccountNotice(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	at := model.GetMillis() + 100
+	attempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+	command := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
+		ChangedAt: at, RevocationReason: "administrator disabled account",
+		AuditEventID: attempt.ID.String(), AuditAt: at,
+	})
+	command.Delivery, command.DeliveryJob = suppressSecurityNoticeForDisabledMail(t, command.Delivery, command.DeliveryJob)
+	if _, err := ss.User().SetDisabledWithAudit(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+	delivery, err := ss.Mail().GetDelivery(ctx, command.Delivery.ID)
+	requireNoError(t, err)
+	job, err := ss.Job().Get(ctx, command.DeliveryJob.ID)
+	requireNoError(t, err)
+	if delivery.State != model.MailDeliverySuppressed || delivery.PublicFailureCode != model.MailDeliveryDisabledCode ||
+		len(delivery.EncryptedPayload) != 0 || job.Status != model.JobStatusCanceled {
+		t.Fatalf("disabled-mail account notice delivery/job = %#v / %#v", delivery, job)
+	}
 }
 
 func testUserCreationAndDefaultJobAreAtomic(t *testing.T, ss store.Store) {
@@ -116,11 +143,11 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	at := model.GetMillis()
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
-	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: attempt.ID.String(), AuditAt: at,
-	})
+	}))
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) ||
 		conflict.Constraint != "users_last_system_admin" {
@@ -133,11 +160,11 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 		StartsAt: model.TimeFromMillis(at - 100),
 	})
 	requireNoError(t, err)
-	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: attempt.ID.String(), AuditAt: at,
-	})
+	}))
 	requireNoError(t, err)
 	if _, err = ss.RoleBinding().End(ctx, secondBinding.ID.String(), at+1); !errors.As(err, &conflict) {
 		t.Fatalf("end only enabled administrator binding error = %v", err)
@@ -391,11 +418,11 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	}
 	at := model.GetMillis() + 100
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
-	result, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	result, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: attempt.ID.String(), AuditAt: at,
-	})
+	}))
 	requireNoError(t, err)
 	disabled := result.User
 	if disabled.DisabledAt.Millis() != at || disabled.Revision != first.Revision+1 {
@@ -467,13 +494,13 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	at := model.GetMillis() + 100
 
 	oversizedAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	if _, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt:        at,
 		RevocationReason: strings.Repeat("x", model.SessionRevocationMaxRunes+1),
 		AuditEventID:     oversizedAttempt.ID.String(),
 		AuditAt:          at,
-	}); err == nil {
+	})); err == nil {
 		t.Fatal("SetDisabledWithAudit() accepted an oversized revocation reason")
 	} else {
 		var invalid *store.ErrInvalidInput
@@ -489,12 +516,19 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 
 	// A missing audit attempt must roll back both the user update and every
 	// session/credential revocation performed before completion was attempted.
-	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	missingAuditCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: model.NewId(), AuditAt: at,
-	}); err == nil {
+	})
+	if _, err := ss.User().SetDisabledWithAudit(ctx, missingAuditCommand); err == nil {
 		t.Fatal("SetDisabledWithAudit() succeeded without its audit attempt")
+	}
+	if _, getErr := ss.Mail().GetDelivery(ctx, missingAuditCommand.Delivery.ID); !store.IsNotFound(getErr) {
+		t.Fatalf("account notice survived audit rollback: %v", getErr)
+	}
+	if _, getErr := ss.Job().Get(ctx, missingAuditCommand.DeliveryJob.ID); !store.IsNotFound(getErr) {
+		t.Fatalf("account notice Job survived audit rollback: %v", getErr)
 	}
 	unchanged, err := ss.User().Get(ctx, user.ID.String())
 	requireNoError(t, err)
@@ -514,11 +548,12 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	}
 
 	disableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	disabled, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	disableCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "administrator disabled account",
 		AuditEventID: disableAttempt.ID.String(), AuditAt: at,
 	})
+	disabled, err := ss.User().SetDisabledWithAudit(ctx, disableCommand)
 	requireNoError(t, err)
 	if disabled.User.DisabledAt.Millis() != at || disabled.User.Revision != user.Revision+1 ||
 		len(disabled.RevokedSessions) != 2 || len(disabled.RevokedTokenHashes) != 4 {
@@ -536,12 +571,36 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	if completed.Status != model.AuditStatusSuccess || len(completed.Result) == 0 {
 		t.Fatalf("disable audit = %#v", completed)
 	}
+	disabledNotice, err := ss.Mail().GetDelivery(ctx, disableCommand.Delivery.ID)
+	requireNoError(t, err)
+	if disabledNotice.TemplateKey != model.MailTemplateIdentityAccountDisabled {
+		t.Fatalf("account-disable notice = %#v, want disabled template", disabledNotice)
+	}
+	sessionNotices, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
+		TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentitySessionsRevokedByAdmin}, Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(sessionNotices) != 0 {
+		t.Fatalf("account disable emitted administrative session notices: %#v", sessionNotices)
+	}
+	replayAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
+	replayCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: user.ID.String(), ExpectedRevision: disabled.User.Revision, Disabled: true,
+		ChangedAt: at + 1, RevocationReason: "administrator disabled account",
+		AuditEventID: replayAttempt.ID.String(), AuditAt: at + 1,
+	})
+	if _, replayErr := ss.User().SetDisabledWithAudit(ctx, replayCommand); !store.IsConflict(replayErr) {
+		t.Fatalf("same-state account replay error = %v", replayErr)
+	}
+	if _, getErr := ss.Mail().GetDelivery(ctx, replayCommand.Delivery.ID); !store.IsNotFound(getErr) {
+		t.Fatalf("same-state account replay persisted duplicate notice: %v", getErr)
+	}
 
 	staleAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	if _, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	if _, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: false,
 		ChangedAt: at + 1, AuditEventID: staleAttempt.ID.String(), AuditAt: at + 1,
-	}); !store.IsConflict(err) {
+	})); !store.IsConflict(err) {
 		t.Fatalf("stale SetDisabledWithAudit() error = %v", err)
 	}
 	staleAudit, err := ss.Audit().Get(ctx, staleAttempt.ID.String())
@@ -551,10 +610,11 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	}
 
 	enableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	enabled, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	enableCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: disabled.User.Revision, Disabled: false,
 		ChangedAt: at + 2, AuditEventID: enableAttempt.ID.String(), AuditAt: at + 2,
 	})
+	enabled, err := ss.User().SetDisabledWithAudit(ctx, enableCommand)
 	requireNoError(t, err)
 	if enabled.User.DisabledAt.Valid || enabled.User.Revision != disabled.User.Revision+1 ||
 		enabled.RevokedSessions == nil || len(enabled.RevokedSessions) != 0 ||
@@ -565,6 +625,9 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	requireNoError(t, err)
 	if enableAudit.Status != model.AuditStatusSuccess {
 		t.Fatalf("enable audit = %#v", enableAudit)
+	}
+	if delivery, getErr := ss.Mail().GetDelivery(ctx, enableCommand.Delivery.ID); getErr != nil || delivery.TemplateKey != model.MailTemplateIdentityAccountEnabled {
+		t.Fatalf("account-enable notice = %#v, %v", delivery, getErr)
 	}
 }
 

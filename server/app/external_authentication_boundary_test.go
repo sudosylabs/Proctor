@@ -71,6 +71,56 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 	}
 }
 
+func TestInvitationRequiredBeginHashesClaimIntoPurposeBoundState(t *testing.T) {
+	t.Parallel()
+	claim := model.NewCredentialToken()
+	states := &externalLoginStateStoreFake{}
+	service := externalAuthenticationBeginService(t, externalProviderSourceSet{
+		provider: &recordingExternalProvider{}, ids: map[string]bool{"campus": true},
+	}, newAuthenticationCacheFake(), 10)
+	service.loginStates = states
+	service.accessPolicy = authenticationAccessPolicyFake{providers: map[string]bool{"campus": true},
+		providerModes: map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired}}
+
+	result, err := service.beginWithInvitationClaim(context.Background(), "campus", "/join", model.SessionClientWeb,
+		"", "", "127.0.0.1", claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || states.saved == nil || states.saved.Purpose != model.ExternalAuthenticationPurposeInvitationAdmission ||
+		states.admissionClaimHash != model.HashInvitationClaim(claim) {
+		t.Fatalf("result=%#v state=%#v claim_hash=%q", result, states.saved, states.admissionClaimHash)
+	}
+	if strings.Contains(states.saved.StateHash, claim) || strings.Contains(result.RedirectURL, claim) {
+		t.Fatal("raw Invitation claim escaped into durable/provider state")
+	}
+}
+
+func TestInvitationRequiredBeginRejectsWhenInvitationAdmissionIsDisabled(t *testing.T) {
+	t.Parallel()
+
+	provider := &recordingExternalProvider{}
+	service := externalAuthenticationBeginService(t, externalProviderSourceSet{
+		provider: provider, ids: map[string]bool{"campus": true},
+	}, newAuthenticationCacheFake(), 10)
+	service.accessPolicy = authenticationAccessPolicyFake{
+		providers:                   map[string]bool{"campus": true},
+		providerModes:               map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired},
+		invitationAdmissionDisabled: true,
+	}
+
+	result, err := service.beginWithInvitationClaim(
+		context.Background(), "campus", "/join", model.SessionClientWeb,
+		"", "", "192.0.2.9", model.NewCredentialToken(),
+	)
+	if result != nil || !Is(err, "authentication.external.account_not_linked") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if provider.beginCalls != 0 {
+		t.Fatalf("disabled invitation admission began %d provider challenges", provider.beginCalls)
+	}
+}
+
 func TestExternalAuthenticationOrdinaryLoginRejectsDesktopBeforeProviderOrPersistence(t *testing.T) {
 	t.Parallel()
 
@@ -190,6 +240,143 @@ func TestProviderConnectionCallbackTerminalizesAttemptWhenProviderRejectsAfterCo
 	}
 	if auditor.failID != auditID || auditor.failCode != "authentication.external.rejected" {
 		t.Fatalf("terminal audit id=%q code=%q", auditor.failID, auditor.failCode)
+	}
+}
+
+func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProvisionMode(t *testing.T) {
+	for _, mode := range []model.ProviderAdmissionMode{
+		model.ProviderAdmissionLinkedOnly,
+		model.ProviderAdmissionInvitationRequired,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			databaseNow := time.UnixMilli(50_000)
+			stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+			state := &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeLogin,
+				StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(bindingToken), ReturnTo: "/",
+				ClientType: model.SessionClientWeb, ExpiresAt: databaseNow.Add(time.Minute)}
+			identities := &externalIdentityResolutionStoreFake{}
+			institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{
+				state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject",
+					Username: "eligible-user", Email: "eligible@example.edu"}}, autoProvision: true}
+			service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider},
+				loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
+				institutions: providerConnectionInstitutionStoreFake{institution: institution}, identities: identities,
+				accessPolicy: authenticationAccessPolicyFake{providers: map[string]bool{"campus": true},
+					providerModes: map[string]model.ProviderAdmissionMode{"campus": mode}},
+				audit: externalAuditFake{}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
+					Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor(), AutoProvision: true}}}},
+				policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return databaseNow }}
+
+			if _, err = service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{}); !Is(err, "authentication.external.account_not_linked") {
+				t.Fatalf("completion error = %v", err)
+			}
+			if identities.resolution == nil || identities.resolution.User != nil || identities.resolution.Settings != nil ||
+				identities.resolution.ProvisionAudit != nil || identities.resolution.DefaultProfilePictureJob != nil {
+				t.Fatalf("%s prepared a provisioning package: %#v", mode, identities.resolution)
+			}
+			capability, configured := identities.resolution.Capabilities.Providers["campus"]
+			if !configured || !capability.AutoProvision {
+				t.Fatalf("%s terminal capability snapshot = %#v", mode, identities.resolution.Capabilities)
+			}
+		})
+	}
+}
+
+func TestInvitationAdmissionPreparesOnlyVerifiedMailboxCandidateForExactInvitation(t *testing.T) {
+	t.Parallel()
+	databaseNow := time.UnixMilli(55_000)
+	stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+	invitationID := model.NewInvitationID()
+	state := &model.ExternalLoginState{Provider: "campus", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
+		InvitationID: invitationID, StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(bindingToken),
+		ReturnTo: "/join", ClientType: model.SessionClientWeb, ExpiresAt: databaseNow.Add(time.Minute)}
+	identities := &externalIdentityResolutionStoreFake{}
+	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{state: stateToken,
+		assertion: &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject",
+			Username: "invited-user", Email: " Invited@Example.EDU ", EmailVerified: true}}, autoProvision: false}
+	service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider},
+		loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
+		institutions: providerConnectionInstitutionStoreFake{institution: institution}, identities: identities,
+		accessPolicy: authenticationAccessPolicyFake{providers: map[string]bool{"campus": true},
+			providerModes: map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired}},
+		audit: externalAuditFake{}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
+			Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}}}},
+		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", NodeID: "node-a"}, now: func() time.Time { return databaseNow }}
+
+	_, err = service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
+	if !Is(err, "authentication.external.account_not_linked") {
+		t.Fatalf("completion error = %v", err)
+	}
+	if identities.resolution == nil || identities.resolution.InvitationID != invitationID || identities.resolution.User == nil ||
+		identities.resolution.User.Email != "invited@example.edu" || !identities.resolution.User.EmailVerified ||
+		identities.resolution.ProvisionAudit == nil {
+		t.Fatalf("resolution = %#v", identities.resolution)
+	}
+}
+
+func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *testing.T) {
+	t.Parallel()
+
+	databaseNow := time.UnixMilli(56_000)
+	stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+	invitationID := model.NewInvitationID()
+	state := &model.ExternalLoginState{
+		Provider:     "campus",
+		Purpose:      model.ExternalAuthenticationPurposeInvitationAdmission,
+		InvitationID: invitationID,
+		StateHash:    model.HashToken(stateToken),
+		BindingHash:  model.HashToken(bindingToken),
+		ReturnTo:     "/join",
+		ClientType:   model.SessionClientWeb,
+		ExpiresAt:    databaseNow.Add(time.Minute),
+	}
+	identities := &externalIdentityResolutionStoreFake{}
+	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{
+		state: stateToken,
+		assertion: &model.ExternalAuthenticationAssertion{
+			ProviderId: "campus", Subject: "private-subject", Username: "invited-user",
+			Email: "invited@example.edu", EmailVerified: true,
+		},
+	}}
+	service := &externalAuthenticationService{
+		registry:     externalProviderSourceFake{provider: provider},
+		loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
+		institutions: providerConnectionInstitutionStoreFake{institution: institution},
+		identities:   identities,
+		accessPolicy: authenticationAccessPolicyFake{
+			providers:                   map[string]bool{"campus": true},
+			providerModes:               map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired},
+			invitationAdmissionDisabled: true,
+		},
+		audit: externalAuditFake{}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
+			Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}},
+		}},
+		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", NodeID: "node-b"},
+		now:    func() time.Time { return databaseNow },
+	}
+
+	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
+	if result != nil || !Is(err, "authentication.external.account_not_linked") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if identities.resolution == nil || identities.resolution.InvitationID != invitationID || identities.resolution.User != nil {
+		t.Fatalf("terminal resolution = %#v", identities.resolution)
+	}
+	if strings.Contains(err.Error(), invitationID.String()) || strings.Contains(err.Error(), "private-subject") ||
+		strings.Contains(err.Error(), "invited@example.edu") {
+		t.Fatalf("bounded admission error leaked private state: %v", err)
 	}
 }
 
@@ -550,12 +737,14 @@ func (externalProviderFake) Complete(context.Context, ExternalProviderCompleteRe
 
 type externalLoginStateStoreFake struct {
 	store.ExternalLoginStateStore
-	saved         *model.ExternalLoginState
-	saveLifetime  time.Duration
-	storeNow      time.Time
-	get           *model.ExternalLoginState
-	consumeCalls  int
-	consumeResult *model.ExternalLoginState
+	saved              *model.ExternalLoginState
+	saveLifetime       time.Duration
+	storeNow           time.Time
+	get                *model.ExternalLoginState
+	consumeCalls       int
+	consumeResult      *model.ExternalLoginState
+	admissionClaimHash string
+	admissionErr       error
 }
 
 type externalInstitutionStoreFake struct{ store.InstitutionStore }
@@ -580,6 +769,16 @@ type providerConnectionIdentityStoreFake struct {
 	linked *store.ExternalIdentityLink
 }
 
+type externalIdentityResolutionStoreFake struct {
+	store.ExternalIdentityStore
+	resolution *store.ExternalIdentityResolutionRequest
+}
+
+func (s *externalIdentityResolutionStoreFake) ResolveOrProvision(_ context.Context, input *store.ExternalIdentityResolutionRequest) (*store.ExternalIdentityResolution, error) {
+	s.resolution = input
+	return nil, store.NewErrNotFound("external_identity", input.Identity.Provider)
+}
+
 func (s *providerConnectionIdentityStoreFake) LinkWithAudit(_ context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
 	s.linked = input
 	return &store.AuthenticationMethodMutationResult{Identity: input.Identity}, nil
@@ -589,6 +788,13 @@ type providerConnectionInstitutionStoreFake struct {
 	store.InstitutionStore
 	institution *model.Institution
 }
+
+type admissionModeProvider struct {
+	providerConnectionProvider
+	autoProvision bool
+}
+
+func (p admissionModeProvider) AutoProvision() bool { return p.autoProvision }
 
 func (s providerConnectionInstitutionStoreFake) GetSingleton(context.Context) (*model.Institution, error) {
 	return s.institution, nil
@@ -642,6 +848,21 @@ func (s *externalLoginStateStoreFake) Save(_ context.Context, state *model.Exter
 	result.ExpiresAt = model.TimeUTC(at).Add(lifetime)
 	result.PrepareCreate(model.NewExternalLoginStateID(), at)
 	return &result, nil
+}
+
+func (s *externalLoginStateStoreFake) SaveInvitationAdmission(_ context.Context, state *model.ExternalLoginState, lifetime time.Duration, claimHash string) (*model.ExternalLoginState, error) {
+	s.admissionClaimHash = claimHash
+	if s.admissionErr != nil {
+		return nil, s.admissionErr
+	}
+	state = cloneExternalLoginStateForTest(state)
+	state.InvitationID = model.NewInvitationID()
+	return s.Save(context.Background(), state, lifetime)
+}
+
+func cloneExternalLoginStateForTest(state *model.ExternalLoginState) *model.ExternalLoginState {
+	result := *state
+	return &result
 }
 
 func (s *externalLoginStateStoreFake) GetByStateHash(context.Context, string) (*model.ExternalLoginState, error) {

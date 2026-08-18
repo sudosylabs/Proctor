@@ -66,6 +66,28 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 		t.Fatalf("Consume(replay) error = %v", err)
 	}
 
+	fixture, class, inviter, _, _, issuedAt := invitationAcceptanceStoreFixture(t, ctx, ss, "external-admission")
+	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
+	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
+	requireNoError(t, err)
+	admissionInput := &model.ExternalLoginState{
+		Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
+		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
+		ReturnTo: "/join", ClientType: model.SessionClientWeb,
+	}
+	admission, err := ss.ExternalLoginState().SaveInvitationAdmission(ctx, admissionInput, time.Minute, invitation.ClaimHash)
+	requireNoError(t, err)
+	if admission.InvitationID != invitation.ID || !admissionInput.InvitationID.IsZero() {
+		t.Fatalf("SaveInvitationAdmission() = %#v input=%#v", admission, admissionInput)
+	}
+	if _, err = ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+		Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
+		StateHash: model.HashToken(model.NewCredentialToken()), BindingHash: model.HashToken(model.NewCredentialToken()),
+		ReturnTo: "/join", ClientType: model.SessionClientWeb,
+	}, time.Minute, model.HashInvitationClaim(model.NewCredentialToken())); !store.IsNotFound(err) {
+		t.Fatalf("SaveInvitationAdmission(unknown claim) error = %v", err)
+	}
+
 	expired := &model.ExternalLoginState{
 		Provider:    "campus-cas",
 		StateHash:   model.HashToken(model.NewCredentialToken()),

@@ -215,6 +215,12 @@ func TestIdentityMailCatalogAcceptsCredentialAndSecurityOccurrences(t *testing.T
 		{MailTemplateIdentityEmailVerifiedByAdmin, MailOccurrenceSecurityNotice},
 		{MailTemplateIdentityPasswordReset, MailOccurrenceAccountToken},
 		{MailTemplateIdentityPasswordChanged, MailOccurrenceSecurityNotice},
+		{MailTemplateIdentityAccountDisabled, MailOccurrenceSecurityNotice},
+		{MailTemplateIdentityAccountEnabled, MailOccurrenceSecurityNotice},
+		{MailTemplateIdentitySessionsRevokedByAdmin, MailOccurrenceSecurityNotice},
+		{MailTemplateIdentityMFAEnabled, MailOccurrenceSecurityNotice},
+		{MailTemplateIdentityMFADisabled, MailOccurrenceSecurityNotice},
+		{MailTemplateIdentityMFARecoveryCodesRegenerated, MailOccurrenceSecurityNotice},
 	} {
 		occurrence := &MailOccurrence{
 			ID: NewMailOccurrenceID(), Kind: test.kind, TemplateKey: test.key,

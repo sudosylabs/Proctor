@@ -14,6 +14,7 @@ import (
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -202,10 +203,10 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	if _, err := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledManager.ID.String(), ExpectedRevision: disabledManager.Revision, Disabled: false,
 		ChangedAt: reenabledAt, AuditEventID: reenableAudit.ID.String(), AuditAt: reenabledAt,
-	}); err != nil {
+	})); err != nil {
 		t.Fatal(err)
 	}
 	transferred, appErr := helper.App.TransferExamOwnership(ctx, invocation, application.TransferExamOwnershipCommand{

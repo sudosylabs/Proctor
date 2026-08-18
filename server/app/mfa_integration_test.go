@@ -55,7 +55,6 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
-	seedInitialAuthenticationAccessPolicy(t, persistence)
 	encryptionKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
 	helper := testlib.Setup(
 		t,
@@ -65,16 +64,16 @@ func TestMFAIntegration(t *testing.T) {
 		}),
 		testlib.WithStore(persistence),
 	)
-	institution, err := persistence.Institution().Save(
-		context.Background(),
-		&model.Institution{
-			Name: "northbridge", DisplayName: "Northbridge University",
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
+	bootstrap := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/bootstrap", map[string]any{
+		"bootstrap_secret": testlib.BootstrapSecret,
+		"institution":      map[string]any{"name": "northbridge", "display_name": "Northbridge University"},
+		"administrator":    map[string]any{"username": "mfa-admin", "email": "mfa-admin@example.edu"},
+		"password":         "bootstrap correct horse battery staple",
+	}, "")
+	if bootstrap.Code != http.StatusCreated {
+		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	}
-	_ = institution
+	startIntegrationServer(t, helper)
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(
 		context.Background(),
@@ -136,9 +135,10 @@ func TestMFAIntegration(t *testing.T) {
 	)
 	if activateResponse.Code != http.StatusOK {
 		t.Fatalf(
-			"MFA activation status = %d: %s",
+			"MFA activation status = %d: %s; logs=%s",
 			activateResponse.Code,
 			activateResponse.Body.String(),
+			helper.Logs.String(),
 		)
 	}
 	var activation wireMFAActivation
@@ -308,6 +308,34 @@ func TestMFAIntegration(t *testing.T) {
 		t.Fatalf("post-MFA session = %#v", disabledLogin.Session)
 	}
 
+	transitionKeys := []model.MailTemplateKey{
+		model.MailTemplateIdentityMFAEnabled,
+		model.MailTemplateIdentityMFARecoveryCodesRegenerated,
+		model.MailTemplateIdentityMFADisabled,
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	var transitionDeliveries []*model.MailDelivery
+	for {
+		transitionDeliveries, err = persistence.Mail().ListDeliveries(context.Background(), store.MailDeliveryListOptions{TemplateKeys: transitionKeys, Limit: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		accepted := len(transitionDeliveries) == len(transitionKeys)
+		for _, delivery := range transitionDeliveries {
+			accepted = accepted && delivery.TargetUserID == user.ID && delivery.State == model.MailDeliveryAccepted && len(delivery.EncryptedPayload) == 0
+		}
+		if accepted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("MFA transition deliveries did not reach accepted: %#v", transitionDeliveries)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if captured := helper.Mailer.Deliveries(); len(captured) != len(transitionKeys) {
+		t.Fatalf("captured MFA notices = %d, want %d", len(captured), len(transitionKeys))
+	}
+
 	audits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{Limit: 200, Visibility: store.AuditVisibilityScope{InstitutionWide: true}},
@@ -324,10 +352,33 @@ func TestMFAIntegration(t *testing.T) {
 		activation.RecoveryCodes...,
 	)
 	sensitiveValues = append(sensitiveValues, regenerated.RecoveryCodes...)
+	encodedDeliveries, err := json.Marshal(transitionDeliveries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var encodedJobs []byte
+	for _, delivery := range transitionDeliveries {
+		job, jobErr := persistence.Job().Get(context.Background(), delivery.JobID)
+		if jobErr != nil {
+			t.Fatal(jobErr)
+		}
+		encodedJob, encodeErr := json.Marshal(job)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		encodedJobs = append(encodedJobs, encodedJob...)
+	}
 	for _, sensitive := range sensitiveValues {
 		if bytes.Contains(encodedAudits, []byte(sensitive)) ||
+			bytes.Contains(encodedDeliveries, []byte(sensitive)) ||
+			bytes.Contains(encodedJobs, []byte(sensitive)) ||
 			strings.Contains(helper.Logs.String(), sensitive) {
 			t.Fatal("MFA secret or recovery credential leaked")
+		}
+		for _, delivery := range helper.Mailer.Deliveries() {
+			if bytes.Contains(delivery.Data, []byte(sensitive)) {
+				t.Fatal("MFA secret or recovery credential appeared in security notice")
+			}
 		}
 	}
 }

@@ -39,6 +39,28 @@ func (e *accountStateEffectsFake) SessionsRevoked(context.Context, string, []*mo
 	*e.events = append(*e.events, "publish-revocation")
 }
 
+type securityNoticeMailerFake struct {
+	events   *[]string
+	requests []securityNoticePreparation
+	err      error
+}
+
+func (m *securityNoticeMailerFake) PrepareSecurityNotice(request securityNoticePreparation) (*preparedDirectMail, error) {
+	if m.events != nil {
+		*m.events = append(*m.events, "prepare-mail")
+	}
+	m.requests = append(m.requests, request)
+	if m.err != nil {
+		return nil, m.err
+	}
+	occurrenceID := model.NewMailOccurrenceID()
+	return &preparedDirectMail{
+		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: request.TemplateKey},
+		Delivery:   &model.MailDelivery{ID: model.NewMailDeliveryID(), OccurrenceID: occurrenceID, TemplateKey: request.TemplateKey},
+		Job:        &model.Job{ID: model.NewJobID(), Type: model.JobTypeMailDeliver},
+	}, nil
+}
+
 func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
@@ -51,7 +73,8 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{
 		Descriptor: model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"},
 	}}}}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, capabilities, auditor, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
+	mailer := &securityNoticeMailerFake{events: &events}
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, capabilities, auditor, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +85,11 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	if _, available := persistence.input.Capabilities.Providers["campus"]; !available {
 		t.Fatalf("Store capability snapshot = %#v, want configured campus provider", persistence.input.Capabilities)
 	}
-	want := []string{"authorize-manage", "get-user", "audit-begin", "store-set-disabled", "publish-revocation"}
+	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateIdentityAccountDisabled ||
+		persistence.input.Occurrence == nil || persistence.input.Delivery == nil || persistence.input.DeliveryJob == nil {
+		t.Fatalf("mail request/input = %#v / %#v", mailer.requests, persistence.input)
+	}
+	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled", "publish-revocation"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -73,12 +100,12 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	events := []string{}
 	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
 	persistence := &accountStateStoreFake{events: &events, user: user, err: store.NewErrConflict("user", "users_revision", errors.New("stale"))}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, time.Now)
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	_, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
 	if !Is(err, "user.conflict") {
 		t.Fatalf("error = %v", err)
 	}
-	want := []string{"authorize-manage", "get-user", "audit-begin", "store-set-disabled", "audit-fail"}
+	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled", "audit-fail"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -92,7 +119,8 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	updated.DisabledAt = model.OptionalTime{}
 	updated.Revision++
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}}
-	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
+	mailer := &securityNoticeMailerFake{events: &events}
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: true})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +128,10 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	if result.DisabledAt.Valid || persistence.input.Disabled {
 		t.Fatalf("result/input = %#v / %#v", result, persistence.input)
 	}
-	want := []string{"authorize-manage", "get-user", "audit-begin", "store-set-disabled"}
+	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateIdentityAccountEnabled {
+		t.Fatalf("mail requests = %#v", mailer.requests)
+	}
+	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -110,13 +141,46 @@ func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	userID := model.NewId()
-	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
+	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.UserID(userID)}, model.RequestMetadata{})
 	_, err := service.SetEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: userID, Enabled: false})
 	if !Is(err, "request.invalid") {
 		t.Fatalf("error = %v", err)
 	}
 	if want := []string{"authorize-manage"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestAccountStateReplayDoesNotCreateAnotherNoticeOrAudit(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3,
+		Username: "student", Email: "student@example.edu", Locale: "en", Timezone: "UTC", DisabledAt: model.OptionalTimeFromMillis(200)}
+	mailer := &securityNoticeMailerFake{events: &events}
+	service := newAccountStateService(&accountStateStoreFake{events: &events, user: user}, &userProfileAuthorizerFake{events: &events},
+		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
+	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
+	if err != nil || result != user || len(mailer.requests) != 0 {
+		t.Fatalf("replay result/error/mail = %#v / %v / %#v", result, err, mailer.requests)
+	}
+	if want := []string{"authorize-manage", "get-user"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestAccountStateMailPreparationFailureStartsNoMutation(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3,
+		Username: "student", Email: "student@example.edu", Locale: "en", Timezone: "UTC"}
+	service := newAccountStateService(&accountStateStoreFake{events: &events, user: user}, &userProfileAuthorizerFake{events: &events},
+		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events, err: errors.New("render failed")},
+		&accountStateEffectsFake{events: &events}, time.Now)
+	if _, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false}); !Is(err, "administration.unavailable") {
+		t.Fatalf("error = %v", err)
+	}
+	if want := []string{"authorize-manage", "get-user", "prepare-mail"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
 }

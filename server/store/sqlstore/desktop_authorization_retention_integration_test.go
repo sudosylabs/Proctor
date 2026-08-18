@@ -13,6 +13,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestDesktopAuthorizationMaintenanceIsBoundedAndMultiNodeSafe(t *testing.T) {
@@ -142,11 +143,11 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	}
 	disableResult := make(chan disableOutcome, 1)
 	go func() {
-		result, disableErr := persistence.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		result, disableErr := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 			RevocationReason: "concurrent disable", AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		})
+		}))
 		disableResult <- disableOutcome{result: result, err: disableErr}
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, exchangePID, "pg_advisory_xact_lock")
@@ -246,11 +247,11 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	}
 	disableResult := make(chan disableOutcome, 1)
 	go func() {
-		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 			RevocationReason: "concurrent disable", AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		})
+		}))
 		disableResult <- disableOutcome{result: result, err: disableErr}
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, primary, issuePID, "pg_advisory_xact_lock")

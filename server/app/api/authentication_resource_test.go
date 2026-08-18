@@ -134,6 +134,43 @@ func TestExternalAuthenticationLoginDefaultsToWebAndNeverCreatesDesktopSessionsD
 	}
 }
 
+func TestExternalAuthenticationInvitationClaimUsesStrictPOSTBody(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	cookies, err := newBrowserCookies("http://localhost:8065")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim := model.NewCredentialToken()
+	applicationFake := &externalAuthenticationEntryHTTPApplication{start: &model.ExternalAuthenticationStart{
+		RedirectURL: "https://identity.example.test/login", Binding: model.NewCredentialToken(), ExpiresAt: time.Now().Add(time.Minute).UnixMilli(),
+	}}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, externalAuthenticationResource(applicationFake, cookies))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
+		strings.NewReader(`{"invitation_claim":"`+claim+`","return_to":"/join"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || applicationFake.beginCommand.InvitationClaim != claim ||
+		applicationFake.beginCommand.ReturnTo != "/join" || strings.Contains(response.Body.String(), claim) ||
+		strings.Contains(response.Header().Get("Location"), claim) {
+		t.Fatalf("invitation start = %d command=%#v headers=%#v body=%s", response.Code, applicationFake.beginCommand, response.Header(), response.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	httpAPI.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
+		strings.NewReader(`{"invitation_claim":"`+claim+`","unknown":true}`)))
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("unknown invitation start field = %d %s", invalid.Code, invalid.Body.String())
+	}
+	missing := httptest.NewRecorder()
+	httpAPI.ServeHTTP(missing, httptest.NewRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
+		strings.NewReader(`{"return_to":"/join"}`)))
+	if missing.Code != http.StatusBadRequest {
+		t.Fatalf("missing invitation claim = %d %s", missing.Code, missing.Body.String())
+	}
+}
+
 func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testing.T) {
 	t.Parallel()
 

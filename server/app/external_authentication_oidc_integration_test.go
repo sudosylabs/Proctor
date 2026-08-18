@@ -40,16 +40,23 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	const (
-		providerID = "campus-oidc"
-		clientID   = "proctor-client"
-		code       = "sensitive-oidc-code"
-		subject    = "sensitive-oidc-subject"
+		providerID           = "campus-oidc"
+		invitationProviderID = "invited-oidc"
+		clientID             = "proctor-client"
+		code                 = "sensitive-oidc-code"
+		linkedSubject        = "sensitive-oidc-subject"
 	)
 	var (
 		issuer            string
 		expectedNonce     string
 		expectedChallenge string
 		transactionMutex  sync.Mutex
+		subject           = linkedSubject
+		claimedUsername   = "oidc.student"
+		claimedEmail      = "oidc.student@example.edu"
+		claimedFirstName  = "OIDC"
+		claimedLastName   = "Student"
+		claimedHomeOrg    = "example.edu"
 	)
 	oidcServer := &oidctest.Server{
 		PublicKeys: []oidctest.PublicKey{{
@@ -84,10 +91,10 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			"iss": issuer, "aud": clientID, "sub": subject,
 			"exp": now.Add(time.Hour).Unix(),
 			"iat": now.Unix(), "auth_time": now.Add(-time.Minute).Unix(),
-			"nonce": nonce, "preferred_username": "oidc.student",
-			"email": "oidc.student@example.edu", "email_verified": true,
-			"given_name": "OIDC", "family_name": "Student",
-			"schacHomeOrganization": "example.edu",
+			"nonce": nonce, "preferred_username": claimedUsername,
+			"email": claimedEmail, "email_verified": true,
+			"given_name": claimedFirstName, "family_name": claimedLastName,
+			"schacHomeOrganization": claimedHomeOrg,
 			"eduPersonAffiliation":  []string{"student"},
 			"amr":                   []string{"pwd", "mfa"},
 		})
@@ -110,50 +117,41 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 
 	persistence := openAuthenticationStore(t, dataSource)
 	seedAuthenticationAccessPolicy(t, persistence, map[string]model.ProviderAdmissionMode{
-		providerID: model.ProviderAdmissionAutoProvision,
+		providerID:           model.ProviderAdmissionAutoProvision,
+		invitationProviderID: model.ProviderAdmissionInvitationRequired,
 	})
+	oidcProvider := config.ExternalAuthenticationProvider{
+		ID: providerID, Type: config.ExternalAuthenticationTypeOIDC, DisplayName: "Campus OIDC",
+		Enabled: true, AutoProvision: true,
+		OIDC: &config.OIDCProvider{Issuer: issuer, ClientID: clientID, ClientSecret: "client-secret",
+			Scopes: []string{"openid", "profile", "email"}, Timeout: config.Duration{Duration: 5 * time.Second}, MaxResponseBytes: 64 * 1024},
+		Claims: config.ExternalClaimMapping{
+			Subject: "sub", Username: "preferred_username", Email: "email", EmailVerifiedClaim: "email_verified",
+			FirstName: "given_name", LastName: "family_name", HomeOrganization: "schacHomeOrganization",
+			Affiliation: "eduPersonAffiliation", AllowedHomeOrganizations: []string{"example.edu"},
+			MultiFactorAttribute: "amr", MultiFactorValues: []string{"mfa"},
+		},
+	}
+	invitationProvider := oidcProvider
+	invitationProvider.ID = invitationProviderID
+	invitationProvider.DisplayName = "Invited OIDC"
+	invitationProvider.AutoProvision = false
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
 			cfg.Server.PublicURL = "https://proctor.example.test"
-			cfg.Authentication.External.Providers =
-				[]config.ExternalAuthenticationProvider{{
-					ID:          providerID,
-					Type:        config.ExternalAuthenticationTypeOIDC,
-					DisplayName: "Campus OIDC",
-					Enabled:     true, AutoProvision: true,
-					OIDC: &config.OIDCProvider{
-						Issuer: issuer, ClientID: clientID,
-						ClientSecret: "client-secret",
-						Scopes:       []string{"openid", "profile", "email"},
-						Timeout: config.Duration{
-							Duration: 5 * time.Second,
-						},
-						MaxResponseBytes: 64 * 1024,
-					},
-					Claims: config.ExternalClaimMapping{
-						Subject:            "sub",
-						Username:           "preferred_username",
-						Email:              "email",
-						EmailVerifiedClaim: "email_verified",
-						FirstName:          "given_name", LastName: "family_name",
-						HomeOrganization:         "schacHomeOrganization",
-						Affiliation:              "eduPersonAffiliation",
-						AllowedHomeOrganizations: []string{"example.edu"},
-						MultiFactorAttribute:     "amr",
-						MultiFactorValues:        []string{"mfa"},
-					},
-				}}
+			cfg.Authentication.External.Providers = []config.ExternalAuthenticationProvider{oidcProvider, invitationProvider}
 		}),
 		testlib.WithStore(persistence),
 	)
-	if _, err := persistence.Institution().Save(
+	institution, err := persistence.Institution().Save(
 		context.Background(),
 		&model.Institution{
 			Name:        "oidc-auth-university",
 			DisplayName: "OIDC Authentication University",
 		},
-	); err != nil {
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,6 +232,26 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		!user.EmailVerified {
 		t.Fatalf("provisioned OIDC user = %#v, %v", user, err)
 	}
+	affiliations, err := persistence.Affiliation().ListByUser(context.Background(), user.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	academicMemberships, err := persistence.AcademicUnitMember().ListByUser(context.Background(), user.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	classMemberships, err := persistence.ClassMember().ListByUser(context.Background(), user.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := persistence.RoleBinding().ListByUser(context.Background(), user.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(affiliations) != 0 || len(academicMemberships) != 0 || len(classMemberships) != 0 || len(bindings) != 0 {
+		t.Fatalf("OIDC claims created academic authority: affiliations=%#v academic_memberships=%#v class_memberships=%#v role_bindings=%#v",
+			affiliations, academicMemberships, classMemberships, bindings)
+	}
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
 		user.ID.String(),
@@ -248,6 +266,72 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			model.AuthenticationMultiFactor {
 		t.Fatalf("OIDC session = %#v, %v", sessions, err)
 	}
+
+	invitedEmail := "invited.oidc@example.edu"
+	claim, pendingInvitation := seedExternalAdmissionInvitation(t, persistence, institution, user, invitedEmail)
+	subject, claimedUsername, claimedEmail = "invited-oidc-subject", "invited.oidc", " Invited.OIDC@Example.EDU "
+	invitationBegin := performJSONRequest(helper.Handler(), http.MethodPost,
+		"/api/v1/auth/providers/"+invitationProviderID+"/login",
+		map[string]any{"invitation_claim": claim, "return_to": "/join"}, "")
+	if invitationBegin.Code != http.StatusSeeOther || strings.Contains(invitationBegin.Header().Get("Location"), claim) {
+		t.Fatalf("OIDC invitation begin = %d location=%q body=%s", invitationBegin.Code, invitationBegin.Header().Get("Location"), invitationBegin.Body.String())
+	}
+	invitationAuthorizationURL, err := url.Parse(invitationBegin.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactionMutex.Lock()
+	expectedNonce = invitationAuthorizationURL.Query().Get("nonce")
+	expectedChallenge = invitationAuthorizationURL.Query().Get("code_challenge")
+	transactionMutex.Unlock()
+	var invitationBinding *http.Cookie
+	for _, cookie := range invitationBegin.Result().Cookies() {
+		if cookie.Name == api.BrowserExternalLoginCookieName {
+			invitationBinding = cookie
+		}
+	}
+	if invitationBinding == nil {
+		t.Fatal("OIDC invitation binding cookie is missing")
+	}
+	invitationCallbackPath := model.APIURLSuffix + "/auth/providers/" + invitationProviderID +
+		"/callback?state=" + url.QueryEscape(invitationAuthorizationURL.Query().Get("state")) + "&code=" + url.QueryEscape(code)
+	invitationCallbackRequest := httptest.NewRequest(http.MethodGet, invitationCallbackPath, nil)
+	invitationCallbackRequest.AddCookie(invitationBinding)
+	invitationCallback := httptest.NewRecorder()
+	helper.Handler().ServeHTTP(invitationCallback, invitationCallbackRequest)
+	if invitationCallback.Code != http.StatusSeeOther || invitationCallback.Header().Get("Location") != "/join" {
+		t.Fatalf("OIDC invitation callback = %d location=%q body=%s", invitationCallback.Code, invitationCallback.Header().Get("Location"), invitationCallback.Body.String())
+	}
+	invitedIdentity, err := persistence.ExternalIdentity().GetByProviderSubject(context.Background(), invitationProviderID, subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invitedUser, err := persistence.User().Get(context.Background(), invitedIdentity.UserID.String())
+	if err != nil || invitedUser.Email != invitedEmail || !invitedUser.EmailVerified {
+		t.Fatalf("OIDC invitation User = %#v, %v", invitedUser, err)
+	}
+	stillPending, err := persistence.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
+	if err != nil || stillPending.ID != pendingInvitation.ID || stillPending.State != model.InvitationPending || stillPending.AcceptedUserID.IsValid() {
+		t.Fatalf("OIDC invitation package changed = %#v, %v", stillPending, err)
+	}
+	invitedAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitedUser.ID.String())
+	invitedMemberships, _ := persistence.ClassMember().ListByUser(context.Background(), invitedUser.ID.String())
+	invitedBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitedUser.ID.String())
+	if len(invitedAffiliations) != 0 || len(invitedMemberships) != 0 || len(invitedBindings) != 0 {
+		t.Fatalf("OIDC invitation admission granted package: affiliations=%#v memberships=%#v bindings=%#v",
+			invitedAffiliations, invitedMemberships, invitedBindings)
+	}
+	invitationReplayRequest := httptest.NewRequest(http.MethodGet, invitationCallbackPath, nil)
+	invitationReplayRequest.AddCookie(invitationBinding)
+	invitationReplay := httptest.NewRecorder()
+	helper.Handler().ServeHTTP(invitationReplay, invitationReplayRequest)
+	if invitationReplay.Code != http.StatusUnauthorized {
+		t.Fatalf("OIDC invitation callback replay = %d body=%s", invitationReplay.Code, invitationReplay.Body.String())
+	}
+	if strings.Contains(helper.Logs.String(), claim) {
+		t.Fatal("raw Invitation claim appeared in OIDC logs")
+	}
+	subject, claimedUsername, claimedEmail = linkedSubject, "oidc.student", "oidc.student@example.edu"
 
 	deniedBegin := performJSONRequest(
 		helper.Handler(),
@@ -306,7 +390,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		},
 	)
-	if err != nil || len(loginAudits) != 2 {
+	if err != nil || len(loginAudits) != 3 {
 		t.Fatalf("OIDC login audits = %#v, %v", loginAudits, err)
 	}
 	for _, event := range loginAudits {
@@ -315,9 +399,76 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		}
 	}
 
+	loginAgain := func() *httptest.ResponseRecorder {
+		begin := performJSONRequest(helper.Handler(), http.MethodGet,
+			"/api/v1/auth/providers/"+providerID+"/login?client_type=web", nil, "")
+		if begin.Code != http.StatusSeeOther {
+			t.Fatalf("OIDC repeat begin status=%d body=%s", begin.Code, begin.Body.String())
+		}
+		authorizationURL, parseErr := url.Parse(begin.Header().Get("Location"))
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		transactionMutex.Lock()
+		expectedNonce = authorizationURL.Query().Get("nonce")
+		expectedChallenge = authorizationURL.Query().Get("code_challenge")
+		transactionMutex.Unlock()
+		var repeatBinding *http.Cookie
+		for _, cookie := range begin.Result().Cookies() {
+			if cookie.Name == api.BrowserExternalLoginCookieName {
+				repeatBinding = cookie
+			}
+		}
+		if repeatBinding == nil {
+			t.Fatal("OIDC repeat binding cookie is missing")
+		}
+		request := httptest.NewRequest(http.MethodGet, model.APIURLSuffix+"/auth/providers/"+providerID+
+			"/callback?state="+url.QueryEscape(authorizationURL.Query().Get("state"))+"&code="+url.QueryEscape(code), nil)
+		request.AddCookie(repeatBinding)
+		response := httptest.NewRecorder()
+		helper.Handler().ServeHTTP(response, request)
+		return response
+	}
+
+	claimedUsername, claimedEmail = "changed.oidc", "changed.oidc@example.edu"
+	claimedFirstName, claimedLastName = "Changed", "OIDC Profile"
+	if response := loginAgain(); response.Code != http.StatusSeeOther {
+		t.Fatalf("OIDC changed-claim login status = %d", response.Code)
+	}
+	unchangedUser, err := persistence.User().Get(context.Background(), user.ID.String())
+	if err != nil || unchangedUser.Username != "oidc.student" || unchangedUser.Email != "oidc.student@example.edu" ||
+		unchangedUser.FirstName != "OIDC" || unchangedUser.LastName != "Student" {
+		t.Fatalf("OIDC claims overwrote established User = %#v, %v", unchangedUser, err)
+	}
+
+	subject = "ineligible-oidc-subject"
+	claimedUsername, claimedEmail = "ineligible.oidc", "ineligible.oidc@example.edu"
+	claimedHomeOrg = "outside.example"
+	if response := loginAgain(); response.Code != http.StatusUnauthorized {
+		t.Fatalf("ineligible OIDC auto_provision status = %d", response.Code)
+	}
+	if _, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject); !store.IsNotFound(err) {
+		t.Fatalf("ineligible OIDC subject persisted an identity: %v", err)
+	}
+
+	subject = "conflicting-oidc-subject"
+	claimedUsername, claimedEmail, claimedHomeOrg = "conflicting.oidc", "oidc.student@example.edu", "example.edu"
+	conflictResponse := loginAgain()
+	if conflictResponse.Code != http.StatusConflict {
+		t.Fatalf("conflicting OIDC auto_provision status = %d", conflictResponse.Code)
+	}
+	if body := conflictResponse.Body.String(); strings.Contains(body, subject) || strings.Contains(body, claimedEmail) || strings.Contains(body, user.ID.String()) {
+		t.Fatalf("conflicting OIDC response disclosed account or provider claims: %s", body)
+	}
+	if _, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject); !store.IsNotFound(err) {
+		t.Fatalf("conflicting OIDC subject persisted an identity: %v", err)
+	}
+
 	for _, secret := range []string{
 		code,
-		subject,
+		linkedSubject,
+		"ineligible-oidc-subject",
+		"conflicting-oidc-subject",
 		bindingCookie.Value,
 		"provider-access-token",
 	} {

@@ -369,7 +369,16 @@ func (s SQLSessionStore) RevokeWithAudit(
 	if utf8.RuneCountInString(reason) > model.SessionRevocationMaxRunes {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
+	payloadKeyID, err := validateSecurityNoticeMail(model.UserID(input.UserID), input.Occurrence, input.Delivery, input.DeliveryJob, model.MailTemplateIdentitySessionsRevokedByAdmin, input.RevokedAt)
+	if err != nil {
+		return nil, err
+	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited session revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.SessionRevocationResult, error) {
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
 		if err := lockUserSessions(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
@@ -404,6 +413,9 @@ func (s SQLSessionStore) RevokeWithAudit(
 		}
 		session.RevokedAt = model.OptionalTimeFrom(revokedAt)
 		session.RevocationReason = reason
+		if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
+			return nil, err
+		}
 		encoded, appErr := model.EncodeAuditData(session.Auditable())
 		if appErr != nil {
 			return nil, appErr
@@ -457,7 +469,16 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 	if utf8.RuneCountInString(reason) > model.SessionRevocationMaxRunes {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
+	payloadKeyID, err := validateSecurityNoticeMail(model.UserID(input.UserID), input.Occurrence, input.Delivery, input.DeliveryJob, model.MailTemplateIdentitySessionsRevokedByAdmin, input.RevokedAt)
+	if err != nil {
+		return nil, err
+	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user session revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.UserSessionsRevocationResult, error) {
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
 		if err := lockUserSessions(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
@@ -470,6 +491,11 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 		sessions, err := revokedSessionModels(rows, input.RevokedAt, reason)
 		if err != nil {
 			return nil, err
+		}
+		if len(sessions) > 0 {
+			if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
+				return nil, err
+			}
 		}
 		encoded, appErr := model.EncodeAuditData(map[string]any{
 			"user_id":               input.UserID,

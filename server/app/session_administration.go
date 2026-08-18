@@ -40,27 +40,35 @@ type sessionAdministrationAuthorizer interface {
 	AuthorizeManage(context.Context, Invocation, string) error
 }
 
+type sessionAdministrationUserStore interface {
+	Get(context.Context, string) (*model.User, error)
+}
+
 type sessionAdministrationEffects interface {
 	SessionsRevoked(context.Context, string, []*model.Session, []string)
 }
 
 type sessionAdministrationService struct {
 	sessions      sessionAdministrationStore
+	users         sessionAdministrationUserStore
 	authorization sessionAdministrationAuthorizer
 	audit         mutationAuditor
+	mail          securityNoticeMailPreparer
 	effects       sessionAdministrationEffects
 	now           func() time.Time
 }
 
 func newSessionAdministrationService(
 	sessions sessionAdministrationStore,
+	users sessionAdministrationUserStore,
 	authorization sessionAdministrationAuthorizer,
 	audit mutationAuditor,
+	mail securityNoticeMailPreparer,
 	effects sessionAdministrationEffects,
 	now func() time.Time,
 ) *sessionAdministrationService {
 	return &sessionAdministrationService{
-		sessions: sessions, authorization: authorization, audit: audit, effects: effects, now: now,
+		sessions: sessions, users: users, authorization: authorization, audit: audit, mail: mail, effects: effects, now: now,
 	}
 }
 
@@ -133,6 +141,15 @@ func (s *sessionAdministrationService) RevokeOne(
 		}
 		return sessionAdministrationError(err)
 	}
+	user, err := s.users.Get(ctx, userID)
+	if err != nil {
+		return sessionAdministrationError(err)
+	}
+	now := model.TimeFromMillis(s.now().UnixMilli())
+	prepared, err := s.prepareRevocationNotice(user, now)
+	if err != nil {
+		return sessionAdministrationError(err)
+	}
 	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -144,10 +161,11 @@ func (s *sessionAdministrationService) RevokeOne(
 			Value:      map[string]any{"user_id": userID, "session_id": sessionID},
 			Prior:      session.Auditable(),
 		},
-		s.now,
+		func() time.Time { return now },
 		func(ctx context.Context, reference mutationAttemptReference) (*store.SessionRevocationResult, error) {
 			return s.sessions.RevokeWithAudit(ctx, &store.SessionRevocation{
 				SessionID: sessionID, UserID: userID, RevokedAt: reference.MutationAtMillis,
+				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
 				Reason:       "session revoked by administrator",
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
@@ -181,6 +199,15 @@ func (s *sessionAdministrationService) RevokeAll(
 	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
 		return err
 	}
+	user, err := s.users.Get(ctx, userID)
+	if err != nil {
+		return sessionAdministrationError(err)
+	}
+	now := model.TimeFromMillis(s.now().UnixMilli())
+	prepared, err := s.prepareRevocationNotice(user, now)
+	if err != nil {
+		return sessionAdministrationError(err)
+	}
 	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -191,10 +218,11 @@ func (s *sessionAdministrationService) RevokeAll(
 			Operation:  "revoke_sessions",
 			Value:      map[string]any{"user_id": userID},
 		},
-		s.now,
+		func() time.Time { return now },
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserSessionsRevocationResult, error) {
 			return s.sessions.RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
 				UserID: userID, RevokedAt: reference.MutationAtMillis,
+				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
 				Reason:       "sessions revoked by administrator",
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
@@ -206,6 +234,12 @@ func (s *sessionAdministrationService) RevokeAll(
 	}
 	s.effects.SessionsRevoked(ctx, userID, result.Sessions, result.TokenHashes)
 	return nil
+}
+
+func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*preparedDirectMail, error) {
+	return s.mail.PrepareSecurityNotice(securityNoticePreparation{
+		Recipient: user, TemplateKey: model.MailTemplateIdentitySessionsRevokedByAdmin, At: at,
+	})
 }
 
 type sessionAdministrationAuthorization struct {

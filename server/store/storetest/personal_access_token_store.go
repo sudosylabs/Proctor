@@ -50,11 +50,11 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 	requireNoError(t, err)
 	at := model.MillisFromTime(token.CreatedAt) + 10
 	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt: at, RevocationReason: "account disabled",
 		AuditEventID: audit.ID.String(), AuditAt: at,
-	})
+	}))
 	requireNoError(t, err)
 
 	if _, err := ss.PersonalAccessToken().Resolve(

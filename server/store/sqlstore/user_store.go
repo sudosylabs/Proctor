@@ -570,7 +570,20 @@ func (s SQLUserStore) SetDisabledWithAudit(
 	if input.Disabled && utf8.RuneCountInString(revocationReason) > model.SessionRevocationMaxRunes {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
+	templateKey := model.MailTemplateIdentityAccountEnabled
+	if input.Disabled {
+		templateKey = model.MailTemplateIdentityAccountDisabled
+	}
+	payloadKeyID, err := validateSecurityNoticeMail(model.UserID(input.ID), input.Occurrence, input.Delivery, input.DeliveryJob, templateKey, input.ChangedAt)
+	if err != nil {
+		return nil, err
+	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user disabled state change", func(ctx context.Context, tx *sqlxTxWrapper) (*store.UserDisabledStateResult, error) {
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
 		// Serialize disabling with login and refresh rotation before changing the
 		// user row. A login that commits first is included in the revocation; one
 		// that follows observes the disabled account.
@@ -649,6 +662,9 @@ func (s SQLUserStore) SetDisabledWithAudit(
 			}
 			result.RevokedTokenHashes = hashes
 		}
+		if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
+			return nil, err
+		}
 
 		encoded, appErr := model.EncodeAuditData(result.User.Auditable())
 		if appErr != nil {
@@ -689,8 +705,9 @@ func setUserDisabled(
 	result, err := tx.Exec(ctx, `
 		UPDATE users
 		   SET updated_at = ?, disabled_at = ?, revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL AND revision = ?`,
-		updateTime, disabledTime, id, expectedRevision,
+		 WHERE id = ? AND archived_at IS NULL AND revision = ?
+		   AND ((? AND disabled_at IS NULL) OR (NOT ? AND disabled_at IS NOT NULL))`,
+		updateTime, disabledTime, id, expectedRevision, disabledAt != 0, disabledAt != 0,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(

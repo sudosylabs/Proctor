@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS mail_occurrences;
 DROP FUNCTION IF EXISTS reject_mail_occurrence_update();
 ALTER TABLE IF EXISTS role_bindings
     DROP CONSTRAINT IF EXISTS role_bindings_origin_invitation_id_fkey;
+DROP TABLE IF EXISTS external_login_states;
 DROP TABLE IF EXISTS invitations;
 DROP TABLE IF EXISTS job_attempts;
 DROP TABLE IF EXISTS job_permanent_occurrences;
@@ -26,7 +27,6 @@ DROP TABLE IF EXISTS command_outcomes;
 DROP TABLE IF EXISTS exam_sitting_live_corrections;
 DROP TABLE IF EXISTS exam_sitting_private_actions;
 DROP FUNCTION IF EXISTS reject_exam_sitting_private_action_mutation();
-DROP TABLE IF EXISTS external_login_states;
 DROP TABLE IF EXISTS audit_events;
 DROP TABLE IF EXISTS browser_authentication_transactions;
 DROP TABLE IF EXISTS mfa_recovery_codes;

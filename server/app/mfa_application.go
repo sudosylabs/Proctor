@@ -33,6 +33,7 @@ type mfaApplicationService struct {
 	institutions            store.InstitutionStore
 	audit                   mfaAudit
 	effects                 mfaEffects
+	mail                    securityNoticeMailPreparer
 	mechanics               *mfaMechanics
 	recentAuthenticationTTL time.Duration
 	now                     func() time.Time
@@ -45,6 +46,7 @@ func newMFAApplicationService(
 	institutions store.InstitutionStore,
 	audit mfaAudit,
 	effects mfaEffects,
+	mail securityNoticeMailPreparer,
 	mechanics *mfaMechanics,
 	recentAuthenticationTTL time.Duration,
 	now func() time.Time,
@@ -62,6 +64,8 @@ func newMFAApplicationService(
 		return nil, errors.New("MFA audit is required")
 	case effects == nil:
 		return nil, errors.New("MFA effects are required")
+	case mail == nil:
+		return nil, errors.New("MFA mail preparer is required")
 	case mechanics == nil:
 		return nil, errors.New("MFA mechanics are required")
 	case recentAuthenticationTTL <= 0:
@@ -72,7 +76,7 @@ func newMFAApplicationService(
 	return &mfaApplicationService{
 		users: users, credentials: credentials, sessions: sessions,
 		institutions: institutions, audit: audit, effects: effects,
-		mechanics: mechanics, recentAuthenticationTTL: recentAuthenticationTTL,
+		mail: mail, mechanics: mechanics, recentAuthenticationTTL: recentAuthenticationTTL,
 		now: now,
 	}, nil
 }
@@ -190,7 +194,7 @@ func (s *mfaApplicationService) Activate(
 	if err != nil {
 		return nil, mfaStoreFailure(err)
 	}
-	now := s.now()
+	now := model.TimeFromMillis(s.now().UnixMilli())
 	if !credential.IsPendingAt(now) {
 		return nil, mfaInvalidCodeError("ActivateMFA")
 	}
@@ -208,6 +212,12 @@ func (s *mfaApplicationService) Activate(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
+	prepared, appErr := s.prepareSecurityNotice(
+		ctx, principal.UserID, model.MailTemplateIdentityMFAEnabled, now,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
 	resource, appErr := s.auditResource(ctx)
 	if appErr != nil {
 		return nil, appErr
@@ -218,10 +228,11 @@ func (s *mfaApplicationService) Activate(
 	if appErr != nil {
 		return nil, appErr
 	}
-	activated, err := s.credentials.Activate(
-		ctx, credential.ID.String(), principal.UserID.String(), timeStep,
-		recoveryCodes, principal.SessionID.String(), now.UnixMilli(),
-	)
+	activated, err := s.credentials.Activate(ctx, &store.MFAActivationMutation{
+		CredentialID: credential.ID.String(), UserID: principal.UserID.String(), TimeStep: timeStep,
+		RecoveryCodes: recoveryCodes, SessionID: principal.SessionID.String(), At: now.UnixMilli(),
+		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
+	})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, "MFA", err)
 	}
@@ -229,15 +240,6 @@ func (s *mfaApplicationService) Activate(
 		ctx, principal.UserID.String(), []string{principal.SessionID.String()},
 		activated.AccessTokenHashes,
 	)
-	if appErr := s.audit.Complete(
-		ctx, auditID, model.AuditStatusSuccess, "",
-		map[string]any{
-			"credential":          activated.Credential.Auditable(),
-			"recovery_code_count": len(rawCodes),
-		},
-	); appErr != nil {
-		return nil, appErr
-	}
 	return &MFAActivation{RecoveryCodes: rawCodes}, nil
 }
 
@@ -314,6 +316,13 @@ func (s *mfaApplicationService) RegenerateRecoveryCodes(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
+	now := model.TimeFromMillis(s.now().UnixMilli())
+	prepared, appErr := s.prepareSecurityNotice(
+		ctx, principal.UserID, model.MailTemplateIdentityMFARecoveryCodesRegenerated, now,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
 	resource, appErr := s.auditResource(ctx)
 	if appErr != nil {
 		return nil, appErr
@@ -324,18 +333,13 @@ func (s *mfaApplicationService) RegenerateRecoveryCodes(
 	if appErr != nil {
 		return nil, appErr
 	}
-	if err := s.credentials.ReplaceRecoveryCodes(
-		ctx, principal.UserID.String(), codes, s.now().UnixMilli(),
-	); err != nil {
+	if err := s.credentials.ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
+		UserID: principal.UserID.String(), RecoveryCodes: codes, At: now.UnixMilli(),
+		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
+	}); err != nil {
 		return nil, s.failMutation(
 			ctx, auditID, "RegenerateMFARecoveryCodes.replace", err,
 		)
-	}
-	if appErr := s.audit.Complete(
-		ctx, auditID, model.AuditStatusSuccess, "",
-		map[string]any{"recovery_code_count": len(rawCodes)},
-	); appErr != nil {
-		return nil, appErr
 	}
 	return rawCodes, nil
 }
@@ -351,6 +355,13 @@ func (s *mfaApplicationService) Disable(
 	if err := s.requireEnabled(); err != nil {
 		return err
 	}
+	now := model.TimeFromMillis(s.now().UnixMilli())
+	prepared, appErr := s.prepareSecurityNotice(
+		ctx, principal.UserID, model.MailTemplateIdentityMFADisabled, now,
+	)
+	if appErr != nil {
+		return appErr
+	}
 	resource, appErr := s.auditResource(ctx)
 	if appErr != nil {
 		return appErr
@@ -359,18 +370,45 @@ func (s *mfaApplicationService) Disable(
 	if appErr != nil {
 		return appErr
 	}
-	result, err := s.credentials.Disable(
-		ctx, principal.UserID.String(), s.now().UnixMilli(),
-	)
+	result, err := s.credentials.Disable(ctx, &store.MFADisablement{
+		UserID: principal.UserID.String(), At: now.UnixMilli(), AuditEventID: auditID,
+		AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
+	})
 	if err != nil {
 		return s.failMutation(ctx, auditID, "DisableMFA.disable", err)
 	}
 	s.effects.SessionsRevoked(
 		ctx, principal.UserID.String(), nil, result.AccessTokenHashes,
 	)
-	return s.audit.Complete(
-		ctx, auditID, model.AuditStatusSuccess, "", map[string]any{"disabled": true},
-	)
+	return nil
+}
+
+func (s *mfaApplicationService) prepareSecurityNotice(
+	ctx context.Context,
+	userID model.UserID,
+	key model.MailTemplateKey,
+	at time.Time,
+) (*preparedDirectMail, error) {
+	user, err := s.users.Get(ctx, userID.String())
+	if err != nil {
+		return nil, mfaStoreFailure(err)
+	}
+	prepared, err := s.mail.PrepareSecurityNotice(securityNoticePreparation{
+		Recipient: user, TemplateKey: key, At: at,
+	})
+	if err != nil {
+		return nil, authenticationUnavailable(err)
+	}
+	return prepared, nil
+}
+
+func mfaSecurityNotice(prepared *preparedDirectMail) store.MFASecurityNotice {
+	if prepared == nil {
+		return store.MFASecurityNotice{}
+	}
+	return store.MFASecurityNotice{
+		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
+	}
 }
 
 // VerifyLogin is the narrow behavior Authentication consumes. Authentication

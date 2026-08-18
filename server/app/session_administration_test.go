@@ -73,6 +73,22 @@ func (e *sessionAdministrationEffectsFake) SessionsRevoked(context.Context, stri
 	*e.events = append(*e.events, "publish-revocation")
 }
 
+type sessionAdministrationUserStoreFake struct {
+	events *[]string
+	user   *model.User
+	err    error
+}
+
+func (s *sessionAdministrationUserStoreFake) Get(context.Context, string) (*model.User, error) {
+	*s.events = append(*s.events, "get-user")
+	return s.user, s.err
+}
+
+func sessionAdministrationTestUser(id string) *model.User {
+	return &model.User{ID: model.UserID(id), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 1,
+		Username: "student", Email: "student@example.edu", DisplayName: "Student", Locale: "en", Timezone: "UTC"}
+}
+
 func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	t.Parallel()
 	events := []string{}
@@ -80,8 +96,10 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	session := &model.Session{ID: model.NewSessionID(), UserID: model.UserID(userID)}
 	service := newSessionAdministrationService(
 		&sessionAdministrationStoreFake{events: &events, list: []*model.Session{session}},
+		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events},
+		&securityNoticeMailerFake{events: &events},
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
@@ -115,10 +133,13 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 			Session: &revoked, TokenHashes: []string{"hash"},
 		},
 	}
+	mailer := &securityNoticeMailerFake{events: &events}
 	service := newSessionAdministrationService(
 		persistence,
+		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		mailer,
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
@@ -130,7 +151,11 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 	if persistence.revokeInput.SessionID != session.ID.String() || persistence.revokeInput.AuditEventID == "" {
 		t.Fatalf("input = %#v", persistence.revokeInput)
 	}
-	want := []string{"authorize-manage", "get-session", "audit-begin", "store-revoke", "publish-revocation"}
+	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateIdentitySessionsRevokedByAdmin ||
+		persistence.revokeInput.Occurrence == nil || persistence.revokeInput.Delivery == nil || persistence.revokeInput.DeliveryJob == nil {
+		t.Fatalf("mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
+	}
+	want := []string{"authorize-manage", "get-session", "get-user", "prepare-mail", "audit-begin", "store-revoke", "publish-revocation"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -150,8 +175,10 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 			session:   session,
 			revokeErr: store.NewErrConflict("session", "busy", errors.New("busy")),
 		},
+		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&securityNoticeMailerFake{events: &events},
 		&sessionAdministrationEffectsFake{events: &events},
 		time.Now,
 	)
@@ -161,7 +188,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 	if !Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
 	}
-	want := []string{"authorize-manage", "get-session", "audit-begin", "store-revoke", "audit-fail"}
+	want := []string{"authorize-manage", "get-session", "get-user", "prepare-mail", "audit-begin", "store-revoke", "audit-fail"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -180,18 +207,20 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 	}
 	service := newSessionAdministrationService(
 		persistence,
+		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&securityNoticeMailerFake{events: &events},
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	if err := service.RevokeAll(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: userID}); err != nil {
 		t.Fatal(err)
 	}
-	if persistence.revokeAllInput.UserID != userID || persistence.revokeAllInput.AuditEventID == "" {
+	if persistence.revokeAllInput.UserID != userID || persistence.revokeAllInput.AuditEventID == "" || persistence.revokeAllInput.Occurrence == nil {
 		t.Fatalf("input = %#v", persistence.revokeAllInput)
 	}
-	want := []string{"authorize-manage", "audit-begin", "store-revoke-all", "publish-revocation"}
+	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-revoke-all", "publish-revocation"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -204,8 +233,10 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 	session := &model.Session{ID: model.NewSessionID(), UserID: model.NewUserID()}
 	service := newSessionAdministrationService(
 		&sessionAdministrationStoreFake{events: &events, session: session},
+		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events},
+		&securityNoticeMailerFake{events: &events},
 		&sessionAdministrationEffectsFake{events: &events},
 		time.Now,
 	)

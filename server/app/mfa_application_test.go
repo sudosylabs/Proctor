@@ -150,6 +150,60 @@ func TestMFARecoveryCodeLoginConsumptionIsSerialized(t *testing.T) {
 	}
 }
 
+func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	principal := mfaTestPrincipal(now, model.AuthenticationMultiFactor)
+	persistence := &mfaApplicationStoreFake{
+		session: &model.Session{ID: principal.SessionID, UserID: principal.UserID},
+	}
+	mailer := &mfaSecurityNoticeMailPreparerFake{}
+	service := newTestMFAApplicationService(t, persistence, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
+	service.mail = mailer
+	application := &App{mfaApplication: service}
+	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "mfa-notices"})
+	const secret = "JBSWY3DPEHPK3PXP"
+	encrypted, err := service.mechanics.encrypt(principal.UserID.String(), secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence.credential = &model.MFACredential{
+		ID: model.NewMFACredentialID(), UserID: principal.UserID,
+		State: model.MFAStatePending, EncryptedSecret: encrypted,
+		EncryptionKeyID: service.mechanics.primary, CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now.Add(-time.Minute), PendingExpiresAt: model.OptionalTimeFrom(now.Add(time.Minute)),
+	}
+	code, err := computeTOTP(secret, now.Unix()/30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = application.ActivateMFA(context.Background(), invocation, ActivateMFACommand{Code: code}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := application.RegenerateMFARecoveryCodes(context.Background(), invocation, RegenerateMFARecoveryCodesCommand{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.DisableMFA(context.Background(), invocation, DisableMFACommand{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(mailer.requests) != 3 {
+		t.Fatalf("mail preparations = %d, want 3", len(mailer.requests))
+	}
+	for index, want := range []model.MailTemplateKey{
+		model.MailTemplateIdentityMFAEnabled,
+		model.MailTemplateIdentityMFARecoveryCodesRegenerated,
+		model.MailTemplateIdentityMFADisabled,
+	} {
+		request := mailer.requests[index]
+		if request.TemplateKey != want || request.Recipient.ID != principal.UserID ||
+			!request.At.Equal(now) {
+			t.Fatalf("mail request %d = %#v", index, request)
+		}
+	}
+}
+
 func TestMFAApplicationServiceRequiresFocusedDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -160,37 +214,41 @@ func TestMFAApplicationServiceRequiresFocusedDependencies(t *testing.T) {
 	institutions := mfaApplicationInstitutionStoreFake{persistence: persistence}
 	audit := &mfaApplicationAuditFake{}
 	effects := &mfaApplicationEffectsFake{}
+	mail := &mfaSecurityNoticeMailPreparerFake{}
 	now := time.Now
 	tests := []struct {
 		name  string
 		build func() (*mfaApplicationService, error)
 	}{
 		{"user store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(nil, persistence, sessions, institutions, audit, effects, mechanics, time.Minute, now)
+			return newMFAApplicationService(nil, persistence, sessions, institutions, audit, effects, mail, mechanics, time.Minute, now)
 		}},
 		{"MFA store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, nil, sessions, institutions, audit, effects, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, nil, sessions, institutions, audit, effects, mail, mechanics, time.Minute, now)
 		}},
 		{"session store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, nil, institutions, audit, effects, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, nil, institutions, audit, effects, mail, mechanics, time.Minute, now)
 		}},
 		{"institution store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, nil, audit, effects, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, nil, audit, effects, mail, mechanics, time.Minute, now)
 		}},
 		{"audit", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, nil, effects, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, nil, effects, mail, mechanics, time.Minute, now)
 		}},
 		{"effects", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, nil, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, nil, mail, mechanics, time.Minute, now)
+		}},
+		{"mail", func() (*mfaApplicationService, error) {
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, nil, mechanics, time.Minute, now)
 		}},
 		{"mechanics", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, nil, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, nil, time.Minute, now)
 		}},
 		{"recent authentication TTL", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mechanics, 0, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, 0, now)
 		}},
 		{"clock", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mechanics, time.Minute, nil)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, time.Minute, nil)
 		}},
 	}
 	for _, test := range tests {
@@ -215,7 +273,7 @@ func newTestMFAApplicationService(
 		mfaApplicationUserStoreFake{}, persistence,
 		mfaApplicationSessionStoreFake{persistence: persistence},
 		mfaApplicationInstitutionStoreFake{persistence: persistence}, audit, effects,
-		mustTestMFAMechanics(t), 15*time.Minute, func() time.Time { return now },
+		&mfaSecurityNoticeMailPreparerFake{}, mustTestMFAMechanics(t), 15*time.Minute, func() time.Time { return now },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -257,6 +315,9 @@ type mfaApplicationStoreFake struct {
 	consumed       bool
 	upgradeCalls   int
 	credentialGets int
+	activation     *store.MFAActivationMutation
+	regeneration   *store.MFARecoveryCodesRegeneration
+	disablement    *store.MFADisablement
 }
 
 func (s *mfaApplicationStoreFake) appendEvent(event string) {
@@ -301,10 +362,41 @@ func (s *mfaApplicationStoreFake) UpgradeSession(context.Context, string, string
 	return append([]string(nil), s.hashes...), nil
 }
 
+func (s *mfaApplicationStoreFake) Activate(_ context.Context, input *store.MFAActivationMutation) (*store.MFAActivationResult, error) {
+	s.activation = input
+	active := *s.credential
+	active.State = model.MFAStateActive
+	return &store.MFAActivationResult{Credential: &active, Session: s.session, AccessTokenHashes: append([]string(nil), s.hashes...)}, nil
+}
+
+func (s *mfaApplicationStoreFake) ReplaceRecoveryCodes(_ context.Context, input *store.MFARecoveryCodesRegeneration) error {
+	s.regeneration = input
+	return nil
+}
+
+func (s *mfaApplicationStoreFake) Disable(_ context.Context, input *store.MFADisablement) (*store.MFADisableResult, error) {
+	s.disablement = input
+	return &store.MFADisableResult{AccessTokenHashes: append([]string(nil), s.hashes...)}, nil
+}
+
 type mfaApplicationUserStoreFake struct{ store.UserStore }
 
 func (mfaApplicationUserStoreFake) Get(_ context.Context, id string) (*model.User, error) {
 	return &model.User{ID: model.UserID(id), Email: "user@example.edu"}, nil
+}
+
+type mfaSecurityNoticeMailPreparerFake struct {
+	requests []securityNoticePreparation
+}
+
+func (m *mfaSecurityNoticeMailPreparerFake) PrepareSecurityNotice(request securityNoticePreparation) (*preparedDirectMail, error) {
+	m.requests = append(m.requests, request)
+	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
+	return &preparedDirectMail{
+		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: request.TemplateKey, ActorUserID: request.Recipient.ID, CreatedAt: request.At},
+		Delivery:   &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: request.Recipient.ID, TemplateKey: request.TemplateKey, Deadline: request.At.Add(securityNoticeDeliveryLifetime)},
+		Job:        &model.Job{ID: jobID, Type: model.JobTypeMailDeliver},
+	}, nil
 }
 
 type mfaApplicationSessionStoreFake struct {

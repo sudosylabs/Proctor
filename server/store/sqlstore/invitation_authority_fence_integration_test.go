@@ -51,11 +51,11 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 		DisableInviterBeforeIssue: func(t *testing.T, ctx context.Context, inviter *model.User, operation func() error) error {
 			audit := saveInvitationAuthorityAudit(t, ctx, secondary, inviter.ID, string(model.ActionUserManage), model.ResourceUser, inviter.ID.String(), model.RoleScopeInstitution, invitationTestInstitutionID(t, ctx, secondary).String())
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_disable", "users", "UPDATE users", 8154700260822, func() error {
-				_, err := secondary.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+				_, err := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 					ID: inviter.ID.String(), ExpectedRevision: inviter.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 					RevocationReason: "concurrent Invitation authority change", AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
 					Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-				})
+				}))
 				return err
 			}, operation)
 		},

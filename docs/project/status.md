@@ -283,8 +283,11 @@ and reserved credential-delivery Job atomically. Reissue invalidates the prior
 credential and suppresses its unsent delivery. Password-reset completion now
 atomically changes the password, revokes Sessions, consumes the reset token,
 records its audit, and queues only the password-changed security notice.
-Product-transition mail beyond account recovery and the student Invitation
-remains unimplemented.
+Implemented product-transition mail also covers student and teacher Invitation
+issuance and acceptance, explicit email transitions, account enable and
+disable, explicit administrative Session revocation, and MFA enable, disable,
+and recovery-code regeneration. The remaining catalog transitions are not yet
+implemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
@@ -331,8 +334,17 @@ External initiation, identity resolution or auto-provisioning, and Session
 issuance require the exact selected provider ID. Each terminal operation
 rechecks the authoritative PostgreSQL policy in its committing transaction;
 protocol names are never used as provider-identity fallbacks. Detailed
-`linked_only`, `invitation_required`, and `auto_provision` admission behavior
-remains part of the later Invitation and identity-reconciliation slices.
+provider admission is now enforced: `linked_only` resolves only an existing
+immutable subject link, ordinary `invitation_required` login fails safely when
+it has no purpose-bound Invitation claim, a claimed invitation flow may create
+only a relationship-free User/link/Web Session while leaving the package
+pending, and `auto_provision` creates only an eligible relationship-free User.
+Email never merges accounts, changed provider
+profile claims never overwrite an established User, and a provider omitted by
+the current node fails closed while its durable policy identity and links are
+preserved. The atomic transition that links an external identity to an intended
+existing User and accepts the frozen Invitation package remains the later
+Invitation/identity-reconciliation slice.
 This is a reset-only pre-release baseline: there is no supported upgrade path
 for development rows whose external Sessions lack an exact provider ID and
 `ExternalIdentityID`.

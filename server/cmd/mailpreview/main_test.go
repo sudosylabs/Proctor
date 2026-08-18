@@ -36,7 +36,10 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	if bytes.Contains(firstIndex, []byte("@")) {
 		t.Fatal("preview index appears to contain a production-like email address")
 	}
-	for _, key := range []string{"identity.verify_email", "identity.password_reset", "identity.password_changed"} {
+	for _, key := range []string{
+		"identity.verify_email", "identity.password_reset", "identity.password_changed",
+		"identity.mfa_enabled", "identity.mfa_disabled", "identity.mfa_recovery_codes_regenerated",
+	} {
 		if _, err := os.Stat(filepath.Join(first, key+".html")); err != nil {
 			t.Fatalf("%s HTML preview: %v", key, err)
 		}

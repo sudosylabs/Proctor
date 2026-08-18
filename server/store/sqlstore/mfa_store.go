@@ -121,28 +121,40 @@ func (s SQLMFAStore) GetByUser(
 
 func (s SQLMFAStore) Activate(
 	ctx context.Context,
-	credentialID string,
-	userID string,
-	timeStep int64,
-	recoveryCodes []*model.MFARecoveryCode,
-	sessionID string,
-	now int64,
+	input *store.MFAActivationMutation,
 ) (*store.MFAActivationResult, error) {
-	if !model.IsValidId(credentialID) || !model.IsValidId(userID) ||
-		!model.IsValidId(sessionID) || timeStep <= 0 || now <= 0 ||
-		len(recoveryCodes) == 0 || len(recoveryCodes) > model.MFARecoveryCodeMaxCount {
+	if input == nil || !model.IsValidId(input.CredentialID) || !model.IsValidId(input.UserID) ||
+		!model.IsValidId(input.SessionID) || input.TimeStep <= 0 || input.At <= 0 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
-	at := model.TimeFromMillis(now)
-	prepared, err := prepareMFARecoveryCodes(userID, recoveryCodes, at)
+	at := model.TimeFromMillis(input.At)
+	prepared, err := prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+	if err != nil {
+		return nil, err
+	}
+	payloadKeyID, err := validateSecurityNoticeMail(
+		model.UserID(input.UserID),
+		input.Notice.Occurrence,
+		input.Notice.Delivery,
+		input.Notice.Job,
+		model.MailTemplateIdentityMFAEnabled,
+		input.At,
+	)
 	if err != nil {
 		return nil, err
 	}
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "MFA activation", func(ctx context.Context, tx *sqlxTxWrapper) (*mfaActivationTransactionResult, error) {
-		if err := lockMFAUser(ctx, tx, userID); err != nil {
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
+		if err := lockMFAUser(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
-		if err := lockUserSessions(ctx, tx, userID); err != nil {
+		if err := lockUserSessions(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
 		var row mfaCredentialRow
@@ -156,9 +168,9 @@ func (s SQLMFAStore) Activate(
 		 RETURNING id, created_at, updated_at, archived_at, user_id, state,
 		           encrypted_secret, encryption_key_id, pending_expires_at,
 		           activated_at, last_used_time_step`,
-			at, at, timeStep, credentialID, userID, at,
+			at, at, input.TimeStep, input.CredentialID, input.UserID, at,
 		); err != nil {
-			return nil, translateError("mfa_credential", credentialID, err)
+			return nil, translateError("mfa_credential", input.CredentialID, err)
 		}
 		credential, err := row.model()
 		if err != nil {
@@ -168,7 +180,7 @@ func (s SQLMFAStore) Activate(
 		UPDATE mfa_recovery_codes
 		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
 		 WHERE user_id = ? AND archived_at IS NULL`,
-			at, at, userID,
+			at, at, input.UserID,
 		); err != nil {
 			return nil, fmt.Errorf("replace MFA recovery codes: %w", err)
 		}
@@ -177,13 +189,23 @@ func (s SQLMFAStore) Activate(
 				return nil, err
 			}
 		}
-		session, err := upgradeSessionAuthentication(ctx, tx, sessionID, userID, now)
+		session, err := upgradeSessionAuthentication(ctx, tx, input.SessionID, input.UserID, input.At)
 		if err != nil {
 			return nil, err
 		}
-		hashes, err := selectActiveAccessTokenHashes(ctx, tx, sessionID)
+		hashes, err := selectActiveAccessTokenHashes(ctx, tx, input.SessionID)
 		if err != nil {
 			return nil, err
+		}
+		if err := insertSecurityNoticeMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+			return nil, err
+		}
+		auditData, err := model.EncodeAuditData(map[string]any{"credential": credential.Auditable(), "recovery_code_count": len(prepared)})
+		if err != nil {
+			return nil, err
+		}
+		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete MFA activation audit: %w", err)
 		}
 		return &mfaActivationTransactionResult{credential: credential, session: session, hashes: hashes}, nil
 	})
@@ -277,40 +299,65 @@ func (s SQLMFAStore) UpgradeSession(
 
 func (s SQLMFAStore) ReplaceRecoveryCodes(
 	ctx context.Context,
-	userID string,
-	recoveryCodes []*model.MFARecoveryCode,
-	now int64,
+	input *store.MFARecoveryCodesRegeneration,
 ) error {
-	if !model.IsValidId(userID) || now <= 0 ||
-		len(recoveryCodes) == 0 || len(recoveryCodes) > model.MFARecoveryCodeMaxCount {
+	if input == nil || !model.IsValidId(input.UserID) || input.At <= 0 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return store.NewErrInvalidInput("mfa_recovery_code", "replace", nil)
 	}
-	at := model.TimeFromMillis(now)
-	prepared, err := prepareMFARecoveryCodes(userID, recoveryCodes, at)
+	at := model.TimeFromMillis(input.At)
+	prepared, err := prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+	if err != nil {
+		return err
+	}
+	payloadKeyID, err := validateSecurityNoticeMail(
+		model.UserID(input.UserID),
+		input.Notice.Occurrence,
+		input.Notice.Delivery,
+		input.Notice.Job,
+		model.MailTemplateIdentityMFARecoveryCodesRegenerated,
+		input.At,
+	)
 	if err != nil {
 		return err
 	}
 	_, err = runSQLTransaction(ctx, s.GetMaster().Begin, "recovery-code replacement", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
-		if err := lockMFAUser(ctx, tx, userID); err != nil {
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return struct{}{}, err
+			}
+		}
+		if err := lockMFAUser(ctx, tx, input.UserID); err != nil {
 			return struct{}{}, err
 		}
 		var credentialID string
 		if err := tx.Get(ctx, &credentialID, `
 		SELECT id FROM mfa_credentials
 		 WHERE user_id = ? AND archived_at IS NULL AND state = 'active'
-		 FOR UPDATE`, userID); err != nil {
-			return struct{}{}, translateError("mfa_credential", userID, err)
+			 FOR UPDATE`, input.UserID); err != nil {
+			return struct{}{}, translateError("mfa_credential", input.UserID, err)
 		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE mfa_recovery_codes
 		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
-		 WHERE user_id = ? AND archived_at IS NULL`, at, at, userID); err != nil {
+			 WHERE user_id = ? AND archived_at IS NULL`, at, at, input.UserID); err != nil {
 			return struct{}{}, fmt.Errorf("invalidate MFA recovery codes: %w", err)
 		}
 		for _, code := range prepared {
 			if err := insertMFARecoveryCode(ctx, tx, code); err != nil {
 				return struct{}{}, err
 			}
+		}
+		if err := insertSecurityNoticeMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+			return struct{}{}, err
+		}
+		auditData, err := model.EncodeAuditData(map[string]any{"recovery_code_count": len(prepared)})
+		if err != nil {
+			return struct{}{}, err
+		}
+		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
+			return struct{}{}, fmt.Errorf("complete MFA recovery-code audit: %w", err)
 		}
 		return struct{}{}, nil
 	})
@@ -337,35 +384,51 @@ func (s SQLMFAStore) CountRecoveryCodes(
 
 func (s SQLMFAStore) Disable(
 	ctx context.Context,
-	userID string,
-	now int64,
+	input *store.MFADisablement,
 ) (*store.MFADisableResult, error) {
-	if !model.IsValidId(userID) || now <= 0 {
+	if input == nil || !model.IsValidId(input.UserID) || input.At <= 0 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("mfa_credential", "disable", nil)
 	}
+	at := model.TimeFromMillis(input.At)
+	payloadKeyID, err := validateSecurityNoticeMail(
+		model.UserID(input.UserID),
+		input.Notice.Occurrence,
+		input.Notice.Delivery,
+		input.Notice.Job,
+		model.MailTemplateIdentityMFADisabled,
+		input.At,
+	)
+	if err != nil {
+		return nil, err
+	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "MFA disable", func(ctx context.Context, tx *sqlxTxWrapper) (*store.MFADisableResult, error) {
-		at := model.TimeFromMillis(now)
-		if err := lockMFAUser(ctx, tx, userID); err != nil {
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
+		if err := lockMFAUser(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
-		if err := lockUserSessions(ctx, tx, userID); err != nil {
+		if err := lockUserSessions(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
 		result, err := tx.Exec(ctx, `
 		UPDATE mfa_credentials
 		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
 		 WHERE user_id = ? AND archived_at IS NULL AND state = 'active'`,
-			at, at, userID)
+			at, at, input.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("disable MFA credential: %w", err)
 		}
-		if err := requireAffected(result, "mfa_credential", userID); err != nil {
+		if err := requireAffected(result, "mfa_credential", input.UserID); err != nil {
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE mfa_recovery_codes
 		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
-		 WHERE user_id = ? AND archived_at IS NULL`, at, at, userID); err != nil {
+			 WHERE user_id = ? AND archived_at IS NULL`, at, at, input.UserID); err != nil {
 			return nil, fmt.Errorf("invalidate MFA recovery codes: %w", err)
 		}
 		hashes := []string{}
@@ -378,7 +441,7 @@ func (s SQLMFAStore) Disable(
 		   AND credential.kind = 'access'
 		   AND credential.archived_at IS NULL AND credential.revoked_at IS NULL
 		 FOR UPDATE OF credential`,
-			userID); err != nil {
+			input.UserID); err != nil {
 			return nil, fmt.Errorf("select MFA session credentials: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `
@@ -387,8 +450,18 @@ func (s SQLMFAStore) Disable(
 		       authentication_strength = 'single_factor',
 		       mfa_completed_at = NULL
 		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
-			at, userID); err != nil {
+			at, input.UserID); err != nil {
 			return nil, fmt.Errorf("downgrade MFA sessions: %w", err)
+		}
+		if err := insertSecurityNoticeMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+			return nil, err
+		}
+		auditData, err := model.EncodeAuditData(map[string]any{"disabled": true})
+		if err != nil {
+			return nil, err
+		}
+		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", auditData, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete MFA disable audit: %w", err)
 		}
 		return &store.MFADisableResult{AccessTokenHashes: hashes}, nil
 	})

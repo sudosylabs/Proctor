@@ -82,7 +82,11 @@ func (s SQLExternalIdentityStore) UnlinkWithAudit(ctx context.Context, input *st
 		if !usable {
 			return nil, store.ErrLastUsableAuthenticationMethod
 		}
-		at := model.TimeFromMillis(input.ChangedAt)
+		var at time.Time
+		if err := tx.Get(ctx, &at, `SELECT clock_timestamp()`); err != nil {
+			return nil, fmt.Errorf("read external identity unlink time: %w", err)
+		}
+		at = model.TimeUTC(at)
 		if _, err := tx.Exec(ctx, `UPDATE external_identities SET updated_at=GREATEST(updated_at, ?), archived_at=? WHERE id=? AND user_id=? AND archived_at IS NULL`, at, at, identity.ID.String(), input.UserID.String()); err != nil {
 			return nil, fmt.Errorf("archive external identity: %w", err)
 		}

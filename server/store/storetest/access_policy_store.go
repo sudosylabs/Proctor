@@ -80,11 +80,11 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	// identity as the installation's only usable path. The second administrator
 	// has a password, but local login is now disabled by policy.
 	disableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, bootstrap.Administrator.ID.String())
-	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: bootstrap.Administrator.ID.String(), ExpectedRevision: bootstrap.Administrator.Revision,
 		Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: "administrator disabled account",
 		AuditEventID: disableAttempt.ID.String(), AuditAt: model.MillisFromTime(disableAttempt.CreatedAt),
-	})
+	}))
 	var lastPathConflict *store.ErrConflict
 	if !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "users_last_system_admin" {
 		t.Fatalf("disable only usable administrator path error = %v", err)
@@ -97,28 +97,28 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	// the external administrator usable again. Local credentials remain governed
 	// only by LocalLoginEnabled.
 	removedProviderAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
-	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: localOnlyResult.User.ID.String(), ExpectedRevision: localOnlyResult.User.Revision,
 		Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: "administrator disabled account",
 		AuditEventID: removedProviderAttempt.ID.String(), AuditAt: model.MillisFromTime(removedProviderAttempt.CreatedAt),
-	})
+	}))
 	if !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "users_last_system_admin" {
 		t.Fatalf("removed provider counted as a usable administrator path: %v", err)
 	}
 	availableProviderAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
-	disabledLocalOnly, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	disabledLocalOnly, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: localOnlyResult.User.ID.String(), ExpectedRevision: localOnlyResult.User.Revision,
 		Disabled: true, Capabilities: capabilities, ChangedAt: model.GetMillis(),
 		RevocationReason: "administrator disabled account", AuditEventID: availableProviderAttempt.ID.String(),
 		AuditAt: model.MillisFromTime(availableProviderAttempt.CreatedAt),
-	})
+	}))
 	requireNoError(t, err)
 	reenableLocalOnlyAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
-	_, err = ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: localOnlyResult.User.ID.String(), ExpectedRevision: disabledLocalOnly.User.Revision,
 		Disabled: false, ChangedAt: model.GetMillis(), AuditEventID: reenableLocalOnlyAttempt.ID.String(),
 		AuditAt: model.MillisFromTime(reenableLocalOnlyAttempt.CreatedAt),
-	})
+	}))
 	requireNoError(t, err)
 	replayReplacement := &store.AccessPolicyReplacement{Preflight: replacement.Preflight, ActorID: bootstrap.Administrator.ID}
 	prepareAccessPolicyAttempt(t, ctx, ss, bootstrap, replayReplacement)
@@ -318,11 +318,11 @@ func testConcurrentAccessPolicyAndAdministratorDisable(t *testing.T, ctx context
 		outcomes <- outcome{operation: "policy", err: err}
 	}()
 	go func() {
-		_, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		_, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: bootstrap.Administrator.ID.String(), ExpectedRevision: bootstrap.Administrator.Revision,
 			Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: "administrator disabled account",
 			AuditEventID: disableAttempt.ID.String(), AuditAt: model.MillisFromTime(disableAttempt.CreatedAt),
-		})
+		}))
 		outcomes <- outcome{operation: "disable", err: err}
 	}()
 	probe.WaitForBlockedTransactions(t, ctx, blockerPID, 2)

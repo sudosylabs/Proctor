@@ -173,12 +173,13 @@ func (s *externalAuthenticationService) providers(ctx context.Context) ([]model.
 
 // BeginExternalAuthenticationCommand starts a browser external login.
 type BeginExternalAuthenticationCommand struct {
-	ProviderID string
-	ReturnTo   string
-	ClientType model.SessionClientType
-	DeviceID   string
-	DeviceName string
-	Source     string
+	ProviderID      string
+	InvitationClaim string
+	ReturnTo        string
+	ClientType      model.SessionClientType
+	DeviceID        string
+	DeviceName      string
+	Source          string
 }
 
 // CompleteExternalAuthenticationCommand finishes a browser external login.
@@ -207,7 +208,7 @@ func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation
 	}
 	start, appErr := a.externalAuthentication.beginForPurpose(ctx, command.ProviderID, command.ReturnTo,
 		model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeConnect,
-		invocation.Principal().UserID, auditID)
+		invocation.Principal().UserID, auditID, "")
 	if appErr != nil {
 		if failErr := a.externalAuthentication.mutationAudit.Fail(ctx, auditID, appErrorCode(appErr)); failErr != nil {
 			return nil, failErr
@@ -247,14 +248,14 @@ func (a *App) BeginExternalAuthentication(
 	_ Invocation,
 	command BeginExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationStart, error) {
-	result, appErr := a.externalAuthentication.begin(
+	result, appErr := a.externalAuthentication.beginWithInvitationClaim(
 		ctx,
 		command.ProviderID,
 		command.ReturnTo,
 		command.ClientType,
 		command.DeviceID,
 		command.DeviceName,
-		command.Source,
+		command.Source, command.InvitationClaim,
 	)
 	return result, appErr
 }
@@ -268,25 +269,32 @@ func (s *externalAuthenticationService) begin(
 	deviceName string,
 	source string,
 ) (*model.ExternalAuthenticationStart, error) {
+	return s.beginWithInvitationClaim(ctx, providerID, returnTo, clientType, deviceID, deviceName, source, "")
+}
+
+func (s *externalAuthenticationService) beginWithInvitationClaim(
+	ctx context.Context, providerID, returnTo string, clientType model.SessionClientType,
+	deviceID, deviceName, source, invitationClaim string,
+) (*model.ExternalAuthenticationStart, error) {
 	return s.beginForPurpose(ctx, providerID, returnTo, clientType, deviceID, deviceName, source,
-		model.ExternalAuthenticationPurposeLogin, "", "")
+		model.ExternalAuthenticationPurposeLogin, "", "", invitationClaim)
 }
 
 func (s *externalAuthenticationService) beginForPurpose(
 	ctx context.Context, providerID, returnTo string, clientType model.SessionClientType,
 	deviceID, deviceName, source string, purpose model.ExternalAuthenticationPurpose, targetUserID model.UserID,
-	auditEventID string,
+	auditEventID, invitationClaim string,
 ) (*model.ExternalAuthenticationStart, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
 		return nil, externalProviderNotFoundError("BeginExternalAuthentication")
 	}
-	allowed, err := s.accessPolicy.AllowsExternalProvider(ctx, providerID)
+	admission, err := s.accessPolicy.ExternalProviderAdmission(ctx, providerID)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	if !allowed {
+	if admission.Mode == "" {
 		return nil, externalProviderNotFoundError("BeginExternalAuthentication")
 	}
 	if returnTo == "" {
@@ -300,6 +308,17 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}
 	if purpose == model.ExternalAuthenticationPurposeConnect && !targetUserID.IsValid() {
 		return nil, invalidTokenAppError()
+	}
+	invitationClaimHash := ""
+	if invitationClaim != "" {
+		if purpose != model.ExternalAuthenticationPurposeLogin ||
+			admission.Mode != model.ProviderAdmissionInvitationRequired ||
+			!admission.InvitationAdmissionEnabled ||
+			!model.IsValidCredentialToken(invitationClaim) {
+			return nil, NewError("authentication.external.account_not_linked")
+		}
+		purpose = model.ExternalAuthenticationPurposeInvitationAdmission
+		invitationClaimHash = model.HashInvitationClaim(invitationClaim)
 	}
 	if appErr := s.checkInitiationRateLimit(ctx, providerID, source); appErr != nil {
 		return nil, appErr
@@ -330,13 +349,22 @@ func (s *externalAuthenticationService) beginForPurpose(
 	if challenge == nil || challenge.RedirectURL == "" {
 		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"))
 	}
-	saved, err := s.loginStates.Save(ctx, &model.ExternalLoginState{
+	state := &model.ExternalLoginState{
 		Provider: providerID, StateHash: model.HashToken(stateToken),
 		Purpose: purpose, TargetUserID: targetUserID, AuditEventID: auditEventID,
 		BindingHash: model.HashToken(bindingToken), ReturnTo: returnTo,
 		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
-	}, s.policy.LoginStateTTL)
+	}
+	var saved *model.ExternalLoginState
+	if invitationClaimHash != "" {
+		saved, err = s.loginStates.SaveInvitationAdmission(ctx, state, s.policy.LoginStateTTL, invitationClaimHash)
+	} else {
+		saved, err = s.loginStates.Save(ctx, state, s.policy.LoginStateTTL)
+	}
 	if err != nil {
+		if invitationClaimHash != "" && store.IsNotFound(err) {
+			return nil, NewError("authentication.external.account_not_linked")
+		}
 		return nil, authenticationUnavailable(err)
 	}
 	if saved == nil || saved.ExpiresAt.IsZero() {
@@ -376,11 +404,11 @@ func (s *externalAuthenticationService) complete(
 	if !exists {
 		return nil, externalProviderNotFoundError("CompleteExternalAuthentication")
 	}
-	allowed, err := s.accessPolicy.AllowsExternalProvider(ctx, providerID)
+	admission, err := s.accessPolicy.ExternalProviderAdmission(ctx, providerID)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	if !allowed {
+	if admission.Mode == "" {
 		return nil, externalProviderNotFoundError("CompleteExternalAuthentication")
 	}
 	method := provider.Descriptor().Type
@@ -473,16 +501,29 @@ func (s *externalAuthenticationService) complete(
 	if state.Purpose == model.ExternalAuthenticationPurposeConnect {
 		return s.completeProviderConnection(ctx, state, assertion, metadata, institution)
 	}
-	userCandidate := externalUserCandidate(assertion)
-	provisionParameters, appErr := model.EncodeAuditData(map[string]string{
-		"provider": providerID,
-	})
-	if appErr != nil {
-		return nil, appErr
-	}
+	var userCandidate *model.User
 	var defaultPictureJob *model.Job
 	var userSettings *model.UserSettingsDocument
-	if provider.AutoProvision() {
+	var provisionAudit *model.AuditEvent
+	autoProvision := admission.Mode == model.ProviderAdmissionAutoProvision && provider.AutoProvision()
+	invitationProvision := state.Purpose == model.ExternalAuthenticationPurposeInvitationAdmission &&
+		admission.Mode == model.ProviderAdmissionInvitationRequired && admission.InvitationAdmissionEnabled && state.InvitationID.IsValid()
+	invitationEmail := ""
+	if invitationProvision {
+		invitationEmail = strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))
+		if !assertion.EmailVerified || !model.IsValidEmail(invitationEmail) {
+			if auditErr := s.audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
+				institution.ID.String(), "authentication.external.account_not_linked"); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, NewError("authentication.external.account_not_linked")
+		}
+	}
+	if autoProvision || invitationProvision {
+		userCandidate = externalUserCandidate(assertion)
+		if invitationProvision {
+			userCandidate.Email = invitationEmail
+		}
 		userCandidate, defaultPictureJob, err = prepareUserDefaultProfilePictureJob(userCandidate, nowTime)
 		if err != nil {
 			return nil, authenticationUnavailable(err)
@@ -491,6 +532,22 @@ func (s *externalAuthenticationService) complete(
 		if err != nil {
 			return nil, authenticationUnavailable(err)
 		}
+		provisionParameters, appErr := model.EncodeAuditData(map[string]string{
+			"provider": providerID,
+		})
+		if appErr != nil {
+			return nil, appErr
+		}
+		provisionAudit = &model.AuditEvent{
+			Action:    "authentication.external_provision",
+			ScopeType: model.RoleScopeInstitution,
+			ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
+			RequestID:  metadata.RequestID,
+			NodeID:     s.policy.NodeID,
+			ClientType: string(state.ClientType), AuthMethod: method,
+			IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
+			Parameters: provisionParameters,
+		}
 	}
 	resolution, err := s.identities.ResolveOrProvision(
 		ctx, &store.ExternalIdentityResolutionRequest{
@@ -498,17 +555,9 @@ func (s *externalAuthenticationService) complete(
 				Provider: providerID, Subject: assertion.Subject,
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
-			User: userCandidate, Settings: userSettings, AutoProvision: provider.AutoProvision(),
-			ProvisionAudit: &model.AuditEvent{
-				Action:    "authentication.external_provision",
-				ScopeType: model.RoleScopeInstitution,
-				ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
-				RequestID:  metadata.RequestID,
-				NodeID:     s.policy.NodeID,
-				ClientType: string(state.ClientType), AuthMethod: method,
-				IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
-				Parameters: provisionParameters,
-			}, DefaultProfilePictureJob: defaultPictureJob,
+			InvitationID: state.InvitationID, User: userCandidate, Settings: userSettings,
+			Capabilities:   accessDeploymentCapabilities(s.capabilities.Snapshot()),
+			ProvisionAudit: provisionAudit, DefaultProfilePictureJob: defaultPictureJob,
 		},
 	)
 	if err != nil {

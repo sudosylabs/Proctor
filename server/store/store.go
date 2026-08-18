@@ -1025,6 +1025,9 @@ type UserDisabledStateChange struct {
 	ExpectedRevision int64
 	Disabled         bool
 	Capabilities     AccessDeploymentCapabilities
+	Occurrence       *model.MailOccurrence
+	Delivery         *model.MailDelivery
+	DeliveryJob      *model.Job
 	ChangedAt        int64
 	RevocationReason string
 	AuditEventID     string
@@ -1105,9 +1108,10 @@ type ExternalIdentityResolution struct {
 
 type ExternalIdentityResolutionRequest struct {
 	Identity                 *model.ExternalIdentity
+	InvitationID             model.InvitationID
 	User                     *model.User
 	Settings                 *model.UserSettingsDocument
-	AutoProvision            bool
+	Capabilities             AccessDeploymentCapabilities
 	ProvisionAudit           *model.AuditEvent
 	DefaultProfilePictureJob *model.Job
 }
@@ -1159,6 +1163,11 @@ type ExternalLoginStateStore interface {
 	// Save applies lifetime to one authoritative database timestamp. Callers
 	// provide no absolute creation or expiry deadline.
 	Save(context.Context, *model.ExternalLoginState, time.Duration) (*model.ExternalLoginState, error)
+	// SaveInvitationAdmission resolves a raw-claim digest against one currently
+	// pending Invitation and atomically binds its identity to the new browser
+	// transaction. The digest is used only for the lookup and is not copied into
+	// the external-login state.
+	SaveInvitationAdmission(context.Context, *model.ExternalLoginState, time.Duration, string) (*model.ExternalLoginState, error)
 	GetByStateHash(context.Context, string) (*model.ExternalLoginState, error)
 	Consume(
 		context.Context,
@@ -1409,25 +1418,55 @@ type MFADisableResult struct {
 	AccessTokenHashes []string
 }
 
+// MFASecurityNotice is the complete durable ordinary-mail intent coupled to
+// one successful MFA security transition. It deliberately carries no MFA
+// secret, encrypted credential state, recovery code, or recovery-code hash.
+type MFASecurityNotice struct {
+	Occurrence *model.MailOccurrence
+	Delivery   *model.MailDelivery
+	Job        *model.Job
+}
+
+type MFAActivationMutation struct {
+	CredentialID  string
+	UserID        string
+	TimeStep      int64
+	RecoveryCodes []*model.MFARecoveryCode
+	SessionID     string
+	At            int64
+	AuditEventID  string
+	AuditAt       int64
+	Notice        MFASecurityNotice
+}
+
+type MFARecoveryCodesRegeneration struct {
+	UserID        string
+	RecoveryCodes []*model.MFARecoveryCode
+	At            int64
+	AuditEventID  string
+	AuditAt       int64
+	Notice        MFASecurityNotice
+}
+
+type MFADisablement struct {
+	UserID       string
+	At           int64
+	AuditEventID string
+	AuditAt      int64
+	Notice       MFASecurityNotice
+}
+
 // MFAStore owns the encrypted TOTP credential, hashed recovery codes, replay
 // prevention, and the session-strength changes coupled to MFA lifecycle.
 type MFAStore interface {
 	SavePending(context.Context, *model.MFACredential) (*model.MFACredential, error)
 	GetByUser(context.Context, string) (*model.MFACredential, error)
-	Activate(
-		context.Context,
-		string,
-		string,
-		int64,
-		[]*model.MFARecoveryCode,
-		string,
-		int64,
-	) (*MFAActivationResult, error)
+	Activate(context.Context, *MFAActivationMutation) (*MFAActivationResult, error)
 	ConsumeSecondFactor(context.Context, string, int64, string, int64) error
 	UpgradeSession(context.Context, string, string, int64) ([]string, error)
-	ReplaceRecoveryCodes(context.Context, string, []*model.MFARecoveryCode, int64) error
+	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
 	CountRecoveryCodes(context.Context, string) (int, error)
-	Disable(context.Context, string, int64) (*MFADisableResult, error)
+	Disable(context.Context, *MFADisablement) (*MFADisableResult, error)
 }
 
 // AffiliationStore persists non-exclusive institution relationships.
@@ -1546,6 +1585,9 @@ type PasswordCredentialRemoval struct {
 type SessionRevocation struct {
 	SessionID    string
 	UserID       string
+	Occurrence   *model.MailOccurrence
+	Delivery     *model.MailDelivery
+	DeliveryJob  *model.Job
 	RevokedAt    int64
 	Reason       string
 	AuditEventID string
@@ -1564,6 +1606,9 @@ type SessionRevocationResult struct {
 // attempt.
 type UserSessionsRevocation struct {
 	UserID       string
+	Occurrence   *model.MailOccurrence
+	Delivery     *model.MailDelivery
+	DeliveryJob  *model.Job
 	RevokedAt    int64
 	Reason       string
 	AuditEventID string

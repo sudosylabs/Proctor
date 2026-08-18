@@ -24,7 +24,7 @@ type accountStateStore interface {
 }
 
 type accountStateAuthorizer interface {
-	AuthorizeManage(context.Context, Invocation, string) error
+	AuthorizeAccountStateManage(context.Context, Invocation, string) error
 }
 
 type accountStateEffects interface {
@@ -36,14 +36,15 @@ type accountStateService struct {
 	authorization accountStateAuthorizer
 	capabilities  accessPolicyCapabilitySource
 	audit         mutationAuditor
+	mail          securityNoticeMailPreparer
 	effects       accountStateEffects
 	now           func() time.Time
 }
 
 func newAccountStateService(users accountStateStore, authorization accountStateAuthorizer, capabilities accessPolicyCapabilitySource,
-	audit mutationAuditor, effects accountStateEffects, now func() time.Time,
+	audit mutationAuditor, mail securityNoticeMailPreparer, effects accountStateEffects, now func() time.Time,
 ) *accountStateService {
-	return &accountStateService{users: users, authorization: authorization, capabilities: capabilities, audit: audit, effects: effects, now: now}
+	return &accountStateService{users: users, authorization: authorization, capabilities: capabilities, audit: audit, mail: mail, effects: effects, now: now}
 }
 
 func (a *App) SetUserEnabled(ctx context.Context, invocation Invocation, command SetUserEnabledCommand) (*model.User, error) {
@@ -55,7 +56,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 	if !model.IsValidId(userID) {
 		return nil, NewError("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeAccountStateManage(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
 	if invocation.Principal().UserID.String() == userID && !command.Enabled {
@@ -66,6 +67,24 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		return nil, accountStateError(err)
 	}
 	disabled := !command.Enabled
+	if current.DisabledAt.Valid == disabled {
+		return current, nil
+	}
+	now := model.TimeFromMillis(s.now().UnixMilli())
+	recipient := *current
+	if command.Enabled {
+		recipient.DisabledAt = model.OptionalTime{}
+	}
+	templateKey := model.MailTemplateIdentityAccountEnabled
+	if disabled {
+		templateKey = model.MailTemplateIdentityAccountDisabled
+	}
+	prepared, err := s.mail.PrepareSecurityNotice(securityNoticePreparation{
+		Recipient: &recipient, TemplateKey: templateKey, At: now,
+	})
+	if err != nil {
+		return nil, accountStateError(err)
+	}
 	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -77,12 +96,13 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 			Value:      map[string]any{"user_id": userID, "disabled": disabled},
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		func() time.Time { return now },
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserDisabledStateResult, error) {
 			return s.users.SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
 				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
-				ChangedAt:    reference.MutationAtMillis, RevocationReason: "account disabled by administrator",
+				Occurrence:   prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
+				ChangedAt: reference.MutationAtMillis, RevocationReason: "account disabled by administrator",
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

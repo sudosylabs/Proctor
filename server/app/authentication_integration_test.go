@@ -24,6 +24,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
 
@@ -564,11 +565,11 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), &store.UserDisabledStateChange{
+	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: currentUser.Revision, Disabled: true,
 		ChangedAt: disabledAt, RevocationReason: "authentication integration disabled account",
 		AuditEventID: auditAttempt.ID.String(), AuditAt: disabledAt,
-	}); err != nil {
+	})); err != nil {
 		t.Fatal(err)
 	}
 	refreshAfterDisable := performJSONRequest(

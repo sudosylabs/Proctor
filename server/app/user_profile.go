@@ -229,6 +229,13 @@ func (a userProfileAuthorization) AuthorizeManage(ctx context.Context, invocatio
 	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: userID}, invocation.RequestMetadata())
 }
 
+// AuthorizeAccountStateManage keeps disabled accounts addressable by the one
+// operation whose purpose includes re-enabling them. Other User operations
+// retain the ordinary active-resource visibility rule.
+func (a userProfileAuthorization) AuthorizeAccountStateManage(ctx context.Context, invocation Invocation, userID string) error {
+	return a.authorization.authorizeUserAccountState(ctx, invocation, userID)
+}
+
 func (a userProfileAuthorization) AuthorizeProfilePictureWrite(ctx context.Context, invocation Invocation, userID string) error {
 	action := model.ActionUserManage
 	if invocation.Principal().UserID.String() == userID {

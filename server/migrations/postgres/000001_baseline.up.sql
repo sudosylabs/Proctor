@@ -371,6 +371,10 @@ CREATE TABLE mail_occurrences (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
         'identity.password_changed', 'identity.email_change_warning_old',
         'identity.email_change_verify_new', 'identity.email_verified_by_admin',
+		'identity.account_disabled', 'identity.account_enabled',
+		'identity.sessions_revoked_by_admin',
+		'identity.mfa_enabled', 'identity.mfa_disabled',
+		'identity.mfa_recovery_codes_regenerated',
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.invitation_accepted'
     )),
@@ -400,6 +404,10 @@ CREATE TABLE mail_deliveries (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
         'identity.password_changed', 'identity.email_change_warning_old',
         'identity.email_change_verify_new', 'identity.email_verified_by_admin',
+		'identity.account_disabled', 'identity.account_enabled',
+		'identity.sessions_revoked_by_admin',
+		'identity.mfa_enabled', 'identity.mfa_disabled',
+		'identity.mfa_recovery_codes_regenerated',
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.invitation_accepted'
     )),
@@ -2282,8 +2290,9 @@ CREATE TABLE external_login_states (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     provider varchar(64) NOT NULL,
-	purpose varchar(16) NOT NULL CHECK (purpose IN ('login', 'connect')),
+	purpose varchar(32) NOT NULL CHECK (purpose IN ('login', 'connect', 'invitation_admission')),
 	target_user_id varchar(26) REFERENCES users(id),
+	invitation_id varchar(26) REFERENCES invitations(id),
 	audit_event_id varchar(26),
     state_hash char(64) NOT NULL,
     binding_hash char(64) NOT NULL,
@@ -2299,8 +2308,9 @@ CREATE TABLE external_login_states (
             (consumed_at IS NULL OR (consumed_at >= created_at AND consumed_at < expires_at))
 		),
 	CONSTRAINT external_login_states_purpose_target_check CHECK (
-		(purpose = 'login' AND target_user_id IS NULL AND audit_event_id IS NULL) OR
-		(purpose = 'connect' AND target_user_id IS NOT NULL AND audit_event_id IS NOT NULL)
+		(purpose = 'login' AND target_user_id IS NULL AND invitation_id IS NULL AND audit_event_id IS NULL) OR
+		(purpose = 'connect' AND target_user_id IS NOT NULL AND invitation_id IS NULL AND audit_event_id IS NOT NULL) OR
+		(purpose = 'invitation_admission' AND target_user_id IS NULL AND invitation_id IS NOT NULL AND audit_event_id IS NULL)
 	)
 );
 
@@ -3174,6 +3184,8 @@ ALTER TABLE external_login_states
 	CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT external_login_states_target_user_id_canonical_check
 	CHECK (target_user_id IS NULL OR target_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT external_login_states_invitation_id_canonical_check
+	CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT external_login_states_audit_event_id_canonical_check
 	CHECK (audit_event_id IS NULL OR audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 

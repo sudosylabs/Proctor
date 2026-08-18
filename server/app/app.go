@@ -108,7 +108,7 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	administration := constructAdministration(deps, foundation, access)
+	administration := constructAdministration(deps, foundation, access, identity)
 	return assembleApplication(deps, foundation, identity, access, examinations, profiles, jobs, administration), nil
 }
 

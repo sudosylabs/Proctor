@@ -3,7 +3,10 @@
 
 package model
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestSafeRelativeURL(t *testing.T) {
 	tests := []struct {
@@ -64,6 +67,24 @@ func TestExternalLoginStateConnectPurposeRequiresExactUser(t *testing.T) {
 	state.TargetUserID = ""
 	if err := state.Validate(); err == nil {
 		t.Fatal("connect state without target User was accepted")
+	}
+}
+
+func TestExternalLoginStateInvitationAdmissionBindsOnlyInvitation(t *testing.T) {
+	at := NowUTC().Truncate(time.Millisecond)
+	state := &ExternalLoginState{
+		Provider: "campus", Purpose: ExternalAuthenticationPurposeInvitationAdmission,
+		InvitationID: NewInvitationID(), StateHash: HashToken(NewCredentialToken()),
+		BindingHash: HashToken(NewCredentialToken()), ReturnTo: "/join",
+		ClientType: SessionClientWeb, ExpiresAt: at.Add(time.Minute),
+	}
+	state.PrepareCreate(NewExternalLoginStateID(), at)
+	if err := state.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	state.TargetUserID = NewUserID()
+	if err := state.Validate(); err == nil {
+		t.Fatal("invitation admission accepted a target User")
 	}
 }
 

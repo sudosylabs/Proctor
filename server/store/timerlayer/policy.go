@@ -213,6 +213,7 @@ const (
 	methodApply                         methodName = "apply"
 	methodRotateRefresh                 methodName = "rotate_refresh"
 	methodSave                          methodName = "save"
+	methodSaveInvitationAdmission       methodName = "save_invitation_admission"
 	methodSaveDecision                  methodName = "save_decision"
 	methodSeal                          methodName = "seal"
 	methodSavePending                   methodName = "save_pending"

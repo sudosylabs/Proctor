@@ -31,6 +31,12 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateIdentityEmailChangeVerifyNew,
 		MailTemplateIdentityEmailChangeWarningOld,
 		MailTemplateIdentityEmailVerifiedByAdmin,
+		MailTemplateIdentityAccountDisabled,
+		MailTemplateIdentityAccountEnabled,
+		MailTemplateIdentitySessionsRevokedByAdmin,
+		MailTemplateIdentityMFAEnabled,
+		MailTemplateIdentityMFADisabled,
+		MailTemplateIdentityMFARecoveryCodesRegenerated,
 		MailTemplateIdentityPasswordReset,
 		MailTemplateIdentityPasswordChanged,
 		MailTemplateAccessStudentClassInvitation,
@@ -51,6 +57,12 @@ const (
 	MailTemplateIdentityEmailChangeWarningOld       MailTemplateKey = "identity.email_change_warning_old"
 	MailTemplateIdentityEmailChangeVerifyNew        MailTemplateKey = "identity.email_change_verify_new"
 	MailTemplateIdentityEmailVerifiedByAdmin        MailTemplateKey = "identity.email_verified_by_admin"
+	MailTemplateIdentityAccountDisabled             MailTemplateKey = "identity.account_disabled"
+	MailTemplateIdentityAccountEnabled              MailTemplateKey = "identity.account_enabled"
+	MailTemplateIdentitySessionsRevokedByAdmin      MailTemplateKey = "identity.sessions_revoked_by_admin"
+	MailTemplateIdentityMFAEnabled                  MailTemplateKey = "identity.mfa_enabled"
+	MailTemplateIdentityMFADisabled                 MailTemplateKey = "identity.mfa_disabled"
+	MailTemplateIdentityMFARecoveryCodesRegenerated MailTemplateKey = "identity.mfa_recovery_codes_regenerated"
 	MailTemplateAccessStudentClassInvitation        MailTemplateKey = "access.student_class_invitation"
 	MailTemplateAccessTeacherAcademicUnitInvitation MailTemplateKey = "access.teacher_academic_unit_invitation"
 	MailTemplateAccessInvitationAccepted            MailTemplateKey = "access.invitation_accepted"
@@ -105,7 +117,9 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 	case MailOccurrenceAccountToken:
 		return key == MailTemplateIdentityVerifyEmail || key == MailTemplateIdentityPasswordReset || key == MailTemplateIdentityEmailChangeVerifyNew
 	case MailOccurrenceSecurityNotice:
-		return key == MailTemplateIdentityPasswordChanged || key == MailTemplateIdentityEmailChangeWarningOld || key == MailTemplateIdentityEmailVerifiedByAdmin
+		return key == MailTemplateIdentityPasswordChanged || key == MailTemplateIdentityEmailChangeWarningOld || key == MailTemplateIdentityEmailVerifiedByAdmin ||
+			key == MailTemplateIdentityAccountDisabled || key == MailTemplateIdentityAccountEnabled || key == MailTemplateIdentitySessionsRevokedByAdmin ||
+			key == MailTemplateIdentityMFAEnabled || key == MailTemplateIdentityMFADisabled || key == MailTemplateIdentityMFARecoveryCodesRegenerated
 	case MailOccurrenceInvitation:
 		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessTeacherAcademicUnitInvitation ||
 			key == MailTemplateAccessInvitationAccepted

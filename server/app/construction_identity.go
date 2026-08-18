@@ -19,6 +19,10 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
+	accountMail, err := newDirectMailPreparer(deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailSecretSealer)
+	if err != nil {
+		return identityConstruction{}, err
+	}
 	desktopAuthorization, err := newDesktopAuthorizationService(
 		deps.Store.DesktopAuthorization(), deps.Store.Institution(), authenticationAccess,
 		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
@@ -30,7 +34,7 @@ func constructIdentity(
 	}
 	mfaApplication, err := newMFAApplicationService(
 		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
-		mfaAuditAdapter{audit: foundation.audit}, foundation.realtime, foundation.mfa,
+		mfaAuditAdapter{audit: foundation.audit}, foundation.realtime, accountMail, foundation.mfa,
 		deps.RecentAuthenticationTTL, time.Now,
 	)
 	if err != nil {
@@ -67,10 +71,6 @@ func constructIdentity(
 		return identityConstruction{}, err
 	}
 	selfSessions, err := newSelfSessionService(deps.Store.Session(), foundation.realtime, time.Now)
-	if err != nil {
-		return identityConstruction{}, err
-	}
-	accountMail, err := newDirectMailPreparer(deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailSecretSealer)
 	if err != nil {
 		return identityConstruction{}, err
 	}
@@ -144,6 +144,7 @@ func constructIdentity(
 		return identityConstruction{}, err
 	}
 	return identityConstruction{
+		mail:                              accountMail,
 		authentication:                    authentication,
 		desktopAuthorization:              desktopAuthorization,
 		selfSessions:                      selfSessions,

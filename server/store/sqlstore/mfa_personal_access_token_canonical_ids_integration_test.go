@@ -7,13 +7,16 @@ package sqlstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
@@ -103,9 +106,12 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	activationAt := model.MillisFromTime(pending.CreatedAt) + 1
-	_, err = persistence.MFA().Activate(ctx, pending.ID.String(), user.ID.String(), 1,
-		[]*model.MFARecoveryCode{{CodeHash: model.HashToken("mfa-corruption-recovery")}},
-		session.ID.String(), activationAt)
+	audit, notice := mfaSQLSecurityNoticeFixture(t, ctx, persistence, user, model.MailTemplateIdentityMFAEnabled, activationAt)
+	_, err = persistence.MFA().Activate(ctx, &store.MFAActivationMutation{
+		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 1,
+		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken("mfa-corruption-recovery")}},
+		SessionID:     session.ID.String(), At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt, Notice: notice,
+	})
 	var persisted *persistedStateError
 	if !errors.As(err, &persisted) || persisted.Entity != "mfa_credential" || persisted.Field != "encrypted_secret" {
 		t.Fatalf("Activate() error = %v, want mfa_credential.encrypted_secret persisted-state error", err)
@@ -128,4 +134,31 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 	if gotSession.AuthenticationStrength != model.AuthenticationSingleFactor || gotSession.MFACompletedAt.Valid {
 		t.Fatalf("session assurance changed despite rollback: %#v", gotSession)
 	}
+}
+
+func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence *SQLStore, user *model.User, key model.MailTemplateKey, at int64) (*model.AuditEvent, store.MFASecurityNotice) {
+	t.Helper()
+	scopeID := model.NewId()
+	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{ActorID: user.ID, Action: "mfa.security_transition",
+		Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()}, ScopeType: model.RoleScopeInstitution,
+		ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "mfa-integration"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := model.TimeFromMillis(at)
+	deliveryID, occurrenceID, jobID := model.NewMailDeliveryID(), model.NewMailOccurrenceID(), model.NewJobID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), when, when, model.MailMaximumAttempts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, ActorUserID: user.ID, CreatedAt: when}
+	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: user.ID, TemplateKey: key,
+		TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "m***@example.edu", State: model.MailDeliveryQueued,
+		CreatedAt: when, UpdatedAt: when, MessageDate: when, Deadline: when.Add(24 * time.Hour),
+		MessageID: "<mail." + deliveryID.String() + "@example.edu>", EncryptedPayload: json.RawMessage(`{"key_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`), Revision: 1}
+	return audit, store.MFASecurityNotice{Occurrence: occurrence, Delivery: delivery, Job: job}
 }

@@ -139,6 +139,7 @@ func identityAndSystemOpenAPIAgreementSuite() openAPIAgreementSuite {
 		operation("POST /api/v1/auth/password-reset/complete", AuthPublic, "#/components/requestBodies/CompletePasswordReset", "PasswordResetCompletionRequest", "204", "#/components/responses/SensitiveNoContent", ""),
 		operation("GET /api/v1/auth/providers", AuthPublic, "", "", "200", "#/components/responses/ExternalAuthenticationProviderListOK", "ExternalAuthenticationProviderListResponse"),
 		operation("GET /api/v1/auth/providers/{provider_id}/login", AuthPublic, "", "", "303", "#/components/responses/ExternalAuthenticationRedirect", ""),
+		operation("POST /api/v1/auth/providers/{provider_id}/login", AuthPublic, "#/components/requestBodies/BeginInvitationExternalAuthentication", "ExternalAuthenticationStartRequest", "303", "#/components/responses/ExternalAuthenticationRedirect", ""),
 		operation("GET /api/v1/auth/providers/{provider_id}/callback", AuthPublic, "", "", "303", "#/components/responses/ExternalAuthenticationRedirect", ""),
 		operation("GET /api/v1/users/me/sessions", AuthSessionRequired, "", "", "200", "#/components/responses/SessionListOK", "SessionListResponse"),
 		operation("POST /api/v1/users/me/sessions/revoke", AuthSessionRequired, "#/components/requestBodies/RevokeSession", "RevokeSessionRequest", "204", "#/components/responses/SensitiveNoContent", ""),
@@ -183,6 +184,7 @@ func identityAndSystemOpenAPIAgreementSuite() openAPIAgreementSuite {
 			{Name: "PersonalAccessTokenResponse", DTO: reflect.TypeOf(personalAccessTokenResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "user_id", "description", "scopes", "expires_at"}},
 			{Name: "PersonalAccessTokenCreationResponse", DTO: reflect.TypeOf(personalAccessTokenCreationResponse{}), Required: []string{"token", "credential"}},
 			{Name: "ExternalAuthenticationProviderResponse", DTO: reflect.TypeOf(externalAuthenticationProviderResponse{}), Required: []string{"id", "display_name", "type"}},
+			{Name: "ExternalAuthenticationStartRequest", DTO: reflect.TypeOf(externalAuthenticationStartRequest{}), Required: []string{"invitation_claim"}},
 		},
 	}
 }
@@ -212,6 +214,7 @@ func identityAndSystemErrorContracts() map[string][]string {
 		"POST /api/v1/auth/password-reset/complete":                       {"request.invalid", "authentication.password.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.account_token.invalid", "authentication.account_recovery.unavailable"},
 		"GET /api/v1/auth/providers":                                      {"authentication.internal"},
 		"GET /api/v1/auth/providers/{provider_id}/login":                  {"request.invalid", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.unavailable", "authentication.external.rejected", "authentication.internal"},
+		"POST /api/v1/auth/providers/{provider_id}/login":                 {"request.invalid", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.external.account_not_linked", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.unavailable", "authentication.external.rejected", "authentication.internal"},
 		"GET /api/v1/auth/providers/{provider_id}/callback":               {"request.invalid", "authentication.external.invalid", "authentication.external.provider_not_found", "authentication.external.rejected", "authentication.external.unavailable", "authentication.external.account_conflict", "authentication.external.account_not_linked", "authentication.method.disabled", "authentication.method.last_usable", "authentication.method.not_found", "authentication.method.provider_conflict", "authentication.method.conflict", "authentication.method.unavailable", "authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable"},
 		"GET /api/v1/users/me/sessions":                                   sessionErrorCodes("authentication.internal"),
 		"POST /api/v1/users/me/sessions/revoke":                           sessionMutationErrorCodes("request.invalid", "session.id.invalid", "session.not_found", "authentication.internal"),

@@ -35,6 +35,7 @@ type applicationFoundation struct {
 }
 
 type identityConstruction struct {
+	mail                              *directMailPreparer
 	authentication                    *authenticationService
 	desktopAuthorization              *desktopAuthorizationService
 	selfSessions                      *selfSessionService

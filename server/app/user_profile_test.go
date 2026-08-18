@@ -67,6 +67,10 @@ func (a *userProfileAuthorizerFake) AuthorizeManage(context.Context, Invocation,
 	*a.events = append(*a.events, "authorize-manage")
 	return nil
 }
+
+func (a *userProfileAuthorizerFake) AuthorizeAccountStateManage(ctx context.Context, invocation Invocation, userID string) error {
+	return a.AuthorizeManage(ctx, invocation, userID)
+}
 func (a *userProfileAuthorizerFake) AuthorizeProfilePictureWrite(context.Context, Invocation, string) error {
 	*a.events = append(*a.events, "authorize-profile-picture-write")
 	return a.writeErr

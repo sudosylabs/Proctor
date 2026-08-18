@@ -105,6 +105,34 @@ Policy is composable rather than a `local`, `external`, or `hybrid` enum:
 - provider admission may apply configured eligibility predicates, but those
   predicates grant no academic relationship or permission.
 
+Ordinary provider login resolves only the immutable `(provider ID, opaque
+subject)` link. `linked_only` therefore admits an existing link and otherwise
+returns a bounded unlinked-account outcome. `invitation_required` also admits
+an existing link, but an ordinary unlinked login has no Invitation claim and
+fails the same way. An invitation-bound start instead accepts the raw claim in
+a strict request body, resolves its digest to one current pending Invitation,
+and stores only that Invitation ID in a short-lived, one-use state bound to the
+exact provider and browser proof; the raw claim never enters provider state,
+logs, audits, or output. The callback rechecks the current PostgreSQL policy,
+deployment capability, Invitation state and bounds, verified normalized
+provider mailbox, email uniqueness, and immutable-subject uniqueness. It may
+create one relationship-free User, immutable identity link, and ordinary Web
+Session, but leaves the Invitation and its frozen relationship package pending
+for the later explicit conflict-resolution and acceptance transition.
+`auto_provision` may create a User only when
+the current validated provider capability permits it and the provider adapter
+has accepted its configured eligibility predicate. That User starts with no
+Affiliation, Academic Unit or Class membership, Role Binding, or trusted-device
+state. Profile email and username are candidate fields, never lookup or merge
+keys. Later claim changes resolve the established subject without overwriting
+the User profile.
+
+The terminal identity-resolution aggregate intersects the exact current
+PostgreSQL admission mode with an immutable deployment-capability snapshot.
+A node whose current configuration omits the provider fails closed before
+resolving or provisioning, while the durable policy entry and identity link
+remain unchanged for safe restoration of the same provider ID.
+
 User interfaces may derive labels such as local-only or hybrid, but those
 labels never drive application policy. Removing a provider from deployment
 configuration preserves its policy entry and identity links while making it

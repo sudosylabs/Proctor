@@ -9,6 +9,7 @@ func constructAdministration(
 	deps Dependencies,
 	foundation applicationFoundation,
 	access accessAcademicConstruction,
+	identity identityConstruction,
 ) administrationConstruction {
 	profileAuthorization := userProfileAuthorization{
 		authorization: access.authorization,
@@ -24,13 +25,16 @@ func constructAdministration(
 			profileAuthorization,
 			access.capabilities,
 			mutationAuditAdapter{audit: foundation.audit},
+			identity.mail,
 			accountStateRealtimeEffects{effects: foundation.realtime},
 			time.Now,
 		),
 		sessionAdministrations: newSessionAdministrationService(
 			deps.Store.Session(),
+			deps.Store.User(),
 			sessionAdministrationAuthorization{authorization: access.authorization},
 			mutationAuditAdapter{audit: foundation.audit},
+			identity.mail,
 			sessionAdministrationRealtimeEffects{effects: foundation.realtime},
 			time.Now,
 		),

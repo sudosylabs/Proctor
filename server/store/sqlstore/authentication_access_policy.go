@@ -66,13 +66,19 @@ func requireCurrentLocalLogin(ctx context.Context, executor sqlxExecutor) error 
 }
 
 func requireCurrentExternalProvider(ctx context.Context, executor sqlxExecutor, providerID string) error {
+	_, err := currentExternalProviderAdmission(ctx, executor, providerID)
+	return err
+}
+
+func currentExternalProviderAdmission(ctx context.Context, executor sqlxExecutor, providerID string) (model.ProviderAdmissionMode, error) {
 	policy, err := getAccessPolicy(ctx, executor, "FOR SHARE")
 	if err != nil {
-		return err
+		return "", err
 	}
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
-	if _, allowed := policy.ProviderAdmissions[providerID]; !allowed {
-		return store.ErrAuthenticationMethodDisabled
+	mode, allowed := policy.ProviderAdmissions[providerID]
+	if !allowed {
+		return "", store.ErrAuthenticationMethodDisabled
 	}
-	return nil
+	return mode, nil
 }

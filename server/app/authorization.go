@@ -252,6 +252,57 @@ func (s *accessControlService) authorizeCurrentState(
 	return appErr
 }
 
+// authorizeUserAccountState is the narrow exception to active User resource
+// resolution needed to re-enable a disabled account. It still requires a
+// current user.manage grant and records the decision against the exact User.
+func (s *accessControlService) authorizeUserAccountState(
+	ctx context.Context,
+	invocation Invocation,
+	userID string,
+) error {
+	principal := invocation.Principal()
+	resource := model.Resource{Type: model.ResourceUser, ID: userID}
+	definition, known := model.DefinitionForAction(model.ActionUserManage)
+	if principal.Validate() != nil {
+		return invalidTokenAppError()
+	}
+	if !known || resource.Validate() != nil || !definition.AcceptsResource(resource.Type) {
+		return NewError("authorization.request.invalid")
+	}
+	user, err := s.resolver.users.Get(ctx, userID)
+	if err != nil {
+		return authorizationResourceError("user", err)
+	}
+	if user.IsArchived() {
+		return NewError("resource.not_found").WithField("resource", "user")
+	}
+	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	if err != nil {
+		return authorizationResourceError("institution", err)
+	}
+	if institution.IsArchived() {
+		return NewError("resource.not_found").WithField("resource", "institution")
+	}
+	resolved := resolvedAuthorizationResource{
+		institutionID:  institution.ID.String(),
+		academicUnitID: make(map[string]struct{}),
+	}
+	allowed, appErr := s.evaluateResolved(ctx, principal, model.ActionUserManage, resource, definition, resolved)
+	if appErr != nil {
+		return appErr
+	}
+	if appErr = s.audit.RecordAuthorizationDecision(
+		ctx, principal, model.ActionUserManage, resource,
+		model.RoleScopeInstitution, institution.ID.String(), invocation.RequestMetadata(), allowed,
+	); appErr != nil {
+		return appErr
+	}
+	if !allowed {
+		return authorizationDeniedError("accessControlService.authorizeUserAccountState")
+	}
+	return nil
+}
+
 // authorizeCurrentStateWithScope returns the same resolved scope written to
 // the durable decision so a following mutation attempt can preserve the exact
 // action/resource/scope tuple without resolving the resource a second time.

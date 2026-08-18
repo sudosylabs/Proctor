@@ -18,8 +18,13 @@ import (
 // transaction.
 type authenticationAccessPolicy interface {
 	AllowsLocalLogin(context.Context) (bool, error)
-	AllowsExternalProvider(context.Context, string) (bool, error)
+	ExternalProviderAdmission(context.Context, string) (externalProviderAdmissionPolicy, error)
 	AvailableExternalProviders(context.Context, []model.ExternalAuthenticationProvider) ([]model.ExternalAuthenticationProvider, error)
+}
+
+type externalProviderAdmissionPolicy struct {
+	Mode                       model.ProviderAdmissionMode
+	InvitationAdmissionEnabled bool
 }
 
 type currentAuthenticationAccessPolicy struct {
@@ -41,17 +46,19 @@ func (p *currentAuthenticationAccessPolicy) AllowsLocalLogin(ctx context.Context
 	return policy.LocalLoginEnabled, nil
 }
 
-func (p *currentAuthenticationAccessPolicy) AllowsExternalProvider(ctx context.Context, providerID string) (bool, error) {
+func (p *currentAuthenticationAccessPolicy) ExternalProviderAdmission(ctx context.Context, providerID string) (externalProviderAdmissionPolicy, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	if providerID == "" {
-		return false, nil
+		return externalProviderAdmissionPolicy{}, nil
 	}
 	policy, err := p.current(ctx)
 	if err != nil {
-		return false, err
+		return externalProviderAdmissionPolicy{}, err
 	}
-	_, allowed := policy.ProviderAdmissions[providerID]
-	return allowed, nil
+	return externalProviderAdmissionPolicy{
+		Mode:                       policy.ProviderAdmissions[providerID],
+		InvitationAdmissionEnabled: policy.InvitationAdmissionEnabled,
+	}, nil
 }
 
 func (p *currentAuthenticationAccessPolicy) AllowsDesktopAuthorization(ctx context.Context, method, providerID string) (bool, error) {

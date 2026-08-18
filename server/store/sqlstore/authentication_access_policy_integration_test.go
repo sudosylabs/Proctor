@@ -129,7 +129,9 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 	}
 	if _, err = persistence.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
 		Provider: disabledIdentity.Provider, Subject: disabledIdentity.Subject, LastSeenAt: model.OptionalTimeFrom(model.NowUTC()),
-	}}); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+	}, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{
+		"campus": {},
+	}}}); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled provider resolution error = %v", err)
 	}
 }

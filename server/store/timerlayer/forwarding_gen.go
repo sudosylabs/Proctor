@@ -2130,6 +2130,12 @@ func (s *timedExternalLoginStateStore) Save(arg0 context.Context, arg1 *model.Ex
 	})
 }
 
+func (s *timedExternalLoginStateStore) SaveInvitationAdmission(arg0 context.Context, arg1 *model.ExternalLoginState, arg2 time.Duration, arg3 string) (*model.ExternalLoginState, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodSaveInvitationAdmission), func() (*model.ExternalLoginState, error) {
+		return s.next.SaveInvitationAdmission(arg0, arg1, arg2, arg3)
+	})
+}
+
 func (s *timedExternalLoginStateStore) GetByStateHash(arg0 context.Context, arg1 string) (*model.ExternalLoginState, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExternalLoginState, methodGetByStateHash), func() (*model.ExternalLoginState, error) {
 		return s.next.GetByStateHash(arg0, arg1)
@@ -2280,9 +2286,9 @@ func (s *timedMFAStore) GetByUser(arg0 context.Context, arg1 string) (*model.MFA
 	})
 }
 
-func (s *timedMFAStore) Activate(arg0 context.Context, arg1 string, arg2 string, arg3 int64, arg4 []*model.MFARecoveryCode, arg5 string, arg6 int64) (*store.MFAActivationResult, error) {
+func (s *timedMFAStore) Activate(arg0 context.Context, arg1 *store.MFAActivationMutation) (*store.MFAActivationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodActivate), func() (*store.MFAActivationResult, error) {
-		return s.next.Activate(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+		return s.next.Activate(arg0, arg1)
 	})
 }
 
@@ -2298,9 +2304,9 @@ func (s *timedMFAStore) UpgradeSession(arg0 context.Context, arg1 string, arg2 s
 	})
 }
 
-func (s *timedMFAStore) ReplaceRecoveryCodes(arg0 context.Context, arg1 string, arg2 []*model.MFARecoveryCode, arg3 int64) error {
+func (s *timedMFAStore) ReplaceRecoveryCodes(arg0 context.Context, arg1 *store.MFARecoveryCodesRegeneration) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateMFA, methodReplaceRecoveryCodes), func() error {
-		return s.next.ReplaceRecoveryCodes(arg0, arg1, arg2, arg3)
+		return s.next.ReplaceRecoveryCodes(arg0, arg1)
 	})
 }
 
@@ -2310,9 +2316,9 @@ func (s *timedMFAStore) CountRecoveryCodes(arg0 context.Context, arg1 string) (i
 	})
 }
 
-func (s *timedMFAStore) Disable(arg0 context.Context, arg1 string, arg2 int64) (*store.MFADisableResult, error) {
+func (s *timedMFAStore) Disable(arg0 context.Context, arg1 *store.MFADisablement) (*store.MFADisableResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodDisable), func() (*store.MFADisableResult, error) {
-		return s.next.Disable(arg0, arg1, arg2)
+		return s.next.Disable(arg0, arg1)
 	})
 }
 

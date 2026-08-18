@@ -33,6 +33,7 @@ type externalLoginStateRow struct {
 	Provider     string         `db:"provider"`
 	Purpose      string         `db:"purpose"`
 	TargetUserID sql.NullString `db:"target_user_id"`
+	InvitationID sql.NullString `db:"invitation_id"`
 	AuditEventID sql.NullString `db:"audit_event_id"`
 	StateHash    string         `db:"state_hash"`
 	BindingHash  string         `db:"binding_hash"`
@@ -52,6 +53,7 @@ func externalLoginStateSliceColumns() []string {
 		"external_login_states.provider",
 		"external_login_states.purpose",
 		"external_login_states.target_user_id",
+		"external_login_states.invitation_id",
 		"external_login_states.audit_event_id",
 		"external_login_states.state_hash",
 		"external_login_states.binding_hash",
@@ -77,6 +79,48 @@ func (s SQLExternalLoginStateStore) Save(
 	state *model.ExternalLoginState,
 	lifetime time.Duration,
 ) (*model.ExternalLoginState, error) {
+	if state != nil && state.Purpose == model.ExternalAuthenticationPurposeInvitationAdmission {
+		return nil, store.NewErrInvalidInput("external_login_state", "purpose", nil)
+	}
+	return s.save(ctx, state, lifetime, "external login state save", nil)
+}
+
+func (s SQLExternalLoginStateStore) SaveInvitationAdmission(
+	ctx context.Context,
+	state *model.ExternalLoginState,
+	lifetime time.Duration,
+	claimHash string,
+) (*model.ExternalLoginState, error) {
+	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeInvitationAdmission ||
+		!state.InvitationID.IsZero() || !model.IsValidTokenHash(claimHash) {
+		return nil, store.NewErrInvalidInput("external_login_state", "invitation_admission", nil)
+	}
+	return s.save(ctx, state, lifetime, "external invitation admission state save",
+		func(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ExternalLoginState, databaseNow time.Time) error {
+			var invitationID string
+			if err := tx.Get(ctx, &invitationID, `
+				SELECT id FROM invitations
+				 WHERE claim_hash=? AND state='pending' AND created_at<=? AND expires_at>?
+				   AND (intended_end_at IS NULL OR intended_end_at>?)
+				 FOR SHARE`, claimHash, databaseNow, databaseNow, databaseNow); err != nil {
+				return translateError("invitation", "claim", err)
+			}
+			parsed, err := parsePersistedID("invitation", "id", invitationID, model.ParseInvitationID)
+			if err != nil {
+				return err
+			}
+			candidate.InvitationID = parsed
+			return nil
+		})
+}
+
+func (s SQLExternalLoginStateStore) save(
+	ctx context.Context,
+	state *model.ExternalLoginState,
+	lifetime time.Duration,
+	operation string,
+	prepare func(context.Context, *sqlxTxWrapper, *model.ExternalLoginState, time.Time) error,
+) (*model.ExternalLoginState, error) {
 	if state == nil || lifetime < externalLoginStateLifetimeMinimum || lifetime > externalLoginStateLifetimeMaximum ||
 		lifetime%time.Millisecond != 0 {
 		return nil, store.NewErrInvalidInput("external_login_state", "value", nil)
@@ -86,12 +130,17 @@ func (s SQLExternalLoginStateStore) Save(
 		return nil, store.NewErrInvalidInput("external_login_state", "id", state.ID.String())
 	}
 	candidate := *state
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "external login state save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExternalLoginState, error) {
+	return runSQLTransaction(ctx, s.GetMaster().Begin, operation, func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExternalLoginState, error) {
 		var databaseNow time.Time
 		if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read external login state creation time: %w", err)
 		}
 		databaseNow = model.TimeUTC(databaseNow)
+		if prepare != nil {
+			if err := prepare(ctx, tx, &candidate, databaseNow); err != nil {
+				return nil, err
+			}
+		}
 		candidate.ExpiresAt = databaseNow.Add(lifetime)
 		candidate.PrepareCreate(model.NewExternalLoginStateID(), databaseNow)
 		if err := candidate.Validate(); err != nil {
@@ -100,11 +149,11 @@ func (s SQLExternalLoginStateStore) Save(
 		row := newExternalLoginStateRow(&candidate)
 		if _, err := tx.NamedExec(ctx, `
 			INSERT INTO external_login_states (
-				id, created_at, updated_at, provider, purpose, target_user_id, audit_event_id, state_hash, binding_hash,
+				id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, audit_event_id, state_hash, binding_hash,
 				return_to, client_type, device_id, device_name, expires_at,
 				consumed_at
 			) VALUES (
-				:id, :created_at, :updated_at, :provider, :purpose, :target_user_id, :audit_event_id, :state_hash, :binding_hash,
+				:id, :created_at, :updated_at, :provider, :purpose, :target_user_id, :invitation_id, :audit_event_id, :state_hash, :binding_hash,
 				:return_to, :client_type, :device_id, :device_name, :expires_at,
 				:consumed_at
 			)`, &row); err != nil {
@@ -148,7 +197,7 @@ func (s SQLExternalLoginStateStore) Consume(
 		   AND consumed_at IS NULL
 		   AND created_at <= consumed.at
 		   AND expires_at > consumed.at
-		RETURNING id, created_at, updated_at, provider, purpose, target_user_id, audit_event_id, state_hash, binding_hash,
+		RETURNING id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, audit_event_id, state_hash, binding_hash,
 		          return_to, client_type, device_id, device_name, expires_at,
 		          consumed_at`,
 		provider,
@@ -218,6 +267,7 @@ func newExternalLoginStateRow(
 		Provider:     state.Provider,
 		Purpose:      string(state.Purpose),
 		TargetUserID: sql.NullString{String: state.TargetUserID.String(), Valid: !state.TargetUserID.IsZero()},
+		InvitationID: sql.NullString{String: state.InvitationID.String(), Valid: !state.InvitationID.IsZero()},
 		AuditEventID: sql.NullString{String: state.AuditEventID, Valid: state.AuditEventID != ""},
 		StateHash:    state.StateHash,
 		BindingHash:  state.BindingHash,
@@ -256,6 +306,11 @@ func (row externalLoginStateRow) model() (*model.ExternalLoginState, error) {
 		return nil, err
 	}
 	value.TargetUserID = target
+	invitationID, err := parseNullablePersistedID("external_login_state", "invitation_id", row.InvitationID, model.ParseInvitationID)
+	if err != nil {
+		return nil, err
+	}
+	value.InvitationID = invitationID
 	if err := validatePersistedModel("external_login_state", value); err != nil {
 		return nil, err
 	}

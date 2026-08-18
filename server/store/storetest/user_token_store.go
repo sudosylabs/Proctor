@@ -281,11 +281,11 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 		user, _ := saveLocalUser(t, ctx, ss)
 		audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 		at := model.GetMillis() + 1
-		_, err := ss.User().SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+		_, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 			ChangedAt: at, RevocationReason: "account disabled",
 			AuditEventID: audit.ID.String(), AuditAt: at,
-		})
+		}))
 		requireNoError(t, err)
 		token := newUserToken(user, model.UserTokenEmailVerification)
 		if _, err = issueUserToken(t, ss, ctx, token,

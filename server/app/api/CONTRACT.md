@@ -59,6 +59,22 @@ live configured provider catalog. Configured but policy-disabled providers are
 omitted; a policy read failure fails closed with `authentication.internal`
 rather than returning the deployment catalog.
 
+The provider callback resolves accounts only by the exact configured provider
+ID and opaque subject. Unlinked `linked_only` and ordinary unclaimed
+`invitation_required` callbacks return the same bounded account-not-linked
+outcome. Auto-provision email collisions return the bounded account-conflict
+outcome without identifying the existing User. Neither response exposes
+provider claims, subjects, account identifiers, admission rules, or eligibility
+details.
+
+`POST /api/v1/auth/providers/{provider_id}/login` is the invitation-bound
+start. Its strict JSON body requires `invitation_claim`; the raw bearer claim is
+never accepted in query parameters, copied into provider `state`, logged,
+audited, or returned. `GET` on the same path remains the ordinary claim-free
+start. A valid claimed flow may establish a relationship-free User, provider
+link, and Web Session while the Invitation package remains pending for explicit
+acceptance.
+
 ## Desktop browser authorization
 
 `POST /api/v1/auth/desktop/authorizations`,
