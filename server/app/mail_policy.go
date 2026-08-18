@@ -28,8 +28,15 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		return 0, errors.New("mail delivery relevance target is invalid")
 	}
 	switch delivery.TemplateKey {
-	case model.MailTemplateSystemTest:
-		// A controlled transport test is relevant until its immutable deadline.
+	case model.MailTemplateSystemTest,
+		model.MailTemplateIdentityVerifyEmail,
+		model.MailTemplateIdentityPasswordReset,
+		model.MailTemplateIdentityPasswordChanged,
+		model.MailTemplateAccessStudentClassInvitation,
+		model.MailTemplateAccessInvitationAccepted:
+		// Purpose-bound credential deliveries receive their authoritative
+		// multi-node relevance fence in MailStore.StartDelivery. The remaining
+		// immutable notifications are relevant until their deadline.
 		return mailDeliveryRelevant, nil
 	default:
 		return 0, errors.New("mail delivery relevance policy is unavailable")

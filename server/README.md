@@ -189,15 +189,21 @@ server then prints a temporary value once to the controlling terminal while
 the installation is pristine. The secret is redacted from configuration
 display and structured logs.
 
-Electron/web login (`client_type` equal to `desktop` or `web`) returns the user
-and session but omits raw credentials from JSON. It sets host-only
+Web login (`client_type` equal to `web`) returns the user and session but omits
+raw credentials from JSON. It sets host-only
 `PROCTOR_ACCESS`, `PROCTOR_REFRESH`, `PROCTOR_CSRF_BINDING`, and
 `PROCTOR_CSRF` cookies. The first three are HttpOnly except for
 `PROCTOR_CSRF`, which the client copies into `X-Proctor-CSRF-Token` on unsafe
 requests. The refresh cookie is restricted to `/api/v1/auth/refresh`; refresh
 rotates the full cookie set. Production cookie security follows the configured
-HTTPS public URL. Electron is expected to load the installation's server
-origin so SameSite=Lax remains effective.
+HTTPS public URL.
+
+Desktop authentication does not use the JSON login operation or those browser
+cookies. The native client starts the system-browser authorization protocol at
+`POST /api/v1/auth/desktop/authorizations` and exchanges its short-lived,
+one-use code at `POST /api/v1/auth/desktop/token` for an ordinary rotating
+Desktop Session. The hosted `/authorize/desktop` page and Desktop UI remain
+separate implementation work.
 
 External login uses the same browser session transport. The initiation endpoint
 stores only hashes of a one-use state and browser-binding credential in

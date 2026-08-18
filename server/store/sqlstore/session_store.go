@@ -543,7 +543,17 @@ func revokeAllUserSessions(
 	revokedAt int64,
 	reason string,
 ) ([]sessionRow, []string, error) {
-	at := model.TimeFromMillis(revokedAt)
+	return revokeAllUserSessionsAt(ctx, executor, userID, model.TimeFromMillis(revokedAt), reason)
+}
+
+func revokeAllUserSessionsAt(
+	ctx context.Context,
+	executor sqlxExecutor,
+	userID string,
+	at time.Time,
+	reason string,
+) ([]sessionRow, []string, error) {
+	at = model.TimeUTC(at)
 	hashes := []string{}
 	if err := executor.Select(ctx, &hashes, `
 		SELECT credential.token_hash
@@ -610,8 +620,16 @@ func revokedSessionModels(
 	revokedAt int64,
 	reason string,
 ) ([]*model.Session, error) {
+	return revokedSessionModelsAt(rows, model.TimeFromMillis(revokedAt), reason)
+}
+
+func revokedSessionModelsAt(
+	rows []sessionRow,
+	at time.Time,
+	reason string,
+) ([]*model.Session, error) {
 	sessions := make([]*model.Session, 0, len(rows))
-	at := model.TimeFromMillis(revokedAt)
+	at = model.TimeUTC(at)
 	for _, row := range rows {
 		session, err := row.model()
 		if err != nil {

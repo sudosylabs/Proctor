@@ -70,7 +70,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
-			cfg.Server.PublicURL = "http://proctor.example.test"
+			cfg.Server.PublicURL = "https://proctor.example.test"
 			cfg.Authentication.LoginRateLimit.MaximumSourceAttempts = 100
 			cfg.Authentication.External.Providers = []config.ExternalAuthenticationProvider{{
 				ID: providerID, Type: "cas", DisplayName: "Campus CAS",
@@ -125,7 +125,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/auth/providers/"+providerID+
-			"/login?client_type=desktop&device_id=electron-1&return_to=%2Fafter-login",
+			"/login?device_id=browser-1&return_to=%2Fafter-login",
 		nil,
 		"",
 	)
@@ -269,7 +269,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	loginAgain := func() int {
 		begin := performJSONRequest(
 			helper.Handler(), http.MethodGet,
-			"/api/v1/auth/providers/"+providerID+"/login?client_type=desktop&device_id=electron-2",
+			"/api/v1/auth/providers/"+providerID+"/login?client_type=web&device_id=browser-2",
 			nil, "",
 		)
 		if begin.Code != http.StatusSeeOther {

@@ -36,10 +36,12 @@ type applicationFoundation struct {
 
 type identityConstruction struct {
 	authentication                    *authenticationService
+	desktopAuthorization              *desktopAuthorizationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
 	mfaApplication                    *mfaApplicationService
 	accountTokens                     *accountTokenService
+	invitations                       *invitationService
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
 }
 
@@ -86,9 +88,6 @@ func validateApplicationDependencies(deps Dependencies) error {
 	}
 	if deps.Cache == nil {
 		return errors.New("cache is required")
-	}
-	if deps.Mailer == nil {
-		return errors.New("mailer is required")
 	}
 	if deps.MailDeliverySender == nil {
 		return errors.New("mail delivery sender is required")
@@ -178,10 +177,12 @@ func assembleApplication(
 ) *App {
 	return &App{
 		authentication:                    identity.authentication,
+		desktopAuthorization:              identity.desktopAuthorization,
 		selfSessions:                      identity.selfSessions,
 		externalAuthentication:            identity.externalAuthentication,
 		mfaApplication:                    identity.mfaApplication,
 		accountTokens:                     identity.accountTokens,
+		invitations:                       identity.invitations,
 		personalAccessTokenAdministration: identity.personalAccessTokenAdministration,
 		authorization:                     access.authorization,
 		accessPolicies:                    access.accessPolicies,

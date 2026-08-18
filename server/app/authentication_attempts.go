@@ -43,6 +43,8 @@ const (
 	authenticationAttemptPurposeExternalAuthentication
 	authenticationAttemptPurposeInstallationBootstrap
 	authenticationAttemptPurposeMailTest
+	authenticationAttemptPurposeInvitation
+	authenticationAttemptPurposeDesktopAuthorization
 )
 
 func (p authenticationAttemptPurpose) keySegment() (string, bool) {
@@ -57,6 +59,10 @@ func (p authenticationAttemptPurpose) keySegment() (string, bool) {
 		return "installation-bootstrap", true
 	case authenticationAttemptPurposeMailTest:
 		return "mail-test", true
+	case authenticationAttemptPurposeInvitation:
+		return "invitation", true
+	case authenticationAttemptPurposeDesktopAuthorization:
+		return "desktop-authorization", true
 	default:
 		return "", false
 	}

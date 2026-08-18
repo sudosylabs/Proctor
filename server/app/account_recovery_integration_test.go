@@ -13,8 +13,10 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/packages/mail"
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -24,7 +26,6 @@ import (
 func TestAccountRecoveryIntegration(t *testing.T) {
 	dataSource := requireAuthenticationDatabase(t)
 	persistence := openAuthenticationStore(t, dataSource)
-	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -34,12 +35,16 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		}),
 		testlib.WithStore(persistence),
 	)
-	institution, err := persistence.Institution().Save(context.Background(), &model.Institution{
-		Name: "recovery-university", DisplayName: "Recovery University",
+	bootstrap, appErr := helper.App.BootstrapInstallation(context.Background(), application.Invocation{}, application.BootstrapInstallationCommand{
+		InstitutionName: "recovery-university", InstitutionDisplayName: "Recovery University",
+		AdministratorUsername: "recovery-admin", AdministratorEmail: "recovery-admin@example.edu",
+		AdministratorDisplayName: "Recovery Admin", AdministratorLocale: "en", AdministratorTimezone: "UTC",
+		Password: "bootstrap correct horse battery staple", BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
 	})
-	if err != nil {
-		t.Fatal(err)
+	if appErr != nil {
+		t.Fatal(appErr)
 	}
+	institution := bootstrap.Institution
 	const oldPassword = "correct horse battery staple"
 	const newPassword = "new correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
@@ -49,6 +54,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
+	startIntegrationServer(t, helper)
 	login := loginIntegrationUser(
 		t,
 		helper.Handler(),
@@ -72,7 +78,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 			verificationRequest.Body.String(),
 		)
 	}
-	deliveries := helper.Mailer.Deliveries()
+	deliveries := waitForRecoveryDeliveries(t, helper, 1)
 	if len(deliveries) != 1 {
 		t.Fatalf("verification deliveries = %d", len(deliveries))
 	}
@@ -131,7 +137,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 			knownReset.Code,
 		)
 	}
-	deliveries = helper.Mailer.Deliveries()
+	deliveries = waitForRecoveryDeliveries(t, helper, 2)
 	if len(deliveries) != 2 {
 		t.Fatalf("password reset deliveries = %d, want 2 total", len(deliveries))
 	}
@@ -152,6 +158,11 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 			resetComplete.Code,
 			resetComplete.Body.String(),
 		)
+	}
+	deliveries = waitForRecoveryDeliveries(t, helper, 3)
+	changedMessage := strings.ReplaceAll(string(deliveries[2].Data), "=\r\n", "")
+	if credentialPattern.MatchString(changedMessage) || !strings.Contains(changedMessage, "Password changed") {
+		t.Fatalf("password-changed notice contains a credential or lacks expected copy")
 	}
 	oldSession := performJSONRequest(
 		helper.Handler(),
@@ -261,16 +272,19 @@ func TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence(
 func TestCurrentAccessPolicyGatesLocalLoginAndPasswordRecoveryRealGraph(t *testing.T) {
 	dataSource := requireAuthenticationDatabase(t)
 	persistence := openAuthenticationStore(t, dataSource)
-	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(t, testlib.WithConfig(func(cfg *config.Config) {
 		cfg.Server.PublicURL = "https://proctor.example.edu"
 		cfg.Authentication.AccountRecovery.RateLimit.MaximumAttempts = 20
 		cfg.Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts = 100
 	}), testlib.WithStore(persistence))
-	if _, err := persistence.Institution().Save(context.Background(), &model.Institution{
-		Name: "policy-recovery", DisplayName: "Policy Recovery",
-	}); err != nil {
-		t.Fatal(err)
+	bootstrap, appErr := helper.App.BootstrapInstallation(context.Background(), application.Invocation{}, application.BootstrapInstallationCommand{
+		InstitutionName: "policy-recovery", InstitutionDisplayName: "Policy Recovery",
+		AdministratorUsername: "policy-recovery-admin", AdministratorEmail: "policy-recovery-admin@example.edu",
+		AdministratorLocale: "en", AdministratorTimezone: "UTC",
+		Password: "bootstrap correct horse battery staple", BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
+	})
+	if appErr != nil || bootstrap == nil {
+		t.Fatalf("bootstrap = %#v, %v", bootstrap, appErr)
 	}
 	const password = "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
@@ -279,12 +293,13 @@ func TestCurrentAccessPolicyGatesLocalLoginAndPasswordRecoveryRealGraph(t *testi
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
+	startIntegrationServer(t, helper)
 	issued := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/password-reset/request",
 		map[string]any{"email": user.Email}, "")
-	if issued.Code != http.StatusAccepted || len(helper.Mailer.Deliveries()) != 1 {
+	if issued.Code != http.StatusAccepted {
 		t.Fatalf("initial reset status=%d deliveries=%d", issued.Code, len(helper.Mailer.Deliveries()))
 	}
-	resetToken := credentialFromDelivery(t, helper.Mailer.Deliveries()[0])
+	resetToken := credentialFromDelivery(t, waitForRecoveryDeliveries(t, helper, 1)[0])
 	if _, err := persistence.GetMaster().Exec(context.Background(),
 		`UPDATE access_policies SET local_login_enabled=FALSE,
 		 invitation_local_credential_enabled=FALSE WHERE singleton=1`); err != nil {
@@ -333,4 +348,19 @@ func credentialFromDelivery(t *testing.T, delivery mail.Delivery) string {
 		t.Fatalf("credential link missing from delivery")
 	}
 	return match[1]
+}
+
+func waitForRecoveryDeliveries(t *testing.T, helper *testlib.Helper, count int) []mail.Delivery {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		deliveries := helper.Mailer.Deliveries()
+		if len(deliveries) >= count {
+			return deliveries
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("mail deliveries = %d, want at least %d", len(deliveries), count)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

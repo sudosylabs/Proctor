@@ -60,6 +60,10 @@ func TestWithOutcomePreservesPortableErrorMatching(t *testing.T) {
 			t.Parallel()
 			cause := fmt.Errorf("%w: transport detail", mail.ErrRejected)
 			err := mail.Error("commit", mail.WithOutcome(outcome, cause))
+			var portable interface{ MailOutcome() string }
+			if !errors.As(err, &portable) || portable.MailOutcome() != string(outcome) {
+				t.Fatalf("portable outcome marker = %#v, want %q", portable, outcome)
+			}
 			if got := mail.Classify(err); got != outcome {
 				t.Fatalf("Classify() = %q, want %q", got, outcome)
 			}

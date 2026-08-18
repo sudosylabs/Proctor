@@ -110,7 +110,7 @@ func (s SQLMailStore) suppressDeliveryPage(ctx context.Context, code string, lim
 			if modelErr != nil {
 				return nil, modelErr
 			}
-			if job.Type != model.JobTypeMailDeliver || job.DedupeKey != current.ID.String() {
+			if !isMailDeliveryJobType(job.Type) || job.DedupeKey != current.ID.String() {
 				return nil, invalidPersistedState("mail_delivery", "job", fmt.Errorf("mail delivery job relationship is invalid"))
 			}
 			transitionAt := model.TimeUTC(now)
@@ -205,13 +205,13 @@ func (s SQLMailStore) QueueSnapshot(ctx context.Context) (*store.MailQueueSnapsh
 		WITH eligible AS (
 			(SELECT d.template_key,d.state,d.public_failure_code,j.available_at AS eligible_at
 			   FROM jobs j JOIN mail_deliveries d ON d.job_id=j.id
-			  WHERE j.type='mail.deliver' AND j.status='queued' AND d.state='queued'
+			  WHERE j.type IN ('mail.deliver','mail.deliver_credential') AND j.status='queued' AND d.state='queued'
 			    AND j.available_at<=statement_timestamp()
 			  ORDER BY j.available_at,j.id LIMIT 501)
 			UNION ALL
 			(SELECT d.template_key,d.state,d.public_failure_code,d.updated_at AS eligible_at
 			   FROM jobs j JOIN mail_deliveries d ON d.job_id=j.id
-			  WHERE j.type='mail.deliver' AND j.status IN ('running','cancel_requested') AND d.state='sending'
+			  WHERE j.type IN ('mail.deliver','mail.deliver_credential') AND j.status IN ('running','cancel_requested') AND d.state='sending'
 			  ORDER BY d.updated_at,d.id LIMIT 501)
 		)
 		SELECT template_key,state,public_failure_code,eligible_at

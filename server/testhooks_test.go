@@ -104,7 +104,11 @@ func (s *hookStore) ExternalIdentity() store.ExternalIdentityStore {
 func (s *hookStore) ExternalLoginState() store.ExternalLoginStateStore {
 	return hookExternalLoginStateStore{}
 }
+func (s *hookStore) DesktopAuthorization() store.DesktopAuthorizationStore {
+	return hookDesktopAuthorizationStore{}
+}
 func (s *hookStore) UserToken() store.UserTokenStore               { return hookUserTokenStore{} }
+func (s *hookStore) Invitation() store.InvitationStore             { return hookInvitationStore{} }
 func (s *hookStore) Role() store.RoleStore                         { return hookRoleStore{} }
 func (s *hookStore) RoleBinding() store.RoleBindingStore           { return hookRoleBindingStore{} }
 func (s *hookStore) Audit() store.AuditStore                       { return hookAuditStore{} }
@@ -114,6 +118,9 @@ func (s *hookStore) ClassMember() store.ClassMemberStore           { return hook
 func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore {
 	return hookAcademicUnitMemberStore{}
 }
+
+type hookInvitationStore struct{ store.InvitationStore }
+
 func (s *hookStore) Ping(context.Context) error {
 	attempt := s.pingAttempts.Add(1)
 	if s.ping != nil {
@@ -165,6 +172,9 @@ type hookAuditStore struct{ store.AuditStore }
 type hookPersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }
 type hookExternalIdentityStore struct{ store.ExternalIdentityStore }
 type hookExternalLoginStateStore struct{ store.ExternalLoginStateStore }
+type hookDesktopAuthorizationStore struct {
+	store.DesktopAuthorizationStore
+}
 type hookUserTokenStore struct{ store.UserTokenStore }
 type hookRoleStore struct{ store.RoleStore }
 type hookRoleBindingStore struct{ store.RoleBindingStore }
@@ -203,7 +213,10 @@ type hookMailer struct {
 	closeErr    error
 }
 
-func (m *hookMailer) Enabled() bool { return true }
+// The hook configuration uses the production default with mail disabled. Keep
+// the injected transport's capability state aligned with that configuration;
+// an enabled transport must also provide the configured payload-key ring.
+func (m *hookMailer) Enabled() bool { return false }
 func (m *hookMailer) From() mailpkg.Address {
 	return mailpkg.Address{Name: "Proctor Test", Address: "no-reply@test.proctor.invalid"}
 }

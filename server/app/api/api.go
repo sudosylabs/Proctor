@@ -114,6 +114,7 @@ type Options struct {
 	Affiliations            AffiliationApplication
 	AcademicUnitMembers     AcademicUnitMemberApplication
 	ClassMembers            ClassMemberApplication
+	Invitations             InvitationApplication
 	UserProfiles            UserProfileApplication
 	UserSettings            UserSettingsApplication
 	AccountStates           AccountStateApplication
@@ -408,6 +409,7 @@ type Realtime interface {
 // an unrelated service locator.
 type Application interface {
 	Authentication
+	DesktopAuthorization
 	ExternalAuthentication
 	Sessions
 	PersonalAccessTokens
@@ -552,11 +554,19 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 	if accessPolicy == nil {
 		accessPolicy = unavailableAccessPolicyApplication{}
 	}
+	invitations := options.Invitations
+	if invitations == nil {
+		invitations, _ = options.Application.(InvitationApplication)
+	}
+	if invitations == nil {
+		invitations = unavailableInvitationApplication{}
+	}
 	return []resource{
 		systemResource(options.Health, options.BuildInfo),
 		bootstrapResource(options.Bootstrap),
 		accessPolicyResource(accessPolicy),
 		authenticationResource(options.Application, cookies),
+		desktopAuthorizationResource(options.Application),
 		externalAuthenticationResource(options.Application, cookies),
 		userProfileResource(options.UserProfiles),
 		userSettingsResource(options.UserSettings),
@@ -581,6 +591,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		affiliationResource(options.Affiliations),
 		academicUnitMemberResource(options.AcademicUnitMembers),
 		classMemberResource(options.ClassMembers),
+		invitationResource(invitations),
 		roleResource(options.Roles),
 		roleBindingResource(options.RoleBindings),
 		auditResource(options.AuditListings),

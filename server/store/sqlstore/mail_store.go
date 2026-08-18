@@ -20,29 +20,30 @@ import (
 type SQLMailStore struct{ *SQLStore }
 
 type mailDeliveryRow struct {
-	ID                string         `db:"id"`
-	OccurrenceID      string         `db:"occurrence_id"`
-	JobID             string         `db:"job_id"`
-	TargetUserID      string         `db:"target_user_id"`
-	TemplateKey       string         `db:"template_key"`
-	TemplateDigest    string         `db:"template_digest"`
-	MaskedRecipient   string         `db:"masked_recipient"`
-	State             string         `db:"state"`
-	CreatedAt         time.Time      `db:"created_at"`
-	UpdatedAt         time.Time      `db:"updated_at"`
-	MessageDate       time.Time      `db:"message_date"`
-	Deadline          time.Time      `db:"deadline"`
-	MessageID         string         `db:"message_id"`
-	AttemptCount      int            `db:"attempt_count"`
-	AcceptedAt        sql.NullTime   `db:"accepted_at"`
-	FailedAt          sql.NullTime   `db:"failed_at"`
-	PublicFailureCode string         `db:"public_failure_code"`
-	PayloadKeyID      sql.NullString `db:"payload_key_id"`
-	EncryptedPayload  jsonValue      `db:"encrypted_payload"`
-	Revision          int64          `db:"revision"`
+	ID                 string         `db:"id"`
+	OccurrenceID       string         `db:"occurrence_id"`
+	JobID              string         `db:"job_id"`
+	TargetUserID       sql.NullString `db:"target_user_id"`
+	TargetInvitationID sql.NullString `db:"target_invitation_id"`
+	TemplateKey        string         `db:"template_key"`
+	TemplateDigest     string         `db:"template_digest"`
+	MaskedRecipient    string         `db:"masked_recipient"`
+	State              string         `db:"state"`
+	CreatedAt          time.Time      `db:"created_at"`
+	UpdatedAt          time.Time      `db:"updated_at"`
+	MessageDate        time.Time      `db:"message_date"`
+	Deadline           time.Time      `db:"deadline"`
+	MessageID          string         `db:"message_id"`
+	AttemptCount       int            `db:"attempt_count"`
+	AcceptedAt         sql.NullTime   `db:"accepted_at"`
+	FailedAt           sql.NullTime   `db:"failed_at"`
+	PublicFailureCode  string         `db:"public_failure_code"`
+	PayloadKeyID       sql.NullString `db:"payload_key_id"`
+	EncryptedPayload   jsonValue      `db:"encrypted_payload"`
+	Revision           int64          `db:"revision"`
 }
 
-const mailDeliveryColumns = `id, occurrence_id, job_id, target_user_id, template_key, template_digest, masked_recipient, state, created_at, updated_at, message_date, deadline, message_id, attempt_count, accepted_at, failed_at, public_failure_code, payload_key_id, encrypted_payload, revision`
+const mailDeliveryColumns = `id, occurrence_id, job_id, target_user_id, target_invitation_id, template_key, template_digest, masked_recipient, state, created_at, updated_at, message_date, deadline, message_id, attempt_count, accepted_at, failed_at, public_failure_code, payload_key_id, encrypted_payload, revision`
 
 func newSQLMailStore(sqlStore *SQLStore) store.MailStore { return &SQLMailStore{SQLStore: sqlStore} }
 
@@ -64,7 +65,7 @@ func (s SQLMailStore) EnqueueTest(ctx context.Context, input *store.MailTestEnqu
 		if _, err := insertQueuedJob(ctx, tx, input.Job, false); err != nil {
 			return nil, fmt.Errorf("insert mail delivery job: %w", translateError("job", input.Job.ID.String(), err))
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO mail_deliveries (`+mailDeliveryColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, '', ?, ?, 1)`, input.Delivery.ID.String(), input.Delivery.OccurrenceID.String(), input.Delivery.JobID.String(), input.Delivery.TargetUserID.String(), string(input.Delivery.TemplateKey), input.Delivery.TemplateDigest, input.Delivery.MaskedRecipient, string(input.Delivery.State), input.Delivery.CreatedAt, input.Delivery.UpdatedAt, input.Delivery.MessageDate, input.Delivery.Deadline, input.Delivery.MessageID, payloadKeyID, input.Delivery.EncryptedPayload); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO mail_deliveries (`+mailDeliveryColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, '', ?, ?, 1)`, input.Delivery.ID.String(), input.Delivery.OccurrenceID.String(), input.Delivery.JobID.String(), nullableID(input.Delivery.TargetUserID.String()), nullableID(input.Delivery.TargetInvitationID.String()), string(input.Delivery.TemplateKey), input.Delivery.TemplateDigest, input.Delivery.MaskedRecipient, string(input.Delivery.State), input.Delivery.CreatedAt, input.Delivery.UpdatedAt, input.Delivery.MessageDate, input.Delivery.Deadline, input.Delivery.MessageID, payloadKeyID, input.Delivery.EncryptedPayload); err != nil {
 			return nil, fmt.Errorf("insert mail delivery: %w", translateError("mail_delivery", input.Delivery.ID.String(), err))
 		}
 		if err := incrementMailPayloadKeyReference(ctx, tx, payloadKeyID); err != nil {
@@ -94,6 +95,23 @@ func requireMailPayloadPrimary(ctx context.Context, tx *sqlxTxWrapper, payloadKe
 		return store.NewErrConflict("mail_delivery", "stale_primary_key", nil)
 	}
 	return nil
+}
+
+// insertPreparedMailJob persists either claimable mail work or the exact
+// terminal canceled Job paired with a disabled, ciphertext-free delivery.
+func insertPreparedMailJob(ctx context.Context, executor sqlxExecutor, job *model.Job) error {
+	if job.Status == model.JobStatusQueued {
+		_, err := insertQueuedJob(ctx, executor, job, false)
+		return err
+	}
+	if job.Status != model.JobStatusCanceled || !job.CompletedAt.Valid {
+		return store.NewErrInvalidInput("job", "prepared_mail", nil)
+	}
+	_, err := executor.Exec(ctx, `INSERT INTO jobs (`+jobColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
+		job.ID.String(), string(job.Type), string(job.Status), job.CreatedAt, job.UpdatedAt, job.AvailableAt,
+		job.CompletedAt.Time, job.CommandVersion, job.Command, job.PublicErrorCode, job.DedupeKey,
+		string(job.DedupePolicy), job.AttemptCount, job.MaximumAttempts, job.WorkReserved, job.Revision)
+	return err
 }
 
 func validateMailTestEnqueue(input *store.MailTestEnqueue) error {
@@ -222,7 +240,229 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 	if !id.IsValid() || expectedRevision <= 0 || at.IsZero() {
 		return nil, store.NewErrInvalidInput("mail_delivery", "start", nil)
 	}
-	return s.mutateDelivery(ctx, id, expectedRevision, func(current *model.MailDelivery) (*model.MailDelivery, error) { return current.Start(at) })
+	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error {
+		return fmt.Errorf("commit mail delivery start: %w", err)
+	}), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {
+		// Read immutable routing fields before taking the purpose advisory lock.
+		// Issuance takes the same lock before suppressing superseded deliveries;
+		// this ordering prevents Start from deadlocking with or escaping reissue.
+		var route struct {
+			OccurrenceID       string         `db:"occurrence_id"`
+			TargetUserID       sql.NullString `db:"target_user_id"`
+			TargetInvitationID sql.NullString `db:"target_invitation_id"`
+			TemplateKey        string         `db:"template_key"`
+		}
+		if err := tx.Get(ctx, &route, `SELECT occurrence_id,target_user_id,target_invitation_id,template_key FROM mail_deliveries WHERE id=?`, id.String()); err != nil {
+			return nil, translateError("mail_delivery", id.String(), err)
+		}
+		templateKey := model.MailTemplateKey(route.TemplateKey)
+		purpose, credential := recoveryTokenPurpose(templateKey)
+		if credential {
+			if !route.TargetUserID.Valid {
+				return nil, invalidPersistedState("mail_delivery", "target_user_id", errors.New("credential delivery has no user target"))
+			}
+			if err := lockUserTokenPurpose(ctx, tx, route.TargetUserID.String, purpose); err != nil {
+				return nil, err
+			}
+		}
+		invitationCredential := templateKey == model.MailTemplateAccessStudentClassInvitation
+		if invitationCredential {
+			if !route.TargetInvitationID.Valid {
+				return nil, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
+			}
+			if _, err := lockActiveStudentClassInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
+				return nil, err
+			}
+		}
+		databaseNow, err := jobDatabaseNow(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		var row mailDeliveryRow
+		if err := tx.Get(ctx, &row, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries WHERE id=? FOR UPDATE`, id.String()); err != nil {
+			return nil, translateError("mail_delivery", id.String(), err)
+		}
+		current, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		if current.Revision != expectedRevision {
+			return nil, store.NewErrConflict("mail_delivery", "stale_revision", nil)
+		}
+		if credential {
+			relevant, relevanceErr := activeRecoveryTokenMail(ctx, tx, current, purpose, databaseNow)
+			if relevanceErr != nil {
+				return nil, relevanceErr
+			}
+			if !relevant {
+				transitionAt := databaseNow
+				if transitionAt.Before(current.UpdatedAt) {
+					transitionAt = current.UpdatedAt
+				}
+				updated, suppressErr := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
+				if suppressErr != nil {
+					return nil, invalidPersistedState("mail_delivery", "suppression", suppressErr)
+				}
+				if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+					return nil, err
+				}
+				return updated, nil
+			}
+		}
+		if invitationCredential {
+			relevant, relevanceErr := activeStudentClassInvitationMail(ctx, tx, current, databaseNow)
+			if relevanceErr != nil {
+				return nil, relevanceErr
+			}
+			if !relevant {
+				transitionAt := databaseNow
+				if transitionAt.Before(current.UpdatedAt) {
+					transitionAt = current.UpdatedAt
+				}
+				updated, suppressErr := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
+				if suppressErr != nil {
+					return nil, invalidPersistedState("mail_delivery", "suppression", suppressErr)
+				}
+				if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+					return nil, err
+				}
+				return updated, nil
+			}
+		}
+		startAt := at
+		if credential || invitationCredential {
+			startAt = databaseNow
+			if startAt.Before(current.UpdatedAt) {
+				startAt = current.UpdatedAt
+			}
+		}
+		updated, err := current.Start(startAt)
+		if err != nil {
+			return nil, store.NewErrConflict("mail_delivery", "invalid_transition", err)
+		}
+		if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+			return nil, err
+		}
+		return updated, nil
+	})
+}
+
+func recoveryTokenPurpose(key model.MailTemplateKey) (model.UserTokenPurpose, bool) {
+	switch key {
+	case model.MailTemplateIdentityVerifyEmail:
+		return model.UserTokenEmailVerification, true
+	case model.MailTemplateIdentityPasswordReset:
+		return model.UserTokenPasswordReset, true
+	default:
+		return "", false
+	}
+}
+
+// suppressInvitationCredentialMail terminates recoverable credential delivery
+// work while the caller still owns the transaction that made the Invitation
+// irrelevant. The Invitation mutation, ciphertext destruction, payload-key
+// reference decrement, and Job cancellation therefore commit atomically.
+func suppressInvitationCredentialMail(
+	ctx context.Context,
+	tx *sqlxTxWrapper,
+	invitationID model.InvitationID,
+	publicCode string,
+	at time.Time,
+) error {
+	if tx == nil || !invitationID.IsValid() || at.IsZero() {
+		return store.NewErrInvalidInput("mail_delivery", "target_suppression", nil)
+	}
+	var rows []mailDeliveryRow
+	if err := tx.Select(ctx, &rows, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries
+		WHERE target_invitation_id=? AND template_key=? ORDER BY id FOR UPDATE`,
+		invitationID.String(), string(model.MailTemplateAccessStudentClassInvitation)); err != nil {
+		return fmt.Errorf("lock target credential deliveries: %w", err)
+	}
+	for index := range rows {
+		current, err := rows[index].model()
+		if err != nil {
+			return err
+		}
+		switch current.State {
+		case model.MailDeliveryAccepted, model.MailDeliverySuppressed, model.MailDeliveryCanceled:
+			continue
+		case model.MailDeliveryQueued, model.MailDeliverySending, model.MailDeliveryFailed:
+		default:
+			return invalidPersistedState("mail_delivery", "state", errors.New("target credential delivery has an unknown lifecycle"))
+		}
+		job, err := getJob(ctx, tx, current.JobID, true)
+		if err != nil {
+			return err
+		}
+		if job.Type != model.JobTypeMailDeliverCredential || job.DedupeKey != current.ID.String() {
+			return invalidPersistedState("mail_delivery", "job", errors.New("target credential delivery Job relationship is invalid"))
+		}
+		transitionAt := model.TimeUTC(at)
+		if transitionAt.Before(current.UpdatedAt) {
+			transitionAt = current.UpdatedAt
+		}
+		if transitionAt.Before(job.UpdatedAt) {
+			transitionAt = job.UpdatedAt
+		}
+		updated, err := current.Suppress(publicCode, transitionAt)
+		if err != nil {
+			return store.NewErrConflict("mail_delivery", "invalid_transition", err)
+		}
+		if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+			return err
+		}
+		if job.Status == model.JobStatusQueued || job.Status == model.JobStatusRunning {
+			updatedJob, cancelErr := job.RequestCancellation(transitionAt)
+			if cancelErr != nil {
+				return store.NewErrConflict("job", "invalid_transition", cancelErr)
+			}
+			if err = updateJob(ctx, tx, updatedJob); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func activeRecoveryTokenMail(ctx context.Context, executor sqlxExecutor, delivery *model.MailDelivery, purpose model.UserTokenPurpose, at time.Time) (bool, error) {
+	var tokenID string
+	if err := executor.Get(ctx, &tokenID, `
+		SELECT t.id FROM user_tokens t
+		JOIN users u ON u.id=t.user_id
+		WHERE t.id=? AND t.user_id=? AND t.purpose=? AND t.archived_at IS NULL AND t.consumed_at IS NULL
+		  AND t.expires_at>? AND u.archived_at IS NULL AND u.disabled_at IS NULL AND u.email=t.target
+		FOR SHARE OF t,u`, delivery.OccurrenceID.String(), delivery.TargetUserID.String(), purpose, model.TimeUTC(at)); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, fmt.Errorf("check recovery mail relevance: %w", err)
+	}
+	return tokenID != "", nil
+}
+
+func lockActiveStudentClassInvitationMail(ctx context.Context, executor sqlxExecutor, invitationID string) (bool, error) {
+	var pending bool
+	if err := executor.Get(ctx, &pending, `SELECT state='pending' FROM invitations WHERE id=? FOR SHARE`, invitationID); err != nil {
+		return false, translateError("invitation", invitationID, err)
+	}
+	return pending, nil
+}
+
+func activeStudentClassInvitationMail(ctx context.Context, executor sqlxExecutor, delivery *model.MailDelivery, at time.Time) (bool, error) {
+	if delivery == nil || !delivery.TargetInvitationID.IsValid() || delivery.TemplateKey != model.MailTemplateAccessStudentClassInvitation {
+		return false, invalidPersistedState("mail_delivery", "invitation_target", errors.New("invitation credential delivery target is invalid"))
+	}
+	var active bool
+	if err := executor.Get(ctx, &active, `SELECT EXISTS(
+		SELECT 1 FROM invitations i
+		JOIN classes c ON c.id=i.class_id AND c.archived_at IS NULL
+		JOIN academic_periods ap ON ap.id=i.academic_period_id AND ap.archived_at IS NULL
+		WHERE i.id=? AND i.state='pending' AND i.expires_at>? AND (i.intended_end_at IS NULL OR i.intended_end_at>?)
+		  AND ap.end_at>? AND c.academic_period_id=i.academic_period_id
+	)`, delivery.TargetInvitationID.String(), model.TimeUTC(at), model.TimeUTC(at), model.TimeUTC(at)); err != nil {
+		return false, fmt.Errorf("check Invitation mail relevance: %w", err)
+	}
+	return active, nil
 }
 
 func (s SQLMailStore) CompleteDelivery(ctx context.Context, input *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
@@ -286,6 +526,33 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 		return nil, store.NewErrInvalidInput("mail_delivery", operation, nil)
 	}
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {
+		var route struct {
+			TargetUserID       sql.NullString `db:"target_user_id"`
+			TargetInvitationID sql.NullString `db:"target_invitation_id"`
+			TemplateKey        string         `db:"template_key"`
+		}
+		if err := tx.Get(ctx, &route, `SELECT target_user_id,target_invitation_id,template_key FROM mail_deliveries WHERE id=?`, input.ID.String()); err != nil {
+			return nil, translateError("mail_delivery", input.ID.String(), err)
+		}
+		templateKey := model.MailTemplateKey(route.TemplateKey)
+		purpose, credential := recoveryTokenPurpose(templateKey)
+		if credential {
+			if !route.TargetUserID.Valid {
+				return nil, invalidPersistedState("mail_delivery", "target_user_id", errors.New("credential delivery has no user target"))
+			}
+			if err := lockUserTokenPurpose(ctx, tx, route.TargetUserID.String, purpose); err != nil {
+				return nil, err
+			}
+		}
+		invitationCredential := templateKey == model.MailTemplateAccessStudentClassInvitation
+		if invitationCredential {
+			if !route.TargetInvitationID.Valid {
+				return nil, invalidPersistedState("mail_delivery", "target_invitation_id", errors.New("invitation credential delivery has no Invitation target"))
+			}
+			if _, err := lockActiveStudentClassInvitationMail(ctx, tx, route.TargetInvitationID.String); err != nil {
+				return nil, err
+			}
+		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -301,6 +568,24 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 		if current.Revision != input.ExpectedRevision {
 			return nil, store.NewErrConflict("mail_delivery", "stale_revision", nil)
 		}
+		if operation == "retry" && credential {
+			relevant, relevanceErr := activeRecoveryTokenMail(ctx, tx, current, purpose, databaseNow)
+			if relevanceErr != nil {
+				return nil, relevanceErr
+			}
+			if !relevant {
+				return nil, store.NewErrConflict("mail_delivery", "obsolete", nil)
+			}
+		}
+		if operation == "retry" && invitationCredential {
+			relevant, relevanceErr := activeStudentClassInvitationMail(ctx, tx, current, databaseNow)
+			if relevanceErr != nil {
+				return nil, relevanceErr
+			}
+			if !relevant {
+				return nil, store.NewErrConflict("mail_delivery", "obsolete", nil)
+			}
+		}
 		if err = validateMailMutationAudit(ctx, tx, input.AuditEventID, current.ID); err != nil {
 			return nil, err
 		}
@@ -308,7 +593,7 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 		if err != nil {
 			return nil, err
 		}
-		if job.Type != model.JobTypeMailDeliver || job.DedupeKey != current.ID.String() {
+		if !isMailDeliveryJobType(job.Type) || job.DedupeKey != current.ID.String() {
 			return nil, store.NewErrConflict("mail_delivery", "job_mismatch", nil)
 		}
 		updated, updatedJob, err := transition(current, job, databaseNow)
@@ -330,6 +615,10 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 		}
 		return updated, nil
 	})
+}
+
+func isMailDeliveryJobType(jobType model.JobType) bool {
+	return jobType == model.JobTypeMailDeliver || jobType == model.JobTypeMailDeliverCredential
 }
 
 func validateMailMutationAudit(ctx context.Context, tx *sqlxTxWrapper, auditID string, deliveryID model.MailDeliveryID) error {
@@ -440,7 +729,7 @@ func decrementMailPayloadKeyReference(ctx context.Context, tx *sqlxTxWrapper, ke
 }
 
 func (row mailDeliveryRow) model() (*model.MailDelivery, error) {
-	delivery := &model.MailDelivery{ID: model.MailDeliveryID(row.ID), OccurrenceID: model.MailOccurrenceID(row.OccurrenceID), JobID: model.JobID(row.JobID), TargetUserID: model.UserID(row.TargetUserID), TemplateKey: model.MailTemplateKey(row.TemplateKey), TemplateDigest: row.TemplateDigest, MaskedRecipient: row.MaskedRecipient, State: model.MailDeliveryState(row.State), CreatedAt: model.TimeUTC(row.CreatedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt), MessageDate: model.TimeUTC(row.MessageDate), Deadline: model.TimeUTC(row.Deadline), MessageID: row.MessageID, AttemptCount: row.AttemptCount, AcceptedAt: optionalTime(row.AcceptedAt), FailedAt: optionalTime(row.FailedAt), PublicFailureCode: row.PublicFailureCode, EncryptedPayload: append(json.RawMessage(nil), row.EncryptedPayload...), Revision: row.Revision}
+	delivery := &model.MailDelivery{ID: model.MailDeliveryID(row.ID), OccurrenceID: model.MailOccurrenceID(row.OccurrenceID), JobID: model.JobID(row.JobID), TargetUserID: model.UserID(row.TargetUserID.String), TargetInvitationID: model.InvitationID(row.TargetInvitationID.String), TemplateKey: model.MailTemplateKey(row.TemplateKey), TemplateDigest: row.TemplateDigest, MaskedRecipient: row.MaskedRecipient, State: model.MailDeliveryState(row.State), CreatedAt: model.TimeUTC(row.CreatedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt), MessageDate: model.TimeUTC(row.MessageDate), Deadline: model.TimeUTC(row.Deadline), MessageID: row.MessageID, AttemptCount: row.AttemptCount, AcceptedAt: optionalTime(row.AcceptedAt), FailedAt: optionalTime(row.FailedAt), PublicFailureCode: row.PublicFailureCode, EncryptedPayload: append(json.RawMessage(nil), row.EncryptedPayload...), Revision: row.Revision}
 	if err := delivery.Validate(); err != nil {
 		return nil, invalidPersistedState("mail_delivery", "value", err)
 	}

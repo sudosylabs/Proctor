@@ -18,6 +18,7 @@ import (
 // are not part of the public surface.
 type App struct {
 	authentication                    *authenticationService
+	desktopAuthorization              *desktopAuthorizationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
 	mfaApplication                    *mfaApplicationService
@@ -35,6 +36,7 @@ type App struct {
 	affiliations                      *affiliationService
 	academicUnitMembers               *academicUnitMemberService
 	classMembers                      *classMemberService
+	invitations                       *invitationService
 	exams                             examUseCases
 	examRevisions                     examRevisionUseCases
 	examSittings                      examSittingUseCases
@@ -89,7 +91,7 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	identity, err := constructIdentity(deps, foundation, access.authorization)
+	identity, err := constructIdentity(deps, foundation, access.authorization, access.capabilities)
 	if err != nil {
 		return nil, err
 	}

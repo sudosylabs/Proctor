@@ -24,6 +24,17 @@ type accountTokenEffects interface {
 	SessionsRevoked(context.Context, string, []string, []string)
 }
 
+type preparedDirectMail struct {
+	Occurrence *model.MailOccurrence
+	Delivery   *model.MailDelivery
+	Job        *model.Job
+}
+
+type accountTokenMailPreparer interface {
+	Enabled() bool
+	PrepareDirect(DirectMailPreparation) (*preparedDirectMail, error)
+}
+
 // accountTokenService owns purpose-specific verification and recovery tokens.
 // Terminal transitions and their success audits remain named atomic store
 // operations; only post-commit session effects happen outside persistence.
@@ -33,7 +44,7 @@ type accountTokenService struct {
 	tokens       store.UserTokenStore
 	accessPolicy authenticationAccessPolicy
 	institutions store.InstitutionStore
-	mailer       AccountMailer
+	mail         accountTokenMailPreparer
 	attempts     *authenticationAttemptAccounting
 	hasher       accountTokenPasswordHasher
 	audit        accountTokenAudit
@@ -51,7 +62,7 @@ func newAccountTokenService(
 	tokens store.UserTokenStore,
 	accessPolicy authenticationAccessPolicy,
 	institutions store.InstitutionStore,
-	mailer AccountMailer,
+	mail accountTokenMailPreparer,
 	attempts *authenticationAttemptAccounting,
 	hasher accountTokenPasswordHasher,
 	audit accountTokenAudit,
@@ -71,7 +82,7 @@ func newAccountTokenService(
 		{tokens == nil, "user token store"},
 		{accessPolicy == nil, "authentication access policy"},
 		{institutions == nil, "institution store"},
-		{mailer == nil, "account mailer"},
+		{mail == nil, "account mail preparer"},
 		{attempts == nil, "authentication attempt accounting"},
 		{hasher == nil, "password hasher"},
 		{audit == nil, "account recovery audit"},
@@ -87,7 +98,7 @@ func newAccountTokenService(
 	}
 	return &accountTokenService{
 		users: users, passwords: passwords, tokens: tokens, accessPolicy: accessPolicy,
-		institutions: institutions, mailer: mailer, attempts: attempts,
+		institutions: institutions, mail: mail, attempts: attempts,
 		hasher: hasher, audit: audit, effects: effects, diagnostics: diagnostics,
 		policy: policy, publicURL: publicURL, newToken: newToken, now: now,
 	}, nil

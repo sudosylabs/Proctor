@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"net/url"
 	"strings"
 	"time"
@@ -114,7 +113,7 @@ func (s *accountTokenService) RequestEmailVerification(
 	invocation Invocation,
 	command RequestEmailVerificationCommand,
 ) error {
-	if !s.mailer.Enabled() {
+	if !s.mail.Enabled() {
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	principal := invocation.Principal()
@@ -149,6 +148,7 @@ func (s *accountTokenService) RequestEmailVerification(
 		Target:    user.Email,
 		ExpiresAt: now.Add(s.policy.EmailVerificationTTL),
 	}
+	token.PrepareCreate(model.NewUserTokenID(), now)
 	event := s.audit.Success(
 		auditEmailVerificationRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
@@ -157,9 +157,6 @@ func (s *accountTokenService) RequestEmailVerification(
 		&principal,
 		"session",
 	)
-	if _, err := s.tokens.Issue(ctx, token, event); err != nil {
-		return accountRecoveryStoreFailure(err)
-	}
 	link, err := accountCredentialLink(
 		s.publicURL,
 		"/account/verify-email",
@@ -168,18 +165,17 @@ func (s *accountTokenService) RequestEmailVerification(
 	if err != nil {
 		return accountRecoveryUnavailable(err)
 	}
-	if err := s.sendAccountCredentialMail(
-		ctx,
-		user,
-		"Verify your Proctor email address",
-		"Verify this email address for your Proctor account:\n\n"+link+
-			"\n\nIf you did not request this message, you can ignore it.",
-		"<p>Verify this email address for your Proctor account:</p>"+
-			`<p><a href="`+html.EscapeString(link)+`">Verify email address</a></p>`+
-			"<p>If you did not request this message, you can ignore it.</p>",
-		now,
-	); err != nil {
+	prepared, err := s.mail.PrepareDirect(DirectMailPreparation{
+		Recipient: user, OccurrenceID: model.MailOccurrenceID(token.ID.String()),
+		Kind: model.MailOccurrenceAccountToken, TemplateKey: model.MailTemplateIdentityVerifyEmail,
+		ActionURL: link, At: now, Deadline: token.ExpiresAt, JobType: model.JobTypeMailDeliverCredential,
+	})
+	if err != nil {
 		return accountRecoveryUnavailable(err)
+	}
+	if _, err = s.tokens.Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: prepared.Occurrence,
+		Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: event}); err != nil {
+		return accountRecoveryStoreFailure(err)
 	}
 	return nil
 }
@@ -200,7 +196,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	if !localLoginAllowed {
 		return nil
 	}
-	if !s.mailer.Enabled() {
+	if !s.mail.Enabled() {
 		return accountRecoveryUnavailable(fmt.Errorf("mail delivery is disabled"))
 	}
 	normalizedEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
@@ -245,6 +241,7 @@ func (s *accountTokenService) RequestPasswordReset(
 		Target:    user.Email,
 		ExpiresAt: now.Add(s.policy.PasswordResetTTL),
 	}
+	token.PrepareCreate(model.NewUserTokenID(), now)
 	event := s.audit.Success(
 		auditPasswordResetRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
@@ -253,10 +250,6 @@ func (s *accountTokenService) RequestPasswordReset(
 		nil,
 		"anonymous",
 	)
-	if _, err := s.tokens.Issue(ctx, token, event); err != nil {
-		s.logHiddenRecoveryFailure(ctx, "password reset token issue failed", err)
-		return nil
-	}
 	link, err := accountCredentialLink(
 		s.publicURL,
 		"/account/reset-password",
@@ -266,18 +259,18 @@ func (s *accountTokenService) RequestPasswordReset(
 		s.logHiddenRecoveryFailure(ctx, "password reset link generation failed", err)
 		return nil
 	}
-	if err := s.sendAccountCredentialMail(
-		ctx,
-		user,
-		"Reset your Proctor password",
-		"Reset your Proctor password using this link:\n\n"+link+
-			"\n\nIf you did not request a reset, you can ignore this message.",
-		"<p>Reset your Proctor password using this link:</p>"+
-			`<p><a href="`+html.EscapeString(link)+`">Reset password</a></p>`+
-			"<p>If you did not request a reset, you can ignore this message.</p>",
-		now,
-	); err != nil {
-		s.logHiddenRecoveryFailure(ctx, "password reset delivery failed", err)
+	prepared, err := s.mail.PrepareDirect(DirectMailPreparation{
+		Recipient: user, OccurrenceID: model.MailOccurrenceID(token.ID.String()),
+		Kind: model.MailOccurrenceAccountToken, TemplateKey: model.MailTemplateIdentityPasswordReset,
+		ActionURL: link, At: now, Deadline: token.ExpiresAt, JobType: model.JobTypeMailDeliverCredential,
+	})
+	if err != nil {
+		s.logHiddenRecoveryFailure(ctx, "password reset delivery preparation failed", err)
+		return nil
+	}
+	if _, err = s.tokens.Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: prepared.Occurrence,
+		Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: event}); err != nil {
+		s.logHiddenRecoveryFailure(ctx, "password reset token and delivery issue failed", err)
 	}
 	return nil
 }
@@ -366,14 +359,34 @@ func (s *accountTokenService) CompletePasswordReset(
 		nil,
 		"password_reset_token",
 	)
-	result, err := s.tokens.ConsumePasswordReset(
-		ctx,
-		model.HashToken(command.Token),
-		passwordHash,
-		s.now().UnixMilli(),
-		"password reset",
-		event,
-	)
+	now := model.TimeUTC(s.now())
+	token, err := s.tokens.GetByHash(ctx, model.HashToken(command.Token), model.UserTokenPasswordReset)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, invalidAccountCredential()
+		}
+		return nil, accountRecoveryStoreFailure(err)
+	}
+	user, err := s.users.Get(ctx, token.UserID.String())
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, invalidAccountCredential()
+		}
+		return nil, accountRecoveryStoreFailure(err)
+	}
+	prepared, err := s.mail.PrepareDirect(DirectMailPreparation{
+		Recipient: user, OccurrenceID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice,
+		TemplateKey: model.MailTemplateIdentityPasswordChanged, At: now,
+		Deadline: now.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver,
+	})
+	if err != nil {
+		return nil, accountRecoveryUnavailable(err)
+	}
+	result, err := s.tokens.ConsumePasswordReset(ctx, &store.PasswordResetCompletion{
+		TokenHash: model.HashToken(command.Token), PasswordHash: passwordHash, At: now.UnixMilli(),
+		RevocationReason: "password reset", AuditEvent: event, Occurrence: prepared.Occurrence,
+		Delivery: prepared.Delivery, Job: prepared.Job,
+	})
 	if err != nil {
 		if errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 			return nil, invalidAccountCredential()
@@ -480,25 +493,6 @@ func accountCredentialLink(
 	base.RawQuery = ""
 	base.Fragment = "token=" + url.QueryEscape(rawToken)
 	return base.String(), nil
-}
-
-func (s *accountTokenService) sendAccountCredentialMail(
-	ctx context.Context,
-	user *model.User,
-	subject string,
-	textBody string,
-	htmlBody string,
-	now time.Time,
-) error {
-	return s.mailer.SendCredentialMail(
-		ctx,
-		user.DisplayName,
-		user.Email,
-		subject,
-		textBody,
-		htmlBody,
-		now,
-	)
 }
 
 func (s *accountTokenService) logHiddenRecoveryFailure(

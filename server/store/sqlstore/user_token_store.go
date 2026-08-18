@@ -16,6 +16,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/lib/pq"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -24,6 +25,143 @@ import (
 type SQLUserTokenStore struct {
 	*SQLStore
 	tokensQuery sq.SelectBuilder
+}
+
+const (
+	userTokenAuditEmailVerificationRequest  = "authentication.email_verification.request"
+	userTokenAuditEmailVerificationComplete = "authentication.email_verification.complete"
+	userTokenAuditPasswordResetRequest      = "authentication.password_reset.request"
+	userTokenAuditPasswordResetComplete     = "authentication.password_reset.complete"
+)
+
+func validateRecoveryMail(occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job) error {
+	if occurrence == nil || delivery == nil || job == nil {
+		return store.NewErrInvalidInput("user_token", "mail", nil)
+	}
+	if err := occurrence.Validate(); err != nil {
+		return store.NewErrInvalidInput("mail_occurrence", "value", err)
+	}
+	if err := delivery.Validate(); err != nil {
+		return store.NewErrInvalidInput("mail_delivery", "value", err)
+	}
+	if err := job.Validate(); err != nil {
+		return store.NewErrInvalidInput("job", "value", err)
+	}
+	command, err := model.DecodeMailDeliveryCommand(job.CommandVersion, job.Command)
+	if err != nil || delivery.AttemptCount != 0 || delivery.Revision != 1 || delivery.AcceptedAt.Valid || delivery.FailedAt.Valid ||
+		delivery.OccurrenceID != occurrence.ID || delivery.JobID != job.ID || delivery.TemplateKey != occurrence.TemplateKey ||
+		delivery.TargetUserID != occurrence.ActorUserID || delivery.TargetInvitationID.IsValid() ||
+		!occurrence.CreatedAt.Equal(delivery.CreatedAt) || !delivery.UpdatedAt.Equal(delivery.CreatedAt) || !delivery.MessageDate.Equal(delivery.CreatedAt) ||
+		job.AttemptCount != 0 || job.DedupePolicy != model.JobDedupeActive || job.MaximumAttempts != model.MailMaximumAttempts || job.StartedAt.Valid ||
+		len(job.Checkpoint) != 0 || len(job.Result) != 0 || job.Progress != nil || job.WorkReserved != 0 ||
+		!job.CreatedAt.Equal(delivery.CreatedAt) || !job.UpdatedAt.Equal(delivery.CreatedAt) || !job.AvailableAt.Equal(delivery.CreatedAt) ||
+		command.DeliveryID != delivery.ID || job.DedupeKey != delivery.ID.String() {
+		return store.NewErrInvalidInput("user_token", "mail_relationship", err)
+	}
+	queued := delivery.State == model.MailDeliveryQueued && delivery.PublicFailureCode == "" && len(delivery.EncryptedPayload) > 0 &&
+		job.Status == model.JobStatusQueued && job.Revision == 1 && !job.CompletedAt.Valid && job.PublicErrorCode == ""
+	suppressedDisabled := delivery.State == model.MailDeliverySuppressed && delivery.PublicFailureCode == model.MailDeliveryDisabledCode && len(delivery.EncryptedPayload) == 0 &&
+		job.Status == model.JobStatusCanceled && job.Revision == 2 && job.CompletedAt.Valid && job.CompletedAt.Time.Equal(delivery.CreatedAt) && job.PublicErrorCode == "job.canceled"
+	if !queued && !suppressedDisabled {
+		return store.NewErrInvalidInput("user_token", "mail_lifecycle", nil)
+	}
+	return nil
+}
+
+func insertRecoveryMail(ctx context.Context, tx *sqlxTxWrapper, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, payloadKeyID string) error {
+	if _, err := tx.Exec(ctx, `INSERT INTO mail_occurrences (id, kind, template_key, actor_user_id, created_at) VALUES (?, ?, ?, ?, ?)`, occurrence.ID.String(), string(occurrence.Kind), string(occurrence.TemplateKey), occurrence.ActorUserID.String(), occurrence.CreatedAt); err != nil {
+		return fmt.Errorf("insert recovery mail occurrence: %w", translateError("mail_occurrence", occurrence.ID.String(), err))
+	}
+	if err := insertPreparedMailJob(ctx, tx, job); err != nil {
+		return fmt.Errorf("insert recovery mail job: %w", translateError("job", job.ID.String(), err))
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO mail_deliveries (`+mailDeliveryColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, delivery.ID.String(), delivery.OccurrenceID.String(), delivery.JobID.String(), nullableID(delivery.TargetUserID.String()), nullableID(delivery.TargetInvitationID.String()), string(delivery.TemplateKey), delivery.TemplateDigest, delivery.MaskedRecipient, string(delivery.State), delivery.CreatedAt, delivery.UpdatedAt, delivery.MessageDate, delivery.Deadline, delivery.MessageID, delivery.AttemptCount, optionalTimeValue(delivery.AcceptedAt), optionalTimeValue(delivery.FailedAt), delivery.PublicFailureCode, nullableMailPayloadKeyID(payloadKeyID), mailNullableJSON(delivery.EncryptedPayload), delivery.Revision); err != nil {
+		return fmt.Errorf("insert recovery mail delivery: %w", translateError("mail_delivery", delivery.ID.String(), err))
+	}
+	if payloadKeyID != "" {
+		if err := incrementMailPayloadKeyReference(ctx, tx, payloadKeyID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func recoveryMailAt(occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, at time.Time) (*model.MailOccurrence, *model.MailDelivery, *model.Job, error) {
+	if err := validateRecoveryMail(occurrence, delivery, job); err != nil {
+		return nil, nil, nil, err
+	}
+	lifetime := delivery.Deadline.Sub(delivery.CreatedAt)
+	if lifetime <= 0 {
+		return nil, nil, nil, store.NewErrInvalidInput("mail_delivery", "deadline", nil)
+	}
+	rebasedOccurrence := *occurrence
+	rebasedOccurrence.CreatedAt = model.TimeUTC(at)
+	rebasedDelivery := *delivery
+	rebasedDelivery.CreatedAt = model.TimeUTC(at)
+	rebasedDelivery.UpdatedAt = model.TimeUTC(at)
+	rebasedDelivery.MessageDate = model.TimeUTC(at)
+	rebasedDelivery.Deadline = model.TimeUTC(at).Add(lifetime)
+	rebasedJob := *job
+	rebasedJob.CreatedAt = model.TimeUTC(at)
+	rebasedJob.UpdatedAt = model.TimeUTC(at)
+	rebasedJob.AvailableAt = model.TimeUTC(at)
+	if rebasedJob.CompletedAt.Valid {
+		rebasedJob.CompletedAt = model.OptionalTimeFrom(at)
+	}
+	if err := validateRecoveryMail(&rebasedOccurrence, &rebasedDelivery, &rebasedJob); err != nil {
+		return nil, nil, nil, err
+	}
+	return &rebasedOccurrence, &rebasedDelivery, &rebasedJob, nil
+}
+
+func suppressSupersededTokenMail(ctx context.Context, tx *sqlxTxWrapper, occurrenceIDs []string, at time.Time) error {
+	if len(occurrenceIDs) == 0 {
+		return nil
+	}
+	var rows []mailDeliveryRow
+	if err := tx.Select(ctx, &rows, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries WHERE occurrence_id = ANY(?) FOR UPDATE`, pq.Array(occurrenceIDs)); err != nil {
+		return fmt.Errorf("lock superseded token mail: %w", err)
+	}
+	for index := range rows {
+		current, err := rows[index].model()
+		if err != nil {
+			return err
+		}
+		if current.State == model.MailDeliveryAccepted || current.State == model.MailDeliverySuppressed || current.State == model.MailDeliveryCanceled {
+			continue
+		}
+		job, err := getJob(ctx, tx, current.JobID, true)
+		if err != nil {
+			return err
+		}
+		if job.Type != model.JobTypeMailDeliverCredential || job.DedupeKey != current.ID.String() {
+			return invalidPersistedState("mail_delivery", "job", fmt.Errorf("superseded token delivery job relationship is invalid"))
+		}
+		transitionAt := model.TimeUTC(at)
+		if transitionAt.Before(current.UpdatedAt) {
+			transitionAt = current.UpdatedAt
+		}
+		if transitionAt.Before(job.UpdatedAt) {
+			transitionAt = job.UpdatedAt
+		}
+		updated, err := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
+		if err != nil {
+			return store.NewErrConflict("mail_delivery", "invalid_transition", err)
+		}
+		if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+			return err
+		}
+		if job.Status == model.JobStatusQueued || job.Status == model.JobStatusRunning {
+			updatedJob, cancelErr := job.RequestCancellation(transitionAt)
+			if cancelErr != nil {
+				return store.NewErrConflict("job", "invalid_transition", cancelErr)
+			}
+			if err = updateJob(ctx, tx, updatedJob); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 type userTokenRow struct {
@@ -64,32 +202,49 @@ func newSQLUserTokenStore(sqlStore *SQLStore) store.UserTokenStore {
 
 func (s SQLUserTokenStore) Issue(
 	ctx context.Context,
-	token *model.UserToken,
-	auditEvent *model.AuditEvent,
+	input *store.UserTokenMailIssue,
 ) (*model.UserToken, error) {
-	if token == nil || auditEvent == nil {
+	if input == nil || input.Token == nil || input.AuditEvent == nil || input.Occurrence == nil || input.Delivery == nil || input.Job == nil {
 		return nil, store.NewErrInvalidInput("user_token", "issue", nil)
 	}
-	if !token.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("user_token", "id", token.ID.String())
-	}
-	candidate := *token
-	// Preserve caller-supplied CreatedAt when set so expiry windows stay exact.
-	at := model.NowUTC()
-	if !candidate.CreatedAt.IsZero() {
-		at = model.TimeUTC(candidate.CreatedAt)
-	}
-	candidate.PrepareCreate(model.NewUserTokenID(), at)
+	candidate := *input.Token
 	if err := candidate.Validate(); err != nil {
 		return nil, err
 	}
-	if auditEvent.Resource.Type != model.ResourceUser ||
-		auditEvent.Resource.ID != candidate.UserID.String() ||
-		auditEvent.Status != model.AuditStatusSuccess {
+	if input.AuditEvent.Resource.Type != model.ResourceUser ||
+		input.AuditEvent.Resource.ID != candidate.UserID.String() ||
+		input.AuditEvent.Status != model.AuditStatusSuccess ||
+		input.AuditEvent.ScopeType != model.RoleScopeInstitution || !model.IsValidId(input.AuditEvent.ScopeID) ||
+		input.Occurrence.ID.String() != candidate.ID.String() || input.Occurrence.Kind != model.MailOccurrenceAccountToken ||
+		input.Occurrence.ActorUserID != candidate.UserID || input.Delivery.TargetUserID != candidate.UserID ||
+		input.Delivery.OccurrenceID != input.Occurrence.ID || input.Delivery.JobID != input.Job.ID ||
+		input.Delivery.Deadline.After(candidate.ExpiresAt) || input.Delivery.State != model.MailDeliveryQueued ||
+		len(input.Delivery.EncryptedPayload) == 0 || input.Job.Type != model.JobTypeMailDeliverCredential || input.Job.Status != model.JobStatusQueued {
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
+	}
+	if candidate.Purpose == model.UserTokenEmailVerification && input.Occurrence.TemplateKey != model.MailTemplateIdentityVerifyEmail ||
+		candidate.Purpose == model.UserTokenPasswordReset && input.Occurrence.TemplateKey != model.MailTemplateIdentityPasswordReset {
+		return nil, store.NewErrInvalidInput("user_token", "mail_template", nil)
+	}
+	expectedAuditAction := userTokenAuditEmailVerificationRequest
+	if candidate.Purpose == model.UserTokenPasswordReset {
+		expectedAuditAction = userTokenAuditPasswordResetRequest
+	}
+	if input.AuditEvent.Action != expectedAuditAction {
+		return nil, store.NewErrInvalidInput("user_token", "audit_action", nil)
+	}
+	if err := validateRecoveryMail(input.Occurrence, input.Delivery, input.Job); err != nil {
+		return nil, err
+	}
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
 	}
 
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "user token issue", func(ctx context.Context, tx *sqlxTxWrapper) (*model.UserToken, error) {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return nil, err
+		}
 		if candidate.Purpose == model.UserTokenPasswordReset {
 			if err := requireCurrentLocalLogin(ctx, tx); err != nil {
 				return nil, err
@@ -99,6 +254,13 @@ func (s SQLUserTokenStore) Issue(
 			ctx, tx, candidate.UserID.String(), candidate.Purpose,
 		); err != nil {
 			return nil, err
+		}
+		if err := lockEligibleUserTokenIssueTarget(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		var priorIDs []string
+		if err := tx.Select(ctx, &priorIDs, `SELECT id FROM user_tokens WHERE user_id = ? AND purpose = ? AND archived_at IS NULL AND consumed_at IS NULL FOR UPDATE`, candidate.UserID.String(), candidate.Purpose); err != nil {
+			return nil, fmt.Errorf("lock prior user tokens: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE user_tokens
@@ -115,11 +277,28 @@ func (s SQLUserTokenStore) Issue(
 		if err := insertUserToken(ctx, tx, &candidate); err != nil {
 			return nil, err
 		}
-		if _, err := insertAuditEvent(ctx, tx, auditEvent); err != nil {
+		if err := suppressSupersededTokenMail(ctx, tx, priorIDs, candidate.CreatedAt); err != nil {
+			return nil, err
+		}
+		if err := insertRecoveryMail(ctx, tx, input.Occurrence, input.Delivery, input.Job, payloadKeyID); err != nil {
+			return nil, err
+		}
+		if _, err := insertAuditEvent(ctx, tx, input.AuditEvent); err != nil {
 			return nil, fmt.Errorf("audit user token issue: %w", err)
 		}
 		return &candidate, nil
 	})
+}
+
+func (s SQLUserTokenStore) Get(ctx context.Context, id model.UserTokenID) (*model.UserToken, error) {
+	if !id.IsValid() {
+		return nil, store.NewErrInvalidInput("user_token", "id", nil)
+	}
+	var row userTokenRow
+	if err := s.GetMaster().GetBuilder(ctx, &row, s.tokensQuery.Where(sq.Eq{"user_tokens.id": id.String()})); err != nil {
+		return nil, translateError("user_token", id.String(), err)
+	}
+	return row.model()
 }
 
 func (s SQLUserTokenStore) GetByHash(
@@ -151,9 +330,16 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 		return nil, store.NewErrInvalidInput("user_token", "consume", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "email verification", func(ctx context.Context, tx *sqlxTxWrapper) (*store.EmailVerificationResult, error) {
-		at := model.TimeFromMillis(now)
+		if err := lockUserTokenPurposeByHash(ctx, tx, tokenHash, model.UserTokenEmailVerification); err != nil {
+			return nil, err
+		}
+		databaseNow, err := jobDatabaseNow(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		at := databaseNow.Truncate(time.Millisecond)
 		token, err := lockActiveUserToken(
-			ctx, tx, tokenHash, model.UserTokenEmailVerification, now,
+			ctx, tx, tokenHash, model.UserTokenEmailVerification, databaseNow,
 		)
 		if err != nil {
 			return nil, err
@@ -171,15 +357,15 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 			return nil, fmt.Errorf("verify user email: %w", err)
 		}
 		if err := consumeUserTokens(
-			ctx, tx, token.UserID, token.Purpose, now,
+			ctx, tx, token.UserID, token.Purpose, at,
 		); err != nil {
 			return nil, err
 		}
-		event, err := tokenAuditEvent(auditEvent, token.UserID)
+		event, err := tokenAuditEvent(auditEvent, token.UserID, userTokenAuditEmailVerificationComplete)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := insertAuditEvent(ctx, tx, event); err != nil {
+		if _, err := insertAuditEventAt(ctx, tx, event, at); err != nil {
 			return nil, fmt.Errorf("audit email verification: %w", err)
 		}
 		token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
@@ -188,7 +374,7 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 		if err != nil {
 			return nil, err
 		}
-		verified.UpdatedAt = model.TimeFromMillis(now)
+		verified.UpdatedAt = at
 		verified.EmailVerified = true
 		verified.Revision++
 		rehydratedToken, err := token.model()
@@ -201,25 +387,47 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 
 func (s SQLUserTokenStore) ConsumePasswordReset(
 	ctx context.Context,
-	tokenHash string,
-	passwordHash string,
-	now int64,
-	reason string,
-	auditEvent *model.AuditEvent,
+	input *store.PasswordResetCompletion,
 ) (*store.PasswordResetResult, error) {
-	if !model.IsValidTokenHash(tokenHash) ||
-		!model.IsValidPasswordHash(passwordHash) ||
-		now <= 0 ||
-		auditEvent == nil {
+	if input == nil || !model.IsValidTokenHash(input.TokenHash) ||
+		!model.IsValidPasswordHash(input.PasswordHash) || input.At <= 0 || input.AuditEvent == nil ||
+		input.Occurrence == nil || input.Delivery == nil || input.Job == nil {
 		return nil, store.NewErrInvalidInput("user_token", "password_reset", nil)
 	}
+	if input.Occurrence.Kind != model.MailOccurrenceSecurityNotice || input.Occurrence.TemplateKey != model.MailTemplateIdentityPasswordChanged ||
+		input.Delivery.TemplateKey != model.MailTemplateIdentityPasswordChanged || input.Job.Type != model.JobTypeMailDeliver {
+		return nil, store.NewErrInvalidInput("user_token", "password_reset_mail", nil)
+	}
+	if err := validateRecoveryMail(input.Occurrence, input.Delivery, input.Job); err != nil {
+		return nil, err
+	}
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "password reset", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PasswordResetResult, error) {
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
 		if err := requireCurrentLocalLogin(ctx, tx); err != nil {
 			return nil, err
 		}
-		at := model.TimeFromMillis(now)
+		if err := lockUserTokenPurposeByHash(ctx, tx, input.TokenHash, model.UserTokenPasswordReset); err != nil {
+			return nil, err
+		}
+		databaseNow, err := jobDatabaseNow(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		at := databaseNow.Truncate(time.Millisecond)
+		occurrence, delivery, job, err := recoveryMailAt(input.Occurrence, input.Delivery, input.Job, at)
+		if err != nil {
+			return nil, err
+		}
 		token, err := lockActiveUserToken(
-			ctx, tx, tokenHash, model.UserTokenPasswordReset, now,
+			ctx, tx, input.TokenHash, model.UserTokenPasswordReset, databaseNow,
 		)
 		if err != nil {
 			return nil, err
@@ -239,37 +447,43 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		); err != nil {
 			return nil, translateError("password_credential", token.UserID, err)
 		}
-		credential.PasswordHash = passwordHash
+		credential.PasswordHash = input.PasswordHash
 		credential.PasswordChangedAt = at
 		credential.UpdatedAt = at
 		if _, err := tx.Exec(ctx, `
 		UPDATE password_credentials
 		   SET updated_at = ?, password_hash = ?, password_changed_at = ?
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL`,
-			at, passwordHash, at, credential.ID, token.UserID,
+			at, input.PasswordHash, at, credential.ID, token.UserID,
 		); err != nil {
 			return nil, fmt.Errorf("update reset password: %w", err)
 		}
 		if err := lockUserSessions(ctx, tx, token.UserID); err != nil {
 			return nil, err
 		}
-		sessionRows, hashes, err := revokeAllUserSessions(
-			ctx, tx, token.UserID, now, reason,
+		sessionRows, hashes, err := revokeAllUserSessionsAt(
+			ctx, tx, token.UserID, at, input.RevocationReason,
 		)
 		if err != nil {
 			return nil, err
 		}
 		if err := consumeUserTokens(
-			ctx, tx, token.UserID, token.Purpose, now,
+			ctx, tx, token.UserID, token.Purpose, at,
 		); err != nil {
 			return nil, err
 		}
-		event, err := tokenAuditEvent(auditEvent, token.UserID)
+		event, err := tokenAuditEvent(input.AuditEvent, token.UserID, userTokenAuditPasswordResetComplete)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := insertAuditEvent(ctx, tx, event); err != nil {
+		if _, err := insertAuditEventAt(ctx, tx, event, at); err != nil {
 			return nil, fmt.Errorf("audit password reset: %w", err)
+		}
+		if occurrence.ActorUserID.String() != token.UserID || delivery.TargetUserID.String() != token.UserID {
+			return nil, store.NewErrInvalidInput("user_token", "password_reset_mail_target", nil)
+		}
+		if err := insertRecoveryMail(ctx, tx, occurrence, delivery, job, payloadKeyID); err != nil {
+			return nil, err
 		}
 		token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
 		token.UpdatedAt = at
@@ -277,7 +491,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		if err != nil {
 			return nil, err
 		}
-		revokedSessions, err := revokedSessionModels(sessionRows, now, reason)
+		revokedSessions, err := revokedSessionModelsAt(sessionRows, at, input.RevocationReason)
 		if err != nil {
 			return nil, err
 		}
@@ -337,12 +551,59 @@ func lockUserTokenPurpose(
 	return nil
 }
 
+func lockUserTokenPurposeByHash(
+	ctx context.Context,
+	executor sqlxExecutor,
+	tokenHash string,
+	purpose model.UserTokenPurpose,
+) error {
+	var userID string
+	if err := executor.Get(ctx, &userID, `SELECT user_id FROM user_tokens WHERE token_hash = ? AND purpose = ?`, tokenHash, purpose); err != nil {
+		return translateError("user_token", "", err)
+	}
+	return lockUserTokenPurpose(ctx, executor, userID, purpose)
+}
+
+func lockEligibleUserTokenIssueTarget(
+	ctx context.Context,
+	executor sqlxExecutor,
+	token *model.UserToken,
+) error {
+	var userID string
+	if err := executor.Get(ctx, &userID, `
+		SELECT id
+		  FROM users
+		 WHERE id = ? AND email = ?
+		   AND archived_at IS NULL AND disabled_at IS NULL
+		 FOR SHARE`, token.UserID.String(), token.Target); err != nil {
+		if err == sql.ErrNoRows {
+			return store.NewErrNotFound("user_token", "").Wrap(err)
+		}
+		return fmt.Errorf("lock user token issue target: %w", err)
+	}
+	if token.Purpose != model.UserTokenPasswordReset {
+		return nil
+	}
+	var credentialID string
+	if err := executor.Get(ctx, &credentialID, `
+		SELECT id
+		  FROM password_credentials
+		 WHERE user_id = ? AND archived_at IS NULL
+		 FOR SHARE`, userID); err != nil {
+		if err == sql.ErrNoRows {
+			return store.NewErrNotFound("user_token", "").Wrap(err)
+		}
+		return fmt.Errorf("lock password reset credential: %w", err)
+	}
+	return nil
+}
+
 func lockActiveUserToken(
 	ctx context.Context,
 	executor sqlxExecutor,
 	tokenHash string,
 	purpose model.UserTokenPurpose,
-	now int64,
+	at time.Time,
 ) (*userTokenRow, error) {
 	var row userTokenRow
 	if err := executor.Get(ctx, &row, `
@@ -352,7 +613,7 @@ func lockActiveUserToken(
 		 WHERE token_hash = ? AND purpose = ?
 		   AND archived_at IS NULL AND consumed_at IS NULL AND expires_at > ?
 		 FOR UPDATE`,
-		tokenHash, purpose, model.TimeFromMillis(now),
+		tokenHash, purpose, model.TimeUTC(at),
 	); err != nil {
 		return nil, translateError("user_token", "", err)
 	}
@@ -386,9 +647,9 @@ func consumeUserTokens(
 	executor sqlxExecutor,
 	userID string,
 	purpose model.UserTokenPurpose,
-	now int64,
+	at time.Time,
 ) error {
-	at := model.TimeFromMillis(now)
+	at = model.TimeUTC(at)
 	result, err := executor.Exec(ctx, `
 		UPDATE user_tokens
 		   SET updated_at = ?, consumed_at = ?
@@ -408,8 +669,10 @@ func consumeUserTokens(
 func tokenAuditEvent(
 	event *model.AuditEvent,
 	userID string,
+	expectedAction string,
 ) (*model.AuditEvent, error) {
-	if event == nil || event.Status != model.AuditStatusSuccess {
+	if event == nil || event.Status != model.AuditStatusSuccess || event.Action != expectedAction ||
+		event.ScopeType != model.RoleScopeInstitution || !model.IsValidId(event.ScopeID) {
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
 	}
 	candidate := event.Clone()

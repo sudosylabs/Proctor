@@ -102,7 +102,7 @@ func (module externalAuthenticationResourceModule) begin(
 	if appErr != nil {
 		return protocolResult{}, appErr
 	}
-	clientType := model.SessionClientDesktop
+	clientType := model.SessionClientWeb
 	if request.params.ClientType != "" {
 		clientType = model.SessionClientType(request.params.ClientType)
 	}

@@ -816,6 +816,17 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 	}
 }
 
+func TestLoginRejectsDirectDesktopSessionIssuance(t *testing.T) {
+	t.Parallel()
+
+	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
+	result, err := service.login(context.Background(), LoginCommand{LoginID: "user@example.edu",
+		Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientDesktop, Source: "127.0.0.1:3"})
+	if result != nil || !Is(err, "authentication.client_type.invalid") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
 func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testing.T) {
 	t.Parallel()
 

@@ -115,7 +115,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
-			cfg.Server.PublicURL = "http://proctor.example.test"
+			cfg.Server.PublicURL = "https://proctor.example.test"
 			cfg.Authentication.External.Providers =
 				[]config.ExternalAuthenticationProvider{{
 					ID:          providerID,
@@ -161,7 +161,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/auth/providers/"+providerID+
-			"/login?client_type=desktop&return_to=%2Foidc-complete",
+			"/login?client_type=web&return_to=%2Foidc-complete",
 		nil,
 		"",
 	)
@@ -252,7 +252,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		helper.Handler(),
 		http.MethodGet,
 		"/api/v1/auth/providers/"+providerID+
-			"/login?client_type=desktop",
+			"/login?client_type=web",
 		nil,
 		"",
 	)

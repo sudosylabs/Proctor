@@ -19,6 +19,8 @@ type timedStores struct {
 	accessPolicyOnce         sync.Once
 	clusterDiscovery         store.ClusterDiscoveryStore
 	clusterDiscoveryOnce     sync.Once
+	desktopAuthorization     store.DesktopAuthorizationStore
+	desktopAuthorizationOnce sync.Once
 	examAttempt              store.ExamAttemptStore
 	examAttemptOnce          sync.Once
 	examAttemptWorkspace     store.ExamAttemptWorkspaceStore
@@ -69,6 +71,8 @@ type timedStores struct {
 	externalLoginStateOnce   sync.Once
 	userToken                store.UserTokenStore
 	userTokenOnce            sync.Once
+	invitation               store.InvitationStore
+	invitationOnce           sync.Once
 	personalAccessToken      store.PersonalAccessTokenStore
 	personalAccessTokenOnce  sync.Once
 	mfa                      store.MFAStore
@@ -103,6 +107,11 @@ type timedAccessPolicyStore struct {
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedDesktopAuthorizationStore struct {
+	layer *Layer
+	next  store.DesktopAuthorizationStore
 }
 
 type timedExamAttemptStore struct {
@@ -228,6 +237,11 @@ type timedExternalLoginStateStore struct {
 type timedUserTokenStore struct {
 	layer *Layer
 	next  store.UserTokenStore
+}
+
+type timedInvitationStore struct {
+	layer *Layer
+	next  store.InvitationStore
 }
 
 type timedPersonalAccessTokenStore struct {
@@ -520,6 +534,16 @@ func (l *Layer) ExternalLoginState() store.ExternalLoginStateStore {
 	return l.stores.externalLoginState
 }
 
+func (l *Layer) DesktopAuthorization() store.DesktopAuthorizationStore {
+	l.stores.desktopAuthorizationOnce.Do(func() {
+		next := l.next.DesktopAuthorization()
+		if next != nil {
+			l.stores.desktopAuthorization = &timedDesktopAuthorizationStore{layer: l, next: next}
+		}
+	})
+	return l.stores.desktopAuthorization
+}
+
 func (l *Layer) UserToken() store.UserTokenStore {
 	l.stores.userTokenOnce.Do(func() {
 		next := l.next.UserToken()
@@ -528,6 +552,16 @@ func (l *Layer) UserToken() store.UserTokenStore {
 		}
 	})
 	return l.stores.userToken
+}
+
+func (l *Layer) Invitation() store.InvitationStore {
+	l.stores.invitationOnce.Do(func() {
+		next := l.next.Invitation()
+		if next != nil {
+			l.stores.invitation = &timedInvitationStore{layer: l, next: next}
+		}
+	})
+	return l.stores.invitation
 }
 
 func (l *Layer) PersonalAccessToken() store.PersonalAccessTokenStore {
@@ -749,6 +783,36 @@ func (s *timedClusterDiscoveryStore) Delete(arg0 context.Context, arg1 string) e
 func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 int64) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClusterDiscovery, methodDeleteExpired), func() (int64, error) {
 		return s.next.DeleteExpired(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopAuthorizationStore) Create(arg0 context.Context, arg1 *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopAuthorization, methodCreate), func() (*model.BrowserAuthenticationTransaction, error) {
+		return s.next.Create(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopAuthorizationStore) IssueCode(arg0 context.Context, arg1 *store.DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopAuthorization, methodIssueCode), func() (*model.BrowserAuthenticationTransaction, error) {
+		return s.next.IssueCode(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopAuthorizationStore) Cancel(arg0 context.Context, arg1 *store.DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopAuthorization, methodCancel), func() (*model.BrowserAuthenticationTransaction, error) {
+		return s.next.Cancel(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopAuthorizationStore) Exchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopAuthorization, methodExchange), func() (*store.DesktopAuthorizationExchangeResult, error) {
+		return s.next.Exchange(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopAuthorizationStore) Maintain(arg0 context.Context, arg1 int) (*store.DesktopAuthorizationMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopAuthorization, methodMaintain), func() (*store.DesktopAuthorizationMaintenanceResult, error) {
+		return s.next.Maintain(arg0, arg1)
 	})
 }
 
@@ -2072,9 +2136,15 @@ func (s *timedExternalLoginStateStore) Consume(arg0 context.Context, arg1 string
 	})
 }
 
-func (s *timedUserTokenStore) Issue(arg0 context.Context, arg1 *model.UserToken, arg2 *model.AuditEvent) (*model.UserToken, error) {
+func (s *timedUserTokenStore) Issue(arg0 context.Context, arg1 *store.UserTokenMailIssue) (*model.UserToken, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodIssue), func() (*model.UserToken, error) {
-		return s.next.Issue(arg0, arg1, arg2)
+		return s.next.Issue(arg0, arg1)
+	})
+}
+
+func (s *timedUserTokenStore) Get(arg0 context.Context, arg1 model.UserTokenID) (*model.UserToken, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodGet), func() (*model.UserToken, error) {
+		return s.next.Get(arg0, arg1)
 	})
 }
 
@@ -2090,9 +2160,39 @@ func (s *timedUserTokenStore) ConsumeEmailVerification(arg0 context.Context, arg
 	})
 }
 
-func (s *timedUserTokenStore) ConsumePasswordReset(arg0 context.Context, arg1 string, arg2 string, arg3 int64, arg4 string, arg5 *model.AuditEvent) (*store.PasswordResetResult, error) {
+func (s *timedUserTokenStore) ConsumePasswordReset(arg0 context.Context, arg1 *store.PasswordResetCompletion) (*store.PasswordResetResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUserToken, methodConsumePasswordReset), func() (*store.PasswordResetResult, error) {
-		return s.next.ConsumePasswordReset(arg0, arg1, arg2, arg3, arg4, arg5)
+		return s.next.ConsumePasswordReset(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) IssueStudentClass(arg0 context.Context, arg1 *store.StudentClassInvitationIssue) (*model.Invitation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueStudentClass), func() (*model.Invitation, error) {
+		return s.next.IssueStudentClass(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) Get(arg0 context.Context, arg1 model.InvitationID) (*model.Invitation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGet), func() (*model.Invitation, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) GetByClaimHash(arg0 context.Context, arg1 string) (*model.Invitation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGetByClaimHash), func() (*model.Invitation, error) {
+		return s.next.GetByClaimHash(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) AcceptStudentClass(arg0 context.Context, arg1 *store.StudentClassInvitationAcceptance) (*store.StudentClassInvitationAcceptanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptStudentClass), func() (*store.StudentClassInvitationAcceptanceResult, error) {
+		return s.next.AcceptStudentClass(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) Maintain(arg0 context.Context, arg1 int) (*store.InvitationMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodMaintain), func() (*store.InvitationMaintenanceResult, error) {
+		return s.next.Maintain(arg0, arg1)
 	})
 }
 
@@ -2562,6 +2662,7 @@ var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.AccessPolicyStore         = (*timedAccessPolicyStore)(nil)
 	_ store.ClusterDiscoveryStore     = (*timedClusterDiscoveryStore)(nil)
+	_ store.DesktopAuthorizationStore = (*timedDesktopAuthorizationStore)(nil)
 	_ store.ExamAttemptStore          = (*timedExamAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore = (*timedExamAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore       = (*timedExamCorrectionStore)(nil)
@@ -2587,6 +2688,7 @@ var (
 	_ store.ExternalIdentityStore     = (*timedExternalIdentityStore)(nil)
 	_ store.ExternalLoginStateStore   = (*timedExternalLoginStateStore)(nil)
 	_ store.UserTokenStore            = (*timedUserTokenStore)(nil)
+	_ store.InvitationStore           = (*timedInvitationStore)(nil)
 	_ store.PersonalAccessTokenStore  = (*timedPersonalAccessTokenStore)(nil)
 	_ store.MFAStore                  = (*timedMFAStore)(nil)
 	_ store.AffiliationStore          = (*timedAffiliationStore)(nil)

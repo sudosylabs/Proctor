@@ -108,8 +108,14 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		{"Mail", storetest.TestMailStore},
 		{"ExternalIdentity", storetest.TestExternalIdentityStore},
 		{"ExternalLoginState", storetest.TestExternalLoginStateStore},
+		{"DesktopAuthorization", func(t *testing.T, decorated store.Store) {
+			storetest.TestDesktopAuthorizationStore(t, decorated, desktopAuthorizationSQLProbe(sqlStore))
+		}},
 		{"PasswordCredential", storetest.TestPasswordCredentialStore},
 		{"UserToken", storetest.TestUserTokenStore},
+		{"Invitation", func(t *testing.T, decorated store.Store) {
+			storetest.TestInvitationStore(t, decorated)
+		}},
 		{"PersonalAccessToken", storetest.TestPersonalAccessTokenStore},
 		{"MFA", storetest.TestMFAStore},
 		{"Session", storetest.TestSessionStores},
@@ -142,6 +148,23 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 			test.run(t, decorated)
 		})
 	}
+}
+
+func TestDesktopAuthorizationStore(t *testing.T) {
+	sqlStore := openTestStore(t)
+	resetTestStore(t, sqlStore)
+	peer := openTestStore(t)
+	storetest.TestDesktopAuthorizationStore(t, sqlStore, desktopAuthorizationSQLProbe(sqlStore), peer.DesktopAuthorization())
+}
+
+func desktopAuthorizationSQLProbe(sqlStore *SQLStore) storetest.DesktopAuthorizationSQLProbe {
+	return storetest.DesktopAuthorizationSQLProbe{Backdate: func(t *testing.T, id model.BrowserAuthenticationTransactionID, createdAt, expiresAt time.Time) {
+		t.Helper()
+		if _, err := sqlStore.GetMaster().Exec(context.Background(), `UPDATE browser_authentication_transactions
+			SET created_at=?,updated_at=?,expires_at=? WHERE id=?`, createdAt, createdAt, expiresAt, id.String()); err != nil {
+			t.Fatal(err)
+		}
+	}}
 }
 
 func TestInstitutionStore(t *testing.T) {
@@ -1292,6 +1315,40 @@ func TestPasswordCredentialStore(t *testing.T) {
 
 func TestUserTokenStore(t *testing.T) {
 	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestUserTokenStore)
+}
+
+func TestInvitationStore(t *testing.T) {
+	sqlStore := openTestStore(t)
+	resetPristineTestStore(t, sqlStore)
+	seedTestAuthenticationPolicy(t, sqlStore, nil)
+	storetest.TestInvitationStore(t, sqlStore, invitationAuthoritySQLProbe(t, sqlStore))
+	storetest.TestInvitationHierarchyFences(t, sqlStore, invitationHierarchySQLProbe(t, sqlStore))
+	storetest.TestInvitationTerminalizationSuppressesCredentialDelivery(t, sqlStore)
+	ctx := context.Background()
+	var target struct {
+		InvitationID string `db:"invitation_id"`
+		DeliveryID   string `db:"delivery_id"`
+	}
+	if err := sqlStore.GetMaster().Get(ctx, &target, `SELECT i.id invitation_id,d.id delivery_id FROM invitations i JOIN mail_deliveries d ON d.target_invitation_id=i.id
+		WHERE i.state='accepted' AND d.state IN ('accepted','suppressed','canceled') ORDER BY i.id LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlStore.GetMaster().Exec(ctx, `UPDATE invitations SET created_at=created_at-interval '100 days',
+		updated_at=updated_at-interval '100 days',expires_at=expires_at-interval '100 days',accepted_at=accepted_at-interval '100 days'
+		WHERE id=?`, target.InvitationID); err != nil {
+		t.Fatal(err)
+	}
+	maintained, err := sqlStore.Invitation().Maintain(ctx, 500)
+	if err != nil || maintained.Purged != 1 {
+		t.Fatalf("Maintain() = %#v, %v", maintained, err)
+	}
+	if _, err = sqlStore.Invitation().Get(ctx, model.InvitationID(target.InvitationID)); !store.IsNotFound(err) {
+		t.Fatalf("purged Invitation error = %v", err)
+	}
+	delivery, err := sqlStore.Mail().GetDelivery(ctx, model.MailDeliveryID(target.DeliveryID))
+	if err != nil || delivery.TargetInvitationID != model.InvitationID(target.InvitationID) || delivery.TargetUserID.IsValid() {
+		t.Fatalf("preserved historical delivery = %#v, %v", delivery, err)
+	}
 }
 
 func TestPersonalAccessTokenStore(t *testing.T) {

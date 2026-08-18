@@ -267,6 +267,9 @@ func (s *authenticationService) login(
 	ctx context.Context,
 	command LoginCommand,
 ) (*LoginResult, error) {
+	if command.ClientType == model.SessionClientDesktop || !command.ClientType.IsValid() {
+		return nil, NewError("authentication.client_type.invalid").WithField("field", "client_type")
+	}
 	receipt, err := s.checkLoginRateLimit(ctx, command.LoginID, command.Source)
 	if err != nil {
 		return nil, err
@@ -557,15 +560,16 @@ func (s *authenticationService) authenticateAccess(
 	}
 	s.cacheAuthentication(ctx, tokenHash, resolved, now)
 	principal := &model.Principal{
-		UserID:                 resolved.User.ID,
-		SessionID:              resolved.Session.ID,
-		CredentialID:           model.PrincipalCredentialID(resolved.Credential.ID),
-		CredentialType:         model.CredentialSessionAccess,
-		AuthenticationMethod:   resolved.Session.AuthenticationMethod,
-		AuthenticationStrength: resolved.Session.AuthenticationStrength,
-		ClientType:             resolved.Session.ClientType,
-		AuthenticatedAt:        resolved.Session.AuthenticatedAt,
-		MFACompletedAt:         resolved.Session.MFACompletedAt,
+		UserID:                   resolved.User.ID,
+		SessionID:                resolved.Session.ID,
+		CredentialID:             model.PrincipalCredentialID(resolved.Credential.ID),
+		CredentialType:           model.CredentialSessionAccess,
+		AuthenticationMethod:     resolved.Session.AuthenticationMethod,
+		AuthenticationProviderID: resolved.Session.AuthenticationProviderID,
+		AuthenticationStrength:   resolved.Session.AuthenticationStrength,
+		ClientType:               resolved.Session.ClientType,
+		AuthenticatedAt:          resolved.Session.AuthenticatedAt,
+		MFACompletedAt:           resolved.Session.MFACompletedAt,
 	}
 	if principal.Validate() != nil {
 		return nil, authenticationUnavailable(

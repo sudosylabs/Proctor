@@ -139,6 +139,9 @@ type PersonalAccessTokenID string
 // UserTokenID identifies a purpose-specific user token.
 type UserTokenID string
 
+// InvitationID identifies a durable pre-User onboarding invitation.
+type InvitationID string
+
 // MFACredentialID identifies an encrypted MFA credential.
 type MFACredentialID string
 
@@ -156,6 +159,9 @@ type MailDeliveryID string
 
 // ExternalLoginStateID identifies a one-use external login transaction.
 type ExternalLoginStateID string
+
+// BrowserAuthenticationTransactionID identifies one purpose-bound browser authentication.
+type BrowserAuthenticationTransactionID string
 
 // FileEntryID identifies the stable logical identity of a managed file.
 type FileEntryID string

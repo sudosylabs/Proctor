@@ -16,6 +16,8 @@ type localCacheStores struct {
 	accessPolicyOnce         sync.Once
 	clusterDiscovery         store.ClusterDiscoveryStore
 	clusterDiscoveryOnce     sync.Once
+	desktopAuthorization     store.DesktopAuthorizationStore
+	desktopAuthorizationOnce sync.Once
 	examAttempt              store.ExamAttemptStore
 	examAttemptOnce          sync.Once
 	examAttemptWorkspace     store.ExamAttemptWorkspaceStore
@@ -66,6 +68,8 @@ type localCacheStores struct {
 	externalLoginStateOnce   sync.Once
 	userToken                store.UserTokenStore
 	userTokenOnce            sync.Once
+	invitation               store.InvitationStore
+	invitationOnce           sync.Once
 	personalAccessToken      store.PersonalAccessTokenStore
 	personalAccessTokenOnce  sync.Once
 	mfa                      store.MFAStore
@@ -99,6 +103,11 @@ type accessPolicyStore struct {
 
 type clusterDiscoveryStore struct {
 	store.ClusterDiscoveryStore
+	layer *Layer
+}
+
+type desktopAuthorizationStore struct {
+	store.DesktopAuthorizationStore
 	layer *Layer
 }
 
@@ -224,6 +233,11 @@ type externalLoginStateStore struct {
 
 type userTokenStore struct {
 	store.UserTokenStore
+	layer *Layer
+}
+
+type invitationStore struct {
+	store.InvitationStore
 	layer *Layer
 }
 
@@ -517,6 +531,16 @@ func (l *Layer) ExternalLoginState() store.ExternalLoginStateStore {
 	return l.stores.externalLoginState
 }
 
+func (l *Layer) DesktopAuthorization() store.DesktopAuthorizationStore {
+	l.stores.desktopAuthorizationOnce.Do(func() {
+		next := l.Store.DesktopAuthorization()
+		if next != nil {
+			l.stores.desktopAuthorization = &desktopAuthorizationStore{DesktopAuthorizationStore: next, layer: l}
+		}
+	})
+	return l.stores.desktopAuthorization
+}
+
 func (l *Layer) UserToken() store.UserTokenStore {
 	l.stores.userTokenOnce.Do(func() {
 		next := l.Store.UserToken()
@@ -525,6 +549,16 @@ func (l *Layer) UserToken() store.UserTokenStore {
 		}
 	})
 	return l.stores.userToken
+}
+
+func (l *Layer) Invitation() store.InvitationStore {
+	l.stores.invitationOnce.Do(func() {
+		next := l.Store.Invitation()
+		if next != nil {
+			l.stores.invitation = &invitationStore{InvitationStore: next, layer: l}
+		}
+	})
+	return l.stores.invitation
 }
 
 func (l *Layer) PersonalAccessToken() store.PersonalAccessTokenStore {
@@ -681,6 +715,7 @@ var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.AccessPolicyStore         = (*accessPolicyStore)(nil)
 	_ store.ClusterDiscoveryStore     = (*clusterDiscoveryStore)(nil)
+	_ store.DesktopAuthorizationStore = (*desktopAuthorizationStore)(nil)
 	_ store.ExamAttemptStore          = (*examAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore = (*examAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore       = (*examCorrectionStore)(nil)
@@ -706,6 +741,7 @@ var (
 	_ store.ExternalIdentityStore     = (*externalIdentityStore)(nil)
 	_ store.ExternalLoginStateStore   = (*externalLoginStateStore)(nil)
 	_ store.UserTokenStore            = (*userTokenStore)(nil)
+	_ store.InvitationStore           = (*invitationStore)(nil)
 	_ store.PersonalAccessTokenStore  = (*personalAccessTokenStore)(nil)
 	_ store.MFAStore                  = (*mfaStore)(nil)
 	_ store.AffiliationStore          = (*affiliationStore)(nil)

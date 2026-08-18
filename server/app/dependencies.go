@@ -38,7 +38,6 @@ type FileContent interface {
 type Dependencies struct {
 	Store                store.Catalog
 	Cache                authenticationCache
-	Mailer               AccountMailer
 	MailDeliverySender   MailDeliverySender
 	MailTemplateRenderer MailTemplateRenderer
 	MailDeliveryRecorder MailDeliveryRecorder
@@ -50,6 +49,9 @@ type Dependencies struct {
 
 	NodeID    string
 	PublicURL string
+	// LoopbackHTTPDevelopment is the immutable composition-owned projection of
+	// explicit local development. It never relaxes non-loopback issuer rules.
+	LoopbackHTTPDevelopment bool
 
 	Password                PasswordPolicy
 	Sessions                SessionPolicy
@@ -94,20 +96,6 @@ type MFAPolicy struct {
 	DecryptionKeys    []string
 	SetupTTL          time.Duration
 	RecoveryCodeCount int
-}
-
-// AccountMailer is the narrow outbound mail port for account recovery.
-type AccountMailer interface {
-	Enabled() bool
-	SendCredentialMail(
-		ctx context.Context,
-		displayName string,
-		email string,
-		subject string,
-		textBody string,
-		htmlBody string,
-		at time.Time,
-	) error
 }
 
 // recoveryDiagnostics reports non-fatal recovery failures without depending on

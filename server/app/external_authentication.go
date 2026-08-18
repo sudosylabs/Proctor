@@ -221,8 +221,7 @@ func (s *externalAuthenticationService) begin(
 		returnTo = "/"
 	}
 	if !model.IsSafeRelativeURL(returnTo) ||
-		!clientType.IsValid() ||
-		clientType == model.SessionClientCLI ||
+		clientType != model.SessionClientWeb ||
 		len(deviceID) > model.SessionDeviceIdMaxLength ||
 		utf8.RuneCountInString(deviceName) > model.SessionDeviceNameMaxRunes {
 		return nil, NewError("authentication.external.request.invalid")
@@ -321,7 +320,7 @@ func (s *externalAuthenticationService) complete(
 	nowTime := s.now()
 	now := nowTime.UnixMilli()
 	if err != nil || state == nil || state.Provider != providerID ||
-		state.ConsumedAt.Valid || !state.ExpiresAt.After(nowTime) {
+		state.ClientType != model.SessionClientWeb || state.ConsumedAt.Valid || !state.ExpiresAt.After(nowTime) {
 		if err != nil && !store.IsNotFound(err) {
 			return nil, authenticationUnavailable(err)
 		}

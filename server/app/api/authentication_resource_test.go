@@ -110,6 +110,30 @@ func (applicationFake *externalAuthenticationEntryHTTPApplication) BeginExternal
 	return applicationFake.start, nil
 }
 
+func TestExternalAuthenticationLoginDefaultsToWebAndNeverCreatesDesktopSessionsDirectly(t *testing.T) {
+	t.Parallel()
+
+	logger, _ := newTestLogger(t)
+	cookies, err := newBrowserCookies("http://localhost:8065")
+	if err != nil {
+		t.Fatal(err)
+	}
+	applicationFake := &externalAuthenticationEntryHTTPApplication{start: &model.ExternalAuthenticationStart{
+		RedirectURL: "https://identity.example.test/login", Binding: model.NewCredentialToken(),
+		ExpiresAt: time.Now().Add(time.Minute).UnixMilli(),
+	}}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, externalAuthenticationResource(applicationFake, cookies))
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers/campus/login", nil)
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("login redirect = %d %s", response.Code, response.Body.String())
+	}
+	if applicationFake.beginCommand.ClientType != model.SessionClientWeb {
+		t.Fatalf("default external login client type = %q, want web", applicationFake.beginCommand.ClientType)
+	}
+}
+
 func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testing.T) {
 	t.Parallel()
 

@@ -25,6 +25,7 @@ type mailStoreFake struct {
 	lists    int
 	mutates  int
 	permit   func() *store.MailSendPermit
+	classes  []store.MailSendClass
 }
 
 func (s *mailStoreFake) EnqueueTest(_ context.Context, input *store.MailTestEnqueue) (*model.MailDelivery, error) {
@@ -68,11 +69,29 @@ func (s *mailStoreFake) RetryDelivery(_ context.Context, input *store.MailDelive
 	}
 	return next, err
 }
-func (s *mailStoreFake) AcquireSendPermit(context.Context, store.MailSendClass) (*store.MailSendPermit, error) {
+func (s *mailStoreFake) AcquireSendPermit(_ context.Context, class store.MailSendClass) (*store.MailSendPermit, error) {
+	s.classes = append(s.classes, class)
 	if s.permit != nil {
 		return s.permit(), nil
 	}
 	return &store.MailSendPermit{Allowed: true}, nil
+}
+
+func TestCredentialMailDescriptorUsesDedicatedPoolAndReserve(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	job.Type = model.JobTypeMailDeliverCredential
+	persistence := &mailStoreFake{delivery: delivery}
+	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
+	handler := mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { return at.Add(time.Second) }}
+	descriptor := mailCredentialDeliveryDescriptor(handler)
+	if descriptor.Type != model.JobTypeMailDeliverCredential || descriptor.Concurrency != 4 {
+		t.Fatalf("credential descriptor = type %q concurrency %d", descriptor.Type, descriptor.Concurrency)
+	}
+	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	if outcome.Kind != jobengine.OutcomeSucceeded || len(persistence.classes) != 1 || persistence.classes[0] != store.MailSendCredential {
+		t.Fatalf("outcome=%#v permit classes=%#v", outcome, persistence.classes)
+	}
 }
 func (s *mailStoreFake) StartDelivery(_ context.Context, id model.MailDeliveryID, revision int64, at time.Time) (*model.MailDelivery, error) {
 	if s.delivery == nil || s.delivery.ID != id || s.delivery.Revision != revision {
@@ -153,7 +172,7 @@ func (a *mailAuditFake) Fail(context.Context, string, string) error { a.failCall
 
 type mailRendererFake struct{ content FrozenMailContent }
 
-func (r mailRendererFake) RenderSystemMailTest(string, string) (FrozenMailContent, error) {
+func (r mailRendererFake) Render(model.MailTemplateKey, string, string, string) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
@@ -213,6 +232,56 @@ func mailTestUser(principal model.Principal, at time.Time) *model.User {
 	user := &model.User{Email: "operator@example.test", DisplayName: "Operator", EmailVerified: true, Locale: "en", Timezone: "UTC"}
 	user.PrepareCreate(principal.UserID, at.Add(-time.Hour))
 	return user
+}
+
+func TestDirectMailPreparerFreezesEncryptedCredentialPayload(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	principal := mailTestPrincipal(at)
+	user := mailTestUser(principal, at)
+	actionURL := "https://proctor.example.test/account/verify-email#token=credential-secret"
+	content := FrozenMailContent{Subject: "Verify", Text: "Use " + actionURL, HTML: "<a href=\"" + actionURL + "\">Verify</a>"}
+	preparer, err := newDirectMailPreparer(mailRendererFake{content: content}, &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := preparer.PrepareDirect(DirectMailPreparation{Recipient: user, OccurrenceID: model.NewMailOccurrenceID(),
+		Kind: model.MailOccurrenceAccountToken, TemplateKey: model.MailTemplateIdentityVerifyEmail,
+		ActionURL: actionURL, At: at, Deadline: at.Add(time.Hour), JobType: model.JobTypeMailDeliverCredential})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Job.Type != model.JobTypeMailDeliverCredential || prepared.Delivery.State != model.MailDeliveryQueued ||
+		prepared.Delivery.TemplateKey != model.MailTemplateIdentityVerifyEmail || len(prepared.Delivery.EncryptedPayload) == 0 {
+		t.Fatalf("prepared direct mail = %#v", prepared)
+	}
+	if strings.Contains(string(prepared.Delivery.EncryptedPayload), "credential-secret") || strings.Contains(string(prepared.Delivery.EncryptedPayload), user.Email) {
+		t.Fatalf("persisted payload exposes credential or recipient: %s", prepared.Delivery.EncryptedPayload)
+	}
+	opened, err := openFrozenMailPayload(mailTestSealer(t), prepared.Delivery)
+	if err != nil || opened.Text != content.Text || opened.RecipientAddress != user.Email {
+		t.Fatalf("opened payload = %#v, %v", opened, err)
+	}
+}
+
+func TestDirectMailPreparerCreatesTerminalSuppressedIntentWhenDisabled(t *testing.T) {
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	principal := mailTestPrincipal(at)
+	preparer, err := newDirectMailPreparer(mailRendererFake{}, &mailSenderFake{enabled: false}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := preparer.PrepareDirect(DirectMailPreparation{Recipient: mailTestUser(principal, at),
+		OccurrenceID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice,
+		TemplateKey: model.MailTemplateIdentityPasswordChanged, At: at,
+		Deadline: at.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Delivery.State != model.MailDeliverySuppressed ||
+		prepared.Delivery.PublicFailureCode != model.MailDeliveryDisabledCode ||
+		len(prepared.Delivery.EncryptedPayload) != 0 || prepared.Job.Status != model.JobStatusCanceled {
+		t.Fatalf("disabled direct mail = %#v", prepared)
+	}
 }
 
 func TestMailServicePreparesOnlyControlledSelfRecipientAndAtomicIntent(t *testing.T) {

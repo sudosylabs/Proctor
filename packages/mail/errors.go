@@ -61,6 +61,12 @@ func (e *outcomeError) Error() string { return e.err.Error() }
 
 func (e *outcomeError) Unwrap() error { return e.err }
 
+// MailOutcome exposes the portable classification through a string-valued
+// capability. Keeping this marker free of package-specific types lets clients
+// remain source-compatible with older module revisions while still consuming
+// richer outcomes when a newer transport supplies them.
+func (e *outcomeError) MailOutcome() string { return string(e.outcome) }
+
 // WithOutcome annotates err with a portable delivery outcome while preserving
 // errors.Is and errors.As behavior for err. A nil error remains nil. Unknown or
 // unrecognized outcomes leave err unannotated.

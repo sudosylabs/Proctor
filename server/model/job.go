@@ -33,8 +33,10 @@ const (
 	JobTypeExamSittingLifecycleRecovery  JobType = "exam_sitting.lifecycle_recovery"
 	JobTypeExamSittingSealing            JobType = "exam_sitting.sealing"
 	JobTypeMailDeliver                   JobType = "mail.deliver"
+	JobTypeMailDeliverCredential         JobType = "mail.deliver_credential"
 	JobTypeMailCleanup                   JobType = "mail.cleanup"
 	JobTypeMailRekey                     JobType = "mail.rekey"
+	JobTypeInvitationMaintenance         JobType = "invitation.maintenance"
 
 	JobStatusQueued          JobStatus = "queued"
 	JobStatusRunning         JobStatus = "running"
@@ -336,7 +338,7 @@ var jobSafeCode = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
 var jobSafeStage = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 
 func validJobType(value JobType) bool {
-	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailCleanup || value == JobTypeMailRekey
+	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailDeliverCredential || value == JobTypeMailCleanup || value == JobTypeMailRekey || value == JobTypeInvitationMaintenance
 }
 func validJobStatus(value JobStatus) bool {
 	return value == JobStatusQueued || value == JobStatusRunning || value == JobStatusCancelRequested || value == JobStatusSucceeded || value == JobStatusFailed || value == JobStatusCanceled

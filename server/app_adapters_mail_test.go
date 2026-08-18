@@ -5,12 +5,45 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+type portableMailOutcomeError struct{ outcome string }
+
+func (e portableMailOutcomeError) Error() string       { return "transport failed" }
+func (e portableMailOutcomeError) MailOutcome() string { return e.outcome }
+
+func TestAccountMailerAdapterClassifiesPortableAndLegacyFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want app.MailTransportOutcome
+	}{
+		{name: "portable temporary", err: portableMailOutcomeError{outcome: "temporary"}, want: app.MailTransportTemporary},
+		{name: "portable permanent", err: portableMailOutcomeError{outcome: "permanent"}, want: app.MailTransportPermanent},
+		{name: "portable uncertain", err: portableMailOutcomeError{outcome: "acceptance_uncertain"}, want: app.MailTransportAcceptanceUncertain},
+		{name: "legacy temporary", err: mailpkg.ErrConnection, want: app.MailTransportTemporary},
+		{name: "legacy permanent", err: mailpkg.ErrRejected, want: app.MailTransportPermanent},
+		{name: "unknown", err: errors.New("unknown"), want: app.MailTransportUnknown},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := classifyMailTransportError(fmt.Errorf("wrapped: %w", test.err)); got != test.want {
+				t.Fatalf("classifyMailTransportError() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
 
 func TestProductionMailTelemetryRetainsBoundedSafeMetrics(t *testing.T) {
 	t.Parallel()

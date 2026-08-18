@@ -26,6 +26,21 @@ const (
 
 type FrozenMailContent struct{ Subject, Text, HTML string }
 
+// DirectMailPreparation is the application-owned description of one mail
+// intent addressed to an existing User. The preparer freezes the rendered
+// content and returns the occurrence, delivery, and Job that the caller must
+// persist in its named aggregate transaction.
+type DirectMailPreparation struct {
+	Recipient    *model.User
+	OccurrenceID model.MailOccurrenceID
+	Kind         model.MailOccurrenceKind
+	TemplateKey  model.MailTemplateKey
+	ActionURL    string
+	At           time.Time
+	Deadline     time.Time
+	JobType      model.JobType
+}
+
 type MailAddress struct {
 	Name    string
 	Address string
@@ -53,7 +68,7 @@ const (
 )
 
 type MailTemplateRenderer interface {
-	RenderSystemMailTest(recipientLocale, installationLocale string) (FrozenMailContent, error)
+	Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (FrozenMailContent, error)
 }
 
 type MailDeliverySender interface {
@@ -167,6 +182,123 @@ type mailService struct {
 	wake                    func()
 }
 
+type directMailPreparer struct {
+	renderer MailTemplateRenderer
+	sender   MailDeliverySender
+	sealer   *secretseal.Sealer
+}
+
+func newDirectMailPreparer(renderer MailTemplateRenderer, sender MailDeliverySender, sealer *secretseal.Sealer) (*directMailPreparer, error) {
+	if renderer == nil || sender == nil || (sender.Enabled() && sealer == nil) {
+		return nil, errors.New("direct mail preparer dependencies are invalid")
+	}
+	return &directMailPreparer{renderer: renderer, sender: sender, sealer: sealer}, nil
+}
+
+func (p *directMailPreparer) Enabled() bool {
+	return p != nil && p.sender != nil && p.sender.Enabled() && p.sealer != nil
+}
+
+func (p *directMailPreparer) PrepareDirect(request DirectMailPreparation) (*preparedDirectMail, error) {
+	user, occurrenceID, kind, key := request.Recipient, request.OccurrenceID, request.Kind, request.TemplateKey
+	actionURL, at, deadline, jobType := request.ActionURL, request.At, request.Deadline, request.JobType
+	if p == nil || p.sender == nil || user == nil || user.Validate() != nil || !user.IsActive() || !occurrenceID.IsValid() ||
+		!key.IsValid() || at.IsZero() || !deadline.After(at) ||
+		(jobType != model.JobTypeMailDeliver && jobType != model.JobTypeMailDeliverCredential) {
+		return nil, errors.New("direct mail input is invalid")
+	}
+	return p.prepareRecipient(user.DisplayName, user.Email, user.Locale, user.ID, user.ID, "", occurrenceID,
+		kind, key, actionURL, at, deadline, jobType)
+}
+
+func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, actionURL string) (*preparedDirectMail, error) {
+	if !p.Enabled() || invitation == nil || invitation.Validate() != nil || invitation.State != model.InvitationPending {
+		return nil, errors.New("invitation mail input is invalid")
+	}
+	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
+		invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()),
+		model.MailOccurrenceInvitation, model.MailTemplateAccessStudentClassInvitation, actionURL,
+		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential)
+}
+
+func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, locale string, actorUserID, targetUserID model.UserID,
+	targetInvitationID model.InvitationID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind,
+	key model.MailTemplateKey, actionURL string, at, deadline time.Time, jobType model.JobType,
+) (*preparedDirectMail, error) {
+	if p == nil || p.sender == nil || p.renderer == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() || !occurrenceID.IsValid() ||
+		(targetUserID.IsValid() == targetInvitationID.IsValid()) || !key.IsValid() || at.IsZero() || !deadline.After(at) ||
+		(jobType != model.JobTypeMailDeliver && jobType != model.JobTypeMailDeliverCredential) {
+		return nil, errors.New("direct mail recipient is invalid")
+	}
+	if locale == "" {
+		locale = model.DefaultLocale
+	}
+	at = model.TimeUTC(at)
+	deadline = model.TimeUTC(deadline)
+	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	if err != nil {
+		return nil, err
+	}
+	job, err := model.NewJob(jobID, jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	if err != nil {
+		return nil, err
+	}
+	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: actorUserID, CreatedAt: at}
+	if !p.sender.Enabled() {
+		job, err = job.RequestCancellation(at)
+		if err != nil {
+			return nil, err
+		}
+		delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: targetUserID, TargetInvitationID: targetInvitationID,
+			TemplateKey: key, TemplateDigest: digestRenderedMail("", "", ""), MaskedRecipient: maskMailAddress(recipientAddress),
+			State: model.MailDeliverySuppressed, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: deadline,
+			MessageID: stableMailMessageID(deliveryID, ""), PublicFailureCode: model.MailDeliveryDisabledCode, Revision: 1}
+		if err = occurrence.Validate(); err != nil {
+			return nil, err
+		}
+		if err = delivery.Validate(); err != nil {
+			return nil, err
+		}
+		return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
+	}
+	rendered, err := p.renderer.Render(key, locale, model.DefaultLocale, actionURL)
+	if err != nil {
+		return nil, err
+	}
+	from := p.sender.From()
+	if err = validateMailAddress(from); err != nil {
+		return nil, err
+	}
+	payload := frozenMailPayloadV1{Version: 1, RecipientName: recipientName, RecipientAddress: recipientAddress,
+		FromName: from.Name, FromAddress: from.Address, Subject: rendered.Subject, Text: rendered.Text, HTML: rendered.HTML,
+		AutoSubmitted: "auto-generated", AutoResponseSuppress: "All"}
+	plaintext, err := json.Marshal(payload)
+	if err != nil || len(plaintext) > model.MailRenderedPayloadMaximumBytes {
+		return nil, errors.New("rendered mail payload is invalid")
+	}
+	envelope, err := p.sealer.Seal(secretseal.Binding{Purpose: mailDeliverySealingPurpose, Owner: deliveryID.String()}, plaintext)
+	if err != nil {
+		return nil, err
+	}
+	encrypted, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, err
+	}
+	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: targetUserID, TargetInvitationID: targetInvitationID,
+		TemplateKey: key, TemplateDigest: digestRenderedMail(rendered.Subject, rendered.Text, rendered.HTML),
+		MaskedRecipient: maskMailAddress(recipientAddress), State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at,
+		MessageDate: at, Deadline: deadline, MessageID: stableMailMessageID(deliveryID, from.Address),
+		EncryptedPayload: encrypted, Revision: 1}
+	if err = occurrence.Validate(); err != nil {
+		return nil, err
+	}
+	if err = delivery.Validate(); err != nil {
+		return nil, err
+	}
+	return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
+}
+
 func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer MailTemplateRenderer, sender MailDeliverySender, metrics MailDeliveryRecorder, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
 	if mailStore == nil || users == nil || authorization == nil || audit == nil || attempts == nil || renderer == nil || sender == nil || metrics == nil || now == nil || recentTTL <= 0 {
 		return nil, errors.New("mail service dependencies are invalid")
@@ -262,7 +394,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 	if !user.IsActive() {
 		return MailDeliveryView{}, NewError("mail.recipient_ineligible")
 	}
-	rendered, err := s.renderer.RenderSystemMailTest(user.Locale, model.DefaultLocale)
+	rendered, err := s.renderer.Render(model.MailTemplateSystemTest, user.Locale, model.DefaultLocale, "")
 	if err != nil {
 		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
 	}

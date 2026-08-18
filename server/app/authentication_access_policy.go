@@ -54,6 +54,21 @@ func (p *currentAuthenticationAccessPolicy) AllowsExternalProvider(ctx context.C
 	return allowed, nil
 }
 
+func (p *currentAuthenticationAccessPolicy) AllowsDesktopAuthorization(ctx context.Context, method, providerID string) (bool, error) {
+	policy, err := p.current(ctx)
+	if err != nil || !policy.DesktopAuthorizationEnabled {
+		return false, err
+	}
+	if method == "password" {
+		return providerID == "" && policy.LocalLoginEnabled, nil
+	}
+	if providerID == "" {
+		return false, nil
+	}
+	_, allowed := policy.ProviderAdmissions[strings.ToLower(strings.TrimSpace(providerID))]
+	return allowed, nil
+}
+
 func (p *currentAuthenticationAccessPolicy) AvailableExternalProviders(
 	ctx context.Context,
 	configured []model.ExternalAuthenticationProvider,

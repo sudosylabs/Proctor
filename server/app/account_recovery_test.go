@@ -271,6 +271,55 @@ func TestRequestPasswordResetReportsMailUnavailableWhenLocalLoginRemainsEnabled(
 	}
 }
 
+func TestRequestPasswordResetConcealsAtomicEnqueueFailure(t *testing.T) {
+	t.Parallel()
+
+	user := &model.User{ID: model.NewUserID(), Email: "student@example.edu"}
+	tokens := &accountTokenStoreFake{issueErr: errors.New("database unavailable")}
+	mailer := &accountTokenMailerFake{enabled: true}
+	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
+		users:     &accountTokenUserStoreFake{byEmail: user},
+		passwords: &accountTokenPasswordStoreFake{credential: &model.PasswordCredential{UserID: user.ID}},
+		tokens:    tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
+	})
+	if err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: user.Email}); err != nil {
+		t.Fatalf("atomic enqueue failure escaped generic response: %v", err)
+	}
+	if tokens.issuedMail == nil || tokens.issuedMail.Job.Type != model.JobTypeMailDeliverCredential || len(mailer.messages) != 1 {
+		t.Fatalf("prepared durable reset aggregate = %#v, links=%#v", tokens.issuedMail, mailer.messages)
+	}
+}
+
+func TestRequestPasswordResetCreatesNoIntentForDisabledOrExternalOnlyAccount(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		user     *model.User
+		password *accountTokenPasswordStoreFake
+	}{
+		{name: "disabled", user: &model.User{ID: model.NewUserID(), Email: "disabled@example.edu", DisabledAt: model.OptionalTimeFrom(time.Now())}, password: &accountTokenPasswordStoreFake{credential: &model.PasswordCredential{UserID: model.NewUserID()}}},
+		{name: "external-only", user: &model.User{ID: model.NewUserID(), Email: "external@example.edu"}, password: &accountTokenPasswordStoreFake{err: store.NewErrNotFound("password_credential", "")}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			tokens := &accountTokenStoreFake{}
+			mailer := &accountTokenMailerFake{enabled: true}
+			app := newAccountTokenTestApp(t, accountTokenTestDependencies{
+				users: &accountTokenUserStoreFake{byEmail: test.user}, passwords: test.password,
+				tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
+			})
+			if err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: test.user.Email}); err != nil {
+				t.Fatalf("ineligible account exposed response difference: %v", err)
+			}
+			if tokens.issuedMail != nil || len(mailer.messages) != 0 {
+				t.Fatalf("ineligible account intent=%#v links=%#v", tokens.issuedMail, mailer.messages)
+			}
+		})
+	}
+}
+
 func TestRequestPasswordResetIsGenericAndInertWhenCurrentPolicyDisablesLocalLogin(t *testing.T) {
 	t.Parallel()
 
@@ -301,6 +350,7 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 	session := &model.Session{ID: model.NewSessionID(), UserID: user.ID}
 	order := make([]string, 0, 2)
 	tokens := &accountTokenStoreFake{
+		byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset},
 		consumeReset: func(hash, passwordHash string, at int64, event *model.AuditEvent) (*store.PasswordResetResult, error) {
 			order = append(order, "commit")
 			if hash != model.HashToken(accountTokenTestRawToken) {
@@ -329,7 +379,7 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 		}
 	}}
 	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
-		users: &accountTokenUserStoreFake{}, passwords: &accountTokenPasswordStoreFake{},
+		users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{},
 		tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()},
 		mailer: &accountTokenMailerFake{enabled: true}, effects: effects,
 		hasher: accountTokenHasherFake{hash: "encoded-new-password"},
@@ -351,9 +401,10 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t *testing.T) {
 	t.Parallel()
 
+	user := &model.User{ID: model.NewUserID(), Email: "student@example.edu"}
 	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
-		users: &accountTokenUserStoreFake{}, passwords: &accountTokenPasswordStoreFake{},
-		tokens: &accountTokenStoreFake{consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
+		users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{},
+		tokens: &accountTokenStoreFake{byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset}, consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
 			return nil, store.ErrAuthenticationMethodDisabled
 		}},
 		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &accountTokenMailerFake{enabled: true},
@@ -416,7 +467,7 @@ type accountTokenTestDependencies struct {
 	passwords    store.PasswordCredentialStore
 	tokens       store.UserTokenStore
 	institution  *model.Institution
-	mailer       AccountMailer
+	mailer       accountTokenMailPreparer
 	effects      accountTokenEffects
 	hasher       accountTokenPasswordHasher
 	attempts     *authenticationAttemptAccounting
@@ -505,20 +556,33 @@ func (s *accountTokenPasswordStoreFake) GetByUser(context.Context, string) (*mod
 type accountTokenStoreFake struct {
 	store.UserTokenStore
 	issued                 *model.UserToken
+	issuedMail             *store.UserTokenMailIssue
 	event                  *model.AuditEvent
 	issueErr               error
+	byHash                 *model.UserToken
+	byHashErr              error
 	consumeVerificationErr error
 	consumeReset           func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error)
 }
 
 func (s *accountTokenStoreFake) Issue(
 	_ context.Context,
-	token *model.UserToken,
-	event *model.AuditEvent,
+	input *store.UserTokenMailIssue,
 ) (*model.UserToken, error) {
-	s.issued = token
-	s.event = event
-	return token, s.issueErr
+	s.issued = input.Token
+	s.issuedMail = input
+	s.event = input.AuditEvent
+	return input.Token, s.issueErr
+}
+
+func (s *accountTokenStoreFake) GetByHash(context.Context, string, model.UserTokenPurpose) (*model.UserToken, error) {
+	if s.byHashErr != nil {
+		return nil, s.byHashErr
+	}
+	if s.byHash == nil {
+		return nil, store.NewErrNotFound("user_token", "")
+	}
+	return s.byHash, nil
 }
 
 func (s *accountTokenStoreFake) ConsumeEmailVerification(
@@ -535,16 +599,12 @@ func (s *accountTokenStoreFake) ConsumeEmailVerification(
 
 func (s *accountTokenStoreFake) ConsumePasswordReset(
 	_ context.Context,
-	tokenHash string,
-	passwordHash string,
-	at int64,
-	_ string,
-	event *model.AuditEvent,
+	input *store.PasswordResetCompletion,
 ) (*store.PasswordResetResult, error) {
 	if s.consumeReset == nil {
 		return nil, store.NewErrNotFound("user_token", "")
 	}
-	return s.consumeReset(tokenHash, passwordHash, at, event)
+	return s.consumeReset(input.TokenHash, input.PasswordHash, input.At, input.AuditEvent)
 }
 
 type accountTokenInstitutionStoreFake struct {
@@ -565,17 +625,16 @@ type accountTokenMailerFake struct {
 
 func (m *accountTokenMailerFake) Enabled() bool { return m.enabled }
 
-func (m *accountTokenMailerFake) SendCredentialMail(
-	_ context.Context,
-	_ string,
-	_ string,
-	_ string,
-	textBody string,
-	_ string,
-	_ time.Time,
-) error {
-	m.messages = append(m.messages, textBody)
-	return m.err
+func (m *accountTokenMailerFake) PrepareDirect(request DirectMailPreparation) (*preparedDirectMail, error) {
+	m.messages = append(m.messages, request.ActionURL)
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &preparedDirectMail{
+		Occurrence: &model.MailOccurrence{ID: request.OccurrenceID, Kind: request.Kind, TemplateKey: request.TemplateKey, CreatedAt: request.At},
+		Delivery:   &model.MailDelivery{Deadline: request.Deadline},
+		Job:        &model.Job{Type: request.JobType},
+	}, nil
 }
 
 type accountTokenHasherFake struct {
@@ -609,7 +668,7 @@ type accountTokenConstructorArgs struct {
 	passwords    store.PasswordCredentialStore
 	tokens       store.UserTokenStore
 	institutions store.InstitutionStore
-	mailer       AccountMailer
+	mailer       accountTokenMailPreparer
 	attempts     *authenticationAttemptAccounting
 	hasher       accountTokenPasswordHasher
 	audit        accountTokenAudit

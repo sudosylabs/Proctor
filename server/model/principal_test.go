@@ -71,6 +71,25 @@ func TestSessionPrincipalUsesNativeAssuranceTimes(t *testing.T) {
 	}
 }
 
+func TestSessionPrincipalRetainsExactExternalProviderIdentity(t *testing.T) {
+	t.Parallel()
+
+	principal := Principal{
+		UserID: NewUserID(), SessionID: NewSessionID(),
+		CredentialID: PrincipalCredentialID(NewId()), CredentialType: CredentialSessionAccess,
+		AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc",
+		AuthenticationStrength: AuthenticationSingleFactor, ClientType: SessionClientWeb,
+		AuthenticatedAt: time.Now().UTC(),
+	}
+	if err := principal.Validate(); err != nil {
+		t.Fatalf("valid external principal rejected: %v", err)
+	}
+	principal.AuthenticationProviderID = ""
+	if err := principal.Validate(); err == nil {
+		t.Fatal("external principal without an exact provider identity was accepted")
+	}
+}
+
 func TestPrincipalContractsDoNotDeclareWireTags(t *testing.T) {
 	for _, contract := range []reflect.Type{
 		reflect.TypeOf(Principal{}),

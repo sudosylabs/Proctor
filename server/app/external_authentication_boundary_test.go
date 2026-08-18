@@ -68,6 +68,48 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 	}
 }
 
+func TestExternalAuthenticationOrdinaryLoginRejectsDesktopBeforeProviderOrPersistence(t *testing.T) {
+	t.Parallel()
+
+	provider := &recordingExternalProvider{}
+	states := &externalLoginStateStoreFake{}
+	service := externalAuthenticationBeginService(t, externalProviderSourceSet{
+		provider: provider, ids: map[string]bool{"campus": true},
+	}, newAuthenticationCacheFake(), 10)
+	service.loginStates = states
+
+	result, err := service.begin(context.Background(), "campus", "/", model.SessionClientDesktop, "desktop-1", "Desktop", "127.0.0.1")
+	if result != nil || !Is(err, "authentication.external.request.invalid") {
+		t.Fatalf("desktop ordinary login result=%#v err=%v", result, err)
+	}
+	if provider.beginCalls != 0 || states.saved != nil {
+		t.Fatalf("desktop ordinary login reached provider/persistence: provider=%d state=%#v", provider.beginCalls, states.saved)
+	}
+}
+
+func TestExternalAuthenticationCallbackRejectsLegacyDesktopStateBeforeConsumption(t *testing.T) {
+	t.Parallel()
+
+	stateToken := model.NewCredentialToken()
+	bindingToken := model.NewCredentialToken()
+	states := &externalLoginStateStoreFake{get: &model.ExternalLoginState{
+		Provider: "campus", StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(bindingToken),
+		ReturnTo: "/", ClientType: model.SessionClientDesktop, ExpiresAt: time.Now().Add(time.Minute),
+	}}
+	service := &externalAuthenticationService{
+		registry:    externalProviderSourceFake{provider: desktopCallbackExternalProvider{state: stateToken}},
+		loginStates: states, accessPolicy: allowAllAuthenticationAccessPolicy(), now: time.Now,
+	}
+	result, err := service.complete(context.Background(), "campus", bindingToken,
+		model.ExternalAuthenticationCallback{Values: map[string][]string{"code": {"accepted"}}}, model.RequestMetadata{})
+	if result != nil || !Is(err, "authentication.external.invalid") {
+		t.Fatalf("legacy desktop callback result=%#v err=%v", result, err)
+	}
+	if states.consumeCalls != 0 {
+		t.Fatalf("legacy desktop state was consumed %d times", states.consumeCalls)
+	}
+}
+
 func TestExternalAuthenticationBeginHidesProviderDisabledByCurrentPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -399,7 +441,9 @@ func (externalProviderFake) Complete(context.Context, ExternalProviderCompleteRe
 
 type externalLoginStateStoreFake struct {
 	store.ExternalLoginStateStore
-	saved *model.ExternalLoginState
+	saved        *model.ExternalLoginState
+	get          *model.ExternalLoginState
+	consumeCalls int
 }
 
 type externalInstitutionStoreFake struct{ store.InstitutionStore }
@@ -432,4 +476,32 @@ func (externalAuditFake) CompleteCriticalAction(context.Context, string, model.A
 func (s *externalLoginStateStoreFake) Save(_ context.Context, state *model.ExternalLoginState) (*model.ExternalLoginState, error) {
 	s.saved = state
 	return state, nil
+}
+
+func (s *externalLoginStateStoreFake) GetByStateHash(context.Context, string) (*model.ExternalLoginState, error) {
+	if s.get == nil {
+		return nil, store.NewErrNotFound("external_login_state", "")
+	}
+	return s.get, nil
+}
+
+func (s *externalLoginStateStoreFake) Consume(context.Context, string, string, string, int64) (*model.ExternalLoginState, error) {
+	s.consumeCalls++
+	return nil, errors.New("desktop state must not be consumed")
+}
+
+type desktopCallbackExternalProvider struct{ state string }
+
+func (desktopCallbackExternalProvider) Descriptor() model.ExternalAuthenticationProvider {
+	return model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"}
+}
+func (desktopCallbackExternalProvider) AutoProvision() bool { return false }
+func (desktopCallbackExternalProvider) Begin(context.Context, ExternalProviderBeginRequest) (*ExternalProviderBeginResponse, error) {
+	return nil, errors.New("not used")
+}
+func (p desktopCallbackExternalProvider) State(model.ExternalAuthenticationCallback) (string, error) {
+	return p.state, nil
+}
+func (desktopCallbackExternalProvider) Complete(context.Context, ExternalProviderCompleteRequest) (*model.ExternalAuthenticationAssertion, error) {
+	return nil, errors.New("not used")
 }

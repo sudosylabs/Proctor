@@ -35,9 +35,11 @@ func (unavailableMailer) Test(context.Context) error {
 	return errors.New("smtp unavailable")
 }
 
-func (testStore) File() store.FileStore { return nil }
-func (testStore) Job() store.JobStore   { return nil }
-func (testStore) Mail() store.MailStore { return nil }
+func (testStore) File() store.FileStore                                 { return nil }
+func (testStore) Job() store.JobStore                                   { return nil }
+func (testStore) Mail() store.MailStore                                 { return nil }
+func (testStore) DesktopAuthorization() store.DesktopAuthorizationStore { return nil }
+func (testStore) Invitation() store.InvitationStore                     { return nil }
 func (testStore) UserSettings() store.UserSettingsStore {
 	return nil
 }

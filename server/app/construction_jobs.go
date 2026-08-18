@@ -159,8 +159,10 @@ func buildApplicationJobDefinitions(
 		filePurgeExpiredContentDescriptor(purgeHandler),
 		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
 		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
+		mailCredentialDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
 		mailCleanupDescriptor(mailCleanupHandler{mail: deps.Store.Mail(), recorder: deps.MailDeliveryRecorder}),
 		mailRekeyDescriptor(mailRekeyHandler{mail: deps.Store.Mail(), sealer: deps.MailSecretSealer}),
+		invitationMaintenanceDescriptor(invitationMaintenanceHandler{invitations: deps.Store.Invitation()}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
 		examSittingSealingDescriptor(examSittingSealingHandler{service: sealingUseCases}),
 		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: lifecycleUseCases}),
@@ -176,10 +178,13 @@ func buildApplicationJobDefinitions(
 		{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "command-outcome-cleanup", Proposer: commandOutcomeCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "mail-cleanup", Proposer: mailCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
+		{Name: "invitation-maintenance", Proposer: invitationMaintenanceProposer{jobs: deps.Store.Job(), now: time.Now}},
 		{Name: "exam-sitting-lifecycle-recovery", Proposer: examSittingLifecycleRecoveryProposer{jobs: deps.Store.Job(), now: time.Now}},
 	}
 	periodicTasks := []jobengine.PeriodicTask{
 		{Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval, Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts}},
+		{Name: "desktop-authorization-maintenance", Interval: desktopAuthorizationMaintenanceInterval,
+			Runner: desktopAuthorizationMaintenancePeriodicRunner{transactions: deps.Store.DesktopAuthorization()}},
 	}
 	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil {
 		periodicTasks = append(periodicTasks, jobengine.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})

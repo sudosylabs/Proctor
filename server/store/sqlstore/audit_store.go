@@ -86,6 +86,15 @@ func insertAuditEvent(
 	executor sqlxExecutor,
 	event *model.AuditEvent,
 ) (*model.AuditEvent, error) {
+	return insertAuditEventAt(ctx, executor, event, model.NowUTC())
+}
+
+func insertAuditEventAt(
+	ctx context.Context,
+	executor sqlxExecutor,
+	event *model.AuditEvent,
+	at time.Time,
+) (*model.AuditEvent, error) {
 	if event == nil {
 		return nil, store.NewErrInvalidInput("audit_event", "value", nil)
 	}
@@ -93,7 +102,7 @@ func insertAuditEvent(
 		return nil, store.NewErrInvalidInput("audit_event", "id", event.ID.String())
 	}
 	candidate := event.Clone()
-	candidate.PrepareCreate(model.NewAuditEventID(), model.NowUTC())
+	candidate.PrepareCreate(model.NewAuditEventID(), at)
 	if err := candidate.Validate(); err != nil {
 		return nil, err
 	}

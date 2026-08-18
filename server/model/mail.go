@@ -24,12 +24,33 @@ type MailTemplateKey string
 type MailOccurrenceKind string
 type MailDeliveryState string
 
-func (key MailTemplateKey) IsValid() bool     { return key == MailTemplateSystemTest }
+func (key MailTemplateKey) IsValid() bool {
+	switch key {
+	case MailTemplateSystemTest,
+		MailTemplateIdentityVerifyEmail,
+		MailTemplateIdentityPasswordReset,
+		MailTemplateIdentityPasswordChanged,
+		MailTemplateAccessStudentClassInvitation,
+		MailTemplateAccessInvitationAccepted:
+		return true
+	default:
+		return false
+	}
+}
 func (state MailDeliveryState) IsValid() bool { return validMailDeliveryState(state) }
 
 const (
-	MailTemplateSystemTest     MailTemplateKey    = "system.mail_test"
-	MailOccurrenceOperatorTest MailOccurrenceKind = "operator_test"
+	MailTemplateSystemTest                   MailTemplateKey = "system.mail_test"
+	MailTemplateIdentityVerifyEmail          MailTemplateKey = "identity.verify_email"
+	MailTemplateIdentityPasswordReset        MailTemplateKey = "identity.password_reset"
+	MailTemplateIdentityPasswordChanged      MailTemplateKey = "identity.password_changed"
+	MailTemplateAccessStudentClassInvitation MailTemplateKey = "access.student_class_invitation"
+	MailTemplateAccessInvitationAccepted     MailTemplateKey = "access.invitation_accepted"
+
+	MailOccurrenceOperatorTest   MailOccurrenceKind = "operator_test"
+	MailOccurrenceAccountToken   MailOccurrenceKind = "account_token"
+	MailOccurrenceSecurityNotice MailOccurrenceKind = "security_notice"
+	MailOccurrenceInvitation     MailOccurrenceKind = "invitation"
 
 	MailDeliveryQueued     MailDeliveryState = "queued"
 	MailDeliverySending    MailDeliveryState = "sending"
@@ -62,40 +83,56 @@ type MailOccurrence struct {
 }
 
 func (o *MailOccurrence) Validate() error {
-	if o == nil || !o.ID.IsValid() || o.Kind != MailOccurrenceOperatorTest ||
-		o.TemplateKey != MailTemplateSystemTest || !o.ActorUserID.IsValid() || o.CreatedAt.IsZero() {
+	if o == nil || !o.ID.IsValid() || !o.ActorUserID.IsValid() || o.CreatedAt.IsZero() ||
+		!validMailOccurrenceMeaning(o.Kind, o.TemplateKey) {
 		return errors.New("model: invalid mail occurrence")
 	}
 	return nil
 }
 
+func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bool {
+	switch kind {
+	case MailOccurrenceOperatorTest:
+		return key == MailTemplateSystemTest
+	case MailOccurrenceAccountToken:
+		return key == MailTemplateIdentityVerifyEmail || key == MailTemplateIdentityPasswordReset
+	case MailOccurrenceSecurityNotice:
+		return key == MailTemplateIdentityPasswordChanged
+	case MailOccurrenceInvitation:
+		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessInvitationAccepted
+	default:
+		return false
+	}
+}
+
 // MailDelivery contains only bounded routing metadata plus an opaque encrypted
 // frozen payload. Ciphertext must never be projected through logs, audits, or APIs.
 type MailDelivery struct {
-	ID                MailDeliveryID
-	OccurrenceID      MailOccurrenceID
-	JobID             JobID
-	TargetUserID      UserID
-	TemplateKey       MailTemplateKey
-	TemplateDigest    string
-	MaskedRecipient   string
-	State             MailDeliveryState
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	MessageDate       time.Time
-	Deadline          time.Time
-	MessageID         string
-	AttemptCount      int
-	AcceptedAt        OptionalTime
-	FailedAt          OptionalTime
-	PublicFailureCode string
-	EncryptedPayload  json.RawMessage
-	Revision          int64
+	ID                 MailDeliveryID
+	OccurrenceID       MailOccurrenceID
+	JobID              JobID
+	TargetUserID       UserID
+	TargetInvitationID InvitationID
+	TemplateKey        MailTemplateKey
+	TemplateDigest     string
+	MaskedRecipient    string
+	State              MailDeliveryState
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	MessageDate        time.Time
+	Deadline           time.Time
+	MessageID          string
+	AttemptCount       int
+	AcceptedAt         OptionalTime
+	FailedAt           OptionalTime
+	PublicFailureCode  string
+	EncryptedPayload   json.RawMessage
+	Revision           int64
 }
 
 func (d *MailDelivery) Validate() error {
 	if d == nil || !d.ID.IsValid() || !d.OccurrenceID.IsValid() || !d.JobID.IsValid() ||
-		!d.TargetUserID.IsValid() || d.TemplateKey != MailTemplateSystemTest ||
+		(d.TargetUserID.IsValid() == d.TargetInvitationID.IsValid()) || !d.TemplateKey.IsValid() ||
 		!mailDigestPattern.MatchString(d.TemplateDigest) || d.MaskedRecipient == "" ||
 		!validMaskedMailRecipient(d.MaskedRecipient) || len(d.MaskedRecipient) > MailMaskedRecipientMaximumBytes || !validMailDeliveryState(d.State) ||
 		d.CreatedAt.IsZero() || d.UpdatedAt.Before(d.CreatedAt) || d.MessageDate.IsZero() ||

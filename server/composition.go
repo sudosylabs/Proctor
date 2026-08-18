@@ -192,6 +192,7 @@ func composeConsumers(
 		Programmes: application, ProgrammeLevels: application, AcademicPeriods: application,
 		Classes: application, Affiliations: application, AcademicUnitMembers: application,
 		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
+		Invitations:            application,
 		SessionAdministrations: application, Roles: application, RoleBindings: application,
 		AuditListings: application, Bootstrap: application, AccessPolicy: application, BuildInfo: buildInfo,
 		Mail:      application,

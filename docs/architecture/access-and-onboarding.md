@@ -258,7 +258,8 @@ and the current OAuth security practices in
    pinned installation;
 4. the server redirects only a short-lived opaque code and state to the exact
    loopback URI;
-5. the desktop posts code and verifier to the pinned HTTPS origin;
+5. the desktop posts code and verifier to the pinned server origin (HTTPS in
+   production; loopback HTTP only in explicit local development);
 6. the server atomically consumes the code and creates one ordinary Desktop
    Session with rotating access and refresh credentials.
 
@@ -274,12 +275,32 @@ bounded client/device metadata, and safe lifecycle state. It never contains
 the verifier, provider tokens, Session credentials, or raw callback data.
 Browser authentication may live for approximately five minutes; the final
 code is single-use and approximately one minute. PostgreSQL time is
-authoritative.
+authoritative. Application nodes pass bounded lifetimes rather than absolute
+deadlines into the named Store operations; one PostgreSQL timestamp establishes
+transaction creation/expiry, code expiry, Session idle/absolute expiry, and
+access/refresh credential expiry for each atomic transition.
 
 Concurrent attempts are independent. Completing, canceling, or redeeming one
 does not invalidate another device or browser transaction. An ambiguous or
 replayed exchange creates no additional Session. Any node may continue the
 flow; PostgreSQL, not sticky routing or process memory, owns transaction state.
+
+The server protocol is exposed through four `no-store` operations:
+`POST /api/v1/auth/desktop/authorizations` starts the transaction,
+`POST /api/v1/auth/desktop/authorizations/approve` requires an existing Web
+Session and approves the pinned authentication path,
+`POST /api/v1/auth/desktop/authorizations/cancel` proves and cancels a pending
+transaction, and `POST /api/v1/auth/desktop/token` performs the one-use code
+exchange. The authorization URL names the future `/authorize/desktop` hosted
+page; implementing that page and the Desktop client remains outside the server
+protocol slice.
+
+Ordinary local or external browser login creates only a Web Session. Its
+legacy provider-login request defaults to Web and rejects an explicit Desktop
+client at both initiation and callback. Consequently every Desktop Session is
+created only by the purpose-bound authorization transaction and PKCE/code
+exchange above; provider-connection purposes remain distinct and never acquire
+Desktop Session issuance as a side effect.
 
 Access credentials remain memory-only in the desktop. Its privileged main
 process stores only the rotating refresh secret in an approved OS-backed
@@ -495,11 +516,12 @@ actor, action, target and authorization scope, revisions, counts, and outcome;
 they exclude Invitation secrets, provider subjects, claims, credentials,
 complete emails/rows, and rendered mail.
 
-Authentication and Invitation attempt limits reuse the private shared attempt
-accounting with domain-separated digests for source, transaction, provider,
-Invitation, identity, and exchange. Counters are applied before combined
-decisions and fail closed. Raw identity and credential material never enters
-cache keys or diagnostics.
+Authentication, Invitation, and desktop-authorization attempt limits reuse the
+private shared attempt accounting with domain-separated digests for source,
+transaction, provider, Invitation, identity, and exchange. Desktop Start and
+exchange use distinct domains and account before durable transaction or audit
+work. Counters are applied before combined decisions and fail closed. Raw
+identity and credential material never enters cache keys or diagnostics.
 
 ## Mail and hosted-page dependencies
 
@@ -527,9 +549,17 @@ HTTP readiness. Metrics expose bounded queue, age, latency, outcome, retry, and
 scope counts. Logs contain safe transaction, Invitation, batch, Job, User, and
 target IDs plus closed codes only.
 
-Browser-authentication secrets are destroyed on terminal completion; safe
-transaction metadata retains 24 hours for idempotency and diagnostics. Public
-failures avoid account and policy enumeration. Durable audit records successful
+Browser-authentication secrets are destroyed on terminal completion. Pending
+and code-issued transactions become an expired terminal state at their
+authoritative PostgreSQL deadline, destroying their remaining proofs. Every
+terminal lifecycle state retains only safe transaction metadata for 24 hours
+for idempotency and diagnostics, then is purged. A non-durable periodic runtime
+task on every node processes only bounded PostgreSQL pages; row claiming makes
+concurrent passes converge safely without Job, Attempt, occurrence, or
+permanent-deduplication-ledger rows. Expiry and retention therefore progress
+even when no authorization request writes occur, while public mutations never
+run an unbounded cleanup scan. Public failures avoid account
+and policy enumeration. Durable audit records successful
 Session issuance, desktop authorization, Invitation acceptance, identity link
 changes, policy denial after authentication, and administrative reconciliation;
 ordinary invalid public traffic remains counters and bounded diagnostics rather

@@ -7,7 +7,9 @@ package sqlstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,7 +67,7 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 
 	resetToken := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
-	resetToken, err = persistence.UserToken().Issue(ctx, resetToken, authenticationPolicyTestAudit(
+	resetToken, err = authenticationPolicyTestIssue(t, ctx, persistence, resetToken, authenticationPolicyTestAudit(
 		"authentication.password_reset.request", user.ID.String(), institution.ID.String(),
 	))
 	if err != nil {
@@ -87,13 +89,14 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 	}
 	blockedIssue := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
 		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
-	if _, err = persistence.UserToken().Issue(ctx, blockedIssue, authenticationPolicyTestAudit(
+	if _, err = authenticationPolicyTestIssue(t, ctx, persistence, blockedIssue, authenticationPolicyTestAudit(
 		"authentication.password_reset.request", user.ID.String(), institution.ID.String(),
 	)); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled reset issue error = %v", err)
 	}
-	if _, err = persistence.UserToken().ConsumePasswordReset(ctx, resetToken.TokenHash, "encoded-new-password",
-		model.GetMillis(), "password reset", authenticationPolicyTestCompletionAudit(institution.ID.String())); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+	completion := authenticationPolicyTestResetCompletion(t, user, resetToken.TokenHash, "encoded-new-password",
+		model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
+	if _, err = persistence.UserToken().ConsumePasswordReset(ctx, completion); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled reset completion error = %v", err)
 	}
 	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
@@ -146,4 +149,41 @@ func authenticationPolicyTestCompletionAudit(institutionID string) *model.AuditE
 	return &model.AuditEvent{Action: "authentication.password_reset.complete", Resource: model.Resource{Type: model.ResourceUser},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID, Status: model.AuditStatusSuccess,
 		NodeID: "policy-fence-test", AuthMethod: "password_reset_token"}
+}
+
+func authenticationPolicyTestIssue(t *testing.T, ctx context.Context, persistence store.Store, token *model.UserToken, audit *model.AuditEvent) (*model.UserToken, error) {
+	t.Helper()
+	token.PrepareCreate(model.NewUserTokenID(), model.NowUTC())
+	key := model.MailTemplateIdentityVerifyEmail
+	if token.Purpose == model.UserTokenPasswordReset {
+		key = model.MailTemplateIdentityPasswordReset
+	}
+	occurrence, delivery, job := authenticationPolicyTestMail(t, token.UserID, model.MailOccurrenceID(token.ID.String()), model.MailOccurrenceAccountToken, key, model.JobTypeMailDeliverCredential, token.CreatedAt, token.ExpiresAt)
+	return persistence.UserToken().Issue(ctx, &store.UserTokenMailIssue{Token: token, Occurrence: occurrence, Delivery: delivery, Job: job, AuditEvent: audit})
+}
+
+func authenticationPolicyTestResetCompletion(t *testing.T, user *model.User, tokenHash, passwordHash string, at int64, audit *model.AuditEvent) *store.PasswordResetCompletion {
+	t.Helper()
+	when := model.TimeFromMillis(at)
+	occurrence, delivery, job := authenticationPolicyTestMail(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, when, when.Add(24*time.Hour))
+	return &store.PasswordResetCompletion{TokenHash: tokenHash, PasswordHash: passwordHash, At: at, RevocationReason: "password reset", AuditEvent: audit, Occurrence: occurrence, Delivery: delivery, Job: job}
+}
+
+func authenticationPolicyTestMail(t *testing.T, userID model.UserID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind, key model.MailTemplateKey, jobType model.JobType, at, deadline time.Time) (*model.MailOccurrence, *model.MailDelivery, *model.Job) {
+	t.Helper()
+	deliveryID := model.NewMailDeliveryID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := model.NewJob(model.NewJobID(), jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: userID, CreatedAt: at}
+	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: job.ID, TargetUserID: userID,
+		TemplateKey: key, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "u***@example.test",
+		State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: deadline,
+		MessageID: "<mail." + deliveryID.String() + "@example.test>", EncryptedPayload: json.RawMessage(`{"key_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`), Revision: 1}
+	return occurrence, delivery, job
 }

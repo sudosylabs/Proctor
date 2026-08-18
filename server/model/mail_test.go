@@ -201,3 +201,31 @@ func TestMailDeliveryAuditableOmitsRecipientAndCiphertext(t *testing.T) {
 		}
 	}
 }
+
+func TestIdentityMailCatalogAcceptsCredentialAndSecurityOccurrences(t *testing.T) {
+	at := time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC)
+	userID := NewUserID()
+	for _, test := range []struct {
+		key  MailTemplateKey
+		kind MailOccurrenceKind
+	}{
+		{MailTemplateIdentityVerifyEmail, MailOccurrenceAccountToken},
+		{MailTemplateIdentityPasswordReset, MailOccurrenceAccountToken},
+		{MailTemplateIdentityPasswordChanged, MailOccurrenceSecurityNotice},
+	} {
+		occurrence := &MailOccurrence{
+			ID: NewMailOccurrenceID(), Kind: test.kind, TemplateKey: test.key,
+			ActorUserID: userID, CreatedAt: at,
+		}
+		if err := occurrence.Validate(); err != nil {
+			t.Fatalf("%s occurrence: %v", test.key, err)
+		}
+		delivery := queuedMailDeliveryFixture(at)
+		delivery.OccurrenceID = occurrence.ID
+		delivery.TargetUserID = userID
+		delivery.TemplateKey = test.key
+		if err := delivery.Validate(); err != nil {
+			t.Fatalf("%s delivery: %v", test.key, err)
+		}
+	}
+}

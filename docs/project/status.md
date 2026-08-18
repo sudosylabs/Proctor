@@ -277,12 +277,20 @@ promotion. A PostgreSQL fence rejects old-primary writes; stable bounded pages
 re-encrypt active delivery payloads and frozen fan-out bundles; Job checkpoints,
 idempotent reference-counted replacement, stale-attempt fencing, and a final
 zero-reference proof allow the named fallback to be retired safely across
-nodes. Product-transition mail remains unimplemented.
+nodes. Email-verification and password-reset issuance now commit the hashed
+credential, successful security audit, encrypted frozen delivery, occurrence,
+and reserved credential-delivery Job atomically. Reissue invalidates the prior
+credential and suppresses its unsent delivery. Password-reset completion now
+atomically changes the password, revokes Sessions, consumes the reset token,
+records its audit, and queues only the password-changed security notice.
+Product-transition mail beyond account recovery and the student Invitation
+remains unimplemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
-Later application transitions will record encrypted per-recipient delivery intent
-and durable Jobs atomically, with bounded fan-out, relevance fencing,
+Recovery transitions record encrypted per-recipient delivery intent and durable
+Jobs atomically; later application transitions will use the same contract, with
+bounded fan-out, relevance fencing,
 deadline-aware retries, safe operator control, and no user opt-outs. The
 complete contract and remaining delivery order are in
 [Transactional mail](../architecture/mail.md).
@@ -298,8 +306,8 @@ desktop URL scheme while the client navigation contract remains undefined.
 The access and onboarding architecture is accepted. Existing installations
 now reconcile the protected `system_admin` Role with every current grantable
 action before serving traffic, preserving unknown downgrade actions and all
-custom Roles and bindings. Browser authorization, identity reconciliation,
-Invitation, and batch workflows are not implemented.
+custom Roles and bindings. Identity reconciliation, the remaining Invitation
+purposes, and batch workflows are not implemented.
 
 Bootstrap now requires a deployment-owned secret, rate-limits public proof attempts,
 and atomically creates the unverified first local administrator, protected
@@ -327,6 +335,31 @@ protocol names are never used as provider-identity fallbacks. Detailed
 remains part of the later Invitation and identity-reconciliation slices.
 This is a reset-only pre-release baseline: there is no supported upgrade path
 for development rows whose external Sessions lack an exact provider ID.
+
+The server-side Proctor Desktop Authorization protocol is implemented. A
+purpose-bound PostgreSQL transaction pins installation, exact local/external
+authentication path, IP-literal loopback callback, state, S256 challenge, and
+Desktop client/device metadata while persisting bearer values only as hashes.
+Any node can approve through an existing Web Session, cancel, or atomically
+exchange the short one-use code for an ordinary rotating Desktop Session;
+mix-up, concurrent exchange, replay, expiry, and current-policy/provider checks
+fail closed. The `/authorize/desktop` hosted page and Desktop Launch Window/UI
+remain explicitly unimplemented design-system/client work, so the repository
+does not yet claim an end-to-end user journey.
+
+The first durable Invitation vertical slice is implemented for
+`student_class`. Issue freezes the normalized mailbox, exact Class and Academic
+Period, effective bounds, safe profile suggestions, inviter/scope, seven-day
+expiry, and only a domain-separated claim hash. One transaction commits the
+Invitation, successful audit, encrypted HTML/text delivery intent, and
+credential-delivery Job. Local acceptance rechecks current policy, database
+time, inviter authority, Class/Period state, mailbox/account conflicts, and
+relationship invariants, then atomically creates or resolves the User,
+password and verified mailbox, initial User Settings and default-picture Job,
+student affiliation and exact Class membership, Invitation consumption,
+successful audit, and semantic acceptance mail. Exact claim replay is
+idempotent. Neither API responses nor audit/report projections contain the raw
+claim, target mailbox, or generated link.
 
 The first administrator always bootstraps one local account with a one-use
 deployment secret before mutable access policy can take effect. Thereafter a
@@ -366,11 +399,12 @@ grantable actions only through protected `system_admin` reconciliation; custom
 Roles remain unchanged. The complete contract and implementation order are in
 [Access and onboarding](../architecture/access-and-onboarding.md).
 
-Invitation-required policy cannot be activated until the transactional-mail
-foundation can durably deliver invitation credentials. The hosted `/join` and
-account pages are deliberately deferred to the same future server-hosted design
-system phase as the recovery pages; this dependency does not block the domain,
-persistence, discovery, or authorization design.
+The transactional-mail foundation can now durably deliver the implemented
+student Invitation credential and semantic acceptance message. The hosted
+`/join` page is deliberately not implemented in this slice and remains deferred
+to the future server-hosted design-system phase alongside the recovery pages.
+The issue and acceptance APIs therefore do not by themselves constitute a
+complete human onboarding journey.
 
 ## Implemented user settings
 
@@ -419,14 +453,14 @@ contract is in [Execution environments](../architecture/execution.md).
 
 - Implement the accepted access-and-onboarding architecture in its documented
   order after scoped Academic Period ownership and protected initial policy:
-  browser authorization transactions, local and external credential
-  reconciliation, durable typed Invitations, then bounded CSV batch workflows.
+  local and external credential reconciliation, the remaining durable typed
+  Invitations, then bounded CSV batch workflows.
   Invitation-required activation and usable invite links remain gated on the
   mail foundation and hosted-page design system respectively.
-- Implement the accepted transactional-mail architecture as verified vertical
-  slices, beginning with the durable operator test-mail tracer and migration of
-  verification and password-reset delivery. The recovery landing pages remain
-  a separately visible dependency of the future server-hosted design system.
+- Continue the accepted transactional-mail architecture as verified vertical
+  slices after the durable operator tracer and account-recovery delivery. The
+  recovery landing pages remain a separately visible dependency of the future
+  server-hosted design system.
 - Resource search remains deferred because an Exam initially has at most ten
   active resources.
 

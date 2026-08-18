@@ -13,8 +13,18 @@ func constructIdentity(
 	deps Dependencies,
 	foundation applicationFoundation,
 	authorization *accessControlService,
+	capabilities accessPolicyCapabilitySource,
 ) (identityConstruction, error) {
 	authenticationAccess, err := newCurrentAuthenticationAccessPolicy(deps.Store.AccessPolicy())
+	if err != nil {
+		return identityConstruction{}, err
+	}
+	desktopAuthorization, err := newDesktopAuthorizationService(
+		deps.Store.DesktopAuthorization(), deps.Store.Institution(), authenticationAccess,
+		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
+		desktopAuthorizationAttemptAccounting{attempts: foundation.attempts, policy: deps.LoginRateLimit}, deps.Sessions,
+		DesktopAuthorizationPolicy{Issuer: deps.PublicURL, AllowLoopbackHTTPDevelopment: deps.LoopbackHTTPDevelopment}, model.NewCredentialToken, time.Now,
+	)
 	if err != nil {
 		return identityConstruction{}, err
 	}
@@ -60,10 +70,24 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
+	accountMail, err := newDirectMailPreparer(deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailSecretSealer)
+	if err != nil {
+		return identityConstruction{}, err
+	}
+	invitations, err := newInvitationService(
+		deps.Store.Invitation(), deps.Store.Class(), deps.Store.AcademicPeriod(),
+		invitationAuthorizationAdapter{authorization: authorization},
+		accountMail, foundation.hasher, invitationAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit}, deps.NodeID, deps.PublicURL,
+		model.NewCredentialToken, time.Now,
+	)
+	if err != nil {
+		return identityConstruction{}, err
+	}
 	accountTokens, err := newAccountTokenService(
 		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), authenticationAccess,
 		deps.Store.Institution(),
-		deps.Mailer, foundation.attempts, foundation.hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
+		accountMail, foundation.attempts, foundation.hasher, accountTokenAuditRecorder{nodeID: deps.NodeID},
 		foundation.realtime, deps.RecoveryDiagnostics, deps.AccountRecovery, deps.PublicURL,
 		model.NewCredentialToken, time.Now,
 	)
@@ -109,10 +133,12 @@ func constructIdentity(
 	}
 	return identityConstruction{
 		authentication:                    authentication,
+		desktopAuthorization:              desktopAuthorization,
 		selfSessions:                      selfSessions,
 		externalAuthentication:            externalAuthentication,
 		mfaApplication:                    mfaApplication,
 		accountTokens:                     accountTokens,
+		invitations:                       invitations,
 		personalAccessTokenAdministration: personalAccessTokenAdministration,
 	}, nil
 }

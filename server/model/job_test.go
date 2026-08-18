@@ -62,6 +62,22 @@ func TestJobRejectsUnboundedOrUnsupportedIntent(t *testing.T) {
 	}
 }
 
+func TestCredentialMailUsesItsOwnKnownJobType(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
+	job, err := model.NewJob(
+		model.NewJobID(), model.JobTypeMailDeliverCredential, 1,
+		json.RawMessage(`{"delivery_id":"01HZZZZZZZZZZZZZZZZZZZZZZZ"}`),
+		"credential-mail", at, at, model.MailMaximumAttempts,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Type != model.JobTypeMailDeliverCredential {
+		t.Fatalf("job type = %q", job.Type)
+	}
+}
+
 func TestJobRequiresAnExplicitKnownDedupePolicy(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 10, 12, 0, 0, 0, time.UTC)

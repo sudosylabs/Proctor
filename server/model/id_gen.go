@@ -129,6 +129,9 @@ func NewPersonalAccessTokenID() PersonalAccessTokenID { return PersonalAccessTok
 // NewUserTokenID returns a freshly generated user-token identifier.
 func NewUserTokenID() UserTokenID { return UserTokenID(NewId()) }
 
+// NewInvitationID returns a freshly generated invitation identifier.
+func NewInvitationID() InvitationID { return InvitationID(NewId()) }
+
 // NewMFACredentialID returns a freshly generated MFA credential identifier.
 func NewMFACredentialID() MFACredentialID { return MFACredentialID(NewId()) }
 
@@ -146,6 +149,11 @@ func NewMailDeliveryID() MailDeliveryID { return MailDeliveryID(NewId()) }
 
 // NewExternalLoginStateID returns a freshly generated external-login-state identifier.
 func NewExternalLoginStateID() ExternalLoginStateID { return ExternalLoginStateID(NewId()) }
+
+// NewBrowserAuthenticationTransactionID returns a freshly generated browser-authentication-transaction identifier.
+func NewBrowserAuthenticationTransactionID() BrowserAuthenticationTransactionID {
+	return BrowserAuthenticationTransactionID(NewId())
+}
 
 // NewFileEntryID returns a freshly generated file-entry identifier.
 func NewFileEntryID() FileEntryID { return FileEntryID(NewId()) }
@@ -359,6 +367,11 @@ func ParseUserTokenID(value string) (UserTokenID, error) {
 	return parseID[UserTokenID](value, "user_token_id")
 }
 
+// ParseInvitationID validates and converts the shared identifier representation.
+func ParseInvitationID(value string) (InvitationID, error) {
+	return parseID[InvitationID](value, "invitation_id")
+}
+
 // ParseMFACredentialID validates and converts the shared identifier representation.
 func ParseMFACredentialID(value string) (MFACredentialID, error) {
 	return parseID[MFACredentialID](value, "mfa_credential_id")
@@ -387,6 +400,11 @@ func ParseMailDeliveryID(value string) (MailDeliveryID, error) {
 // ParseExternalLoginStateID validates and converts the shared identifier representation.
 func ParseExternalLoginStateID(value string) (ExternalLoginStateID, error) {
 	return parseID[ExternalLoginStateID](value, "external_login_state_id")
+}
+
+// ParseBrowserAuthenticationTransactionID validates and converts the shared identifier representation.
+func ParseBrowserAuthenticationTransactionID(value string) (BrowserAuthenticationTransactionID, error) {
+	return parseID[BrowserAuthenticationTransactionID](value, "browser_authentication_transaction_id")
 }
 
 // ParseFileEntryID validates and converts the shared identifier representation.
@@ -529,6 +547,9 @@ func (id PersonalAccessTokenID) IsZero() bool { return id == "" }
 // IsZero reports whether the user-token is the empty zero value.
 func (id UserTokenID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the invitation is the empty zero value.
+func (id InvitationID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the MFA credential is the empty zero value.
 func (id MFACredentialID) IsZero() bool { return id == "" }
 
@@ -546,6 +567,9 @@ func (id MailDeliveryID) IsZero() bool { return id == "" }
 
 // IsZero reports whether the external-login-state is the empty zero value.
 func (id ExternalLoginStateID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the browser-authentication-transaction is the empty zero value.
+func (id BrowserAuthenticationTransactionID) IsZero() bool { return id == "" }
 
 // IsZero reports whether the file-entry is the empty zero value.
 func (id FileEntryID) IsZero() bool { return id == "" }
@@ -679,6 +703,9 @@ func (id PersonalAccessTokenID) IsValid() bool { return IsValidId(string(id)) }
 // IsValid reports whether the user-token is a canonical non-zero ID.
 func (id UserTokenID) IsValid() bool { return IsValidId(string(id)) }
 
+// IsValid reports whether the invitation is a canonical non-zero ID.
+func (id InvitationID) IsValid() bool { return IsValidId(string(id)) }
+
 // IsValid reports whether the MFA credential is a canonical non-zero ID.
 func (id MFACredentialID) IsValid() bool { return IsValidId(string(id)) }
 
@@ -696,6 +723,9 @@ func (id MailDeliveryID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the external-login-state is a canonical non-zero ID.
 func (id ExternalLoginStateID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the browser-authentication-transaction is a canonical non-zero ID.
+func (id BrowserAuthenticationTransactionID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the file-entry is a canonical non-zero ID.
 func (id FileEntryID) IsValid() bool { return IsValidId(string(id)) }
@@ -829,6 +859,9 @@ func (id PersonalAccessTokenID) String() string { return string(id) }
 // String returns the user-token wire/database representation.
 func (id UserTokenID) String() string { return string(id) }
 
+// String returns the invitation wire/database representation.
+func (id InvitationID) String() string { return string(id) }
+
 // String returns the MFA credential wire/database representation.
 func (id MFACredentialID) String() string { return string(id) }
 
@@ -846,6 +879,9 @@ func (id MailDeliveryID) String() string { return string(id) }
 
 // String returns the external-login-state wire/database representation.
 func (id ExternalLoginStateID) String() string { return string(id) }
+
+// String returns the browser-authentication-transaction wire/database representation.
+func (id BrowserAuthenticationTransactionID) String() string { return string(id) }
 
 // String returns the file-entry wire/database representation.
 func (id FileEntryID) String() string { return string(id) }
@@ -979,6 +1015,9 @@ func (id PersonalAccessTokenID) MarshalText() ([]byte, error) { return marshalID
 // MarshalText encodes the user-token as its canonical string.
 func (id UserTokenID) MarshalText() ([]byte, error) { return marshalID(id) }
 
+// MarshalText encodes the invitation as its canonical string.
+func (id InvitationID) MarshalText() ([]byte, error) { return marshalID(id) }
+
 // MarshalText encodes the MFA credential as its canonical string.
 func (id MFACredentialID) MarshalText() ([]byte, error) { return marshalID(id) }
 
@@ -996,6 +1035,9 @@ func (id MailDeliveryID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the external-login-state as its canonical string.
 func (id ExternalLoginStateID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the browser-authentication-transaction as its canonical string.
+func (id BrowserAuthenticationTransactionID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the file-entry as its canonical string.
 func (id FileEntryID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -1209,6 +1251,11 @@ func (id *UserTokenID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseUserTokenID)
 }
 
+// UnmarshalText decodes and validates the invitation when non-empty.
+func (id *InvitationID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseInvitationID)
+}
+
 // UnmarshalText decodes and validates the MFA credential when non-empty.
 func (id *MFACredentialID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseMFACredentialID)
@@ -1237,6 +1284,11 @@ func (id *MailDeliveryID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the external-login-state when non-empty.
 func (id *ExternalLoginStateID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExternalLoginStateID)
+}
+
+// UnmarshalText decodes and validates the browser-authentication-transaction when non-empty.
+func (id *BrowserAuthenticationTransactionID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseBrowserAuthenticationTransactionID)
 }
 
 // UnmarshalText decodes and validates the file-entry when non-empty.
@@ -1379,6 +1431,9 @@ func (id PersonalAccessTokenID) MarshalJSON() ([]byte, error) { return marshalID
 // MarshalJSON encodes the user-token as a JSON string.
 func (id UserTokenID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the invitation as a JSON string.
+func (id InvitationID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the MFA credential as a JSON string.
 func (id MFACredentialID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1396,6 +1451,9 @@ func (id MailDeliveryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id
 
 // MarshalJSON encodes the external-login-state as a JSON string.
 func (id ExternalLoginStateID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the browser-authentication-transaction as a JSON string.
+func (id BrowserAuthenticationTransactionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
 // MarshalJSON encodes the file-entry as a JSON string.
 func (id FileEntryID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
@@ -1609,6 +1667,11 @@ func (id *UserTokenID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseUserTokenID)
 }
 
+// UnmarshalJSON decodes a JSON string into the invitation.
+func (id *InvitationID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseInvitationID)
+}
+
 // UnmarshalJSON decodes a JSON string into the MFA credential.
 func (id *MFACredentialID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseMFACredentialID)
@@ -1637,6 +1700,11 @@ func (id *MailDeliveryID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the external-login-state.
 func (id *ExternalLoginStateID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExternalLoginStateID)
+}
+
+// UnmarshalJSON decodes a JSON string into the browser-authentication-transaction.
+func (id *BrowserAuthenticationTransactionID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseBrowserAuthenticationTransactionID)
 }
 
 // UnmarshalJSON decodes a JSON string into the file-entry.

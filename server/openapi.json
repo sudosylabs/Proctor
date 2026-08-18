@@ -524,6 +524,37 @@
         }
       }
     },
+    "/api/v1/classes/{class_id}/invitations/student": {
+      "parameters": [{"$ref": "#/components/parameters/ClassID"}],
+      "post": {
+        "operationId": "issueStudentClassInvitation", "summary": "Invite a student into one exact Class",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "administration.unavailable", "invitation.invalid", "invitation.class_period_invalid", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/IssueStudentClassInvitationRequest"}}}},
+        "responses": {
+          "201": {"description": "Invitation issued without claim or mailbox disclosure", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationResponse"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
+    "/api/v1/invitations/student-class/accept": {
+      "post": {
+        "operationId": "acceptStudentClassInvitation", "summary": "Accept a student Class Invitation using its one-time claim",
+        "x-proctor-auth": "public",
+        "x-proctor-error-codes": ["request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.user_invalid", "invitation.mail_unavailable", "invitation.unavailable", "authentication.password.invalid"],
+        "security": [],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcceptStudentClassInvitationRequest"}}}},
+        "responses": {
+          "200": {"description": "Invitation accepted or replay resolved", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAcceptanceResponse"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "429": {"$ref": "#/components/responses/TooManyRequests"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
     "/api/v1/class-members/{class_member_id}": {
       "parameters": [{"$ref": "#/components/parameters/ClassMemberID"}],
       "delete": {
@@ -1054,6 +1085,42 @@
         "operationId": "getSystemVersion", "summary": "Get build and version information",
         "x-proctor-auth": "public", "x-proctor-error-codes": [], "security": [],
         "responses": {"200": {"$ref": "#/components/responses/BuildInfoOK"}}
+      }
+    },
+    "/api/v1/auth/desktop/authorizations": {
+      "post": {
+        "operationId": "startDesktopAuthorization", "summary": "Create a purpose-bound Desktop browser authorization transaction",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.disabled", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable"],
+        "security": [],
+        "requestBody": {"$ref": "#/components/requestBodies/DesktopAuthorizationStart"},
+        "responses": {"201": {"$ref": "#/components/responses/DesktopAuthorizationStarted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/desktop/authorizations/approve": {
+      "post": {
+        "operationId": "approveDesktopAuthorization", "summary": "Approve a Desktop transaction with the current browser Session",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "request.invalid", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable", "audit.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/DesktopAuthorizationProof"},
+        "responses": {"200": {"$ref": "#/components/responses/DesktopAuthorizationApproved"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/desktop/authorizations/cancel": {
+      "post": {
+        "operationId": "cancelDesktopAuthorization", "summary": "Cancel one pending Desktop browser authorization transaction",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable"],
+        "security": [],
+        "requestBody": {"$ref": "#/components/requestBodies/DesktopAuthorizationProof"},
+        "responses": {"204": {"$ref": "#/components/responses/SensitiveNoContent"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/desktop/token": {
+      "post": {
+        "operationId": "exchangeDesktopAuthorizationCode", "summary": "Atomically exchange one Desktop code and S256 verifier for an ordinary Desktop Session",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable", "authentication.sessions.maximum_reached", "audit.unavailable"],
+        "security": [],
+        "requestBody": {"$ref": "#/components/requestBodies/DesktopAuthorizationExchange"},
+        "responses": {"200": {"$ref": "#/components/responses/AuthenticationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"$ref": "#/components/responses/Conflict"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
       }
     },
     "/api/v1/auth/login": {
@@ -2451,6 +2518,9 @@
       }
     },
     "requestBodies": {
+      "DesktopAuthorizationStart": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationStartRequest"}}}},
+      "DesktopAuthorizationProof": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationProofRequest"}}}},
+      "DesktopAuthorizationExchange": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationExchangeRequest"}}}},
       "StartMailRekey": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailRekeyRequest"}}}
@@ -2698,6 +2768,8 @@
       }
     },
     "responses": {
+      "DesktopAuthorizationStarted": {"description": "Desktop browser authorization transaction created", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationStartResponse"}}}},
+      "DesktopAuthorizationApproved": {"description": "One-use Desktop code issued", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationApprovalResponse"}}}},
       "ExamOK": {
         "description": "Bounded Exam authoring view",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResponse"}}}
@@ -3066,6 +3138,27 @@
       "ID": {
         "type": "string",
         "pattern": "^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$"
+      },
+      "DesktopAuthorizationStartRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["callback_url", "state", "code_challenge", "authentication_method"],
+        "properties": {"callback_url": {"type": "string", "format": "uri"}, "state": {"type": "string", "minLength": 43, "maxLength": 128}, "code_challenge": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}, "authentication_method": {"type": "string", "minLength": 1, "maxLength": 64}, "provider_id": {"type": "string", "maxLength": 64}, "device_id": {"type": "string", "maxLength": 128}, "device_name": {"type": "string", "maxLength": 128}}
+      },
+      "DesktopAuthorizationProofRequest": {
+        "type": "object", "additionalProperties": false, "required": ["handle", "browser_proof", "state"],
+        "properties": {"handle": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}, "browser_proof": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}, "state": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}
+      },
+      "DesktopAuthorizationExchangeRequest": {
+        "type": "object", "additionalProperties": false, "required": ["code", "state", "code_verifier"],
+        "properties": {"code": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}, "state": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}, "code_verifier": {"type": "string", "minLength": 43, "maxLength": 128, "pattern": "^[A-Za-z0-9._~-]+$"}}
+      },
+      "DesktopAuthorizationStartResponse": {
+        "type": "object", "additionalProperties": false, "required": ["authorization_url", "expires_at"],
+        "properties": {"authorization_url": {"type": "string", "format": "uri"}, "expires_at": {"type": "integer", "format": "int64"}}
+      },
+      "DesktopAuthorizationApprovalResponse": {
+        "type": "object", "additionalProperties": false, "required": ["redirect_url", "expires_at"],
+        "properties": {"redirect_url": {"type": "string", "format": "uri"}, "expires_at": {"type": "integer", "format": "int64"}}
       },
       "CreateExamRequest": {
         "type": "object",
@@ -4793,6 +4886,50 @@
           "client_type": {"type": "string", "enum": ["desktop", "cli", "web"]},
           "device_id": {"type": "string"}, "device_name": {"type": "string"},
           "mfa_code": {"type": "string"}
+        }
+      },
+      "IssueStudentClassInvitationRequest": {
+        "type": "object", "additionalProperties": false, "required": ["email"],
+        "properties": {
+          "email": {"type": "string", "format": "email"},
+          "start_at": {"type": "integer", "format": "int64", "minimum": 1},
+          "end_at": {"type": "integer", "format": "int64", "minimum": 1},
+          "suggested_username": {"type": "string", "maxLength": 64},
+          "suggested_display_name": {"type": "string", "maxLength": 512},
+          "suggested_first_name": {"type": "string", "maxLength": 256},
+          "suggested_last_name": {"type": "string", "maxLength": 256},
+          "suggested_locale": {"type": "string", "maxLength": 35}
+        }
+      },
+      "AcceptStudentClassInvitationRequest": {
+        "type": "object", "additionalProperties": false, "required": ["claim", "password", "username"],
+        "properties": {
+          "claim": {"type": "string", "minLength": 43, "maxLength": 43},
+          "password": {"type": "string"}, "username": {"type": "string", "maxLength": 64},
+          "display_name": {"type": "string", "maxLength": 512},
+          "first_name": {"type": "string", "maxLength": 256}, "last_name": {"type": "string", "maxLength": 256},
+          "locale": {"type": "string", "maxLength": 35}, "timezone": {"type": "string", "maxLength": 64}
+        }
+      },
+      "InvitationResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "purpose", "state", "class_id", "academic_period_id", "start_at", "expires_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "purpose": {"type": "string", "enum": ["student_class"]},
+          "state": {"type": "string", "enum": ["pending", "accepted", "revoked", "expired", "superseded"]},
+          "class_id": {"$ref": "#/components/schemas/ID"}, "academic_period_id": {"$ref": "#/components/schemas/ID"},
+          "start_at": {"type": "integer", "format": "int64"}, "end_at": {"type": "integer", "format": "int64"},
+          "expires_at": {"type": "integer", "format": "int64"}
+        }
+      },
+      "InvitationAcceptanceResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["user_id", "invitation_id", "affiliation_id", "class_member_id", "replayed"],
+        "properties": {
+          "user_id": {"$ref": "#/components/schemas/ID"},
+          "invitation_id": {"$ref": "#/components/schemas/ID"},
+          "affiliation_id": {"$ref": "#/components/schemas/ID"},
+          "class_member_id": {"$ref": "#/components/schemas/ID"}, "replayed": {"type": "boolean"}
         }
       },
       "PasswordResetRequest": {

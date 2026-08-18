@@ -59,6 +59,48 @@ live configured provider catalog. Configured but policy-disabled providers are
 omitted; a policy read failure fails closed with `authentication.internal`
 rather than returning the deployment catalog.
 
+## Desktop browser authorization
+
+`POST /api/v1/auth/desktop/authorizations`,
+`POST /api/v1/auth/desktop/authorizations/cancel`, and
+`POST /api/v1/auth/desktop/token` are public native-client protocol operations.
+`POST /api/v1/auth/desktop/authorizations/approve` requires an authenticated
+Web Session and the normal session-mutation CSRF proof. Every response is
+`Cache-Control: no-store`.
+
+Start accepts only an exact IP-literal loopback callback, high-entropy state,
+an S256 challenge, and one configured policy-enabled authentication path. The
+returned hosted authorization URL carries the transaction handle and state in
+its query and a separate browser proof in its fragment. Approval returns an
+exact loopback redirect whose query contains only the short-lived one-use code
+and state. Exchange accepts code, state, and verifier, atomically consumes the
+code, and returns the ordinary Desktop Session access/refresh response. Invalid,
+expired, cancelled, mixed-up, or replayed proofs use bounded public errors and
+never reveal which proof or policy check failed.
+
+Start and exchange share the private authentication-attempt accounting but use
+separate domain-qualified transaction and source counters. Accounting precedes
+Start persistence and exchange audit preparation or persistence and fails
+closed when its disposable backend is unavailable. Exchange rechecks that the
+resolved User is active in the same PostgreSQL transaction that consumes the
+code and creates the Session.
+
+Ordinary external-provider login defaults to a Web Session and rejects an
+explicit Desktop client at initiation and callback. Desktop Sessions are
+issued only through this purpose-bound approval and PKCE/code exchange. The
+pinned issuer is HTTPS except when composition explicitly grants a validated
+localhost or literal-loopback HTTP development origin.
+
+The Job runtime proposes a permanently deduplicated maintenance occurrence
+each UTC minute. Its durable handler terminalizes expired pending/code-issued
+transactions with proof destruction and purges all terminal safe metadata
+after 24 hours through bounded, multi-node-safe PostgreSQL pages; protocol
+writes do not perform opportunistic cleanup scans.
+
+The `/authorize/desktop` hosted page and Desktop UI are deliberately absent.
+Their later implementation must consume this protocol without adding provider
+tokens, Session credentials, or raw proofs to URLs, logs, or audit data.
+
 `GET /api/v1/access-policy` requires `access_policy.view` and returns the full
 policy, at most the newest 100 applied transition facts, and safe live provider
 and durable-mail capability metadata. Personal Access Tokens are forbidden by
@@ -112,6 +154,31 @@ for subtree grants, and unrelated account, credential, MFA, provider, mail,
 and security events are always excluded. The response also omits Session,
 request, node, authentication, IP-address, User-Agent, and private audit-value
 metadata.
+
+## Student Class Invitations
+
+`POST /api/v1/classes/{class_id}/invitations/student` requires an authenticated
+principal and independently authorizes both `invitation.create` and
+`class.members.manage` against the exact Class. Its closed request carries the
+target mailbox, optional effective bounds, and bounded profile suggestions.
+The `201` response is a safe package projection: it omits the mailbox, claim
+digest, raw claim, and action URL. The raw 256-bit claim exists only while the
+application renders and seals the transactional message whose action is
+`/join#token=...`.
+
+`POST /api/v1/invitations/student-class/accept` is public because possession of
+that claim proves access to the invited mailbox. The raw claim and password are
+request-only credentials and never appear in responses, Problem Details,
+ordinary logs, audit values, or reports. The response identifies the resolved
+User and committed Invitation/relationship records by ID only, plus whether
+the result was an exact replay. It contains no mailbox, verification,
+login/activity, disablement, or other account-profile metadata and issues no
+Session.
+Invalid, expired, conflicting, disabled-policy, and lost-authority outcomes use
+the bounded `invitation.*` vocabulary and do not disclose which internal check
+failed. The hosted `/join` page that captures and immediately removes the URL
+fragment is explicitly not implemented; it remains part of the server-hosted
+design-system phase.
 
 ## Ownership and extension workflow
 

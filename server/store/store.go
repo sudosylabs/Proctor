@@ -275,7 +275,9 @@ type Catalog interface {
 	Mail() MailStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
+	DesktopAuthorization() DesktopAuthorizationStore
 	UserToken() UserTokenStore
+	Invitation() InvitationStore
 	PersonalAccessToken() PersonalAccessTokenStore
 	MFA() MFAStore
 	Affiliation() AffiliationStore
@@ -317,7 +319,9 @@ type Store interface {
 	Mail() MailStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
+	DesktopAuthorization() DesktopAuthorizationStore
 	UserToken() UserTokenStore
+	Invitation() InvitationStore
 	PersonalAccessToken() PersonalAccessTokenStore
 	MFA() MFAStore
 	Affiliation() AffiliationStore
@@ -1146,15 +1150,40 @@ type PasswordResetResult struct {
 	RevokedAccessHashes []string
 }
 
+// UserTokenMailIssue is the named aggregate that replaces an active
+// purpose-specific token and commits its successful audit and frozen recovery
+// delivery intent as one durable transition.
+type UserTokenMailIssue struct {
+	Token      *model.UserToken
+	Occurrence *model.MailOccurrence
+	Delivery   *model.MailDelivery
+	Job        *model.Job
+	AuditEvent *model.AuditEvent
+}
+
+// PasswordResetCompletion is the named aggregate that consumes one reset
+// credential, changes the password, revokes Sessions, completes the security
+// audit, and records the password-changed notification atomically.
+type PasswordResetCompletion struct {
+	TokenHash        string
+	PasswordHash     string
+	At               int64
+	RevocationReason string
+	AuditEvent       *model.AuditEvent
+	Occurrence       *model.MailOccurrence
+	Delivery         *model.MailDelivery
+	Job              *model.Job
+}
+
 // UserTokenStore owns issuance and single-use consumption of purpose-specific
 // account credentials. Consumption methods include their account mutation,
 // session revocation where applicable, and terminal audit in one transaction.
 type UserTokenStore interface {
 	Issue(
 		context.Context,
-		*model.UserToken,
-		*model.AuditEvent,
+		*UserTokenMailIssue,
 	) (*model.UserToken, error)
+	Get(context.Context, model.UserTokenID) (*model.UserToken, error)
 	GetByHash(
 		context.Context,
 		string,
@@ -1168,12 +1197,67 @@ type UserTokenStore interface {
 	) (*EmailVerificationResult, error)
 	ConsumePasswordReset(
 		context.Context,
-		string,
-		string,
-		int64,
-		string,
-		*model.AuditEvent,
+		*PasswordResetCompletion,
 	) (*PasswordResetResult, error)
+}
+
+// StudentClassInvitationIssue is the named transaction that makes one
+// pre-User Invitation and its recoverable delivery intent durable before
+// completing the already-recorded security audit attempt.
+type StudentClassInvitationIssue struct {
+	Invitation   *model.Invitation
+	Occurrence   *model.MailOccurrence
+	Delivery     *model.MailDelivery
+	DeliveryJob  *model.Job
+	AuditEventID string
+	AuditAt      int64
+}
+
+// StudentClassInvitationAcceptance is the complete prepared package for one
+// claim. Persistence resolves an existing User by the invited mailbox inside
+// the transaction and uses the prepared User artifacts only when creation or
+// missing local enrollment is required.
+type StudentClassInvitationAcceptance struct {
+	ClaimHash                string
+	AcceptedAt               int64
+	User                     *model.User
+	Settings                 *model.UserSettingsDocument
+	PasswordCredential       *model.PasswordCredential
+	DefaultProfilePictureJob *model.Job
+	Affiliation              *model.Affiliation
+	ClassMember              *model.ClassMember
+	Occurrence               *model.MailOccurrence
+	Delivery                 *model.MailDelivery
+	DeliveryJob              *model.Job
+	AuditEvent               *model.AuditEvent
+	RequiredActions          []model.Action
+}
+
+// StudentClassInvitationAcceptanceResult is the authoritative accepted
+// account and package. Replayed reports exact claim replay without repeating
+// relationship, mail, audit, or Job effects.
+type StudentClassInvitationAcceptanceResult struct {
+	Invitation  *model.Invitation
+	User        *model.User
+	Affiliation *model.Affiliation
+	ClassMember *model.ClassMember
+	Replayed    bool
+}
+
+type InvitationMaintenanceResult struct {
+	Expired int
+	Purged  int
+	More    bool
+}
+
+// InvitationStore owns the durable pre-User Invitation and its two atomic
+// first-slice transitions. Raw claims never cross this boundary.
+type InvitationStore interface {
+	IssueStudentClass(context.Context, *StudentClassInvitationIssue) (*model.Invitation, error)
+	Get(context.Context, model.InvitationID) (*model.Invitation, error)
+	GetByClaimHash(context.Context, string) (*model.Invitation, error)
+	AcceptStudentClass(context.Context, *StudentClassInvitationAcceptance) (*StudentClassInvitationAcceptanceResult, error)
+	Maintain(context.Context, int) (*InvitationMaintenanceResult, error)
 }
 
 type PersonalAccessTokenResolution struct {

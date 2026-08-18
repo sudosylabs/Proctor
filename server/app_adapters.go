@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/i18n"
 	"github.com/sudosylabs/proctor/server/mlog"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -46,17 +48,17 @@ func applicationDependencies(
 	}
 	mailer := accountMailerAdapter{mailer: capabilities.mailer}
 	return app.Dependencies{
-		Store:                capabilities.persistence,
-		Cache:                cache,
-		Mailer:               mailer,
-		MailDeliverySender:   mailer,
-		MailTemplateRenderer: mailTemplateRendererAdapter{renderer: mailRenderer},
-		MailDeliveryRecorder: newMailDeliveryRecorder(log, nil),
-		MailSecretSealer:     mailSecretSealer,
-		Registry:             externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
-		FileContent:          content,
-		NodeID:               capabilities.nodeID,
-		PublicURL:            cfg.Server.PublicURL,
+		Store:                   capabilities.persistence,
+		Cache:                   cache,
+		MailDeliverySender:      mailer,
+		MailTemplateRenderer:    mailTemplateRendererAdapter{renderer: mailRenderer},
+		MailDeliveryRecorder:    newMailDeliveryRecorder(log, nil),
+		MailSecretSealer:        mailSecretSealer,
+		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
+		FileContent:             content,
+		NodeID:                  capabilities.nodeID,
+		PublicURL:               cfg.Server.PublicURL,
+		LoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(cfg.Server.PublicURL),
 		Password: app.PasswordPolicy{
 			MinimumLength:    auth.Password.MinimumLength,
 			MaximumLength:    auth.Password.MaximumLength,
@@ -118,6 +120,15 @@ func applicationDependencies(
 		RealtimeDiagnostics:       mlogRealtimeDiagnostics{log: log},
 		RecoveryDiagnostics:       mlogRecoveryDiagnostics{log: log},
 	}, nil
+}
+
+// explicitLoopbackHTTPDevelopment projects the deliberately local HTTP
+// origin into the application without coupling app/model to deployment
+// configuration. Non-loopback HTTP never receives this capability.
+func explicitLoopbackHTTPDevelopment(raw string) bool {
+	parsed, err := url.Parse(raw)
+	return err == nil && parsed.Scheme == "http" &&
+		model.ValidateDesktopAuthorizationIssuer(raw, true) == nil
 }
 
 // platformAuthenticationCache adapts platform.Cache to app.authenticationCache.
@@ -190,15 +201,35 @@ func (a accountMailerAdapter) Send(ctx context.Context, message app.OutboundMail
 	if err == nil {
 		return app.MailTransportUnknown, nil
 	}
-	switch mailpkg.Classify(err) {
-	case mailpkg.OutcomeTemporary:
-		return app.MailTransportTemporary, err
-	case mailpkg.OutcomePermanent:
-		return app.MailTransportPermanent, err
-	case mailpkg.OutcomeAcceptanceUncertain:
-		return app.MailTransportAcceptanceUncertain, err
+	return classifyMailTransportError(err), err
+}
+
+type portableMailOutcome interface {
+	MailOutcome() string
+}
+
+func classifyMailTransportError(err error) app.MailTransportOutcome {
+	var portable portableMailOutcome
+	if errors.As(err, &portable) {
+		switch portable.MailOutcome() {
+		case "temporary":
+			return app.MailTransportTemporary
+		case "permanent":
+			return app.MailTransportPermanent
+		case "acceptance_uncertain":
+			return app.MailTransportAcceptanceUncertain
+		}
+	}
+	switch {
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded), errors.Is(err, mailpkg.ErrConnection):
+		return app.MailTransportTemporary
+	case errors.Is(err, mailpkg.ErrInvalidMessage), errors.Is(err, mailpkg.ErrInvalidAddress),
+		errors.Is(err, mailpkg.ErrInvalidHeader), errors.Is(err, mailpkg.ErrMessageTooLarge),
+		errors.Is(err, mailpkg.ErrTLS), errors.Is(err, mailpkg.ErrAuthentication),
+		errors.Is(err, mailpkg.ErrRejected), errors.Is(err, mailpkg.ErrUnsupported):
+		return app.MailTransportPermanent
 	default:
-		return app.MailTransportUnknown, err
+		return app.MailTransportUnknown
 	}
 }
 
@@ -206,31 +237,10 @@ func (a accountMailerAdapter) Probe(ctx context.Context) error {
 	return a.mailer.Test(ctx)
 }
 
-func (a accountMailerAdapter) SendCredentialMail(
-	ctx context.Context,
-	displayName string,
-	email string,
-	subject string,
-	textBody string,
-	htmlBody string,
-	at time.Time,
-) error {
-	_, err := a.mailer.Send(ctx, mailpkg.Message{
-		To: []mailpkg.Address{{
-			Name: displayName, Address: email,
-		}},
-		Subject: subject,
-		Text:    textBody,
-		HTML:    htmlBody,
-		Date:    at,
-	})
-	return err
-}
-
 type mailTemplateRendererAdapter struct{ renderer *templates.Renderer }
 
-func (a mailTemplateRendererAdapter) RenderSystemMailTest(recipientLocale, installationLocale string) (app.FrozenMailContent, error) {
-	message, err := a.renderer.Render(templates.Request{Key: "system.mail_test", RecipientLocale: recipientLocale, InstallationLocale: installationLocale})
+func (a mailTemplateRendererAdapter) Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (app.FrozenMailContent, error) {
+	message, err := a.renderer.Render(templates.Request{Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale, ActionURL: actionURL})
 	if err != nil {
 		return app.FrozenMailContent{}, err
 	}

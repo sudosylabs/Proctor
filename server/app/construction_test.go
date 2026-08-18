@@ -21,7 +21,6 @@ import (
 
 type constructionCatalogStub struct{ store.Catalog }
 type constructionCacheStub struct{ authenticationCache }
-type constructionMailerStub struct{ AccountMailer }
 type constructionMailDeliverySenderStub struct{ MailDeliverySender }
 type constructionMailTemplateRendererStub struct{ MailTemplateRenderer }
 type constructionRegistryStub struct{ externalProviderSource }
@@ -83,7 +82,6 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 	valid := Dependencies{
 		Store:                     constructionCatalogStub{},
 		Cache:                     constructionCacheStub{},
-		Mailer:                    constructionMailerStub{},
 		MailDeliverySender:        constructionMailDeliverySenderStub{},
 		MailTemplateRenderer:      constructionMailTemplateRendererStub{},
 		Registry:                  constructionRegistryStub{},
@@ -104,7 +102,6 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 	}{
 		{name: "store", missing: func(deps *Dependencies) { deps.Store = nil }, want: "store is required"},
 		{name: "cache", missing: func(deps *Dependencies) { deps.Cache = nil }, want: "cache is required"},
-		{name: "mailer", missing: func(deps *Dependencies) { deps.Mailer = nil }, want: "mailer is required"},
 		{name: "mail delivery sender", missing: func(deps *Dependencies) { deps.MailDeliverySender = nil }, want: "mail delivery sender is required"},
 		{name: "mail template renderer", missing: func(deps *Dependencies) { deps.MailTemplateRenderer = nil }, want: "mail template renderer is required"},
 		{name: "provider registry", missing: func(deps *Dependencies) { deps.Registry = nil }, want: "external provider registry is required"},
@@ -133,7 +130,6 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 	}
 	deps := valid
 	deps.Cache = nil
-	deps.Mailer = nil
 	_, err = New(deps)
 	if err == nil || err.Error() != "cache is required" {
 		t.Fatalf("New with cache and mailer missing = %v, want cache precedence", err)
@@ -168,6 +164,8 @@ type constructionCatalogWithJobs struct {
 	users        store.UserStore
 	files        store.FileStore
 	institutions store.InstitutionStore
+	desktop      store.DesktopAuthorizationStore
+	invitations  store.InvitationStore
 }
 
 func (catalog constructionCatalogWithJobs) Job() store.JobStore   { return catalog.jobs }
@@ -181,6 +179,12 @@ func (constructionCatalogWithJobs) ExamAttemptWorkspace() store.ExamAttemptWorks
 func (catalog constructionCatalogWithJobs) Institution() store.InstitutionStore {
 	return catalog.institutions
 }
+func (catalog constructionCatalogWithJobs) DesktopAuthorization() store.DesktopAuthorizationStore {
+	return catalog.desktop
+}
+func (catalog constructionCatalogWithJobs) Invitation() store.InvitationStore {
+	return catalog.invitations
+}
 func (catalog constructionCatalogWithJobs) CommandOutcome() store.CommandOutcomeStore {
 	return constructionCommandOutcomeStoreStub{}
 }
@@ -189,6 +193,10 @@ type constructionJobStoreStub struct{ store.JobStore }
 type constructionUserStoreStub struct{ store.UserStore }
 type constructionFileStoreStub struct{ store.FileStore }
 type constructionInstitutionStoreStub struct{ store.InstitutionStore }
+type constructionInvitationStoreStub struct{ store.InvitationStore }
+type constructionDesktopAuthorizationStoreStub struct {
+	store.DesktopAuthorizationStore
+}
 type constructionCommandOutcomeStoreStub struct{}
 type constructionExamSittingUseCasesStub struct{ examSittingUseCases }
 type constructionExamAttemptUseCasesStub struct{ examAttemptUseCases }
@@ -206,6 +214,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 			Store: constructionCatalogWithJobs{
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
+				desktop: constructionDesktopAuthorizationStoreStub{}, invitations: constructionInvitationStoreStub{},
 			},
 			NodeID: "node-a", RecoveryDiagnostics: constructionRecoveryDiagnosticsStub{},
 		},
@@ -241,6 +250,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 			Store: constructionCatalogWithJobs{
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
+				desktop: constructionDesktopAuthorizationStoreStub{}, invitations: constructionInvitationStoreStub{},
 			},
 			FileContent: constructionFileContentStub{},
 		},
@@ -282,9 +292,24 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if handler, ok := recovery.Handler.(examSittingLifecycleRecoveryHandler); !ok || handler.service == nil {
 		t.Fatalf("recovery handler = %#v", recovery.Handler)
 	}
+	invitationMaintenance, exists := descriptors[model.JobTypeInvitationMaintenance]
+	if !exists {
+		t.Fatal("Invitation maintenance descriptor is absent from the application Job graph")
+	}
+	if handler, ok := invitationMaintenance.Handler.(invitationMaintenanceHandler); !ok || handler.invitations == nil {
+		t.Fatalf("Invitation maintenance handler = %#v", invitationMaintenance.Handler)
+	}
 
 	recurrenceCount := 0
+	invitationMaintenanceRecurrenceCount := 0
 	for _, recurrence := range definitions.recurrences {
+		if recurrence.Name == "invitation-maintenance" {
+			invitationMaintenanceRecurrenceCount++
+			proposer, ok := recurrence.Proposer.(invitationMaintenanceProposer)
+			if !ok || proposer.jobs == nil || proposer.now == nil {
+				t.Fatalf("Invitation maintenance proposer = %#v", recurrence.Proposer)
+			}
+		}
 		if recurrence.Name != "exam-sitting-lifecycle-recovery" {
 			continue
 		}
@@ -297,15 +322,32 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if recurrenceCount != 1 {
 		t.Fatalf("lifecycle recovery recurrence count = %d", recurrenceCount)
 	}
-	if len(definitions.periodicTasks) != 1 {
-		t.Fatalf("periodic task count = %d, want 1", len(definitions.periodicTasks))
+	if invitationMaintenanceRecurrenceCount != 1 {
+		t.Fatalf("Invitation maintenance recurrence count = %d", invitationMaintenanceRecurrenceCount)
 	}
-	periodic := definitions.periodicTasks[0]
+	periodicByName := make(map[string]jobengine.PeriodicTask, len(definitions.periodicTasks))
+	for _, task := range definitions.periodicTasks {
+		periodicByName[task.Name] = task
+	}
+	periodic, exists := periodicByName[examAttemptExpiryPeriodicTaskName]
+	if !exists {
+		t.Fatal("Attempt expiry periodic task is absent")
+	}
 	if periodic.Name != examAttemptExpiryPeriodicTaskName || periodic.Interval != examAttemptExpiryScanInterval {
 		t.Fatalf("Attempt expiry periodic task = %#v", periodic)
 	}
 	if runner, ok := periodic.Runner.(examAttemptExpiryPeriodicRunner); !ok || runner.attempts == nil {
 		t.Fatalf("Attempt expiry periodic runner = %#v", periodic.Runner)
+	}
+	desktopPeriodic, exists := periodicByName["desktop-authorization-maintenance"]
+	if !exists || desktopPeriodic.Interval != desktopAuthorizationMaintenanceInterval {
+		t.Fatalf("Desktop authorization maintenance periodic task = %#v", desktopPeriodic)
+	}
+	if runner, ok := desktopPeriodic.Runner.(desktopAuthorizationMaintenancePeriodicRunner); !ok || runner.transactions == nil {
+		t.Fatalf("Desktop authorization maintenance runner = %#v", desktopPeriodic.Runner)
+	}
+	if _, exists = descriptors[model.JobType("authentication.desktop_authorization_maintenance")]; exists {
+		t.Fatal("Desktop authorization maintenance must not create a durable Job descriptor")
 	}
 
 	cleanup, exists := descriptors[model.JobTypeCleanup]
@@ -321,7 +363,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		retained[policy.Type] = true
 	}
 	if !retained[model.JobTypeExamSittingLifecycle] || !retained[model.JobTypeExamSittingLifecycleRecovery] ||
-		!retained[model.JobTypeExamSittingSealing] {
+		!retained[model.JobTypeExamSittingSealing] || !retained[model.JobTypeInvitationMaintenance] {
 		t.Fatalf("cleanup retention types = %#v", retained)
 	}
 }

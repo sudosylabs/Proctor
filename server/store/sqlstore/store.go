@@ -94,7 +94,9 @@ type SQLStoreStores struct {
 	mail                 store.MailStore
 	externalIdentity     store.ExternalIdentityStore
 	externalLoginState   store.ExternalLoginStateStore
+	desktopAuthorization store.DesktopAuthorizationStore
 	userToken            store.UserTokenStore
+	invitation           store.InvitationStore
 	personalAccessToken  store.PersonalAccessTokenStore
 	mfa                  store.MFAStore
 	affiliation          store.AffiliationStore
@@ -169,7 +171,9 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.mail = newSQLMailStore(sqlStore)
 	sqlStore.stores.externalIdentity = newSQLExternalIdentityStore(sqlStore)
 	sqlStore.stores.externalLoginState = newSQLExternalLoginStateStore(sqlStore)
+	sqlStore.stores.desktopAuthorization = newSQLDesktopAuthorizationStore(sqlStore)
 	sqlStore.stores.userToken = newSQLUserTokenStore(sqlStore)
+	sqlStore.stores.invitation = newSQLInvitationStore(sqlStore)
 	sqlStore.stores.personalAccessToken = newSQLPersonalAccessTokenStore(sqlStore)
 	sqlStore.stores.mfa = newSQLMFAStore(sqlStore)
 	sqlStore.stores.affiliation = newSQLAffiliationStore(sqlStore)
@@ -289,8 +293,16 @@ func (ss *SQLStore) ExternalLoginState() store.ExternalLoginStateStore {
 	return ss.stores.externalLoginState
 }
 
+func (ss *SQLStore) DesktopAuthorization() store.DesktopAuthorizationStore {
+	return ss.stores.desktopAuthorization
+}
+
 func (ss *SQLStore) UserToken() store.UserTokenStore {
 	return ss.stores.userToken
+}
+
+func (ss *SQLStore) Invitation() store.InvitationStore {
+	return ss.stores.invitation
 }
 
 func (ss *SQLStore) PersonalAccessToken() store.PersonalAccessTokenStore {

@@ -28,17 +28,18 @@ const (
 // It deliberately excludes roles, permissions, affiliations, and academic
 // memberships because authorization must resolve current durable state.
 type Principal struct {
-	UserID                 UserID
-	SessionID              SessionID
-	CredentialID           PrincipalCredentialID
-	CredentialType         CredentialType
-	AuthenticationMethod   string
-	AuthenticationStrength AuthenticationStrength
-	ClientType             SessionClientType
-	AuthenticatedAt        time.Time
-	MFACompletedAt         OptionalTime
-	CredentialScopes       []string
-	AcademicUnitID         AcademicUnitID
+	UserID                   UserID
+	SessionID                SessionID
+	CredentialID             PrincipalCredentialID
+	CredentialType           CredentialType
+	AuthenticationMethod     string
+	AuthenticationProviderID string
+	AuthenticationStrength   AuthenticationStrength
+	ClientType               SessionClientType
+	AuthenticatedAt          time.Time
+	MFACompletedAt           OptionalTime
+	CredentialScopes         []string
+	AcademicUnitID           AcademicUnitID
 }
 
 // AuthenticationTokens contains raw credentials returned exactly once after
@@ -66,9 +67,14 @@ func (p Principal) Validate() error {
 			!p.AcademicUnitID.IsZero() {
 			return errors.New("model: session principal is invalid")
 		}
+		if (p.AuthenticationMethod == "password" && p.AuthenticationProviderID != "") ||
+			(p.AuthenticationMethod != "password" && !IsValidIdentityProviderID(p.AuthenticationProviderID)) {
+			return errors.New("model: session principal authentication provider is invalid")
+		}
 		return nil
 	case CredentialPersonalAccessToken:
 		if !p.SessionID.IsZero() || p.AuthenticationStrength != "" ||
+			p.AuthenticationProviderID != "" ||
 			!p.AuthenticatedAt.IsZero() || p.MFACompletedAt.Valid ||
 			p.ClientType != SessionClientCLI ||
 			len(p.CredentialScopes) == 0 ||
