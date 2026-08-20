@@ -5,6 +5,7 @@ package storetest
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -151,9 +152,13 @@ func testAuditedClassMemberLifecycle(
 	transferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	previousTransferAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	transferNotice := classMemberPreparedMail(t, second, model.MailTemplateAcademicClassTransferred, second.CreatedAt)
+	transferCommand := &store.CommandIdempotency{UserID: user.ID, Operation: "class_member.enroll.v1",
+		KeyDigest: sha256.Sum256([]byte("class-transfer-replay")), FingerprintVersion: 1,
+		Fingerprint: sha256.Sum256([]byte("class-transfer-package")), OutcomeVersion: 1,
+		Retention: time.Hour, Wait: time.Second, Batch: &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("class-transfer-group"))}}
 	transferred, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: second, ExpectedPreviousID: created.Membership.ID, ExpectedRecipientRevision: user.Revision, Notice: transferNotice,
-		AuditEventID: transferAttempt.ID.String(), PreviousAuditEventID: previousTransferAttempt.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: transferAttempt.ID.String(), PreviousAuditEventID: previousTransferAttempt.ID.String(), AuditAt: model.GetMillis(), Command: transferCommand,
 	})
 	requireNoError(t, err)
 	if transferred.Previous == nil || transferred.Previous.ID != created.Membership.ID ||
@@ -175,6 +180,39 @@ func testAuditedClassMemberLifecycle(
 		t.Fatalf("source transfer audit crossed into destination membership: %s", sourceAudit.Result)
 	}
 	requireNoError(t, requireClassMemberMail(t, ctx, ss, transferNotice, model.MailTemplateAcademicClassTransferred))
+	replayDestinationAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
+	replaySourceAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
+	replayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
+		ExpectedRecipientRevision: user.Revision, AuditEventID: replayDestinationAttempt.ID.String(),
+		PreviousAuditEventID: replaySourceAttempt.ID.String(), AuditAt: model.GetMillis(), Command: transferCommand}
+	if _, err = ss.ClassMember().EnrollWithAudit(ctx, replayInput); err != nil || !replayInput.Replayed {
+		t.Fatalf("retained transfer replay = %v, replayed=%v", err, replayInput.Replayed)
+	}
+	requireSuccessfulAudit(t, ctx, ss, replayDestinationAttempt.ID.String())
+	requireSuccessfulAudit(t, ctx, ss, replaySourceAttempt.ID.String())
+	duplicateDestinationAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
+	duplicateSourceAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
+	duplicateCommand := *transferCommand
+	duplicateCommand.KeyDigest = sha256.Sum256([]byte("class-transfer-duplicate"))
+	duplicateCommand.Batch = &store.CommandBatch{GroupDigest: transferCommand.Batch.GroupDigest, DuplicateOfKeyDigest: transferCommand.KeyDigest}
+	duplicateInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
+		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateDestinationAttempt.ID.String(),
+		PreviousAuditEventID: duplicateSourceAttempt.ID.String(), AuditAt: model.GetMillis(), Command: &duplicateCommand}
+	if _, err = ss.ClassMember().EnrollWithAudit(ctx, duplicateInput); err != nil || !duplicateInput.Command.Batch.Duplicate {
+		t.Fatalf("duplicate transfer = %v, duplicate=%v", err, duplicateInput.Command.Batch.Duplicate)
+	}
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateDestinationAttempt.ID.String())
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateSourceAttempt.ID.String())
+	duplicateReplayDestination := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
+	duplicateReplaySource := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
+	duplicateReplayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
+		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateReplayDestination.ID.String(),
+		PreviousAuditEventID: duplicateReplaySource.ID.String(), AuditAt: model.GetMillis(), Command: &duplicateCommand}
+	if _, err = ss.ClassMember().EnrollWithAudit(ctx, duplicateReplayInput); err != nil || !duplicateReplayInput.Replayed {
+		t.Fatalf("retained duplicate transfer = %v, replayed=%v", err, duplicateReplayInput.Replayed)
+	}
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplayDestination.ID.String())
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplaySource.ID.String())
 
 	history, err := ss.ClassMember().ListByUser(ctx, user.ID.String())
 	requireNoError(t, err)
@@ -490,5 +528,14 @@ func requireSuccessfulAudit(t *testing.T, ctx context.Context, ss store.Store, i
 	requireNoError(t, err)
 	if event.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit %s status = %q, want success", id, event.Status)
+	}
+}
+
+func requireClassMemberDuplicateAudit(t *testing.T, ctx context.Context, ss store.Store, id string) {
+	t.Helper()
+	audit, err := ss.Audit().Get(ctx, id)
+	requireNoError(t, err)
+	if audit.Status != model.AuditStatusFail || audit.ErrorCode != "onboarding_batch.duplicate" {
+		t.Fatalf("duplicate audit %s = status %q code %q", id, audit.Status, audit.ErrorCode)
 	}
 }

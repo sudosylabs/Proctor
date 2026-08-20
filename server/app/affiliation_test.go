@@ -132,6 +132,28 @@ func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 	}
 }
 
+func TestAffiliationRetainedEndBypassesLaterStudentEnrollment(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	current := &model.Affiliation{ID: model.NewAffiliationID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(200),
+		Revision: 3, UserID: model.NewUserID(), Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(100)}
+	persistence := &affiliationStoreFake{events: &events, current: current}
+	service := newAffiliationService(persistence,
+		&affiliationEnrollmentFake{events: &events, values: []*model.ClassMember{{ID: model.NewClassMemberID()}}},
+		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()},
+		func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	result, err := service.End(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+		EndAffiliationCommand{ID: current.ID.String(), IdempotencyKey: "row", batchRetainedOutcome: true})
+	if err != nil || result == nil || persistence.endInput == nil {
+		t.Fatalf("retained end = %#v, %v, input %#v", result, err, persistence.endInput)
+	}
+	for _, event := range events {
+		if event == "list-enrollments" {
+			t.Fatalf("retained outcome inspected later enrollment state: %v", events)
+		}
+	}
+}
+
 func TestAffiliationEndCarriesExpectedRevision(t *testing.T) {
 	t.Parallel()
 	events := []string{}

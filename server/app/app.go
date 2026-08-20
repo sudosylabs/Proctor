@@ -57,6 +57,7 @@ type App struct {
 	roleBindings                      *roleBindingService
 	auditListings                     *auditListingService
 	bootstrap                         *bootstrapService
+	academicAdministrationBatches     *academicAdministrationBatchService
 	audit                             *auditService
 	realtime                          *realtimeService
 	jobs                              *jobengine.Engine
@@ -106,11 +107,16 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	administration := constructAdministration(deps, foundation, access, identity)
+	identity.onboardingImports, err = newOnboardingImportService(deps, identity.invitations, administration.academicAdministrationBatches,
+		identity.authentication, invitationAuthorizationAdapter{authorization: access.authorization}, mutationAuditAdapter{audit: foundation.audit})
+	if err != nil {
+		return nil, err
+	}
 	jobs, err := constructJobs(deps, foundation, access, identity, examinations, profiles)
 	if err != nil {
 		return nil, err
 	}
-	administration := constructAdministration(deps, foundation, access, identity)
 	return assembleApplication(deps, foundation, identity, access, examinations, profiles, jobs, administration), nil
 }
 

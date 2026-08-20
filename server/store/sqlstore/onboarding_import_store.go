@@ -55,33 +55,37 @@ type onboardingImportRow struct {
 const onboardingImportColumns = `id,mode,state,scope_type,scope_id,role_id,actor_user_id,principal,preview_digest,ignored_headers,total_rows,valid_rows,invalid_rows,succeeded_rows,no_op_rows,failed_rows,skipped_rows,commit_policy,commit_expected_revision,commit_at,commit_key_digest,parse_job_id,execution_job_id,failure_code,created_at,updated_at,expires_at,revision`
 
 type onboardingImportDetailRow struct {
-	ImportID       string                          `db:"import_id"`
-	RowNumber      int                             `db:"row_number"`
-	Reference      string                          `db:"reference"`
-	Operation      string                          `db:"operation"`
-	ScopeType      model.RoleScopeType             `db:"scope_type"`
-	ScopeID        string                          `db:"scope_id"`
-	TargetRevision int64                           `db:"target_revision"`
-	RoleID         sql.NullString                  `db:"role_id"`
-	RoleRevision   int64                           `db:"role_revision"`
-	Email          string                          `db:"target_email"`
-	Username       string                          `db:"suggested_username"`
-	DisplayName    string                          `db:"suggested_display_name"`
-	FirstName      string                          `db:"suggested_first_name"`
-	LastName       string                          `db:"suggested_last_name"`
-	Locale         string                          `db:"suggested_locale"`
-	Timezone       string                          `db:"suggested_timezone"`
-	StartsAt       sql.NullTime                    `db:"intended_start_at"`
-	EndsAt         sql.NullTime                    `db:"intended_end_at"`
-	PreviewStatus  model.OnboardingImportRowStatus `db:"preview_status"`
-	PreviewCode    string                          `db:"preview_code"`
-	Status         model.OnboardingImportRowStatus `db:"status"`
-	PublicCode     string                          `db:"public_code"`
-	InvitationID   sql.NullString                  `db:"invitation_id"`
-	UpdatedAt      time.Time                       `db:"updated_at"`
+	ImportID        string                          `db:"import_id"`
+	RowNumber       int                             `db:"row_number"`
+	Reference       string                          `db:"reference"`
+	Operation       string                          `db:"operation"`
+	ScopeType       model.RoleScopeType             `db:"scope_type"`
+	ScopeID         string                          `db:"scope_id"`
+	TargetRevision  int64                           `db:"target_revision"`
+	RoleID          sql.NullString                  `db:"role_id"`
+	RoleRevision    int64                           `db:"role_revision"`
+	Email           string                          `db:"target_email"`
+	UserID          sql.NullString                  `db:"user_id"`
+	RelationshipID  sql.NullString                  `db:"relationship_ref"`
+	AffiliationKind string                          `db:"affiliation_kind"`
+	Username        string                          `db:"suggested_username"`
+	DisplayName     string                          `db:"suggested_display_name"`
+	FirstName       string                          `db:"suggested_first_name"`
+	LastName        string                          `db:"suggested_last_name"`
+	Locale          string                          `db:"suggested_locale"`
+	Timezone        string                          `db:"suggested_timezone"`
+	StartsAt        sql.NullTime                    `db:"intended_start_at"`
+	EndsAt          sql.NullTime                    `db:"intended_end_at"`
+	PreviewStatus   model.OnboardingImportRowStatus `db:"preview_status"`
+	PreviewCode     string                          `db:"preview_code"`
+	Status          model.OnboardingImportRowStatus `db:"status"`
+	PublicCode      string                          `db:"public_code"`
+	InvitationID    sql.NullString                  `db:"invitation_id"`
+	ResourceID      sql.NullString                  `db:"result_ref"`
+	UpdatedAt       time.Time                       `db:"updated_at"`
 }
 
-const onboardingImportDetailColumns = `import_id,row_number,reference,operation,scope_type,scope_id,target_revision,role_id,role_revision,target_email,suggested_username,suggested_display_name,suggested_first_name,suggested_last_name,suggested_locale,suggested_timezone,intended_start_at,intended_end_at,preview_status,preview_code,status,public_code,invitation_id,updated_at`
+const onboardingImportDetailColumns = `import_id,row_number,reference,operation,scope_type,scope_id,target_revision,role_id,role_revision,target_email,user_id,relationship_ref,affiliation_kind,suggested_username,suggested_display_name,suggested_first_name,suggested_last_name,suggested_locale,suggested_timezone,intended_start_at,intended_end_at,preview_status,preview_code,status,public_code,invitation_id,result_ref,updated_at`
 
 func (s SQLInvitationStore) CreateOnboardingImport(ctx context.Context, input *store.OnboardingImportCreation) (*store.OnboardingImport, error) {
 	if input == nil || input.Import == nil || input.ParseJob == nil || !validOnboardingImport(input.Import) ||
@@ -184,9 +188,9 @@ func (s SQLInvitationStore) CompleteOnboardingImportPreview(ctx context.Context,
 			} else {
 				invalid++
 			}
-			if _, err := tx.Exec(ctx, `INSERT INTO onboarding_import_rows (`+onboardingImportDetailColumns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`,
+			if _, err := tx.Exec(ctx, `INSERT INTO onboarding_import_rows (`+onboardingImportDetailColumns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?)`,
 				input.ID.String(), row.RowNumber, row.Reference, row.Operation, string(row.ScopeType), row.ScopeID, row.TargetRevision, nullableID(row.RoleID.String()), row.RoleRevision,
-				row.Email, row.Username, row.DisplayName, row.FirstName, row.LastName, row.Locale, row.Timezone, nullableMillisTime(row.StartsAt), nullableMillisTime(row.EndsAt),
+				row.Email, nullableID(row.UserID.String()), nullableID(row.RelationshipID), string(row.AffiliationKind), row.Username, row.DisplayName, row.FirstName, row.LastName, row.Locale, row.Timezone, nullableMillisTime(row.StartsAt), nullableMillisTime(row.EndsAt),
 				string(row.PreviewStatus), row.PreviewCode, string(status), "", input.At); err != nil {
 				return nil, translateError("onboarding_import_row", fmt.Sprintf("%s/%d", input.ID, row.RowNumber), err)
 			}
@@ -290,15 +294,24 @@ func (s SQLInvitationStore) ListOnboardingImportRows(ctx context.Context, id mod
 
 func (row onboardingImportDetailRow) value() store.OnboardingImportRow {
 	value := store.OnboardingImportRow{ImportID: model.OnboardingImportID(row.ImportID), RowNumber: row.RowNumber, Reference: row.Reference, Operation: row.Operation,
-		ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetRevision: row.TargetRevision, RoleRevision: row.RoleRevision, Email: row.Email,
+		ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetRevision: row.TargetRevision, RoleRevision: row.RoleRevision, Email: row.Email, AffiliationKind: model.AffiliationKind(row.AffiliationKind),
 		Username: row.Username, DisplayName: row.DisplayName, FirstName: row.FirstName, LastName: row.LastName, Locale: row.Locale, Timezone: row.Timezone,
 		StartsAt: millisFromNullTime(row.StartsAt), EndsAt: millisFromNullTime(row.EndsAt), PreviewStatus: row.PreviewStatus, PreviewCode: row.PreviewCode, Status: row.Status,
 		PublicCode: row.PublicCode, UpdatedAt: row.UpdatedAt}
 	if row.RoleID.Valid {
 		value.RoleID = model.RoleID(row.RoleID.String)
 	}
+	if row.UserID.Valid {
+		value.UserID = model.UserID(row.UserID.String)
+	}
+	if row.RelationshipID.Valid {
+		value.RelationshipID = row.RelationshipID.String
+	}
 	if row.InvitationID.Valid {
 		value.InvitationID = model.InvitationID(row.InvitationID.String)
+	}
+	if row.ResourceID.Valid {
+		value.ResourceID = row.ResourceID.String
 	}
 	return value
 }
@@ -307,7 +320,7 @@ func (s SQLInvitationStore) CompleteOnboardingImportRow(ctx context.Context, inp
 	if input == nil || !input.ID.IsValid() || input.RowNumber < 1 || input.At.IsZero() ||
 		(input.Status != model.OnboardingImportRowSucceeded && input.Status != model.OnboardingImportRowNoOp && input.Status != model.OnboardingImportRowFailed) ||
 		((input.Status == model.OnboardingImportRowFailed) != (input.PublicCode != "")) ||
-		(input.Status == model.OnboardingImportRowSucceeded && !input.InvitationID.IsValid()) {
+		(input.Status == model.OnboardingImportRowSucceeded && !input.InvitationID.IsValid() && !model.IsValidId(input.ResourceID)) {
 		return nil, store.NewErrInvalidInput("onboarding_import_row", "completion", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "complete onboarding import row", func(ctx context.Context, tx *sqlxTxWrapper) (*store.OnboardingImport, error) {
@@ -320,8 +333,8 @@ func (s SQLInvitationStore) CompleteOnboardingImportRow(ctx context.Context, inp
 			return nil, translateError("onboarding_import_row", fmt.Sprintf("%s/%d", input.ID, input.RowNumber), err)
 		}
 		if currentStatus == model.OnboardingImportRowPending {
-			if _, err := tx.Exec(ctx, `UPDATE onboarding_import_rows SET status=?,public_code=?,invitation_id=?,updated_at=? WHERE import_id=? AND row_number=?`,
-				string(input.Status), input.PublicCode, nullableID(input.InvitationID.String()), input.At, input.ID.String(), input.RowNumber); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE onboarding_import_rows SET status=?,public_code=?,invitation_id=?,result_ref=?,updated_at=? WHERE import_id=? AND row_number=?`,
+				string(input.Status), input.PublicCode, nullableID(input.InvitationID.String()), nullableID(input.ResourceID), input.At, input.ID.String(), input.RowNumber); err != nil {
 				return nil, err
 			}
 		} else if currentStatus != input.Status {
@@ -416,12 +429,149 @@ func lockOnboardingImportCommand(ctx context.Context, tx *sqlxTxWrapper, command
 		if value.State != model.OnboardingImportExecuting {
 			return store.NewErrConflict("onboarding_import", "canceled", nil)
 		}
-		return validateOnboardingImportFrozenTarget(ctx, tx, row)
+		if err = validateOnboardingImportFrozenTarget(ctx, tx, row); err != nil {
+			return err
+		}
+		return requireAcademicAdministrationImportRowAuthority(ctx, tx, value.Principal, row)
 	case model.OnboardingImportRowSucceeded, model.OnboardingImportRowNoOp:
 		return nil
 	default:
 		return store.NewErrConflict("onboarding_import_row", "row_changed", nil)
 	}
+}
+
+func validCommandAuthorization(authority *store.CommandAuthorization) bool {
+	if authority == nil {
+		return true
+	}
+	if authority.Principal.Validate() != nil || !authority.ScopeType.IsValid() ||
+		!model.IsValidId(authority.ScopeID) || len(authority.Actions) == 0 {
+		return false
+	}
+	if !authority.ClassMemberID.IsZero() && !authority.ClassMemberID.IsValid() ||
+		!authority.RecipientUserID.IsZero() && !authority.RecipientUserID.IsValid() {
+		return false
+	}
+	for _, action := range append(append([]model.Action(nil), authority.Actions...), authority.DelegatedActions...) {
+		if _, known := model.DefinitionForAction(action); !known {
+			return false
+		}
+	}
+	return true
+}
+
+func lockCommandAuthorization(ctx context.Context, tx *sqlxTxWrapper, authority *store.CommandAuthorization) error {
+	if authority == nil {
+		return nil
+	}
+	at, err := requireCurrentPrincipalCredential(ctx, tx, authority.Principal)
+	if err != nil {
+		return err
+	}
+	recipientUserID := authority.RecipientUserID
+	if authority.ClassMemberID.IsValid() {
+		var resolvedUserID string
+		if err = tx.Get(ctx, &resolvedUserID, `SELECT user_id FROM class_members WHERE id=? AND archived_at IS NULL`, authority.ClassMemberID.String()); err != nil {
+			return translateError("class_member", authority.ClassMemberID.String(), err)
+		}
+		resolved, parseErr := model.ParseUserID(resolvedUserID)
+		if parseErr != nil {
+			return invalidPersistedState("class_member", "user_id", parseErr)
+		}
+		if recipientUserID.IsValid() && recipientUserID != resolved {
+			return store.NewErrConflict("class_member", "user", nil)
+		}
+		recipientUserID = resolved
+	}
+	if recipientUserID.IsValid() && recipientUserID != authority.Principal.UserID {
+		var lockedUserID string
+		if err = tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL FOR SHARE`, recipientUserID.String()); err != nil {
+			return translateError("user", recipientUserID.String(), err)
+		}
+	}
+	needsHierarchy := authority.ScopeType == model.RoleScopeAcademicUnit || authority.ScopeType == model.RoleScopeClass || authority.ClassMemberID.IsValid()
+	if needsHierarchy {
+		if err = lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if authority.ClassMemberID.IsValid() {
+		var relationship struct {
+			ClassID string `db:"class_id"`
+			UserID  string `db:"user_id"`
+		}
+		if err = tx.Get(ctx, &relationship, `SELECT class_id,user_id FROM class_members WHERE id=? AND archived_at IS NULL FOR SHARE`, authority.ClassMemberID.String()); err != nil {
+			return translateError("class_member", authority.ClassMemberID.String(), err)
+		}
+		if relationship.UserID != recipientUserID.String() {
+			return store.NewErrConflict("class_member", "user", nil)
+		}
+		if err = requirePrincipalActionAtScope(ctx, tx, authority.Principal, model.ActionClassMembersManage, model.RoleScopeClass, relationship.ClassID, at, false); err != nil {
+			return err
+		}
+	}
+	for _, action := range authority.Actions {
+		if err = requirePrincipalActionAtScope(ctx, tx, authority.Principal, action, authority.ScopeType, authority.ScopeID, at, false); err != nil {
+			return err
+		}
+	}
+	for _, action := range authority.DelegatedActions {
+		strictParent := teacherInvitationProtectedDelegationAction(action) && authority.ScopeType != model.RoleScopeInstitution
+		if err = requirePrincipalActionAtScope(ctx, tx, authority.Principal, action, authority.ScopeType, authority.ScopeID, at, strictParent); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requireAcademicAdministrationImportRowAuthority(ctx context.Context, tx *sqlxTxWrapper, principal model.Principal, row onboardingImportDetailRow) error {
+	var action model.Action
+	switch row.Operation {
+	case "affiliation.add", "affiliation.end", "user.enable", "user.disable":
+		action = model.ActionUserManage
+	case "academic_unit_member.add", "academic_unit_member.end":
+		action = model.ActionAcademicUnitMembersManage
+	case "class.enroll", "class.end", "class.transfer":
+		action = model.ActionClassMembersManage
+	case "role_binding.create", "role_binding.end":
+		action = model.ActionRoleBindingManage
+	case "user_sessions.revoke":
+		action = model.ActionSessionManage
+	default:
+		// Invitation row aggregates own their purpose-specific terminal authority.
+		return nil
+	}
+	at, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if err = requirePrincipalActionAtScope(ctx, tx, principal, action, row.ScopeType, row.ScopeID, at, false); err != nil {
+		if !store.IsConflict(err) {
+			return err
+		}
+		return store.NewErrConflict("onboarding_import_row", "authority", nil)
+	}
+	if row.Operation != "role_binding.create" || !row.RoleID.Valid {
+		return nil
+	}
+	var permissions pq.StringArray
+	if err = tx.Get(ctx, &permissions, `SELECT permissions FROM roles WHERE id=? AND archived_at IS NULL FOR SHARE`, row.RoleID.String); err != nil {
+		return translateError("role", row.RoleID.String, err)
+	}
+	for _, permission := range permissions {
+		delegated := model.Action(permission)
+		if _, known := model.DefinitionForAction(delegated); !known {
+			return store.NewErrConflict("onboarding_import_row", "role_changed", nil)
+		}
+		strictParent := teacherInvitationProtectedDelegationAction(delegated) && row.ScopeType != model.RoleScopeInstitution
+		if err = requirePrincipalActionAtScope(ctx, tx, principal, delegated, row.ScopeType, row.ScopeID, at, strictParent); err != nil {
+			if !store.IsConflict(err) {
+				return err
+			}
+			return store.NewErrConflict("onboarding_import_row", "delegation", nil)
+		}
+	}
+	return nil
 }
 
 func validateOnboardingImportFrozenTarget(ctx context.Context, tx *sqlxTxWrapper, row onboardingImportDetailRow) error {
@@ -434,6 +584,18 @@ func validateOnboardingImportFrozenTarget(ctx context.Context, tx *sqlxTxWrapper
 		err = tx.Get(ctx, &revision, `SELECT revision FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE`, row.ScopeID)
 	case "institution_role.create":
 		err = tx.Get(ctx, &revision, `SELECT revision FROM institutions WHERE id=? AND archived_at IS NULL FOR SHARE`, row.ScopeID)
+	case "affiliation.add", "affiliation.end", "role_binding.create", "role_binding.end", "user.enable", "user.disable", "user_sessions.revoke":
+		if row.ScopeType == model.RoleScopeInstitution {
+			err = tx.Get(ctx, &revision, `SELECT revision FROM institutions WHERE id=? AND archived_at IS NULL FOR SHARE`, row.ScopeID)
+		} else if row.ScopeType == model.RoleScopeAcademicUnit {
+			err = tx.Get(ctx, &revision, `SELECT revision FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE`, row.ScopeID)
+		} else {
+			return store.NewErrConflict("onboarding_import_row", "scope", nil)
+		}
+	case "academic_unit_member.add", "academic_unit_member.end":
+		err = tx.Get(ctx, &revision, `SELECT revision FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE`, row.ScopeID)
+	case "class.enroll", "class.end", "class.transfer":
+		err = tx.Get(ctx, &revision, `SELECT revision FROM classes WHERE id=? AND archived_at IS NULL FOR SHARE`, row.ScopeID)
 	default:
 		return store.NewErrConflict("onboarding_import_row", "operation", nil)
 	}
@@ -455,8 +617,25 @@ func validateOnboardingImportFrozenTarget(ctx context.Context, tx *sqlxTxWrapper
 	return nil
 }
 
+type onboardingImportCommandResult struct {
+	Status       model.OnboardingImportRowStatus
+	InvitationID model.InvitationID
+	ResourceID   string
+}
+
+func administrativeOnboardingOutcome(resourceID string, noOp bool) (onboardingImportCommandResult, error) {
+	if !model.IsValidId(resourceID) {
+		return onboardingImportCommandResult{}, store.NewErrInvalidInput("onboarding_import_row", "resource_outcome", nil)
+	}
+	status := model.OnboardingImportRowSucceeded
+	if noOp {
+		status = model.OnboardingImportRowNoOp
+	}
+	return onboardingImportCommandResult{Status: status, ResourceID: resourceID}, nil
+}
+
 func completeOnboardingImportCommand[T any](ctx context.Context, tx *sqlxTxWrapper, command *store.CommandIdempotency, value T,
-	resolve func(T) (model.OnboardingImportRowStatus, model.InvitationID, error),
+	resolve func(T) (onboardingImportCommandResult, error),
 ) error {
 	if command == nil || command.OnboardingImportID.IsZero() {
 		return nil
@@ -464,24 +643,25 @@ func completeOnboardingImportCommand[T any](ctx context.Context, tx *sqlxTxWrapp
 	if resolve == nil {
 		return store.NewErrInvalidInput("onboarding_import_row", "outcome", nil)
 	}
-	status, invitationID, err := resolve(value)
+	outcome, err := resolve(value)
 	if err != nil {
 		return err
 	}
-	if (status != model.OnboardingImportRowSucceeded && status != model.OnboardingImportRowNoOp) ||
-		(status == model.OnboardingImportRowSucceeded && !invitationID.IsValid()) {
+	if (outcome.Status != model.OnboardingImportRowSucceeded && outcome.Status != model.OnboardingImportRowNoOp) ||
+		(outcome.Status == model.OnboardingImportRowSucceeded && !outcome.InvitationID.IsValid() && !model.IsValidId(outcome.ResourceID)) {
 		return store.NewErrInvalidInput("onboarding_import_row", "outcome", nil)
 	}
 	var current struct {
 		Status       model.OnboardingImportRowStatus `db:"status"`
 		InvitationID sql.NullString                  `db:"invitation_id"`
+		ResourceID   sql.NullString                  `db:"result_ref"`
 	}
-	if err = tx.Get(ctx, &current, `SELECT status,invitation_id FROM onboarding_import_rows WHERE import_id=? AND row_number=? FOR UPDATE`,
+	if err = tx.Get(ctx, &current, `SELECT status,invitation_id,result_ref FROM onboarding_import_rows WHERE import_id=? AND row_number=? FOR UPDATE`,
 		command.OnboardingImportID.String(), command.OnboardingImportRowNumber); err != nil {
 		return translateError("onboarding_import_row", fmt.Sprintf("%s/%d", command.OnboardingImportID, command.OnboardingImportRowNumber), err)
 	}
 	if current.Status != model.OnboardingImportRowPending {
-		if current.Status == status && current.InvitationID.String == invitationID.String() {
+		if current.Status == outcome.Status && current.InvitationID.String == outcome.InvitationID.String() && current.ResourceID.String == outcome.ResourceID {
 			return nil
 		}
 		return store.NewErrConflict("onboarding_import_row", "row_changed", nil)
@@ -490,8 +670,8 @@ func completeOnboardingImportCommand[T any](ctx context.Context, tx *sqlxTxWrapp
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE onboarding_import_rows SET status=?,public_code='',invitation_id=?,updated_at=? WHERE import_id=? AND row_number=?`,
-		string(status), nullableID(invitationID.String()), at, command.OnboardingImportID.String(), command.OnboardingImportRowNumber); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE onboarding_import_rows SET status=?,public_code='',invitation_id=?,result_ref=?,updated_at=? WHERE import_id=? AND row_number=?`,
+		string(outcome.Status), nullableID(outcome.InvitationID.String()), nullableID(outcome.ResourceID), at, command.OnboardingImportID.String(), command.OnboardingImportRowNumber); err != nil {
 		return err
 	}
 	_, err = refreshOnboardingImportCounts(ctx, tx, command.OnboardingImportID, at)
@@ -635,16 +815,32 @@ func requireOnboardingImportAuthority(ctx context.Context, tx *sqlxTxWrapper, pr
 	if principal.Validate() != nil || !scopeType.IsValid() || !model.IsValidId(scopeID) {
 		return store.NewErrInvalidInput("onboarding_import", "authority", nil)
 	}
-	at, err := jobDatabaseNow(ctx, tx)
+	at, err := requireCurrentPrincipalCredential(ctx, tx, principal)
 	if err != nil {
 		return err
+	}
+	if scopeType == model.RoleScopeAcademicUnit || scopeType == model.RoleScopeClass {
+		if err = lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return err
+		}
+	}
+	return requirePrincipalActionAtScope(ctx, tx, principal, model.ActionOnboardingBatchManage, scopeType, scopeID, at, false)
+}
+
+func requireCurrentPrincipalCredential(ctx context.Context, tx *sqlxTxWrapper, principal model.Principal) (time.Time, error) {
+	if principal.Validate() != nil {
+		return time.Time{}, store.NewErrInvalidInput("authorization", "principal", nil)
+	}
+	at, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return time.Time{}, err
 	}
 	var active bool
 	if err = tx.Get(ctx, &active, `SELECT true FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, principal.UserID.String()); err != nil {
 		if isNoRows(err) {
-			return store.NewErrConflict("onboarding_import", "authority", nil)
+			return time.Time{}, store.NewErrConflict("authorization", "authority", nil)
 		}
-		return err
+		return time.Time{}, err
 	}
 	switch principal.CredentialType {
 	case model.CredentialSessionAccess:
@@ -657,42 +853,69 @@ func requireOnboardingImportAuthority(ctx context.Context, tx *sqlxTxWrapper, pr
 			AND revoked_at IS NULL AND expires_at>? AND scopes=? AND academic_unit_id IS NOT DISTINCT FROM ? FOR SHARE`, principal.CredentialID.String(), principal.UserID.String(), at,
 			pq.Array(principal.CredentialScopes), nullableID(principal.AcademicUnitID.String()))
 	default:
-		return store.NewErrConflict("onboarding_import", "credential", nil)
+		return time.Time{}, store.NewErrConflict("authorization", "credential", nil)
 	}
 	if isNoRows(err) {
-		return store.NewErrConflict("onboarding_import", "credential", nil)
+		return time.Time{}, store.NewErrConflict("authorization", "credential", nil)
 	}
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
-	if scopeType == model.RoleScopeAcademicUnit || scopeType == model.RoleScopeClass {
-		if err = lockAcademicUnitHierarchy(ctx, tx); err != nil {
-			return err
+	return at, nil
+}
+
+func requirePrincipalActionAtScope(ctx context.Context, tx *sqlxTxWrapper, principal model.Principal, action model.Action, scopeType model.RoleScopeType, scopeID string, at time.Time, strictParent bool) error {
+	if principal.CredentialType == model.CredentialPersonalAccessToken {
+		allowed := false
+		for _, scope := range principal.CredentialScopes {
+			if scope == string(action) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return store.NewErrConflict("authorization", "credential_scope", nil)
 		}
 	}
-	action := string(model.ActionOnboardingBatchManage)
+	return requireUserActionAtScopeWithDelegation(ctx, tx, principal.UserID, action, scopeType, scopeID, at, strictParent)
+}
+
+func requireUserActionAtScope(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID, action model.Action, scopeType model.RoleScopeType, scopeID string, at time.Time) error {
+	return requireUserActionAtScopeWithDelegation(ctx, tx, userID, action, scopeType, scopeID, at, false)
+}
+
+func requireUserActionAtScopeWithDelegation(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID, action model.Action, scopeType model.RoleScopeType, scopeID string, at time.Time, strictParent bool) error {
+	if !userID.IsValid() || !scopeType.IsValid() || !model.IsValidId(scopeID) || at.IsZero() {
+		return store.NewErrInvalidInput("authorization", "scope", nil)
+	}
+	var active bool
+	var err error
+	actionName := string(action)
 	switch scopeType {
 	case model.RoleScopeInstitution:
 		err = tx.Get(ctx, &active, `SELECT true FROM role_bindings rb JOIN roles r ON r.id=rb.role_id AND r.archived_at IS NULL
 			WHERE rb.user_id=? AND rb.archived_at IS NULL AND rb.start_at<=? AND (rb.end_at IS NULL OR rb.end_at>?)
-			AND rb.scope_type='institution' AND rb.scope_id=? AND ?=ANY(r.permissions) LIMIT 1 FOR SHARE OF rb,r`, principal.UserID.String(), at, at, scopeID, action)
+			AND rb.scope_type='institution' AND rb.scope_id=? AND ?=ANY(r.permissions) LIMIT 1 FOR SHARE OF rb,r`, userID.String(), at, at, scopeID, actionName)
 	case model.RoleScopeAcademicUnit:
 		err = tx.Get(ctx, &active, `WITH RECURSIVE ancestors AS (SELECT id,parent_id FROM academic_units WHERE id=? AND archived_at IS NULL
 			UNION ALL SELECT au.id,au.parent_id FROM academic_units au JOIN ancestors child ON au.id=child.parent_id WHERE au.archived_at IS NULL)
 			SELECT true FROM role_bindings rb JOIN roles r ON r.id=rb.role_id AND r.archived_at IS NULL WHERE rb.user_id=? AND rb.archived_at IS NULL
 			AND rb.start_at<=? AND (rb.end_at IS NULL OR rb.end_at>?) AND ?=ANY(r.permissions)
-			AND (rb.scope_type='institution' OR (rb.scope_type='academic_unit' AND rb.scope_id IN (SELECT id FROM ancestors))) LIMIT 1 FOR SHARE OF rb,r`, scopeID, principal.UserID.String(), at, at, action)
+			AND (rb.scope_type='institution' OR (rb.scope_type='academic_unit' AND rb.scope_id IN (SELECT id FROM ancestors) AND (NOT ? OR rb.scope_id<>?))) LIMIT 1 FOR SHARE OF rb,r`,
+			scopeID, userID.String(), at, at, actionName, strictParent, scopeID)
 	case model.RoleScopeClass:
 		err = tx.Get(ctx, &active, `WITH RECURSIVE class_unit AS (SELECT p.academic_unit_id FROM classes c JOIN programme_levels pl ON pl.id=c.programme_level_id
 			JOIN programmes p ON p.id=pl.programme_id WHERE c.id=?), ancestors AS (SELECT academic_unit_id id FROM class_unit
 			UNION ALL SELECT au.parent_id FROM academic_units au JOIN ancestors child ON au.id=child.id WHERE au.parent_id IS NOT NULL AND au.archived_at IS NULL)
 			SELECT true FROM role_bindings rb JOIN roles r ON r.id=rb.role_id AND r.archived_at IS NULL WHERE rb.user_id=? AND rb.archived_at IS NULL
 			AND rb.start_at<=? AND (rb.end_at IS NULL OR rb.end_at>?) AND ?=ANY(r.permissions) AND (rb.scope_type='institution'
-			OR (rb.scope_type='class' AND rb.scope_id=?) OR (rb.scope_type='academic_unit' AND rb.scope_id IN (SELECT id FROM ancestors))) LIMIT 1 FOR SHARE OF rb,r`,
-			scopeID, principal.UserID.String(), at, at, action, scopeID)
+			OR (rb.scope_type='class' AND rb.scope_id=? AND NOT ?) OR (rb.scope_type='academic_unit' AND rb.scope_id IN (SELECT id FROM ancestors))) LIMIT 1 FOR SHARE OF rb,r`,
+			scopeID, userID.String(), at, at, actionName, scopeID, strictParent)
+	default:
+		return store.NewErrInvalidInput("authorization", "scope_type", nil)
 	}
 	if isNoRows(err) {
-		return store.NewErrConflict("onboarding_import", "authority", nil)
+		return store.NewErrConflict("authorization", "authority", nil)
 	}
 	return err
 }

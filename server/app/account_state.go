@@ -14,8 +14,15 @@ import (
 )
 
 type SetUserEnabledCommand struct {
-	ID      string
-	Enabled bool
+	ID                        string
+	Enabled                   bool
+	IdempotencyKey            string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type accountStateStore interface {
@@ -67,23 +74,38 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		return nil, accountStateError(err)
 	}
 	disabled := !command.Enabled
-	if current.DisabledAt.Valid == disabled {
+	idempotency, err := newCommandIdempotency(invocation, "user.enabled_state.v1", command.IdempotencyKey, struct {
+		UserID  string `json:"user_id"`
+		Enabled bool   `json:"enabled"`
+	}{userID, command.Enabled})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
+	alreadySatisfied := current.DisabledAt.Valid == disabled
+	if alreadySatisfied && idempotency == nil {
 		return current, nil
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	recipient := *current
-	if command.Enabled {
-		recipient.DisabledAt = model.OptionalTime{}
-	}
+	// Preparation freezes recipient fields only. SQL remains authoritative for
+	// whether the state change is a no-op, so make the snapshot mail-eligible
+	// even when a concurrent re-enable could turn a stale no-op into a mutation.
+	recipient.DisabledAt = model.OptionalTime{}
 	templateKey := model.MailTemplateIdentityAccountEnabled
 	if disabled {
 		templateKey = model.MailTemplateIdentityAccountDisabled
 	}
-	prepared, err := s.mail.PrepareSecurityNotice(securityNoticePreparation{
-		Recipient: &recipient, TemplateKey: templateKey, At: now,
-	})
-	if err != nil {
-		return nil, accountStateError(err)
+	prepared := &preparedDirectMail{}
+	if !command.batchRetainedOutcome {
+		prepared, err = s.mail.PrepareSecurityNotice(securityNoticePreparation{
+			Recipient: &recipient, TemplateKey: templateKey, At: now,
+		})
+		if err != nil {
+			return nil, accountStateError(err)
+		}
 	}
 	result, err := runAuditedMutation(
 		ctx,
@@ -98,20 +120,25 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		},
 		func() time.Time { return now },
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserDisabledStateResult, error) {
-			return s.users.SetDisabledWithAudit(ctx, &store.UserDisabledStateChange{
+			input := &store.UserDisabledStateChange{
 				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
 				Occurrence:   prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
 				ChangedAt: reference.MutationAtMillis, RevocationReason: "account disabled by administrator",
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+			}
+			value, storeErr := s.users.SetDisabledWithAudit(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		accountStateError,
 	)
 	if err != nil {
 		return nil, err
 	}
-	if disabled {
+	if disabled && result != nil && len(result.RevokedSessions) > 0 {
 		s.effects.SessionsRevoked(ctx, userID, result.RevokedSessions, result.RevokedTokenHashes)
 	}
 	return result.User, nil
@@ -126,6 +153,9 @@ func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID
 }
 
 func accountStateError(err error) error {
+	if mapped := idempotencyError(err); mapped != nil {
+		return mapped
+	}
 	var conflict *store.ErrConflict
 	if errors.As(err, &conflict) && conflict.Constraint == "users_last_system_admin" {
 		return NewError("user.last_system_admin").WithField("resource", "user").Wrap(err)

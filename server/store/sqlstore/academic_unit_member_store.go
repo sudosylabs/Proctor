@@ -10,6 +10,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,6 +36,16 @@ type academicUnitMemberRow struct {
 	UserID         string       `db:"user_id"`
 	StartAt        time.Time    `db:"start_at"`
 	EndAt          sql.NullTime `db:"end_at"`
+}
+
+type academicUnitMemberMutationResult struct {
+	Value *model.AcademicUnitMember
+	NoOp  bool
+}
+
+type academicUnitMemberCommandOutcome struct {
+	ID   string `json:"id"`
+	NoOp bool   `json:"no_op,omitempty"`
 }
 
 func academicUnitMemberColumns() []string {
@@ -64,12 +75,22 @@ func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	if appErr != nil {
 		return nil, appErr
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*academicUnitMemberMutationResult, error) {
 		if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
 			return nil, err
 		}
 		if err := lockAcademicUnitMember(ctx, tx, candidate.AcademicUnitID.String(), candidate.UserID.String()); err != nil {
 			return nil, err
+		}
+		existing, err := findExactAcademicUnitMember(ctx, tx, &candidate)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil && input.Command != nil {
+			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "academic_unit_member_id", existing.ID.String()); err != nil {
+				return nil, err
+			}
+			return &academicUnitMemberMutationResult{Value: existing, NoOp: true}, nil
 		}
 		if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
 			return nil, err
@@ -85,8 +106,10 @@ func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 			return nil, fmt.Errorf("complete academic unit member creation audit: %w", err)
 		}
-		return &candidate, nil
-	})
+		return &academicUnitMemberMutationResult{Value: &candidate}, nil
+	}
+	return s.runAcademicUnitMemberMutation(ctx, "academic unit member creation", input.Command, input.AuditEventID, input.AuditAt,
+		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
 }
 
 func newSQLAcademicUnitMemberStore(ss *SQLStore) store.AcademicUnitMemberStore {
@@ -220,9 +243,22 @@ func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *sto
 	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member audited end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*academicUnitMemberMutationResult, error) {
 		if err := lockAcademicUnitMemberLifecycle(ctx, tx); err != nil {
 			return nil, err
+		}
+		before, err := s.getAcademicUnitMemberInTransaction(ctx, tx, input.ID)
+		if err != nil {
+			return nil, err
+		}
+		if before.EndsAt.Valid {
+			if input.Command == nil {
+				return nil, store.NewErrConflict("academic_unit_member", "revision", nil)
+			}
+			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "academic_unit_member_id", before.ID.String()); err != nil {
+				return nil, err
+			}
+			return &academicUnitMemberMutationResult{Value: before, NoOp: true}, nil
 		}
 		ended, err := s.endAcademicUnitMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
 		if err != nil {
@@ -235,8 +271,86 @@ func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *sto
 		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 			return nil, fmt.Errorf("complete academic unit member end audit: %w", err)
 		}
-		return ended, nil
+		return &academicUnitMemberMutationResult{Value: ended}, nil
+	}
+	return s.runAcademicUnitMemberMutation(ctx, "academic unit member audited end", input.Command, input.AuditEventID, input.AuditAt,
+		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
+}
+
+func (s SQLAcademicUnitMemberStore) runAcademicUnitMemberMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID string, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*academicUnitMemberMutationResult, error)) (*model.AcademicUnitMember, error) {
+	if command == nil {
+		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, operation, execute)
+		if err != nil {
+			return nil, err
+		}
+		setOutput(false, result.NoOp)
+		return result.Value, nil
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent "+operation, idempotentMutation[*academicUnitMemberMutationResult]{
+		command: command, auditEventID: auditID, execute: execute,
+		encode: encodeAcademicUnitMemberMutationOutcome, decode: decodeAcademicUnitMemberMutationOutcome,
+		hydrateReplay: s.hydrateAcademicUnitMemberMutationOutcome,
+		onboardingOutcome: func(value *academicUnitMemberMutationResult) (onboardingImportCommandResult, error) {
+			return administrativeOnboardingOutcome(value.Value.ID.String(), value.NoOp)
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *academicUnitMemberMutationResult, original string) error {
+			return completeAdministrativeReplayAudit(ctx, tx, auditID, auditAt, "academic_unit_member_id", value.Value.ID.String(), value.NoOp, original)
+		},
 	})
+	if err != nil {
+		return nil, err
+	}
+	setOutput(result.Replayed, result.Value.NoOp)
+	return result.Value.Value, nil
+}
+
+func findExactAcademicUnitMember(ctx context.Context, tx sqlxExecutor, candidate *model.AcademicUnitMember) (*model.AcademicUnitMember, error) {
+	var row academicUnitMemberRow
+	err := tx.Get(ctx, &row, `SELECT id,created_at,updated_at,archived_at,revision,academic_unit_id,user_id,start_at,end_at
+		FROM academic_unit_members WHERE academic_unit_id=? AND user_id=? AND start_at=? AND end_at IS NULL AND archived_at IS NULL ORDER BY id LIMIT 1`, candidate.AcademicUnitID.String(), candidate.UserID.String(), candidate.StartsAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find exact academic unit member: %w", err)
+	}
+	return row.model()
+}
+
+func encodeAcademicUnitMemberMutationOutcome(value *academicUnitMemberMutationResult) ([]byte, error) {
+	if value == nil || value.Value == nil || !value.Value.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "command_outcome", nil)
+	}
+	return encodeCommandOutcome(academicUnitMemberCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
+}
+func decodeAcademicUnitMemberMutationOutcome(version int, data []byte) (*academicUnitMemberMutationResult, error) {
+	if version != 1 {
+		return nil, fmt.Errorf("unsupported academic unit member outcome version %d", version)
+	}
+	var outcome academicUnitMemberCommandOutcome
+	if err := decodeCommandOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	id, err := model.ParseAcademicUnitMemberID(outcome.ID)
+	if err != nil {
+		return nil, invalidPersistedState("command_outcome", "academic_unit_member_id", err)
+	}
+	return &academicUnitMemberMutationResult{Value: &model.AcademicUnitMember{ID: id}, NoOp: outcome.NoOp}, nil
+}
+func (s SQLAcademicUnitMemberStore) hydrateAcademicUnitMemberMutationOutcome(ctx context.Context, tx *sqlxTxWrapper, value *academicUnitMemberMutationResult) (*academicUnitMemberMutationResult, error) {
+	hydrated, err := s.getAcademicUnitMemberInTransaction(ctx, tx, value.Value.ID.String())
+	if err != nil {
+		return nil, err
+	}
+	value.Value = hydrated
+	return value, nil
+}
+func (s SQLAcademicUnitMemberStore) getAcademicUnitMemberInTransaction(ctx context.Context, tx sqlxExecutor, id string) (*model.AcademicUnitMember, error) {
+	var row academicUnitMemberRow
+	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.archived_at": nil})); err != nil {
+		return nil, translateError("academic_unit_member", id, err)
+	}
+	return row.model()
 }
 
 func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {

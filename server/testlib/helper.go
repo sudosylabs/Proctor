@@ -318,6 +318,9 @@ func (s *LifecycleStore) CommandOutcome() store.CommandOutcomeStore { return noo
 
 type noopCommandOutcomeStore struct{}
 
+func (noopCommandOutcomeStore) Has(context.Context, *store.CommandIdempotency) (bool, error) {
+	return false, nil
+}
 func (noopCommandOutcomeStore) DeleteExpired(context.Context, int) (int64, error) { return 0, nil }
 
 type noopClusterDiscovery struct{}

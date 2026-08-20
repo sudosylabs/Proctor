@@ -81,12 +81,13 @@ type jobConstruction struct {
 }
 
 type administrationConstruction struct {
-	accountStates          *accountStateService
-	sessionAdministrations *sessionAdministrationService
-	roles                  *roleService
-	roleBindings           *roleBindingService
-	auditListings          *auditListingService
-	bootstrap              *bootstrapService
+	accountStates                 *accountStateService
+	sessionAdministrations        *sessionAdministrationService
+	roles                         *roleService
+	roleBindings                  *roleBindingService
+	auditListings                 *auditListingService
+	bootstrap                     *bootstrapService
+	academicAdministrationBatches *academicAdministrationBatchService
 }
 
 func validateApplicationDependencies(deps Dependencies) error {
@@ -228,6 +229,7 @@ func assembleApplication(
 		roleBindings:                      administration.roleBindings,
 		auditListings:                     administration.auditListings,
 		bootstrap:                         administration.bootstrap,
+		academicAdministrationBatches:     administration.academicAdministrationBatches,
 		audit:                             foundation.audit,
 		realtime:                          foundation.realtime,
 		jobs:                              jobs.runtime,

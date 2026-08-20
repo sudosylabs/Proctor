@@ -536,14 +536,26 @@
         "responses": {"200": {"$ref": "#/components/responses/InvitationBatchOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
       }
     },
+    "/api/v1/academic-administration-batches": {
+      "post": {
+        "operationId": "runAcademicAdministrationBatch", "summary": "Run one bounded typed existing-User academic administration batch",
+        "description": "Executes one to 200 independent existing-User administration rows. Each row retains the ordinary named aggregate, authorization, audit, mail, and idempotency semantics.",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "authentication.strong_required", "authentication.reauthentication_required", "idempotency.key_required", "idempotency.invalid_key", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/RunAcademicAdministrationBatch"},
+        "responses": {"200": {"$ref": "#/components/responses/AcademicAdministrationBatchOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
     "/api/v1/onboarding-imports": {
       "post": {
-        "operationId": "uploadOnboardingImport", "summary": "Upload a bounded Invitation CSV for asynchronous validation",
+        "operationId": "uploadOnboardingImport", "summary": "Upload a bounded onboarding CSV for asynchronous validation",
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.invalid_file", "onboarding_import.unavailable", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
         "parameters": [
-          {"name": "mode", "in": "query", "required": true, "schema": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution"]}},
+          {"name": "mode", "in": "query", "required": true, "schema": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution", "academic_administration"]}},
           {"name": "scope_type", "in": "query", "required": true, "schema": {"type": "string", "enum": ["class", "academic_unit", "institution"]}},
           {"name": "scope_id", "in": "query", "required": true, "schema": {"$ref": "#/components/schemas/ID"}},
           {"name": "role_id", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/ID"}}
@@ -2839,6 +2851,7 @@
       "MutateInvitation": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationMutationRequest"}}}},
       "ReplaceInvitation": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReplaceInvitationRequest"}}}},
       "RunInvitationBatch": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationBatchRequest"}}}},
+      "RunAcademicAdministrationBatch": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicAdministrationBatchRequest"}}}},
       "CommitOnboardingImport": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportCommitRequest"}}}},
       "StartMailRekey": {
         "required": true,
@@ -3101,6 +3114,7 @@
       "InvitationAdministrationCreated": {"description": "Replacement Invitation created and prior Invitation superseded", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationResponse"}}}},
       "InvitationAdministrationListOK": {"description": "Bounded authorized Invitation administration page", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationListResponse"}}}},
       "InvitationBatchOK": {"description": "Ordered bounded per-item Invitation outcomes", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationBatchResponse"}}}},
+      "AcademicAdministrationBatchOK": {"description": "Ordered bounded per-item existing-User academic administration outcomes", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicAdministrationBatchResponse"}}}},
       "OnboardingImportAccepted": {"description": "Onboarding import accepted for asynchronous work", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
       "OnboardingImportOK": {"description": "Authorized safe onboarding preview or report projection", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
       "OnboardingImportReport": {"description": "Formula-safe CSV report without recipient or Invitation secret disclosure", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}, "X-Content-Type-Options": {"$ref": "#/components/headers/NoSniff"}}, "content": {"text/csv": {"schema": {"type": "string", "format": "binary"}}}},
@@ -5351,6 +5365,44 @@
           "failed": {"type": "integer", "minimum": 0, "maximum": 200}
         }
       },
+      "AcademicAdministrationBatchItemRequest": {
+        "type": "object", "additionalProperties": false, "required": ["key"],
+        "properties": {
+          "key": {"type": "string", "pattern": "^[A-Za-z0-9._~-]{1,128}$"},
+          "user_id": {"$ref": "#/components/schemas/ID"}, "relationship_id": {"$ref": "#/components/schemas/ID"},
+          "role_id": {"$ref": "#/components/schemas/ID"},
+          "affiliation_kind": {"type": "string", "enum": ["student", "teacher", "staff"]},
+          "start_at": {"type": "integer", "format": "int64", "minimum": 1},
+          "end_at": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "AcademicAdministrationBatchRequest": {
+        "type": "object", "additionalProperties": false, "required": ["operation", "scope_type", "scope_id", "items"],
+        "properties": {
+          "operation": {"type": "string", "enum": ["affiliation.add", "affiliation.end", "academic_unit_member.add", "academic_unit_member.end", "class.enroll", "class.end", "class.transfer", "role_binding.create", "role_binding.end", "user.enable", "user.disable", "user_sessions.revoke"]},
+          "scope_type": {"type": "string", "enum": ["institution", "academic_unit", "class"]},
+          "scope_id": {"$ref": "#/components/schemas/ID"},
+          "items": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"$ref": "#/components/schemas/AcademicAdministrationBatchItemRequest"}}
+        }
+      },
+      "AcademicAdministrationBatchItemResponse": {
+        "type": "object", "additionalProperties": false, "required": ["index", "status"],
+        "properties": {
+          "index": {"type": "integer", "minimum": 0, "maximum": 199},
+          "status": {"type": "string", "enum": ["succeeded", "no_op", "failed"]},
+          "resource_id": {"$ref": "#/components/schemas/ID"},
+          "error_code": {"type": "string", "enum": ["request.invalid", "resource.not_found", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "administration.unavailable", "mail.unavailable", "authentication.invalid_token", "authentication.strong_required", "authentication.reauthentication_required", "affiliation.invalid", "affiliation.conflict", "affiliation.student_has_active_enrollment", "academic_unit_member.invalid", "academic_unit_member.conflict", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "role_binding.invalid", "role_binding.conflict", "role_binding.last_system_admin", "role_binding.system_admin_requires_institution_scope", "user.invalid", "user.conflict", "user.last_system_admin", "session.not_found", "idempotency.conflict", "idempotency.in_progress", "onboarding_batch.duplicate"]}
+        }
+      },
+      "AcademicAdministrationBatchResponse": {
+        "type": "object", "additionalProperties": false, "required": ["operation", "items", "succeeded", "no_op", "failed"],
+        "properties": {
+          "operation": {"type": "string", "enum": ["affiliation.add", "affiliation.end", "academic_unit_member.add", "academic_unit_member.end", "class.enroll", "class.end", "class.transfer", "role_binding.create", "role_binding.end", "user.enable", "user.disable", "user_sessions.revoke"]},
+          "items": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"$ref": "#/components/schemas/AcademicAdministrationBatchItemResponse"}},
+          "succeeded": {"type": "integer", "minimum": 0, "maximum": 200}, "no_op": {"type": "integer", "minimum": 0, "maximum": 200},
+          "failed": {"type": "integer", "minimum": 0, "maximum": 200}
+        }
+      },
       "OnboardingImportCommitRequest": {
         "type": "object", "additionalProperties": false, "required": ["expected_revision", "preview_digest", "policy"],
         "properties": {
@@ -5363,16 +5415,17 @@
         "type": "object", "additionalProperties": false, "required": ["row", "reference", "operation", "status"],
         "properties": {
           "row": {"type": "integer", "minimum": 1, "maximum": 50000}, "reference": {"type": "string", "maxLength": 128},
-          "operation": {"type": "string", "enum": ["student_class.create", "teacher_academic_unit.create", "academic_unit_role.create", "institution_role.create"]},
+          "operation": {"type": "string", "enum": ["student_class.create", "teacher_academic_unit.create", "academic_unit_role.create", "institution_role.create", "affiliation.add", "affiliation.end", "academic_unit_member.add", "academic_unit_member.end", "class.enroll", "class.end", "class.transfer", "role_binding.create", "role_binding.end", "user.enable", "user.disable", "user_sessions.revoke"]},
           "status": {"type": "string", "enum": ["valid", "invalid", "duplicate", "pending", "succeeded", "no_op", "failed", "skipped", "canceled"]},
-          "preview_code": {"type": "string"}, "public_code": {"type": "string"}, "invitation_id": {"$ref": "#/components/schemas/ID"}
+          "preview_code": {"type": "string"}, "public_code": {"type": "string"}, "invitation_id": {"$ref": "#/components/schemas/ID"},
+          "resource_id": {"$ref": "#/components/schemas/ID"}
         }
       },
       "OnboardingImportResponse": {
         "type": "object", "additionalProperties": false,
         "required": ["id", "mode", "state", "scope_type", "scope_id", "total_rows", "valid_rows", "invalid_rows", "succeeded_rows", "no_op_rows", "failed_rows", "skipped_rows", "parse_job_id", "created_at", "updated_at", "expires_at", "revision"],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"}, "mode": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution"]},
+          "id": {"$ref": "#/components/schemas/ID"}, "mode": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution", "academic_administration"]},
           "state": {"type": "string", "enum": ["uploading", "parsing", "preview_ready", "executing", "completed", "completed_with_errors", "canceled", "failed"]},
           "scope_type": {"type": "string", "enum": ["class", "academic_unit", "institution"]}, "scope_id": {"$ref": "#/components/schemas/ID"},
           "role_id": {"$ref": "#/components/schemas/ID"}, "preview_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},

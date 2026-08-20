@@ -82,6 +82,9 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 	t.Run("OnboardingImportTeacherAndRoleNoOps", func(t *testing.T) {
 		testOnboardingImportTeacherAndRoleNoOps(t, ss)
 	})
+	t.Run("OnboardingImportAcademicAdministrationIsAtomicAndReauthorizes", func(t *testing.T) {
+		testOnboardingImportAcademicAdministration(t, ss)
+	})
 	if probe.DisableInviterBeforeIssue != nil {
 		t.Run("IssueStudentClassSerializesWithConcurrentInviterDisable", func(t *testing.T) {
 			testInvitationIssueSerializesWithInviterDisable(t, ss, probe.DisableInviterBeforeIssue)
@@ -104,6 +107,115 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 		t.Run("AcceptScopedRoleSerializesWithConcurrentInviterBindingEnd", func(t *testing.T) {
 			testScopedRoleAcceptSerializesWithInviterBindingEnd(t, ss, probe.EndBindingBeforeAccept)
 		})
+	}
+}
+
+func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
+	t.Helper()
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	actor, target := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
+	at := model.NowUTC().Add(-time.Minute)
+	authorityRole, err := ss.Role().Save(ctx, &model.Role{Name: "administration-import-authority-" + model.NewId(), DisplayName: "Administration Import Authority",
+		Permissions: []string{string(model.ActionOnboardingBatchManage), string(model.ActionUserManage)}})
+	requireNoError(t, err)
+	authorityBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID,
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: at.Add(-time.Second)})
+	requireNoError(t, err)
+	session, credentials, _ := saveSession(t, ctx, ss, actor.ID.String(), 10)
+	principal := model.Principal{UserID: actor.ID, SessionID: session.ID, CredentialID: model.PrincipalCredentialID(credentials[0].ID),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: session.ClientType, AuthenticatedAt: session.AuthenticatedAt}
+
+	row := store.OnboardingImportRow{Operation: "affiliation.add", ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), TargetRevision: institution.Revision, UserID: target.ID,
+		AffiliationKind: model.AffiliationStaff, StartsAt: model.MillisFromTime(at)}
+	importID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportAcademicAdministration,
+		model.RoleScopeInstitution, institution.ID.String(), "", at, row)
+	candidate := &model.Affiliation{UserID: target.ID, Kind: model.AffiliationStaff, StartsAt: at}
+	candidate.PrepareCreate(model.NewAffiliationID(), at)
+	audit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), target.ID.String())
+	command := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-import-row", "administration-import-row")
+	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
+	created, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: candidate, AuditEventID: audit.ID.String(),
+		AuditAt: model.MillisFromTime(at), Command: command})
+	requireNoError(t, err)
+	completed, err := ss.OnboardingImport().GetOnboardingImport(ctx, importID)
+	requireNoError(t, err)
+	page, err := ss.OnboardingImport().ListOnboardingImportRows(ctx, importID, 0, 10)
+	requireNoError(t, err)
+	if completed.State != model.OnboardingImportCompleted || completed.SucceededRows != 1 || len(page.Rows) != 1 ||
+		page.Rows[0].Status != model.OnboardingImportRowSucceeded || page.Rows[0].ResourceID != created.ID.String() {
+		t.Fatalf("academic administration import = %#v rows=%#v", completed, page.Rows)
+	}
+
+	duplicateTarget := saveUser(t, ctx, ss)
+	duplicateCandidate := &model.Affiliation{UserID: duplicateTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
+	duplicateCandidate.PrepareCreate(model.NewAffiliationID(), at)
+	group := sha256.Sum256([]byte("affiliation-staff-" + duplicateTarget.ID.String()))
+	authority := &store.CommandAuthorization{Principal: principal, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionUserManage}}
+	canonicalAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), duplicateTarget.ID.String())
+	canonicalCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-json-a", "administration-json-duplicate")
+	canonicalCommand.Authorization, canonicalCommand.Batch = authority, &store.CommandBatch{GroupDigest: group}
+	canonical, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: duplicateCandidate,
+		AuditEventID: canonicalAudit.ID.String(), AuditAt: model.MillisFromTime(at), Command: canonicalCommand})
+	requireNoError(t, err)
+
+	loserCandidate := *duplicateCandidate
+	loserCandidate.ID = model.NewAffiliationID()
+	loserAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), duplicateTarget.ID.String())
+	loserCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-json-b", "administration-json-duplicate")
+	loserCommand.Authorization, loserCommand.Batch = authority, &store.CommandBatch{GroupDigest: group, DuplicateOfKeyDigest: canonicalCommand.KeyDigest}
+	duplicate, err := ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: &loserCandidate,
+		AuditEventID: loserAudit.ID.String(), AuditAt: model.MillisFromTime(at), Command: loserCommand})
+	requireNoError(t, err)
+	if duplicate.ID != canonical.ID || !loserCommand.Batch.Duplicate {
+		t.Fatalf("duplicate outcome = %#v metadata=%#v, want canonical %s", duplicate, loserCommand.Batch, canonical.ID)
+	}
+	if _, err = ss.Affiliation().Get(ctx, loserCandidate.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("duplicate candidate was persisted: %v", err)
+	}
+	loserReplayAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), duplicateTarget.ID.String())
+	loserCommand.Batch.Duplicate = false
+	if _, err = ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: &loserCandidate,
+		AuditEventID: loserReplayAudit.ID.String(), AuditAt: model.MillisFromTime(at), Command: loserCommand}); err != nil || !loserCommand.Batch.Duplicate {
+		t.Fatalf("retained duplicate replay metadata=%#v error=%v", loserCommand.Batch, err)
+	}
+
+	secondTarget := saveUser(t, ctx, ss)
+	secondRow := row
+	secondRow.UserID = secondTarget.ID
+	secondImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportAcademicAdministration,
+		model.RoleScopeInstitution, institution.ID.String(), "", at.Add(time.Second), secondRow)
+	_, err = ss.RoleBinding().End(ctx, authorityBinding.ID.String(), model.MillisFromTime(at.Add(2*time.Second)))
+	requireNoError(t, err)
+	secondCandidate := &model.Affiliation{UserID: secondTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
+	secondCandidate.PrepareCreate(model.NewAffiliationID(), at)
+	secondAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), secondTarget.ID.String())
+	secondCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-import-authority-row", "administration-import-authority-row")
+	secondCommand.OnboardingImportID, secondCommand.OnboardingImportRowNumber = secondImportID, 1
+	if _, err = ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: secondCandidate, AuditEventID: secondAudit.ID.String(),
+		AuditAt: model.MillisFromTime(at), Command: secondCommand}); !store.IsConflict(err) {
+		t.Fatalf("academic administration import after authority ended error = %v", err)
+	}
+	if _, err = ss.Affiliation().Get(ctx, secondCandidate.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("unauthorized import row mutated affiliation: %v", err)
+	}
+	jsonTarget := saveUser(t, ctx, ss)
+	jsonCandidate := &model.Affiliation{UserID: jsonTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
+	jsonCandidate.PrepareCreate(model.NewAffiliationID(), at)
+	jsonAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), jsonTarget.ID.String())
+	jsonCommand := invitationTestCommand(actor.ID, "affiliation.add.v1", "administration-json-revoked", "administration-json-revoked")
+	jsonCommand.Authorization = &store.CommandAuthorization{Principal: principal, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
+		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionUserManage}}
+	jsonCommand.Batch = &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("administration-json-revoked"))}
+	if _, err = ss.Affiliation().Create(ctx, &store.AffiliationCreation{Affiliation: jsonCandidate, AuditEventID: jsonAudit.ID.String(),
+		AuditAt: model.MillisFromTime(at), Command: jsonCommand}); !store.IsConflict(err) {
+		t.Fatalf("JSON row after authority ended error = %v", err)
+	}
+	if _, err = ss.Affiliation().Get(ctx, jsonCandidate.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("unauthorized JSON row mutated affiliation: %v", err)
 	}
 }
 

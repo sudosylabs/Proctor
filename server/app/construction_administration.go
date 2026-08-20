@@ -19,25 +19,24 @@ func constructAdministration(
 		authorization: access.authorization,
 		institutions:  deps.Store.Institution(),
 	}
+	accountStates := newAccountStateService(
+		deps.Store.User(), profileAuthorization, access.capabilities,
+		mutationAuditAdapter{audit: foundation.audit}, identity.mail,
+		accountStateRealtimeEffects{effects: foundation.realtime}, time.Now,
+	)
+	sessionAdministrations := newSessionAdministrationService(
+		deps.Store.Session(), deps.Store.User(),
+		sessionAdministrationAuthorization{authorization: access.authorization},
+		mutationAuditAdapter{audit: foundation.audit}, identity.mail,
+		sessionAdministrationRealtimeEffects{effects: foundation.realtime}, time.Now,
+	)
+	roleBindings := newRoleBindingService(
+		deps.Store.RoleBinding(), deps.Store.Role(), roleAuthorization, access.capabilities,
+		mutationAuditAdapter{audit: foundation.audit}, roleBindingRealtimeEffects{effects: foundation.realtime}, time.Now,
+	)
 	return administrationConstruction{
-		accountStates: newAccountStateService(
-			deps.Store.User(),
-			profileAuthorization,
-			access.capabilities,
-			mutationAuditAdapter{audit: foundation.audit},
-			identity.mail,
-			accountStateRealtimeEffects{effects: foundation.realtime},
-			time.Now,
-		),
-		sessionAdministrations: newSessionAdministrationService(
-			deps.Store.Session(),
-			deps.Store.User(),
-			sessionAdministrationAuthorization{authorization: access.authorization},
-			mutationAuditAdapter{audit: foundation.audit},
-			identity.mail,
-			sessionAdministrationRealtimeEffects{effects: foundation.realtime},
-			time.Now,
-		),
+		accountStates:          accountStates,
+		sessionAdministrations: sessionAdministrations,
 		roles: newRoleService(
 			deps.Store.Role(),
 			roleAuthorization,
@@ -45,14 +44,11 @@ func constructAdministration(
 			roleRealtimeEffects{effects: foundation.realtime},
 			time.Now,
 		),
-		roleBindings: newRoleBindingService(
-			deps.Store.RoleBinding(),
-			deps.Store.Role(),
-			roleAuthorization,
-			access.capabilities,
-			mutationAuditAdapter{audit: foundation.audit},
-			roleBindingRealtimeEffects{effects: foundation.realtime},
-			time.Now,
+		roleBindings: roleBindings,
+		academicAdministrationBatches: newAcademicAdministrationBatchService(
+			academicAdministrationCommandServices{affiliations: access.affiliations, academicUnitMembers: access.academicUnitMembers,
+				classMembers: access.classMembers, roleBindings: roleBindings, accountStates: accountStates, sessions: sessionAdministrations},
+			invitationAuthorizationAdapter{authorization: access.authorization}, deps.Store.CommandOutcome(), time.Now, deps.RecentAuthenticationTTL,
 		),
 		auditListings: newAuditListingService(
 			deps.Store.Audit(),

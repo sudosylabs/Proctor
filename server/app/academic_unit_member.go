@@ -19,13 +19,28 @@ type ListAcademicUnitMembersQuery struct {
 }
 
 type CreateAcademicUnitMemberCommand struct {
-	AcademicUnitID string
-	UserID         string
-	StartAt        int64
+	AcademicUnitID            string
+	UserID                    string
+	StartAt                   int64
+	IdempotencyKey            string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type EndAcademicUnitMemberCommand struct {
-	ID string
+	ID                        string
+	IdempotencyKey            string
+	BatchScopeID              string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type academicUnitMemberStore interface {
@@ -102,6 +117,17 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit_member.invalid", err)
 	}
+	idempotency, err := newCommandIdempotency(invocation, "academic_unit_member.add.v1", command.IdempotencyKey, struct {
+		AcademicUnitID string `json:"academic_unit_id"`
+		UserID         string `json:"user_id"`
+		StartAt        int64  `json:"start_at"`
+	}{candidate.AcademicUnitID.String(), candidate.UserID.String(), command.StartAt})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	return runAuditedMutation(
 		ctx,
 		s.audit,
@@ -114,9 +140,13 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 		},
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
-			return s.store.Create(ctx, &store.AcademicUnitMemberCreation{
-				Member: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+			input := &store.AcademicUnitMemberCreation{Member: candidate, AuditEventID: reference.ID,
+				AuditAt: reference.MutationAtMillis, Command: idempotency}
+			value, storeErr := s.store.Create(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		academicUnitMemberError,
 	)
@@ -144,6 +174,19 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if err != nil {
 		return nil, concealMembershipAuthorizationError(err, "academic_unit_member")
 	}
+	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.AcademicUnitID.String() {
+		return nil, NewError("resource.not_found").WithField("resource", "academic_unit_member")
+	}
+	idempotency, err := newCommandIdempotency(invocation, "academic_unit_member.end.v1", command.IdempotencyKey, struct {
+		ID      string `json:"id"`
+		ScopeID string `json:"scope_id,omitempty"`
+	}{id, strings.TrimSpace(command.BatchScopeID)})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	return runAuditedMutation(
 		ctx,
 		s.audit,
@@ -156,10 +199,15 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnitMember, error) {
-			return s.store.EndWithAudit(ctx, &store.AcademicUnitMemberEnd{
+			input := &store.AcademicUnitMemberEnd{
 				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+			}
+			value, storeErr := s.store.EndWithAudit(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		academicUnitMemberError,
 	)
@@ -184,6 +232,9 @@ func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocatio
 }
 
 func academicUnitMemberError(err error) error {
+	if mapped := idempotencyError(err); mapped != nil {
+		return mapped
+	}
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)

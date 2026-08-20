@@ -368,12 +368,42 @@ already-approved bounded delivery summary. They contain no recipient package,
 raw or hashed claim, rendered mail, or transport secret, and replay resolves
 before a new claim or mail candidate is prepared.
 
-## CSV Invitation imports
+## JSON existing-User academic administration batches
+
+`POST /api/v1/academic-administration-batches` requires an authenticated
+principal, a required `Idempotency-Key`, and `onboarding_batch.manage` at one
+exact Institution, Academic Unit, or Class scope. Its closed operation union is
+Affiliation add/end, Academic Unit membership add/end, Class enroll/end/
+transfer, Role Binding create/end, User enable/disable, and selected-User
+Session revocation. One to 200 request-unique item keys identify independent
+rows; repeated keys invalidate every affected row.
+
+Every row invokes the corresponding ordinary single-item use case and named
+aggregate transaction. Current action/scope authorization, target visibility,
+Role delegation, assurance, audit, mail, PostgreSQL authority, idempotency, and
+conflict behavior therefore remain authoritative per row. Role Binding,
+account-state, and Session operations require a strong, recent interactive
+Session. Unit-scoped work cannot operate outside the caller's visible subtree;
+global account intervention, credential attachment or removal, identity
+linking, MFA removal, and deletion are not batch operations.
+
+The no-store `200` projection preserves input order and exposes only index,
+`succeeded`, `no_op`, or `failed`, the created or affected resource ID, one
+closed public code, and bounded counts. Exact retries and already-satisfied
+effects are explicit `no_op`; changed reuse conflicts at that item. Each
+successful row retains only its minimal resource identity and disposition in
+the same transaction as the ordinary mutation and audit. A later row failure
+never rolls back completed rows; compensation is an explicit inverse ordinary
+operation (for example membership end or User enable), never an implicit Job
+rollback.
+
+## CSV onboarding imports
 
 `POST /api/v1/onboarding-imports` is a bounded streaming `text/csv` upload for
 an authenticated principal with `onboarding_batch.manage` at the declared
-exact scope. Query parameters select the closed import mode and external
-Class, Academic Unit, Institution, and optional teacher Role target. The route
+exact scope. Query parameters select the closed Invitation or existing-User
+academic administration import mode and external Class, Academic Unit,
+Institution, and optional teacher Role target. The route
 accepts at most 10 MiB; parsing and full row validation run asynchronously.
 Original bytes are private staging material and are removed after preview
 creation or cancellation.
@@ -387,7 +417,8 @@ execution Job. `POST .../{id}/cancel` cooperatively stops new rows, and
 operation reauthorizes; execution also revalidates authority and target
 revisions per row. JSON and report responses are `no-store`, reports are
 `nosniff`, and neither projection contains recipient email, CSV command fields,
-raw or hashed Invitation claims, rendered mail, or private errors.
+raw or hashed Invitation claims, rendered mail, private errors, or User profile
+fields.
 
 ## Ownership and extension workflow
 

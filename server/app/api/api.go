@@ -102,35 +102,36 @@ type routeMatcher struct {
 }
 
 type Options struct {
-	Logger                  Logger
-	Health                  Health
-	Application             Application
-	AcademicUnits           AcademicUnitApplication
-	Institutions            InstitutionApplication
-	Programmes              ProgrammeApplication
-	ProgrammeLevels         ProgrammeLevelApplication
-	AcademicPeriods         AcademicPeriodApplication
-	Classes                 ClassApplication
-	Affiliations            AffiliationApplication
-	AcademicUnitMembers     AcademicUnitMemberApplication
-	ClassMembers            ClassMemberApplication
-	Invitations             InvitationApplication
-	OnboardingImports       OnboardingImportApplication
-	UserProfiles            UserProfileApplication
-	UserSettings            UserSettingsApplication
-	AccountStates           AccountStateApplication
-	SessionAdministrations  SessionAdministrationApplication
-	Roles                   RoleApplication
-	RoleBindings            RoleBindingApplication
-	AuditListings           AuditListingApplication
-	Bootstrap               BootstrapApplication
-	AccessPolicy            AccessPolicyApplication
-	Mail                    MailApplication
-	BuildInfo               BuildInfo
-	PublicURL               string
-	MaxBodyBytes            int64
-	RecentAuthenticationTTL time.Duration
-	NodeID                  string
+	Logger                        Logger
+	Health                        Health
+	Application                   Application
+	AcademicUnits                 AcademicUnitApplication
+	Institutions                  InstitutionApplication
+	Programmes                    ProgrammeApplication
+	ProgrammeLevels               ProgrammeLevelApplication
+	AcademicPeriods               AcademicPeriodApplication
+	Classes                       ClassApplication
+	Affiliations                  AffiliationApplication
+	AcademicUnitMembers           AcademicUnitMemberApplication
+	ClassMembers                  ClassMemberApplication
+	Invitations                   InvitationApplication
+	OnboardingImports             OnboardingImportApplication
+	AcademicAdministrationBatches AcademicAdministrationBatchApplication
+	UserProfiles                  UserProfileApplication
+	UserSettings                  UserSettingsApplication
+	AccountStates                 AccountStateApplication
+	SessionAdministrations        SessionAdministrationApplication
+	Roles                         RoleApplication
+	RoleBindings                  RoleBindingApplication
+	AuditListings                 AuditListingApplication
+	Bootstrap                     BootstrapApplication
+	AccessPolicy                  AccessPolicyApplication
+	Mail                          MailApplication
+	BuildInfo                     BuildInfo
+	PublicURL                     string
+	MaxBodyBytes                  int64
+	RecentAuthenticationTTL       time.Duration
+	NodeID                        string
 	// WebSocket is the sibling transport constructed at composition root.
 	// HTTP owns only route mounting and session middleware around Accept.
 	WebSocket WebSocketTransport
@@ -577,6 +578,10 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 	if invitations == nil {
 		invitations = unavailableInvitationApplication{}
 	}
+	academicAdministrationBatches := options.AcademicAdministrationBatches
+	if academicAdministrationBatches == nil {
+		academicAdministrationBatches, _ = options.Application.(AcademicAdministrationBatchApplication)
+	}
 	return []resource{
 		systemResource(options.Health, options.BuildInfo),
 		bootstrapResource(options.Bootstrap),
@@ -610,6 +615,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		classMemberResource(options.ClassMembers),
 		invitationResource(invitations),
 		onboardingImportResource(onboardingImports),
+		academicAdministrationBatchResource(academicAdministrationBatches),
 		roleResource(options.Roles),
 		roleBindingResource(options.RoleBindings),
 		auditResource(options.AuditListings),

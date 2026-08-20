@@ -34,6 +34,38 @@ type CommandIdempotency struct {
 	// mutation. They are absent for all non-import commands.
 	OnboardingImportID        model.OnboardingImportID
 	OnboardingImportRowNumber int
+	// Authorization is present only for closed academic-administration batch
+	// commands. PostgreSQL rechecks these current permissions in the same
+	// transaction as the ordinary aggregate mutation.
+	Authorization *CommandAuthorization
+	Batch         *CommandBatch
+}
+
+// CommandBatch binds one retained item outcome to its semantic duplicate
+// group. DuplicateOfKeyDigest is absent for the canonical item. Duplicate is
+// set by the Store when the retained disposition is non-canonical.
+type CommandBatch struct {
+	GroupDigest          [sha256.Size]byte
+	DuplicateOfKeyDigest [sha256.Size]byte
+	Duplicate            bool
+}
+
+// CommandAuthorization is the bounded terminal authority required by one
+// academic-administration batch row. It contains no derived Role state;
+// PostgreSQL resolves every action from current durable bindings and Roles.
+type CommandAuthorization struct {
+	Principal        model.Principal
+	ScopeType        model.RoleScopeType
+	ScopeID          string
+	Actions          []model.Action
+	DelegatedActions []model.Action
+	// ClassMemberID binds a Class end or transfer to its relationship so
+	// PostgreSQL can lock the affected User before hierarchy state, then resolve
+	// and authorize the relationship's current Class.
+	ClassMemberID model.ClassMemberID
+	// RecipientUserID lets PostgreSQL preserve the canonical User-before-
+	// hierarchy lock order for Class enrollment.
+	RecipientUserID model.UserID
 }
 
 // AcademicUnitCommandResult and AcademicPeriodCommandResult report whether a
@@ -367,6 +399,7 @@ type Store interface {
 // CommandOutcomeStore owns bounded retention of completed client-command
 // outcomes. Creation and replay remain part of each named aggregate mutation.
 type CommandOutcomeStore interface {
+	Has(context.Context, *CommandIdempotency) (bool, error)
 	DeleteExpired(context.Context, int) (int64, error)
 }
 
@@ -1052,6 +1085,9 @@ type UserDisabledStateChange struct {
 	RevocationReason string
 	AuditEventID     string
 	AuditAt          int64
+	Command          *CommandIdempotency
+	Replayed         bool
+	NoOp             bool
 }
 
 // UserDisabledStateResult contains the committed user state and the minimal
@@ -1664,30 +1700,34 @@ type OnboardingImport struct {
 // contains private normalized recipient/package input and must never be
 // returned directly by a transport.
 type OnboardingImportRow struct {
-	ImportID       model.OnboardingImportID
-	RowNumber      int
-	Reference      string
-	Operation      string
-	ScopeType      model.RoleScopeType
-	ScopeID        string
-	TargetRevision int64
-	RoleID         model.RoleID
-	RoleRevision   int64
-	Email          string
-	Username       string
-	DisplayName    string
-	FirstName      string
-	LastName       string
-	Locale         string
-	Timezone       string
-	StartsAt       int64
-	EndsAt         int64
-	PreviewStatus  model.OnboardingImportRowStatus
-	PreviewCode    string
-	Status         model.OnboardingImportRowStatus
-	PublicCode     string
-	InvitationID   model.InvitationID
-	UpdatedAt      time.Time
+	ImportID        model.OnboardingImportID
+	RowNumber       int
+	Reference       string
+	Operation       string
+	ScopeType       model.RoleScopeType
+	ScopeID         string
+	TargetRevision  int64
+	RoleID          model.RoleID
+	RoleRevision    int64
+	Email           string
+	UserID          model.UserID
+	RelationshipID  string
+	AffiliationKind model.AffiliationKind
+	Username        string
+	DisplayName     string
+	FirstName       string
+	LastName        string
+	Locale          string
+	Timezone        string
+	StartsAt        int64
+	EndsAt          int64
+	PreviewStatus   model.OnboardingImportRowStatus
+	PreviewCode     string
+	Status          model.OnboardingImportRowStatus
+	PublicCode      string
+	InvitationID    model.InvitationID
+	ResourceID      string
+	UpdatedAt       time.Time
 }
 
 type OnboardingImportCreation struct {
@@ -1733,6 +1773,7 @@ type OnboardingImportRowCompletion struct {
 	Status       model.OnboardingImportRowStatus
 	PublicCode   string
 	InvitationID model.InvitationID
+	ResourceID   string
 	At           time.Time
 }
 
@@ -1958,6 +1999,9 @@ type AffiliationCreation struct {
 	Affiliation  *model.Affiliation
 	AuditEventID string
 	AuditAt      int64
+	Command      *CommandIdempotency
+	Replayed     bool
+	NoOp         bool
 }
 
 type AffiliationEnd struct {
@@ -1966,6 +2010,9 @@ type AffiliationEnd struct {
 	EndAt            int64
 	AuditEventID     string
 	AuditAt          int64
+	Command          *CommandIdempotency
+	Replayed         bool
+	NoOp             bool
 }
 
 type AffiliationStore interface {
@@ -1983,6 +2030,9 @@ type AcademicUnitMemberCreation struct {
 	Member       *model.AcademicUnitMember
 	AuditEventID string
 	AuditAt      int64
+	Command      *CommandIdempotency
+	Replayed     bool
+	NoOp         bool
 }
 
 type AcademicUnitMemberEnd struct {
@@ -1991,6 +2041,9 @@ type AcademicUnitMemberEnd struct {
 	EndAt            int64
 	AuditEventID     string
 	AuditAt          int64
+	Command          *CommandIdempotency
+	Replayed         bool
+	NoOp             bool
 }
 
 type AcademicUnitMemberStore interface {
@@ -2020,6 +2073,9 @@ type ClassMemberEnrollment struct {
 	AuditEventID              string
 	PreviousAuditEventID      string
 	AuditAt                   int64
+	Command                   *CommandIdempotency
+	Replayed                  bool
+	NoOp                      bool
 }
 
 type ClassMemberEnd struct {
@@ -2030,6 +2086,9 @@ type ClassMemberEnd struct {
 	Notice                    *PreparedMail
 	AuditEventID              string
 	AuditAt                   int64
+	Command                   *CommandIdempotency
+	Replayed                  bool
+	NoOp                      bool
 }
 
 // ClassMemberStore owns transactional student enrollment and history.
@@ -2103,6 +2162,9 @@ type UserSessionsRevocation struct {
 	Reason       string
 	AuditEventID string
 	AuditAt      int64
+	Command      *CommandIdempotency
+	Replayed     bool
+	NoOp         bool
 }
 
 // UserSessionsRevocationResult contains the revoked sessions and token hashes
@@ -2191,6 +2253,7 @@ type RoleStore interface {
 	Save(context.Context, *model.Role) (*model.Role, error)
 	SaveWithAudit(context.Context, *RoleCreation) (*model.Role, error)
 	Get(context.Context, string) (*model.Role, error)
+	GetIncludingArchived(context.Context, string) (*model.Role, error)
 	GetByName(context.Context, string) (*model.Role, error)
 	GetByIds(context.Context, []string) ([]*model.Role, error)
 	List(context.Context) ([]*model.Role, error)
@@ -2208,6 +2271,9 @@ type RoleBindingCreation struct {
 	ExpectedRolePermissions []string
 	AuditEventID            string
 	AuditAt                 int64
+	Command                 *CommandIdempotency
+	Replayed                bool
+	NoOp                    bool
 }
 
 // RoleBindingEnd is the durable input for ending a binding under an
@@ -2218,6 +2284,9 @@ type RoleBindingEnd struct {
 	Capabilities AccessDeploymentCapabilities
 	AuditEventID string
 	AuditAt      int64
+	Command      *CommandIdempotency
+	Replayed     bool
+	NoOp         bool
 }
 
 // RoleBindingStore persists time-bounded role assignments. Scope references

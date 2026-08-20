@@ -485,20 +485,20 @@ func hydrateInvitationCommandOutcome(ctx context.Context, tx *sqlxTxWrapper, res
 	return result, nil
 }
 
-func invitationOnboardingOutcome(result *store.InvitationCommandResult) (model.OnboardingImportRowStatus, model.InvitationID, error) {
+func invitationOnboardingOutcome(result *store.InvitationCommandResult) (onboardingImportCommandResult, error) {
 	if result == nil || result.Duplicate {
-		return "", "", store.NewErrInvalidInput("onboarding_import_row", "invitation_outcome", nil)
+		return onboardingImportCommandResult{}, store.NewErrInvalidInput("onboarding_import_row", "invitation_outcome", nil)
 	}
 	if result.NoOp {
 		if result.Invitation != nil {
-			return model.OnboardingImportRowNoOp, result.Invitation.ID, nil
+			return onboardingImportCommandResult{Status: model.OnboardingImportRowNoOp, InvitationID: result.Invitation.ID}, nil
 		}
-		return model.OnboardingImportRowNoOp, "", nil
+		return onboardingImportCommandResult{Status: model.OnboardingImportRowNoOp}, nil
 	}
 	if result.Invitation == nil || !result.Invitation.ID.IsValid() {
-		return "", "", store.NewErrInvalidInput("onboarding_import_row", "invitation_outcome", nil)
+		return onboardingImportCommandResult{}, store.NewErrInvalidInput("onboarding_import_row", "invitation_outcome", nil)
 	}
-	return model.OnboardingImportRowSucceeded, result.Invitation.ID, nil
+	return onboardingImportCommandResult{Status: model.OnboardingImportRowSucceeded, InvitationID: result.Invitation.ID}, nil
 }
 
 func (s SQLInvitationStore) ReplayIssue(ctx context.Context, command *store.CommandIdempotency, auditID string, auditAt int64) (*store.InvitationCommandResult, error) {

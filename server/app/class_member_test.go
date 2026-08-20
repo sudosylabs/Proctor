@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -123,6 +124,42 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 	}
 }
 
+func TestClassMemberRetainedEnrollmentBypassesChangedMembershipAndMail(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	persistence := &classMemberStoreFake{events: &events, active: []*model.ClassMember{{ID: model.NewClassMemberID(), ClassID: model.NewClassID()}}}
+	mailer := &classMemberMailFake{events: &events}
+	service := newClassMemberService(persistence, &classMemberClassStoreFake{events: &events}, &classMemberUserStoreFake{events: &events},
+		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
+		func() time.Time { return time.UnixMilli(500) }, func() string { return model.NewClassMemberID().String() })
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	result, err := service.Enroll(context.Background(), invocation, EnrollClassMemberCommand{ClassID: model.NewClassID().String(),
+		UserID: model.NewUserID().String(), StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
+	if err != nil || result == nil || len(mailer.requests) != 0 || slices.Contains(events, "list-active") ||
+		slices.Contains(events, "get-class") || slices.Contains(events, "get-user") || persistence.enrollInput == nil || persistence.enrollInput.Notice != nil {
+		t.Fatalf("retained enrollment=%#v error=%v mail=%#v events=%v input=%#v", result, err, mailer.requests, events, persistence.enrollInput)
+	}
+}
+
+func TestClassMemberAlreadySatisfiedEnrollmentPreparesNoticeForAuthoritativeRace(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	classID, periodID, userID := model.NewClassID(), model.NewAcademicPeriodID(), model.NewUserID()
+	current := &model.ClassMember{ID: model.NewClassMemberID(), ClassID: classID, AcademicPeriodID: periodID, UserID: userID, StartsAt: model.TimeFromMillis(100)}
+	persistence := &classMemberStoreFake{events: &events, active: []*model.ClassMember{current}}
+	class := &model.Class{ID: classID, AcademicPeriodID: periodID, DisplayName: "Class", Revision: 1}
+	mailer := &classMemberMailFake{events: &events}
+	service := newClassMemberService(persistence, &classMemberClassStoreFake{events: &events, value: class},
+		&classMemberUserStoreFake{events: &events, value: mailTestUser(model.Principal{UserID: userID}, time.UnixMilli(500))},
+		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
+		func() time.Time { return time.UnixMilli(500) }, func() string { return model.NewClassMemberID().String() })
+	result, err := service.Enroll(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+		EnrollClassMemberCommand{ClassID: classID.String(), UserID: userID.String(), StartAt: 100, IdempotencyKey: "row"})
+	if err != nil || result == nil || persistence.enrollInput == nil || persistence.enrollInput.Notice == nil || len(mailer.requests) != 1 {
+		t.Fatalf("already-satisfied enrollment=%#v error=%v mail=%#v input=%#v", result, err, mailer.requests, persistence.enrollInput)
+	}
+}
+
 func TestClassMemberEnrollCommitsTerminalNoticeForInactiveRecipient(t *testing.T) {
 	t.Parallel()
 	events := []string{}
@@ -171,8 +208,13 @@ func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testi
 	service := newClassMemberService(persistence, classes, users, &programmeAuthorizerFake{events: &events},
 		auditor, mailer,
 		func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	_, err := service.Enroll(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		EnrollClassMemberCommand{ClassID: destination.ID.String(), UserID: userID.String(), StartAt: 200})
+	principal := model.Principal{UserID: model.NewUserID()}
+	authority := &store.CommandAuthorization{Principal: principal, ScopeType: model.RoleScopeClass, ScopeID: destination.ID.String(),
+		Actions: []model.Action{model.ActionOnboardingBatchManage, model.ActionClassMembersManage}}
+	_, err := service.Enroll(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+		EnrollClassMemberCommand{ClassID: destination.ID.String(), UserID: userID.String(), StartAt: 200,
+			ExpectedPreviousID: previous.ID.String(), RequireTransfer: true, IdempotencyKey: "row", batchAuthorization: authority,
+			batchMetadata: &store.CommandBatch{GroupDigest: [32]byte{1}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,6 +229,9 @@ func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testi
 	wantAuditResources := []model.Resource{{Type: model.ResourceClass, ID: destination.ID.String()}, {Type: model.ResourceClass, ID: source.ID.String()}}
 	if !reflect.DeepEqual(auditor.resources, wantAuditResources) {
 		t.Fatalf("transfer audit resources = %#v, want %#v", auditor.resources, wantAuditResources)
+	}
+	if persistence.enrollInput.Command == nil || persistence.enrollInput.Command.Authorization.ClassMemberID != previous.ID {
+		t.Fatalf("terminal source authority = %#v", persistence.enrollInput.Command)
 	}
 	want := []string{"authorize", "get-class", "list-active", "authorize", "get-class", "get-user", "prepare-mail", "audit-begin", "audit-begin", "store-enroll"}
 	if !reflect.DeepEqual(events, want) {

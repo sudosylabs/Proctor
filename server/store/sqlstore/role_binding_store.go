@@ -27,6 +27,16 @@ type SQLRoleBindingStore struct {
 	bindingsQuery sq.SelectBuilder
 }
 
+type roleBindingMutationResult struct {
+	Value *model.RoleBinding
+	NoOp  bool
+}
+
+type roleBindingCommandOutcome struct {
+	ID   string `json:"id"`
+	NoOp bool   `json:"no_op,omitempty"`
+}
+
 // roleBindingRow is the legacy integer-millisecond column layout. Domain
 // RoleBinding uses time.Time / OptionalTime; conversion is at this boundary.
 type roleBindingRow struct {
@@ -103,9 +113,22 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("role_binding", "value", nil).Wrap(err)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role binding save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*roleBindingMutationResult, error) {
 		if err := lockExpectedRoleForBinding(ctx, tx, candidate.RoleID, input.ExpectedRoleUpdatedAt, input.ExpectedRolePermissions); err != nil {
 			return nil, err
+		}
+		if err := lockRoleBindingGrantTuple(ctx, tx, &candidate); err != nil {
+			return nil, err
+		}
+		existing, err := findExactRoleBinding(ctx, tx, &candidate)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil && input.Command != nil {
+			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "role_binding_id", existing.ID.String()); err != nil {
+				return nil, err
+			}
+			return &roleBindingMutationResult{Value: existing, NoOp: true}, nil
 		}
 		if err := insertRoleBinding(ctx, tx, &candidate); err != nil {
 			return nil, err
@@ -119,8 +142,10 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 		); err != nil {
 			return nil, fmt.Errorf("complete role binding creation audit: %w", err)
 		}
-		return &candidate, nil
-	})
+		return &roleBindingMutationResult{Value: &candidate}, nil
+	}
+	return s.runRoleBindingMutation(ctx, "audited role binding save", input.Command, input.AuditEventID, input.AuditAt,
+		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
 }
 
 // lockExpectedRoleForBinding closes the read-check-write race between the
@@ -142,15 +167,8 @@ func lockExpectedRoleForBinding(ctx context.Context, tx *sqlxTxWrapper, roleID m
 }
 
 func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.RoleBinding) error {
-	if candidate.ScopeType == model.RoleScopeClass {
-		if err := lockClassLifecycle(ctx, tx); err != nil {
-			return err
-		}
-	}
-	lockKey := candidate.UserID.String() + ":" + candidate.RoleID.String() + ":" +
-		string(candidate.ScopeType) + ":" + candidate.ScopeID
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
-		return fmt.Errorf("lock role binding grant: %w", err)
+	if err := lockRoleBindingGrantTuple(ctx, tx, candidate); err != nil {
+		return err
 	}
 	if err := validateRoleBindingReferences(ctx, tx, candidate); err != nil {
 		return err
@@ -191,6 +209,20 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 			"save role binding: %w",
 			translateError("role_binding", candidate.ID.String(), err),
 		)
+	}
+	return nil
+}
+
+func lockRoleBindingGrantTuple(ctx context.Context, tx *sqlxTxWrapper, candidate *model.RoleBinding) error {
+	if candidate.ScopeType == model.RoleScopeClass {
+		if err := lockClassLifecycle(ctx, tx); err != nil {
+			return err
+		}
+	}
+	lockKey := candidate.UserID.String() + ":" + candidate.RoleID.String() + ":" +
+		string(candidate.ScopeType) + ":" + candidate.ScopeID
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		return fmt.Errorf("lock role binding grant: %w", err)
 	}
 	return nil
 }
@@ -396,7 +428,20 @@ func (s SQLRoleBindingStore) EndWithAudit(
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("role_binding", "end", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role binding end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*roleBindingMutationResult, error) {
+		current, err := getRoleBindingInTransaction(ctx, tx, input.ID)
+		if err != nil {
+			return nil, err
+		}
+		if current.EndsAt.Valid && !current.EndsAt.Time.After(model.TimeFromMillis(input.EndAt)) {
+			if input.Command == nil {
+				return nil, store.NewErrConflict("role_binding", "end_at", nil)
+			}
+			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "role_binding_id", current.ID.String()); err != nil {
+				return nil, err
+			}
+			return &roleBindingMutationResult{Value: current, NoOp: true}, nil
+		}
 		ended, err := endRoleBinding(ctx, tx, input.ID, input.EndAt, input.Capabilities)
 		if err != nil {
 			return nil, err
@@ -410,8 +455,91 @@ func (s SQLRoleBindingStore) EndWithAudit(
 		); err != nil {
 			return nil, fmt.Errorf("complete role binding end audit: %w", err)
 		}
-		return ended, nil
+		return &roleBindingMutationResult{Value: ended}, nil
+	}
+	return s.runRoleBindingMutation(ctx, "audited role binding end", input.Command, input.AuditEventID, input.AuditAt,
+		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
+}
+
+func (s SQLRoleBindingStore) runRoleBindingMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID string, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*roleBindingMutationResult, error)) (*model.RoleBinding, error) {
+	if command == nil {
+		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, operation, execute)
+		if err != nil {
+			return nil, err
+		}
+		setOutput(false, result.NoOp)
+		return result.Value, nil
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent "+operation, idempotentMutation[*roleBindingMutationResult]{
+		command: command, auditEventID: auditID, execute: execute,
+		encode: encodeRoleBindingMutationOutcome, decode: decodeRoleBindingMutationOutcome,
+		onboardingOutcome: func(value *roleBindingMutationResult) (onboardingImportCommandResult, error) {
+			return administrativeOnboardingOutcome(value.Value.ID.String(), value.NoOp)
+		},
+		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *roleBindingMutationResult) (*roleBindingMutationResult, error) {
+			hydrated, hydrateErr := getRoleBindingInTransaction(ctx, tx, value.Value.ID.String())
+			if hydrateErr != nil {
+				return nil, hydrateErr
+			}
+			value.Value = hydrated
+			return value, nil
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *roleBindingMutationResult, original string) error {
+			return completeAdministrativeReplayAudit(ctx, tx, auditID, auditAt, "role_binding_id", value.Value.ID.String(), value.NoOp, original)
+		},
 	})
+	if err != nil {
+		return nil, err
+	}
+	setOutput(result.Replayed, result.Value.NoOp)
+	return result.Value.Value, nil
+}
+
+func findExactRoleBinding(ctx context.Context, tx sqlxExecutor, candidate *model.RoleBinding) (*model.RoleBinding, error) {
+	var endAt any
+	if candidate.EndsAt.Valid {
+		endAt = candidate.EndsAt.Time
+	}
+	var row roleBindingRow
+	err := tx.Get(ctx, &row, `SELECT id,created_at,updated_at,archived_at,user_id,role_id,origin_invitation_id,origin_academic_unit_member_id,scope_type,scope_id,start_at,end_at
+		FROM role_bindings WHERE user_id=? AND role_id=? AND scope_type=? AND scope_id=? AND start_at=? AND end_at IS NOT DISTINCT FROM ? AND archived_at IS NULL ORDER BY id LIMIT 1`,
+		candidate.UserID.String(), candidate.RoleID.String(), candidate.ScopeType, candidate.ScopeID, candidate.StartsAt, endAt)
+	if isNoRows(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find exact role binding: %w", err)
+	}
+	return row.model()
+}
+
+func encodeRoleBindingMutationOutcome(value *roleBindingMutationResult) ([]byte, error) {
+	if value == nil || value.Value == nil || !value.Value.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("role_binding", "command_outcome", nil)
+	}
+	return encodeCommandOutcome(roleBindingCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
+}
+func decodeRoleBindingMutationOutcome(version int, data []byte) (*roleBindingMutationResult, error) {
+	if version != 1 {
+		return nil, fmt.Errorf("unsupported role binding outcome version %d", version)
+	}
+	var outcome roleBindingCommandOutcome
+	if err := decodeCommandOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	id, err := model.ParseRoleBindingID(outcome.ID)
+	if err != nil {
+		return nil, invalidPersistedState("command_outcome", "role_binding_id", err)
+	}
+	return &roleBindingMutationResult{Value: &model.RoleBinding{ID: id}, NoOp: outcome.NoOp}, nil
+}
+
+func getRoleBindingInTransaction(ctx context.Context, tx sqlxExecutor, id string) (*model.RoleBinding, error) {
+	var row roleBindingRow
+	if err := tx.Get(ctx, &row, `SELECT id,created_at,updated_at,archived_at,user_id,role_id,origin_invitation_id,origin_academic_unit_member_id,scope_type,scope_id,start_at,end_at FROM role_bindings WHERE id=? AND archived_at IS NULL`, id); err != nil {
+		return nil, translateError("role_binding", id, err)
+	}
+	return row.model()
 }
 
 func endRoleBinding(ctx context.Context, tx *sqlxTxWrapper, id string, endAt int64, capabilities store.AccessDeploymentCapabilities) (*model.RoleBinding, error) {

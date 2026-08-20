@@ -12,9 +12,10 @@ type OnboardingImportCommitPolicy string
 type OnboardingImportRowStatus string
 
 const (
-	OnboardingImportStudentClass        OnboardingImportMode = "student_class"
-	OnboardingImportTeacherAcademicUnit OnboardingImportMode = "teacher_academic_unit"
-	OnboardingImportInstitution         OnboardingImportMode = "institution"
+	OnboardingImportStudentClass           OnboardingImportMode = "student_class"
+	OnboardingImportTeacherAcademicUnit    OnboardingImportMode = "teacher_academic_unit"
+	OnboardingImportInstitution            OnboardingImportMode = "institution"
+	OnboardingImportAcademicAdministration OnboardingImportMode = "academic_administration"
 
 	OnboardingImportUploading           OnboardingImportState = "uploading"
 	OnboardingImportParsing             OnboardingImportState = "parsing"
@@ -45,7 +46,7 @@ func (id OnboardingImportID) IsValid() bool     { return IsValidId(string(id)) }
 func (id OnboardingImportID) IsZero() bool      { return id == "" }
 
 func (mode OnboardingImportMode) IsValid() bool {
-	return mode == OnboardingImportStudentClass || mode == OnboardingImportTeacherAcademicUnit || mode == OnboardingImportInstitution
+	return mode == OnboardingImportStudentClass || mode == OnboardingImportTeacherAcademicUnit || mode == OnboardingImportInstitution || mode == OnboardingImportAcademicAdministration
 }
 
 func (state OnboardingImportState) IsValid() bool {
@@ -79,7 +80,8 @@ func ValidateOnboardingImportScope(mode OnboardingImportMode, scopeType RoleScop
 	}
 	if (mode == OnboardingImportStudentClass && scopeType != RoleScopeClass) ||
 		(mode == OnboardingImportTeacherAcademicUnit && scopeType != RoleScopeAcademicUnit) ||
-		(mode == OnboardingImportInstitution && scopeType != RoleScopeInstitution) {
+		(mode == OnboardingImportInstitution && scopeType != RoleScopeInstitution) ||
+		(mode == OnboardingImportAcademicAdministration && scopeType != RoleScopeInstitution && scopeType != RoleScopeAcademicUnit && scopeType != RoleScopeClass) {
 		return fmt.Errorf("model: onboarding import mode and scope do not match")
 	}
 	return nil

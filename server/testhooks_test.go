@@ -109,6 +109,9 @@ func (s *hookStore) DesktopAuthorization() store.DesktopAuthorizationStore {
 }
 func (s *hookStore) UserToken() store.UserTokenStore   { return hookUserTokenStore{} }
 func (s *hookStore) Invitation() store.InvitationStore { return hookInvitationStore{} }
+func (s *hookStore) CommandOutcome() store.CommandOutcomeStore {
+	return hookCommandOutcomeStore{}
+}
 func (s *hookStore) OnboardingImport() store.OnboardingImportStore {
 	return hookOnboardingImportStore{}
 }
@@ -192,6 +195,13 @@ type hookDesktopAuthorizationStore struct {
 }
 type hookUserTokenStore struct{ store.UserTokenStore }
 type hookRoleStore struct{ store.RoleStore }
+type hookCommandOutcomeStore struct{}
+
+func (hookCommandOutcomeStore) Has(context.Context, *store.CommandIdempotency) (bool, error) {
+	return false, nil
+}
+func (hookCommandOutcomeStore) DeleteExpired(context.Context, int) (int64, error) { return 0, nil }
+
 type hookRoleBindingStore struct{ store.RoleBindingStore }
 
 type hookCache struct {

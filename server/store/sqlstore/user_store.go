@@ -670,11 +670,19 @@ func (s SQLUserStore) SetDisabledWithAudit(
 	if input.Disabled {
 		templateKey = model.MailTemplateIdentityAccountDisabled
 	}
-	payloadKeyID, err := validateSecurityNoticeMail(model.UserID(input.ID), input.Occurrence, input.Delivery, input.DeliveryJob, templateKey, input.ChangedAt)
-	if err != nil {
-		return nil, err
+	mailUnprepared := input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil
+	if mailUnprepared && input.Command == nil {
+		return nil, store.NewErrInvalidInput("user", "disabled_state_notice", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user disabled state change", func(ctx context.Context, tx *sqlxTxWrapper) (*store.UserDisabledStateResult, error) {
+	payloadKeyID := ""
+	if !mailUnprepared {
+		var err error
+		payloadKeyID, err = validateSecurityNoticeMail(model.UserID(input.ID), input.Occurrence, input.Delivery, input.DeliveryJob, templateKey, input.ChangedAt)
+		if err != nil {
+			return nil, err
+		}
+	}
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*userDisabledMutationResult, error) {
 		if payloadKeyID != "" {
 			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
 				return nil, err
@@ -691,6 +699,22 @@ func (s SQLUserStore) SetDisabledWithAudit(
 		var lockedUserID string
 		if err := tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL FOR UPDATE`, input.ID); err != nil {
 			return nil, translateError("user", input.ID, err)
+		}
+		currentUser, err := getUserByID(ctx, tx, input.ID)
+		if err != nil {
+			return nil, err
+		}
+		if currentUser.DisabledAt.Valid == input.Disabled {
+			if input.Command == nil {
+				return nil, store.NewErrConflict("user", "disabled_state", nil)
+			}
+			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "user_id", currentUser.ID.String()); err != nil {
+				return nil, err
+			}
+			return &userDisabledMutationResult{Value: &store.UserDisabledStateResult{User: currentUser, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}, NoOp: true}, nil
+		}
+		if mailUnprepared {
+			return nil, store.NewErrInvalidInput("user", "disabled_state_notice", nil)
 		}
 		// Serialize disabling with login and refresh rotation before changing the
 		// user row. A login that commits first is included in the revocation; one
@@ -791,8 +815,70 @@ func (s SQLUserStore) SetDisabledWithAudit(
 		); err != nil {
 			return nil, fmt.Errorf("complete user disabled state audit: %w", err)
 		}
-		return result, nil
+		return &userDisabledMutationResult{Value: result}, nil
+	}
+	if input.Command == nil {
+		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "audited user disabled state change", execute)
+		if err != nil {
+			return nil, err
+		}
+		input.NoOp = result.NoOp
+		return result.Value, nil
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent user disabled state change", idempotentMutation[*userDisabledMutationResult]{
+		command: input.Command, auditEventID: input.AuditEventID, execute: execute,
+		encode: encodeUserDisabledMutationOutcome, decode: decodeUserDisabledMutationOutcome,
+		onboardingOutcome: func(value *userDisabledMutationResult) (onboardingImportCommandResult, error) {
+			return administrativeOnboardingOutcome(value.Value.User.ID.String(), value.NoOp)
+		},
+		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *userDisabledMutationResult) (*userDisabledMutationResult, error) {
+			user, hydrateErr := getUserByID(ctx, tx, value.Value.User.ID.String())
+			if hydrateErr != nil {
+				return nil, hydrateErr
+			}
+			value.Value = &store.UserDisabledStateResult{User: user, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}
+			return value, nil
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *userDisabledMutationResult, original string) error {
+			return completeAdministrativeReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, "user_id", value.Value.User.ID.String(), value.NoOp, original)
+		},
 	})
+	if err != nil {
+		return nil, err
+	}
+	input.Replayed, input.NoOp = result.Replayed, result.Value.NoOp
+	return result.Value.Value, nil
+}
+
+type userDisabledMutationResult struct {
+	Value *store.UserDisabledStateResult
+	NoOp  bool
+}
+
+type userDisabledCommandOutcome struct {
+	UserID string `json:"user_id"`
+	NoOp   bool   `json:"no_op,omitempty"`
+}
+
+func encodeUserDisabledMutationOutcome(value *userDisabledMutationResult) ([]byte, error) {
+	if value == nil || value.Value == nil || value.Value.User == nil || !value.Value.User.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("user", "command_outcome", nil)
+	}
+	return encodeCommandOutcome(userDisabledCommandOutcome{UserID: value.Value.User.ID.String(), NoOp: value.NoOp})
+}
+func decodeUserDisabledMutationOutcome(version int, data []byte) (*userDisabledMutationResult, error) {
+	if version != 1 {
+		return nil, fmt.Errorf("unsupported user disabled outcome version %d", version)
+	}
+	var outcome userDisabledCommandOutcome
+	if err := decodeCommandOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	id, err := model.ParseUserID(outcome.UserID)
+	if err != nil {
+		return nil, invalidPersistedState("command_outcome", "user_id", err)
+	}
+	return &userDisabledMutationResult{Value: &store.UserDisabledStateResult{User: &model.User{ID: id}}, NoOp: outcome.NoOp}, nil
 }
 
 func setUserDisabled(

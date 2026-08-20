@@ -73,6 +73,11 @@ func (s *roleBindingRoleStoreFake) Get(context.Context, string) (*model.Role, er
 	return s.role, s.err
 }
 
+func (s *roleBindingRoleStoreFake) GetIncludingArchived(context.Context, string) (*model.Role, error) {
+	*s.events = append(*s.events, "get-role-including-archived")
+	return s.role, s.err
+}
+
 type roleBindingEffectsFake struct{ events *[]string }
 
 func (e *roleBindingEffectsFake) AuthorizationChangedForUser(context.Context, string) {
@@ -131,6 +136,30 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 	}
 	want := []string{"authorize-binding-scope", "get-role"}
 	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	userID, roleID, scopeID := model.NewUserID(), model.NewRoleID(), model.NewId()
+	created := &model.RoleBinding{ID: model.NewRoleBindingID(), UserID: userID, RoleID: roleID, ScopeType: model.RoleScopeInstitution, ScopeID: scopeID}
+	persistence := &roleBindingStoreFake{events: &events, createResult: created}
+	archivedRole := &model.Role{ID: roleID, Name: "teacher", Permissions: []string{string(model.ActionClassMembersManage)},
+		UpdatedAt: model.TimeFromMillis(300), ArchivedAt: model.OptionalTimeFromMillis(300)}
+	service := newRoleBindingService(persistence,
+		&roleBindingRoleStoreFake{events: &events, role: archivedRole},
+		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: scopeID}},
+		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&roleBindingEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
+	result, err := service.Create(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+		CreateRoleBindingCommand{UserID: userID.String(), RoleID: roleID.String(), ScopeType: model.RoleScopeInstitution,
+			ScopeID: scopeID, StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
+	if err != nil || result == nil || persistence.createInput == nil {
+		t.Fatalf("retained create = %#v, %v, input %#v", result, err, persistence.createInput)
+	}
+	if want := []string{"authorize-binding-scope", "get-role-including-archived", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
 }

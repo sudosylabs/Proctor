@@ -501,6 +501,12 @@ validated CSV Invitation imports are also implemented: bounded private uploads
 produce asynchronous immutable previews, explicit idempotent commits queue one
 resumable per-row execution Job, and safe seven-day reports expose only row
 references, outcomes, created Invitation IDs, and closed public codes.
+Bounded JSON and CSV existing-User academic administration batches now cover
+the closed Affiliation, Academic Unit membership, Class membership/transfer,
+Role Binding, account-state, and selected-User Session operations. Rows reuse
+the ordinary use cases and named PostgreSQL aggregates, retain minimal
+idempotent outcomes atomically, reauthorize at terminal mutation, and expose
+only safe resource IDs and closed outcomes.
 The closed authorization registry now distinguishes Academic Unit
 membership, Programme, Programme Level, Academic Period, Class, Class
 membership, progression, Access Policy, Invitation, onboarding batch,

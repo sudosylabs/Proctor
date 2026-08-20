@@ -550,6 +550,15 @@ Programme Level, and Class canonical names; teacher and role targets use exact
 Academic Unit and role names. Unknown columns are ignored as requested but
 their header names appear once in preview so misspellings are visible.
 
+Existing-User academic administration CSV selects one exact Institution,
+Academic Unit, or Class scope outside the file. Each row names one operation
+from the same closed JSON union plus a stable reference and only its applicable
+`user_id`, `relationship_id`, `role_id`, `affiliation_kind`, `start_at`, and
+`end_at` fields. It never accepts identity attachment, credential intervention,
+MFA removal, deletion, an arbitrary command name, or a per-row scope escape.
+Preview freezes the resolved User/relationship, target revision, Role revision,
+and effective bounds before commit.
+
 Initial immutable limits are 10 MiB, 50,000 data rows, UTF-8 with optional BOM,
 RFC 4180-compatible quoting, unique bounded headers and fields, and no NUL or
 invalid Unicode. Original CSV bytes are deleted after normalized preview

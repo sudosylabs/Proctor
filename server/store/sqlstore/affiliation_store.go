@@ -10,6 +10,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -38,6 +39,16 @@ type affiliationRow struct {
 	EndAt      sql.NullTime          `db:"end_at"`
 }
 
+type affiliationMutationResult struct {
+	Value *model.Affiliation
+	NoOp  bool
+}
+
+type affiliationCommandOutcome struct {
+	ID   string `json:"id"`
+	NoOp bool   `json:"no_op,omitempty"`
+}
+
 func affiliationColumns() []string {
 	return []string{
 		"affiliations.id", "affiliations.created_at", "affiliations.updated_at",
@@ -64,12 +75,22 @@ func (s SQLAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 	if appErr != nil {
 		return nil, appErr
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*affiliationMutationResult, error) {
 		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
 			return nil, err
 		}
 		if err := lockAffiliationKind(ctx, tx, candidate.UserID.String(), candidate.Kind); err != nil {
 			return nil, err
+		}
+		existing, err := findExactAffiliation(ctx, tx, &candidate)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil && input.Command != nil {
+			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "affiliation_id", existing.ID.String()); err != nil {
+				return nil, err
+			}
+			return &affiliationMutationResult{Value: existing, NoOp: true}, nil
 		}
 		if err := ensureAffiliationRangeAvailable(ctx, tx, &candidate); err != nil {
 			return nil, err
@@ -85,8 +106,32 @@ func (s SQLAffiliationStore) Create(ctx context.Context, input *store.Affiliatio
 		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 			return nil, fmt.Errorf("complete affiliation creation audit: %w", err)
 		}
-		return &candidate, nil
+		return &affiliationMutationResult{Value: &candidate}, nil
+	}
+	if input.Command == nil {
+		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation creation", execute)
+		if err != nil {
+			return nil, err
+		}
+		input.NoOp = result.NoOp
+		return result.Value, nil
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent affiliation creation", idempotentMutation[*affiliationMutationResult]{
+		command: input.Command, auditEventID: input.AuditEventID, execute: execute,
+		encode: encodeAffiliationMutationOutcome, decode: decodeAffiliationMutationOutcome,
+		hydrateReplay: s.hydrateAffiliationMutationOutcome,
+		onboardingOutcome: func(value *affiliationMutationResult) (onboardingImportCommandResult, error) {
+			return administrativeOnboardingOutcome(value.Value.ID.String(), value.NoOp)
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *affiliationMutationResult, original string) error {
+			return completeAdministrativeReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, "affiliation_id", value.Value.ID.String(), value.NoOp, original)
+		},
 	})
+	if err != nil {
+		return nil, err
+	}
+	input.Replayed, input.NoOp = result.Replayed, result.Value.NoOp
+	return result.Value.Value, nil
 }
 
 func newSQLAffiliationStore(ss *SQLStore) store.AffiliationStore {
@@ -193,9 +238,22 @@ func (s SQLAffiliationStore) EndWithAudit(ctx context.Context, input *store.Affi
 	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*affiliationMutationResult, error) {
 		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
 			return nil, err
+		}
+		before, err := s.getAffiliationInTransaction(ctx, tx, input.ID)
+		if err != nil {
+			return nil, err
+		}
+		if before.EndsAt.Valid {
+			if input.Command == nil {
+				return nil, store.NewErrConflict("affiliation", "revision", nil)
+			}
+			if err = completeAdministrativeNoOpAudit(ctx, tx, input.AuditEventID, input.AuditAt, "affiliation_id", before.ID.String()); err != nil {
+				return nil, err
+			}
+			return &affiliationMutationResult{Value: before, NoOp: true}, nil
 		}
 		current, err := s.endAffiliation(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
 		if err != nil {
@@ -208,8 +266,92 @@ func (s SQLAffiliationStore) EndWithAudit(ctx context.Context, input *store.Affi
 		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 			return nil, fmt.Errorf("complete affiliation end audit: %w", err)
 		}
-		return current, nil
+		return &affiliationMutationResult{Value: current}, nil
+	}
+	if input.Command == nil {
+		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation end", execute)
+		if err != nil {
+			return nil, err
+		}
+		input.NoOp = result.NoOp
+		return result.Value, nil
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent affiliation end", idempotentMutation[*affiliationMutationResult]{
+		command: input.Command, auditEventID: input.AuditEventID, execute: execute,
+		encode: encodeAffiliationMutationOutcome, decode: decodeAffiliationMutationOutcome,
+		hydrateReplay: s.hydrateAffiliationMutationOutcome,
+		onboardingOutcome: func(value *affiliationMutationResult) (onboardingImportCommandResult, error) {
+			return administrativeOnboardingOutcome(value.Value.ID.String(), value.NoOp)
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *affiliationMutationResult, original string) error {
+			return completeAdministrativeReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, "affiliation_id", value.Value.ID.String(), value.NoOp, original)
+		},
 	})
+	if err != nil {
+		return nil, err
+	}
+	input.Replayed, input.NoOp = result.Replayed, result.Value.NoOp
+	return result.Value.Value, nil
+}
+
+func findExactAffiliation(ctx context.Context, tx sqlxExecutor, candidate *model.Affiliation) (*model.Affiliation, error) {
+	var endAt any
+	if candidate.EndsAt.Valid {
+		endAt = candidate.EndsAt.Time
+	}
+	var row affiliationRow
+	err := tx.Get(ctx, &row, `SELECT id,created_at,updated_at,archived_at,revision,user_id,kind,start_at,end_at
+		FROM affiliations WHERE user_id=? AND kind=? AND start_at=? AND end_at IS NOT DISTINCT FROM ? AND archived_at IS NULL
+		ORDER BY id LIMIT 1`, candidate.UserID.String(), candidate.Kind, candidate.StartsAt, endAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find exact affiliation: %w", err)
+	}
+	return row.model()
+}
+
+func encodeAffiliationMutationOutcome(value *affiliationMutationResult) ([]byte, error) {
+	if value == nil || value.Value == nil || !value.Value.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("affiliation", "command_outcome", nil)
+	}
+	return encodeCommandOutcome(affiliationCommandOutcome{ID: value.Value.ID.String(), NoOp: value.NoOp})
+}
+
+func decodeAffiliationMutationOutcome(version int, data []byte) (*affiliationMutationResult, error) {
+	if version != 1 {
+		return nil, fmt.Errorf("unsupported affiliation outcome version %d", version)
+	}
+	var outcome affiliationCommandOutcome
+	if err := decodeCommandOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	id, err := model.ParseAffiliationID(outcome.ID)
+	if err != nil {
+		return nil, invalidPersistedState("command_outcome", "affiliation_id", err)
+	}
+	return &affiliationMutationResult{Value: &model.Affiliation{ID: id}, NoOp: outcome.NoOp}, nil
+}
+
+func (s SQLAffiliationStore) hydrateAffiliationMutationOutcome(ctx context.Context, tx *sqlxTxWrapper, value *affiliationMutationResult) (*affiliationMutationResult, error) {
+	if value == nil || value.Value == nil {
+		return nil, store.NewErrInvalidInput("affiliation", "command_outcome", nil)
+	}
+	hydrated, err := s.getAffiliationInTransaction(ctx, tx, value.Value.ID.String())
+	if err != nil {
+		return nil, err
+	}
+	value.Value = hydrated
+	return value, nil
+}
+
+func (s SQLAffiliationStore) getAffiliationInTransaction(ctx context.Context, tx sqlxExecutor, id string) (*model.Affiliation, error) {
+	var row affiliationRow
+	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.archived_at": nil})); err != nil {
+		return nil, translateError("affiliation", id, err)
+	}
+	return row.model()
 }
 
 func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.Affiliation, error) {

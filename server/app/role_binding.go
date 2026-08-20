@@ -20,16 +20,32 @@ type ListRoleBindingsQuery struct {
 }
 
 type CreateRoleBindingCommand struct {
-	UserID    string
-	RoleID    string
-	ScopeType model.RoleScopeType
-	ScopeID   string
-	StartAt   int64
-	EndAt     int64
+	UserID                    string
+	RoleID                    string
+	ScopeType                 model.RoleScopeType
+	ScopeID                   string
+	StartAt                   int64
+	EndAt                     int64
+	IdempotencyKey            string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type EndRoleBindingCommand struct {
-	ID string
+	ID                        string
+	IdempotencyKey            string
+	BatchScopeType            model.RoleScopeType
+	BatchScopeID              string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type roleBindingStore interface {
@@ -43,6 +59,7 @@ type roleBindingStore interface {
 
 type roleBindingRoleStore interface {
 	Get(context.Context, string) (*model.Role, error)
+	GetIncludingArchived(context.Context, string) (*model.Role, error)
 }
 
 type roleBindingAuthorizer interface {
@@ -159,7 +176,12 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	if command.EndAt > 0 {
 		candidate.EndsAt = model.OptionalTimeFromMillis(command.EndAt)
 	}
-	role, err := s.roles.Get(ctx, candidate.RoleID.String())
+	var role *model.Role
+	if command.batchRetainedOutcome {
+		role, err = s.roles.GetIncludingArchived(ctx, candidate.RoleID.String())
+	} else {
+		role, err = s.roles.Get(ctx, candidate.RoleID.String())
+	}
 	if err != nil {
 		return nil, roleBindingError(err)
 	}
@@ -179,6 +201,26 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	); err != nil {
 		return nil, err
 	}
+	idempotency, err := newCommandIdempotency(invocation, "role_binding.create.v1", command.IdempotencyKey, struct {
+		UserID    string              `json:"user_id"`
+		RoleID    string              `json:"role_id"`
+		ScopeType model.RoleScopeType `json:"scope_type"`
+		ScopeID   string              `json:"scope_id"`
+		StartAt   int64               `json:"start_at"`
+		EndAt     int64               `json:"end_at"`
+	}{userID.String(), roleID.String(), command.ScopeType, scopeID, command.StartAt, command.EndAt})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	if command.batchAuthorization != nil {
+		command.batchAuthorization.DelegatedActions = make([]model.Action, 0, len(delegatedPermissions))
+		for _, permission := range delegatedPermissions {
+			command.batchAuthorization.DelegatedActions = append(command.batchAuthorization.DelegatedActions, model.Action(permission))
+		}
+	}
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	saved, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -191,11 +233,16 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
-			return s.bindings.SaveWithAudit(ctx, &store.RoleBindingCreation{
+			input := &store.RoleBindingCreation{
 				Binding: candidate, ExpectedRoleUpdatedAt: role.UpdatedAt,
 				ExpectedRolePermissions: append([]string(nil), role.Permissions...),
-				AuditEventID:            reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+				AuditEventID:            reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+			}
+			value, storeErr := s.bindings.SaveWithAudit(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		roleBindingError,
 	)
@@ -228,6 +275,20 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, err
 	}
+	if command.BatchScopeID != "" && (command.BatchScopeType != current.ScopeType || strings.TrimSpace(command.BatchScopeID) != current.ScopeID) {
+		return nil, NewError("resource.not_found").WithField("resource", "role_binding")
+	}
+	idempotency, err := newCommandIdempotency(invocation, "role_binding.end.v1", command.IdempotencyKey, struct {
+		ID        string              `json:"id"`
+		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
+		ScopeID   string              `json:"scope_id,omitempty"`
+	}{id, command.BatchScopeType, strings.TrimSpace(command.BatchScopeID)})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	ended, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -241,11 +302,16 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
-			return s.bindings.EndWithAudit(ctx, &store.RoleBindingEnd{
+			input := &store.RoleBindingEnd{
 				ID: id, EndAt: reference.MutationAtMillis,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+			}
+			value, storeErr := s.bindings.EndWithAudit(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		roleBindingError,
 	)
@@ -265,6 +331,9 @@ func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Cont
 }
 
 func roleBindingError(err error) error {
+	if mapped := idempotencyError(err); mapped != nil {
+		return mapped
+	}
 	var appFailure *Error
 	if errors.As(err, &appFailure) {
 		return err

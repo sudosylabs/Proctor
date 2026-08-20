@@ -82,10 +82,6 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	onboardingImports, err := newOnboardingImportService(deps, invitations, authentication, invitationAuthorizationAdapter{authorization: authorization}, mutationAuditAdapter{audit: foundation.audit})
-	if err != nil {
-		return identityConstruction{}, err
-	}
 	accountTokens, err := newAccountTokenService(
 		deps.Store.User(), deps.Store.PasswordCredential(), deps.Store.UserToken(), authenticationAccess,
 		deps.Store.Institution(),
@@ -173,7 +169,6 @@ func constructIdentity(
 		accountTokens:                     accountTokens,
 		publicRegistration:                publicRegistration,
 		invitations:                       invitations,
-		onboardingImports:                 onboardingImports,
 		personalAccessTokenAdministration: personalAccessTokenAdministration,
 	}, nil
 }

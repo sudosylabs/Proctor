@@ -169,6 +169,42 @@ func TestAccountStateReplayDoesNotCreateAnotherNoticeOrAudit(t *testing.T) {
 	}
 }
 
+func TestAccountStateIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	actor := model.NewUserID()
+	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(200), Revision: 3,
+		Username: "student", Email: "student@example.edu", Locale: "en", Timezone: "UTC", DisabledAt: model.OptionalTimeFromMillis(200)}
+	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: user}}
+	mailer := &securityNoticeMailerFake{events: &events}
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{},
+		&institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
+	result, err := service.SetEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
+		SetUserEnabledCommand{ID: user.ID.String(), Enabled: false, IdempotencyKey: "row"})
+	if err != nil || result != user || len(mailer.requests) != 1 || persistence.input == nil || persistence.input.Occurrence == nil {
+		t.Fatalf("idempotent no-op result=%#v error=%v mail=%#v input=%#v", result, err, mailer.requests, persistence.input)
+	}
+}
+
+func TestAccountStateRetainedOutcomeBypassesMailAfterLaterStateChange(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	actor := model.NewUserID()
+	current := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(300), Revision: 4,
+		Username: "student", Email: "student@example.edu", Locale: "en", Timezone: "UTC"}
+	original := *current
+	original.DisabledAt = model.OptionalTimeFromMillis(200)
+	persistence := &accountStateStoreFake{events: &events, user: current, result: &store.UserDisabledStateResult{User: &original}}
+	mailer := &securityNoticeMailerFake{events: &events, err: errors.New("mail unavailable")}
+	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{},
+		&institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
+	result, err := service.SetEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
+		SetUserEnabledCommand{ID: current.ID.String(), Enabled: false, IdempotencyKey: "row", batchRetainedOutcome: true})
+	if err != nil || result != &original && result.ID != original.ID || len(mailer.requests) != 0 {
+		t.Fatalf("retained result=%#v error=%v mail=%#v", result, err, mailer.requests)
+	}
+}
+
 func TestAccountStateMailPreparationFailureStartsNoMutation(t *testing.T) {
 	t.Parallel()
 	events := []string{}

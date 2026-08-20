@@ -1480,6 +1480,12 @@ func (s *timedExamAuthoringStore) Resolve(arg0 context.Context, arg1 model.ExamI
 	})
 }
 
+func (s *timedCommandOutcomeStore) Has(arg0 context.Context, arg1 *store.CommandIdempotency) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodHas), func() (bool, error) {
+		return s.next.Has(arg0, arg1)
+	})
+}
+
 func (s *timedCommandOutcomeStore) DeleteExpired(arg0 context.Context, arg1 int) (int64, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateCommandOutcome, methodDeleteExpired), func() (int64, error) {
 		return s.next.DeleteExpired(arg0, arg1)
@@ -2863,6 +2869,12 @@ func (s *timedRoleStore) SaveWithAudit(arg0 context.Context, arg1 *store.RoleCre
 func (s *timedRoleStore) Get(arg0 context.Context, arg1 string) (*model.Role, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodGet), func() (*model.Role, error) {
 		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedRoleStore) GetIncludingArchived(arg0 context.Context, arg1 string) (*model.Role, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRole, methodGetIncludingArchived), func() (*model.Role, error) {
+		return s.next.GetIncludingArchived(arg0, arg1)
 	})
 }
 

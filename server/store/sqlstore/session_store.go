@@ -469,11 +469,19 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 	if utf8.RuneCountInString(reason) > model.SessionRevocationMaxRunes {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
-	payloadKeyID, err := validateSecurityNoticeMail(model.UserID(input.UserID), input.Occurrence, input.Delivery, input.DeliveryJob, model.MailTemplateIdentitySessionsRevokedByAdmin, input.RevokedAt)
-	if err != nil {
-		return nil, err
+	mailUnprepared := input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil
+	if mailUnprepared && input.Command == nil {
+		return nil, store.NewErrInvalidInput("session", "user_revocation_notice", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user session revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.UserSessionsRevocationResult, error) {
+	payloadKeyID := ""
+	if !mailUnprepared {
+		var err error
+		payloadKeyID, err = validateSecurityNoticeMail(model.UserID(input.UserID), input.Occurrence, input.Delivery, input.DeliveryJob, model.MailTemplateIdentitySessionsRevokedByAdmin, input.RevokedAt)
+		if err != nil {
+			return nil, err
+		}
+	}
+	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*userSessionsMutationResult, error) {
 		if payloadKeyID != "" {
 			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
 				return nil, err
@@ -493,6 +501,9 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 			return nil, err
 		}
 		if len(sessions) > 0 {
+			if mailUnprepared {
+				return nil, store.NewErrInvalidInput("session", "user_revocation_notice", nil)
+			}
 			if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
 				return nil, err
 			}
@@ -509,8 +520,57 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 		); err != nil {
 			return nil, fmt.Errorf("complete user session revocation audit: %w", err)
 		}
-		return &store.UserSessionsRevocationResult{Sessions: sessions, TokenHashes: hashes}, nil
+		return &userSessionsMutationResult{Value: &store.UserSessionsRevocationResult{Sessions: sessions, TokenHashes: hashes}, NoOp: len(sessions) == 0}, nil
+	}
+	if input.Command == nil {
+		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "audited user session revocation", execute)
+		if err != nil {
+			return nil, err
+		}
+		input.NoOp = result.NoOp
+		return result.Value, nil
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent user session revocation", idempotentMutation[*userSessionsMutationResult]{
+		command: input.Command, auditEventID: input.AuditEventID, execute: execute,
+		encode: func(value *userSessionsMutationResult) ([]byte, error) {
+			return encodeCommandOutcome(userSessionsCommandOutcome{UserID: input.UserID, NoOp: value.NoOp})
+		},
+		decode: func(version int, data []byte) (*userSessionsMutationResult, error) {
+			if version != 1 {
+				return nil, fmt.Errorf("unsupported user sessions outcome version %d", version)
+			}
+			var outcome userSessionsCommandOutcome
+			if decodeErr := decodeCommandOutcome(data, &outcome); decodeErr != nil {
+				return nil, decodeErr
+			}
+			if !model.IsValidId(outcome.UserID) {
+				return nil, invalidPersistedState("command_outcome", "user_id", nil)
+			}
+			return &userSessionsMutationResult{Value: &store.UserSessionsRevocationResult{Sessions: []*model.Session{}, TokenHashes: []string{}}, NoOp: outcome.NoOp, UserID: outcome.UserID}, nil
+		},
+		onboardingOutcome: func(value *userSessionsMutationResult) (onboardingImportCommandResult, error) {
+			return administrativeOnboardingOutcome(input.UserID, value.NoOp)
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *userSessionsMutationResult, original string) error {
+			return completeAdministrativeReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, "user_id", value.UserID, value.NoOp, original)
+		},
 	})
+	if err != nil {
+		return nil, err
+	}
+	input.Replayed, input.NoOp = result.Replayed, result.Value.NoOp
+	return result.Value.Value, nil
+}
+
+type userSessionsMutationResult struct {
+	Value  *store.UserSessionsRevocationResult
+	UserID string
+	NoOp   bool
+}
+
+type userSessionsCommandOutcome struct {
+	UserID string `json:"user_id"`
+	NoOp   bool   `json:"no_op,omitempty"`
 }
 
 func revokeOneUserSession(

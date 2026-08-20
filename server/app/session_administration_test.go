@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -223,6 +224,45 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-revoke-all", "publish-revocation"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	userID := model.NewUserID().String()
+	persistence := &sessionAdministrationStoreFake{events: &events, list: []*model.Session{},
+		revokeAllResult: &store.UserSessionsRevocationResult{Sessions: []*model.Session{}, TokenHashes: []string{}}}
+	mailer := &securityNoticeMailerFake{events: &events}
+	service := newSessionAdministrationService(persistence, &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
+		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
+		&sessionAdministrationEffectsFake{events: &events}, time.Now)
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: userID, IdempotencyKey: "row"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(mailer.requests) != 1 || persistence.revokeAllInput == nil || persistence.revokeAllInput.Occurrence == nil {
+		t.Fatalf("idempotent no-op mail=%#v input=%#v", mailer.requests, persistence.revokeAllInput)
+	}
+}
+
+func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	userID := model.NewUserID().String()
+	persistence := &sessionAdministrationStoreFake{events: &events,
+		list:            []*model.Session{{ID: model.NewSessionID(), UserID: model.UserID(userID)}},
+		revokeAllResult: &store.UserSessionsRevocationResult{Sessions: []*model.Session{}, TokenHashes: []string{}}}
+	mailer := &securityNoticeMailerFake{events: &events, err: errors.New("mail unavailable")}
+	service := newSessionAdministrationService(persistence, &sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
+		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
+		&sessionAdministrationEffectsFake{events: &events}, time.Now)
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: userID, IdempotencyKey: "row", batchRetainedOutcome: true}); err != nil {
+		t.Fatal(err)
+	}
+	if len(mailer.requests) != 0 || slices.Contains(events, "list-active") {
+		t.Fatalf("retained mail=%#v events=%v", mailer.requests, events)
 	}
 }
 

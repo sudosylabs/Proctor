@@ -19,14 +19,31 @@ type ListClassMembersQuery struct {
 }
 
 type EnrollClassMemberCommand struct {
-	ClassID string
-	UserID  string
-	StartAt int64
-	EndAt   int64
+	ClassID                   string
+	UserID                    string
+	StartAt                   int64
+	EndAt                     int64
+	ExpectedPreviousID        string
+	RequireTransfer           bool
+	IdempotencyKey            string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type EndClassMemberCommand struct {
-	ID string
+	ID                        string
+	IdempotencyKey            string
+	BatchScopeID              string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type classMemberStore interface {
@@ -98,10 +115,6 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if err != nil {
 		return nil, err
 	}
-	class, err := s.classes.Get(ctx, classID)
-	if err != nil {
-		return nil, classMemberError(err)
-	}
 	parsedClassID, err := model.ParseClassID(classID)
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "class_id").Wrap(err)
@@ -115,6 +128,78 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		return nil, NewError("request.invalid").WithField("field", "class_member_id").Wrap(err)
 	}
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
+	var retainedPrevious *model.ClassMember
+	if command.batchRetainedOutcome && command.RequireTransfer {
+		previousID, parseErr := model.ParseClassMemberID(strings.TrimSpace(command.ExpectedPreviousID))
+		if parseErr != nil {
+			return nil, NewError("request.invalid").WithField("field", "expected_previous_id").Wrap(parseErr)
+		}
+		retainedPrevious, err = s.store.Get(ctx, previousID.String())
+		if err != nil {
+			return nil, classMemberError(err)
+		}
+		if retainedPrevious.UserID != userID {
+			return nil, NewError("resource.not_found").WithField("resource", "class_member")
+		}
+		if _, err = s.authorizeClass(ctx, invocation, retainedPrevious.ClassID.String(), model.ActionClassMembersManage); err != nil {
+			return nil, concealMembershipAuthorizationError(err, "class_member")
+		}
+		if command.batchAuthorization != nil {
+			command.batchAuthorization.ClassMemberID = retainedPrevious.ID
+		}
+	}
+	if command.batchRetainedOutcome {
+		candidate := &model.ClassMember{ClassID: parsedClassID, UserID: userID, StartsAt: model.TimeFromMillis(command.StartAt), EndsAt: model.OptionalTimeFromMillis(command.EndAt)}
+		candidate.PrepareCreate(memberID, at)
+		idempotency, commandErr := newCommandIdempotency(invocation, "class_member.enroll.v1", command.IdempotencyKey, struct {
+			ClassID            string `json:"class_id"`
+			UserID             string `json:"user_id"`
+			StartAt            int64  `json:"start_at"`
+			EndAt              int64  `json:"end_at"`
+			ExpectedPreviousID string `json:"expected_previous_id,omitempty"`
+			Transfer           bool   `json:"transfer"`
+		}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer})
+		if commandErr != nil {
+			return nil, commandErr
+		}
+		bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+		bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+		bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
+		result, replayErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
+			Resource: resource, Operation: "enroll", Value: candidate.Auditable()}, func() time.Time { return at },
+			func(ctx context.Context, reference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
+				execute := func(ctx context.Context, sourceAuditID string) (*store.ClassEnrollmentResult, error) {
+					input := &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: 1,
+						AuditEventID: reference.ID, PreviousAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis, Command: idempotency}
+					if retainedPrevious != nil {
+						input.ExpectedPreviousID = retainedPrevious.ID
+					}
+					value, storeErr := s.store.EnrollWithAudit(ctx, input)
+					if command.batchReplayed != nil {
+						*command.batchReplayed = input.Replayed || input.NoOp
+					}
+					return value, storeErr
+				}
+				if retainedPrevious == nil {
+					return execute(ctx, "")
+				}
+				sourceAttempt := mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
+					Resource:  model.Resource{Type: model.ResourceClass, ID: retainedPrevious.ClassID.String()},
+					Operation: "transfer_out", Prior: retainedPrevious.Auditable()}
+				return runAuditedMutation(ctx, s.audit, sourceAttempt, func() time.Time { return at },
+					func(ctx context.Context, sourceReference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
+						return execute(ctx, sourceReference.ID)
+					}, classMemberError)
+			}, classMemberError)
+		if replayErr != nil {
+			return nil, replayErr
+		}
+		return &model.ClassEnrollment{Membership: result.Membership, Previous: result.Previous}, nil
+	}
+	class, err := s.classes.Get(ctx, classID)
+	if err != nil {
+		return nil, classMemberError(err)
+	}
 	candidate := &model.ClassMember{
 		ClassID:          parsedClassID,
 		AcademicPeriodID: class.AcademicPeriodID,
@@ -126,18 +211,34 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("class_member.invalid", err)
 	}
-	active, err := s.store.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(candidate.StartsAt))
-	if err != nil {
-		return nil, classMemberError(err)
-	}
 	var previous *model.ClassMember
-	for _, membership := range active {
-		if membership != nil && membership.AcademicPeriodID == candidate.AcademicPeriodID {
-			if previous != nil {
+	possibleReplay := command.batchRetainedOutcome
+	if !command.batchRetainedOutcome {
+		active, listErr := s.store.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(candidate.StartsAt))
+		if listErr != nil {
+			return nil, classMemberError(listErr)
+		}
+		for _, membership := range active {
+			if membership != nil && membership.AcademicPeriodID == candidate.AcademicPeriodID {
+				if previous != nil {
+					return nil, NewError("class.enrollment_conflict").WithField("resource", "class_member")
+				}
+				previous = membership
+			}
+		}
+		if command.IdempotencyKey != "" {
+			expectedPreviousID := strings.TrimSpace(command.ExpectedPreviousID)
+			switch {
+			case command.RequireTransfer && (previous == nil || (previous.ID.String() != expectedPreviousID && previous.ClassID != candidate.ClassID)):
+				return nil, NewError("class.enrollment_conflict").WithField("resource", "class_member")
+			case !command.RequireTransfer && previous != nil && previous.ClassID != candidate.ClassID:
 				return nil, NewError("class.enrollment_conflict").WithField("resource", "class_member")
 			}
-			previous = membership
 		}
+		possibleReplay = command.IdempotencyKey != "" && previous != nil && previous.ClassID == candidate.ClassID
+	}
+	if possibleReplay {
+		previous = nil
 	}
 	var previousClass *model.Class
 	if previous != nil {
@@ -152,9 +253,29 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			return nil, classMemberError(err)
 		}
 	}
-	recipient, err := s.users.Get(ctx, userID.String())
+	idempotency, err := newCommandIdempotency(invocation, "class_member.enroll.v1", command.IdempotencyKey, struct {
+		ClassID            string `json:"class_id"`
+		UserID             string `json:"user_id"`
+		StartAt            int64  `json:"start_at"`
+		EndAt              int64  `json:"end_at"`
+		ExpectedPreviousID string `json:"expected_previous_id,omitempty"`
+		Transfer           bool   `json:"transfer"`
+	}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer})
 	if err != nil {
-		return nil, classMemberError(err)
+		return nil, err
+	}
+	if previous != nil && command.batchAuthorization != nil {
+		command.batchAuthorization.ClassMemberID = previous.ID
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
+	recipient := &model.User{ID: userID, Revision: 1}
+	if !command.batchRetainedOutcome {
+		recipient, err = s.users.Get(ctx, userID.String())
+		if err != nil {
+			return nil, classMemberError(err)
+		}
 	}
 	details := ClassTransitionMailDetails{ClassDisplayName: class.DisplayName, StartsAt: candidate.StartsAt}
 	if candidate.EndsAt.Valid {
@@ -165,11 +286,14 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		key = model.MailTemplateAcademicClassTransferred
 		details.PreviousClassDisplayName = previousClass.DisplayName
 	}
-	prepared, err := s.mail.PrepareClassTransition(ClassTransitionMailPreparation{Recipient: recipient,
-		OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key,
-		Details: details, ActionAt: at})
-	if err != nil {
-		return nil, NewError("mail.unavailable").Wrap(err)
+	var prepared *preparedDirectMail
+	if !command.batchRetainedOutcome {
+		prepared, err = s.mail.PrepareClassTransition(ClassTransitionMailPreparation{Recipient: recipient,
+			OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key,
+			Details: details, ActionAt: at})
+		if err != nil {
+			return nil, NewError("mail.unavailable").Wrap(err)
+		}
 	}
 	destinationAttempt := mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
 		Resource: resource, Operation: "enroll", Value: candidate.Auditable()}
@@ -180,11 +304,20 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		func(ctx context.Context, destinationReference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
 			var expectedPreviousID model.ClassMemberID
 			if previous == nil {
-				return s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
+				var notice *store.PreparedMail
+				if prepared != nil {
+					notice = &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job}
+				}
+				input := &store.ClassMemberEnrollment{
 					Member: candidate, ExpectedRecipientRevision: recipient.Revision,
-					Notice:       &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job},
-					AuditEventID: destinationReference.ID, AuditAt: destinationReference.MutationAtMillis,
-				})
+					Notice:       notice,
+					AuditEventID: destinationReference.ID, AuditAt: destinationReference.MutationAtMillis, Command: idempotency,
+				}
+				value, storeErr := s.store.EnrollWithAudit(ctx, input)
+				if command.batchReplayed != nil {
+					*command.batchReplayed = input.Replayed || input.NoOp
+				}
+				return value, storeErr
 			}
 			expectedPreviousID = previous.ID
 			sourceAttempt := mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
@@ -193,12 +326,21 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			return runAuditedMutation(ctx, s.audit, sourceAttempt,
 				func() time.Time { return model.TimeFromMillis(destinationReference.MutationAtMillis) },
 				func(ctx context.Context, sourceReference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
-					return s.store.EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
+					var notice *store.PreparedMail
+					if prepared != nil {
+						notice = &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job}
+					}
+					input := &store.ClassMemberEnrollment{
 						Member: candidate, ExpectedPreviousID: expectedPreviousID, ExpectedRecipientRevision: recipient.Revision,
-						Notice:       &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job},
+						Notice:       notice,
 						AuditEventID: destinationReference.ID, PreviousAuditEventID: sourceReference.ID,
-						AuditAt: destinationReference.MutationAtMillis,
-					})
+						AuditAt: destinationReference.MutationAtMillis, Command: idempotency,
+					}
+					value, storeErr := s.store.EnrollWithAudit(ctx, input)
+					if command.batchReplayed != nil {
+						*command.batchReplayed = input.Replayed || input.NoOp
+					}
+					return value, storeErr
 				}, classMemberError)
 		},
 		classMemberError,
@@ -223,6 +365,30 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	); err != nil {
 		return nil, err
 	}
+	if command.batchRetainedOutcome {
+		idempotency, err := newCommandIdempotency(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
+			ID      string `json:"id"`
+			ScopeID string `json:"scope_id,omitempty"`
+		}{id, strings.TrimSpace(command.BatchScopeID)})
+		if err != nil {
+			return nil, err
+		}
+		bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+		bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+		bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
+		at := model.TimeFromMillis(model.MillisFromTime(s.now()))
+		return runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
+			Resource: model.Resource{Type: model.ResourceClass, ID: strings.TrimSpace(command.BatchScopeID)}, Operation: "end"},
+			func() time.Time { return at }, func(ctx context.Context, reference mutationAttemptReference) (*model.ClassMember, error) {
+				input := &store.ClassMemberEnd{ID: id, ExpectedRevision: 1, ExpectedRecipientRevision: 1,
+					EndAt: reference.MutationAtMillis, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency}
+				value, storeErr := s.store.EndWithAudit(ctx, input)
+				if command.batchReplayed != nil {
+					*command.batchReplayed = input.Replayed || input.NoOp
+				}
+				return value, storeErr
+			}, classMemberError)
+	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, classMemberError(err)
@@ -231,21 +397,37 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, concealMembershipAuthorizationError(err, "class_member")
 	}
+	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.ClassID.String() {
+		return nil, NewError("resource.not_found").WithField("resource", "class_member")
+	}
 	class, err := s.classes.Get(ctx, current.ClassID.String())
 	if err != nil {
 		return nil, classMemberError(err)
 	}
+	idempotency, err := newCommandIdempotency(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
+		ID      string `json:"id"`
+		ScopeID string `json:"scope_id,omitempty"`
+	}{id, strings.TrimSpace(command.BatchScopeID)})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	recipient, err := s.users.Get(ctx, current.UserID.String())
 	if err != nil {
 		return nil, classMemberError(err)
 	}
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
-	prepared, err := s.mail.PrepareClassTransition(ClassTransitionMailPreparation{Recipient: recipient,
-		OccurrenceID: model.NewMailOccurrenceID(),
-		TemplateKey:  model.MailTemplateAcademicClassEnrollmentEnded,
-		Details:      ClassTransitionMailDetails{ClassDisplayName: class.DisplayName, StartsAt: current.StartsAt, EndsAt: at}, ActionAt: at})
-	if err != nil {
-		return nil, NewError("mail.unavailable").Wrap(err)
+	prepared := &preparedDirectMail{}
+	if !command.batchRetainedOutcome {
+		prepared, err = s.mail.PrepareClassTransition(ClassTransitionMailPreparation{Recipient: recipient,
+			OccurrenceID: model.NewMailOccurrenceID(),
+			TemplateKey:  model.MailTemplateAcademicClassEnrollmentEnded,
+			Details:      ClassTransitionMailDetails{ClassDisplayName: class.DisplayName, StartsAt: current.StartsAt, EndsAt: at}, ActionAt: at})
+		if err != nil {
+			return nil, NewError("mail.unavailable").Wrap(err)
+		}
 	}
 	return runAuditedMutation(
 		ctx,
@@ -259,12 +441,17 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		},
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ClassMember, error) {
-			return s.store.EndWithAudit(ctx, &store.ClassMemberEnd{
+			input := &store.ClassMemberEnd{
 				ID: id, ExpectedRevision: current.Revision, ExpectedRecipientRevision: recipient.Revision,
 				EndAt:        reference.MutationAtMillis,
 				Notice:       &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job},
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+			}
+			value, storeErr := s.store.EndWithAudit(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		classMemberError,
 	)
@@ -282,6 +469,9 @@ func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invo
 }
 
 func classMemberError(err error) error {
+	if mapped := idempotencyError(err); mapped != nil {
+		return mapped
+	}
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").WithField("resource", "class_member").Wrap(err)
 	}

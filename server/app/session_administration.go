@@ -24,7 +24,14 @@ type RevokeUserSessionCommand struct {
 }
 
 type RevokeUserSessionsCommand struct {
-	UserID string
+	UserID                    string
+	IdempotencyKey            string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type sessionAdministrationStore interface {
@@ -204,9 +211,23 @@ func (s *sessionAdministrationService) RevokeAll(
 		return sessionAdministrationError(err)
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
-	prepared, err := s.prepareRevocationNotice(user, now)
+	idempotency, err := newCommandIdempotency(invocation, "user_sessions.revoke.v1", command.IdempotencyKey, struct {
+		UserID string `json:"user_id"`
+	}{userID})
 	if err != nil {
-		return sessionAdministrationError(err)
+		return err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
+	prepared := &preparedDirectMail{}
+	if !command.batchRetainedOutcome {
+		recipient := *user
+		recipient.DisabledAt = model.OptionalTime{}
+		prepared, err = s.prepareRevocationNotice(&recipient, now)
+		if err != nil {
+			return sessionAdministrationError(err)
+		}
 	}
 	result, err := runAuditedMutation(
 		ctx,
@@ -220,19 +241,26 @@ func (s *sessionAdministrationService) RevokeAll(
 		},
 		func() time.Time { return now },
 		func(ctx context.Context, reference mutationAttemptReference) (*store.UserSessionsRevocationResult, error) {
-			return s.sessions.RevokeAllForUserWithAudit(ctx, &store.UserSessionsRevocation{
+			input := &store.UserSessionsRevocation{
 				UserID: userID, RevokedAt: reference.MutationAtMillis,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
 				Reason:       "sessions revoked by administrator",
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+			}
+			value, storeErr := s.sessions.RevokeAllForUserWithAudit(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		sessionAdministrationError,
 	)
 	if err != nil {
 		return err
 	}
-	s.effects.SessionsRevoked(ctx, userID, result.Sessions, result.TokenHashes)
+	if result != nil && len(result.Sessions) > 0 {
+		s.effects.SessionsRevoked(ctx, userID, result.Sessions, result.TokenHashes)
+	}
 	return nil
 }
 
@@ -288,6 +316,9 @@ func (e sessionAdministrationRealtimeEffects) SessionsRevoked(
 }
 
 func sessionAdministrationError(err error) error {
+	if mapped := idempotencyError(err); mapped != nil {
+		return mapped
+	}
 	switch {
 	case store.IsNotFound(err):
 		return NewError("session.not_found").WithField("resource", "session").Wrap(err)

@@ -423,6 +423,10 @@ func (recoveryInstitutionStore) Archive(context.Context, string, int64) error {
 
 type recoveryRoleStore struct{ root *recoveryAuthorizationStore }
 
+func (s recoveryRoleStore) GetIncludingArchived(ctx context.Context, id string) (*model.Role, error) {
+	return s.Get(ctx, id)
+}
+
 func (s recoveryRoleStore) GetByIds(_ context.Context, ids []string) ([]*model.Role, error) {
 	out := make([]*model.Role, 0, len(ids))
 	for _, id := range ids {

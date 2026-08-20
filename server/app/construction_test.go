@@ -226,6 +226,10 @@ func (constructionCommandOutcomeStoreStub) DeleteExpired(context.Context, int) (
 	return 0, nil
 }
 
+func (constructionCommandOutcomeStoreStub) Has(context.Context, *store.CommandIdempotency) (bool, error) {
+	return false, nil
+}
+
 func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 	t.Parallel()
 

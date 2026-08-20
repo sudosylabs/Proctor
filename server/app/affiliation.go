@@ -18,14 +18,30 @@ type ListAffiliationsQuery struct {
 }
 
 type CreateAffiliationCommand struct {
-	UserID  string
-	Kind    model.AffiliationKind
-	StartAt int64
-	EndAt   int64
+	UserID                    string
+	Kind                      model.AffiliationKind
+	StartAt                   int64
+	EndAt                     int64
+	IdempotencyKey            string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type EndAffiliationCommand struct {
-	ID string
+	ID                        string
+	IdempotencyKey            string
+	BatchScopeType            model.RoleScopeType
+	BatchScopeID              string
+	batchReplayed             *bool
+	batchAuthorization        *store.CommandAuthorization
+	batchMetadata             *store.CommandBatch
+	batchRetainedOutcome      bool
+	onboardingImportID        model.OnboardingImportID
+	onboardingImportRowNumber int
 }
 
 type affiliationStore interface {
@@ -107,6 +123,18 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("affiliation.invalid", err)
 	}
+	idempotency, err := newCommandIdempotency(invocation, "affiliation.add.v1", command.IdempotencyKey, struct {
+		UserID  string                `json:"user_id"`
+		Kind    model.AffiliationKind `json:"kind"`
+		StartAt int64                 `json:"start_at"`
+		EndAt   int64                 `json:"end_at"`
+	}{candidate.UserID.String(), candidate.Kind, command.StartAt, command.EndAt})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	return runAuditedMutation(
 		ctx,
 		s.audit,
@@ -119,9 +147,13 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 		},
 		func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
-			return s.store.Create(ctx, &store.AffiliationCreation{
-				Affiliation: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+			input := &store.AffiliationCreation{Affiliation: candidate, AuditEventID: reference.ID,
+				AuditAt: reference.MutationAtMillis, Command: idempotency}
+			value, storeErr := s.store.Create(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		affiliationError,
 	)
@@ -144,7 +176,7 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, err
 	}
-	if current.Kind == model.AffiliationStudent {
+	if current.Kind == model.AffiliationStudent && !command.batchRetainedOutcome {
 		enrollments, err := s.enrollments.ListByUser(ctx, current.UserID.String())
 		if err != nil {
 			return nil, affiliationError(err)
@@ -156,6 +188,17 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 			}
 		}
 	}
+	idempotency, err := newCommandIdempotency(invocation, "affiliation.end.v1", command.IdempotencyKey, struct {
+		ID        string              `json:"id"`
+		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
+		ScopeID   string              `json:"scope_id,omitempty"`
+	}{id, command.BatchScopeType, strings.TrimSpace(command.BatchScopeID)})
+	if err != nil {
+		return nil, err
+	}
+	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
+	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
+	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	return runAuditedMutation(
 		ctx,
 		s.audit,
@@ -168,10 +211,15 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 		},
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Affiliation, error) {
-			return s.store.EndWithAudit(ctx, &store.AffiliationEnd{
+			input := &store.AffiliationEnd{
 				ID: id, ExpectedRevision: current.Revision, EndAt: reference.MutationAtMillis,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+			}
+			value, storeErr := s.store.EndWithAudit(ctx, input)
+			if command.batchReplayed != nil {
+				*command.batchReplayed = input.Replayed || input.NoOp
+			}
+			return value, storeErr
 		},
 		affiliationError,
 	)
@@ -189,6 +237,9 @@ func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invoc
 }
 
 func affiliationError(err error) error {
+	if mapped := idempotencyError(err); mapped != nil {
+		return mapped
+	}
 	switch {
 	case store.IsNotFound(err):
 		return NewError("resource.not_found").WithField("resource", "affiliation").Wrap(err)

@@ -71,6 +71,18 @@ type onboardingImportPersistenceFake struct {
 	value *store.OnboardingImport
 }
 
+type onboardingImportUserStoreFake struct {
+	store.UserStore
+	value *model.User
+}
+
+func (f onboardingImportUserStoreFake) Get(_ context.Context, id string) (*model.User, error) {
+	if f.value == nil || f.value.ID.String() != id {
+		return nil, store.NewErrNotFound("user", id)
+	}
+	return f.value, nil
+}
+
 func (f onboardingImportPersistenceFake) GetOnboardingImport(context.Context, model.OnboardingImportID) (*store.OnboardingImport, error) {
 	return f.value, nil
 }
@@ -127,6 +139,66 @@ func TestOnboardingImportCSVBuildsImmutableDuplicatePreview(t *testing.T) {
 	}
 }
 
+func TestOnboardingImportCSVBuildsExistingUserAcademicPreview(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	class, err := model.NewClass(model.NewClassID(), model.NewProgrammeLevelID(), model.NewAcademicPeriodID(), "a", "A", "", at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := &model.User{ID: model.NewUserID(), Username: "existing", Email: "existing@example.edu"}
+	authorization := &invitationAuthorizerFake{actionErrors: map[model.Action]error{}}
+	service := &onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, users: onboardingImportUserStoreFake{value: user}, authorization: authorization, now: func() time.Time { return at }}
+	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportAcademicAdministration,
+		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), ActorUserID: model.NewUserID(), CreatedAt: at}
+	csv := "operation,user_id,reference\nclass.enroll," + user.ID.String() + ",first\nclass.enroll," + user.ID.String() + ",second\n"
+	rows, ignored, digest, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || len(ignored) != 0 || len(digest) != 64 || rows[0].Operation != string(AcademicAdministrationClassEnroll) ||
+		rows[0].ScopeID != class.ID.String() || rows[0].TargetRevision != class.Revision || rows[0].UserID != user.ID ||
+		rows[0].StartsAt != at.UnixMilli() || rows[0].PreviewStatus != model.OnboardingImportRowDuplicate || rows[1].PreviewStatus != model.OnboardingImportRowDuplicate {
+		t.Fatalf("academic administration preview = %#v ignored=%v digest=%q", rows, ignored, digest)
+	}
+	service.now = func() time.Time { return at.Add(time.Hour) }
+	_, _, retryDigest, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	if err != nil || retryDigest != digest {
+		t.Fatalf("academic administration retry digest = %q, %v; want %q", retryDigest, err, digest)
+	}
+}
+
+func TestOnboardingImportCSVRejectsInvitationFieldsForAcademicAdministration(t *testing.T) {
+	t.Parallel()
+	service := &onboardingImportService{now: time.Now}
+	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportAcademicAdministration,
+		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String(), ActorUserID: model.NewUserID()}
+	for _, header := range []string{"email", "username", "display_name", "academic_unit", "class", "role"} {
+		csv := "operation,user_id," + header + "\nuser.enable," + model.NewUserID().String() + ",ignored\n"
+		if _, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv)); !errors.Is(err, errOnboardingImportInvalidFile) {
+			t.Fatalf("header %q error = %v, want invalid file", header, err)
+		}
+	}
+}
+
+func TestOnboardingImportCSVPreservesDistinctAffiliationHistories(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	institution := &model.Institution{ID: model.NewInstitutionID(), Revision: 2}
+	user := &model.User{ID: model.NewUserID(), Username: "existing", Email: "existing@example.edu"}
+	service := &onboardingImportService{institutions: onboardingImportInstitutionStoreFake{value: institution},
+		users: onboardingImportUserStoreFake{value: user}, authorization: &invitationAuthorizerFake{actionErrors: map[model.Action]error{}}, now: func() time.Time { return at }}
+	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportAcademicAdministration,
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), ActorUserID: model.NewUserID(), CreatedAt: at}
+	csv := "operation,user_id,affiliation_kind,start_at,reference\n" +
+		"affiliation.add," + user.ID.String() + ",staff,2026-09-01T00:00:00Z,staff\n" +
+		"affiliation.add," + user.ID.String() + ",teacher,2026-10-01T00:00:00Z,teacher\n"
+	rows, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	if err != nil || len(rows) != 2 || rows[0].PreviewStatus != model.OnboardingImportRowValid || rows[1].PreviewStatus != model.OnboardingImportRowValid {
+		t.Fatalf("distinct affiliation preview=%#v error=%v", rows, err)
+	}
+}
+
 func TestOnboardingImportCSVRejectsUnsafeEncodingAndShape(t *testing.T) {
 	t.Parallel()
 	service := &onboardingImportService{now: time.Now}
@@ -142,6 +214,13 @@ func TestOnboardingImportCSVRejectsUnsafeEncodingAndShape(t *testing.T) {
 				t.Fatal("expected invalid CSV")
 			}
 		})
+	}
+}
+
+func TestOnboardingImportRetriesAcademicAdministrationMailOutages(t *testing.T) {
+	t.Parallel()
+	if !onboardingImportRetryablePublicCode("mail.unavailable") {
+		t.Fatal("academic administration mail outage was classified as a terminal row failure")
 	}
 }
 

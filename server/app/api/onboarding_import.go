@@ -65,6 +65,7 @@ type onboardingImportRowResponse struct {
 	PreviewCode  string `json:"preview_code,omitempty"`
 	PublicCode   string `json:"public_code,omitempty"`
 	InvitationID string `json:"invitation_id,omitempty"`
+	ResourceID   string `json:"resource_id,omitempty"`
 }
 
 func onboardingImportResource(imports OnboardingImportApplication) resource {
@@ -159,7 +160,7 @@ func onboardingImportResponseFromView(view application.OnboardingImportView, row
 	if rows != nil {
 		response.Rows = make([]onboardingImportRowResponse, 0, len(rows))
 		for _, row := range rows {
-			response.Rows = append(response.Rows, onboardingImportRowResponse{RowNumber: row.RowNumber, Reference: row.Reference, Operation: row.Operation, Status: string(row.Status), PreviewCode: row.PreviewCode, PublicCode: row.PublicCode, InvitationID: row.InvitationID.String()})
+			response.Rows = append(response.Rows, onboardingImportRowResponse{RowNumber: row.RowNumber, Reference: row.Reference, Operation: row.Operation, Status: string(row.Status), PreviewCode: row.PreviewCode, PublicCode: row.PublicCode, InvitationID: row.InvitationID.String(), ResourceID: row.ResourceID})
 		}
 	}
 	return response

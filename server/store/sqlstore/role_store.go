@@ -124,6 +124,10 @@ func (s SQLRoleStore) Get(ctx context.Context, id string) (*model.Role, error) {
 	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id, "roles.archived_at": nil}), id)
 }
 
+func (s SQLRoleStore) GetIncludingArchived(ctx context.Context, id string) (*model.Role, error) {
+	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id}), id)
+}
+
 func (s SQLRoleStore) GetByName(ctx context.Context, name string) (*model.Role, error) {
 	return s.get(
 		ctx,
