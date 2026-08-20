@@ -416,8 +416,16 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 
 // TestExternalIdentityAdmissionMode verifies the terminal admission decision
 // against a Store whose authoritative Access Policy is seeded with mode.
-func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.ProviderAdmissionMode) {
+type ExternalIdentityAdmissionSQLProbe struct {
+	BackdateState func(*testing.T, model.ExternalLoginStateID, time.Time)
+}
+
+func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.ProviderAdmissionMode, probes ...ExternalIdentityAdmissionSQLProbe) {
 	t.Helper()
+	var probe ExternalIdentityAdmissionSQLProbe
+	if len(probes) > 0 {
+		probe = probes[0]
+	}
 	ctx := context.Background()
 	var invitation *model.Invitation
 	var institution *model.Institution
@@ -462,17 +470,163 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "admission-mode-test", AuthMethod: "cas",
 	}, DefaultProfilePictureJob: creation.DefaultProfilePictureJob}
 	if invitation != nil {
-		request.InvitationID = invitation.ID
 		establishExternalAdmissionPolicyAdministrator(t, ctx, ss, existingUser.ID, institution.ID)
+		if admitted, admissionErr := ss.ExternalIdentity().ResolveOrProvision(ctx, request); admitted != nil || !store.IsNotFound(admissionErr) {
+			t.Fatalf("ordinary resolution admitted an Invitation candidate = %#v, %v", admitted, admissionErr)
+		}
+		stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+		state, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+			Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
+			StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(bindingToken), ReturnTo: "/join",
+			ClientType: model.SessionClientWeb,
+		}, time.Minute, invitation.ClaimHash)
+		requireNoError(t, stateErr)
+		state, stateErr = ss.ExternalLoginState().Consume(ctx, state.Provider, state.StateHash, state.BindingHash)
+		requireNoError(t, stateErr)
+		acceptance := studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC())
+		acceptance.AuditEvent.ClientType, acceptance.AuditEvent.AuthMethod = string(model.SessionClientWeb), "cas"
+		acceptance.AuditEvent.Parameters, stateErr = model.EncodeAuditData(map[string]string{"provider": "campus-cas"})
+		requireNoError(t, stateErr)
+		external := &store.ExternalIdentityInvitationAcceptance{
+			ExternalStateID: state.ID,
+			Identity: &model.ExternalIdentity{UserID: acceptance.User.ID, Provider: "campus-cas", Subject: "invited-" + model.NewId(),
+				LastSeenAt: model.OptionalTimeFrom(model.NowUTC())},
+			ProviderEmail: "provider-" + model.NewId() + "@example.edu",
+			User:          acceptance.User, Settings: acceptance.Settings, DefaultProfilePictureJob: acceptance.DefaultProfilePictureJob,
+			Affiliation: acceptance.Affiliation, ClassMember: acceptance.ClassMember,
+			Notice:     &store.PreparedMail{Occurrence: acceptance.Occurrence, Delivery: acceptance.Delivery, Job: acceptance.DeliveryJob},
+			AuditEvent: acceptance.AuditEvent, Capabilities: externalIdentityCapabilities(false),
+			RequiredActions: acceptance.RequiredActions,
+		}
+		if probe.BackdateState != nil {
+			expiredToken, expiredBinding := model.NewCredentialToken(), model.NewCredentialToken()
+			expiredState, expiredErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+				Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
+				StateHash: model.HashToken(expiredToken), BindingHash: model.HashToken(expiredBinding), ReturnTo: "/join",
+				ClientType: model.SessionClientWeb,
+			}, time.Minute, invitation.ClaimHash)
+			requireNoError(t, expiredErr)
+			expiredState, expiredErr = ss.ExternalLoginState().Consume(ctx, expiredState.Provider, expiredState.StateHash, expiredState.BindingHash)
+			requireNoError(t, expiredErr)
+			probe.BackdateState(t, expiredState.ID, model.NowUTC().Add(-time.Minute))
+			expiredInput := *external
+			expiredInput.ExternalStateID = expiredState.ID
+			if value, expiredErr := ss.Invitation().AcceptExternalIdentity(ctx, &expiredInput); value != nil || !store.IsConflict(expiredErr) {
+				t.Fatalf("expired external Invitation proof = %#v, %v", value, expiredErr)
+			}
+		}
+		removedProvider := *external
+		removedProvider.Capabilities = store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}
+		if value, removedErr := ss.Invitation().AcceptExternalIdentity(ctx, &removedProvider); value != nil ||
+			!errors.Is(removedErr, store.ErrAuthenticationMethodDisabled) {
+			t.Fatalf("removed provider external Invitation acceptance = %#v, %v", value, removedErr)
+		}
 		replaceExternalAdmissionPolicy(t, ctx, ss, existingUser.ID, institution.ID, false)
-		blocked, blockedErr := ss.ExternalIdentity().ResolveOrProvision(ctx, request)
-		if blocked != nil || !store.IsNotFound(blockedErr) {
+		blocked, blockedErr := ss.Invitation().AcceptExternalIdentity(ctx, external)
+		if blocked != nil || !errors.Is(blockedErr, store.ErrAuthenticationMethodDisabled) {
 			t.Fatalf("globally disabled invitation admission = %#v, %v", blocked, blockedErr)
 		}
-		if _, getErr := ss.User().Get(ctx, creation.User.ID.String()); !store.IsNotFound(getErr) {
+		if _, getErr := ss.User().Get(ctx, external.User.ID.String()); !store.IsNotFound(getErr) {
 			t.Fatalf("globally disabled invitation admission persisted User: %v", getErr)
 		}
 		replaceExternalAdmissionPolicy(t, ctx, ss, existingUser.ID, institution.ID, true)
+		ownedMailbox := *external
+		ownedMailbox.ProviderEmail = existingUser.Email
+		if value, ownedErr := ss.Invitation().AcceptExternalIdentity(ctx, &ownedMailbox); value != nil || !store.IsConflict(ownedErr) {
+			t.Fatalf("already-owned provider mailbox = %#v, %v", value, ownedErr)
+		}
+		ownedSubject := *external
+		ownedSubject.Identity = &model.ExternalIdentity{UserID: external.User.ID, Provider: existingIdentity.Provider, Subject: existingIdentity.Subject,
+			LastSeenAt: model.OptionalTimeFrom(model.NowUTC())}
+		if value, ownedErr := ss.Invitation().AcceptExternalIdentity(ctx, &ownedSubject); value != nil || !store.IsConflict(ownedErr) {
+			t.Fatalf("already-linked provider subject = %#v, %v", value, ownedErr)
+		}
+		results := make([]*store.ExternalIdentityInvitationAcceptanceResult, 2)
+		errorsByIndex := make([]error, 2)
+		start := make(chan struct{})
+		var wait sync.WaitGroup
+		for index := range results {
+			wait.Add(1)
+			go func(index int) {
+				defer wait.Done()
+				<-start
+				results[index], errorsByIndex[index] = ss.Invitation().AcceptExternalIdentity(ctx, external)
+			}(index)
+		}
+		close(start)
+		wait.Wait()
+		var accepted *store.ExternalIdentityInvitationAcceptanceResult
+		conflicts := 0
+		for index, result := range results {
+			if errorsByIndex[index] == nil {
+				accepted = result
+			} else if store.IsConflict(errorsByIndex[index]) {
+				conflicts++
+			} else {
+				t.Fatalf("concurrent external acceptance %d = %#v, %v", index, result, errorsByIndex[index])
+			}
+		}
+		if accepted == nil || conflicts != 1 {
+			t.Fatalf("concurrent external acceptance results=%#v errors=%v", results, errorsByIndex)
+		}
+		if accepted.Invitation.State != model.InvitationAccepted || accepted.User.ID != external.User.ID ||
+			accepted.Identity.UserID != accepted.User.ID || accepted.Identity.Subject != external.Identity.Subject ||
+			accepted.Affiliation == nil || accepted.ClassMember == nil || accepted.ClassMember.UserID != accepted.User.ID {
+			t.Fatalf("terminal external Invitation acceptance = %#v", accepted)
+		}
+		if _, credentialErr := ss.PasswordCredential().GetByUser(ctx, accepted.User.ID.String()); !store.IsNotFound(credentialErr) {
+			t.Fatalf("external Invitation acceptance created a local credential: %v", credentialErr)
+		}
+		if delivery, deliveryErr := ss.Mail().GetDelivery(ctx, acceptance.Delivery.ID); deliveryErr != nil ||
+			delivery.TargetUserID != accepted.User.ID || delivery.TargetInvitationID.IsValid() {
+			t.Fatalf("external acceptance notice = %#v, %v", delivery, deliveryErr)
+		}
+		if replay, replayErr := ss.Invitation().AcceptExternalIdentity(ctx, external); replay != nil || !store.IsConflict(replayErr) {
+			t.Fatalf("external acceptance replay = %#v, %v", replay, replayErr)
+		}
+		class, getErr := ss.Class().Get(ctx, invitation.ClassID.String())
+		requireNoError(t, getErr)
+		period, getErr := ss.AcademicPeriod().Get(ctx, invitation.AcademicPeriodID.String())
+		requireNoError(t, getErr)
+		existingIssue := studentClassInvitationIssueFixture(t, ss, existingUser, class, period, model.NowUTC())
+		existingIssue.Invitation.TargetEmail = existingUser.Email
+		requireNoError(t, existingIssue.Invitation.Validate())
+		existingInvitation, issueErr := ss.Invitation().IssueStudentClass(ctx, existingIssue)
+		requireNoError(t, issueErr)
+		existingStateToken, existingBindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+		existingState, stateErr := ss.ExternalLoginState().SaveInvitationAdmission(ctx, &model.ExternalLoginState{
+			Provider: "campus-cas", Purpose: model.ExternalAuthenticationPurposeInvitationAdmission,
+			StateHash: model.HashToken(existingStateToken), BindingHash: model.HashToken(existingBindingToken), ReturnTo: "/join",
+			ClientType: model.SessionClientWeb,
+		}, time.Minute, existingInvitation.ClaimHash)
+		requireNoError(t, stateErr)
+		existingState, stateErr = ss.ExternalLoginState().Consume(ctx, existingState.Provider, existingState.StateHash, existingState.BindingHash)
+		requireNoError(t, stateErr)
+		existingAcceptance := studentClassInvitationAcceptanceFixture(t, existingInvitation, model.NowUTC())
+		existingAcceptance.AuditEvent.ClientType, existingAcceptance.AuditEvent.AuthMethod = string(model.SessionClientWeb), "cas"
+		existingAcceptance.AuditEvent.Parameters, stateErr = model.EncodeAuditData(map[string]string{"provider": "campus-cas"})
+		requireNoError(t, stateErr)
+		existingCandidateID := existingAcceptance.User.ID
+		existingInput := &store.ExternalIdentityInvitationAcceptance{ExternalStateID: existingState.ID,
+			Identity:      &model.ExternalIdentity{UserID: existingAcceptance.User.ID, Provider: "campus-cas", Subject: "existing-target-" + model.NewId(), LastSeenAt: model.OptionalTimeFrom(model.NowUTC())},
+			ProviderEmail: existingUser.Email, User: existingAcceptance.User, Settings: existingAcceptance.Settings,
+			DefaultProfilePictureJob: existingAcceptance.DefaultProfilePictureJob, Affiliation: existingAcceptance.Affiliation,
+			ClassMember: existingAcceptance.ClassMember,
+			Notice:      &store.PreparedMail{Occurrence: existingAcceptance.Occurrence, Delivery: existingAcceptance.Delivery, Job: existingAcceptance.DeliveryJob},
+			AuditEvent:  existingAcceptance.AuditEvent, Capabilities: externalIdentityCapabilities(false), RequiredActions: existingAcceptance.RequiredActions}
+		existingResult, existingErr := ss.Invitation().AcceptExternalIdentity(ctx, existingInput)
+		requireNoError(t, existingErr)
+		if existingResult.User.ID != existingUser.ID || existingResult.Identity.UserID != existingUser.ID ||
+			existingResult.ClassMember.UserID != existingUser.ID {
+			t.Fatalf("existing canonical User external acceptance = %#v", existingResult)
+		}
+		if _, candidateErr := ss.User().Get(ctx, existingCandidateID.String()); !store.IsNotFound(candidateErr) {
+			t.Fatalf("existing-User acceptance persisted prepared candidate: %v", candidateErr)
+		}
+		if _, noticeErr := ss.Mail().GetDelivery(ctx, existingAcceptance.Delivery.ID); !store.IsNotFound(noticeErr) {
+			t.Fatalf("existing-User acceptance persisted a redundant welcome: %v", noticeErr)
+		}
+		return
 	}
 	admitted, err := ss.ExternalIdentity().ResolveOrProvision(ctx, request)
 	if mode == model.ProviderAdmissionAutoProvision {
@@ -482,29 +636,6 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		}
 		assertRelationshipFreeUser(t, ctx, ss, admitted.User.ID)
 		assertConcurrentExternalAutoProvision(t, ctx, ss, institution)
-		return
-	}
-	if mode == model.ProviderAdmissionInvitationRequired {
-		requireNoError(t, err)
-		if !admitted.Provisioned || admitted.User.ID != creation.User.ID || admitted.User.Email != invitation.TargetEmail {
-			t.Fatalf("invitation_required admission = %#v", admitted)
-		}
-		current, getErr := ss.Invitation().Get(ctx, invitation.ID)
-		requireNoError(t, getErr)
-		if current.State != model.InvitationPending || current.AcceptedAt.Valid || current.AcceptedUserID.IsValid() {
-			t.Fatalf("admission consumed Invitation = %#v", current)
-		}
-		assertRelationshipFreeUser(t, ctx, ss, admitted.User.ID)
-		unclaimed := testUserCreation(newUser(), nil)
-		_, err = ss.ExternalIdentity().ResolveOrProvision(ctx, &store.ExternalIdentityResolutionRequest{Identity: &model.ExternalIdentity{
-			Provider: "campus-cas", Subject: "unclaimed-" + model.NewId(), LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
-		}, User: unclaimed.User, Settings: unclaimed.Settings, Capabilities: externalIdentityCapabilities(true),
-			ProvisionAudit: &model.AuditEvent{Action: "authentication.external_provision", ScopeType: model.RoleScopeInstitution,
-				ScopeID: institution.ID.String(), Status: model.AuditStatusSuccess, NodeID: "admission-mode-test", AuthMethod: "cas"},
-			DefaultProfilePictureJob: unclaimed.DefaultProfilePictureJob})
-		if !store.IsNotFound(err) {
-			t.Fatalf("invitation_required unclaimed admission error = %v", err)
-		}
 		return
 	}
 	if !store.IsNotFound(err) || admitted != nil {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -286,7 +287,7 @@ func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProv
 	}
 }
 
-func TestInvitationAdmissionPreparesOnlyVerifiedMailboxCandidateForExactInvitation(t *testing.T) {
+func TestInvitationAdmissionDelegatesExactProofWithoutCreatingOrdinarySession(t *testing.T) {
 	t.Parallel()
 	databaseNow := time.UnixMilli(55_000)
 	stateToken, bindingToken := model.NewCredentialToken(), model.NewCredentialToken()
@@ -295,6 +296,12 @@ func TestInvitationAdmissionPreparesOnlyVerifiedMailboxCandidateForExactInvitati
 		InvitationID: invitationID, StateHash: model.HashToken(stateToken), BindingHash: model.HashToken(bindingToken),
 		ReturnTo: "/join", ClientType: model.SessionClientWeb, ExpiresAt: databaseNow.Add(time.Minute)}
 	identities := &externalIdentityResolutionStoreFake{}
+	acceptedUser := &model.User{ID: model.NewUserID(), Email: "invited@example.edu"}
+	acceptor := &externalInvitationAcceptorFake{result: &store.ExternalIdentityInvitationAcceptanceResult{
+		User: acceptedUser,
+		Identity: &model.ExternalIdentity{ID: model.NewExternalIdentityID(), UserID: acceptedUser.ID,
+			Provider: "campus", Subject: "opaque-subject"},
+	}}
 	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
 	if err != nil {
 		t.Fatal(err)
@@ -305,20 +312,39 @@ func TestInvitationAdmissionPreparesOnlyVerifiedMailboxCandidateForExactInvitati
 	service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider},
 		loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
 		institutions: providerConnectionInstitutionStoreFake{institution: institution}, identities: identities,
+		invitationAcceptor: acceptor,
 		accessPolicy: authenticationAccessPolicyFake{providers: map[string]bool{"campus": true},
 			providerModes: map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired}},
 		audit: externalAuditFake{}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
 			Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}}}},
 		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", NodeID: "node-a"}, now: func() time.Time { return databaseNow }}
 
-	_, err = service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if !Is(err, "authentication.external.account_not_linked") {
-		t.Fatalf("completion error = %v", err)
+	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
+	if err != nil || result == nil || result.User != acceptedUser || result.Session != nil || result.Tokens != nil || result.ReturnTo != "/join" {
+		t.Fatalf("completion result=%#v error=%v", result, err)
 	}
-	if identities.resolution == nil || identities.resolution.InvitationID != invitationID || identities.resolution.User == nil ||
-		identities.resolution.User.Email != "invited@example.edu" || !identities.resolution.User.EmailVerified ||
-		identities.resolution.ProvisionAudit == nil {
-		t.Fatalf("resolution = %#v", identities.resolution)
+	if acceptor.state == nil || acceptor.assertion != provider.assertion || acceptor.method != "oidc" ||
+		acceptor.state.InvitationID != invitationID || !acceptor.state.ConsumedAt.Valid {
+		t.Fatalf("terminal acceptance state=%#v assertion=%#v method=%q", acceptor.state, acceptor.assertion, acceptor.method)
+	}
+	if identities.resolution != nil {
+		t.Fatalf("Invitation admission used ordinary identity resolution: %#v", identities.resolution)
+	}
+	secondStateToken, secondBindingToken := model.NewCredentialToken(), model.NewCredentialToken()
+	secondState := *state
+	secondState.StateHash, secondState.BindingHash = model.HashToken(secondStateToken), model.HashToken(secondBindingToken)
+	secondState.ConsumedAt = model.OptionalTime{}
+	secondProvider := provider
+	secondProvider.state = secondStateToken
+	failureCodes := []string{}
+	acceptor.result, acceptor.err, acceptor.state = nil, store.ErrAuthenticationMethodDisabled, nil
+	service.registry = externalProviderSourceFake{provider: secondProvider}
+	service.loginStates = &externalLoginStateStoreFake{get: &secondState, consumeResult: &secondState, storeNow: databaseNow}
+	service.audit = externalAuditFake{failureCodes: &failureCodes}
+	result, err = service.complete(context.Background(), "campus", secondBindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
+	if result != nil || !Is(err, "authentication.external.invalid") ||
+		!slices.Equal(failureCodes, []string{"authentication.external.invalid"}) {
+		t.Fatalf("terminal provider removal result=%#v error=%v failure_audits=%v", result, err, failureCodes)
 	}
 }
 
@@ -339,6 +365,8 @@ func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *tes
 		ExpiresAt:    databaseNow.Add(time.Minute),
 	}
 	identities := &externalIdentityResolutionStoreFake{}
+	acceptor := &externalInvitationAcceptorFake{}
+	failureCodes := []string{}
 	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
 	if err != nil {
 		t.Fatal(err)
@@ -351,16 +379,17 @@ func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *tes
 		},
 	}}
 	service := &externalAuthenticationService{
-		registry:     externalProviderSourceFake{provider: provider},
-		loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
-		institutions: providerConnectionInstitutionStoreFake{institution: institution},
-		identities:   identities,
+		registry:           externalProviderSourceFake{provider: provider},
+		loginStates:        &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow},
+		institutions:       providerConnectionInstitutionStoreFake{institution: institution},
+		identities:         identities,
+		invitationAcceptor: acceptor,
 		accessPolicy: authenticationAccessPolicyFake{
 			providers:                   map[string]bool{"campus": true},
 			providerModes:               map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired},
 			invitationAdmissionDisabled: true,
 		},
-		audit: externalAuditFake{}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
+		audit: externalAuditFake{failureCodes: &failureCodes}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
 			Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}},
 		}},
 		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", NodeID: "node-b"},
@@ -368,11 +397,14 @@ func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *tes
 	}
 
 	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if result != nil || !Is(err, "authentication.external.account_not_linked") {
+	if result != nil || !Is(err, "authentication.external.invalid") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
-	if identities.resolution == nil || identities.resolution.InvitationID != invitationID || identities.resolution.User != nil {
-		t.Fatalf("terminal resolution = %#v", identities.resolution)
+	if identities.resolution != nil || acceptor.state != nil {
+		t.Fatalf("disabled admission reached terminal stores: resolution=%#v state=%#v", identities.resolution, acceptor.state)
+	}
+	if !slices.Equal(failureCodes, []string{"authentication.external.invalid"}) {
+		t.Fatalf("disabled admission failure audits = %v", failureCodes)
 	}
 	if strings.Contains(err.Error(), invitationID.String()) || strings.Contains(err.Error(), "private-subject") ||
 		strings.Contains(err.Error(), "invited@example.edu") {
@@ -451,7 +483,8 @@ func TestExternalAuthenticationRequiresFocusedDependencies(t *testing.T) {
 		issuer:      externalSessionIssuerFake{},
 		invalidator: externalInvalidatorFake{}, audit: externalAuditFake{},
 		diagnostics: &securityEffectsDiagnosticsFake{}, newCredential: model.NewCredentialToken,
-		now: time.Now,
+		acceptor: &externalInvitationAcceptorFake{},
+		now:      time.Now,
 	}
 	tests := []struct {
 		name  string
@@ -462,6 +495,7 @@ func TestExternalAuthenticationRequiresFocusedDependencies(t *testing.T) {
 		{"identities", func(a *externalAuthenticationConstructorArgs) { a.identities = nil }},
 		{"sessions", func(a *externalAuthenticationConstructorArgs) { a.sessions = nil }},
 		{"attempt accounting", func(a *externalAuthenticationConstructorArgs) { a.attempts = nil }},
+		{"Invitation acceptor", func(a *externalAuthenticationConstructorArgs) { a.acceptor = nil }},
 		{"generator", func(a *externalAuthenticationConstructorArgs) { a.newCredential = nil }},
 	}
 	for _, test := range tests {
@@ -486,6 +520,7 @@ type externalAuthenticationConstructorArgs struct {
 	invalidator   authenticationInvalidator
 	audit         externalAuthenticationAudit
 	diagnostics   authenticationDiagnostics
+	acceptor      externalInvitationAcceptor
 	newCredential func() string
 	now           func() time.Time
 }
@@ -496,7 +531,7 @@ func (a externalAuthenticationConstructorArgs) build() (*externalAuthenticationS
 		a.registry, a.loginStates, a.institutions, a.identities, a.sessions,
 		allowAllAuthenticationAccessPolicy(), a.attempts, a.issuer, a.invalidator, a.audit,
 		&mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()},
-		&accessPolicyCapabilitiesFake{}, ExternalAuthenticationPolicy{}, 15*time.Minute,
+		&accessPolicyCapabilitiesFake{}, a.acceptor, ExternalAuthenticationPolicy{}, 15*time.Minute,
 		a.diagnostics, a.newCredential, a.now,
 	)
 }
@@ -774,6 +809,24 @@ type externalIdentityResolutionStoreFake struct {
 	resolution *store.ExternalIdentityResolutionRequest
 }
 
+type externalInvitationAcceptorFake struct {
+	state      *model.ExternalLoginState
+	assertion  *model.ExternalAuthenticationAssertion
+	capability store.AccessDeploymentCapabilities
+	metadata   model.RequestMetadata
+	method     string
+	result     *store.ExternalIdentityInvitationAcceptanceResult
+	err        error
+}
+
+func (s *externalInvitationAcceptorFake) AcceptExternalIdentity(_ context.Context, state *model.ExternalLoginState,
+	assertion *model.ExternalAuthenticationAssertion, capability store.AccessDeploymentCapabilities,
+	metadata model.RequestMetadata, method string,
+) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+	s.state, s.assertion, s.capability, s.metadata, s.method = state, assertion, capability, metadata, method
+	return s.result, s.err
+}
+
 func (s *externalIdentityResolutionStoreFake) ResolveOrProvision(_ context.Context, input *store.ExternalIdentityResolutionRequest) (*store.ExternalIdentityResolution, error) {
 	s.resolution = input
 	return nil, store.NewErrNotFound("external_identity", input.Identity.Provider)
@@ -825,12 +878,15 @@ type externalInvalidatorFake struct{}
 func (externalInvalidatorFake) InvalidateAccessCredentials(context.Context, []string) {}
 func (externalInvalidatorFake) InvalidateSessionActivity(context.Context, []string)   {}
 
-type externalAuditFake struct{}
+type externalAuditFake struct{ failureCodes *[]string }
 
 func (externalAuditFake) BeginAuthentication(context.Context, string, string, string, model.SessionClientType, model.RequestMetadata, string) (*model.AuditEvent, error) {
 	return nil, nil
 }
-func (externalAuditFake) RecordExternalAuthenticationFailure(context.Context, string, string, model.RequestMetadata, string, string) error {
+func (f externalAuditFake) RecordExternalAuthenticationFailure(_ context.Context, _, _ string, _ model.RequestMetadata, _, code string) error {
+	if f.failureCodes != nil {
+		*f.failureCodes = append(*f.failureCodes, code)
+	}
 	return nil
 }
 func (externalAuditFake) CompleteCriticalAction(context.Context, string, model.AuditStatus, string, any) (*model.AuditEvent, error) {

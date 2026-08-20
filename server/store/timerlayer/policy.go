@@ -144,6 +144,7 @@ const (
 	methodAcceptStudentClass            methodName = "accept_student_class"
 	methodAcceptTeacherAcademicUnit     methodName = "accept_teacher_academic_unit"
 	methodAcceptScopedRole              methodName = "accept_scoped_role"
+	methodAcceptExternalIdentity        methodName = "accept_external_identity"
 	methodList                          methodName = "list"
 	methodListJournal                   methodName = "list_journal"
 	methodListLifecycleDue              methodName = "list_lifecycle_due"

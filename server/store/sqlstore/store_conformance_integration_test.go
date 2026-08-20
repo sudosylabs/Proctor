@@ -1341,7 +1341,16 @@ func TestExternalIdentityAdmissionModes(t *testing.T) {
 			persistence := openTestStore(t)
 			resetPristineTestStore(t, persistence)
 			seedTestAuthenticationPolicy(t, persistence, map[string]model.ProviderAdmissionMode{"campus-cas": mode})
-			storetest.TestExternalIdentityAdmissionMode(t, persistence, mode)
+			storetest.TestExternalIdentityAdmissionMode(t, persistence, mode, storetest.ExternalIdentityAdmissionSQLProbe{
+				BackdateState: func(t *testing.T, id model.ExternalLoginStateID, expiresAt time.Time) {
+					t.Helper()
+					if _, err := persistence.GetMaster().Exec(context.Background(), `UPDATE external_login_states
+						SET created_at=?,updated_at=?,consumed_at=?,expires_at=? WHERE id=?`, expiresAt.Add(-2*time.Minute),
+						expiresAt.Add(-time.Minute), expiresAt.Add(-time.Minute), expiresAt, id.String()); err != nil {
+						t.Fatal(err)
+					}
+				},
+			})
 		})
 	}
 }

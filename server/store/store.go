@@ -1145,7 +1145,6 @@ type ExternalIdentityResolution struct {
 
 type ExternalIdentityResolutionRequest struct {
 	Identity                 *model.ExternalIdentity
-	InvitationID             model.InvitationID
 	User                     *model.User
 	Settings                 *model.UserSettingsDocument
 	Capabilities             AccessDeploymentCapabilities
@@ -1444,6 +1443,38 @@ type ScopedRoleInvitationAcceptanceResult struct {
 	Replayed    bool
 }
 
+// ExternalIdentityInvitationAcceptance is the provider-proof-completed input
+// for atomically linking one immutable subject and applying the exact pending
+// Invitation package. ExternalStateID identifies the consumed, browser-bound
+// redirect transaction; ProviderEmail is a verified provider mailbox hint,
+// never an account-selection key.
+type ExternalIdentityInvitationAcceptance struct {
+	ExternalStateID          model.ExternalLoginStateID
+	Identity                 *model.ExternalIdentity
+	ProviderEmail            string
+	User                     *model.User
+	Settings                 *model.UserSettingsDocument
+	DefaultProfilePictureJob *model.Job
+	Affiliation              *model.Affiliation
+	ClassMember              *model.ClassMember
+	AcademicUnitMember       *model.AcademicUnitMember
+	RoleBinding              *model.RoleBinding
+	Notice                   *PreparedMail
+	AuditEvent               *model.AuditEvent
+	Capabilities             AccessDeploymentCapabilities
+	RequiredActions          []model.Action
+}
+
+type ExternalIdentityInvitationAcceptanceResult struct {
+	Invitation         *model.Invitation
+	Identity           *model.ExternalIdentity
+	User               *model.User
+	Affiliation        *model.Affiliation
+	ClassMember        *model.ClassMember
+	AcademicUnitMember *model.AcademicUnitMember
+	RoleBinding        *model.RoleBinding
+}
+
 type InvitationMaintenanceResult struct {
 	Expired int
 	Purged  int
@@ -1556,6 +1587,7 @@ type InvitationStore interface {
 	AcceptStudentClass(context.Context, *StudentClassInvitationAcceptance) (*StudentClassInvitationAcceptanceResult, error)
 	AcceptTeacherAcademicUnit(context.Context, *TeacherAcademicUnitInvitationAcceptance) (*TeacherAcademicUnitInvitationAcceptanceResult, error)
 	AcceptScopedRole(context.Context, *ScopedRoleInvitationAcceptance) (*ScopedRoleInvitationAcceptanceResult, error)
+	AcceptExternalIdentity(context.Context, *ExternalIdentityInvitationAcceptance) (*ExternalIdentityInvitationAcceptanceResult, error)
 	List(context.Context, InvitationListOptions) (*InvitationPage, error)
 	GetForAdministration(context.Context, model.InvitationID, InvitationVisibilityScope) (*InvitationAdministrationRecord, error)
 	Resend(context.Context, *InvitationResend) (*InvitationAdministrationRecord, error)

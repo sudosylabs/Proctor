@@ -17,19 +17,20 @@ import (
 
 type invitationStoreFake struct {
 	store.InvitationStore
-	invitation      *model.Invitation
-	issued          *store.StudentClassInvitationIssue
-	accepted        *store.StudentClassInvitationAcceptance
-	teacherIssued   *store.TeacherAcademicUnitInvitationIssue
-	teacherAccepted *store.TeacherAcademicUnitInvitationAcceptance
-	scopedIssued    *store.ScopedRoleInvitationIssue
-	scopedAccepted  *store.ScopedRoleInvitationAcceptance
-	scopedAcceptErr error
-	listOptions     store.InvitationListOptions
-	resent          *store.InvitationResend
-	revoked         *store.InvitationRevocation
-	replaced        *store.InvitationReplacement
-	events          *[]string
+	invitation       *model.Invitation
+	issued           *store.StudentClassInvitationIssue
+	accepted         *store.StudentClassInvitationAcceptance
+	teacherIssued    *store.TeacherAcademicUnitInvitationIssue
+	teacherAccepted  *store.TeacherAcademicUnitInvitationAcceptance
+	scopedIssued     *store.ScopedRoleInvitationIssue
+	scopedAccepted   *store.ScopedRoleInvitationAcceptance
+	scopedAcceptErr  error
+	listOptions      store.InvitationListOptions
+	resent           *store.InvitationResend
+	revoked          *store.InvitationRevocation
+	replaced         *store.InvitationReplacement
+	externalAccepted *store.ExternalIdentityInvitationAcceptance
+	events           *[]string
 }
 
 func (f *invitationStoreFake) IssueStudentClass(_ context.Context, input *store.StudentClassInvitationIssue) (*model.Invitation, error) {
@@ -110,6 +111,12 @@ func (f *invitationStoreFake) Replace(_ context.Context, input *store.Invitation
 	f.replaced = input
 	return &store.InvitationAdministrationRecord{Invitation: input.Replacement}, nil
 }
+func (f *invitationStoreFake) AcceptExternalIdentity(_ context.Context, input *store.ExternalIdentityInvitationAcceptance) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+	f.externalAccepted = input
+	return &store.ExternalIdentityInvitationAcceptanceResult{Invitation: f.invitation, Identity: input.Identity,
+		User: input.User, Affiliation: input.Affiliation, ClassMember: input.ClassMember,
+		AcademicUnitMember: input.AcademicUnitMember, RoleBinding: input.RoleBinding}, nil
+}
 
 type invitationClassStoreFake struct{ class *model.Class }
 
@@ -141,6 +148,61 @@ type invitationAuthorizerFake struct {
 	delegatedScopeType model.RoleScopeType
 	delegatedScopeID   string
 	err                error
+}
+
+func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	classID, periodID, inviterID := model.NewClassID(), model.NewAcademicPeriodID(), model.NewUserID()
+	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
+		TargetEmail: "invited@example.edu", ClassID: classID, AcademicPeriodID: periodID,
+		IntendedStartsAt: now.Add(time.Hour), InviterUserID: inviterID, ScopeType: model.RoleScopeClass,
+		ScopeID: classID.String(), ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &invitationStoreFake{invitation: invitation}
+	mail := &invitationMailPreparerFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+		&invitationAuthorizerFake{}, mail, now.Add(time.Minute))
+	state := &model.ExternalLoginState{ID: model.NewExternalLoginStateID(), Provider: "campus",
+		Purpose: model.ExternalAuthenticationPurposeInvitationAdmission, InvitationID: invitation.ID,
+		ConsumedAt: model.OptionalTimeFrom(now)}
+	assertion := &model.ExternalAuthenticationAssertion{ProviderId: "campus", Subject: "opaque-subject",
+		Username: "provider-name", Email: " Provider.Mailbox@Example.EDU ", EmailVerified: true,
+		DisplayName: "Provider Person"}
+	capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus": {}}}
+	result, err := service.AcceptExternalIdentity(context.Background(), state, assertion, capabilities,
+		model.RequestMetadata{RequestID: "request-1", IPAddress: "192.0.2.10"}, "oidc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := persistence.externalAccepted
+	if accepted == nil || result.User != accepted.User || accepted.ExternalStateID != state.ID ||
+		accepted.ProviderEmail != "provider.mailbox@example.edu" || accepted.User.Email != invitation.TargetEmail ||
+		!accepted.User.EmailVerified || accepted.Identity.Provider != "campus" || accepted.Identity.Subject != assertion.Subject ||
+		accepted.Affiliation == nil || accepted.Affiliation.Kind != model.AffiliationStudent ||
+		accepted.ClassMember == nil || accepted.ClassMember.ClassID != classID || accepted.ClassMember.AcademicPeriodID != periodID ||
+		accepted.ClassMember.UserID != accepted.User.ID || accepted.Notice == nil ||
+		accepted.Notice.Delivery.TargetUserID != accepted.User.ID || accepted.AuditEvent.AuthMethod != "oidc" ||
+		!strings.Contains(string(accepted.AuditEvent.Parameters), `"provider":"campus"`) ||
+		!slices.Equal(accepted.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage}) {
+		t.Fatalf("external Invitation package/result = %#v / %#v", accepted, result)
+	}
+	if mail.directJobType != model.JobTypeMailDeliver {
+		t.Fatalf("acceptance notice Job type = %q", mail.directJobType)
+	}
+	mail.directErr = fmt.Errorf("mail preparation unavailable")
+	assertion.Username = strings.Repeat("x", 1_000)
+	result, err = service.AcceptExternalIdentity(context.Background(), state, assertion, capabilities,
+		model.RequestMetadata{RequestID: "request-2"}, "oidc")
+	if err != nil || result == nil {
+		t.Fatalf("existing-User candidate fallback result=%#v error=%v", result, err)
+	}
+	accepted = persistence.externalAccepted
+	if accepted == nil || !accepted.User.ID.IsValid() || accepted.Settings != nil || accepted.DefaultProfilePictureJob != nil ||
+		accepted.Notice != nil || accepted.ClassMember == nil || accepted.ClassMember.UserID != accepted.User.ID {
+		t.Fatalf("existing-User candidate fallback package = %#v", accepted)
+	}
 }
 
 func (f *invitationAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
@@ -385,6 +447,7 @@ type invitationMailPreparerFake struct {
 	issueURL      string
 	disabled      bool
 	directJobType model.JobType
+	directErr     error
 }
 
 func (f *invitationMailPreparerFake) Enabled() bool { return !f.disabled }
@@ -403,6 +466,9 @@ func (f *invitationMailPreparerFake) PrepareInvitationRevocation(invitation *mod
 	return prepared, nil
 }
 func (f *invitationMailPreparerFake) PrepareDirect(request DirectMailPreparation) (*preparedDirectMail, error) {
+	if f.directErr != nil {
+		return nil, f.directErr
+	}
 	f.directJobType = request.JobType
 	prepared := invitationPreparedMail(request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID, request.TemplateKey, request.At, request.Deadline)
 	command, _ := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: prepared.Delivery.ID})

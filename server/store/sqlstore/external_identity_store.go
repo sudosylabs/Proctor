@@ -154,29 +154,8 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 		if !allowed {
 			return nil, store.ErrAuthenticationMethodDisabled
 		}
-		if request.InvitationID.IsValid() {
-			if !policy.InvitationAdmissionEnabled || admission != model.ProviderAdmissionInvitationRequired ||
-				request.User == nil || !request.User.EmailVerified {
-				return nil, store.NewErrNotFound("external_identity", provider)
-			}
-			var targetEmail string
-			if err := tx.Get(ctx, &targetEmail, `
-				SELECT target_email FROM invitations
-				 WHERE id=? AND state='pending' AND created_at<=clock_timestamp() AND expires_at>clock_timestamp()
-				   AND (intended_end_at IS NULL OR intended_end_at>clock_timestamp())
-				 FOR SHARE`, request.InvitationID.String()); err != nil {
-				return nil, translateError("invitation", request.InvitationID.String(), err)
-			}
-			if request.User.Email != targetEmail {
-				return nil, store.NewErrNotFound("external_identity", provider)
-			}
-		}
-		if _, err := tx.Exec(
-			ctx,
-			"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-			strconv.Itoa(len(provider))+":"+provider+identity.Subject,
-		); err != nil {
-			return nil, fmt.Errorf("lock external identity resolution: %w", err)
+		if err := lockExternalIdentitySubject(ctx, tx, provider, identity.Subject); err != nil {
+			return nil, err
 		}
 
 		resolvedIdentity, resolvedUser, err := resolveExternalIdentity(
@@ -197,13 +176,11 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 		}
 		switch admission {
 		case model.ProviderAdmissionAutoProvision:
-			if request.InvitationID.IsValid() || !capability.AutoProvision {
+			if !capability.AutoProvision {
 				return nil, store.ErrAuthenticationMethodDisabled
 			}
 		case model.ProviderAdmissionInvitationRequired:
-			if !request.InvitationID.IsValid() {
-				return nil, store.NewErrNotFound("external_identity", provider)
-			}
+			return nil, store.NewErrNotFound("external_identity", provider)
 		case model.ProviderAdmissionLinkedOnly:
 			return nil, store.NewErrNotFound("external_identity", provider)
 		default:
@@ -262,6 +239,14 @@ func (s SQLExternalIdentityStore) ResolveOrProvision(
 			Provisioned: true,
 		}, nil
 	})
+}
+
+func lockExternalIdentitySubject(ctx context.Context, tx *sqlxTxWrapper, provider, subject string) error {
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+		strconv.Itoa(len(provider))+":"+provider+subject); err != nil {
+		return fmt.Errorf("lock external identity resolution: %w", err)
+	}
+	return nil
 }
 
 func resolveExternalIdentity(

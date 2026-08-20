@@ -2321,6 +2321,12 @@ func (s *timedInvitationStore) AcceptScopedRole(arg0 context.Context, arg1 *stor
 	})
 }
 
+func (s *timedInvitationStore) AcceptExternalIdentity(arg0 context.Context, arg1 *store.ExternalIdentityInvitationAcceptance) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptExternalIdentity), func() (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+		return s.next.AcceptExternalIdentity(arg0, arg1)
+	})
+}
+
 func (s *timedInvitationStore) List(arg0 context.Context, arg1 store.InvitationListOptions) (*store.InvitationPage, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodList), func() (*store.InvitationPage, error) {
 		return s.next.List(arg0, arg1)

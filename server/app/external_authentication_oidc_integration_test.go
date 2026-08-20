@@ -269,7 +269,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 
 	invitedEmail := "invited.oidc@example.edu"
 	claim, pendingInvitation := seedExternalAdmissionInvitation(t, persistence, institution, user, invitedEmail)
-	subject, claimedUsername, claimedEmail = "invited-oidc-subject", "invited.oidc", " Invited.OIDC@Example.EDU "
+	subject, claimedUsername, claimedEmail = "invited-oidc-subject", "invited.oidc", " Provider.OIDC@Example.EDU "
 	invitationBegin := performJSONRequest(helper.Handler(), http.MethodPost,
 		"/api/v1/auth/providers/"+invitationProviderID+"/login",
 		map[string]any{"invitation_claim": claim, "return_to": "/join"}, "")
@@ -310,16 +310,28 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil || invitedUser.Email != invitedEmail || !invitedUser.EmailVerified {
 		t.Fatalf("OIDC invitation User = %#v, %v", invitedUser, err)
 	}
-	stillPending, err := persistence.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
-	if err != nil || stillPending.ID != pendingInvitation.ID || stillPending.State != model.InvitationPending || stillPending.AcceptedUserID.IsValid() {
-		t.Fatalf("OIDC invitation package changed = %#v, %v", stillPending, err)
+	acceptedInvitation, err := persistence.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
+	if err != nil || acceptedInvitation.ID != pendingInvitation.ID || acceptedInvitation.State != model.InvitationAccepted ||
+		acceptedInvitation.AcceptedUserID != invitedUser.ID {
+		t.Fatalf("OIDC terminal Invitation = %#v, %v", acceptedInvitation, err)
 	}
 	invitedAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitedUser.ID.String())
 	invitedMemberships, _ := persistence.ClassMember().ListByUser(context.Background(), invitedUser.ID.String())
 	invitedBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitedUser.ID.String())
-	if len(invitedAffiliations) != 0 || len(invitedMemberships) != 0 || len(invitedBindings) != 0 {
-		t.Fatalf("OIDC invitation admission granted package: affiliations=%#v memberships=%#v bindings=%#v",
+	if len(invitedAffiliations) != 1 || invitedAffiliations[0].ID != acceptedInvitation.AcceptedAffiliationID ||
+		len(invitedMemberships) != 1 || invitedMemberships[0].ID != acceptedInvitation.AcceptedClassMemberID ||
+		len(invitedBindings) != 0 {
+		t.Fatalf("OIDC invitation admission package: affiliations=%#v memberships=%#v bindings=%#v",
 			invitedAffiliations, invitedMemberships, invitedBindings)
+	}
+	invitedSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitedUser.ID.String(), model.GetMillis())
+	if err != nil || len(invitedSessions) != 0 {
+		t.Fatalf("OIDC Invitation proof created an ordinary Session = %#v, %v", invitedSessions, err)
+	}
+	invitationAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{ActorId: invitedUser.ID.String(),
+		Action: "invitation.accept", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
+	if err != nil || len(invitationAudits) != 1 || invitationAudits[0].AuthMethod != config.ExternalAuthenticationTypeOIDC {
+		t.Fatalf("OIDC Invitation acceptance audits = %#v, %v", invitationAudits, err)
 	}
 	invitationReplayRequest := httptest.NewRequest(http.MethodGet, invitationCallbackPath, nil)
 	invitationReplayRequest.AddCookie(invitationBinding)
@@ -390,7 +402,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		},
 	)
-	if err != nil || len(loginAudits) != 3 {
+	if err != nil || len(loginAudits) != 2 {
 		t.Fatalf("OIDC login audits = %#v, %v", loginAudits, err)
 	}
 	for _, event := range loginAudits {

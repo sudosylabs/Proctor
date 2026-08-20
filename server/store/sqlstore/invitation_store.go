@@ -6,6 +6,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -1139,6 +1140,333 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 		}
 		return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, AcademicUnitMember: member, RoleBinding: binding}, nil
 	})
+}
+
+func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *store.ExternalIdentityInvitationAcceptance) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+	if input == nil || !input.ExternalStateID.IsValid() || input.Identity == nil || !input.Identity.ID.IsZero() ||
+		input.User == nil || input.AuditEvent == nil ||
+		!input.AuditEvent.ID.IsZero() || !model.IsValidEmail(input.ProviderEmail) || !validAccessDeploymentCapabilities(input.Capabilities) {
+		return nil, store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
+	}
+	provider := normalizeProviderID(input.Identity.Provider)
+	if input.Identity.Provider != provider || input.Identity.Subject == "" || !input.Identity.LastSeenAt.Valid ||
+		input.User.Email == "" || !input.User.EmailVerified || input.Identity.UserID != input.User.ID ||
+		input.AuditEvent.ActorID != input.User.ID {
+		return nil, store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity Invitation acceptance", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+		var state struct {
+			InvitationID string       `db:"invitation_id"`
+			Provider     string       `db:"provider"`
+			Purpose      string       `db:"purpose"`
+			ExpiresAt    time.Time    `db:"expires_at"`
+			ConsumedAt   sql.NullTime `db:"consumed_at"`
+		}
+		if err := tx.Get(ctx, &state, `SELECT invitation_id,provider,purpose,expires_at,consumed_at FROM external_login_states WHERE id=? FOR UPDATE`, input.ExternalStateID.String()); err != nil {
+			return nil, translateError("external_login_state", input.ExternalStateID.String(), err)
+		}
+		databaseNow, err := jobDatabaseNow(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		if state.Provider != provider || state.Purpose != string(model.ExternalAuthenticationPurposeInvitationAdmission) ||
+			state.InvitationID == "" || !state.ConsumedAt.Valid || !databaseNow.Before(state.ExpiresAt) {
+			return nil, store.NewErrConflict("invitation", "invitation_external_state", nil)
+		}
+		var row invitationRow
+		if err = tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE id=? FOR UPDATE`, state.InvitationID); err != nil {
+			return nil, translateError("invitation", state.InvitationID, err)
+		}
+		invitation, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		if err = validateExternalInvitationAudit(input.AuditEvent, invitation, provider); err != nil {
+			return nil, err
+		}
+		if invitation.State != model.InvitationPending || !databaseNow.Before(invitation.ExpiresAt) ||
+			(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
+			return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
+		}
+		_, configured := input.Capabilities.Providers[provider]
+		if !configured {
+			return nil, store.ErrAuthenticationMethodDisabled
+		}
+		if err = lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+			return nil, err
+		}
+		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+		if err != nil {
+			return nil, err
+		}
+		if !policy.InvitationAdmissionEnabled || policy.ProviderAdmissions[provider] != model.ProviderAdmissionInvitationRequired {
+			return nil, store.ErrAuthenticationMethodDisabled
+		}
+		if err = lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
+			return nil, err
+		}
+		mailboxes := []string{invitation.TargetEmail}
+		if input.ProviderEmail != invitation.TargetEmail {
+			mailboxes = append(mailboxes, input.ProviderEmail)
+			slices.Sort(mailboxes)
+		}
+		for _, mailbox := range mailboxes {
+			if err = lockInvitationMailbox(ctx, tx, mailbox); err != nil {
+				return nil, err
+			}
+		}
+		if err = lockExternalIdentitySubject(ctx, tx, provider, input.Identity.Subject); err != nil {
+			return nil, err
+		}
+		user, created, err := resolveExternalInvitationUser(ctx, tx, invitation, input, databaseNow)
+		if err != nil {
+			return nil, err
+		}
+		identity, err := linkExternalInvitationIdentity(ctx, tx, input.Identity, user.ID, provider, databaseNow)
+		if err != nil {
+			return nil, err
+		}
+		result := &store.ExternalIdentityInvitationAcceptanceResult{Invitation: invitation, Identity: identity, User: user}
+		effectiveStart := invitation.EffectiveStartsAt(databaseNow)
+		switch invitation.Purpose {
+		case model.InvitationPurposeStudentClass:
+			if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage}) ||
+				input.Affiliation == nil || input.ClassMember == nil || (created && input.Notice == nil) {
+				return nil, store.NewErrInvalidInput("invitation", "external_student_package", nil)
+			}
+			if err = validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+				return nil, err
+			}
+			if err = requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
+				return nil, err
+			}
+			result.Affiliation, err = ensureInvitationStudentAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
+			if err == nil {
+				result.ClassMember, err = ensureInvitationClassMember(ctx, tx, invitation, input.ClassMember, user.ID, effectiveStart)
+			}
+			if err == nil {
+				err = invitation.Accept(user.ID, result.Affiliation.ID, result.ClassMember.ID, databaseNow)
+			}
+		case model.InvitationPurposeTeacherAcademicUnit:
+			if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}) ||
+				input.Affiliation == nil || input.AcademicUnitMember == nil || input.RoleBinding == nil || (created && input.Notice == nil) {
+				return nil, store.NewErrInvalidInput("invitation", "external_teacher_package", nil)
+			}
+			if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow); err == nil {
+				err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow)
+			}
+			if err == nil {
+				result.Affiliation, err = ensureInvitationTeacherAffiliation(ctx, tx, input.Affiliation, user.ID, effectiveStart)
+			}
+			if err == nil {
+				result.AcademicUnitMember, err = ensureInvitationAcademicUnitMember(ctx, tx, invitation, input.AcademicUnitMember, user.ID, effectiveStart)
+			}
+			if err == nil {
+				result.RoleBinding, err = ensureInvitationRoleBinding(ctx, tx, invitation, input.RoleBinding, user.ID, result.AcademicUnitMember.ID, effectiveStart)
+			}
+			if err == nil {
+				err = invitation.AcceptTeacherAcademicUnit(user.ID, result.Affiliation.ID, result.AcademicUnitMember.ID, result.RoleBinding.ID, databaseNow)
+			}
+		case model.InvitationPurposeAcademicUnitRole, model.InvitationPurposeInstitutionRole:
+			if created || !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
+				input.RoleBinding == nil || input.Notice != nil {
+				return nil, store.NewErrConflict("invitation", "invitation_existing_user_required", nil)
+			}
+			if err = validateScopedRoleInvitationPackage(ctx, tx, invitation, databaseNow); err == nil {
+				err = requireScopedRoleInvitationAuthority(ctx, tx, invitation, databaseNow)
+			}
+			if err == nil {
+				result.RoleBinding, err = ensureScopedRoleInvitationBinding(ctx, tx, invitation, input.RoleBinding, user.ID, effectiveStart, databaseNow)
+			}
+			if err == nil {
+				err = invitation.AcceptScopedRole(user.ID, result.RoleBinding.ID, databaseNow)
+			}
+		default:
+			err = store.NewErrConflict("invitation", "invitation_purpose", nil)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err = persistExternalInvitationAcceptance(ctx, tx, invitation); err != nil {
+			return nil, err
+		}
+		if err = suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow); err != nil {
+			return nil, err
+		}
+		if created && input.Notice != nil && (invitation.Purpose == model.InvitationPurposeStudentClass || invitation.Purpose == model.InvitationPurposeTeacherAcademicUnit) {
+			payloadKeyID, keyErr := validateExternalInvitationNotice(input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job)
+			if keyErr != nil {
+				return nil, keyErr
+			}
+			occurrence := *input.Notice.Occurrence
+			occurrence.ActorUserID = invitation.InviterUserID
+			delivery := *input.Notice.Delivery
+			delivery.TargetUserID, delivery.TargetInvitationID = user.ID, ""
+			if payloadKeyID != "" {
+				if keyErr = requireMailPayloadPrimary(ctx, tx, payloadKeyID); keyErr != nil {
+					return nil, keyErr
+				}
+			}
+			if err = insertInvitationMail(ctx, tx, &occurrence, &delivery, input.Notice.Job, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
+		event := input.AuditEvent.Clone()
+		event.ActorID = user.ID
+		encoded, encodeErr := model.EncodeAuditData(invitation.Auditable())
+		if encodeErr != nil {
+			return nil, encodeErr
+		}
+		event.Result = encoded
+		if _, err = insertAuditEvent(ctx, tx, event); err != nil {
+			return nil, err
+		}
+		result.Invitation = invitation
+		return result, nil
+	})
+}
+
+func resolveExternalInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation,
+	input *store.ExternalIdentityInvitationAcceptance, at time.Time,
+) (*model.User, bool, error) {
+	var targetRow userRow
+	err := tx.Get(ctx, &targetRow, `SELECT `+strings.Join(userSliceColumns(), ",")+` FROM users WHERE email=? AND archived_at IS NULL FOR UPDATE`, invitation.TargetEmail)
+	if err != nil && !isNoRows(err) {
+		return nil, false, err
+	}
+	var target *model.User
+	if err == nil {
+		target, err = targetRow.model()
+		if err != nil {
+			return nil, false, err
+		}
+		if !target.IsActive() {
+			return nil, false, store.NewErrConflict("invitation", "invitation_user_disabled", nil)
+		}
+	}
+	if input.ProviderEmail != invitation.TargetEmail {
+		var providerOwner string
+		ownerErr := tx.Get(ctx, &providerOwner, `SELECT id FROM users WHERE email=? AND archived_at IS NULL FOR UPDATE`, input.ProviderEmail)
+		if ownerErr == nil && (target == nil || providerOwner != target.ID.String()) {
+			return nil, false, store.NewErrConflict("invitation", "invitation_provider_mailbox_owned", nil)
+		}
+		if ownerErr != nil && !isNoRows(ownerErr) {
+			return nil, false, ownerErr
+		}
+	}
+	if target != nil {
+		if !target.EmailVerified {
+			revision, revisionErr := advanceUserMailEligibilityRevision(ctx, tx)
+			if revisionErr != nil {
+				return nil, false, revisionErr
+			}
+			if _, updateErr := tx.Exec(ctx, `UPDATE users SET email_verified=TRUE,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=?`, revision, at, target.ID.String()); updateErr != nil {
+				return nil, false, updateErr
+			}
+			target.EmailVerified, target.UpdatedAt, target.Revision = true, at, target.Revision+1
+		}
+		return target, false, nil
+	}
+	if invitation.Purpose == model.InvitationPurposeAcademicUnitRole || invitation.Purpose == model.InvitationPurposeInstitutionRole {
+		return nil, false, store.NewErrConflict("invitation", "invitation_existing_user_required", nil)
+	}
+	user := *input.User
+	if user.Email != invitation.TargetEmail || user.Validate() != nil || validateInitialUserSettingsDocument(&user, input.Settings) != nil ||
+		validateUserDefaultProfilePictureJob(&user, input.DefaultProfilePictureJob) != nil {
+		return nil, false, store.NewErrInvalidInput("invitation", "external_user", nil)
+	}
+	if err = insertUser(ctx, tx, &user); err != nil {
+		return nil, false, err
+	}
+	if err = insertUserSettingsDocument(ctx, tx, input.Settings); err != nil {
+		return nil, false, err
+	}
+	if _, err = insertQueuedJob(ctx, tx, input.DefaultProfilePictureJob, false); err != nil {
+		return nil, false, err
+	}
+	return &user, true, nil
+}
+
+func linkExternalInvitationIdentity(ctx context.Context, tx *sqlxTxWrapper, prepared *model.ExternalIdentity,
+	userID model.UserID, provider string, at time.Time,
+) (*model.ExternalIdentity, error) {
+	identity, _, err := resolveExternalIdentity(ctx, tx, provider, prepared.Subject, model.MillisFromTime(at))
+	if err == nil {
+		if identity.UserID != userID {
+			return nil, store.NewErrConflict("external_identity", "external_identities_provider_subject_key", nil)
+		}
+		return identity, nil
+	}
+	if !store.IsNotFound(err) {
+		return nil, err
+	}
+	candidate := *prepared
+	candidate.UserID, candidate.Provider = userID, provider
+	candidate.PrepareCreate(model.NewExternalIdentityID(), at)
+	if err = candidate.Validate(); err != nil {
+		return nil, err
+	}
+	if err = insertExternalIdentity(ctx, tx, &candidate); err != nil {
+		return nil, err
+	}
+	return &candidate, nil
+}
+
+func persistExternalInvitationAcceptance(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation) error {
+	result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_affiliation_id=?,accepted_class_member_id=?,accepted_academic_unit_member_id=?,accepted_role_binding_id=?,updated_at=?,revision=? WHERE id=? AND state='pending' AND revision=?`,
+		invitation.State, optionalTimeValue(invitation.AcceptedAt), nullableID(invitation.AcceptedUserID.String()),
+		nullableID(invitation.AcceptedAffiliationID.String()), nullableID(invitation.AcceptedClassMemberID.String()),
+		nullableID(invitation.AcceptedAcademicUnitMemberID.String()), nullableID(invitation.AcceptedRoleBindingID.String()),
+		invitation.UpdatedAt, invitation.Revision, invitation.ID.String(), invitation.Revision-1)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected != 1 {
+		return store.NewErrConflict("invitation", "invitation_revision", err)
+	}
+	return nil
+}
+
+func validateExternalInvitationNotice(occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job) (string, error) {
+	if occurrence == nil || delivery == nil || job == nil ||
+		occurrence.Kind != model.MailOccurrenceInvitation || occurrence.TemplateKey != model.MailTemplateAccessInvitationAccepted ||
+		!delivery.TargetUserID.IsValid() || delivery.TargetInvitationID.IsValid() || job.Type != model.JobTypeMailDeliver {
+		return "", store.NewErrInvalidInput("invitation", "external_acceptance_notice", nil)
+	}
+	validationOccurrence := *occurrence
+	validationOccurrence.ActorUserID = delivery.TargetUserID
+	if err := validateRecoveryMail(&validationOccurrence, delivery, job); err != nil {
+		return "", err
+	}
+	return mailPayloadKeyID(delivery.EncryptedPayload)
+}
+
+func validateExternalInvitationAudit(event *model.AuditEvent, invitation *model.Invitation, provider string) error {
+	if event == nil || invitation == nil || event.Action != "invitation.accept" || event.Status != model.AuditStatusSuccess ||
+		event.ScopeType != invitation.ScopeType || event.ScopeID != invitation.ScopeID ||
+		event.ClientType != string(model.SessionClientWeb) || event.AuthMethod == "" {
+		return store.NewErrInvalidInput("invitation", "external_acceptance_audit", nil)
+	}
+	parameters := map[string]string{}
+	if err := json.Unmarshal(event.Parameters, &parameters); err != nil || len(parameters) != 1 || parameters["provider"] != provider {
+		return store.NewErrInvalidInput("invitation", "external_acceptance_audit", err)
+	}
+	want := model.Resource{}
+	switch invitation.Purpose {
+	case model.InvitationPurposeStudentClass:
+		want = model.Resource{Type: model.ResourceClass, ID: invitation.ClassID.String()}
+	case model.InvitationPurposeTeacherAcademicUnit, model.InvitationPurposeAcademicUnitRole:
+		want = model.Resource{Type: model.ResourceAcademicUnit, ID: invitation.AcademicUnitID.String()}
+	case model.InvitationPurposeInstitutionRole:
+		want = model.Resource{Type: model.ResourceInstitution, ID: invitation.ScopeID}
+	default:
+		return store.NewErrInvalidInput("invitation", "external_acceptance_audit", nil)
+	}
+	if event.Resource != want {
+		return store.NewErrInvalidInput("invitation", "external_acceptance_audit", nil)
+	}
+	return nil
 }
 
 func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.ScopedRoleInvitationAcceptance) (*store.ScopedRoleInvitationAcceptanceResult, error) {

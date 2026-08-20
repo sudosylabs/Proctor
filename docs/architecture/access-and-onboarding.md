@@ -138,9 +138,14 @@ exact provider and browser proof; the raw claim never enters provider state,
 logs, audits, or output. The callback rechecks the current PostgreSQL policy,
 deployment capability, Invitation state and bounds, verified normalized
 provider mailbox, email uniqueness, and immutable-subject uniqueness. It may
-create one relationship-free User, immutable identity link, and ordinary Web
-Session, but leaves the Invitation and its frozen relationship package pending
-for the later explicit conflict-resolution and acceptance transition.
+resolve the canonical active User by the Invitation mailbox or create that User
+when the purpose permits it. One named PostgreSQL aggregate then links the
+immutable provider subject, applies the exact frozen relationship/Role package,
+accepts the Invitation, suppresses its obsolete credential delivery, records
+safe audit and semantic mail, and commits all of those effects together. A
+different verified provider mailbox is acceptable only when it is not owned by
+another User; it never selects or merges an account. This closed purpose does
+not create an ordinary Web Session or leave a relationship-free User behind.
 `auto_provision` may create a User only when
 the current validated provider capability permits it and the provider adapter
 has accepted its configured eligibility predicate. That User starts with no
@@ -668,7 +673,8 @@ Implementation proceeds as independently reviewable vertical slices:
 3. purpose-aware browser authentication and desktop authorization exchange;
 4. credential linking and lifecycle;
 5. Invitation persistence and acceptance;
-6. transactional-mail integration that makes Invitation admission usable;
+6. transactional-mail integration and terminal external-identity Invitation
+   reconciliation;
 7. typed administrative batches, CSV onboarding, and progression;
 8. server-hosted page implementation with the design system.
 

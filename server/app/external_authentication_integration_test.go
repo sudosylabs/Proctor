@@ -352,7 +352,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	disabledCallback := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(disabledCallback, disabledCallbackRequest)
-	if disabledCallback.Code != http.StatusForbidden {
+	if disabledCallback.Code != http.StatusUnauthorized {
 		t.Fatalf("globally disabled invitation callback = %d body=%s", disabledCallback.Code, disabledCallback.Body.String())
 	}
 	if body := disabledCallback.Body.String(); strings.Contains(body, invitedEmail) ||
@@ -405,16 +405,28 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil || invitationUser.Email != invitedEmail || !invitationUser.EmailVerified {
 		t.Fatalf("invitation-admitted User = %#v, %v", invitationUser, err)
 	}
-	stillPending, err := persistence.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
-	if err != nil || stillPending.ID != pendingInvitation.ID || stillPending.State != model.InvitationPending || stillPending.AcceptedUserID.IsValid() {
-		t.Fatalf("admission consumed relationship package = %#v, %v", stillPending, err)
+	acceptedInvitation, err := persistence.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
+	if err != nil || acceptedInvitation.ID != pendingInvitation.ID || acceptedInvitation.State != model.InvitationAccepted ||
+		acceptedInvitation.AcceptedUserID != invitationUser.ID {
+		t.Fatalf("admission terminal Invitation = %#v, %v", acceptedInvitation, err)
 	}
 	invitationAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitationUser.ID.String())
 	invitationClassMembers, _ := persistence.ClassMember().ListByUser(context.Background(), invitationUser.ID.String())
 	invitationBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitationUser.ID.String())
-	if len(invitationAffiliations) != 0 || len(invitationClassMembers) != 0 || len(invitationBindings) != 0 {
-		t.Fatalf("invitation admission granted package: affiliations=%#v class_members=%#v bindings=%#v",
+	if len(invitationAffiliations) != 1 || invitationAffiliations[0].ID != acceptedInvitation.AcceptedAffiliationID ||
+		len(invitationClassMembers) != 1 || invitationClassMembers[0].ID != acceptedInvitation.AcceptedClassMemberID ||
+		len(invitationBindings) != 0 {
+		t.Fatalf("invitation admission package: affiliations=%#v class_members=%#v bindings=%#v",
 			invitationAffiliations, invitationClassMembers, invitationBindings)
+	}
+	invitationSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitationUser.ID.String(), model.GetMillis())
+	if err != nil || len(invitationSessions) != 0 {
+		t.Fatalf("Invitation proof created an ordinary Session = %#v, %v", invitationSessions, err)
+	}
+	invitationAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{ActorId: invitationUser.ID.String(),
+		Action: "invitation.accept", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
+	if err != nil || len(invitationAudits) != 1 || invitationAudits[0].AuthMethod != config.ExternalAuthenticationTypeCAS {
+		t.Fatalf("CAS Invitation acceptance audits = %#v, %v", invitationAudits, err)
 	}
 	invitationReplay := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(invitationReplay, invitationCallbackRequest.Clone(context.Background()))
@@ -670,6 +682,16 @@ func seedExternalAdmissionInvitation(
 		Name: "external-admission", DisplayName: "External Admission"}
 	class, err = persistence.Class().Save(ctx, class)
 	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := persistence.Role().Save(ctx, &model.Role{Name: "external-inviter-" + model.NewId(),
+		DisplayName: "External Invitation Manager",
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
+		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: at.Add(-time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
 	claim := model.NewCredentialToken()

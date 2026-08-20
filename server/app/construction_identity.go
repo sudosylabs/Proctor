@@ -140,6 +140,7 @@ func constructIdentity(
 		foundation.audit,
 		mutationAuditAdapter{audit: foundation.audit},
 		capabilities,
+		invitations,
 		externalPolicy,
 		deps.RecentAuthenticationTTL,
 		deps.AuthenticationDiagnostics,

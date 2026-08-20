@@ -71,9 +71,9 @@ details.
 start. Its strict JSON body requires `invitation_claim`; the raw bearer claim is
 never accepted in query parameters, copied into provider `state`, logged,
 audited, or returned. `GET` on the same path remains the ordinary claim-free
-start. A valid claimed flow may establish a relationship-free User, provider
-link, and Web Session while the Invitation package remains pending for explicit
-acceptance.
+start. A valid claimed flow terminally accepts the exact Invitation package and
+links the proved immutable provider subject in one Store transaction. It does
+not create an ordinary Web Session or leave a relationship-free User behind.
 
 ## Desktop browser authorization
 

@@ -64,6 +64,11 @@ type externalProviderSource interface {
 	Provider(id string) (ExternalIdentityProvider, bool)
 }
 
+type externalInvitationAcceptor interface {
+	AcceptExternalIdentity(context.Context, *model.ExternalLoginState, *model.ExternalAuthenticationAssertion,
+		store.AccessDeploymentCapabilities, model.RequestMetadata, string) (*store.ExternalIdentityInvitationAcceptanceResult, error)
+}
+
 // ExternalAuthenticationPolicy is the deployment projection for external login.
 type ExternalAuthenticationPolicy struct {
 	PublicURL      string
@@ -94,6 +99,7 @@ type externalAuthenticationService struct {
 	policy                  ExternalAuthenticationPolicy
 	recentAuthenticationTTL time.Duration
 	diagnostics             authenticationDiagnostics
+	invitationAcceptor      externalInvitationAcceptor
 	newCredential           func() string
 	now                     func() time.Time
 }
@@ -111,6 +117,7 @@ func newExternalAuthenticationService(
 	audit externalAuthenticationAudit,
 	mutationAudit mutationAuditor,
 	capabilities accessPolicyCapabilitySource,
+	invitationAcceptor externalInvitationAcceptor,
 	policy ExternalAuthenticationPolicy,
 	recentAuthenticationTTL time.Duration,
 	diagnostics authenticationDiagnostics,
@@ -138,7 +145,7 @@ func newExternalAuthenticationService(
 	if audit == nil {
 		return nil, errors.New("audit service is required")
 	}
-	if mutationAudit == nil || capabilities == nil || recentAuthenticationTTL <= 0 {
+	if mutationAudit == nil || capabilities == nil || invitationAcceptor == nil || recentAuthenticationTTL <= 0 {
 		return nil, errors.New("external authentication method lifecycle dependencies are required")
 	}
 	if diagnostics == nil {
@@ -154,7 +161,7 @@ func newExternalAuthenticationService(
 		registry: registry, loginStates: loginStates, institutions: institutions,
 		identities: identities, sessions: sessions, accessPolicy: accessPolicy, attempts: attempts,
 		authentication: authentication, invalidator: invalidator, audit: audit, mutationAudit: mutationAudit,
-		capabilities: capabilities, policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
+		capabilities: capabilities, invitationAcceptor: invitationAcceptor, policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
 		diagnostics: diagnostics, newCredential: newCredential, now: now,
 	}, nil
 }
@@ -501,29 +508,56 @@ func (s *externalAuthenticationService) complete(
 	if state.Purpose == model.ExternalAuthenticationPurposeConnect {
 		return s.completeProviderConnection(ctx, state, assertion, metadata, institution)
 	}
-	var userCandidate *model.User
-	var defaultPictureJob *model.Job
-	var userSettings *model.UserSettingsDocument
-	var provisionAudit *model.AuditEvent
-	autoProvision := admission.Mode == model.ProviderAdmissionAutoProvision && provider.AutoProvision()
-	invitationProvision := state.Purpose == model.ExternalAuthenticationPurposeInvitationAdmission &&
-		admission.Mode == model.ProviderAdmissionInvitationRequired && admission.InvitationAdmissionEnabled && state.InvitationID.IsValid()
-	invitationEmail := ""
-	if invitationProvision {
-		invitationEmail = strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))
-		if !assertion.EmailVerified || !model.IsValidEmail(invitationEmail) {
+	if state.Purpose == model.ExternalAuthenticationPurposeInvitationAdmission {
+		if admission.Mode != model.ProviderAdmissionInvitationRequired || !admission.InvitationAdmissionEnabled {
+			if auditErr := s.audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
+				institution.ID.String(), "authentication.external.invalid"); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.invitation_policy")
+		}
+		if !state.InvitationID.IsValid() || s.invitationAcceptor == nil {
+			return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.invitation")
+		}
+		providerEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))
+		if !assertion.EmailVerified || !model.IsValidEmail(providerEmail) {
 			if auditErr := s.audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
 				institution.ID.String(), "authentication.external.account_not_linked"); auditErr != nil {
 				return nil, auditErr
 			}
 			return nil, NewError("authentication.external.account_not_linked")
 		}
-	}
-	if autoProvision || invitationProvision {
-		userCandidate = externalUserCandidate(assertion)
-		if invitationProvision {
-			userCandidate.Email = invitationEmail
+		result, acceptErr := s.invitationAcceptor.AcceptExternalIdentity(ctx, state, assertion,
+			accessDeploymentCapabilities(s.capabilities.Snapshot()), metadata, method)
+		if acceptErr != nil {
+			if errors.Is(acceptErr, store.ErrAuthenticationMethodDisabled) {
+				if auditErr := s.audit.RecordExternalAuthenticationFailure(ctx, providerID, method, metadata,
+					institution.ID.String(), "authentication.external.invalid"); auditErr != nil {
+					return nil, auditErr
+				}
+				return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.invitation_policy")
+			}
+			var conflict *store.ErrConflict
+			if errors.As(acceptErr, &conflict) {
+				return nil, NewError("authentication.external.account_conflict").Wrap(acceptErr)
+			}
+			if store.IsNotFound(acceptErr) {
+				return nil, NewError("authentication.external.account_not_linked")
+			}
+			return nil, authenticationUnavailable(acceptErr)
 		}
+		if result == nil || result.User == nil || result.Identity == nil {
+			return nil, authenticationUnavailable(errors.New("external Invitation acceptance returned invalid provenance"))
+		}
+		return &model.ExternalAuthenticationCompletion{User: result.User, ReturnTo: state.ReturnTo}, nil
+	}
+	var userCandidate *model.User
+	var defaultPictureJob *model.Job
+	var userSettings *model.UserSettingsDocument
+	var provisionAudit *model.AuditEvent
+	autoProvision := admission.Mode == model.ProviderAdmissionAutoProvision && provider.AutoProvision()
+	if autoProvision {
+		userCandidate = externalUserCandidate(assertion)
 		userCandidate, defaultPictureJob, err = prepareUserDefaultProfilePictureJob(userCandidate, nowTime)
 		if err != nil {
 			return nil, authenticationUnavailable(err)
@@ -555,7 +589,7 @@ func (s *externalAuthenticationService) complete(
 				Provider: providerID, Subject: assertion.Subject,
 				LastSeenAt: model.OptionalTimeFromMillis(now),
 			},
-			InvitationID: state.InvitationID, User: userCandidate, Settings: userSettings,
+			User: userCandidate, Settings: userSettings,
 			Capabilities:   accessDeploymentCapabilities(s.capabilities.Snapshot()),
 			ProvisionAudit: provisionAudit, DefaultProfilePictureJob: defaultPictureJob,
 		},

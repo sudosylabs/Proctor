@@ -378,15 +378,16 @@ rechecks the authoritative PostgreSQL policy in its committing transaction;
 protocol names are never used as provider-identity fallbacks. Detailed
 provider admission is now enforced: `linked_only` resolves only an existing
 immutable subject link, ordinary `invitation_required` login fails safely when
-it has no purpose-bound Invitation claim, a claimed invitation flow may create
-only a relationship-free User/link/Web Session while leaving the package
-pending, and `auto_provision` creates only an eligible relationship-free User.
+it has no purpose-bound Invitation claim, and a claimed invitation flow now
+terminally links the immutable subject and accepts the exact frozen package
+without creating an ordinary Web Session. `auto_provision` creates only an
+eligible relationship-free User.
 Email never merges accounts, changed provider
 profile claims never overwrite an established User, and a provider omitted by
 the current node fails closed while its durable policy identity and links are
-preserved. The atomic transition that links an external identity to an intended
-existing User and accepts the frozen Invitation package remains the later
-Invitation/identity-reconciliation slice.
+preserved. A different verified provider mailbox is accepted only when it is
+unowned; an owned mailbox or subject linked to another User fails as a bounded
+conflict without partial User, relationship, Role, mail, or audit state.
 This is a reset-only pre-release baseline: there is no supported upgrade path
 for development rows whose external Sessions lack an exact provider ID and
 `ExternalIdentityID`.
@@ -482,6 +483,14 @@ older unsent credential delivery, revocation terminalizes immediately and
 notifies only after an SMTP-Accepted credential delivery, and replacement
 supersedes the old immutable package while rechecking the new package and
 authority in the committing PostgreSQL transaction.
+External-provider Invitation acceptance is implemented for CAS and OIDC. The
+short-lived browser-bound state stores only the Invitation ID, provider, and
+purpose; callback completion rechecks current policy, capability, package,
+inviter authority, canonical mailbox ownership, and immutable-subject
+uniqueness before one named transaction links the identity and accepts the
+package. New and existing canonical Users are supported, provider mailbox
+differences never select an account, losing races fail closed, and the closed
+Invitation purpose creates no ordinary Session.
 CSV imports are asynchronous validated batches over the same invitation and
 progression commands, with row-level results and no raw invitation secrets in
 exports. The closed authorization registry now distinguishes Academic Unit
@@ -553,8 +562,7 @@ contract is in [Execution environments](../architecture/execution.md).
 
 - Implement the accepted access-and-onboarding architecture in its documented
   order after scoped Academic Period ownership and protected initial policy:
-  local and external credential reconciliation, then bounded CSV batch
-  workflows over the implemented typed Invitation commands.
+  bounded CSV batch workflows over the implemented typed Invitation commands.
   Invitation-required activation and usable invite links remain gated on the
   mail foundation and hosted-page design system respectively.
 - Continue the accepted transactional-mail architecture as verified vertical

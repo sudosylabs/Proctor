@@ -139,6 +139,7 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 		audit,
 		mutationAuditAdapter{audit: audit},
 		&accessPolicyCapabilitiesFake{},
+		&externalInvitationAcceptorFake{},
 		ExternalAuthenticationPolicy{},
 		15*time.Minute,
 		&securityEffectsDiagnosticsFake{},
