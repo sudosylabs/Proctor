@@ -336,6 +336,9 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if descriptor, ok := descriptors[model.JobTypeOnboardingImportExecute]; !ok || !descriptor.Cancelable || len(descriptor.CheckpointVersions) != 1 {
 		t.Fatalf("Onboarding import execution descriptor = %#v", descriptor)
 	}
+	if descriptor, ok := descriptors[model.JobTypeStudentProgressionPreview]; !ok || !descriptor.Cancelable {
+		t.Fatalf("Student progression preview descriptor = %#v", descriptor)
+	}
 
 	recurrenceCount := 0
 	invitationMaintenanceRecurrenceCount := 0
@@ -418,7 +421,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	}
 	if !retained[model.JobTypeExamSittingLifecycle] || !retained[model.JobTypeExamSittingLifecycleRecovery] ||
 		!retained[model.JobTypeExamSittingSealing] || !retained[model.JobTypeInvitationMaintenance] ||
-		!retained[model.JobTypeOnboardingImportParse] || !retained[model.JobTypeOnboardingImportExecute] {
+		!retained[model.JobTypeOnboardingImportParse] || !retained[model.JobTypeOnboardingImportExecute] || !retained[model.JobTypeStudentProgressionPreview] {
 		t.Fatalf("cleanup retention types = %#v", retained)
 	}
 }

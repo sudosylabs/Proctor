@@ -176,6 +176,7 @@ func buildApplicationJobDefinitions(
 	if identity.onboardingImports != nil {
 		descriptors = append(descriptors,
 			onboardingImportParseDescriptor(onboardingImportParseHandler{service: identity.onboardingImports}),
+			studentProgressionPreviewDescriptor(studentProgressionPreviewHandler{service: identity.onboardingImports}),
 			onboardingImportExecuteDescriptor(onboardingImportExecuteHandler{service: identity.onboardingImports}),
 		)
 	}

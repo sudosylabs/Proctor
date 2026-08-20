@@ -846,6 +846,7 @@ func invitationBatchPublicErrorCode(err error) string {
 			"authentication.invalid_token", "authentication.strong_required", "authentication.reauthentication_required",
 			"invitation.invalid", "invitation.class_period_invalid", "invitation.conflict",
 			"invitation.role_not_delegable", "invitation.mail_unavailable", "invitation.unavailable",
+			"student_progression.conflict", "student_progression.target_conflict",
 			"idempotency.conflict", "idempotency.in_progress", "onboarding_batch.duplicate":
 			return failure.Code()
 		}

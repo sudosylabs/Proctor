@@ -297,6 +297,7 @@ const (
 	methodRecordBatchDuplicate                 methodName = "record_batch_duplicate"
 	methodCreateOnboardingImport               methodName = "create_onboarding_import"
 	methodGetOnboardingImport                  methodName = "get_onboarding_import"
+	methodListStudentProgressionRoster         methodName = "list_student_progression_roster"
 	methodCompleteOnboardingImportPreview      methodName = "complete_onboarding_import_preview"
 	methodCommitOnboardingImport               methodName = "commit_onboarding_import"
 	methodListOnboardingImportRows             methodName = "list_onboarding_import_rows"

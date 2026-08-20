@@ -393,16 +393,25 @@ CREATE UNIQUE INDEX invitations_pending_institution_role_package_key
     ON invitations (target_email, scope_id, role_id)
     WHERE state = 'pending' AND purpose = 'institution_role';
 
--- CSV onboarding imports retain only a seven-day private preview/report. Job
--- commands contain the opaque import ID; recipient data remains in these
--- domain-owned tables and is removed with the aggregate.
+-- Administrative imports and student progression retain only a seven-day
+-- private preview/report. Job commands contain the opaque aggregate ID;
+-- recipient data remains in these domain-owned tables and is removed with it.
 CREATE TABLE onboarding_imports (
     id varchar(26) PRIMARY KEY,
-    mode varchar(32) NOT NULL CHECK (mode IN ('student_class', 'teacher_academic_unit', 'institution', 'academic_administration')),
+    mode varchar(32) NOT NULL CHECK (mode IN ('student_class', 'teacher_academic_unit', 'institution', 'academic_administration', 'student_progression')),
     state varchar(32) NOT NULL CHECK (state IN ('uploading', 'parsing', 'preview_ready', 'executing', 'completed', 'completed_with_errors', 'canceled', 'failed')),
     scope_type varchar(32) NOT NULL CHECK (scope_type IN ('class', 'academic_unit', 'institution')),
     scope_id varchar(26) NOT NULL,
     role_id varchar(26),
+    source_period_id varchar(26) REFERENCES academic_periods(id),
+    source_class_id varchar(26) REFERENCES classes(id),
+    destination_period_id varchar(26) REFERENCES academic_periods(id),
+    destination_class_id varchar(26) REFERENCES classes(id),
+    source_period_revision bigint NOT NULL DEFAULT 0 CHECK (source_period_revision >= 0),
+    source_class_revision bigint NOT NULL DEFAULT 0 CHECK (source_class_revision >= 0),
+    destination_period_revision bigint NOT NULL DEFAULT 0 CHECK (destination_period_revision >= 0),
+    destination_class_revision bigint NOT NULL DEFAULT 0 CHECK (destination_class_revision >= 0),
+    effective_at timestamptz,
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
     principal jsonb NOT NULL,
     preview_digest char(64) NOT NULL DEFAULT '' CHECK (preview_digest = '' OR preview_digest ~ '^[0-9a-f]{64}$'),
@@ -429,7 +438,17 @@ CREATE TABLE onboarding_imports (
         (mode = 'student_class' AND scope_type = 'class' AND role_id IS NULL) OR
         (mode = 'teacher_academic_unit' AND scope_type = 'academic_unit' AND role_id IS NOT NULL) OR
         (mode = 'institution' AND scope_type = 'institution' AND role_id IS NULL) OR
-        (mode = 'academic_administration' AND scope_type IN ('institution', 'academic_unit', 'class') AND role_id IS NULL)
+        (mode = 'academic_administration' AND scope_type IN ('institution', 'academic_unit', 'class') AND role_id IS NULL) OR
+        (mode = 'student_progression' AND scope_type = 'class' AND role_id IS NULL AND
+         source_period_id IS NOT NULL AND source_class_id IS NOT NULL AND destination_period_id IS NOT NULL AND
+         destination_class_id = scope_id AND effective_at IS NOT NULL AND source_period_revision > 0 AND
+         source_class_revision > 0 AND destination_period_revision > 0 AND destination_class_revision > 0)
+    ),
+    CONSTRAINT onboarding_imports_progression_package_check CHECK (
+        (mode = 'student_progression' AND source_class_id <> destination_class_id) OR
+        (mode <> 'student_progression' AND source_period_id IS NULL AND source_class_id IS NULL AND
+         destination_period_id IS NULL AND destination_class_id IS NULL AND effective_at IS NULL AND
+         source_period_revision = 0 AND source_class_revision = 0 AND destination_period_revision = 0 AND destination_class_revision = 0)
     ),
     CONSTRAINT onboarding_imports_counts_check CHECK (
         valid_rows + invalid_rows = total_rows AND
@@ -447,6 +466,9 @@ CREATE TABLE onboarding_imports (
 CREATE UNIQUE INDEX onboarding_imports_active_scope_idx
     ON onboarding_imports (mode, scope_type, scope_id)
     WHERE state = 'executing';
+CREATE UNIQUE INDEX onboarding_imports_active_progression_source_idx
+    ON onboarding_imports (source_class_id)
+    WHERE mode = 'student_progression' AND state = 'executing';
 CREATE INDEX onboarding_imports_expiry_idx ON onboarding_imports (expires_at, id);
 
 CREATE TABLE onboarding_import_rows (
@@ -462,6 +484,9 @@ CREATE TABLE onboarding_import_rows (
     target_email varchar(254) NOT NULL CHECK (target_email = lower(btrim(target_email))),
     user_id varchar(26) REFERENCES users(id),
     relationship_ref varchar(26),
+    relationship_revision bigint NOT NULL DEFAULT 0 CHECK (relationship_revision >= 0),
+    destination_relationship_ref varchar(26),
+    destination_relationship_revision bigint NOT NULL DEFAULT 0 CHECK (destination_relationship_revision >= 0),
     affiliation_kind varchar(32) NOT NULL DEFAULT '',
     suggested_username varchar(64) NOT NULL DEFAULT '',
     suggested_display_name varchar(512) NOT NULL DEFAULT '',
@@ -1364,6 +1389,9 @@ ALTER TABLE onboarding_imports
 
 ALTER TABLE onboarding_import_rows
     ADD CONSTRAINT onboarding_import_rows_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(id);
+ALTER TABLE onboarding_import_rows
+    ADD CONSTRAINT onboarding_import_rows_destination_relationship_ref_fkey
+    FOREIGN KEY (destination_relationship_ref) REFERENCES class_members(id);
 
 CREATE TABLE role_bindings (
     id varchar(26) PRIMARY KEY,
@@ -3035,6 +3063,8 @@ ALTER TABLE onboarding_import_rows
     CHECK (user_id IS NULL OR user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_import_rows_relationship_ref_canonical_check
     CHECK (relationship_ref IS NULL OR relationship_ref ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_import_rows_destination_relationship_ref_canonical_check
+    CHECK (destination_relationship_ref IS NULL OR destination_relationship_ref ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_import_rows_invitation_id_canonical_check
     CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_import_rows_result_ref_canonical_check

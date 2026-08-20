@@ -31,30 +31,35 @@ type onboardingImportCommitRequest struct {
 }
 
 type onboardingImportResponse struct {
-	ID             string                        `json:"id"`
-	Mode           string                        `json:"mode"`
-	State          string                        `json:"state"`
-	ScopeType      string                        `json:"scope_type"`
-	ScopeID        string                        `json:"scope_id"`
-	RoleID         string                        `json:"role_id,omitempty"`
-	PreviewDigest  string                        `json:"preview_digest,omitempty"`
-	IgnoredHeaders []string                      `json:"ignored_headers,omitempty"`
-	Rows           []onboardingImportRowResponse `json:"rows,omitempty"`
-	TotalRows      int                           `json:"total_rows"`
-	ValidRows      int                           `json:"valid_rows"`
-	InvalidRows    int                           `json:"invalid_rows"`
-	SucceededRows  int                           `json:"succeeded_rows"`
-	NoOpRows       int                           `json:"no_op_rows"`
-	FailedRows     int                           `json:"failed_rows"`
-	SkippedRows    int                           `json:"skipped_rows"`
-	CommitPolicy   string                        `json:"commit_policy,omitempty"`
-	ParseJobID     string                        `json:"parse_job_id"`
-	ExecutionJobID string                        `json:"execution_job_id,omitempty"`
-	CreatedAt      string                        `json:"created_at"`
-	UpdatedAt      string                        `json:"updated_at"`
-	ExpiresAt      string                        `json:"expires_at"`
-	Revision       int64                         `json:"revision"`
-	FailureCode    string                        `json:"failure_code,omitempty"`
+	ID                  string                        `json:"id"`
+	Mode                string                        `json:"mode"`
+	State               string                        `json:"state"`
+	ScopeType           string                        `json:"scope_type"`
+	ScopeID             string                        `json:"scope_id"`
+	RoleID              string                        `json:"role_id,omitempty"`
+	SourcePeriodID      string                        `json:"source_period_id,omitempty"`
+	SourceClassID       string                        `json:"source_class_id,omitempty"`
+	DestinationPeriodID string                        `json:"destination_period_id,omitempty"`
+	DestinationClassID  string                        `json:"destination_class_id,omitempty"`
+	EffectiveAt         string                        `json:"effective_at,omitempty"`
+	PreviewDigest       string                        `json:"preview_digest,omitempty"`
+	IgnoredHeaders      []string                      `json:"ignored_headers,omitempty"`
+	Rows                []onboardingImportRowResponse `json:"rows,omitempty"`
+	TotalRows           int                           `json:"total_rows"`
+	ValidRows           int                           `json:"valid_rows"`
+	InvalidRows         int                           `json:"invalid_rows"`
+	SucceededRows       int                           `json:"succeeded_rows"`
+	NoOpRows            int                           `json:"no_op_rows"`
+	FailedRows          int                           `json:"failed_rows"`
+	SkippedRows         int                           `json:"skipped_rows"`
+	CommitPolicy        string                        `json:"commit_policy,omitempty"`
+	ParseJobID          string                        `json:"parse_job_id"`
+	ExecutionJobID      string                        `json:"execution_job_id,omitempty"`
+	CreatedAt           string                        `json:"created_at"`
+	UpdatedAt           string                        `json:"updated_at"`
+	ExpiresAt           string                        `json:"expires_at"`
+	Revision            int64                         `json:"revision"`
+	FailureCode         string                        `json:"failure_code,omitempty"`
 }
 
 type onboardingImportRowResponse struct {
@@ -153,10 +158,14 @@ func (m onboardingImportModule) report(request operationRequest) (protocolResult
 
 func onboardingImportResponseFromView(view application.OnboardingImportView, rows []application.OnboardingImportRowView) onboardingImportResponse {
 	response := onboardingImportResponse{ID: view.ID.String(), Mode: string(view.Mode), State: string(view.State), ScopeType: string(view.ScopeType), ScopeID: view.ScopeID,
-		RoleID: view.RoleID.String(), PreviewDigest: view.PreviewDigest, IgnoredHeaders: append([]string(nil), view.IgnoredHeaders...), TotalRows: view.TotalRows, ValidRows: view.ValidRows,
+		RoleID: view.RoleID.String(), SourcePeriodID: view.SourcePeriodID.String(), SourceClassID: view.SourceClassID.String(), DestinationPeriodID: view.DestinationPeriodID.String(), DestinationClassID: view.DestinationClassID.String(),
+		PreviewDigest: view.PreviewDigest, IgnoredHeaders: append([]string(nil), view.IgnoredHeaders...), TotalRows: view.TotalRows, ValidRows: view.ValidRows,
 		InvalidRows: view.InvalidRows, SucceededRows: view.SucceededRows, NoOpRows: view.NoOpRows, FailedRows: view.FailedRows, SkippedRows: view.SkippedRows,
 		CommitPolicy: string(view.CommitPolicy), ParseJobID: view.ParseJobID.String(), ExecutionJobID: view.ExecutionJobID.String(), CreatedAt: view.CreatedAt.Format(time.RFC3339Nano),
 		UpdatedAt: view.UpdatedAt.Format(time.RFC3339Nano), ExpiresAt: view.ExpiresAt.Format(time.RFC3339Nano), Revision: view.Revision, FailureCode: view.FailureCode}
+	if !view.EffectiveAt.IsZero() {
+		response.EffectiveAt = model.TimeUTC(view.EffectiveAt).Format(time.RFC3339Nano)
+	}
 	if rows != nil {
 		response.Rows = make([]onboardingImportRowResponse, 0, len(rows))
 		for _, row := range rows {

@@ -606,6 +606,55 @@
         "responses": {"200": {"$ref": "#/components/responses/OnboardingImportReport"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
       }
     },
+    "/api/v1/student-progressions": {
+      "post": {
+        "operationId": "dryRunStudentProgression", "summary": "Create an asynchronous dry-run for one exact student progression",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "student_progression.target_conflict", "student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.roster_too_large", "student_progression.conflict", "student_progression.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/DryRunStudentProgression"},
+        "responses": {"202": {"$ref": "#/components/responses/StudentProgressionAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/student-progressions/{student_progression_id}": {
+      "parameters": [{"$ref": "#/components/parameters/StudentProgressionID"}],
+      "get": {
+        "operationId": "getStudentProgression", "summary": "Get one authorized student progression preview or result",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable", "student_progression.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/StudentProgressionOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/student-progressions/{student_progression_id}/commit": {
+      "parameters": [{"$ref": "#/components/parameters/StudentProgressionID"}],
+      "post": {
+        "operationId": "commitStudentProgression", "summary": "Commit one exact student progression preview", "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "student_progression.target_conflict", "student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.roster_too_large", "student_progression.conflict", "student_progression.unavailable", "administration.unavailable", "idempotency.key_required", "idempotency.invalid_key"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/CommitStudentProgression"},
+        "responses": {"202": {"$ref": "#/components/responses/StudentProgressionAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/student-progressions/{student_progression_id}/cancel": {
+      "parameters": [{"$ref": "#/components/parameters/StudentProgressionID"}],
+      "post": {
+        "operationId": "cancelStudentProgression", "summary": "Cooperatively cancel a student progression", "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "student_progression.target_conflict", "student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.roster_too_large", "student_progression.conflict", "student_progression.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/StudentProgressionOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/student-progressions/{student_progression_id}/report": {
+      "parameters": [{"$ref": "#/components/parameters/StudentProgressionID"}],
+      "get": {
+        "operationId": "downloadStudentProgressionReport", "summary": "Download the authorized formula-safe student progression report", "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable", "student_progression.unavailable", "student_progression.conflict"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/StudentProgressionReport"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
     "/api/v1/invitations": {
       "get": {
         "operationId": "listInvitations", "summary": "List Invitations within the caller's authorized scope",
@@ -2788,6 +2837,10 @@
         "name": "onboarding_import_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "StudentProgressionID": {
+        "name": "student_progression_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "ClassMemberID": {
         "name": "class_member_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -2853,6 +2906,8 @@
       "RunInvitationBatch": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationBatchRequest"}}}},
       "RunAcademicAdministrationBatch": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcademicAdministrationBatchRequest"}}}},
       "CommitOnboardingImport": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportCommitRequest"}}}},
+      "DryRunStudentProgression": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StudentProgressionDryRunRequest"}}}},
+      "CommitStudentProgression": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StudentProgressionCommitRequest"}}}},
       "StartMailRekey": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailRekeyRequest"}}}
@@ -3118,6 +3173,9 @@
       "OnboardingImportAccepted": {"description": "Onboarding import accepted for asynchronous work", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
       "OnboardingImportOK": {"description": "Authorized safe onboarding preview or report projection", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
       "OnboardingImportReport": {"description": "Formula-safe CSV report without recipient or Invitation secret disclosure", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}, "X-Content-Type-Options": {"$ref": "#/components/headers/NoSniff"}}, "content": {"text/csv": {"schema": {"type": "string", "format": "binary"}}}},
+      "StudentProgressionAccepted": {"description": "Student progression accepted for asynchronous dry-run or execution", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
+      "StudentProgressionOK": {"description": "Authorized safe student progression preview or result", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
+      "StudentProgressionReport": {"description": "Formula-safe student progression CSV report without recipient disclosure", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}, "X-Content-Type-Options": {"$ref": "#/components/headers/NoSniff"}}, "content": {"text/csv": {"schema": {"type": "string", "format": "binary"}}}},
       "ExamOK": {
         "description": "Bounded Exam authoring view",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResponse"}}}
@@ -5411,6 +5469,19 @@
           "policy": {"type": "string", "enum": ["require_all_valid", "valid_rows_only"]}
         }
       },
+      "StudentProgressionDryRunRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["source_period_id", "source_class_id", "destination_period_id", "destination_class_id", "effective_at"],
+        "properties": {
+          "source_period_id": {"$ref": "#/components/schemas/ID"}, "source_class_id": {"$ref": "#/components/schemas/ID"},
+          "destination_period_id": {"$ref": "#/components/schemas/ID"}, "destination_class_id": {"$ref": "#/components/schemas/ID"},
+          "effective_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "StudentProgressionCommitRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_revision", "preview_digest"],
+        "properties": {"expected_revision": {"type": "integer", "format": "int64", "minimum": 1}, "preview_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+      },
       "OnboardingImportRowResponse": {
         "type": "object", "additionalProperties": false, "required": ["row", "reference", "operation", "status"],
         "properties": {
@@ -5425,10 +5496,13 @@
         "type": "object", "additionalProperties": false,
         "required": ["id", "mode", "state", "scope_type", "scope_id", "total_rows", "valid_rows", "invalid_rows", "succeeded_rows", "no_op_rows", "failed_rows", "skipped_rows", "parse_job_id", "created_at", "updated_at", "expires_at", "revision"],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"}, "mode": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution", "academic_administration"]},
+          "id": {"$ref": "#/components/schemas/ID"}, "mode": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution", "academic_administration", "student_progression"]},
           "state": {"type": "string", "enum": ["uploading", "parsing", "preview_ready", "executing", "completed", "completed_with_errors", "canceled", "failed"]},
           "scope_type": {"type": "string", "enum": ["class", "academic_unit", "institution"]}, "scope_id": {"$ref": "#/components/schemas/ID"},
-          "role_id": {"$ref": "#/components/schemas/ID"}, "preview_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "role_id": {"$ref": "#/components/schemas/ID"},
+          "source_period_id": {"$ref": "#/components/schemas/ID"}, "source_class_id": {"$ref": "#/components/schemas/ID"},
+          "destination_period_id": {"$ref": "#/components/schemas/ID"}, "destination_class_id": {"$ref": "#/components/schemas/ID"},
+          "effective_at": {"type": "string", "format": "date-time"}, "preview_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "ignored_headers": {"type": "array", "maxItems": 64, "items": {"type": "string", "maxLength": 128}},
           "rows": {"type": "array", "maxItems": 50000, "items": {"$ref": "#/components/schemas/OnboardingImportRowResponse"}},
           "total_rows": {"type": "integer", "minimum": 0, "maximum": 50000}, "valid_rows": {"type": "integer", "minimum": 0, "maximum": 50000},

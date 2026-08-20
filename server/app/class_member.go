@@ -19,19 +19,22 @@ type ListClassMembersQuery struct {
 }
 
 type EnrollClassMemberCommand struct {
-	ClassID                   string
-	UserID                    string
-	StartAt                   int64
-	EndAt                     int64
-	ExpectedPreviousID        string
-	RequireTransfer           bool
-	IdempotencyKey            string
-	batchReplayed             *bool
-	batchAuthorization        *store.CommandAuthorization
-	batchMetadata             *store.CommandBatch
-	batchRetainedOutcome      bool
-	onboardingImportID        model.OnboardingImportID
-	onboardingImportRowNumber int
+	ClassID                       string
+	UserID                        string
+	StartAt                       int64
+	EndAt                         int64
+	ExpectedPreviousID            string
+	RequireTransfer               bool
+	IdempotencyKey                string
+	batchReplayed                 *bool
+	batchAuthorization            *store.CommandAuthorization
+	batchMetadata                 *store.CommandBatch
+	batchRetainedOutcome          bool
+	studentProgression            bool
+	progressionSourceAuditID      string
+	progressionDestinationAuditID string
+	onboardingImportID            model.OnboardingImportID
+	onboardingImportRowNumber     int
 }
 
 type EndClassMemberCommand struct {
@@ -158,7 +161,8 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			EndAt              int64  `json:"end_at"`
 			ExpectedPreviousID string `json:"expected_previous_id,omitempty"`
 			Transfer           bool   `json:"transfer"`
-		}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer})
+			Progression        bool   `json:"progression"`
+		}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer, command.studentProgression})
 		if commandErr != nil {
 			return nil, commandErr
 		}
@@ -169,7 +173,8 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			Resource: resource, Operation: "enroll", Value: candidate.Auditable()}, func() time.Time { return at },
 			func(ctx context.Context, reference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
 				execute := func(ctx context.Context, sourceAuditID string) (*store.ClassEnrollmentResult, error) {
-					input := &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: 1,
+					input := &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: 1, StudentProgression: command.studentProgression,
+						ProgressionSourceAuditEventID: command.progressionSourceAuditID, ProgressionDestinationAuditEventID: command.progressionDestinationAuditID,
 						AuditEventID: reference.ID, PreviousAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis, Command: idempotency}
 					if retainedPrevious != nil {
 						input.ExpectedPreviousID = retainedPrevious.ID
@@ -260,7 +265,8 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		EndAt              int64  `json:"end_at"`
 		ExpectedPreviousID string `json:"expected_previous_id,omitempty"`
 		Transfer           bool   `json:"transfer"`
-	}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer})
+		Progression        bool   `json:"progression"`
+	}{candidate.ClassID.String(), candidate.UserID.String(), command.StartAt, command.EndAt, strings.TrimSpace(command.ExpectedPreviousID), command.RequireTransfer, command.studentProgression})
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +315,8 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 					notice = &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job}
 				}
 				input := &store.ClassMemberEnrollment{
-					Member: candidate, ExpectedRecipientRevision: recipient.Revision,
+					Member: candidate, ExpectedRecipientRevision: recipient.Revision, StudentProgression: command.studentProgression,
+					ProgressionSourceAuditEventID: command.progressionSourceAuditID, ProgressionDestinationAuditEventID: command.progressionDestinationAuditID,
 					Notice:       notice,
 					AuditEventID: destinationReference.ID, AuditAt: destinationReference.MutationAtMillis, Command: idempotency,
 				}
@@ -331,7 +338,8 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 						notice = &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job}
 					}
 					input := &store.ClassMemberEnrollment{
-						Member: candidate, ExpectedPreviousID: expectedPreviousID, ExpectedRecipientRevision: recipient.Revision,
+						Member: candidate, ExpectedPreviousID: expectedPreviousID, ExpectedRecipientRevision: recipient.Revision, StudentProgression: command.studentProgression,
+						ProgressionSourceAuditEventID: command.progressionSourceAuditID, ProgressionDestinationAuditEventID: command.progressionDestinationAuditID,
 						Notice:       notice,
 						AuditEventID: destinationReference.ID, PreviousAuditEventID: sourceReference.ID,
 						AuditAt: destinationReference.MutationAtMillis, Command: idempotency,

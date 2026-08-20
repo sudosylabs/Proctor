@@ -507,6 +507,14 @@ Role Binding, account-state, and selected-User Session operations. Rows reuse
 the ordinary use cases and named PostgreSQL aggregates, retain minimal
 idempotent outcomes atomically, reauthorize at terminal mutation, and expose
 only safe resource IDs and closed outcomes.
+Student progression is implemented as an exact source/destination Period and
+Class workflow. Its asynchronous dry-run reports each bounded-roster conflict,
+an explicit content/revision-fenced commit executes resumable independent rows,
+same-Period transitions preserve transfer history, and cross-Period
+transitions create destination history without rewriting the source. Current
+two-scope authority, target/enrollment revisions, transactional Class notices,
+cancellation, safe reports, and retained execution outcomes remain enforced by
+the ordinary named PostgreSQL aggregates.
 The closed authorization registry now distinguishes Academic Unit
 membership, Programme, Programme Level, Academic Period, Class, Class
 membership, progression, Access Policy, Invitation, onboarding batch,

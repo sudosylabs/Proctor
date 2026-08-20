@@ -73,13 +73,16 @@ type AcademicAdministrationBatchItemCommand struct {
 }
 
 type RunAcademicAdministrationBatchCommand struct {
-	Operation                 AcademicAdministrationBatchOperation
-	ScopeType                 model.RoleScopeType
-	ScopeID                   string
-	IdempotencyKey            string
-	Items                     []AcademicAdministrationBatchItemCommand
-	onboardingImportID        model.OnboardingImportID
-	onboardingImportRowNumber int
+	Operation                     AcademicAdministrationBatchOperation
+	ScopeType                     model.RoleScopeType
+	ScopeID                       string
+	IdempotencyKey                string
+	Items                         []AcademicAdministrationBatchItemCommand
+	onboardingImportID            model.OnboardingImportID
+	onboardingImportRowNumber     int
+	progression                   bool
+	progressionSourceAuditID      string
+	progressionDestinationAuditID string
 }
 
 type AcademicAdministrationBatchItemResult struct {
@@ -188,7 +191,11 @@ func (s *academicAdministrationBatchService) Run(ctx context.Context, invocation
 	if err != nil {
 		return AcademicAdministrationBatchResult{}, err
 	}
-	if err = s.authorization.Authorize(ctx, invocation, model.ActionOnboardingBatchManage, resource); err != nil {
+	batchAction := model.ActionOnboardingBatchManage
+	if command.progression {
+		batchAction = model.ActionAcademicProgressionManage
+	}
+	if err = s.authorization.Authorize(ctx, invocation, batchAction, resource); err != nil {
 		return AcademicAdministrationBatchResult{}, err
 	}
 	if command.Operation.requiresStrongRecentSession() {
@@ -443,7 +450,7 @@ func (s *academicAdministrationBatchService) runItem(ctx context.Context, invoca
 		return academicAdministrationModelOutcome(value, replayed, metadata, err)
 	case AcademicAdministrationClassEnroll, AcademicAdministrationClassTransfer:
 		var replayed bool
-		value, err := s.commands.EnrollClassMember(ctx, invocation, EnrollClassMemberCommand{ClassID: batch.ScopeID, UserID: item.UserID, StartAt: item.StartAt, EndAt: item.EndAt, ExpectedPreviousID: item.RelationshipID, RequireTransfer: batch.Operation == AcademicAdministrationClassTransfer, IdempotencyKey: itemKey, batchReplayed: &replayed, batchAuthorization: authority, batchMetadata: metadata, batchRetainedOutcome: retained, onboardingImportID: batch.onboardingImportID, onboardingImportRowNumber: batch.onboardingImportRowNumber})
+		value, err := s.commands.EnrollClassMember(ctx, invocation, EnrollClassMemberCommand{ClassID: batch.ScopeID, UserID: item.UserID, StartAt: item.StartAt, EndAt: item.EndAt, ExpectedPreviousID: item.RelationshipID, RequireTransfer: batch.Operation == AcademicAdministrationClassTransfer, IdempotencyKey: itemKey, batchReplayed: &replayed, batchAuthorization: authority, batchMetadata: metadata, batchRetainedOutcome: retained, studentProgression: batch.progression, progressionSourceAuditID: batch.progressionSourceAuditID, progressionDestinationAuditID: batch.progressionDestinationAuditID, onboardingImportID: batch.onboardingImportID, onboardingImportRowNumber: batch.onboardingImportRowNumber})
 		if err != nil || value == nil || value.Membership == nil {
 			return "", "", err
 		}
@@ -504,9 +511,13 @@ func academicAdministrationBatchAuthority(invocation Invocation, batch RunAcadem
 	case AcademicAdministrationUserSessionsRevoke:
 		action = model.ActionSessionManage
 	}
+	actions := []model.Action{model.ActionOnboardingBatchManage, action}
+	if batch.progression {
+		actions = []model.Action{model.ActionAcademicProgressionManage, action}
+	}
 	return &store.CommandAuthorization{
 		Principal: invocation.Principal(), ScopeType: batch.ScopeType, ScopeID: batch.ScopeID,
-		Actions: []model.Action{model.ActionOnboardingBatchManage, action},
+		Actions: actions,
 	}
 }
 

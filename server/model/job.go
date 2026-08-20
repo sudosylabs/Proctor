@@ -40,6 +40,7 @@ const (
 	JobTypeInvitationMaintenance         JobType = "invitation.maintenance"
 	JobTypeOnboardingImportParse         JobType = "onboarding_import.parse"
 	JobTypeOnboardingImportExecute       JobType = "onboarding_import.execute"
+	JobTypeStudentProgressionPreview     JobType = "student_progression.preview"
 
 	JobStatusQueued          JobStatus = "queued"
 	JobStatusRunning         JobStatus = "running"
@@ -341,7 +342,7 @@ var jobSafeCode = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
 var jobSafeStage = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 
 func validJobType(value JobType) bool {
-	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailDeliverCredential || value == JobTypeMailCleanup || value == JobTypeMailRekey || value == JobTypeMailExpandSitting || value == JobTypeInvitationMaintenance || value == JobTypeOnboardingImportParse || value == JobTypeOnboardingImportExecute
+	return value == JobTypeProfilePictureGenerateDefault || value == JobTypeProfilePictureReconcile || value == JobTypeFilePurgeExpiredContent || value == JobTypeCleanup || value == JobTypeCommandOutcomeCleanup || value == JobTypeExamSittingLifecycle || value == JobTypeExamSittingLifecycleRecovery || value == JobTypeExamSittingSealing || value == JobTypeMailDeliver || value == JobTypeMailDeliverCredential || value == JobTypeMailCleanup || value == JobTypeMailRekey || value == JobTypeMailExpandSitting || value == JobTypeInvitationMaintenance || value == JobTypeOnboardingImportParse || value == JobTypeOnboardingImportExecute || value == JobTypeStudentProgressionPreview
 }
 func validJobStatus(value JobStatus) bool {
 	return value == JobStatusQueued || value == JobStatusRunning || value == JobStatusCancelRequested || value == JobStatusSucceeded || value == JobStatusFailed || value == JobStatusCanceled

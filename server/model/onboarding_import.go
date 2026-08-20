@@ -16,6 +16,7 @@ const (
 	OnboardingImportTeacherAcademicUnit    OnboardingImportMode = "teacher_academic_unit"
 	OnboardingImportInstitution            OnboardingImportMode = "institution"
 	OnboardingImportAcademicAdministration OnboardingImportMode = "academic_administration"
+	OnboardingImportStudentProgression     OnboardingImportMode = "student_progression"
 
 	OnboardingImportUploading           OnboardingImportState = "uploading"
 	OnboardingImportParsing             OnboardingImportState = "parsing"
@@ -46,7 +47,7 @@ func (id OnboardingImportID) IsValid() bool     { return IsValidId(string(id)) }
 func (id OnboardingImportID) IsZero() bool      { return id == "" }
 
 func (mode OnboardingImportMode) IsValid() bool {
-	return mode == OnboardingImportStudentClass || mode == OnboardingImportTeacherAcademicUnit || mode == OnboardingImportInstitution || mode == OnboardingImportAcademicAdministration
+	return mode == OnboardingImportStudentClass || mode == OnboardingImportTeacherAcademicUnit || mode == OnboardingImportInstitution || mode == OnboardingImportAcademicAdministration || mode == OnboardingImportStudentProgression
 }
 
 func (state OnboardingImportState) IsValid() bool {
@@ -81,6 +82,7 @@ func ValidateOnboardingImportScope(mode OnboardingImportMode, scopeType RoleScop
 	if (mode == OnboardingImportStudentClass && scopeType != RoleScopeClass) ||
 		(mode == OnboardingImportTeacherAcademicUnit && scopeType != RoleScopeAcademicUnit) ||
 		(mode == OnboardingImportInstitution && scopeType != RoleScopeInstitution) ||
+		(mode == OnboardingImportStudentProgression && scopeType != RoleScopeClass) ||
 		(mode == OnboardingImportAcademicAdministration && scopeType != RoleScopeInstitution && scopeType != RoleScopeAcademicUnit && scopeType != RoleScopeClass) {
 		return fmt.Errorf("model: onboarding import mode and scope do not match")
 	}

@@ -51,6 +51,7 @@ type Params struct {
 	ExternalIdentityID      string
 	InvitationID            string
 	OnboardingImportID      string
+	StudentProgressionID    string
 	ReturnTo                string
 	ClientType              string
 	DeviceId                string
@@ -92,6 +93,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		ExternalIdentityID:      strings.TrimSpace(variables["external_identity_id"]),
 		InvitationID:            strings.TrimSpace(variables["invitation_id"]),
 		OnboardingImportID:      strings.TrimSpace(variables["onboarding_import_id"]),
+		StudentProgressionID:    strings.TrimSpace(variables["student_progression_id"]),
 		ReturnTo:                strings.TrimSpace(query.Get("return_to")),
 		ClientType:              strings.TrimSpace(query.Get("client_type")),
 		DeviceId:                strings.TrimSpace(query.Get("device_id")),
@@ -111,6 +113,10 @@ func (p Params) RequireInvitationID() (string, error) {
 
 func (p Params) RequireOnboardingImportID() (string, error) {
 	return requirePathId("onboarding_import_id", p.OnboardingImportID)
+}
+
+func (p Params) RequireStudentProgressionID() (string, error) {
+	return requirePathId("student_progression_id", p.StudentProgressionID)
 }
 
 func (p Params) RequireProviderId() (string, error) {

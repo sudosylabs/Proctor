@@ -43,29 +43,34 @@ type CommitOnboardingImportCommand struct {
 }
 
 type OnboardingImportView struct {
-	ID             model.OnboardingImportID
-	Mode           model.OnboardingImportMode
-	State          model.OnboardingImportState
-	ScopeType      model.RoleScopeType
-	ScopeID        string
-	RoleID         model.RoleID
-	PreviewDigest  string
-	IgnoredHeaders []string
-	TotalRows      int
-	ValidRows      int
-	InvalidRows    int
-	SucceededRows  int
-	NoOpRows       int
-	FailedRows     int
-	SkippedRows    int
-	CommitPolicy   model.OnboardingImportCommitPolicy
-	ParseJobID     model.JobID
-	ExecutionJobID model.JobID
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ExpiresAt      time.Time
-	Revision       int64
-	FailureCode    string
+	ID                  model.OnboardingImportID
+	Mode                model.OnboardingImportMode
+	State               model.OnboardingImportState
+	ScopeType           model.RoleScopeType
+	ScopeID             string
+	RoleID              model.RoleID
+	SourcePeriodID      model.AcademicPeriodID
+	SourceClassID       model.ClassID
+	DestinationPeriodID model.AcademicPeriodID
+	DestinationClassID  model.ClassID
+	EffectiveAt         time.Time
+	PreviewDigest       string
+	IgnoredHeaders      []string
+	TotalRows           int
+	ValidRows           int
+	InvalidRows         int
+	SucceededRows       int
+	NoOpRows            int
+	FailedRows          int
+	SkippedRows         int
+	CommitPolicy        model.OnboardingImportCommitPolicy
+	ParseJobID          model.JobID
+	ExecutionJobID      model.JobID
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	ExpiresAt           time.Time
+	Revision            int64
+	FailureCode         string
 }
 
 type OnboardingImportRowView struct {
@@ -173,7 +178,7 @@ func (a *App) OnboardingImportReport(ctx context.Context, invocation Invocation,
 func (s *onboardingImportService) Upload(ctx context.Context, invocation Invocation, command UploadOnboardingImportCommand) (OnboardingImportView, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	command.RoleID = strings.TrimSpace(command.RoleID)
-	if command.Body == nil || model.ValidateOnboardingImportScope(command.Mode, command.ScopeType, command.ScopeID) != nil ||
+	if command.Body == nil || command.Mode == model.OnboardingImportStudentProgression || model.ValidateOnboardingImportScope(command.Mode, command.ScopeType, command.ScopeID) != nil ||
 		(command.Mode == model.OnboardingImportTeacherAcademicUnit && !model.IsValidId(command.RoleID)) ||
 		(command.Mode != model.OnboardingImportTeacherAcademicUnit && command.RoleID != "") {
 		return OnboardingImportView{}, NewError("request.invalid")
@@ -235,13 +240,20 @@ func newOnboardingImportJob(kind model.JobType, id model.OnboardingImportID, at 
 }
 
 func (s *onboardingImportService) Get(ctx context.Context, invocation Invocation, rawID string) (OnboardingImportView, []OnboardingImportRowView, error) {
+	return s.get(ctx, invocation, rawID, "")
+}
+
+func (s *onboardingImportService) get(ctx context.Context, invocation Invocation, rawID string, expectedMode model.OnboardingImportMode) (OnboardingImportView, []OnboardingImportRowView, error) {
 	id := model.OnboardingImportID(strings.TrimSpace(rawID))
 	value, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
 		return OnboardingImportView{}, nil, onboardingImportError(err)
 	}
-	if err = s.authorization.Authorize(ctx, invocation, model.ActionOnboardingBatchView, onboardingImportResource(value.ScopeType, value.ScopeID)); err != nil {
+	if err = s.authorizeImport(ctx, invocation, value, false); err != nil {
 		return OnboardingImportView{}, nil, err
+	}
+	if expectedMode != "" && value.Mode != expectedMode {
+		return OnboardingImportView{}, nil, NewError("resource.not_found").WithField("resource", "student_progression")
 	}
 	rows := make([]OnboardingImportRowView, 0, value.TotalRows)
 	for after := 0; ; {
@@ -261,6 +273,10 @@ func (s *onboardingImportService) Get(ctx context.Context, invocation Invocation
 }
 
 func (s *onboardingImportService) Commit(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand) (OnboardingImportView, error) {
+	return s.commit(ctx, invocation, command, "")
+}
+
+func (s *onboardingImportService) commit(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
 	id := model.OnboardingImportID(strings.TrimSpace(command.ID))
 	if !id.IsValid() || command.ExpectedRevision < 1 || len(command.PreviewDigest) != sha256.Size*2 || !command.Policy.IsValid() || !validInvitationBatchItemKey(command.IdempotencyKey) {
 		return OnboardingImportView{}, NewError("request.invalid")
@@ -270,8 +286,11 @@ func (s *onboardingImportService) Commit(ctx context.Context, invocation Invocat
 		return OnboardingImportView{}, onboardingImportError(err)
 	}
 	resource := onboardingImportResource(current.ScopeType, current.ScopeID)
-	if err = s.authorization.Authorize(ctx, invocation, model.ActionOnboardingBatchManage, resource); err != nil {
+	if err = s.authorizeImport(ctx, invocation, current, true); err != nil {
 		return OnboardingImportView{}, err
+	}
+	if expectedMode != "" && current.Mode != expectedMode {
+		return OnboardingImportView{}, NewError("resource.not_found").WithField("resource", "student_progression")
 	}
 	if err = s.validatePrincipal(ctx, invocation.Principal()); err != nil {
 		return OnboardingImportView{}, err
@@ -285,15 +304,32 @@ func (s *onboardingImportService) Commit(ctx context.Context, invocation Invocat
 		return OnboardingImportView{}, NewError("onboarding_import.unavailable").Wrap(err)
 	}
 	digest := sha256.Sum256([]byte(command.IdempotencyKey))
-	committed, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionOnboardingBatchManage,
-		Resource: resource, ScopeType: current.ScopeType, ScopeID: current.ScopeID, Operation: "onboarding_import.commit",
+	auditAction, auditOperation := model.ActionOnboardingBatchManage, "onboarding_import.commit"
+	if current.Mode == model.OnboardingImportStudentProgression {
+		auditAction, auditOperation = model.ActionAcademicProgressionManage, "student_progression.commit"
+	}
+	attempt := mutationAttempt{Invocation: invocation, Action: auditAction,
+		Resource: resource, ScopeType: current.ScopeType, ScopeID: current.ScopeID, Operation: auditOperation,
 		Value: map[string]any{"onboarding_import_id": id, "policy": command.Policy,
-			"total_rows": current.TotalRows, "valid_rows": current.ValidRows, "invalid_rows": current.InvalidRows}}, func() time.Time { return at },
-		func(ctx context.Context, reference mutationAttemptReference) (*store.OnboardingImport, error) {
-			return s.imports.CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: invocation.Principal().UserID,
-				ExpectedRevision: command.ExpectedRevision, PreviewDigest: command.PreviewDigest, Policy: command.Policy, IdempotencyKey: digest, ExecutionJob: job, At: at,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, onboardingImportError)
+			"total_rows": current.TotalRows, "valid_rows": current.ValidRows, "invalid_rows": current.InvalidRows}}
+	persist := func(ctx context.Context, reference mutationAttemptReference, sourceAuditID string) (*store.OnboardingImport, error) {
+		return s.imports.CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: invocation.Principal().UserID,
+			Principal:        invocation.Principal(),
+			ExpectedRevision: command.ExpectedRevision, PreviewDigest: command.PreviewDigest, Policy: command.Policy, IdempotencyKey: digest, ExecutionJob: job, At: at,
+			AuditEventID: reference.ID, SourceAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis})
+	}
+	var committed *store.OnboardingImport
+	if current.Mode == model.OnboardingImportStudentProgression {
+		committed, err = runStudentProgressionAuditedMutation(ctx, s.audit, invocation, auditOperation, id.String(), current.SourceClassID,
+			current.DestinationClassID, at, func(ctx context.Context, destinationReference, sourceReference mutationAttemptReference) (*store.OnboardingImport, error) {
+				return persist(ctx, destinationReference, sourceReference.ID)
+			}, onboardingImportError)
+	} else {
+		committed, err = runAuditedMutation(ctx, s.audit, attempt, func() time.Time { return at },
+			func(ctx context.Context, reference mutationAttemptReference) (*store.OnboardingImport, error) {
+				return persist(ctx, reference, "")
+			}, onboardingImportError)
+	}
 	if err != nil {
 		return OnboardingImportView{}, err
 	}
@@ -304,22 +340,46 @@ func (s *onboardingImportService) Commit(ctx context.Context, invocation Invocat
 }
 
 func (s *onboardingImportService) Cancel(ctx context.Context, invocation Invocation, rawID string) (OnboardingImportView, error) {
+	return s.cancel(ctx, invocation, rawID, "")
+}
+
+func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocation, rawID string, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
 	id := model.OnboardingImportID(strings.TrimSpace(rawID))
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
 		return OnboardingImportView{}, onboardingImportError(err)
 	}
-	if err = s.authorization.Authorize(ctx, invocation, model.ActionOnboardingBatchManage, onboardingImportResource(current.ScopeType, current.ScopeID)); err != nil {
+	if err = s.authorizeImport(ctx, invocation, current, true); err != nil {
 		return OnboardingImportView{}, err
 	}
+	if expectedMode != "" && current.Mode != expectedMode {
+		return OnboardingImportView{}, NewError("resource.not_found").WithField("resource", "student_progression")
+	}
 	at := model.TimeUTC(s.now())
-	canceled, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionOnboardingBatchManage,
+	auditAction, auditOperation := model.ActionOnboardingBatchManage, "onboarding_import.cancel"
+	if current.Mode == model.OnboardingImportStudentProgression {
+		auditAction, auditOperation = model.ActionAcademicProgressionManage, "student_progression.cancel"
+	}
+	attempt := mutationAttempt{Invocation: invocation, Action: auditAction,
 		Resource: onboardingImportResource(current.ScopeType, current.ScopeID), ScopeType: current.ScopeType, ScopeID: current.ScopeID,
-		Operation: "onboarding_import.cancel", Value: map[string]any{"onboarding_import_id": id, "state": current.State}}, func() time.Time { return at },
-		func(ctx context.Context, reference mutationAttemptReference) (*store.OnboardingImport, error) {
-			return s.imports.CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: id, ActorUserID: invocation.Principal().UserID, At: at,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, onboardingImportError)
+		Operation: auditOperation, Value: map[string]any{"onboarding_import_id": id, "state": current.State}}
+	persist := func(ctx context.Context, reference mutationAttemptReference, sourceAuditID string) (*store.OnboardingImport, error) {
+		return s.imports.CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: id, ActorUserID: invocation.Principal().UserID, At: at,
+			Principal:    invocation.Principal(),
+			AuditEventID: reference.ID, SourceAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis})
+	}
+	var canceled *store.OnboardingImport
+	if current.Mode == model.OnboardingImportStudentProgression {
+		canceled, err = runStudentProgressionAuditedMutation(ctx, s.audit, invocation, auditOperation, id.String(), current.SourceClassID,
+			current.DestinationClassID, at, func(ctx context.Context, destinationReference, sourceReference mutationAttemptReference) (*store.OnboardingImport, error) {
+				return persist(ctx, destinationReference, sourceReference.ID)
+			}, onboardingImportError)
+	} else {
+		canceled, err = runAuditedMutation(ctx, s.audit, attempt, func() time.Time { return at },
+			func(ctx context.Context, reference mutationAttemptReference) (*store.OnboardingImport, error) {
+				return persist(ctx, reference, "")
+			}, onboardingImportError)
+	}
 	if err != nil {
 		return OnboardingImportView{}, err
 	}
@@ -330,6 +390,10 @@ func (s *onboardingImportService) Cancel(ctx context.Context, invocation Invocat
 }
 
 func (s *onboardingImportService) Report(ctx context.Context, invocation Invocation, rawID string, output io.Writer) error {
+	return s.report(ctx, invocation, rawID, output, "")
+}
+
+func (s *onboardingImportService) report(ctx context.Context, invocation Invocation, rawID string, output io.Writer, expectedMode model.OnboardingImportMode) error {
 	if output == nil {
 		return NewError("request.invalid")
 	}
@@ -338,8 +402,11 @@ func (s *onboardingImportService) Report(ctx context.Context, invocation Invocat
 	if err != nil {
 		return onboardingImportError(err)
 	}
-	if err = s.authorization.Authorize(ctx, invocation, model.ActionOnboardingBatchView, onboardingImportResource(current.ScopeType, current.ScopeID)); err != nil {
+	if err = s.authorizeImport(ctx, invocation, current, false); err != nil {
 		return err
+	}
+	if expectedMode != "" && current.Mode != expectedMode {
+		return NewError("resource.not_found").WithField("resource", "student_progression")
 	}
 	if current.State != model.OnboardingImportCompleted && current.State != model.OnboardingImportCompletedWithErrors &&
 		current.State != model.OnboardingImportCanceled && current.State != model.OnboardingImportFailed {
@@ -371,11 +438,37 @@ func (s *onboardingImportService) Report(ctx context.Context, invocation Invocat
 	return nil
 }
 
+func (s *onboardingImportService) authorizeImport(ctx context.Context, invocation Invocation, value *store.OnboardingImport, mutation bool) error {
+	if value == nil {
+		return NewError("request.invalid")
+	}
+	if value.Mode != model.OnboardingImportStudentProgression {
+		action := model.ActionOnboardingBatchView
+		if mutation {
+			action = model.ActionOnboardingBatchManage
+		}
+		return s.authorization.Authorize(ctx, invocation, action, onboardingImportResource(value.ScopeType, value.ScopeID))
+	}
+	for _, classID := range []model.ClassID{value.SourceClassID, value.DestinationClassID} {
+		resource := model.Resource{Type: model.ResourceClass, ID: classID.String()}
+		if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicProgressionManage, resource); err != nil {
+			return err
+		}
+		if mutation {
+			if err := s.authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func onboardingImportView(value *store.OnboardingImport) OnboardingImportView {
 	if value == nil {
 		return OnboardingImportView{}
 	}
 	return OnboardingImportView{ID: value.ID, Mode: value.Mode, State: value.State, ScopeType: value.ScopeType, ScopeID: value.ScopeID, RoleID: value.RoleID,
+		SourcePeriodID: value.SourcePeriodID, SourceClassID: value.SourceClassID, DestinationPeriodID: value.DestinationPeriodID, DestinationClassID: value.DestinationClassID, EffectiveAt: value.EffectiveAt,
 		PreviewDigest: value.PreviewDigest, IgnoredHeaders: append([]string(nil), value.IgnoredHeaders...), TotalRows: value.TotalRows, ValidRows: value.ValidRows,
 		InvalidRows: value.InvalidRows, SucceededRows: value.SucceededRows, NoOpRows: value.NoOpRows, FailedRows: value.FailedRows, SkippedRows: value.SkippedRows,
 		CommitPolicy: value.CommitPolicy, ParseJobID: value.ParseJobID, ExecutionJobID: value.ExecutionJobID, CreatedAt: value.CreatedAt,
@@ -1188,7 +1281,7 @@ func (s *onboardingImportService) execute(ctx context.Context, id model.Onboardi
 			if latest.State != model.OnboardingImportExecuting {
 				return store.NewErrConflict("onboarding_import", "state", nil)
 			}
-			status, invitationID, resourceID, code, executeErr := s.executeRow(ctx, invocation, row)
+			status, invitationID, resourceID, code, executeErr := s.executeRow(ctx, invocation, latest, row)
 			if executeErr != nil {
 				return executeErr
 			}
@@ -1211,25 +1304,52 @@ func (s *onboardingImportService) execute(ctx context.Context, id model.Onboardi
 	}
 }
 
-func (s *onboardingImportService) executeRow(ctx context.Context, invocation Invocation, row store.OnboardingImportRow) (model.OnboardingImportRowStatus, model.InvitationID, string, string, error) {
+func (s *onboardingImportService) executeRow(ctx context.Context, invocation Invocation, current *store.OnboardingImport, row store.OnboardingImportRow) (model.OnboardingImportRowStatus, model.InvitationID, string, string, error) {
 	if err := s.validatePrincipal(ctx, invocation.Principal()); err != nil {
 		if onboardingImportRetryableError(err) {
 			return "", "", "", "", err
 		}
 		return model.OnboardingImportRowFailed, "", "", "authentication.invalid_token", nil
 	}
-	if err := s.revalidateFrozenTarget(ctx, row); err != nil {
-		if onboardingImportRetryableError(err) {
-			return "", "", "", "", err
+	if current == nil || current.Mode != model.OnboardingImportStudentProgression {
+		if err := s.revalidateFrozenTarget(ctx, row); err != nil {
+			if onboardingImportRetryableError(err) {
+				return "", "", "", "", err
+			}
+			return model.OnboardingImportRowFailed, "", "", invitationBatchPublicErrorCode(err), nil
 		}
-		return model.OnboardingImportRowFailed, "", "", invitationBatchPublicErrorCode(err), nil
 	}
 	if operation := AcademicAdministrationBatchOperation(row.Operation); operation.IsValid() {
-		result, runErr := s.administrationBatches.Run(ctx, invocation, RunAcademicAdministrationBatchCommand{Operation: operation,
-			ScopeType: row.ScopeType, ScopeID: row.ScopeID, IdempotencyKey: row.ImportID.String(), onboardingImportID: row.ImportID,
-			onboardingImportRowNumber: row.RowNumber, Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: strconv.Itoa(row.RowNumber),
-				UserID: row.UserID.String(), RelationshipID: row.RelationshipID, RoleID: row.RoleID.String(), AffiliationKind: row.AffiliationKind,
-				StartAt: row.StartsAt, EndAt: row.EndsAt}}})
+		relationshipID := row.RelationshipID
+		progression := current != nil && current.Mode == model.OnboardingImportStudentProgression &&
+			(operation == AcademicAdministrationClassEnroll || operation == AcademicAdministrationClassTransfer)
+		if progression && operation == AcademicAdministrationClassEnroll {
+			relationshipID = ""
+		}
+		run := func(ctx context.Context, sourceAuditID, destinationAuditID string) (AcademicAdministrationBatchResult, error) {
+			if progression {
+				if err := s.authorizeImport(ctx, invocation, current, true); err != nil {
+					return AcademicAdministrationBatchResult{}, err
+				}
+			}
+			return s.administrationBatches.Run(ctx, invocation, RunAcademicAdministrationBatchCommand{Operation: operation,
+				ScopeType: row.ScopeType, ScopeID: row.ScopeID, IdempotencyKey: row.ImportID.String(), onboardingImportID: row.ImportID,
+				onboardingImportRowNumber: row.RowNumber, progression: progression, progressionSourceAuditID: sourceAuditID,
+				progressionDestinationAuditID: destinationAuditID, Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: strconv.Itoa(row.RowNumber),
+					UserID: row.UserID.String(), RelationshipID: relationshipID, RoleID: row.RoleID.String(), AffiliationKind: row.AffiliationKind,
+					StartAt: row.StartsAt, EndAt: row.EndsAt}}})
+		}
+		var result AcademicAdministrationBatchResult
+		var runErr error
+		if progression {
+			result, runErr = runStudentProgressionAuditedMutation(ctx, s.audit, invocation, "student_progression.execute_row",
+				row.ImportID.String(), current.SourceClassID, current.DestinationClassID, model.TimeUTC(s.now()),
+				func(ctx context.Context, destinationReference, sourceReference mutationAttemptReference) (AcademicAdministrationBatchResult, error) {
+					return run(ctx, sourceReference.ID, destinationReference.ID)
+				}, func(err error) error { return err })
+		} else {
+			result, runErr = run(ctx, "", "")
+		}
 		if runErr != nil || len(result.Items) != 1 {
 			if runErr != nil && onboardingImportRetryableError(runErr) {
 				return "", "", "", "", runErr
@@ -1294,6 +1414,15 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 		}
 		if revision != row.TargetRevision {
 			return NewError("onboarding_import.conflict")
+		}
+		if row.RelationshipRevision > 0 {
+			relationship, relationshipErr := s.classMembers.Get(ctx, row.RelationshipID)
+			if relationshipErr != nil {
+				return classMemberError(relationshipErr)
+			}
+			if relationship.Revision != row.RelationshipRevision || relationship.UserID != row.UserID {
+				return NewError("student_progression.conflict")
+			}
 		}
 		if operation == AcademicAdministrationRoleBindingCreate {
 			role, roleErr := s.roles.Get(ctx, row.RoleID.String())

@@ -224,6 +224,59 @@ func TestOnboardingImportRetriesAcademicAdministrationMailOutages(t *testing.T) 
 	}
 }
 
+func TestStudentProgressionPreviewRecoversUnknownCommittedCompletion(t *testing.T) {
+	t.Parallel()
+	id := model.NewOnboardingImportID()
+	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{
+		ID: id, Mode: model.OnboardingImportStudentProgression, State: model.OnboardingImportPreviewReady,
+	}}}
+	if err := service.previewProgression(context.Background(), id); err != nil {
+		t.Fatalf("recovered preview completion = %v", err)
+	}
+}
+
+func TestStudentProgressionRosterInstantUsesEffectiveTimeForSamePeriod(t *testing.T) {
+	t.Parallel()
+	periodID := model.NewAcademicPeriodID()
+	effectiveAt := time.Date(2026, 11, 3, 9, 30, 0, 0, time.UTC)
+	period := &model.AcademicPeriod{ID: periodID, EndsAt: effectiveAt.AddDate(0, 2, 0)}
+	value := &store.OnboardingImport{SourcePeriodID: periodID, DestinationPeriodID: periodID, EffectiveAt: effectiveAt}
+	if got := studentProgressionRosterInstant(value, period); !got.Equal(effectiveAt) {
+		t.Fatalf("same-Period roster instant = %s; want %s", got, effectiveAt)
+	}
+	value.DestinationPeriodID = model.NewAcademicPeriodID()
+	if got, want := studentProgressionRosterInstant(value, period), period.EndsAt.Add(-time.Millisecond); !got.Equal(want) {
+		t.Fatalf("cross-Period roster instant = %s; want %s", got, want)
+	}
+}
+
+func TestStudentProgressionPreviewRejectsUnexecutableTransferAndMissingAffiliation(t *testing.T) {
+	t.Parallel()
+	effectiveAt := time.Date(2026, 11, 3, 9, 30, 0, 0, time.UTC)
+	member := &model.ClassMember{StartsAt: effectiveAt}
+	if !studentProgressionTransferEffectiveDateConflict(member, effectiveAt) {
+		t.Fatal("transfer beginning at the effective instant was accepted")
+	}
+	member.StartsAt = effectiveAt.Add(-time.Hour)
+	member.EndsAt = model.OptionalTimeFrom(effectiveAt.Add(time.Hour))
+	if !studentProgressionTransferEffectiveDateConflict(member, effectiveAt) {
+		t.Fatal("bounded source transfer was accepted")
+	}
+	member.EndsAt = model.OptionalTime{}
+	if studentProgressionTransferEffectiveDateConflict(member, effectiveAt) {
+		t.Fatal("open earlier source transfer was rejected")
+	}
+	if studentProgressionEligibleAffiliation([]*model.Affiliation{{Kind: model.AffiliationStaff}}) {
+		t.Fatal("non-Student affiliation was accepted")
+	}
+	if !studentProgressionEligibleAffiliation([]*model.Affiliation{{Kind: model.AffiliationStudent}}) {
+		t.Fatal("Student affiliation was rejected")
+	}
+	if studentProgressionEligibleAffiliation([]*model.Affiliation{{Kind: model.AffiliationStudent, EndsAt: model.OptionalTimeFrom(effectiveAt.Add(time.Hour))}}) {
+		t.Fatal("bounded Student affiliation was accepted")
+	}
+}
+
 func TestOnboardingImportInvalidBoundsRetainSafeTargetProjection(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)

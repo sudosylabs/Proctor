@@ -29,9 +29,9 @@ type CommandIdempotency struct {
 	OutcomeVersion     int
 	Retention          time.Duration
 	Wait               time.Duration
-	// OnboardingImportID and OnboardingImportRowNumber bind a CSV execution
-	// command to the parent/row fence that must commit with its ordinary
-	// mutation. They are absent for all non-import commands.
+	// OnboardingImportID and OnboardingImportRowNumber bind an administrative
+	// import or progression command to the parent/row fence that must commit
+	// with its ordinary mutation. They are absent for other commands.
 	OnboardingImportID        model.OnboardingImportID
 	OnboardingImportRowNumber int
 	// Authorization is present only for closed academic-administration batch
@@ -1669,72 +1669,85 @@ const (
 // frozen row commands remain private to persistence and never enter Jobs,
 // audit fields, logs, or administration list responses.
 type OnboardingImport struct {
-	ID             model.OnboardingImportID
-	Mode           model.OnboardingImportMode
-	State          model.OnboardingImportState
-	ScopeType      model.RoleScopeType
-	ScopeID        string
-	RoleID         model.RoleID
-	ActorUserID    model.UserID
-	PreviewDigest  string
-	IgnoredHeaders []string
-	TotalRows      int
-	ValidRows      int
-	InvalidRows    int
-	SucceededRows  int
-	NoOpRows       int
-	FailedRows     int
-	SkippedRows    int
-	CommitPolicy   model.OnboardingImportCommitPolicy
-	ParseJobID     model.JobID
-	ExecutionJobID model.JobID
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ExpiresAt      time.Time
-	Revision       int64
-	FailureCode    string
-	Principal      model.Principal
+	ID                        model.OnboardingImportID
+	Mode                      model.OnboardingImportMode
+	State                     model.OnboardingImportState
+	ScopeType                 model.RoleScopeType
+	ScopeID                   string
+	RoleID                    model.RoleID
+	SourcePeriodID            model.AcademicPeriodID
+	SourceClassID             model.ClassID
+	DestinationPeriodID       model.AcademicPeriodID
+	DestinationClassID        model.ClassID
+	SourcePeriodRevision      int64
+	SourceClassRevision       int64
+	DestinationPeriodRevision int64
+	DestinationClassRevision  int64
+	EffectiveAt               time.Time
+	ActorUserID               model.UserID
+	PreviewDigest             string
+	IgnoredHeaders            []string
+	TotalRows                 int
+	ValidRows                 int
+	InvalidRows               int
+	SucceededRows             int
+	NoOpRows                  int
+	FailedRows                int
+	SkippedRows               int
+	CommitPolicy              model.OnboardingImportCommitPolicy
+	ParseJobID                model.JobID
+	ExecutionJobID            model.JobID
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+	ExpiresAt                 time.Time
+	Revision                  int64
+	FailureCode               string
+	Principal                 model.Principal
 }
 
 // OnboardingImportRow is the detailed seven-day preview/report row. Command
 // contains private normalized recipient/package input and must never be
 // returned directly by a transport.
 type OnboardingImportRow struct {
-	ImportID        model.OnboardingImportID
-	RowNumber       int
-	Reference       string
-	Operation       string
-	ScopeType       model.RoleScopeType
-	ScopeID         string
-	TargetRevision  int64
-	RoleID          model.RoleID
-	RoleRevision    int64
-	Email           string
-	UserID          model.UserID
-	RelationshipID  string
-	AffiliationKind model.AffiliationKind
-	Username        string
-	DisplayName     string
-	FirstName       string
-	LastName        string
-	Locale          string
-	Timezone        string
-	StartsAt        int64
-	EndsAt          int64
-	PreviewStatus   model.OnboardingImportRowStatus
-	PreviewCode     string
-	Status          model.OnboardingImportRowStatus
-	PublicCode      string
-	InvitationID    model.InvitationID
-	ResourceID      string
-	UpdatedAt       time.Time
+	ImportID                        model.OnboardingImportID
+	RowNumber                       int
+	Reference                       string
+	Operation                       string
+	ScopeType                       model.RoleScopeType
+	ScopeID                         string
+	TargetRevision                  int64
+	RoleID                          model.RoleID
+	RoleRevision                    int64
+	Email                           string
+	UserID                          model.UserID
+	RelationshipID                  string
+	RelationshipRevision            int64
+	DestinationRelationshipID       string
+	DestinationRelationshipRevision int64
+	AffiliationKind                 model.AffiliationKind
+	Username                        string
+	DisplayName                     string
+	FirstName                       string
+	LastName                        string
+	Locale                          string
+	Timezone                        string
+	StartsAt                        int64
+	EndsAt                          int64
+	PreviewStatus                   model.OnboardingImportRowStatus
+	PreviewCode                     string
+	Status                          model.OnboardingImportRowStatus
+	PublicCode                      string
+	InvitationID                    model.InvitationID
+	ResourceID                      string
+	UpdatedAt                       time.Time
 }
 
 type OnboardingImportCreation struct {
-	Import       *OnboardingImport
-	ParseJob     *model.Job
-	AuditEventID string
-	AuditAt      int64
+	Import             *OnboardingImport
+	ParseJob           *model.Job
+	AuditEventID       string
+	SourceAuditEventID string
+	AuditAt            int64
 }
 
 type OnboardingImportPreviewCompletion struct {
@@ -1747,24 +1760,28 @@ type OnboardingImportPreviewCompletion struct {
 }
 
 type OnboardingImportCommit struct {
-	ID               model.OnboardingImportID
-	ActorUserID      model.UserID
-	ExpectedRevision int64
-	PreviewDigest    string
-	Policy           model.OnboardingImportCommitPolicy
-	IdempotencyKey   [sha256.Size]byte
-	ExecutionJob     *model.Job
-	At               time.Time
-	AuditEventID     string
-	AuditAt          int64
+	ID                 model.OnboardingImportID
+	ActorUserID        model.UserID
+	Principal          model.Principal
+	ExpectedRevision   int64
+	PreviewDigest      string
+	Policy             model.OnboardingImportCommitPolicy
+	IdempotencyKey     [sha256.Size]byte
+	ExecutionJob       *model.Job
+	At                 time.Time
+	AuditEventID       string
+	SourceAuditEventID string
+	AuditAt            int64
 }
 
 type OnboardingImportCancellation struct {
-	ID           model.OnboardingImportID
-	ActorUserID  model.UserID
-	At           time.Time
-	AuditEventID string
-	AuditAt      int64
+	ID                 model.OnboardingImportID
+	ActorUserID        model.UserID
+	Principal          model.Principal
+	At                 time.Time
+	AuditEventID       string
+	SourceAuditEventID string
+	AuditAt            int64
 }
 
 type OnboardingImportRowCompletion struct {
@@ -1813,11 +1830,12 @@ type InvitationStore interface {
 	Maintain(context.Context, int) (*InvitationMaintenanceResult, error)
 }
 
-// OnboardingImportStore owns the seven-day CSV import aggregate, its frozen
-// private rows, execution fences, and retention lifecycle.
+// OnboardingImportStore owns seven-day administrative import and progression
+// aggregates, frozen private rows, execution fences, and retention.
 type OnboardingImportStore interface {
 	CreateOnboardingImport(context.Context, *OnboardingImportCreation) (*OnboardingImport, error)
 	GetOnboardingImport(context.Context, model.OnboardingImportID) (*OnboardingImport, error)
+	ListStudentProgressionRoster(context.Context, model.ClassID, time.Time, int) ([]*model.ClassMember, error)
 	CompleteOnboardingImportPreview(context.Context, *OnboardingImportPreviewCompletion) (*OnboardingImport, error)
 	CommitOnboardingImport(context.Context, *OnboardingImportCommit) (*OnboardingImport, error)
 	ListOnboardingImportRows(context.Context, model.OnboardingImportID, int, int) (*OnboardingImportPage, error)
@@ -2066,16 +2084,19 @@ type ClassEnrollmentResult struct {
 // transfer and its already-persisted mutation audit. A transfer closes the
 // previous membership and creates Member in the same transaction.
 type ClassMemberEnrollment struct {
-	Member                    *model.ClassMember
-	ExpectedPreviousID        model.ClassMemberID
-	ExpectedRecipientRevision int64
-	Notice                    *PreparedMail
-	AuditEventID              string
-	PreviousAuditEventID      string
-	AuditAt                   int64
-	Command                   *CommandIdempotency
-	Replayed                  bool
-	NoOp                      bool
+	Member                             *model.ClassMember
+	ExpectedPreviousID                 model.ClassMemberID
+	ExpectedRecipientRevision          int64
+	StudentProgression                 bool
+	ProgressionSourceAuditEventID      string
+	ProgressionDestinationAuditEventID string
+	Notice                             *PreparedMail
+	AuditEventID                       string
+	PreviousAuditEventID               string
+	AuditAt                            int64
+	Command                            *CommandIdempotency
+	Replayed                           bool
+	NoOp                               bool
 }
 
 type ClassMemberEnd struct {

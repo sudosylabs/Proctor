@@ -2464,6 +2464,12 @@ func (s *timedOnboardingImportStore) GetOnboardingImport(arg0 context.Context, a
 	})
 }
 
+func (s *timedOnboardingImportStore) ListStudentProgressionRoster(arg0 context.Context, arg1 model.ClassID, arg2 time.Time, arg3 int) ([]*model.ClassMember, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodListStudentProgressionRoster), func() ([]*model.ClassMember, error) {
+		return s.next.ListStudentProgressionRoster(arg0, arg1, arg2, arg3)
+	})
+}
+
 func (s *timedOnboardingImportStore) CompleteOnboardingImportPreview(arg0 context.Context, arg1 *store.OnboardingImportPreviewCompletion) (*store.OnboardingImport, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCompleteOnboardingImportPreview), func() (*store.OnboardingImport, error) {
 		return s.next.CompleteOnboardingImportPreview(arg0, arg1)

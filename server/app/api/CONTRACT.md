@@ -420,6 +420,33 @@ revisions per row. JSON and report responses are `no-store`, reports are
 raw or hashed Invitation claims, rendered mail, private errors, or User profile
 fields.
 
+## Student progression
+
+`POST /api/v1/student-progressions` accepts exact source and destination
+Academic Period and Class IDs plus one RFC 3339 effective time. It requires
+`academic.progression.manage` and `class.members.manage` at both Classes,
+creates no membership side effect, and queues one bounded dry-run Job. The safe
+`202` projection exposes only exact target IDs, effective time, aggregate
+counts, state, revision, and Job identity.
+
+`GET /api/v1/student-progressions/{student_progression_id}` returns the
+authorized immutable preview and safe per-student dispositions. `POST
+.../commit` requires an `Idempotency-Key`, exact preview digest, and exact
+revision and queues at most one resumable execution Job. `POST .../cancel`
+prevents later row claims without reversing committed students, and `GET
+.../report` returns the final formula-safe CSV result.
+
+Every progression row reauthorizes and revalidates the frozen source and
+destination Periods, Classes, source enrollment, and target User in the named
+PostgreSQL aggregate transaction. Same-Period rows use the ordinary atomic
+Class transfer; cross-Period rows create a new destination enrollment without
+rewriting the source. Existing destination enrollment is a no-op, other
+destination membership is a row conflict, and ordinary Class notification and
+Sitting reconciliation semantics remain authoritative. JSON and report
+responses are `no-store`, reports are `nosniff`, and generic Jobs, audits,
+logs, and safe projections contain no roster, recipient, profile, or mail
+payload data.
+
 ## Ownership and extension workflow
 
 `api.New` is the production construction boundary. Its broad `Options` value

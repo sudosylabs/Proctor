@@ -11,6 +11,7 @@ import (
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type onboardingImportCheckpointV1 struct {
@@ -19,6 +20,39 @@ type onboardingImportCheckpointV1 struct {
 }
 
 type onboardingImportParseHandler struct{ service *onboardingImportService }
+
+type studentProgressionPreviewHandler struct{ service *onboardingImportService }
+
+func (h studentProgressionPreviewHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
+	command, err := decodeOnboardingImportJob(execution, model.JobTypeStudentProgressionPreview)
+	if err != nil || h.service == nil {
+		return jobengine.PermanentFailure("job.command.invalid", errors.New("student progression preview command is invalid"))
+	}
+	if err = h.service.previewProgression(ctx, model.OnboardingImportID(command.ImportID)); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return jobengine.Canceled("job.canceled")
+		}
+		terminalCode := ""
+		if failure, ok := As(err); ok {
+			switch failure.Code() {
+			case "authorization.denied", "authentication.invalid_token":
+				terminalCode = "student_progression.authorization_lost"
+			case "student_progression.target_conflict", "student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.roster_too_large":
+				terminalCode = failure.Code()
+			}
+		} else if store.IsNotFound(err) || store.IsConflict(err) {
+			terminalCode = "student_progression.target_conflict"
+		}
+		if terminalCode != "" {
+			if _, failErr := h.service.imports.FailOnboardingImport(ctx, model.OnboardingImportID(command.ImportID), terminalCode, model.TimeUTC(h.service.now())); failErr != nil {
+				return jobengine.RetryableFailure("dependency.unavailable", failErr)
+			}
+			return jobengine.PermanentFailure(terminalCode, err)
+		}
+		return jobengine.RetryableFailure("dependency.unavailable", err)
+	}
+	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{"preview_ready":true}`)}
+}
 
 func (h onboardingImportParseHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
 	command, err := decodeOnboardingImportJob(execution, model.JobTypeOnboardingImportParse)
@@ -88,6 +122,13 @@ func decodeOnboardingImportJob(execution jobengine.Execution, expected model.Job
 
 func onboardingImportParseDescriptor(handler jobengine.Handler) jobengine.Descriptor {
 	return onboardingImportDescriptor(model.JobTypeOnboardingImportParse, handler, true)
+}
+
+func studentProgressionPreviewDescriptor(handler jobengine.Handler) jobengine.Descriptor {
+	descriptor := onboardingImportDescriptor(model.JobTypeStudentProgressionPreview, handler, true)
+	descriptor.PublicErrorCodes = append(descriptor.PublicErrorCodes, "student_progression.authorization_lost", "student_progression.target_conflict",
+		"student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.roster_too_large")
+	return descriptor
 }
 
 func onboardingImportExecuteDescriptor(handler jobengine.Handler) jobengine.Descriptor {
