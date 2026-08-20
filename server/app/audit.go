@@ -248,6 +248,35 @@ func (s *auditService) BeginCriticalAction(
 	return s.beginCriticalActionAtScope(ctx, principal, action, resource, scopeType, scopeID, metadata, parameters, priorState)
 }
 
+// PrepareCriticalAction builds the bounded safe audit draft owned by a named
+// durable pre-mutation aggregate. The aggregate, rather than AuditStore, is
+// the pending attempt; it inserts exactly one terminal AuditEvent or no event
+// for an authoritative idempotent replay.
+func (s *auditService) PrepareCriticalAction(
+	ctx context.Context,
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	metadata model.RequestMetadata,
+	parameters any,
+	priorState any,
+) (*model.AuditEvent, error) {
+	if principal.Validate() != nil {
+		return nil, invalidTokenAppError()
+	}
+	scopeType := model.RoleScopeType(resource.Type)
+	scopeID := resource.ID
+	if resource.Type == model.ResourceUser {
+		institution, err := s.institutions.GetSingleton(ctx)
+		if err != nil {
+			return nil, auditUnavailable(err)
+		}
+		scopeType = model.RoleScopeInstitution
+		scopeID = institution.ID.String()
+	}
+	return s.prepareCriticalActionAtScope(principal, action, resource, scopeType, scopeID, metadata, parameters, priorState)
+}
+
 // BeginCriticalActionAtScope records a mutation against its domain resource
 // while retaining the independently resolved authorization scope. This is
 // required for resources such as Exams whose identity is not itself a role
@@ -315,6 +344,27 @@ func (s *auditService) beginCriticalActionAtScope(
 	parameters any,
 	priorState any,
 ) (*model.AuditEvent, error) {
+	event, appErr := s.prepareCriticalActionAtScope(principal, action, resource, scopeType, scopeID, metadata, parameters, priorState)
+	if appErr != nil {
+		return nil, appErr
+	}
+	saved, err := s.audits.Save(ctx, event)
+	if err != nil {
+		return nil, auditUnavailable(err)
+	}
+	return saved, nil
+}
+
+func (s *auditService) prepareCriticalActionAtScope(
+	principal model.Principal,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	metadata model.RequestMetadata,
+	parameters any,
+	priorState any,
+) (*model.AuditEvent, error) {
 	encodedParameters, err := model.EncodeAuditData(parameters)
 	if err != nil {
 		return nil, domainInvalid("audit.event.invalid", err)
@@ -333,11 +383,7 @@ func (s *auditService) beginCriticalActionAtScope(
 		UserAgent: metadata.UserAgent, Parameters: encodedParameters,
 		PriorState: encodedPriorState,
 	}
-	saved, err := s.audits.Save(ctx, event)
-	if err != nil {
-		return nil, auditUnavailable(err)
-	}
-	return saved, nil
+	return event, nil
 }
 
 // CompleteCriticalAction records the terminal outcome. If this fails after the

@@ -91,12 +91,25 @@ var allKeys = []Key{
 
 // Copy is the complete, markup-free prose model shared by HTML and text mail.
 type Copy struct {
-	Subject     string `json:"subject"`
-	Preheader   string `json:"preheader"`
-	Heading     string `json:"heading"`
-	Body        string `json:"body"`
-	ActionLabel string `json:"action_label"`
-	Footer      string `json:"footer"`
+	Subject             string                   `json:"subject"`
+	Preheader           string                   `json:"preheader"`
+	Heading             string                   `json:"heading"`
+	Body                string                   `json:"body"`
+	ActionLabel         string                   `json:"action_label"`
+	Footer              string                   `json:"footer"`
+	PersonalAccessToken *PersonalAccessTokenCopy `json:"personal_access_token,omitempty"`
+}
+
+// PersonalAccessTokenCopy contains the localized labels and closed scope
+// vocabulary used by PAT transition security notices.
+type PersonalAccessTokenCopy struct {
+	DescriptionLabel  string `json:"description_label"`
+	ExpiresAtLabel    string `json:"expires_at_label"`
+	ActionAtLabel     string `json:"action_at_label"`
+	ScopeLabel        string `json:"scope_label"`
+	ActionCountLabel  string `json:"action_count_label"`
+	InstitutionScope  string `json:"institution_scope"`
+	AcademicUnitScope string `json:"academic_unit_scope"`
 }
 
 // ResolvedCopy records which locale supplied a complete copy model.
@@ -233,6 +246,27 @@ func (c Copy) validate() error {
 		for _, character := range field.value {
 			if unicode.IsControl(character) && character != '\n' && character != '\t' {
 				return fmt.Errorf("%s contains a control character", field.name)
+			}
+		}
+	}
+	if c.PersonalAccessToken != nil {
+		patFields := []struct{ name, value string }{
+			{name: "personal_access_token.description_label", value: c.PersonalAccessToken.DescriptionLabel},
+			{name: "personal_access_token.expires_at_label", value: c.PersonalAccessToken.ExpiresAtLabel},
+			{name: "personal_access_token.action_at_label", value: c.PersonalAccessToken.ActionAtLabel},
+			{name: "personal_access_token.scope_label", value: c.PersonalAccessToken.ScopeLabel},
+			{name: "personal_access_token.action_count_label", value: c.PersonalAccessToken.ActionCountLabel},
+			{name: "personal_access_token.institution_scope", value: c.PersonalAccessToken.InstitutionScope},
+			{name: "personal_access_token.academic_unit_scope", value: c.PersonalAccessToken.AcademicUnitScope},
+		}
+		for _, field := range patFields {
+			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
+				return fmt.Errorf("%s is empty or invalid", field.name)
+			}
+			for _, character := range field.value {
+				if unicode.IsControl(character) {
+					return fmt.Errorf("%s contains a control character", field.name)
+				}
 			}
 		}
 	}

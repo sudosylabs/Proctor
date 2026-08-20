@@ -213,6 +213,25 @@ and security events are always excluded. The response also omits Session,
 request, node, authentication, IP-address, User-Agent, and private audit-value
 metadata.
 
+## Public local registration
+
+`POST /api/v1/auth/register` is a public strict-JSON API for the local
+self-registration capability advertised by discovery. It accepts only
+`username`, `email`, and `password`; the successful response is an empty
+no-store `202`, including a syntactically valid duplicate request. The route
+returns the bounded `authentication.registration.*` and shared authentication
+rate-limit vocabulary and never projects a User, mailbox, password, raw
+verification credential, or internal uniqueness outcome.
+
+The application accounts attempts under the canonical normalized mailbox and
+private source dimensions before preparing the account. The named PostgreSQL
+transition rechecks both current public-registration and local-enrollment
+policy and atomically creates only the unverified local User, password,
+settings, default-picture Job, safe audit, target-bound verification token,
+frozen encrypted credential delivery, and delivery Job. It creates no
+Affiliation, membership, or Role Binding. This API does not implement or claim
+the future server-hosted `/register` page.
+
 ## Student Class Invitations
 
 `POST /api/v1/classes/{class_id}/invitations/student` requires an authenticated

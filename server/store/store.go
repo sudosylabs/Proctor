@@ -292,6 +292,7 @@ type Catalog interface {
 	Installation() InstallationStore
 	AccessPolicy() AccessPolicyStore
 	ClusterDiscovery() ClusterDiscoveryStore
+	ServingNodeLease() ServingNodeLeaseStore
 	CommandOutcome() CommandOutcomeStore
 }
 
@@ -336,6 +337,7 @@ type Store interface {
 	Installation() InstallationStore
 	AccessPolicy() AccessPolicyStore
 	ClusterDiscovery() ClusterDiscoveryStore
+	ServingNodeLease() ServingNodeLeaseStore
 	CommandOutcome() CommandOutcomeStore
 
 	Ping(context.Context) error
@@ -1058,12 +1060,37 @@ type UserCreationResult struct {
 	PasswordCredential *model.PasswordCredential
 }
 
+// PublicLocalUserRegistration is the complete anonymous self-registration
+// transition. Persistence rechecks the current Access Policy and commits the
+// unverified local account, initial settings work, successful audit, and
+// frozen verification credential delivery as one transaction.
+type PublicLocalUserRegistration struct {
+	User                     *model.User
+	Settings                 *model.UserSettingsDocument
+	PasswordCredential       *model.PasswordCredential
+	DefaultProfilePictureJob *model.Job
+	VerificationToken        *model.UserToken
+	TokenLifetime            time.Duration
+	MailLifetime             time.Duration
+	VerificationOccurrence   *model.MailOccurrence
+	VerificationDelivery     *model.MailDelivery
+	VerificationJob          *model.Job
+	AuditEvent               *model.AuditEvent
+}
+
+type PublicLocalUserRegistrationResult struct {
+	User       *model.User
+	Token      *model.UserToken
+	AuditEvent *model.AuditEvent
+}
+
 // UserStore persists login-capable accounts without their credentials.
 type UserStore interface {
 	// Create atomically persists the prepared User, its optional password
 	// credential, and its matching active-deduplicated default-picture generation
 	// intent. All future import-oriented creation must use this operation.
 	Create(context.Context, *UserCreation) (*UserCreationResult, error)
+	RegisterLocal(context.Context, *PublicLocalUserRegistration) (*PublicLocalUserRegistrationResult, error)
 	Get(context.Context, string) (*model.User, error)
 	GetByUsername(context.Context, string) (*model.User, error)
 	GetByEmail(context.Context, string) (*model.User, error)
@@ -1397,15 +1424,103 @@ type PersonalAccessTokenResolution struct {
 	User  *model.User
 }
 
+// PersonalAccessTokenSecurityNotice is the complete ordinary-mail intent for
+// one successful PAT transition. It deliberately carries neither the
+// one-time credential nor the persisted token hash or complete scope list.
+type PersonalAccessTokenSecurityNotice struct {
+	Occurrence *model.MailOccurrence
+	Delivery   *model.MailDelivery
+	Job        *model.Job
+	// ExpiresAt is the bounded safe expiry rendered into the frozen payload.
+	// Persistence verifies it equals the committed token deadline.
+	ExpiresAt time.Time
+}
+
+type PersonalAccessTokenMutationKind string
+
+const (
+	PersonalAccessTokenMutationCreate  PersonalAccessTokenMutationKind = "create"
+	PersonalAccessTokenMutationEnable  PersonalAccessTokenMutationKind = "enable"
+	PersonalAccessTokenMutationDisable PersonalAccessTokenMutationKind = "disable"
+	PersonalAccessTokenMutationRevoke  PersonalAccessTokenMutationKind = "revoke"
+)
+
+// PersonalAccessTokenMutationPreparation is the bounded durable attempt that
+// precedes rendering. PostgreSQL assigns its ActionAt. The Audit draft contains
+// only safe bounded metadata and is inserted as one terminal event only when
+// the preparation succeeds, explicitly fails, or is reconciled after expiry.
+type PersonalAccessTokenMutationPreparation struct {
+	UserID   string
+	TokenID  string
+	Kind     PersonalAccessTokenMutationKind
+	Audit    *model.AuditEvent
+	Lifetime time.Duration
+}
+
+type PreparedPersonalAccessTokenMutation struct {
+	ID        string
+	ActionAt  time.Time
+	ExpiresAt time.Time
+}
+
+type PersonalAccessTokenMutationFailure struct {
+	PreparationID string
+	ErrorCode     string
+}
+
+type PersonalAccessTokenPreparationMaintenanceResult struct {
+	Failed int
+	More   bool
+}
+
+type PersonalAccessTokenMutationResult struct {
+	Token *model.PersonalAccessToken
+	Fresh bool
+}
+
+// PersonalAccessTokenCreationMutation couples the new hashed credential,
+// terminal audit, and security notice in one transaction.
+type PersonalAccessTokenCreationMutation struct {
+	Token           *model.PersonalAccessToken
+	MaximumActive   int
+	MinimumLifetime time.Duration
+	MaximumLifetime time.Duration
+	PreparationID   string
+	Notice          PersonalAccessTokenSecurityNotice
+}
+
+// PersonalAccessTokenStateMutation couples one fresh enable/disable state
+// change, terminal audit, and matching security notice in one transaction.
+type PersonalAccessTokenStateMutation struct {
+	ID            string
+	UserID        string
+	Disabled      bool
+	MaximumActive int
+	PreparationID string
+	Notice        PersonalAccessTokenSecurityNotice
+}
+
+// PersonalAccessTokenRevocation couples one fresh revocation, terminal audit,
+// and matching security notice in one transaction.
+type PersonalAccessTokenRevocation struct {
+	ID            string
+	UserID        string
+	PreparationID string
+	Notice        PersonalAccessTokenSecurityNotice
+}
+
 // PersonalAccessTokenStore persists hashed, explicitly scoped credentials.
 // Resolve is authoritative and also performs the debounced last-used update.
 type PersonalAccessTokenStore interface {
-	Save(context.Context, *model.PersonalAccessToken, int) (*model.PersonalAccessToken, error)
+	PrepareMutation(context.Context, *PersonalAccessTokenMutationPreparation) (*PreparedPersonalAccessTokenMutation, error)
+	FailMutation(context.Context, *PersonalAccessTokenMutationFailure) error
+	MaintainMutationPreparations(context.Context, int) (*PersonalAccessTokenPreparationMaintenanceResult, error)
+	Create(context.Context, *PersonalAccessTokenCreationMutation) (*PersonalAccessTokenMutationResult, error)
 	Get(context.Context, string) (*model.PersonalAccessToken, error)
 	ListByUser(context.Context, string) ([]*model.PersonalAccessToken, error)
 	Resolve(context.Context, string, int64, int64) (*PersonalAccessTokenResolution, error)
-	SetDisabled(context.Context, string, string, bool, int64, int) (*model.PersonalAccessToken, error)
-	Revoke(context.Context, string, string, int64) (*model.PersonalAccessToken, error)
+	ChangeState(context.Context, *PersonalAccessTokenStateMutation) (*PersonalAccessTokenMutationResult, error)
+	RevokeWithAudit(context.Context, *PersonalAccessTokenRevocation) (*PersonalAccessTokenMutationResult, error)
 }
 
 type MFAActivationResult struct {
@@ -1813,10 +1928,38 @@ type SystemAdministratorRoleReconciliationResult struct {
 	AddedPermissions []string
 }
 
+// AdministratorRecovery is the secret-bearing input to the offline,
+// installation-scoped recovery aggregate. RotatePasswordHash is already an
+// encoded password hash; plaintext credentials never cross the Store boundary.
+type AdministratorRecovery struct {
+	InstitutionID      model.InstitutionID
+	UserID             model.UserID
+	EnableLocalLogin   bool
+	RotatePasswordHash string
+}
+
+type AdministratorRecoveryResult struct {
+	RecordID          string
+	LocalLoginEnabled bool
+	PasswordRotated   bool
+}
+
+// AdministratorRecoveryReconciliation is the bounded startup command that
+// turns pending offline security records into ordinary durable audit events.
+type AdministratorRecoveryReconciliation struct {
+	NodeID string
+}
+
+type AdministratorRecoveryReconciliationResult struct {
+	Reconciled int
+}
+
 // InstallationStore owns the cross-model transaction that makes a pristine
 // database into an initialized logical Proctor installation.
 type InstallationStore interface {
 	Get(context.Context) (*model.InstallationState, error)
 	Bootstrap(context.Context, *InstallationBootstrap) (*model.InstallationBootstrapResult, error)
 	ReconcileSystemAdministratorRole(context.Context, *SystemAdministratorRoleReconciliation) (*SystemAdministratorRoleReconciliationResult, error)
+	RecoverAdministratorAccess(context.Context, *AdministratorRecovery) (*AdministratorRecoveryResult, error)
+	ReconcileAdministratorRecovery(context.Context, *AdministratorRecoveryReconciliation) (*AdministratorRecoveryReconciliationResult, error)
 }

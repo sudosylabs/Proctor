@@ -47,6 +47,7 @@ const (
 	aggregateProgrammeLevel       aggregateName = "programme_level"
 	aggregateRole                 aggregateName = "role"
 	aggregateRoleBinding          aggregateName = "role_binding"
+	aggregateServingNodeLease     aggregateName = "serving_node_lease"
 	aggregateSession              aggregateName = "session"
 	aggregateSessionCredential    aggregateName = "session_credential"
 	aggregateUser                 aggregateName = "user"
@@ -60,6 +61,7 @@ const (
 	methodArchiveWithAudit              methodName = "archive_with_audit"
 	methodBootstrap                     methodName = "bootstrap"
 	methodCheckpoint                    methodName = "checkpoint"
+	methodChangeState                   methodName = "change_state"
 	methodClaimObjectsForCleanup        methodName = "claim_objects_for_cleanup"
 	methodClaimPurgeCandidate           methodName = "claim_purge_candidate"
 	methodClaimNext                     methodName = "claim_next"
@@ -106,6 +108,7 @@ const (
 	methodStartRekey                    methodName = "start_rekey"
 	methodListRekeyTargets              methodName = "list_rekey_targets"
 	methodReplaceRekeyTarget            methodName = "replace_rekey_target"
+	methodRegisterLocal                 methodName = "register_local"
 	methodProveRekey                    methodName = "prove_rekey"
 	methodGet                           methodName = "get"
 	methodGetCandidatePresentation      methodName = "get_candidate_presentation"
@@ -171,6 +174,9 @@ const (
 	methodPreflight                     methodName = "preflight"
 	methodPublishDefaultProfilePicture  methodName = "publish_default_profile_picture"
 	methodPublish                       methodName = "publish"
+	methodPrepareMutation               methodName = "prepare_mutation"
+	methodFailMutation                  methodName = "fail_mutation"
+	methodMaintainMutationPreparations  methodName = "maintain_mutation_preparations"
 	methodPublishProfilePicture         methodName = "publish_profile_picture"
 	methodFinalizeUpload                methodName = "finalize_upload"
 	methodRemoveProfilePictureWithAudit methodName = "remove_profile_picture_with_audit"
@@ -264,7 +270,11 @@ const (
 	methodValidateSchema                methodName = "validate_schema"
 )
 
-const methodReconcileSystemAdministratorRole methodName = "reconcile_system_administrator_role"
+const (
+	methodRecoverAdministratorAccess       methodName = "recover_administrator_access"
+	methodReconcileAdministratorRecovery   methodName = "reconcile_administrator_recovery"
+	methodReconcileSystemAdministratorRole methodName = "reconcile_system_administrator_role"
+)
 
 func storeOperation(aggregate aggregateName, method methodName) Operation {
 	return Operation{name: string(aggregate) + "." + string(method)}

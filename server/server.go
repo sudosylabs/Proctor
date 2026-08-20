@@ -78,10 +78,23 @@ type runtimeJobs interface {
 	Close() error
 }
 
+type runtimeServingNodeLease interface {
+	Start(context.Context) error
+	Failures() <-chan error
+	Close() error
+}
+
 // runtimeReconciler owns bounded durable startup convergence that must complete
 // after infrastructure is ready and before any worker or transport can serve.
 type runtimeReconciler interface {
 	ReconcileSystemAdministratorRole(context.Context) error
+	ReconcileAdministratorRecovery(context.Context) error
+}
+
+// runtimeAdministratorRecovery is borrowed only by the inert Server facade;
+// it is never projected into HTTP or another transport.
+type runtimeAdministratorRecovery interface {
+	RecoverAdministratorAccess(context.Context, app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error)
 }
 
 type runtimeReadiness interface {
@@ -166,16 +179,32 @@ func runtimeSettingsFromConfig(settings config.Server) runtimeSettings {
 }
 
 type runtimeComponents struct {
-	platform   runtimePlatform
-	reconciler runtimeReconciler
-	settings   runtimeSettings
-	logger     runtimeLogger
-	jobs       runtimeJobs
-	transport  runtimeTransport
-	websocket  runtimeWebSocket
-	readiness  runtimeReadiness
-	listen     func(string, string) (net.Listener, error)
-	newHTTP    func(httpServerSettings) httpRuntime
+	platform              runtimePlatform
+	reconciler            runtimeReconciler
+	administratorRecovery runtimeAdministratorRecovery
+	settings              runtimeSettings
+	logger                runtimeLogger
+	jobs                  runtimeJobs
+	servingLease          runtimeServingNodeLease
+	transport             runtimeTransport
+	websocket             runtimeWebSocket
+	readiness             runtimeReadiness
+	listen                func(string, string) (net.Listener, error)
+	newHTTP               func(httpServerSettings) httpRuntime
+}
+
+// AdministratorRecoveryCommand is the narrow module-root contract consumed by
+// the host CLI. Password must come from a private input channel, never argv.
+type AdministratorRecoveryCommand struct {
+	InstitutionID    string
+	UserID           string
+	EnableLocalLogin bool
+	Password         string
+}
+
+type AdministratorRecoveryResult struct {
+	LocalLoginEnabled bool
+	PasswordRotated   bool
 }
 
 // lifecycleMilestones records only stages that the node successfully entered.
@@ -220,6 +249,34 @@ type Server struct {
 
 	closeOnce sync.Once
 	closeErr  error
+}
+
+// RecoverAdministratorAccess runs only while the constructed node remains
+// inert. Starting the node permanently closes this host-only capability.
+func (s *Server) RecoverAdministratorAccess(ctx context.Context, command AdministratorRecoveryCommand) (*AdministratorRecoveryResult, error) {
+	if s == nil {
+		return nil, errors.New("server is nil")
+	}
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.state != nodeInert {
+		return nil, errors.New("administrator recovery requires an inert server")
+	}
+	recovery := s.components.administratorRecovery
+	if recovery == nil {
+		return nil, errors.New("administrator recovery is unavailable")
+	}
+	result, err := recovery.RecoverAdministratorAccess(ctx, app.AdministratorRecoveryCommand{
+		InstitutionID: command.InstitutionID, UserID: command.UserID,
+		EnableLocalLogin: command.EnableLocalLogin, Password: command.Password,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &AdministratorRecoveryResult{
+		LocalLoginEnabled: result.LocalLoginEnabled,
+		PasswordRotated:   result.PasswordRotated,
+	}, nil
 }
 
 // New constructs one Proctor server. It validates options and returns
@@ -311,6 +368,17 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	if runCtx.Err() != nil {
 		return nil
 	}
+	if s.components.servingLease != nil {
+		if err := s.components.servingLease.Start(runCtx); err != nil {
+			if gracefulCancellation(err, runCtx.Err()) {
+				return nil
+			}
+			return fmt.Errorf("start serving node lease: %w", err)
+		}
+		if err := s.currentServingNodeLeaseFailure(); err != nil {
+			return fmt.Errorf("maintain serving node lease: %w", err)
+		}
+	}
 	if s.components.reconciler != nil {
 		if err := s.components.reconciler.ReconcileSystemAdministratorRole(runCtx); err != nil {
 			if gracefulCancellation(err, runCtx.Err()) {
@@ -320,6 +388,18 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		}
 		if runCtx.Err() != nil {
 			return nil
+		}
+		if err := s.components.reconciler.ReconcileAdministratorRecovery(runCtx); err != nil {
+			if gracefulCancellation(err, runCtx.Err()) {
+				return nil
+			}
+			return fmt.Errorf("reconcile offline administrator recovery: %w", err)
+		}
+		if runCtx.Err() != nil {
+			return nil
+		}
+		if err := s.currentServingNodeLeaseFailure(); err != nil {
+			return fmt.Errorf("maintain serving node lease: %w", err)
 		}
 	}
 	if s.components.jobs != nil {
@@ -333,6 +413,9 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		if runCtx.Err() != nil {
 			return nil
 		}
+		if err := s.currentServingNodeLeaseFailure(); err != nil {
+			return fmt.Errorf("maintain serving node lease: %w", err)
+		}
 	}
 	if s.components.websocket != nil {
 		if err := s.components.websocket.Start(runCtx); err != nil {
@@ -344,6 +427,9 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		s.recordStarted(func(m *lifecycleMilestones) { m.websocketStarted = true })
 		if runCtx.Err() != nil {
 			return nil
+		}
+		if err := s.currentServingNodeLeaseFailure(); err != nil {
+			return fmt.Errorf("maintain serving node lease: %w", err)
 		}
 	}
 
@@ -419,6 +505,12 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		if !s.httpServing() {
 			return nil
 		}
+	case leaseErr := <-s.servingNodeLeaseFailures():
+		return errors.Join(
+			fmt.Errorf("maintain serving node lease: %w", leaseErr),
+			s.closeOwnedListener(),
+			s.forceCloseHTTP(),
+		)
 	}
 	if s.publishReady(runCtx) {
 		s.components.logger.InfoContext(
@@ -430,6 +522,8 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		)
 	}
 
+	var runtimeErr error
+	forceServingStop := false
 	select {
 	case serveErr := <-serveErrors:
 		s.setUnready()
@@ -441,10 +535,21 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	case <-runCtx.Done():
 		s.setUnready()
 		s.components.logger.Info("server shutdown started")
+	case leaseErr := <-s.servingNodeLeaseFailures():
+		runtimeErr = fmt.Errorf("maintain serving node lease: %w", leaseErr)
+		forceServingStop = true
+		s.setUnready()
+		s.components.logger.ErrorContext(runCtx, "serving node lease failed; stopping server", mlog.Err(leaseErr))
 	}
 
-	if err := s.shutdownHTTP(settings.shutdownTimeout); err != nil {
-		return err
+	var stopErr error
+	if forceServingStop {
+		stopErr = s.forceCloseHTTP()
+	} else {
+		stopErr = s.shutdownHTTP(settings.shutdownTimeout)
+	}
+	if stopErr != nil {
+		return errors.Join(runtimeErr, stopErr)
 	}
 	shutdownTimer := time.NewTimer(settings.shutdownTimeout)
 	defer shutdownTimer.Stop()
@@ -453,15 +558,15 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			err := fmt.Errorf("serve HTTP during shutdown: %w", serveErr)
 			s.retainHTTPShutdownError(err)
-			return err
+			return errors.Join(runtimeErr, err)
 		}
 	case <-shutdownTimer.C:
 		err := errHTTPServerStopTimeout
 		s.retainHTTPShutdownError(err)
-		return err
+		return errors.Join(runtimeErr, err)
 	}
 	s.components.logger.Info("server stopped")
-	return nil
+	return runtimeErr
 }
 
 // Close makes the node unready, gracefully stops HTTP when running, and then
@@ -518,6 +623,21 @@ func (s *Server) shutdownHTTP(timeout time.Duration) error {
 	return nil
 }
 
+func (s *Server) forceCloseHTTP() error {
+	s.httpMu.Lock()
+	httpServer := s.http
+	s.httpMu.Unlock()
+	if httpServer == nil {
+		return nil
+	}
+	if err := httpServer.Close(); err != nil {
+		result := fmt.Errorf("force close HTTP: %w", err)
+		s.retainHTTPShutdownError(result)
+		return result
+	}
+	return nil
+}
+
 func (s *Server) retainHTTPShutdownError(err error) {
 	if err == nil {
 		return
@@ -558,15 +678,37 @@ func (s *Server) closeRuntime() error {
 		if s.components.websocket != nil {
 			websocketErr = s.components.websocket.Close()
 		}
+		transportErr := s.components.transport.Close()
+		var servingLeaseErr error
+		if s.components.servingLease != nil {
+			servingLeaseErr = s.components.servingLease.Close()
+		}
 		s.closeErr = errors.Join(
 			listenerErr,
 			jobsErr,
 			websocketErr,
-			s.components.transport.Close(),
+			transportErr,
+			servingLeaseErr,
 			s.components.platform.Close(),
 		)
 	})
 	return s.closeErr
+}
+
+func (s *Server) servingNodeLeaseFailures() <-chan error {
+	if s.components.servingLease == nil {
+		return nil
+	}
+	return s.components.servingLease.Failures()
+}
+
+func (s *Server) currentServingNodeLeaseFailure() error {
+	select {
+	case err := <-s.servingNodeLeaseFailures():
+		return err
+	default:
+		return nil
+	}
 }
 
 func (s *Server) recordStarted(record func(*lifecycleMilestones)) {

@@ -43,6 +43,7 @@ type identityConstruction struct {
 	authenticationMethods             *authenticationMethodService
 	mfaApplication                    *mfaApplicationService
 	accountTokens                     *accountTokenService
+	publicRegistration                *publicRegistrationService
 	invitations                       *invitationService
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
 }
@@ -185,6 +186,7 @@ func assembleApplication(
 		authenticationMethods:             identity.authenticationMethods,
 		mfaApplication:                    identity.mfaApplication,
 		accountTokens:                     identity.accountTokens,
+		publicRegistration:                identity.publicRegistration,
 		invitations:                       identity.invitations,
 		personalAccessTokenAdministration: identity.personalAccessTokenAdministration,
 		authorization:                     access.authorization,

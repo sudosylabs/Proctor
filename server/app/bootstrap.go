@@ -40,6 +40,21 @@ type BootstrapInstallationCommand struct {
 	Source                   string
 }
 
+// AdministratorRecoveryCommand is accepted only by the host-level offline
+// capability. Password is private input and is replaced with an encoded hash
+// before the named Store aggregate is invoked.
+type AdministratorRecoveryCommand struct {
+	InstitutionID    string
+	UserID           string
+	EnableLocalLogin bool
+	Password         string
+}
+
+type AdministratorRecoveryResult struct {
+	LocalLoginEnabled bool
+	PasswordRotated   bool
+}
+
 // BootstrapProtectionPolicy is the immutable deployment-owned proof used by
 // the public one-time bootstrap command. The service retains only its digest.
 type BootstrapProtectionPolicy struct {
@@ -50,6 +65,65 @@ type installationStore interface {
 	Get(context.Context) (*model.InstallationState, error)
 	Bootstrap(context.Context, *store.InstallationBootstrap) (*model.InstallationBootstrapResult, error)
 	ReconcileSystemAdministratorRole(context.Context, *store.SystemAdministratorRoleReconciliation) (*store.SystemAdministratorRoleReconciliationResult, error)
+	RecoverAdministratorAccess(context.Context, *store.AdministratorRecovery) (*store.AdministratorRecoveryResult, error)
+	ReconcileAdministratorRecovery(context.Context, *store.AdministratorRecoveryReconciliation) (*store.AdministratorRecoveryReconciliationResult, error)
+}
+
+// RecoverAdministratorAccess is intentionally absent from every network
+// application interface. The module root borrows this method only for the
+// explicit offline host command.
+func (a *App) RecoverAdministratorAccess(ctx context.Context, command AdministratorRecoveryCommand) (*AdministratorRecoveryResult, error) {
+	if a == nil || a.bootstrap == nil {
+		return nil, errors.New("administrator recovery is unavailable")
+	}
+	return a.bootstrap.RecoverAdministratorAccess(ctx, command)
+}
+
+func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, command AdministratorRecoveryCommand) (*AdministratorRecoveryResult, error) {
+	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
+	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))
+	if institutionErr != nil || userErr != nil || (!command.EnableLocalLogin && command.Password == "") {
+		return nil, NewError("administrator_recovery.invalid")
+	}
+	passwordHash := ""
+	if command.Password != "" {
+		var err error
+		passwordHash, err = s.hasher.Hash(command.Password)
+		if err != nil {
+			return nil, NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+		}
+	}
+	result, err := s.installations.RecoverAdministratorAccess(ctx, &store.AdministratorRecovery{
+		InstitutionID: institutionID, UserID: userID,
+		EnableLocalLogin: command.EnableLocalLogin, RotatePasswordHash: passwordHash,
+	})
+	if err != nil {
+		return nil, NewError("administrator_recovery.failed").Wrap(err)
+	}
+	if result == nil {
+		return nil, NewError("administrator_recovery.failed").Wrap(errors.New("persistence returned no recovery result"))
+	}
+	return &AdministratorRecoveryResult{
+		LocalLoginEnabled: result.LocalLoginEnabled,
+		PasswordRotated:   result.PasswordRotated,
+	}, nil
+}
+
+// ReconcileAdministratorRecovery records every completed offline recovery in
+// ordinary audit before this node starts workers or network transports.
+func (a *App) ReconcileAdministratorRecovery(ctx context.Context) error {
+	if a == nil || a.bootstrap == nil {
+		return errors.New("administrator recovery reconciliation is unavailable")
+	}
+	return a.bootstrap.ReconcileAdministratorRecovery(ctx)
+}
+
+func (s *bootstrapService) ReconcileAdministratorRecovery(ctx context.Context) error {
+	_, err := s.installations.ReconcileAdministratorRecovery(ctx, &store.AdministratorRecoveryReconciliation{NodeID: s.nodeID})
+	if err != nil {
+		return fmt.Errorf("reconcile offline administrator recovery: %w", err)
+	}
+	return nil
 }
 
 type passwordHash interface {

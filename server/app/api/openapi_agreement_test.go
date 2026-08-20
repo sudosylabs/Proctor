@@ -130,6 +130,7 @@ func identityAndSystemOpenAPIAgreementSuite() openAPIAgreementSuite {
 		operation("POST /api/v1/auth/desktop/authorizations/approve", AuthSessionRequired, "#/components/requestBodies/DesktopAuthorizationProof", "DesktopAuthorizationProofRequest", "200", "#/components/responses/DesktopAuthorizationApproved", "DesktopAuthorizationApprovalResponse"),
 		operation("POST /api/v1/auth/desktop/authorizations/cancel", AuthPublic, "#/components/requestBodies/DesktopAuthorizationProof", "DesktopAuthorizationProofRequest", "204", "#/components/responses/SensitiveNoContent", ""),
 		operation("POST /api/v1/auth/desktop/token", AuthPublic, "#/components/requestBodies/DesktopAuthorizationExchange", "DesktopAuthorizationExchangeRequest", "200", "#/components/responses/AuthenticationOK", "AuthenticationResponse"),
+		operation("POST /api/v1/auth/register", AuthPublic, "#/components/requestBodies/PublicRegistration", "PublicRegistrationRequest", "202", "#/components/responses/SensitiveAccepted", ""),
 		operation("POST /api/v1/auth/login", AuthPublic, "#/components/requestBodies/Login", "LoginRequest", "200", "#/components/responses/AuthenticationOK", "AuthenticationResponse"),
 		operation("POST /api/v1/auth/refresh", AuthRefreshCredentialRequired, "", "", "200", "#/components/responses/AuthenticationOK", "AuthenticationResponse"),
 		operation("POST /api/v1/auth/logout", AuthSessionRequired, "", "", "204", "#/components/responses/SensitiveNoContent", ""),
@@ -163,6 +164,7 @@ func identityAndSystemOpenAPIAgreementSuite() openAPIAgreementSuite {
 			{Name: "HealthResponse", DTO: reflect.TypeOf(healthResponse{}), Required: []string{"status"}},
 			{Name: "BuildInfoResponse", DTO: reflect.TypeOf(BuildInfo{}), Required: []string{"version", "commit", "build_time", "go_version"}},
 			{Name: "LoginRequest", DTO: reflect.TypeOf(loginRequest{}), Required: []string{"login_id", "password", "client_type"}},
+			{Name: "PublicRegistrationRequest", DTO: reflect.TypeOf(publicRegistrationRequest{}), Required: []string{"username", "email", "password"}},
 			{Name: "DesktopAuthorizationStartRequest", DTO: reflect.TypeOf(desktopAuthorizationStartRequest{}), Required: []string{"callback_url", "state", "code_challenge", "authentication_method"}},
 			{Name: "DesktopAuthorizationProofRequest", DTO: reflect.TypeOf(desktopAuthorizationProofRequest{}), Required: []string{"handle", "browser_proof", "state"}},
 			{Name: "DesktopAuthorizationExchangeRequest", DTO: reflect.TypeOf(desktopAuthorizationExchangeRequest{}), Required: []string{"code", "state", "code_verifier"}},
@@ -202,6 +204,7 @@ func identityAndSystemErrorContracts() map[string][]string {
 	return map[string][]string{
 		"GET /health/live": {"not_live"}, "GET /health/ready": {"not_ready"}, "GET /api/v1/system/version": {},
 		"POST /api/v1/auth/login":                                         {"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code", "authentication.mfa.unavailable", "authentication.sessions.maximum_reached", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal"},
+		"POST /api/v1/auth/register":                                      {"request.invalid", "authentication.password.invalid", "authentication.registration.invalid", "authentication.registration.invitation_required", "authentication.registration.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable"},
 		"POST /api/v1/auth/desktop/authorizations":                        {"request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.disabled", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable"},
 		"POST /api/v1/auth/desktop/authorizations/approve":                sessionMutationErrorCodes("request.invalid", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable", "audit.unavailable"),
 		"POST /api/v1/auth/desktop/authorizations/cancel":                 {"request.invalid", "authentication.desktop_authorization.invalid", "authentication.desktop_authorization.rejected", "authentication.desktop_authorization.unavailable"},

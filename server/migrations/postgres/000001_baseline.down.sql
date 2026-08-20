@@ -5,6 +5,7 @@
 -- normally be dropped and recreated rather than rolled back.
 
 DROP TABLE IF EXISTS cluster_discovery_nodes;
+DROP TABLE IF EXISTS serving_node_leases;
 DROP TABLE IF EXISTS mail_send_rate_limit;
 DROP TABLE IF EXISTS mail_key_state;
 DROP TABLE IF EXISTS mail_fanout_bundles;
@@ -19,6 +20,7 @@ DROP TABLE IF EXISTS invitations;
 DROP TABLE IF EXISTS job_attempts;
 DROP TABLE IF EXISTS job_permanent_occurrences;
 DROP TABLE IF EXISTS jobs;
+DROP TABLE IF EXISTS administrator_recovery_records;
 DROP TABLE IF EXISTS installation_states;
 DROP TABLE IF EXISTS access_policy_transitions;
 DROP FUNCTION IF EXISTS reject_access_policy_transition_update();
@@ -32,6 +34,7 @@ DROP TABLE IF EXISTS browser_authentication_transactions;
 DROP TABLE IF EXISTS mfa_recovery_codes;
 DROP TABLE IF EXISTS mfa_credentials;
 DROP TABLE IF EXISTS user_tokens;
+DROP TABLE IF EXISTS personal_access_token_mutation_preparations;
 DROP TABLE IF EXISTS personal_access_tokens;
 DROP TABLE IF EXISTS session_credentials;
 DROP TABLE IF EXISTS submission_review_inventory_discrepancies;

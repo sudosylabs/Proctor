@@ -95,6 +95,19 @@ func insertAuditEventAt(
 	event *model.AuditEvent,
 	at time.Time,
 ) (*model.AuditEvent, error) {
+	return insertAuditEventBetween(ctx, executor, event, at, at)
+}
+
+// insertAuditEventBetween inserts one already-terminal event whose durable
+// owner began at createdAt and resolved at updatedAt. It is used by named
+// pending aggregates that deliberately do not create deletable Audit rows.
+func insertAuditEventBetween(
+	ctx context.Context,
+	executor sqlxExecutor,
+	event *model.AuditEvent,
+	createdAt time.Time,
+	updatedAt time.Time,
+) (*model.AuditEvent, error) {
 	if event == nil {
 		return nil, store.NewErrInvalidInput("audit_event", "value", nil)
 	}
@@ -102,7 +115,8 @@ func insertAuditEventAt(
 		return nil, store.NewErrInvalidInput("audit_event", "id", event.ID.String())
 	}
 	candidate := event.Clone()
-	candidate.PrepareCreate(model.NewAuditEventID(), at)
+	candidate.PrepareCreate(model.NewAuditEventID(), createdAt)
+	candidate.PrepareUpdate(updatedAt)
 	if err := candidate.Validate(); err != nil {
 		return nil, err
 	}

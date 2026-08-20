@@ -26,6 +26,12 @@ exact `templates.Properties` fields it receives:
 - `.Copy.Footer`
 - `.ActionURL`
 
+The four Personal Access Token security notices additionally receive the
+closed `.Copy.PersonalAccessToken` label set and these bounded fields under
+`.PersonalAccessToken`: `.Description`, `.ExpiresAt`, `.ActionAt`,
+`.ScopeContext`, and `.ActionCount`. They never receive the one-time
+credential, stored token hash, or complete action list.
+
 The renderer accepts no arbitrary map and registers no custom template
 functions. Copy is markup-free and HTML is parsed with Go `html/template`, so
 localized and dynamic values are contextually escaped. Action URLs are

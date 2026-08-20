@@ -11,15 +11,27 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func TestUserStore(t *testing.T, ss store.Store) {
+type UserStoreSQLProbe struct {
+	SetPublicRegistration func(*testing.T, bool, bool)
+	DatabaseNow           func(*testing.T) time.Time
+}
+
+func TestUserStore(t *testing.T, ss store.Store, probes ...UserStoreSQLProbe) {
 	t.Run("CreateAndGet", func(t *testing.T) { testUserStoreCreateAndGet(t, ss) })
 	t.Run("CreationAndDefaultJobAreAtomic", func(t *testing.T) { testUserCreationAndDefaultJobAreAtomic(t, ss) })
+	if len(probes) > 0 && probes[0].SetPublicRegistration != nil {
+		t.Run("PublicRegistrationIsAtomicPolicyFencedAndConcurrent", func(t *testing.T) {
+			testPublicLocalUserRegistration(t, ss, probes[0])
+		})
+	}
 	t.Run("NormalizedLookups", func(t *testing.T) { testUserStoreNormalizedLookups(t, ss) })
 	t.Run("Update", func(t *testing.T) { testUserStoreUpdate(t, ss) })
 	t.Run("UpdateLastLogin", func(t *testing.T) { testUserStoreUpdateLastLogin(t, ss) })
@@ -34,6 +46,198 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	t.Run("ProtectLastAdministrator", func(t *testing.T) {
 		testUserStoreProtectLastAdministrator(t, ss)
 	})
+}
+
+func testPublicLocalUserRegistration(t *testing.T, ss store.Store, probe UserStoreSQLProbe) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	probe.SetPublicRegistration(t, false, true)
+	disabled := publicLocalUserRegistrationFixture(t, institution.ID, newUser())
+	if result, err := ss.User().RegisterLocal(ctx, disabled); result != nil || !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+		t.Fatalf("disabled public registration = %#v, %v", result, err)
+	}
+	if _, err := ss.User().Get(ctx, disabled.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("disabled registration persisted User: %v", err)
+	}
+
+	localDisabled := publicLocalUserRegistrationFixture(t, institution.ID, newUser())
+	probe.SetPublicRegistration(t, false, false)
+	if result, err := ss.User().RegisterLocal(ctx, localDisabled); result != nil || !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+		t.Fatalf("disabled local enrollment = %#v, %v", result, err)
+	}
+	if _, err := ss.User().Get(ctx, localDisabled.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("disabled local enrollment persisted User: %v", err)
+	}
+
+	probe.SetPublicRegistration(t, true, true)
+	accepted := publicLocalUserRegistrationFixture(t, institution.ID, newUser())
+	result, err := ss.User().RegisterLocal(ctx, accepted)
+	requireNoError(t, err)
+	if result.User.ID != accepted.User.ID || result.Token.ID != accepted.VerificationToken.ID || result.User.EmailVerified {
+		t.Fatalf("public registration result = %#v", result)
+	}
+	if _, err = ss.PasswordCredential().GetByUser(ctx, accepted.User.ID.String()); err != nil {
+		t.Fatalf("registration password = %v", err)
+	}
+	if _, err = ss.UserSettings().Get(ctx, accepted.User.ID); err != nil {
+		t.Fatalf("registration settings = %v", err)
+	}
+	if _, err = ss.UserToken().GetByHash(ctx, accepted.VerificationToken.TokenHash, model.UserTokenEmailVerification); err != nil {
+		t.Fatalf("registration token = %v", err)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, accepted.VerificationDelivery.ID); err != nil {
+		t.Fatalf("registration delivery = %v", err)
+	}
+	if _, err = ss.Job().Get(ctx, accepted.DefaultProfilePictureJob.ID); err != nil {
+		t.Fatalf("registration profile Job = %v", err)
+	}
+	if _, err = ss.Job().Get(ctx, accepted.VerificationJob.ID); err != nil {
+		t.Fatalf("registration delivery Job = %v", err)
+	}
+
+	if probe.DatabaseNow != nil {
+		databaseNow := probe.DatabaseNow(t)
+		behindNodeAt := databaseNow.Add(-2 * time.Hour)
+		skewed := publicLocalUserRegistrationFixtureAt(t, institution.ID, newUser(), behindNodeAt)
+		originalUserAt, originalTokenExpiry := skewed.User.CreatedAt, skewed.VerificationToken.ExpiresAt
+		skewedResult, registerErr := ss.User().RegisterLocal(ctx, skewed)
+		requireNoError(t, registerErr)
+		if skewed.User.CreatedAt != originalUserAt || skewed.VerificationToken.ExpiresAt != originalTokenExpiry {
+			t.Fatal("RegisterLocal mutated caller-owned candidates while rebasing timestamps")
+		}
+		if skewedResult.User.CreatedAt.Before(databaseNow) || skewedResult.Token.CreatedAt.Before(databaseNow) ||
+			!skewedResult.Token.ExpiresAt.Equal(skewedResult.Token.CreatedAt.Add(skewed.TokenLifetime)) {
+			t.Fatalf("registration did not use PostgreSQL time: user=%s token=%s..%s database=%s", skewedResult.User.CreatedAt, skewedResult.Token.CreatedAt, skewedResult.Token.ExpiresAt, databaseNow)
+		}
+		storedSettings, settingsErr := ss.UserSettings().Get(ctx, skewed.User.ID)
+		requireNoError(t, settingsErr)
+		storedCredential, credentialErr := ss.PasswordCredential().GetByUser(ctx, skewed.User.ID.String())
+		requireNoError(t, credentialErr)
+		storedDelivery, deliveryErr := ss.Mail().GetDelivery(ctx, skewed.VerificationDelivery.ID)
+		requireNoError(t, deliveryErr)
+		storedDefaultJob, defaultJobErr := ss.Job().Get(ctx, skewed.DefaultProfilePictureJob.ID)
+		requireNoError(t, defaultJobErr)
+		storedDeliveryJob, deliveryJobErr := ss.Job().Get(ctx, skewed.VerificationJob.ID)
+		requireNoError(t, deliveryJobErr)
+		storedAudit := skewedResult.AuditEvent
+		if storedAudit == nil {
+			t.Fatal("registration result omitted its committed audit")
+		}
+		for field, timestamp := range map[string]time.Time{
+			"settings.created_at":     storedSettings.CreatedAt,
+			"password.created_at":     storedCredential.CreatedAt,
+			"password.changed_at":     storedCredential.PasswordChangedAt,
+			"delivery.created_at":     storedDelivery.CreatedAt,
+			"delivery.message_date":   storedDelivery.MessageDate,
+			"profile_job.created_at":  storedDefaultJob.CreatedAt,
+			"delivery_job.created_at": storedDeliveryJob.CreatedAt,
+			"audit.created_at":        storedAudit.CreatedAt,
+			"audit.updated_at":        storedAudit.UpdatedAt,
+		} {
+			if !timestamp.Equal(skewedResult.User.CreatedAt) {
+				t.Fatalf("%s=%s, transaction time=%s", field, timestamp, skewedResult.User.CreatedAt)
+			}
+		}
+		if !storedDelivery.Deadline.Equal(storedDelivery.CreatedAt.Add(skewed.MailLifetime)) {
+			t.Fatalf("delivery deadline=%s, created=%s lifetime=%s", storedDelivery.Deadline, storedDelivery.CreatedAt, skewed.MailLifetime)
+		}
+
+		aheadNodeAt := databaseNow.Add(2 * time.Hour)
+		ahead := publicLocalUserRegistrationFixtureAt(t, institution.ID, newUser(), aheadNodeAt)
+		originalAheadAt := ahead.User.CreatedAt
+		aheadResult, registerAheadErr := ss.User().RegisterLocal(ctx, ahead)
+		requireNoError(t, registerAheadErr)
+		if ahead.User.CreatedAt != originalAheadAt {
+			t.Fatal("RegisterLocal mutated the ahead-node candidate while rebasing timestamps")
+		}
+		if aheadResult.User.CreatedAt.Before(databaseNow) || !aheadResult.User.CreatedAt.Before(aheadNodeAt) ||
+			!aheadResult.Token.ExpiresAt.Equal(aheadResult.Token.CreatedAt.Add(ahead.TokenLifetime)) {
+			t.Fatalf("ahead-node registration did not use PostgreSQL time: user=%s token=%s..%s database=%s node=%s", aheadResult.User.CreatedAt, aheadResult.Token.CreatedAt, aheadResult.Token.ExpiresAt, databaseNow, aheadNodeAt)
+		}
+	}
+
+	rollback := publicLocalUserRegistrationFixture(t, institution.ID, newUser())
+	queued, _, err := ss.Job().Enqueue(ctx, &store.JobEnqueue{Job: rollback.VerificationJob})
+	requireNoError(t, err)
+	if queued.ID != rollback.VerificationJob.ID {
+		t.Fatalf("collision Job = %#v", queued)
+	}
+	if _, err = ss.User().RegisterLocal(ctx, rollback); err == nil {
+		t.Fatal("registration accepted colliding delivery Job")
+	}
+	if _, err = ss.User().Get(ctx, rollback.User.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("failed registration persisted User: %v", err)
+	}
+	if _, err = ss.UserToken().GetByHash(ctx, rollback.VerificationToken.TokenHash, model.UserTokenEmailVerification); !store.IsNotFound(err) {
+		t.Fatalf("failed registration persisted token: %v", err)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, rollback.VerificationDelivery.ID); !store.IsNotFound(err) {
+		t.Fatalf("failed registration persisted delivery: %v", err)
+	}
+
+	sharedEmail := model.NewId() + "@public-registration.example.edu"
+	contenders := []*store.PublicLocalUserRegistration{
+		publicLocalUserRegistrationFixture(t, institution.ID, &model.User{Username: "registration-a-" + model.NewId(), Email: sharedEmail}),
+		publicLocalUserRegistrationFixture(t, institution.ID, &model.User{Username: "registration-b-" + model.NewId(), Email: sharedEmail}),
+	}
+	start := make(chan struct{})
+	errs := make(chan error, len(contenders))
+	var wait sync.WaitGroup
+	for _, contender := range contenders {
+		contender := contender
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			_, registerErr := ss.User().RegisterLocal(ctx, contender)
+			errs <- registerErr
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(errs)
+	successes, conflicts := 0, 0
+	for registerErr := range errs {
+		switch {
+		case registerErr == nil:
+			successes++
+		case store.IsConflict(registerErr):
+			conflicts++
+		default:
+			t.Fatalf("concurrent registration error = %v", registerErr)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent registration successes=%d conflicts=%d", successes, conflicts)
+	}
+}
+
+func publicLocalUserRegistrationFixture(t *testing.T, institutionID model.InstitutionID, candidate *model.User) *store.PublicLocalUserRegistration {
+	return publicLocalUserRegistrationFixtureAt(t, institutionID, candidate, time.Now())
+}
+
+func publicLocalUserRegistrationFixtureAt(t *testing.T, institutionID model.InstitutionID, candidate *model.User, candidateAt time.Time) *store.PublicLocalUserRegistration {
+	t.Helper()
+	user := *candidate
+	if user.ID.IsZero() {
+		user.PrepareCreate(model.NewUserID(), candidateAt)
+	}
+	creation := testUserCreation(&user, &model.PasswordCredential{PasswordHash: "encoded-registration-password"})
+	at := creation.User.CreatedAt
+	token := &model.UserToken{UserID: creation.User.ID, Purpose: model.UserTokenEmailVerification,
+		TokenHash: model.HashToken(model.NewCredentialToken()), Target: creation.User.Email, ExpiresAt: at.Add(time.Hour)}
+	token.PrepareCreate(model.NewUserTokenID(), at)
+	occurrence, delivery, job := userTokenMailFixture(t, creation.User.ID, model.MailOccurrenceID(token.ID.String()),
+		model.MailOccurrenceAccountToken, model.MailTemplateIdentityVerifyEmail, model.JobTypeMailDeliverCredential,
+		at, token.ExpiresAt)
+	audit := userTokenAudit("authentication.public_registration", creation.User.ID.String(), institutionID.String())
+	audit.AuthMethod = "anonymous"
+	return &store.PublicLocalUserRegistration{
+		User: creation.User, Settings: creation.Settings, PasswordCredential: creation.PasswordCredential,
+		DefaultProfilePictureJob: creation.DefaultProfilePictureJob, VerificationToken: token,
+		TokenLifetime: time.Hour, MailLifetime: time.Hour,
+		VerificationOccurrence: occurrence, VerificationDelivery: delivery, VerificationJob: job, AuditEvent: audit,
+	}
 }
 
 func testUserStoreDisabledMailRecordsTerminalAccountNotice(t *testing.T, ss store.Store) {

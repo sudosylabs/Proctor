@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/i18n"
 	mailtemplates "github.com/sudosylabs/proctor/server/templates"
@@ -47,10 +48,21 @@ func run(args []string, stderr io.Writer) error {
 	index.WriteString("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Proctor mail previews</title></head><body>\n")
 	index.WriteString("<h1>Proctor transactional-mail previews</h1>\n<ul>\n")
 	for _, key := range i18n.AllKeys() {
-		message, renderErr := renderer.Render(mailtemplates.Request{
+		request := mailtemplates.Request{
 			Key: key, RecipientLocale: "en", InstallationLocale: "en",
 			ActionURL: "https://proctor.example.test/representative#token=not-a-credential",
-		})
+		}
+		switch key {
+		case i18n.IdentityPersonalAccessTokenCreated,
+			i18n.IdentityPersonalAccessTokenEnabled,
+			i18n.IdentityPersonalAccessTokenDisabled,
+			i18n.IdentityPersonalAccessTokenRevoked:
+			request.PersonalAccessToken = &mailtemplates.PersonalAccessTokenDetails{
+				Description: "Representative automation", ExpiresAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
+				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC), ActionCount: 2,
+			}
+		}
+		message, renderErr := renderer.Render(request)
 		if renderErr != nil {
 			return fmt.Errorf("render preview %q: %w", key, renderErr)
 		}

@@ -148,3 +148,15 @@ func IsConflict(err error) bool {
 	var target *ErrConflict
 	return errors.As(err, &target)
 }
+
+// IsUserIdentityConflict reports only the two persistence conflicts that mean
+// a canonical username or mailbox is already assigned to a User. Public entry
+// points use this narrow classification without learning database constraint
+// names or concealing unrelated transaction failures.
+func IsUserIdentityConflict(err error) bool {
+	var target *ErrConflict
+	if !errors.As(err, &target) || target.Resource != "user" {
+		return false
+	}
+	return target.Constraint == "users_username_key" || target.Constraint == "users_email_key"
+}

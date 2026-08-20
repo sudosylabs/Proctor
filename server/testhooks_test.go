@@ -114,12 +114,23 @@ func (s *hookStore) RoleBinding() store.RoleBindingStore           { return hook
 func (s *hookStore) Audit() store.AuditStore                       { return hookAuditStore{} }
 func (s *hookStore) Installation() store.InstallationStore         { return nil }
 func (s *hookStore) ClusterDiscovery() store.ClusterDiscoveryStore { return nil }
-func (s *hookStore) ClassMember() store.ClassMemberStore           { return hookClassMemberStore{} }
+func (s *hookStore) ServingNodeLease() store.ServingNodeLeaseStore {
+	return hookServingNodeLeaseStore{}
+}
+func (s *hookStore) ClassMember() store.ClassMemberStore { return hookClassMemberStore{} }
 func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore {
 	return hookAcademicUnitMemberStore{}
 }
 
 type hookInvitationStore struct{ store.InvitationStore }
+
+type hookServingNodeLeaseStore struct{}
+
+func (hookServingNodeLeaseStore) Upsert(_ context.Context, claim *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
+	at := time.Now().UTC()
+	return &store.ServingNodeLease{NodeID: claim.NodeID, LeaseID: claim.LeaseID, UpdatedAt: at, ExpiresAt: at.Add(claim.Lifetime)}, nil
+}
+func (hookServingNodeLeaseStore) Delete(context.Context, string, string) error { return nil }
 
 func (s *hookStore) Ping(context.Context) error {
 	attempt := s.pingAttempts.Add(1)

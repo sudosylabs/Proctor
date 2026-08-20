@@ -6,7 +6,13 @@ Template properties (templates.Properties):
   .Copy.Body — localized primary message
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
+  .Copy.PersonalAccessToken — localized labels and closed scope names
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .PersonalAccessToken.Description — bounded PAT description; never a credential
+  .PersonalAccessToken.ExpiresAt — UTC RFC 3339 expiry
+  .PersonalAccessToken.ActionAt — UTC RFC 3339 transition time
+  .PersonalAccessToken.Scope — localized Institution or Academic Unit context
+  .PersonalAccessToken.ActionCount — bounded count; never the complete scopes
 -->
 <mjml>
   <mj-head>
@@ -15,6 +21,6 @@ Template properties (templates.Properties):
     <mj-include path="./partials/foundation-head.mjml" />
   </mj-head>
   <mj-body background-color="#f4f5f7">
-    <mj-include path="./partials/foundation-message.mjml" />
+    <mj-include path="./partials/personal-access-token-message.mjml" />
   </mj-body>
 </mjml>

@@ -5,11 +5,28 @@ package server
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 )
+
+// RecoverAdministratorAccess constructs an inert server graph, invokes its
+// host-only recovery capability, and closes every acquired resource without
+// ever starting workers, listeners, or transports.
+func RecoverAdministratorAccess(ctx context.Context, configPath string, command AdministratorRecoveryCommand) (_ *AdministratorRecoveryResult, resultErr error) {
+	var options []Option
+	if configPath != "" {
+		options = append(options, WithConfigPath(configPath))
+	}
+	node, err := New(ctx, options...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, node.Close()) }()
+	return node.RecoverAdministratorAccess(ctx, command)
+}
 
 // BuildInfo describes the running server build for version reporting. Its
 // JSON field names are part of the public CLI contract.

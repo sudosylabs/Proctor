@@ -1,4 +1,4 @@
-<!-- Code generated from identity.personal_access_token_created.mjml by mjml 5.4.0; DO NOT EDIT. Source digest: sha256:5f9fd080e135990aed6165319baa011255670eec0865de0ac616bde60022b98a. Output digest: sha256:64240d49c78a9a41de63926e89cd177a9450677c820447fea360325f6765e9bd. -->
+<!-- Code generated from identity.personal_access_token_created.mjml by mjml 5.4.0; DO NOT EDIT. Source digest: sha256:d0ca76b35ae80362b7b5b94e74f42e8da7c9d482880ff528386045db373cc1c9. Output digest: sha256:384d8645b7f9a5d4751a38c4903fde2522460927fa8931214ea2683b9afbd38d. -->
 <!doctype html>
 <html lang="und" dir="auto" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
   <head>
@@ -80,31 +80,42 @@
               </tr>
 
               <tr>
-                <td align="left" style="font-size:0px;padding:0;word-break:break-word;">
+                <td align="left" style="font-size:0px;padding:0 0 20px;word-break:break-word;">
 
       <div style="font-family:Arial, Helvetica, sans-serif;font-size:16px;line-height:24px;text-align:left;color:#202124;">{{.Copy.Body}}</div>
 
                 </td>
               </tr>
-            {{if .ActionURL}}
-              <tr>
-                <td align="left" style="font-size:0px;padding:24px 0 0;word-break:break-word;">
 
-      <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:separate;line-height:100%;">
-        <tbody>
-          <tr>
-            <td align="center" bgcolor="#202124" role="presentation" style="border:none;border-radius:4px;cursor:auto;mso-padding-alt:12px 20px;background:#202124;" valign="middle">
-              <a href="{{.ActionURL}}" style="display: inline-block; background: #202124; color: #ffffff; font-family: Arial, Helvetica, sans-serif; font-size: 16px; font-weight: 600; line-height: 120%; margin: 0; text-decoration: none; text-transform: none; padding: 12px 20px; mso-padding-alt: 0px; border-radius: 4px;" target="_blank">
-                {{.Copy.ActionLabel}}
-              </a>
-            </td>
-          </tr>
-        </tbody>
+              <tr>
+                <td align="left" style="font-size:0px;padding:0;word-break:break-word;">
+
+      <table cellpadding="0" cellspacing="0" width="100%" border="0" style="color:#202124;font-family:Arial, Helvetica, sans-serif;font-size:13px;line-height:22px;table-layout:auto;width:100%;border:none;">
+        <tr>
+        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.DescriptionLabel}}</th>
+        <td style="padding:8px 0">{{.PersonalAccessToken.Description}}</td>
+      </tr>
+      <tr>
+        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ExpiresAtLabel}}</th>
+        <td style="padding:8px 0">{{.PersonalAccessToken.ExpiresAt}}</td>
+      </tr>
+      <tr>
+        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ActionAtLabel}}</th>
+        <td style="padding:8px 0">{{.PersonalAccessToken.ActionAt}}</td>
+      </tr>
+      <tr>
+        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ScopeLabel}}</th>
+        <td style="padding:8px 0">{{.PersonalAccessToken.Scope}}</td>
+      </tr>
+      <tr>
+        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ActionCountLabel}}</th>
+        <td style="padding:8px 0">{{.PersonalAccessToken.ActionCount}}</td>
+      </tr>
       </table>
 
                 </td>
               </tr>
-            {{end}}
+
               <tr>
                 <td align="center" style="font-size:0px;padding:32px 0 20px;word-break:break-word;">
 

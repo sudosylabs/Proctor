@@ -36,6 +36,8 @@ type retryStores struct {
 	examStarterWorkspaceOnce sync.Once
 	examSubmission           store.ExamSubmissionStore
 	examSubmissionOnce       sync.Once
+	servingNodeLease         store.ServingNodeLeaseStore
+	servingNodeLeaseOnce     sync.Once
 	examAuthoring            store.ExamAuthoringStore
 	examAuthoringOnce        sync.Once
 	commandOutcome           store.CommandOutcomeStore
@@ -153,6 +155,11 @@ type examStarterWorkspaceStore struct {
 
 type examSubmissionStore struct {
 	store.ExamSubmissionStore
+	layer *Layer
+}
+
+type servingNodeLeaseStore struct {
+	store.ServingNodeLeaseStore
 	layer *Layer
 }
 
@@ -701,6 +708,16 @@ func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 	return l.stores.clusterDiscovery
 }
 
+func (l *Layer) ServingNodeLease() store.ServingNodeLeaseStore {
+	l.stores.servingNodeLeaseOnce.Do(func() {
+		next := l.Store.ServingNodeLease()
+		if next != nil {
+			l.stores.servingNodeLease = &servingNodeLeaseStore{ServingNodeLeaseStore: next, layer: l}
+		}
+	})
+	return l.stores.servingNodeLease
+}
+
 func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
 	l.stores.commandOutcomeOnce.Do(func() {
 		next := l.Store.CommandOutcome()
@@ -725,6 +742,7 @@ var (
 	_ store.ExamSittingStore          = (*examSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*examStarterWorkspaceStore)(nil)
 	_ store.ExamSubmissionStore       = (*examSubmissionStore)(nil)
+	_ store.ServingNodeLeaseStore     = (*servingNodeLeaseStore)(nil)
 	_ store.ExamAuthoringStore        = (*examAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*commandOutcomeStore)(nil)
 	_ store.MailStore                 = (*mailStore)(nil)

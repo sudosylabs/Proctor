@@ -286,8 +286,11 @@ records its audit, and queues only the password-changed security notice.
 Implemented product-transition mail also covers student and teacher Invitation
 issuance and acceptance, explicit email transitions, account enable and
 disable, explicit administrative Session revocation, and MFA enable, disable,
-and recovery-code regeneration. The remaining catalog transitions are not yet
-implemented.
+recovery-code regeneration, and Personal Access Token create, enable, disable,
+and revoke. PAT notices use ordinary security-delivery work and contain only
+the safe description, exact expiry, action time, localized scope context, and
+bounded action count; credentials, hashes, and complete scopes are excluded.
+The remaining catalog transitions are not yet implemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
@@ -328,6 +331,26 @@ only the canonical origin, installation and Institution presentation, enabled
 capabilities and providers, policy revision, and desktop protocol bounds.
 Provider removal disappears from discovery without changing durable policy;
 restoring the stable provider ID makes it available again.
+Offline administrator recovery is implemented through the host-only
+`proctor administrator recover` command while every node is stopped. It
+confirms the exact Institution and active `system_admin`, reads a rotated
+password only from private input, shares the policy/credential administrator
+fence, preserves MFA and Sessions, and writes a secret-free pending record in
+the same transaction. Startup reconciles that record into actor-free ordinary
+audit before workers or transports. A local-login repair advances the policy
+revision and records exact from/to revisions in this dedicated host history;
+it is never falsely attributed to the target User in ordinary replacement
+history.
+Public local registration is implemented as the strict, public
+`POST /api/v1/auth/register` API. Shared private attempt accounting precedes
+account preparation, while one PostgreSQL-clocked named transaction rechecks
+both public registration and local credential enrollment and atomically
+creates the unverified User, encoded password, initial settings and
+profile-picture work, safe audit, target-bound verification token, frozen
+encrypted delivery, and credential Job. Duplicate valid requests retain the
+same empty accepted response, failures leave no partial account, and no
+academic relationship or Role Binding is implied. The hosted `/register` page
+remains explicitly deferred to the server design-system phase.
 Existing local-password login and password-recovery issuance/completion now
 fail closed against the current policy, with generic public outcomes.
 External initiation, identity resolution or auto-provisioning, and Session

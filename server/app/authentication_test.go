@@ -143,6 +143,10 @@ func (s *authenticationStoreFake) Close() error                                 
 
 type authenticationUserStore struct{ root *authenticationStoreFake }
 
+func (s authenticationUserStore) RegisterLocal(context.Context, *store.PublicLocalUserRegistration) (*store.PublicLocalUserRegistrationResult, error) {
+	return nil, errors.New("public registration is not implemented by authentication test store")
+}
+
 func (s authenticationUserStore) Create(
 	_ context.Context,
 	input *store.UserCreation,

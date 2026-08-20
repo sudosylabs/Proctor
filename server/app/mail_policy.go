@@ -41,6 +41,10 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		model.MailTemplateIdentityMFAEnabled,
 		model.MailTemplateIdentityMFADisabled,
 		model.MailTemplateIdentityMFARecoveryCodesRegenerated,
+		model.MailTemplateIdentityPersonalAccessTokenCreated,
+		model.MailTemplateIdentityPersonalAccessTokenEnabled,
+		model.MailTemplateIdentityPersonalAccessTokenDisabled,
+		model.MailTemplateIdentityPersonalAccessTokenRevoked,
 		model.MailTemplateAccessStudentClassInvitation,
 		model.MailTemplateAccessTeacherAcademicUnitInvitation,
 		model.MailTemplateAccessInvitationAccepted:

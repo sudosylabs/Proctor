@@ -247,6 +247,26 @@ func (a mailTemplateRendererAdapter) Render(key model.MailTemplateKey, recipient
 	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
+func (a mailTemplateRendererAdapter) RenderPersonalAccessTokenSecurityNotice(
+	key model.MailTemplateKey,
+	recipientLocale string,
+	installationLocale string,
+	details app.PersonalAccessTokenMailDetails,
+) (app.FrozenMailContent, error) {
+	message, err := a.renderer.Render(templates.Request{
+		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		PersonalAccessToken: &templates.PersonalAccessTokenDetails{
+			Description: details.Description, ExpiresAt: details.ExpiresAt,
+			ActionAt: details.ActionAt, ActionCount: details.ActionCount,
+			AcademicUnitScoped: details.AcademicUnitScoped,
+		},
+	})
+	if err != nil {
+		return app.FrozenMailContent{}, err
+	}
+	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+}
+
 // externalProviderRegistryAdapter exposes the platform registry through the
 // app-owned ExternalIdentityProvider port.
 type externalProviderRegistryAdapter struct {

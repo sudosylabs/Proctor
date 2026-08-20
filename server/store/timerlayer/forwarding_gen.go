@@ -39,6 +39,8 @@ type timedStores struct {
 	examStarterWorkspaceOnce sync.Once
 	examSubmission           store.ExamSubmissionStore
 	examSubmissionOnce       sync.Once
+	servingNodeLease         store.ServingNodeLeaseStore
+	servingNodeLeaseOnce     sync.Once
 	examAuthoring            store.ExamAuthoringStore
 	examAuthoringOnce        sync.Once
 	commandOutcome           store.CommandOutcomeStore
@@ -157,6 +159,11 @@ type timedExamStarterWorkspaceStore struct {
 type timedExamSubmissionStore struct {
 	layer *Layer
 	next  store.ExamSubmissionStore
+}
+
+type timedServingNodeLeaseStore struct {
+	layer *Layer
+	next  store.ServingNodeLeaseStore
 }
 
 type timedExamAuthoringStore struct {
@@ -702,6 +709,16 @@ func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 		}
 	})
 	return l.stores.clusterDiscovery
+}
+
+func (l *Layer) ServingNodeLease() store.ServingNodeLeaseStore {
+	l.stores.servingNodeLeaseOnce.Do(func() {
+		next := l.next.ServingNodeLease()
+		if next != nil {
+			l.stores.servingNodeLease = &timedServingNodeLeaseStore{layer: l, next: next}
+		}
+	})
+	return l.stores.servingNodeLease
 }
 
 func (l *Layer) CommandOutcome() store.CommandOutcomeStore {
@@ -1317,6 +1334,18 @@ func (s *timedExamSubmissionStore) ListManifest(arg0 context.Context, arg1 store
 func (s *timedExamSubmissionStore) ResolveFile(arg0 context.Context, arg1 model.SubmissionID, arg2 model.AttemptWorkspaceEntryID) (*store.ExamSubmissionFileSelector, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodResolveFile), func() (*store.ExamSubmissionFileSelector, error) {
 		return s.next.ResolveFile(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedServingNodeLeaseStore) Upsert(arg0 context.Context, arg1 *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateServingNodeLease, methodUpsert), func() (*store.ServingNodeLease, error) {
+		return s.next.Upsert(arg0, arg1)
+	})
+}
+
+func (s *timedServingNodeLeaseStore) Delete(arg0 context.Context, arg1 string, arg2 string) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateServingNodeLease, methodDelete), func() error {
+		return s.next.Delete(arg0, arg1, arg2)
 	})
 }
 
@@ -2022,6 +2051,12 @@ func (s *timedUserStore) Create(arg0 context.Context, arg1 *store.UserCreation) 
 	})
 }
 
+func (s *timedUserStore) RegisterLocal(arg0 context.Context, arg1 *store.PublicLocalUserRegistration) (*store.PublicLocalUserRegistrationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodRegisterLocal), func() (*store.PublicLocalUserRegistrationResult, error) {
+		return s.next.RegisterLocal(arg0, arg1)
+	})
+}
+
 func (s *timedUserStore) Get(arg0 context.Context, arg1 string) (*model.User, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodGet), func() (*model.User, error) {
 		return s.next.Get(arg0, arg1)
@@ -2238,9 +2273,27 @@ func (s *timedInvitationStore) Maintain(arg0 context.Context, arg1 int) (*store.
 	})
 }
 
-func (s *timedPersonalAccessTokenStore) Save(arg0 context.Context, arg1 *model.PersonalAccessToken, arg2 int) (*model.PersonalAccessToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodSave), func() (*model.PersonalAccessToken, error) {
-		return s.next.Save(arg0, arg1, arg2)
+func (s *timedPersonalAccessTokenStore) PrepareMutation(arg0 context.Context, arg1 *store.PersonalAccessTokenMutationPreparation) (*store.PreparedPersonalAccessTokenMutation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodPrepareMutation), func() (*store.PreparedPersonalAccessTokenMutation, error) {
+		return s.next.PrepareMutation(arg0, arg1)
+	})
+}
+
+func (s *timedPersonalAccessTokenStore) FailMutation(arg0 context.Context, arg1 *store.PersonalAccessTokenMutationFailure) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregatePersonalAccessToken, methodFailMutation), func() error {
+		return s.next.FailMutation(arg0, arg1)
+	})
+}
+
+func (s *timedPersonalAccessTokenStore) MaintainMutationPreparations(arg0 context.Context, arg1 int) (*store.PersonalAccessTokenPreparationMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodMaintainMutationPreparations), func() (*store.PersonalAccessTokenPreparationMaintenanceResult, error) {
+		return s.next.MaintainMutationPreparations(arg0, arg1)
+	})
+}
+
+func (s *timedPersonalAccessTokenStore) Create(arg0 context.Context, arg1 *store.PersonalAccessTokenCreationMutation) (*store.PersonalAccessTokenMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodCreate), func() (*store.PersonalAccessTokenMutationResult, error) {
+		return s.next.Create(arg0, arg1)
 	})
 }
 
@@ -2262,15 +2315,15 @@ func (s *timedPersonalAccessTokenStore) Resolve(arg0 context.Context, arg1 strin
 	})
 }
 
-func (s *timedPersonalAccessTokenStore) SetDisabled(arg0 context.Context, arg1 string, arg2 string, arg3 bool, arg4 int64, arg5 int) (*model.PersonalAccessToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodSetDisabled), func() (*model.PersonalAccessToken, error) {
-		return s.next.SetDisabled(arg0, arg1, arg2, arg3, arg4, arg5)
+func (s *timedPersonalAccessTokenStore) ChangeState(arg0 context.Context, arg1 *store.PersonalAccessTokenStateMutation) (*store.PersonalAccessTokenMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodChangeState), func() (*store.PersonalAccessTokenMutationResult, error) {
+		return s.next.ChangeState(arg0, arg1)
 	})
 }
 
-func (s *timedPersonalAccessTokenStore) Revoke(arg0 context.Context, arg1 string, arg2 string, arg3 int64) (*model.PersonalAccessToken, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodRevoke), func() (*model.PersonalAccessToken, error) {
-		return s.next.Revoke(arg0, arg1, arg2, arg3)
+func (s *timedPersonalAccessTokenStore) RevokeWithAudit(arg0 context.Context, arg1 *store.PersonalAccessTokenRevocation) (*store.PersonalAccessTokenMutationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodRevokeWithAudit), func() (*store.PersonalAccessTokenMutationResult, error) {
+		return s.next.RevokeWithAudit(arg0, arg1)
 	})
 }
 
@@ -2712,6 +2765,18 @@ func (s *timedInstallationStore) ReconcileSystemAdministratorRole(arg0 context.C
 	})
 }
 
+func (s *timedInstallationStore) RecoverAdministratorAccess(arg0 context.Context, arg1 *store.AdministratorRecovery) (*store.AdministratorRecoveryResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodRecoverAdministratorAccess), func() (*store.AdministratorRecoveryResult, error) {
+		return s.next.RecoverAdministratorAccess(arg0, arg1)
+	})
+}
+
+func (s *timedInstallationStore) ReconcileAdministratorRecovery(arg0 context.Context, arg1 *store.AdministratorRecoveryReconciliation) (*store.AdministratorRecoveryReconciliationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodReconcileAdministratorRecovery), func() (*store.AdministratorRecoveryReconciliationResult, error) {
+		return s.next.ReconcileAdministratorRecovery(arg0, arg1)
+	})
+}
+
 var (
 	_ store.Store                     = (*Layer)(nil)
 	_ store.AccessPolicyStore         = (*timedAccessPolicyStore)(nil)
@@ -2726,6 +2791,7 @@ var (
 	_ store.ExamSittingStore          = (*timedExamSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*timedExamStarterWorkspaceStore)(nil)
 	_ store.ExamSubmissionStore       = (*timedExamSubmissionStore)(nil)
+	_ store.ServingNodeLeaseStore     = (*timedServingNodeLeaseStore)(nil)
 	_ store.ExamAuthoringStore        = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*timedCommandOutcomeStore)(nil)
 	_ store.MailStore                 = (*timedMailStore)(nil)

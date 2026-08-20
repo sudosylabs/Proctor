@@ -39,6 +39,8 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	for _, key := range []string{
 		"identity.verify_email", "identity.password_reset", "identity.password_changed",
 		"identity.mfa_enabled", "identity.mfa_disabled", "identity.mfa_recovery_codes_regenerated",
+		"identity.personal_access_token_created", "identity.personal_access_token_enabled",
+		"identity.personal_access_token_disabled", "identity.personal_access_token_revoked",
 	} {
 		if _, err := os.Stat(filepath.Join(first, key+".html")); err != nil {
 			t.Fatalf("%s HTML preview: %v", key, err)

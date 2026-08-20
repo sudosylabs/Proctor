@@ -23,6 +23,10 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	ctx := context.Background()
+	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "credential-constraints", DisplayName: "Credential Constraints"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{
 		Username: "credential-constraints", Email: "credential-constraints@example.edu", DisplayName: "Credential Constraints",
@@ -40,10 +44,21 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 		VALUES (?, NOW(), NOW(), ?, ?)`, recoveryID.String(), user.ID.String(), model.HashToken(model.NewCredentialToken())); err != nil {
 		t.Fatal(err)
 	}
-	token, err := persistence.PersonalAccessToken().Save(ctx, &model.PersonalAccessToken{
+	token := &model.PersonalAccessToken{
 		UserID: user.ID, Description: "constraint token", TokenHash: model.HashToken(model.NewCredentialToken()),
 		Scopes: []string{string(model.ActionClassView)}, ExpiresAt: model.TimeFromMillis(model.GetMillis() + 60_000),
-	}, 5)
+	}
+	token.PrepareCreate(model.NewPersonalAccessTokenID(), model.NowUTC())
+	if err := insertPersonalAccessToken(ctx, persistence.GetMaster(), token); err != nil {
+		t.Fatal(err)
+	}
+	patSession := savePersonalAccessTokenMutationSession(t, ctx, persistence, user.ID)
+	preparation, err := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
+		UserID: user.ID.String(), TokenID: token.ID.String(), Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: time.Minute,
+		Audit: &model.AuditEvent{ActorID: user.ID, SessionID: patSession.ID, Action: "personal_access_token.revoke",
+			Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
+			ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "constraint-test"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +76,7 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 		{name: "personal access token id", query: "UPDATE personal_access_tokens SET id = 'bad' WHERE id = ?", id: token.ID.String(), constraint: "personal_access_tokens_id_canonical_check"},
 		{name: "personal access token user id", query: "UPDATE personal_access_tokens SET user_id = 'bad' WHERE id = ?", id: token.ID.String(), constraint: "personal_access_tokens_user_id_canonical_check"},
 		{name: "personal access token academic unit id", query: "UPDATE personal_access_tokens SET academic_unit_id = 'bad' WHERE id = ?", id: token.ID.String(), constraint: "personal_access_tokens_academic_unit_id_canonical_check"},
+		{name: "personal access token preparation id", query: "UPDATE personal_access_token_mutation_preparations SET id = 'bad' WHERE id = ?", id: preparation.ID, constraint: "personal_access_token_mutation_preparations_id_canonical_check"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

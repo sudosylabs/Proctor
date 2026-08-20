@@ -17,14 +17,30 @@ import (
 )
 
 type installationStoreFake struct {
-	events *[]string
-	state  *model.InstallationState
-	getErr error
-	input  *store.InstallationBootstrap
-	result *model.InstallationBootstrapResult
-	err    error
-	errors []error
-	calls  int
+	events                 *[]string
+	state                  *model.InstallationState
+	getErr                 error
+	input                  *store.InstallationBootstrap
+	result                 *model.InstallationBootstrapResult
+	err                    error
+	errors                 []error
+	calls                  int
+	recoveryInput          *store.AdministratorRecovery
+	recoveryResult         *store.AdministratorRecoveryResult
+	recoveryErr            error
+	recoveryReconcileInput *store.AdministratorRecoveryReconciliation
+	recoveryReconcileErr   error
+}
+
+func (s *installationStoreFake) RecoverAdministratorAccess(_ context.Context, input *store.AdministratorRecovery) (*store.AdministratorRecoveryResult, error) {
+	*s.events = append(*s.events, "recover-administrator")
+	s.recoveryInput = input
+	return s.recoveryResult, s.recoveryErr
+}
+
+func (s *installationStoreFake) ReconcileAdministratorRecovery(_ context.Context, input *store.AdministratorRecoveryReconciliation) (*store.AdministratorRecoveryReconciliationResult, error) {
+	s.recoveryReconcileInput = input
+	return &store.AdministratorRecoveryReconciliationResult{}, s.recoveryReconcileErr
 }
 
 func (s *installationStoreFake) Get(context.Context) (*model.InstallationState, error) {

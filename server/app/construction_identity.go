@@ -95,9 +95,26 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
+	publicRegistration, err := newPublicRegistrationService(publicRegistrationDependencies{
+		registrations: deps.Store.User(),
+		policies:      currentPublicRegistrationPolicy{policies: deps.Store.AccessPolicy()},
+		institutions:  publicRegistrationInstitutionAdapter{institutions: deps.Store.Institution()},
+		mail:          accountMail,
+		attempts:      foundation.attempts,
+		hasher:        foundation.hasher,
+		rateLimit:     deps.AccountRecovery.RateLimit,
+		tokenTTL:      deps.AccountRecovery.EmailVerificationTTL,
+		publicURL:     deps.PublicURL,
+		nodeID:        deps.NodeID,
+		newToken:      model.NewCredentialToken,
+		now:           time.Now,
+	})
+	if err != nil {
+		return identityConstruction{}, err
+	}
 	personalAccessTokenAdministration, err := newPersonalAccessTokenAdministrationService(
-		deps.Store.PersonalAccessToken(), deps.Store.AcademicUnit(), deps.Store.Institution(),
-		personalAccessTokenAuditAdapter{audit: foundation.audit}, authorization, patPolicy, deps.RecentAuthenticationTTL,
+		deps.Store.PersonalAccessToken(), deps.Store.User(), deps.Store.AcademicUnit(), deps.Store.Institution(),
+		personalAccessTokenAuditAdapter{audit: foundation.audit}, authorization, accountMail, patPolicy, deps.RecentAuthenticationTTL,
 		model.NewCredentialToken, time.Now,
 	)
 	if err != nil {
@@ -152,6 +169,7 @@ func constructIdentity(
 		authenticationMethods:             authenticationMethods,
 		mfaApplication:                    mfaApplication,
 		accountTokens:                     accountTokens,
+		publicRegistration:                publicRegistration,
 		invitations:                       invitations,
 		personalAccessTokenAdministration: personalAccessTokenAdministration,
 	}, nil

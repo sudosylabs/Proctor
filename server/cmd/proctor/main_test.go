@@ -69,6 +69,7 @@ func TestRunHelpWritesUsageToStdout(t *testing.T) {
 		"  proctor serve [--config path]\n" +
 		"  proctor config validate [--config path]\n" +
 		"  proctor migrate <up|status> [--config path]\n" +
+		"  proctor administrator recover --institution-id ID --user-id ID [--enable-local-login] [--rotate-password] [--config path]\n" +
 		"  proctor version [--json]\n" +
 		"  proctor help\n"
 

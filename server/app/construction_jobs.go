@@ -187,6 +187,8 @@ func buildApplicationJobDefinitions(
 			Runner: desktopAuthorizationMaintenancePeriodicRunner{transactions: deps.Store.DesktopAuthorization()}},
 		{Name: "external-authentication-maintenance", Interval: externalAuthenticationMaintenanceInterval,
 			Runner: externalAuthenticationMaintenancePeriodicRunner{states: deps.Store.ExternalLoginState()}},
+		{Name: "personal-access-token-maintenance", Interval: personalAccessTokenMaintenanceInterval,
+			Runner: personalAccessTokenMaintenancePeriodicRunner{tokens: deps.Store.PersonalAccessToken()}},
 	}
 	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil {
 		periodicTasks = append(periodicTasks, jobengine.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})

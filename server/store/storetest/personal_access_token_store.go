@@ -35,6 +35,335 @@ func TestPersonalAccessTokenStore(t *testing.T, ss store.Store) {
 	t.Run("MaximumActiveIsSerialized", func(t *testing.T) {
 		testPersonalAccessTokenMaximumActive(t, ss)
 	})
+	t.Run("AtomicSecurityNoticesAndAudit", func(t *testing.T) {
+		testPersonalAccessTokenAtomicSecurityNotices(t, ss)
+	})
+	t.Run("AtomicSecurityNoticeUsesDatabaseClock", func(t *testing.T) {
+		testPersonalAccessTokenDatabaseClock(t, ss)
+	})
+	t.Run("ConcurrentReplayEmitsOneAuditAndNotice", func(t *testing.T) {
+		testPersonalAccessTokenConcurrentReplay(t, ss)
+	})
+}
+
+func testPersonalAccessTokenConcurrentReplay(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	token, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()), 10)
+	requireNoError(t, err)
+
+	type transitionResult struct {
+		result *store.PersonalAccessTokenMutationResult
+		err    error
+	}
+	results := make(chan transitionResult, 2)
+	for range 2 {
+		preparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, token.ID.String(), store.PersonalAccessTokenMutationDisable, token.Auditable())
+		notice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenDisabled, preparation.ActionAt, token.ExpiresAt)
+		go func() {
+			result, transitionErr := ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
+				ID: token.ID.String(), UserID: user.ID.String(), Disabled: true, MaximumActive: 10,
+				PreparationID: preparation.ID, Notice: notice,
+			})
+			results <- transitionResult{result: result, err: transitionErr}
+		}()
+	}
+	fresh := 0
+	for range 2 {
+		result := <-results
+		requireNoError(t, result.err)
+		if result.result == nil || result.result.Token == nil || !result.result.Token.DisabledAt.Valid {
+			t.Fatalf("concurrent disable result=%#v", result.result)
+		}
+		if result.result.Fresh {
+			fresh++
+		}
+	}
+	if fresh != 1 {
+		t.Fatalf("fresh concurrent disables=%d, want 1", fresh)
+	}
+	if got := countPersonalAccessTokenTerminalAudits(t, ctx, ss, user.ID, "personal_access_token.disable"); got != 1 {
+		t.Fatalf("disable audits=%d, want 1", got)
+	}
+	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenDisabled, model.MailDeliveryQueued)
+
+	revokeResults := make(chan transitionResult, 2)
+	for range 2 {
+		preparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, token.ID.String(), store.PersonalAccessTokenMutationRevoke, token.Auditable())
+		notice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenRevoked, preparation.ActionAt, token.ExpiresAt)
+		go func() {
+			result, transitionErr := ss.PersonalAccessToken().RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
+				ID: token.ID.String(), UserID: user.ID.String(), PreparationID: preparation.ID, Notice: notice,
+			})
+			revokeResults <- transitionResult{result: result, err: transitionErr}
+		}()
+	}
+	fresh = 0
+	for range 2 {
+		result := <-revokeResults
+		requireNoError(t, result.err)
+		if result.result == nil || result.result.Token == nil || !result.result.Token.RevokedAt.Valid {
+			t.Fatalf("concurrent revoke result=%#v", result.result)
+		}
+		if result.result.Fresh {
+			fresh++
+		}
+	}
+	if fresh != 1 || countPersonalAccessTokenTerminalAudits(t, ctx, ss, user.ID, "personal_access_token.revoke") != 1 {
+		t.Fatalf("fresh concurrent revokes=%d", fresh)
+	}
+	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenRevoked, model.MailDeliveryQueued)
+}
+
+func testPersonalAccessTokenDatabaseClock(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	saveInstitution(t, ctx, ss)
+	for _, skew := range []time.Duration{-2 * time.Hour, 2 * time.Hour} {
+		user, _ := saveLocalUser(t, ctx, ss)
+		wallBefore := model.NowUTC().Add(-time.Minute)
+		candidate := newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
+		candidate.ExpiresAt = model.NowUTC().Add(24 * time.Hour)
+		preparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, "", store.PersonalAccessTokenMutationCreate, nil)
+		preparedAt := preparation.ActionAt
+		notice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenCreated, preparedAt, candidate.ExpiresAt)
+		originalOccurrenceAt := notice.Occurrence.CreatedAt
+		createdResult, err := ss.PersonalAccessToken().Create(ctx, &store.PersonalAccessTokenCreationMutation{
+			Token: candidate, MaximumActive: 10, MinimumLifetime: time.Minute, MaximumLifetime: 48 * time.Hour,
+			PreparationID: preparation.ID, Notice: notice,
+		})
+		requireNoError(t, err)
+		created := createdResult.Token
+		wallAfter := model.NowUTC().Add(time.Minute)
+		if created.CreatedAt.Before(wallBefore) || created.CreatedAt.After(wallAfter) {
+			t.Fatalf("Create(skew=%v) created_at = %s, want PostgreSQL wall time", skew, created.CreatedAt)
+		}
+		if !notice.Occurrence.CreatedAt.Equal(originalOccurrenceAt) {
+			t.Fatalf("Create(skew=%v) mutated caller occurrence", skew)
+		}
+		completed := requirePersonalAccessTokenTerminalAudit(t, ctx, ss, user.ID, "personal_access_token.create")
+		if completed.UpdatedAt.Before(wallBefore) || completed.UpdatedAt.After(wallAfter) || completed.UpdatedAt.Before(created.CreatedAt) {
+			t.Fatalf("Create(skew=%v) audit=%s token=%s, want one authoritative wall-time window", skew, completed.UpdatedAt, created.CreatedAt)
+		}
+		deliveries, listErr := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentityPersonalAccessTokenCreated}, Limit: 20})
+		requireNoError(t, listErr)
+		var delivery *model.MailDelivery
+		for _, candidateDelivery := range deliveries {
+			if candidateDelivery.TargetUserID == user.ID {
+				delivery = candidateDelivery
+				break
+			}
+		}
+		if delivery == nil || !delivery.CreatedAt.Equal(created.CreatedAt) || delivery.Deadline.Sub(delivery.CreatedAt) != 24*time.Hour {
+			t.Fatalf("Create(skew=%v) delivery=%#v token_at=%s", skew, delivery, created.CreatedAt)
+		}
+		job, getErr := ss.Job().Get(ctx, delivery.JobID)
+		requireNoError(t, getErr)
+		if !job.CreatedAt.Equal(created.CreatedAt) || !job.AvailableAt.Equal(created.CreatedAt) {
+			t.Fatalf("Create(skew=%v) job=%#v token_at=%s", skew, job, created.CreatedAt)
+		}
+	}
+}
+
+func testPersonalAccessTokenAtomicSecurityNotices(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	saveInstitution(t, ctx, ss)
+	user, _ := saveLocalUser(t, ctx, ss)
+	at := model.NowUTC().Add(-time.Minute)
+	candidate := newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
+	candidate.ExpiresAt = at.Add(time.Hour)
+	createPreparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, "", store.PersonalAccessTokenMutationCreate, nil)
+	createdNotice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenCreated, createPreparation.ActionAt, candidate.ExpiresAt)
+	createdResult, err := ss.PersonalAccessToken().Create(ctx, &store.PersonalAccessTokenCreationMutation{
+		Token: candidate, MaximumActive: 10, MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour,
+		PreparationID: createPreparation.ID, Notice: createdNotice,
+	})
+	requireNoError(t, err)
+	created := createdResult.Token
+	if created.TokenHash != candidate.TokenHash || created.TokenHash == "" {
+		t.Fatalf("Create() = %#v", created)
+	}
+	requirePersonalAccessTokenTerminalAudit(t, ctx, ss, user.ID, "personal_access_token.create")
+	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenCreated, model.MailDeliveryQueued)
+
+	disableAt := at.Add(time.Second)
+	disablePreparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, created.ID.String(), store.PersonalAccessTokenMutationDisable, created.Auditable())
+	disableNotice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenDisabled, disablePreparation.ActionAt, created.ExpiresAt)
+	disableNotice.Delivery, disableNotice.Job = suppressSecurityNoticeForDisabledMail(t, disableNotice.Delivery, disableNotice.Job)
+	disabledResult, err := ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
+		ID: created.ID.String(), UserID: user.ID.String(), Disabled: true, MaximumActive: 10,
+		PreparationID: disablePreparation.ID, Notice: disableNotice,
+	})
+	requireNoError(t, err)
+	disabled := disabledResult.Token
+	if !disabled.DisabledAt.Valid {
+		t.Fatalf("ChangeState(disable) = %#v", disabled)
+	}
+	requirePersonalAccessTokenTerminalAudit(t, ctx, ss, user.ID, "personal_access_token.disable")
+	requirePersonalAccessTokenDelivery(t, ctx, ss, user.ID, model.MailTemplateIdentityPersonalAccessTokenDisabled, model.MailDeliverySuppressed)
+
+	failedAt := disableAt.Add(time.Second)
+	failedNotice := personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenEnabled, failedAt, created.ExpiresAt)
+	if _, err = ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
+		ID: created.ID.String(), UserID: user.ID.String(), Disabled: false, MaximumActive: 10,
+		PreparationID: model.NewId(), Notice: failedNotice,
+	}); err == nil {
+		t.Fatal("ChangeState() committed without its persisted audit attempt")
+	}
+	unchanged, getErr := ss.PersonalAccessToken().Get(ctx, created.ID.String())
+	requireNoError(t, getErr)
+	if !unchanged.DisabledAt.Valid {
+		t.Fatalf("failed ChangeState() changed token = %#v", unchanged)
+	}
+	enablePreparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, created.ID.String(), store.PersonalAccessTokenMutationEnable, disabled.Auditable())
+	enabledResult, err := ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
+		ID: created.ID.String(), UserID: user.ID.String(), Disabled: false, MaximumActive: 10,
+		PreparationID: enablePreparation.ID,
+		Notice:        personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenEnabled, enablePreparation.ActionAt, created.ExpiresAt),
+	})
+	requireNoError(t, err)
+	enabled := enabledResult.Token
+	if enabled.DisabledAt.Valid {
+		t.Fatalf("ChangeState(enable) = %#v", enabled)
+	}
+
+	revokePreparation := preparePersonalAccessTokenMutation(t, ctx, ss, user.ID, created.ID.String(), store.PersonalAccessTokenMutationRevoke, enabled.Auditable())
+	revokedResult, err := ss.PersonalAccessToken().RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
+		ID: created.ID.String(), UserID: user.ID.String(), PreparationID: revokePreparation.ID,
+		Notice: personalAccessTokenNoticeFixture(t, user.ID, model.MailTemplateIdentityPersonalAccessTokenRevoked, revokePreparation.ActionAt, created.ExpiresAt),
+	})
+	requireNoError(t, err)
+	revoked := revokedResult.Token
+	if !revoked.RevokedAt.Valid {
+		t.Fatalf("RevokeWithAudit() = %#v", revoked)
+	}
+}
+
+func personalAccessTokenNoticeFixture(t *testing.T, userID model.UserID, key model.MailTemplateKey, at, expiresAt time.Time) store.PersonalAccessTokenSecurityNotice {
+	t.Helper()
+	occurrence, delivery, job := securityNoticeMailFixture(t, userID, key, at.UnixMilli())
+	return store.PersonalAccessTokenSecurityNotice{Occurrence: occurrence, Delivery: delivery, Job: job, ExpiresAt: expiresAt}
+}
+
+func requirePersonalAccessTokenDelivery(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, key model.MailTemplateKey, state model.MailDeliveryState) {
+	t.Helper()
+	deliveries, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{key}, Limit: 10})
+	requireNoError(t, err)
+	matches := 0
+	for _, delivery := range deliveries {
+		if delivery.TargetUserID == userID && delivery.State == state {
+			matches++
+		}
+	}
+	if matches != 1 {
+		t.Fatalf("deliveries for user=%s key=%q = %#v, want one %q", userID, key, deliveries, state)
+	}
+}
+
+func createPersonalAccessTokenWithNotice(t *testing.T, ctx context.Context, ss store.Store, token *model.PersonalAccessToken, maximum int) (*model.PersonalAccessToken, error) {
+	t.Helper()
+	input := personalAccessTokenCreationInput(t, ctx, ss, token, maximum)
+	result, err := ss.PersonalAccessToken().Create(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	return result.Token, nil
+}
+
+func personalAccessTokenCreationInput(t *testing.T, ctx context.Context, ss store.Store, token *model.PersonalAccessToken, maximum int) *store.PersonalAccessTokenCreationMutation {
+	t.Helper()
+	preparation := preparePersonalAccessTokenMutation(t, ctx, ss, token.UserID, "", store.PersonalAccessTokenMutationCreate, nil)
+	return &store.PersonalAccessTokenCreationMutation{
+		Token: token, MaximumActive: maximum, MinimumLifetime: time.Millisecond,
+		MaximumLifetime: 48 * time.Hour, PreparationID: preparation.ID,
+		Notice: personalAccessTokenNoticeFixture(t, token.UserID, model.MailTemplateIdentityPersonalAccessTokenCreated, preparation.ActionAt, token.ExpiresAt),
+	}
+}
+
+func changePersonalAccessTokenStateWithNotice(t *testing.T, ctx context.Context, ss store.Store, token *model.PersonalAccessToken, disabled bool, maximum int) (*model.PersonalAccessToken, error) {
+	t.Helper()
+	key := model.MailTemplateIdentityPersonalAccessTokenEnabled
+	kind := store.PersonalAccessTokenMutationEnable
+	if disabled {
+		key = model.MailTemplateIdentityPersonalAccessTokenDisabled
+		kind = store.PersonalAccessTokenMutationDisable
+	}
+	preparation := preparePersonalAccessTokenMutation(t, ctx, ss, token.UserID, token.ID.String(), kind, token.Auditable())
+	result, err := ss.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
+		ID: token.ID.String(), UserID: token.UserID.String(), Disabled: disabled, MaximumActive: maximum,
+		PreparationID: preparation.ID,
+		Notice:        personalAccessTokenNoticeFixture(t, token.UserID, key, preparation.ActionAt, token.ExpiresAt),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Token, nil
+}
+
+func revokePersonalAccessTokenWithNotice(t *testing.T, ctx context.Context, ss store.Store, token *model.PersonalAccessToken, userID model.UserID) (*model.PersonalAccessToken, error) {
+	t.Helper()
+	preparation := preparePersonalAccessTokenMutation(t, ctx, ss, userID, token.ID.String(), store.PersonalAccessTokenMutationRevoke, token.Auditable())
+	result, err := ss.PersonalAccessToken().RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
+		ID: token.ID.String(), UserID: userID.String(), PreparationID: preparation.ID,
+		Notice: personalAccessTokenNoticeFixture(t, userID, model.MailTemplateIdentityPersonalAccessTokenRevoked, preparation.ActionAt, token.ExpiresAt),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Token, nil
+}
+
+func preparePersonalAccessTokenMutation(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, tokenID string, kind store.PersonalAccessTokenMutationKind, prior map[string]any) *store.PreparedPersonalAccessTokenMutation {
+	t.Helper()
+	institution, err := ss.Institution().GetSingleton(ctx)
+	requireNoError(t, err)
+	session, _, _ := saveSession(t, ctx, ss, userID.String(), 100)
+	prepared, err := ss.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
+		UserID: userID.String(), TokenID: tokenID, Kind: kind, Lifetime: 5 * time.Minute,
+		Audit: personalAccessTokenAuditDraft(userID, session.ID, institution.ID, kind, prior),
+	})
+	requireNoError(t, err)
+	return prepared
+}
+
+func personalAccessTokenAuditDraft(userID model.UserID, sessionID model.SessionID, institutionID model.InstitutionID, kind store.PersonalAccessTokenMutationKind, prior map[string]any) *model.AuditEvent {
+	action := map[store.PersonalAccessTokenMutationKind]string{
+		store.PersonalAccessTokenMutationCreate:  "personal_access_token.create",
+		store.PersonalAccessTokenMutationEnable:  "personal_access_token.enable",
+		store.PersonalAccessTokenMutationDisable: "personal_access_token.disable",
+		store.PersonalAccessTokenMutationRevoke:  "personal_access_token.revoke",
+	}[kind]
+	priorJSON, _ := model.EncodeAuditData(prior)
+	return &model.AuditEvent{ActorID: userID, SessionID: sessionID, Action: action,
+		Resource:  model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(), Status: model.AuditStatusAttempt,
+		NodeID: "storetest", ClientType: string(model.SessionClientWeb), AuthMethod: "password", PriorState: priorJSON}
+}
+
+func requirePersonalAccessTokenTerminalAudit(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, action string) *model.AuditEvent {
+	t.Helper()
+	events, err := ss.Audit().List(ctx, store.AuditListOptions{ActorId: userID.String(), Action: action, Limit: 20, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
+	requireNoError(t, err)
+	for _, event := range events {
+		if event.Status == model.AuditStatusSuccess {
+			return event
+		}
+	}
+	t.Fatalf("missing successful %s audit for %s: %#v", action, userID, events)
+	return nil
+}
+
+func countPersonalAccessTokenTerminalAudits(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, action string) int {
+	t.Helper()
+	events, err := ss.Audit().List(ctx, store.AuditListOptions{ActorId: userID.String(), Action: action, Limit: 20, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
+	requireNoError(t, err)
+	count := 0
+	for _, event := range events {
+		if event.Status == model.AuditStatusSuccess || event.Status == model.AuditStatusFail {
+			count++
+		}
+	}
+	return count
 }
 
 func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store) {
@@ -42,11 +371,7 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 	saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
 	raw := model.NewCredentialToken()
-	token, err := ss.PersonalAccessToken().Save(
-		ctx,
-		newPersonalAccessToken(user.ID.String(), raw),
-		10,
-	)
+	token, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), raw), 10)
 	requireNoError(t, err)
 	at := model.MillisFromTime(token.CreatedAt) + 10
 	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
@@ -75,7 +400,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	raw := model.NewCredentialToken()
 	token := newPersonalAccessToken(user.ID.String(), raw)
 	token.AcademicUnitID = unit.ID
-	token, err := ss.PersonalAccessToken().Save(ctx, token, 10)
+	token, err := createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10)
 	requireNoError(t, err)
 
 	got, err := ss.PersonalAccessToken().Get(ctx, token.ID.String())
@@ -108,16 +433,9 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	if debounced.Token.LastUsedAt.Millis() != now {
 		t.Fatalf("debounced last_used_at = %d, want %d", debounced.Token.LastUsedAt.Millis(), now)
 	}
-	disabled, err := ss.PersonalAccessToken().SetDisabled(
-		ctx,
-		token.ID.String(),
-		user.ID.String(),
-		true,
-		now+150,
-		10,
-	)
+	disabled, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, token, true, 10)
 	requireNoError(t, err)
-	if disabled.DisabledAt.Millis() != now+150 || disabled.IsActiveAt(model.TimeFromMillis(now+151)) {
+	if !disabled.DisabledAt.Valid || disabled.IsActiveAt(model.NowUTC()) {
 		t.Fatalf("disabled token = %#v", disabled)
 	}
 	if _, err := ss.PersonalAccessToken().Resolve(
@@ -128,35 +446,22 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	); !store.IsNotFound(err) {
 		t.Fatalf("disabled Resolve() error = %v, want not found", err)
 	}
-	enabled, err := ss.PersonalAccessToken().SetDisabled(
-		ctx,
-		token.ID.String(),
-		user.ID.String(),
-		false,
-		now+175,
-		10,
-	)
+	enabled, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, disabled, false, 10)
 	requireNoError(t, err)
-	if enabled.DisabledAt.Valid || !enabled.IsActiveAt(model.TimeFromMillis(now+176)) {
+	if enabled.DisabledAt.Valid || !enabled.IsActiveAt(model.NowUTC()) {
 		t.Fatalf("enabled token = %#v", enabled)
 	}
 	other, _ := saveLocalUser(t, ctx, ss)
-	if _, err := ss.PersonalAccessToken().Revoke(
-		ctx,
-		token.ID.String(),
-		other.ID.String(),
-		now+200,
-	); !store.IsNotFound(err) {
+	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
+	if _, err := ss.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
+		UserID: other.ID.String(), TokenID: token.ID.String(), Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: 5 * time.Minute,
+		Audit: personalAccessTokenAuditDraft(other.ID, otherSession.ID, institution.ID, store.PersonalAccessTokenMutationRevoke, token.Auditable()),
+	}); !store.IsNotFound(err) {
 		t.Fatalf("cross-user revoke error = %v, want not found", err)
 	}
-	revoked, err := ss.PersonalAccessToken().Revoke(
-		ctx,
-		token.ID.String(),
-		user.ID.String(),
-		now+200,
-	)
+	revoked, err := revokePersonalAccessTokenWithNotice(t, ctx, ss, token, user.ID)
 	requireNoError(t, err)
-	if revoked.RevokedAt.Millis() != now+200 {
+	if !revoked.RevokedAt.Valid {
 		t.Fatalf("revoked_at = %d", revoked.RevokedAt.Millis())
 	}
 	if _, err := ss.PersonalAccessToken().Resolve(
@@ -174,11 +479,7 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	}
 
 	unscopedRaw := model.NewCredentialToken()
-	unscoped, err := ss.PersonalAccessToken().Save(
-		ctx,
-		newPersonalAccessToken(user.ID.String(), unscopedRaw),
-		10,
-	)
+	unscoped, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), unscopedRaw), 10)
 	requireNoError(t, err)
 	if !unscoped.AcademicUnitID.IsZero() {
 		t.Fatalf("unscoped token acquired academic unit %q", unscoped.AcademicUnitID)
@@ -199,35 +500,18 @@ func testPersonalAccessTokenReenableMaximum(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
-	first, err := ss.PersonalAccessToken().Save(
-		ctx,
-		newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()),
-		1,
-	)
+	first, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()), 1)
 	requireNoError(t, err)
-	now := model.MillisFromTime(first.CreatedAt) + 10
-	_, err = ss.PersonalAccessToken().SetDisabled(
-		ctx, first.ID.String(), user.ID.String(), true, now, 1,
-	)
+	_, err = changePersonalAccessTokenStateWithNotice(t, ctx, ss, first, true, 1)
 	requireNoError(t, err)
-	second, err := ss.PersonalAccessToken().Save(
-		ctx,
-		newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()),
-		1,
-	)
+	second, err := createPersonalAccessTokenWithNotice(t, ctx, ss, newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()), 1)
 	requireNoError(t, err)
-	if _, err := ss.PersonalAccessToken().SetDisabled(
-		ctx, first.ID.String(), user.ID.String(), false, now+1, 1,
-	); !store.IsConflict(err) {
+	if _, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, first, false, 1); !store.IsConflict(err) {
 		t.Fatalf("reenable at active limit error = %v, want conflict", err)
 	}
-	_, err = ss.PersonalAccessToken().Revoke(
-		ctx, second.ID.String(), user.ID.String(), now+2,
-	)
+	_, err = revokePersonalAccessTokenWithNotice(t, ctx, ss, second, user.ID)
 	requireNoError(t, err)
-	enabled, err := ss.PersonalAccessToken().SetDisabled(
-		ctx, first.ID.String(), user.ID.String(), false, now+3, 1,
-	)
+	enabled, err := changePersonalAccessTokenStateWithNotice(t, ctx, ss, first, false, 1)
 	requireNoError(t, err)
 	if enabled.DisabledAt.Valid {
 		t.Fatalf("reenabled token = %#v", enabled)
@@ -239,20 +523,20 @@ func testPersonalAccessTokenMaximumActive(t *testing.T, ss store.Store) {
 	saveInstitution(t, ctx, ss)
 	user, _ := saveLocalUser(t, ctx, ss)
 	const contenders = 8
+	inputs := make([]*store.PersonalAccessTokenCreationMutation, 0, contenders)
+	for range contenders {
+		inputs = append(inputs, personalAccessTokenCreationInput(t, ctx, ss, newPersonalAccessToken(user.ID.String(), model.NewCredentialToken()), 1))
+	}
 	start := make(chan struct{})
 	results := make(chan error, contenders)
 	var wait sync.WaitGroup
-	for range contenders {
+	for _, input := range inputs {
+		input := input
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
 			<-start
-			raw := model.NewCredentialToken()
-			_, err := ss.PersonalAccessToken().Save(
-				ctx,
-				newPersonalAccessToken(user.ID.String(), raw),
-				1,
-			)
+			_, err := ss.PersonalAccessToken().Create(ctx, input)
 			results <- err
 		}()
 	}
@@ -267,7 +551,7 @@ func testPersonalAccessTokenMaximumActive(t *testing.T, ss store.Store) {
 		case store.IsConflict(err):
 			conflicts++
 		default:
-			t.Fatalf("concurrent Save() error = %v", err)
+			t.Fatalf("concurrent Create() error = %v", err)
 		}
 	}
 	if successes != 1 || conflicts != contenders-1 {
@@ -281,17 +565,13 @@ func testPersonalAccessTokenRejectsUnknownScope(t *testing.T, ss store.Store) {
 	user, _ := saveLocalUser(t, ctx, ss)
 	token := newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
 	token.Scopes = []string{"future.permission"}
-	if _, err := ss.PersonalAccessToken().Save(
-		ctx,
-		token,
-		10,
-	); err == nil {
-		t.Fatal("Save() accepted an unknown action scope")
+	if _, err := createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10); err == nil {
+		t.Fatal("Create() accepted an unknown action scope")
 	}
 	token = newPersonalAccessToken(user.ID.String(), model.NewCredentialToken())
 	token.Scopes = []string{string(model.ActionRoleBindingManage)}
-	if _, err := ss.PersonalAccessToken().Save(ctx, token, 10); err == nil {
-		t.Fatal("Save() accepted an interactive-only action scope")
+	if _, err := createPersonalAccessTokenWithNotice(t, ctx, ss, token, 10); err == nil {
+		t.Fatal("Create() accepted an interactive-only action scope")
 	}
 }
 

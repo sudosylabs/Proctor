@@ -101,6 +101,8 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /api/v1/access-policy` (authorized policy and bounded history)
 - `POST /api/v1/access-policy/preflight` and `PUT /api/v1/access-policy`
   (strong recent Session; replacement also requires `Idempotency-Key`)
+- `POST /api/v1/auth/register` (policy-fenced public local registration; API
+  only, with the hosted `/register` page still deferred)
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
@@ -180,6 +182,29 @@ PostgreSQL advisory lock plus secret digest and command fingerprint make exact
 replay safe and conflicting concurrent attempts fail without partial state.
 The status response exposes only `initialized`, and bootstrap creates no
 Session.
+
+When every Proctor node is stopped, a host operator can restore one existing
+active system administrator's local authentication path without a network
+backdoor:
+
+```console
+proctor administrator recover --config /etc/proctor.json \
+  --institution-id <institution-id> --user-id <user-id> \
+  --enable-local-login --rotate-password
+```
+
+`--rotate-password` reads the password from redirected, non-terminal private
+standard input and never accepts it as an argument. Capture it without echo
+using the host shell's private-input facility (for example, `read -rs` followed
+by a stdin redirection); never put the value in the command itself. At least one of
+`--enable-local-login` or `--rotate-password` is required. The operation mints
+no Session, preserves MFA and existing Sessions, and commits a secret-free
+pending security record atomically with the repair. The next normal startup
+must reconcile that record into audit before the node serves traffic.
+The command also rejects the repair while any PostgreSQL-clocked serving-node
+lease is unexpired. Graceful shutdown withdraws its lease; after a crashed node,
+wait for the bounded lease to expire before retrying. Merely constructing this
+offline command never creates a serving lease.
 
 Production sets `authentication.bootstrap.secret` (or
 `PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET`) to an operator-generated value of at

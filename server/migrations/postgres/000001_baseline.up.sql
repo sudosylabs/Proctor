@@ -375,6 +375,8 @@ CREATE TABLE mail_occurrences (
 		'identity.sessions_revoked_by_admin',
 		'identity.mfa_enabled', 'identity.mfa_disabled',
 		'identity.mfa_recovery_codes_regenerated',
+		'identity.personal_access_token_created', 'identity.personal_access_token_enabled',
+		'identity.personal_access_token_disabled', 'identity.personal_access_token_revoked',
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.invitation_accepted'
     )),
@@ -408,6 +410,8 @@ CREATE TABLE mail_deliveries (
 		'identity.sessions_revoked_by_admin',
 		'identity.mfa_enabled', 'identity.mfa_disabled',
 		'identity.mfa_recovery_codes_regenerated',
+		'identity.personal_access_token_created', 'identity.personal_access_token_enabled',
+		'identity.personal_access_token_disabled', 'identity.personal_access_token_revoked',
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.invitation_accepted'
     )),
@@ -2231,6 +2235,53 @@ CREATE INDEX personal_access_tokens_user_id_created_at_idx
     ON personal_access_tokens (user_id)
     WHERE archived_at IS NULL AND revoked_at IS NULL AND disabled_at IS NULL;
 
+-- A preparation is the bounded durable attempt for one PAT transition. It
+-- holds only the safe audit draft until rendering completes. Fresh success or
+-- explicit/maintenance failure replaces it with one terminal AuditEvent;
+-- authoritative replay removes it without producing audit or mail noise.
+CREATE TABLE personal_access_token_mutation_preparations (
+    id varchar(26) PRIMARY KEY,
+    created_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    user_id varchar(26) NOT NULL REFERENCES users(id),
+    token_id varchar(26) REFERENCES personal_access_tokens(id),
+    kind varchar(16) NOT NULL CHECK (kind IN ('create', 'enable', 'disable', 'revoke')),
+    actor_id varchar(26) NOT NULL REFERENCES users(id),
+    session_id varchar(26) NOT NULL REFERENCES sessions(id),
+    action varchar(128) NOT NULL,
+    resource_type varchar(32) NOT NULL,
+    resource_id varchar(128) NOT NULL,
+    scope_type varchar(32) NOT NULL,
+    scope_id varchar(128) NOT NULL,
+    request_id varchar(128) NOT NULL DEFAULT '',
+    node_id varchar(128) NOT NULL,
+    client_type varchar(32) NOT NULL DEFAULT '',
+    authentication_method varchar(64) NOT NULL DEFAULT '',
+    ip_address varchar(64) NOT NULL DEFAULT '',
+    user_agent varchar(512) NOT NULL DEFAULT '',
+    parameters jsonb,
+    prior_state jsonb,
+    CONSTRAINT personal_access_token_mutation_preparations_lifecycle_check CHECK (expires_at > created_at),
+    CONSTRAINT personal_access_token_mutation_preparations_target_check CHECK (
+        (kind = 'create' AND token_id IS NULL) OR
+        (kind <> 'create' AND token_id IS NOT NULL)
+    ),
+    CONSTRAINT personal_access_token_mutation_preparations_actor_check CHECK (actor_id = user_id),
+    CONSTRAINT personal_access_token_mutation_preparations_action_check CHECK (
+        (kind = 'create' AND action = 'personal_access_token.create') OR
+        (kind = 'enable' AND action = 'personal_access_token.enable') OR
+        (kind = 'disable' AND action = 'personal_access_token.disable') OR
+        (kind = 'revoke' AND action = 'personal_access_token.revoke')
+    ),
+    CONSTRAINT personal_access_token_mutation_preparations_payload_check CHECK (
+        COALESCE(octet_length(parameters::text), 0) <= 16384 AND
+        COALESCE(octet_length(prior_state::text), 0) <= 16384
+    )
+);
+
+CREATE INDEX personal_access_token_mutation_preparations_expiry_idx
+    ON personal_access_token_mutation_preparations (expires_at, id);
+
 CREATE TABLE user_tokens (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -2615,9 +2666,66 @@ CREATE TABLE installation_states (
     bootstrap_result jsonb NOT NULL CHECK (octet_length(bootstrap_result::text) <= 65536)
 );
 
+-- Offline host recovery commits its security-sensitive fact with the
+-- credential/policy mutation. A later normal startup reconciles the pending
+-- row into audit before jobs or network transports begin serving.
+CREATE TABLE administrator_recovery_records (
+    id varchar(26) PRIMARY KEY,
+    created_at timestamptz NOT NULL,
+    institution_id varchar(26) NOT NULL REFERENCES institutions(id),
+    user_id varchar(26) NOT NULL REFERENCES users(id),
+    local_login_enabled boolean NOT NULL,
+    password_rotated boolean NOT NULL,
+    policy_from_revision bigint CHECK (policy_from_revision > 0),
+    policy_to_revision bigint,
+    reconciled_at timestamptz,
+    audit_event_id varchar(26) UNIQUE REFERENCES audit_events(id),
+    CONSTRAINT administrator_recovery_records_action_check
+        CHECK (local_login_enabled OR password_rotated),
+    CONSTRAINT administrator_recovery_records_lifecycle_check CHECK (
+        (reconciled_at IS NULL AND audit_event_id IS NULL) OR
+        (reconciled_at IS NOT NULL AND audit_event_id IS NOT NULL AND reconciled_at >= created_at)
+    ),
+    CONSTRAINT administrator_recovery_records_policy_revision_check CHECK (
+        (local_login_enabled AND policy_from_revision IS NOT NULL AND policy_to_revision = policy_from_revision + 1) OR
+        (NOT local_login_enabled AND policy_from_revision IS NULL AND policy_to_revision IS NULL)
+    ),
+    CONSTRAINT administrator_recovery_records_id_canonical_check
+        CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    CONSTRAINT administrator_recovery_records_institution_id_canonical_check
+        CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    CONSTRAINT administrator_recovery_records_user_id_canonical_check
+        CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    CONSTRAINT administrator_recovery_records_audit_event_id_canonical_check
+        CHECK (audit_event_id IS NULL OR audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
+);
+
+CREATE UNIQUE INDEX administrator_recovery_records_one_pending_idx
+    ON administrator_recovery_records ((1)) WHERE reconciled_at IS NULL;
+
 -- ---------------------------------------------------------------------------
 -- Cluster bootstrap discovery (disposable leases; not a message bus)
 -- ---------------------------------------------------------------------------
+
+-- Every backend, including the single-node local backend, holds this
+-- PostgreSQL-clocked lease while it may serve. Offline administrator recovery
+-- shares a transaction fence with lease renewal and fails while any row is
+-- unexpired.
+CREATE TABLE serving_node_leases (
+    node_id varchar(128) PRIMARY KEY,
+    lease_id varchar(26) NOT NULL UNIQUE,
+    updated_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    CONSTRAINT serving_node_leases_node_id_check
+        CHECK (char_length(btrim(node_id)) > 0),
+    CONSTRAINT serving_node_leases_lease_id_canonical_check
+        CHECK (lease_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    CONSTRAINT serving_node_leases_lifetime_check
+        CHECK (expires_at > updated_at)
+);
+
+CREATE INDEX serving_node_leases_expires_at_node_id_idx
+    ON serving_node_leases (expires_at, node_id);
 
 CREATE TABLE cluster_discovery_nodes (
     node_id varchar(128) PRIMARY KEY,
@@ -3160,6 +3268,22 @@ ALTER TABLE personal_access_tokens
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT personal_access_tokens_academic_unit_id_canonical_check
     CHECK (academic_unit_id IS NULL OR academic_unit_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE personal_access_token_mutation_preparations
+    ADD CONSTRAINT personal_access_token_mutation_preparations_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_token_mutation_preparations_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_token_mutation_preparations_token_id_canonical_check
+    CHECK (token_id IS NULL OR token_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_token_mutation_preparations_actor_id_canonical_check
+    CHECK (actor_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_token_mutation_preparations_session_id_canonical_check
+    CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_token_mutation_preparations_resource_id_canonical_check
+    CHECK (resource_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT personal_access_token_mutation_preparations_scope_id_canonical_check
+    CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE user_tokens
     ADD CONSTRAINT user_tokens_id_canonical_check

@@ -79,6 +79,28 @@ It may re-enable local login or rotate one designated system administrator's
 password after explicit installation confirmation. It mints no Session,
 silently removes no MFA requirement, keeps secrets outside ordinary output,
 and leaves a pending durable security record before normal service resumes.
+Every application node must be stopped while the command runs. Every backend,
+including the single-node local backend, commits and renews a short-lived
+PostgreSQL-clocked serving lease before workers or listeners start. Recovery
+shares the lease mutation fence and refuses to run while any lease remains
+unexpired; after an ungraceful node loss the operator must wait for that lease
+to expire. A renewal failure makes the node unready and force-stops serving
+before its last lease can expire; that failed lease is not withdrawn early and
+expires naturally as an additional fail-safe. Constructing the inert recovery
+graph creates no lease.
+Password input comes from the command's private input channel rather than an
+argument; a rotation is an availability repair, so it preserves existing
+Sessions and the operator may use ordinary Session administration after
+regaining access if compromise is suspected.
+
+Local-login recovery advances the Access Policy revision under the same
+system-administrator authentication-path fence as ordinary policy and
+credential mutations. It is deliberately not attributed to the target User in
+the actor-bearing ordinary replacement history. Instead, the dedicated
+pending record retains the exact from/to revisions and changed field, and the
+next startup converts that fact into an actor-free ordinary audit event before
+jobs or network transports start. Consequently the bounded replacement
+history may contain a revision gap only for this documented host operation.
 
 ## Access Policy and deployment configuration
 

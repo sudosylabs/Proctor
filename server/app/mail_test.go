@@ -176,6 +176,10 @@ func (r mailRendererFake) Render(model.MailTemplateKey, string, string, string) 
 	return r.content, nil
 }
 
+func (r mailRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
+	return r.content, nil
+}
+
 type mailSenderFake struct {
 	enabled   bool
 	from      MailAddress

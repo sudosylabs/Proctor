@@ -132,6 +132,102 @@ func (s SQLUserStore) Create(ctx context.Context, input *store.UserCreation) (*s
 	})
 }
 
+const (
+	publicLocalRegistrationAuditAction     = "authentication.public_registration"
+	publicRegistrationTokenLifetimeMinimum = 5 * time.Minute
+	publicRegistrationTokenLifetimeMaximum = 30 * 24 * time.Hour
+	publicRegistrationMailLifetimeMinimum  = time.Minute
+	publicRegistrationMailLifetimeMaximum  = 30 * 24 * time.Hour
+)
+
+func (s SQLUserStore) RegisterLocal(ctx context.Context, input *store.PublicLocalUserRegistration) (*store.PublicLocalUserRegistrationResult, error) {
+	if input == nil || input.User == nil || input.Settings == nil || input.PasswordCredential == nil ||
+		input.DefaultProfilePictureJob == nil || input.VerificationToken == nil || input.AuditEvent == nil {
+		return nil, store.NewErrInvalidInput("user", "public_registration", nil)
+	}
+	user := *input.User
+	settings := input.Settings.Clone()
+	credential := *input.PasswordCredential
+	defaultJob := *input.DefaultProfilePictureJob
+	token := *input.VerificationToken
+	audit := input.AuditEvent.Clone()
+	if input.TokenLifetime < publicRegistrationTokenLifetimeMinimum || input.TokenLifetime > publicRegistrationTokenLifetimeMaximum ||
+		input.MailLifetime < publicRegistrationMailLifetimeMinimum || input.MailLifetime > publicRegistrationMailLifetimeMaximum ||
+		input.MailLifetime > input.TokenLifetime || input.TokenLifetime%time.Millisecond != 0 || input.MailLifetime%time.Millisecond != 0 ||
+		user.Validate() != nil || user.EmailVerified || user.Revision != 1 || user.ArchivedAt.Valid || user.DisabledAt.Valid ||
+		user.LastLoginAt.Valid || user.LastActivityAt.Valid || user.ProfilePictureChangedAt.Valid ||
+		user.DefaultProfilePictureFileID.IsValid() || user.CustomProfilePictureFileID.IsValid() ||
+		credential.Validate() != nil || credential.UserID != user.ID || credential.ArchivedAt.Valid ||
+		validateInitialUserSettingsDocument(&user, settings) != nil || validateUserDefaultProfilePictureJob(&user, &defaultJob) != nil ||
+		token.Validate() != nil || token.UserID != user.ID || token.Purpose != model.UserTokenEmailVerification || token.Target != user.Email ||
+		audit == nil || !audit.ID.IsZero() || !audit.CreatedAt.IsZero() || !audit.UpdatedAt.IsZero() ||
+		audit.Action != publicLocalRegistrationAuditAction || audit.ActorID.IsValid() ||
+		audit.Resource.Type != model.ResourceUser || audit.Resource.ID != user.ID.String() ||
+		audit.ScopeType != model.RoleScopeInstitution || !model.IsValidId(audit.ScopeID) || audit.Status != model.AuditStatusSuccess {
+		return nil, store.NewErrInvalidInput("user", "public_registration", nil)
+	}
+	payloadKeyID, err := validateUserEmailMail(user.ID, input.VerificationOccurrence, input.VerificationDelivery,
+		input.VerificationJob, model.MailOccurrenceAccountToken, model.MailTemplateIdentityVerifyEmail)
+	if err != nil || input.VerificationOccurrence.ID.String() != token.ID.String() {
+		return nil, store.NewErrInvalidInput("user", "public_registration_mail", err)
+	}
+
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "public local user registration", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PublicLocalUserRegistrationResult, error) {
+		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
+		if err != nil {
+			return nil, err
+		}
+		if !policy.PublicRegistrationEnabled || !policy.LocalLoginEnabled {
+			return nil, store.ErrAuthenticationMethodDisabled
+		}
+		var databaseNow time.Time
+		if err = tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
+			return nil, fmt.Errorf("read public registration database time: %w", err)
+		}
+		at := model.TimeUTC(databaseNow).Truncate(time.Millisecond)
+		user.CreatedAt, user.UpdatedAt = at, at
+		settings.CreatedAt, settings.UpdatedAt = at, at
+		credential.CreatedAt, credential.UpdatedAt, credential.PasswordChangedAt = at, at, at
+		defaultJob.CreatedAt, defaultJob.UpdatedAt, defaultJob.AvailableAt = at, at, at
+		token.CreatedAt, token.UpdatedAt, token.ExpiresAt = at, at, at.Add(input.TokenLifetime)
+		occurrence, delivery, deliveryJob, rebaseErr := recoveryMailAtWithLifetime(
+			input.VerificationOccurrence, input.VerificationDelivery, input.VerificationJob, at, input.MailLifetime,
+		)
+		if rebaseErr != nil || user.Validate() != nil || settings.Validate() != nil || credential.Validate() != nil ||
+			validateUserDefaultProfilePictureJob(&user, &defaultJob) != nil || token.Validate() != nil {
+			return nil, store.NewErrInvalidInput("user", "public_registration_lifecycle", rebaseErr)
+		}
+		if payloadKeyID != "" {
+			if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
+		}
+		if err = insertUser(ctx, tx, &user); err != nil {
+			return nil, err
+		}
+		if err = insertUserSettingsDocument(ctx, tx, settings); err != nil {
+			return nil, err
+		}
+		if err = insertPasswordCredential(ctx, tx, &credential); err != nil {
+			return nil, err
+		}
+		if _, err = insertQueuedJob(ctx, tx, &defaultJob, false); err != nil {
+			return nil, fmt.Errorf("enqueue public registration profile-picture generation: %w", translateError("job", defaultJob.ID.String(), err))
+		}
+		if err = insertUserToken(ctx, tx, &token); err != nil {
+			return nil, err
+		}
+		if err = insertRecoveryMail(ctx, tx, occurrence, delivery, deliveryJob, payloadKeyID); err != nil {
+			return nil, err
+		}
+		persistedAudit, err := insertAuditEventAt(ctx, tx, audit, at)
+		if err != nil {
+			return nil, fmt.Errorf("audit public local registration: %w", err)
+		}
+		return &store.PublicLocalUserRegistrationResult{User: &user, Token: &token, AuditEvent: persistedAudit}, nil
+	})
+}
+
 func validateUserDefaultProfilePictureJob(user *model.User, job *model.Job) error {
 	if user == nil || job == nil {
 		return store.NewErrInvalidInput("user", "default_profile_picture_job", nil)

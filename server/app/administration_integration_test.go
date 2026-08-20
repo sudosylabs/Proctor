@@ -528,6 +528,20 @@ func (s unknownBootstrapOutcomeInstallation) ReconcileSystemAdministratorRole(
 	return s.delegate.ReconcileSystemAdministratorRole(ctx, input)
 }
 
+func (s unknownBootstrapOutcomeInstallation) RecoverAdministratorAccess(
+	ctx context.Context,
+	input *store.AdministratorRecovery,
+) (*store.AdministratorRecoveryResult, error) {
+	return s.delegate.RecoverAdministratorAccess(ctx, input)
+}
+
+func (s unknownBootstrapOutcomeInstallation) ReconcileAdministratorRecovery(
+	ctx context.Context,
+	input *store.AdministratorRecoveryReconciliation,
+) (*store.AdministratorRecoveryReconciliationResult, error) {
+	return s.delegate.ReconcileAdministratorRecovery(ctx, input)
+}
+
 func TestBootstrapUnknownCommitOutcomeReconcilesThroughRealGraph(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {

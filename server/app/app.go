@@ -24,6 +24,7 @@ type App struct {
 	authenticationMethods             *authenticationMethodService
 	mfaApplication                    *mfaApplicationService
 	accountTokens                     *accountTokenService
+	publicRegistration                *publicRegistrationService
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
 	authorization                     *accessControlService
 	accessPolicies                    *accessPolicyService

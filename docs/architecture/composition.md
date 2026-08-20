@@ -21,16 +21,21 @@ Dependency injection is manual. Reflection containers, generated DI containers, 
 
 Application services do not receive `config.Config` or `config.Store`. Composition supplies small immutable policies, such as `SessionPolicy`, or narrow providers for explicitly dynamic behavior.
 
-Startup enters Platform, durable Jobs, WebSocket, listener ownership and HTTP
-serving in that order, then publishes readiness. Server records those stages
-privately: cancellation or failure before HTTP accepts the listener closes the
-Server-owned listener, while a running node becomes unready and drains HTTP
-before Jobs, WebSocket, the HTTP transport and Platform are disposed. Every
-constructed owner is disposed exactly once, including on close-before-start;
-only successfully entered active stages require runtime drain behavior.
-Shutdown uses bounded deadlines and retains drain and cleanup failures for
-concurrent or repeated callers. Liveness, readiness, and authorized dependency
-diagnostics remain distinct signals.
+Startup enters Platform, commits the PostgreSQL serving-node lease, reconciles
+protected Role and pending offline-recovery state, then starts durable Jobs,
+WebSocket, listener ownership, and HTTP serving before publishing readiness.
+Server records those stages privately: cancellation or failure before HTTP
+accepts the listener closes the Server-owned listener. Normal shutdown makes a
+running node unready and drains HTTP before Jobs, WebSocket, the HTTP transport,
+the exact serving lease, and Platform are disposed. A serving-lease renewal
+failure instead makes the node unready and force-stops HTTP before its last
+lease can expire. That failed lease remains until PostgreSQL expiry so offline
+recovery cannot begin early; exact-incarnation withdrawal applies only to
+normal shutdown. Every constructed owner is disposed exactly once, including on
+close-before-start; only successfully entered active stages require runtime
+drain behavior. Shutdown uses bounded deadlines and retains drain and cleanup
+failures for concurrent or repeated callers. Liveness, readiness, and
+authorized dependency diagnostics remain distinct signals.
 
 ## Module placement
 

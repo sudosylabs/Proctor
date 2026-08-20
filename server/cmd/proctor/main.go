@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	server "github.com/sudosylabs/proctor/server"
@@ -26,7 +28,7 @@ func runMain() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	return reportError(run(ctx, os.Args[1:], os.Stdout, os.Stderr), os.Stderr)
+	return reportError(runWithPrivateInput(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr), os.Stderr)
 }
 
 // reportError writes a single operational failure line and maps it to the
@@ -53,6 +55,10 @@ func (e *UsageError) Error() string {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	return runWithPrivateInput(ctx, args, nil, stdout, stderr)
+}
+
+func runWithPrivateInput(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if stdout == nil || stderr == nil {
 		return errors.New("stdout and stderr are required")
 	}
@@ -62,6 +68,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch args[0] {
+	case "administrator":
+		if len(args) == 1 || args[1] != "recover" {
+			return &UsageError{Message: "usage: proctor administrator recover [options]"}
+		}
+		return runAdministratorRecover(ctx, args[2:], stdin, stdout, stderr, server.RecoverAdministratorAccess)
 	case "serve":
 		return runServe(ctx, args[1:], stderr)
 	case "config":
@@ -77,6 +88,73 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		writeUsage(stderr)
 		return &UsageError{Message: fmt.Sprintf("unknown command %q", args[0])}
 	}
+}
+
+type administratorRecoveryExecutor func(context.Context, string, server.AdministratorRecoveryCommand) (*server.AdministratorRecoveryResult, error)
+
+func runAdministratorRecover(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, recover administratorRecoveryExecutor) error {
+	flags := newFlagSet("administrator recover", stderr)
+	path := flags.String("config", "", "path to a JSON configuration file")
+	institutionID := flags.String("institution-id", "", "exact Institution identifier to confirm")
+	userID := flags.String("user-id", "", "active system-administrator User identifier")
+	enableLocalLogin := flags.Bool("enable-local-login", false, "re-enable local login")
+	rotatePassword := flags.Bool("rotate-password", false, "read and rotate the password from private input")
+	if err := flags.Parse(args); err != nil {
+		return &UsageError{Message: err.Error()}
+	}
+	if flags.NArg() != 0 {
+		return &UsageError{Message: "administrator recover does not accept positional arguments or passwords"}
+	}
+	if strings.TrimSpace(*institutionID) == "" || strings.TrimSpace(*userID) == "" || (!*enableLocalLogin && !*rotatePassword) {
+		return &UsageError{Message: "administrator recover requires --institution-id, --user-id, and at least one recovery action"}
+	}
+	password := ""
+	if *rotatePassword {
+		var err error
+		password, err = readPrivatePassword(stdin, stderr)
+		if err != nil {
+			return err
+		}
+	}
+	result, err := recover(ctx, *path, server.AdministratorRecoveryCommand{
+		InstitutionID: strings.TrimSpace(*institutionID), UserID: strings.TrimSpace(*userID),
+		EnableLocalLogin: *enableLocalLogin, Password: password,
+	})
+	password = ""
+	if err != nil {
+		return err
+	}
+	if result == nil {
+		return errors.New("administrator recovery returned no result")
+	}
+	_, err = fmt.Fprintln(stdout, "administrator recovery recorded; restart Proctor normally to reconcile its audit record")
+	return err
+}
+
+func readPrivatePassword(input io.Reader, _ io.Writer) (string, error) {
+	if input == nil {
+		return "", errors.New("private password input is unavailable")
+	}
+	if file, ok := input.(*os.File); ok {
+		info, err := file.Stat()
+		if err != nil {
+			return "", fmt.Errorf("inspect private password input: %w", err)
+		}
+		if info.Mode()&os.ModeCharDevice != 0 {
+			return "", errors.New("private password input must be redirected from a non-terminal source")
+		}
+	}
+	reader := bufio.NewReader(io.LimitReader(input, 4098))
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("read private password: %w", err)
+	}
+	value = strings.TrimSuffix(value, "\n")
+	value = strings.TrimSuffix(value, "\r")
+	if value == "" || len(value) > 4096 {
+		return "", errors.New("private password input has invalid length")
+	}
+	return value, nil
 }
 
 func runMigrate(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -198,6 +276,7 @@ func writeUsage(writer io.Writer) {
 	usage.WriteString("  proctor serve [--config path]\n")
 	usage.WriteString("  proctor config validate [--config path]\n")
 	usage.WriteString("  proctor migrate <up|status> [--config path]\n")
+	usage.WriteString("  proctor administrator recover --institution-id ID --user-id ID [--enable-local-login] [--rotate-password] [--config path]\n")
 	usage.WriteString("  proctor version [--json]\n")
 	usage.WriteString("  proctor help\n")
 	_, _ = io.Copy(writer, &usage)

@@ -7,7 +7,41 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/app"
 )
+
+type administratorRecoveryRuntimeFake struct {
+	command app.AdministratorRecoveryCommand
+	result  *app.AdministratorRecoveryResult
+	err     error
+}
+
+func (f *administratorRecoveryRuntimeFake) RecoverAdministratorAccess(_ context.Context, command app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error) {
+	f.command = command
+	return f.result, f.err
+}
+
+func TestInertServerExposesOnlyExplicitAdministratorRecoveryCapability(t *testing.T) {
+	t.Parallel()
+	fake := &administratorRecoveryRuntimeFake{result: &app.AdministratorRecoveryResult{PasswordRotated: true}}
+	node := &Server{components: runtimeComponents{administratorRecovery: fake}}
+	command := AdministratorRecoveryCommand{
+		InstitutionID: "institution", UserID: "user", EnableLocalLogin: true, Password: "private",
+	}
+	result, err := node.RecoverAdministratorAccess(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || !result.PasswordRotated || fake.command.Password != "private" ||
+		fake.command.InstitutionID != command.InstitutionID || fake.command.UserID != command.UserID {
+		t.Fatalf("result/forwarded = %#v / %#v", result, fake.command)
+	}
+	node.state = nodeRunning
+	if _, err := node.RecoverAdministratorAccess(context.Background(), command); err == nil {
+		t.Fatal("RecoverAdministratorAccess() succeeded on a running server")
+	}
+}
 
 func TestInertServerFacadeOwnsConstructedRuntime(t *testing.T) {
 	t.Parallel()

@@ -81,9 +81,34 @@ type lifecycleJobs struct {
 	afterStart func()
 }
 
+type lifecycleServingNodeLease struct {
+	startErr error
+	closeErr error
+	events   *lifecycleEvents
+	failures chan error
+}
+
+func (l *lifecycleServingNodeLease) Start(context.Context) error {
+	l.events.record("serving-lease-start")
+	return l.startErr
+}
+
+func (l *lifecycleServingNodeLease) Failures() <-chan error { return l.failures }
+
+func (l *lifecycleServingNodeLease) Close() error {
+	l.events.record("serving-lease-close")
+	return l.closeErr
+}
+
 type lifecycleReconciler struct {
-	err    error
-	events *lifecycleEvents
+	err         error
+	recoveryErr error
+	events      *lifecycleEvents
+}
+
+func (r *lifecycleReconciler) ReconcileAdministratorRecovery(context.Context) error {
+	r.events.record("administrator-recovery-reconcile")
+	return r.recoveryErr
 }
 
 func (r *lifecycleReconciler) ReconcileSystemAdministratorRole(context.Context) error {
@@ -348,6 +373,63 @@ func TestServerJobStartupFailureClosesWorkersBeforeInfrastructure(t *testing.T) 
 	assertLifecycleEvents(t, events, "platform-start", "jobs-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
 }
 
+func TestServerServingLeaseMustCommitBeforeWorkersOrListener(t *testing.T) {
+	t.Parallel()
+
+	startErr := errors.New("serving lease unavailable")
+	events := &lifecycleEvents{}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events},
+		servingLease: &lifecycleServingNodeLease{
+			startErr: startErr, events: events, failures: make(chan error, 1),
+		},
+		jobs: &lifecycleJobs{events: events}, websocket: &lifecycleWebSocket{events: events},
+		transport: &lifecycleTransport{events: events}, readiness: &lifecycleReadiness{},
+	})
+
+	err := node.Start(context.Background())
+	if !errors.Is(err, startErr) {
+		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+	}
+	assertLifecycleEvents(t, events,
+		"platform-start", "serving-lease-start", "jobs-close", "websocket-close",
+		"transport-close", "serving-lease-close", "platform-close",
+	)
+}
+
+func TestServerServingLeaseRenewalFailureDrainsBeforeLeaseWithdrawal(t *testing.T) {
+	t.Parallel()
+
+	renewalErr := errors.New("serving lease renewal failed")
+	events := &lifecycleEvents{}
+	readiness := &lifecycleReadiness{events: events}
+	httpService := &lifecycleHTTP{events: events, started: make(chan struct{}), stopped: make(chan struct{})}
+	lease := &lifecycleServingNodeLease{events: events, failures: make(chan error, 1)}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, servingLease: lease,
+		jobs: &lifecycleJobs{events: events}, websocket: &lifecycleWebSocket{events: events},
+		transport: &lifecycleTransport{events: events}, readiness: readiness,
+		listen:  func(string, string) (net.Listener, error) { return &lifecycleListener{}, nil },
+		newHTTP: func(httpServerSettings) httpRuntime { return httpService },
+	})
+	done := make(chan error, 1)
+	go func() { done <- node.Start(context.Background()) }()
+	waitForLifecycleReady(t, node)
+	lease.failures <- renewalErr
+	err := receiveLifecycleResult(t, done, "Start after serving lease failure")
+	if !errors.Is(err, renewalErr) {
+		t.Fatalf("Start() error = %v, want wrapped %v", err, renewalErr)
+	}
+	if node.Ready() {
+		t.Fatal("server remained ready after serving lease failure")
+	}
+	assertLifecycleEvents(t, events,
+		"platform-start", "serving-lease-start", "jobs-start", "websocket-start",
+		"http-serve", "ready", "unready", "http-force-close", "jobs-close",
+		"websocket-close", "transport-close", "serving-lease-close", "platform-close",
+	)
+}
+
 func TestServerReconcilesProtectedRoleBeforeStartingWorkers(t *testing.T) {
 	t.Parallel()
 
@@ -369,6 +451,28 @@ func TestServerReconcilesProtectedRoleBeforeStartingWorkers(t *testing.T) {
 	assertLifecycleEvents(t, events,
 		"platform-start", "role-reconcile", "jobs-close", "websocket-close",
 		"transport-close", "platform-close",
+	)
+}
+
+func TestServerReconcilesOfflineAdministratorRecoveryBeforeStartingWorkers(t *testing.T) {
+	t.Parallel()
+
+	startErr := errors.New("administrator recovery reconciliation unavailable")
+	events := &lifecycleEvents{}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform:   &lifecyclePlatform{events: events},
+		reconciler: &lifecycleReconciler{recoveryErr: startErr, events: events},
+		jobs:       &lifecycleJobs{events: events}, websocket: &lifecycleWebSocket{events: events},
+		transport: &lifecycleTransport{events: events}, readiness: &lifecycleReadiness{},
+	})
+
+	err := node.Start(context.Background())
+	if !errors.Is(err, startErr) {
+		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+	}
+	assertLifecycleEvents(t, events,
+		"platform-start", "role-reconcile", "administrator-recovery-reconcile",
+		"jobs-close", "websocket-close", "transport-close", "platform-close",
 	)
 }
 

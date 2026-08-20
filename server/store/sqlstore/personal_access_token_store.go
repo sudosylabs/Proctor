@@ -50,58 +50,58 @@ func newSQLPersonalAccessTokenStore(sqlStore *SQLStore) store.PersonalAccessToke
 	return &SQLPersonalAccessTokenStore{SQLStore: sqlStore}
 }
 
-func (s SQLPersonalAccessTokenStore) Save(
+func (s SQLPersonalAccessTokenStore) Create(
 	ctx context.Context,
-	token *model.PersonalAccessToken,
-	maximumActive int,
-) (*model.PersonalAccessToken, error) {
-	if token == nil || maximumActive < 1 {
-		return nil, store.NewErrInvalidInput("personal_access_token", "value", nil)
+	input *store.PersonalAccessTokenCreationMutation,
+) (*store.PersonalAccessTokenMutationResult, error) {
+	if input == nil || input.Token == nil || input.MaximumActive < 1 || input.MinimumLifetime <= 0 ||
+		input.MaximumLifetime < input.MinimumLifetime || !model.IsValidId(input.PreparationID) {
+		return nil, store.NewErrInvalidInput("personal_access_token", "create", nil)
 	}
-	if !token.ID.IsZero() {
-		return nil, store.NewErrInvalidInput("personal_access_token", "id", token.ID.String())
+	candidate := clonePersonalAccessToken(input.Token)
+	if !candidate.ID.IsZero() {
+		return nil, store.NewErrInvalidInput("personal_access_token", "id", candidate.ID.String())
 	}
-	candidate := *token
-	candidate.PrepareCreate(model.NewPersonalAccessTokenID(), model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, err
-	}
-	for _, scope := range candidate.Scopes {
-		if !model.IsPersonalAccessTokenAction(scope) {
-			return nil, store.NewErrInvalidInput(
-				"personal_access_token",
-				"scopes",
-				nil,
-			)
-		}
-	}
-
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.PersonalAccessToken, error) {
-		if _, err := tx.Exec(ctx,
-			"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-			"personal_access_tokens:user:"+candidate.UserID.String(),
-		); err != nil {
-			return nil, fmt.Errorf("lock personal access tokens: %w", err)
-		}
-		var active int
-		if err := tx.Get(ctx, &active, `
-		SELECT COUNT(*)
-		  FROM personal_access_tokens
-		 WHERE user_id = ?
-		   AND archived_at IS NULL
-		   AND revoked_at IS NULL
-		   AND disabled_at IS NULL
-		   AND expires_at > ?`,
-			candidate.UserID.String(), candidate.CreatedAt); err != nil {
-			return nil, fmt.Errorf("count active personal access tokens: %w", err)
-		}
-		if active >= maximumActive {
-			return nil, store.NewErrConflict("personal_access_token", "personal_access_tokens_maximum_per_user", nil)
-		}
-		if err := insertPersonalAccessToken(ctx, tx, &candidate); err != nil {
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token create", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PersonalAccessTokenMutationResult, error) {
+		if err := lockPersonalAccessTokensForUser(ctx, tx, candidate.UserID.String()); err != nil {
 			return nil, err
 		}
-		return clonePersonalAccessToken(&candidate), nil
+		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID)
+		if err != nil {
+			return nil, err
+		}
+		if err := requirePersonalAccessTokenPreparation(preparation, store.PersonalAccessTokenMutationCreate, candidate.UserID.String(), "", databaseAt); err != nil {
+			return nil, err
+		}
+		actionAt := preparation.CreatedAt
+		candidate.PrepareCreate(model.NewPersonalAccessTokenID(), actionAt)
+		if err := validatePersonalAccessTokenCandidate(candidate); err != nil {
+			return nil, err
+		}
+		if candidate.ExpiresAt.Before(actionAt.Add(input.MinimumLifetime)) || candidate.ExpiresAt.After(actionAt.Add(input.MaximumLifetime)) {
+			return nil, store.NewErrInvalidInput("personal_access_token", "expires_at", nil)
+		}
+		notice, payloadKeyID, err := validatePersonalAccessTokenSecurityNotice(candidate.UserID, input.Notice, model.MailTemplateIdentityPersonalAccessTokenCreated, candidate.ExpiresAt, actionAt)
+		if err != nil {
+			return nil, err
+		}
+		if err := enforcePersonalAccessTokenMaximum(ctx, tx, candidate.UserID.String(), "", candidate.CreatedAt, input.MaximumActive); err != nil {
+			return nil, err
+		}
+		if err := insertPersonalAccessToken(ctx, tx, candidate); err != nil {
+			return nil, err
+		}
+		if err := insertSecurityNoticeMail(ctx, tx, notice.Occurrence, notice.Delivery, notice.Job, payloadKeyID); err != nil {
+			return nil, err
+		}
+		encoded, err := model.EncodeAuditData(candidate.Auditable())
+		if err != nil {
+			return nil, err
+		}
+		if err = terminalizePersonalAccessTokenPreparation(ctx, tx, preparation, model.AuditStatusSuccess, "", encoded); err != nil {
+			return nil, fmt.Errorf("terminalize personal access token creation: %w", err)
+		}
+		return &store.PersonalAccessTokenMutationResult{Token: clonePersonalAccessToken(candidate), Fresh: true}, nil
 	})
 }
 
@@ -232,30 +232,34 @@ func (s SQLPersonalAccessTokenStore) Resolve(
 	}, nil
 }
 
-func (s SQLPersonalAccessTokenStore) SetDisabled(
+func (s SQLPersonalAccessTokenStore) ChangeState(
 	ctx context.Context,
-	id string,
-	userID string,
-	disabled bool,
-	now int64,
-	maximumActive int,
-) (*model.PersonalAccessToken, error) {
-	if !model.IsValidId(id) || !model.IsValidId(userID) ||
-		now <= 0 || maximumActive < 1 {
-		return nil, store.NewErrInvalidInput(
-			"personal_access_token",
-			"set_disabled",
-			nil,
-		)
+	input *store.PersonalAccessTokenStateMutation,
+) (*store.PersonalAccessTokenMutationResult, error) {
+	if input == nil || !model.IsValidId(input.ID) || !model.IsValidId(input.UserID) ||
+		input.MaximumActive < 1 || !model.IsValidId(input.PreparationID) {
+		return nil, store.NewErrInvalidInput("personal_access_token", "change_state", nil)
 	}
-	at := model.TimeFromMillis(now)
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token state change", func(ctx context.Context, tx *sqlxTxWrapper) (*model.PersonalAccessToken, error) {
-		if _, err := tx.Exec(ctx,
-			"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-			"personal_access_tokens:user:"+userID,
-		); err != nil {
-			return nil, fmt.Errorf("lock personal access tokens: %w", err)
+	key := model.MailTemplateIdentityPersonalAccessTokenEnabled
+	if input.Disabled {
+		key = model.MailTemplateIdentityPersonalAccessTokenDisabled
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token state change with audit", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PersonalAccessTokenMutationResult, error) {
+		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID); err != nil {
+			return nil, err
 		}
+		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID)
+		if err != nil {
+			return nil, err
+		}
+		kind := store.PersonalAccessTokenMutationEnable
+		if input.Disabled {
+			kind = store.PersonalAccessTokenMutationDisable
+		}
+		if err := requirePersonalAccessTokenPreparation(preparation, kind, input.UserID, input.ID, databaseAt); err != nil {
+			return nil, err
+		}
+		actionAt := preparation.CreatedAt
 		var current personalAccessTokenRow
 		if err := tx.Get(ctx, &current, `
 		SELECT id, created_at, updated_at, archived_at, user_id, description,
@@ -264,76 +268,172 @@ func (s SQLPersonalAccessTokenStore) SetDisabled(
 		  FROM personal_access_tokens
 		 WHERE id = ? AND user_id = ?
 		   AND archived_at IS NULL AND revoked_at IS NULL AND expires_at > ?
-		 FOR UPDATE`,
-			id, userID, at); err != nil {
-			return nil, translateError("personal_access_token", id, err)
+		 FOR UPDATE`, input.ID, input.UserID, databaseAt); err != nil {
+			return nil, translateError("personal_access_token", input.ID, err)
 		}
-		if disabled == current.DisabledAt.Valid {
-			return current.model()
-		}
-		if !disabled {
-			var active int
-			if err := tx.Get(ctx, &active, `
-			SELECT COUNT(*)
-			  FROM personal_access_tokens
-			 WHERE user_id = ?
-			   AND id <> ?
-			   AND archived_at IS NULL
-			   AND revoked_at IS NULL
-			   AND disabled_at IS NULL
-			   AND expires_at > ?`,
-				userID, id, at); err != nil {
-				return nil, fmt.Errorf("count active personal access tokens: %w", err)
+		if input.Disabled == current.DisabledAt.Valid {
+			currentModel, modelErr := current.model()
+			if modelErr != nil {
+				return nil, modelErr
 			}
-			if active >= maximumActive {
-				return nil, store.NewErrConflict("personal_access_token", "personal_access_tokens_maximum_per_user", nil)
+			if err := deletePersonalAccessTokenPreparation(ctx, tx, preparation.ID); err != nil {
+				return nil, err
+			}
+			return &store.PersonalAccessTokenMutationResult{Token: currentModel, Fresh: false}, nil
+		}
+		notice, payloadKeyID, err := validatePersonalAccessTokenSecurityNotice(model.UserID(input.UserID), input.Notice, key, current.ExpiresAt, actionAt)
+		if err != nil {
+			return nil, err
+		}
+		if !input.Disabled {
+			if err := enforcePersonalAccessTokenMaximum(ctx, tx, input.UserID, input.ID, databaseAt, input.MaximumActive); err != nil {
+				return nil, err
 			}
 		}
 		disabledAt := sql.NullTime{}
-		if disabled {
-			disabledAt = sql.NullTime{Time: at, Valid: true}
+		if input.Disabled {
+			disabledAt = sql.NullTime{Time: actionAt, Valid: true}
 		}
 		if err := tx.Get(ctx, &current, `
 		UPDATE personal_access_tokens
-		   SET updated_at = GREATEST(updated_at, ?), disabled_at = ?
+			   SET updated_at = GREATEST(updated_at, ?), disabled_at = ?
 		 WHERE id = ? AND user_id = ?
 		 RETURNING id, created_at, updated_at, archived_at, user_id, description,
 		           token_hash, scopes, academic_unit_id, expires_at, last_used_at,
-		           disabled_at, revoked_at`,
-			at, disabledAt, id, userID); err != nil {
-			return nil, translateError("personal_access_token", id, err)
+		           disabled_at, revoked_at`, actionAt, disabledAt, input.ID, input.UserID); err != nil {
+			return nil, translateError("personal_access_token", input.ID, err)
 		}
-		return current.model()
+		updated, err := current.model()
+		if err != nil {
+			return nil, err
+		}
+		if err := insertSecurityNoticeMail(ctx, tx, notice.Occurrence, notice.Delivery, notice.Job, payloadKeyID); err != nil {
+			return nil, err
+		}
+		encoded, err := model.EncodeAuditData(updated.Auditable())
+		if err != nil {
+			return nil, err
+		}
+		if err = terminalizePersonalAccessTokenPreparation(ctx, tx, preparation, model.AuditStatusSuccess, "", encoded); err != nil {
+			return nil, fmt.Errorf("terminalize personal access token state audit: %w", err)
+		}
+		return &store.PersonalAccessTokenMutationResult{Token: updated, Fresh: true}, nil
 	})
 }
 
-func (s SQLPersonalAccessTokenStore) Revoke(
+func (s SQLPersonalAccessTokenStore) RevokeWithAudit(
 	ctx context.Context,
-	id string,
-	userID string,
-	now int64,
-) (*model.PersonalAccessToken, error) {
-	if !model.IsValidId(id) || !model.IsValidId(userID) || now <= 0 {
+	input *store.PersonalAccessTokenRevocation,
+) (*store.PersonalAccessTokenMutationResult, error) {
+	if input == nil || !model.IsValidId(input.ID) || !model.IsValidId(input.UserID) || !model.IsValidId(input.PreparationID) {
 		return nil, store.NewErrInvalidInput("personal_access_token", "revoke", nil)
 	}
-	var row personalAccessTokenRow
-	at := model.TimeFromMillis(now)
-	if err := s.GetMaster().Get(ctx, &row, `
-		UPDATE personal_access_tokens
-		   SET updated_at = GREATEST(updated_at, created_at, ?),
-		       revoked_at = GREATEST(created_at, ?)
-		 WHERE id = ?
-		   AND user_id = ?
-		   AND archived_at IS NULL
-		   AND revoked_at IS NULL
-		 RETURNING id, created_at, updated_at, archived_at, user_id, description,
-		           token_hash, scopes, academic_unit_id, expires_at, last_used_at,
-		           disabled_at, revoked_at`,
-		at, at, id, userID,
-	); err != nil {
-		return nil, translateError("personal_access_token", id, err)
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token revoke with audit", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PersonalAccessTokenMutationResult, error) {
+		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID); err != nil {
+			return nil, err
+		}
+		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID)
+		if err != nil {
+			return nil, err
+		}
+		if err := requirePersonalAccessTokenPreparation(preparation, store.PersonalAccessTokenMutationRevoke, input.UserID, input.ID, databaseAt); err != nil {
+			return nil, err
+		}
+		actionAt := preparation.CreatedAt
+		var row personalAccessTokenRow
+		if err := tx.Get(ctx, &row, `SELECT id, created_at, updated_at, archived_at, user_id, description,
+		       token_hash, scopes, academic_unit_id, expires_at, last_used_at, disabled_at, revoked_at
+		  FROM personal_access_tokens WHERE id=? AND user_id=? AND archived_at IS NULL FOR UPDATE`, input.ID, input.UserID); err != nil {
+			return nil, translateError("personal_access_token", input.ID, err)
+		}
+		if row.RevokedAt.Valid {
+			current, modelErr := row.model()
+			if modelErr != nil {
+				return nil, modelErr
+			}
+			if err := deletePersonalAccessTokenPreparation(ctx, tx, preparation.ID); err != nil {
+				return nil, err
+			}
+			return &store.PersonalAccessTokenMutationResult{Token: current, Fresh: false}, nil
+		}
+		if err := tx.Get(ctx, &row, `UPDATE personal_access_tokens
+		   SET updated_at = GREATEST(updated_at, created_at, ?), revoked_at = GREATEST(created_at, ?)
+		 WHERE id=? AND user_id=? RETURNING id,created_at,updated_at,archived_at,user_id,description,
+		 token_hash,scopes,academic_unit_id,expires_at,last_used_at,disabled_at,revoked_at`, actionAt, actionAt, input.ID, input.UserID); err != nil {
+			return nil, translateError("personal_access_token", input.ID, err)
+		}
+		revoked, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		notice, payloadKeyID, err := validatePersonalAccessTokenSecurityNotice(model.UserID(input.UserID), input.Notice, model.MailTemplateIdentityPersonalAccessTokenRevoked, revoked.ExpiresAt, actionAt)
+		if err != nil {
+			return nil, err
+		}
+		if err := insertSecurityNoticeMail(ctx, tx, notice.Occurrence, notice.Delivery, notice.Job, payloadKeyID); err != nil {
+			return nil, err
+		}
+		encoded, err := model.EncodeAuditData(revoked.Auditable())
+		if err != nil {
+			return nil, err
+		}
+		if err = terminalizePersonalAccessTokenPreparation(ctx, tx, preparation, model.AuditStatusSuccess, "", encoded); err != nil {
+			return nil, fmt.Errorf("terminalize personal access token revocation audit: %w", err)
+		}
+		return &store.PersonalAccessTokenMutationResult{Token: revoked, Fresh: true}, nil
+	})
+}
+
+func validatePersonalAccessTokenSecurityNotice(userID model.UserID, notice store.PersonalAccessTokenSecurityNotice, key model.MailTemplateKey, expiresAt, actionAt time.Time) (store.PersonalAccessTokenSecurityNotice, string, error) {
+	if notice.ExpiresAt.IsZero() || !model.TimeUTC(notice.ExpiresAt).Equal(model.TimeUTC(expiresAt)) {
+		return store.PersonalAccessTokenSecurityNotice{}, "", store.NewErrInvalidInput("personal_access_token", "notice.expires_at", nil)
 	}
-	return row.model()
+	payloadKeyID, err := validateSecurityNoticeMail(userID, notice.Occurrence, notice.Delivery, notice.Job, key, actionAt.UnixMilli())
+	return notice, payloadKeyID, err
+}
+
+func validatePersonalAccessTokenCandidate(candidate *model.PersonalAccessToken) error {
+	if candidate == nil || candidate.Validate() != nil {
+		return store.NewErrInvalidInput("personal_access_token", "value", nil)
+	}
+	for _, scope := range candidate.Scopes {
+		if !model.IsPersonalAccessTokenAction(scope) {
+			return store.NewErrInvalidInput("personal_access_token", "scopes", nil)
+		}
+	}
+	return nil
+}
+
+func lockPersonalAccessTokensForUser(ctx context.Context, tx *sqlxTxWrapper, userID string) error {
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "personal_access_tokens:user:"+userID); err != nil {
+		return fmt.Errorf("lock personal access tokens: %w", err)
+	}
+	return nil
+}
+
+func personalAccessTokenDatabaseNow(ctx context.Context, tx *sqlxTxWrapper) (time.Time, error) {
+	var at time.Time
+	if err := tx.Get(ctx, &at, `SELECT clock_timestamp()`); err != nil {
+		return time.Time{}, fmt.Errorf("read personal access token database time: %w", err)
+	}
+	return model.TimeFromMillis(at.UnixMilli()), nil
+}
+
+func enforcePersonalAccessTokenMaximum(ctx context.Context, tx *sqlxTxWrapper, userID, excludedID string, at time.Time, maximum int) error {
+	query := `SELECT COUNT(*) FROM personal_access_tokens WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL AND disabled_at IS NULL AND expires_at > ?`
+	args := []any{userID, at}
+	if excludedID != "" {
+		query = `SELECT COUNT(*) FROM personal_access_tokens WHERE user_id = ? AND id <> ? AND archived_at IS NULL AND revoked_at IS NULL AND disabled_at IS NULL AND expires_at > ?`
+		args = []any{userID, excludedID, at}
+	}
+	var active int
+	if err := tx.Get(ctx, &active, query, args...); err != nil {
+		return fmt.Errorf("count active personal access tokens: %w", err)
+	}
+	if active >= maximum {
+		return store.NewErrConflict("personal_access_token", "personal_access_tokens_maximum_per_user", nil)
+	}
+	return nil
 }
 
 func insertPersonalAccessToken(

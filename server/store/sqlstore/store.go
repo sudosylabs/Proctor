@@ -111,6 +111,7 @@ type SQLStoreStores struct {
 	installation         store.InstallationStore
 	accessPolicy         store.AccessPolicyStore
 	clusterDiscovery     store.ClusterDiscoveryStore
+	servingNodeLease     store.ServingNodeLeaseStore
 	commandOutcome       store.CommandOutcomeStore
 }
 
@@ -188,6 +189,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.installation = newSQLInstallationStore(sqlStore)
 	sqlStore.stores.accessPolicy = newSQLAccessPolicyStore(sqlStore)
 	sqlStore.stores.clusterDiscovery = newSQLClusterDiscoveryStore(sqlStore)
+	sqlStore.stores.servingNodeLease = newSQLServingNodeLeaseStore(sqlStore)
 	sqlStore.stores.commandOutcome = newSQLCommandOutcomeStore(sqlStore)
 	return sqlStore, nil
 }
@@ -359,6 +361,10 @@ func (ss *SQLStore) AccessPolicy() store.AccessPolicyStore {
 
 func (ss *SQLStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	return ss.stores.clusterDiscovery
+}
+
+func (ss *SQLStore) ServingNodeLease() store.ServingNodeLeaseStore {
+	return ss.stores.servingNodeLease
 }
 
 func (ss *SQLStore) CommandOutcome() store.CommandOutcomeStore { return ss.stores.commandOutcome }

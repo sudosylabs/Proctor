@@ -71,6 +71,30 @@ type MailTemplateRenderer interface {
 	Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (FrozenMailContent, error)
 }
 
+// PersonalAccessTokenMailDetails is the bounded, non-secret context allowed in
+// PAT security notices. It intentionally excludes the one-time credential,
+// stored hash, and complete action list.
+type PersonalAccessTokenMailDetails struct {
+	Description        string
+	ExpiresAt          time.Time
+	ActionAt           time.Time
+	ActionCount        int
+	AcademicUnitScoped bool
+}
+
+// DirectMailTemplateRenderer makes every rendering capability used by the
+// direct-mail preparer explicit at construction. A partially capable renderer
+// must fail composition rather than a security-notice request at runtime.
+type DirectMailTemplateRenderer interface {
+	MailTemplateRenderer
+	RenderPersonalAccessTokenSecurityNotice(
+		model.MailTemplateKey,
+		string,
+		string,
+		PersonalAccessTokenMailDetails,
+	) (FrozenMailContent, error)
+}
+
 type MailDeliverySender interface {
 	Enabled() bool
 	From() MailAddress
@@ -183,12 +207,12 @@ type mailService struct {
 }
 
 type directMailPreparer struct {
-	renderer MailTemplateRenderer
+	renderer DirectMailTemplateRenderer
 	sender   MailDeliverySender
 	sealer   *secretseal.Sealer
 }
 
-func newDirectMailPreparer(renderer MailTemplateRenderer, sender MailDeliverySender, sealer *secretseal.Sealer) (*directMailPreparer, error) {
+func newDirectMailPreparer(renderer DirectMailTemplateRenderer, sender MailDeliverySender, sealer *secretseal.Sealer) (*directMailPreparer, error) {
 	if renderer == nil || sender == nil || (sender.Enabled() && sealer == nil) {
 		return nil, errors.New("direct mail preparer dependencies are invalid")
 	}
@@ -208,7 +232,7 @@ func (p *directMailPreparer) PrepareDirect(request DirectMailPreparation) (*prep
 		return nil, errors.New("direct mail input is invalid")
 	}
 	return p.prepareRecipient(user.DisplayName, user.Email, user.Locale, user.ID, user.ID, "", occurrenceID,
-		kind, key, actionURL, at, deadline, jobType)
+		kind, key, actionURL, at, deadline, jobType, nil)
 }
 
 func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, actionURL string) (*preparedDirectMail, error) {
@@ -227,12 +251,13 @@ func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, act
 	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
 		invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()),
 		model.MailOccurrenceInvitation, key, actionURL,
-		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential)
+		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil)
 }
 
 func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, locale string, actorUserID, targetUserID model.UserID,
 	targetInvitationID model.InvitationID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind,
 	key model.MailTemplateKey, actionURL string, at, deadline time.Time, jobType model.JobType,
+	personalAccessToken *PersonalAccessTokenMailDetails,
 ) (*preparedDirectMail, error) {
 	if p == nil || p.sender == nil || p.renderer == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() || !occurrenceID.IsValid() ||
 		(targetUserID.IsValid() == targetInvitationID.IsValid()) || !key.IsValid() || at.IsZero() || !deadline.After(at) ||
@@ -271,7 +296,12 @@ func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, l
 		}
 		return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
 	}
-	rendered, err := p.renderer.Render(key, locale, model.DefaultLocale, actionURL)
+	var rendered FrozenMailContent
+	if personalAccessToken != nil {
+		rendered, err = p.renderer.RenderPersonalAccessTokenSecurityNotice(key, locale, model.DefaultLocale, *personalAccessToken)
+	} else {
+		rendered, err = p.renderer.Render(key, locale, model.DefaultLocale, actionURL)
+	}
 	if err != nil {
 		return nil, err
 	}

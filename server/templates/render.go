@@ -13,7 +13,9 @@ import (
 	"net/url"
 	"strings"
 	texttemplate "text/template"
+	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/i18n"
 )
@@ -23,16 +25,37 @@ const maxRenderedMessageBytes = 1 << 20
 // Properties is the complete typed model visible to HTML and text templates.
 // It intentionally contains no arbitrary map and offers no template helpers.
 type Properties struct {
-	Copy      i18n.Copy
-	ActionURL string
+	Copy                i18n.Copy
+	ActionURL           string
+	PersonalAccessToken *PersonalAccessTokenProperties
+}
+
+// PersonalAccessTokenDetails is the bounded, scope-safe dynamic input for a
+// PAT transition notice. It deliberately has no credential, hash, or actions.
+type PersonalAccessTokenDetails struct {
+	Description        string
+	ExpiresAt          time.Time
+	ActionAt           time.Time
+	ActionCount        int
+	AcademicUnitScoped bool
+}
+
+// PersonalAccessTokenProperties is the formatted template-visible PAT model.
+type PersonalAccessTokenProperties struct {
+	Description string
+	ExpiresAt   string
+	ActionAt    string
+	Scope       string
+	ActionCount int
 }
 
 // Request selects localized copy and the already constructed optional action.
 type Request struct {
-	Key                i18n.Key
-	RecipientLocale    string
-	InstallationLocale string
-	ActionURL          string
+	Key                 i18n.Key
+	RecipientLocale     string
+	InstallationLocale  string
+	ActionURL           string
+	PersonalAccessToken *PersonalAccessTokenDetails
 }
 
 // Message is one safe, fully rendered multipart-alternative payload.
@@ -115,6 +138,26 @@ func (r *Renderer) Render(request Request) (Message, error) {
 		}
 	}
 	properties := Properties{Copy: resolved.Copy, ActionURL: actionURL}
+	patKey := isPersonalAccessTokenTemplate(request.Key)
+	if patKey != (request.PersonalAccessToken != nil) {
+		return Message{}, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
+	}
+	if request.PersonalAccessToken != nil {
+		if resolved.Copy.PersonalAccessToken == nil || !validPersonalAccessTokenDetails(request.PersonalAccessToken) {
+			return Message{}, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
+		}
+		scope := resolved.Copy.PersonalAccessToken.InstitutionScope
+		if request.PersonalAccessToken.AcademicUnitScoped {
+			scope = resolved.Copy.PersonalAccessToken.AcademicUnitScope
+		}
+		properties.PersonalAccessToken = &PersonalAccessTokenProperties{
+			Description: request.PersonalAccessToken.Description,
+			ExpiresAt:   request.PersonalAccessToken.ExpiresAt.UTC().Format(time.RFC3339),
+			ActionAt:    request.PersonalAccessToken.ActionAt.UTC().Format(time.RFC3339),
+			Scope:       scope,
+			ActionCount: request.PersonalAccessToken.ActionCount,
+		}
+	}
 
 	htmlValue, ok := r.html[request.Key]
 	if !ok {
@@ -139,6 +182,33 @@ func (r *Renderer) Render(request Request) (Message, error) {
 		Key: request.Key, Locale: resolved.Locale, Subject: resolved.Copy.Subject,
 		Text: textOutput.String(), HTML: htmlOutput.String(),
 	}, nil
+}
+
+func isPersonalAccessTokenTemplate(key i18n.Key) bool {
+	switch key {
+	case i18n.IdentityPersonalAccessTokenCreated,
+		i18n.IdentityPersonalAccessTokenEnabled,
+		i18n.IdentityPersonalAccessTokenDisabled,
+		i18n.IdentityPersonalAccessTokenRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPersonalAccessTokenDetails(details *PersonalAccessTokenDetails) bool {
+	if details == nil || strings.TrimSpace(details.Description) == "" ||
+		!utf8.ValidString(details.Description) || utf8.RuneCountInString(details.Description) > 255 ||
+		details.ExpiresAt.IsZero() || details.ActionAt.IsZero() ||
+		details.ActionCount < 1 || details.ActionCount > 128 {
+		return false
+	}
+	for _, character := range details.Description {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateActionURL(raw string) error {

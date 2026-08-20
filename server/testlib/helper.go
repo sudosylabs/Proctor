@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	server "github.com/sudosylabs/proctor/server"
@@ -307,6 +308,9 @@ func (s *LifecycleStore) ClusterDiscovery() store.ClusterDiscoveryStore {
 	// transport. Local-mode unit tests only need a no-op implementation.
 	return noopClusterDiscovery{}
 }
+func (s *LifecycleStore) ServingNodeLease() store.ServingNodeLeaseStore {
+	return noopServingNodeLeaseStore{}
+}
 func (s *LifecycleStore) CommandOutcome() store.CommandOutcomeStore { return noopCommandOutcomeStore{} }
 
 type noopCommandOutcomeStore struct{}
@@ -314,6 +318,14 @@ type noopCommandOutcomeStore struct{}
 func (noopCommandOutcomeStore) DeleteExpired(context.Context, int) (int64, error) { return 0, nil }
 
 type noopClusterDiscovery struct{}
+
+type noopServingNodeLeaseStore struct{}
+
+func (noopServingNodeLeaseStore) Upsert(_ context.Context, claim *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
+	at := time.Now().UTC()
+	return &store.ServingNodeLease{NodeID: claim.NodeID, LeaseID: claim.LeaseID, UpdatedAt: at, ExpiresAt: at.Add(claim.Lifetime)}, nil
+}
+func (noopServingNodeLeaseStore) Delete(context.Context, string, string) error { return nil }
 
 func (noopClusterDiscovery) Upsert(context.Context, *store.ClusterDiscoveryNode) error {
 	return nil
@@ -389,4 +401,11 @@ func (lifecycleInstallationStore) ReconcileSystemAdministratorRole(
 	*store.SystemAdministratorRoleReconciliation,
 ) (*store.SystemAdministratorRoleReconciliationResult, error) {
 	return &store.SystemAdministratorRoleReconciliationResult{}, nil
+}
+
+func (lifecycleInstallationStore) ReconcileAdministratorRecovery(
+	context.Context,
+	*store.AdministratorRecoveryReconciliation,
+) (*store.AdministratorRecoveryReconciliationResult, error) {
+	return &store.AdministratorRecoveryReconciliationResult{}, nil
 }

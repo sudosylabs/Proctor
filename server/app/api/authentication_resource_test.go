@@ -18,11 +18,24 @@ import (
 
 type authenticationEntryHTTPApplication struct {
 	authenticationEntryApplication
-	loginCommand  application.LoginCommand
-	loginResult   *application.LoginResult
-	loginError    error
-	logoutCommand application.LogoutCommand
-	logoutCalls   int
+	loginCommand        application.LoginCommand
+	loginResult         *application.LoginResult
+	loginError          error
+	logoutCommand       application.LogoutCommand
+	logoutCalls         int
+	registrationCommand application.RegisterLocalUserCommand
+	registrationCalls   int
+	registrationError   error
+}
+
+func (applicationFake *authenticationEntryHTTPApplication) RegisterLocalUser(
+	_ context.Context,
+	_ application.Invocation,
+	command application.RegisterLocalUserCommand,
+) error {
+	applicationFake.registrationCommand = command
+	applicationFake.registrationCalls++
+	return applicationFake.registrationError
 }
 
 func (applicationFake *authenticationEntryHTTPApplication) Login(
@@ -315,6 +328,44 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 	if invalidSecondFactor.Code != http.StatusUnauthorized ||
 		!strings.Contains(invalidSecondFactor.Body.String(), `"code":"authentication.mfa.invalid_code"`) {
 		t.Fatalf("invalid login second factor = %d %s", invalidSecondFactor.Code, invalidSecondFactor.Body.String())
+	}
+}
+
+func TestPublicRegistrationUsesStrictBodyAndReturnsNoAccountProjection(t *testing.T) {
+	t.Parallel()
+
+	logger, _ := newTestLogger(t)
+	applicationFake := &authenticationEntryHTTPApplication{}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, authenticationResource(applicationFake, browserCookies{}))
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register",
+		strings.NewReader(`{"username":"student","email":"student@example.edu","password":"long-private-password"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || response.Body.Len() != 0 || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("registration response = %d headers=%#v body=%s", response.Code, response.Header(), response.Body.String())
+	}
+	if applicationFake.registrationCalls != 1 || applicationFake.registrationCommand.Username != "student" ||
+		applicationFake.registrationCommand.Email != "student@example.edu" ||
+		applicationFake.registrationCommand.Password != "long-private-password" || applicationFake.registrationCommand.Source == "" {
+		t.Fatalf("registration command = %#v", applicationFake.registrationCommand)
+	}
+
+	invalid := httptest.NewRecorder()
+	httpAPI.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/api/v1/auth/register",
+		strings.NewReader(`{"username":"student","email":"student@example.edu","password":"private","unknown":true}`)))
+	if invalid.Code != http.StatusBadRequest || applicationFake.registrationCalls != 1 {
+		t.Fatalf("unknown-field registration = %d calls=%d body=%s", invalid.Code, applicationFake.registrationCalls, invalid.Body.String())
+	}
+
+	applicationFake.registrationError = application.NewError("authentication.registration.invitation_required")
+	disabled := httptest.NewRecorder()
+	httpAPI.ServeHTTP(disabled, httptest.NewRequest(http.MethodPost, "/api/v1/auth/register",
+		strings.NewReader(`{"username":"student","email":"student@example.edu","password":"private"}`)))
+	if disabled.Code != http.StatusForbidden || !strings.Contains(disabled.Body.String(), `"code":"authentication.registration.invitation_required"`) ||
+		strings.Contains(disabled.Body.String(), "student@example.edu") {
+		t.Fatalf("disabled registration = %d %s", disabled.Code, disabled.Body.String())
 	}
 }
 

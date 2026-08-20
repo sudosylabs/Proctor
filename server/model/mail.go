@@ -37,6 +37,10 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateIdentityMFAEnabled,
 		MailTemplateIdentityMFADisabled,
 		MailTemplateIdentityMFARecoveryCodesRegenerated,
+		MailTemplateIdentityPersonalAccessTokenCreated,
+		MailTemplateIdentityPersonalAccessTokenEnabled,
+		MailTemplateIdentityPersonalAccessTokenDisabled,
+		MailTemplateIdentityPersonalAccessTokenRevoked,
 		MailTemplateIdentityPasswordReset,
 		MailTemplateIdentityPasswordChanged,
 		MailTemplateAccessStudentClassInvitation,
@@ -63,6 +67,10 @@ const (
 	MailTemplateIdentityMFAEnabled                  MailTemplateKey = "identity.mfa_enabled"
 	MailTemplateIdentityMFADisabled                 MailTemplateKey = "identity.mfa_disabled"
 	MailTemplateIdentityMFARecoveryCodesRegenerated MailTemplateKey = "identity.mfa_recovery_codes_regenerated"
+	MailTemplateIdentityPersonalAccessTokenCreated  MailTemplateKey = "identity.personal_access_token_created"
+	MailTemplateIdentityPersonalAccessTokenEnabled  MailTemplateKey = "identity.personal_access_token_enabled"
+	MailTemplateIdentityPersonalAccessTokenDisabled MailTemplateKey = "identity.personal_access_token_disabled"
+	MailTemplateIdentityPersonalAccessTokenRevoked  MailTemplateKey = "identity.personal_access_token_revoked"
 	MailTemplateAccessStudentClassInvitation        MailTemplateKey = "access.student_class_invitation"
 	MailTemplateAccessTeacherAcademicUnitInvitation MailTemplateKey = "access.teacher_academic_unit_invitation"
 	MailTemplateAccessInvitationAccepted            MailTemplateKey = "access.invitation_accepted"
@@ -119,7 +127,9 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 	case MailOccurrenceSecurityNotice:
 		return key == MailTemplateIdentityPasswordChanged || key == MailTemplateIdentityEmailChangeWarningOld || key == MailTemplateIdentityEmailVerifiedByAdmin ||
 			key == MailTemplateIdentityAccountDisabled || key == MailTemplateIdentityAccountEnabled || key == MailTemplateIdentitySessionsRevokedByAdmin ||
-			key == MailTemplateIdentityMFAEnabled || key == MailTemplateIdentityMFADisabled || key == MailTemplateIdentityMFARecoveryCodesRegenerated
+			key == MailTemplateIdentityMFAEnabled || key == MailTemplateIdentityMFADisabled || key == MailTemplateIdentityMFARecoveryCodesRegenerated ||
+			key == MailTemplateIdentityPersonalAccessTokenCreated || key == MailTemplateIdentityPersonalAccessTokenEnabled ||
+			key == MailTemplateIdentityPersonalAccessTokenDisabled || key == MailTemplateIdentityPersonalAccessTokenRevoked
 	case MailOccurrenceInvitation:
 		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessTeacherAcademicUnitInvitation ||
 			key == MailTemplateAccessInvitationAccepted

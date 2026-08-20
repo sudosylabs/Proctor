@@ -213,12 +213,20 @@ func composeConsumers(
 			httpTransport.Close(), webSocketHub.Close(), applicationPlatform.Close(),
 		)
 	}
+	servingLease, err := newServingNodeLeaseRuntime(capabilities.persistence.ServingNodeLease(), capabilities.nodeID)
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("construct serving node lease: %w", err),
+			httpTransport.Close(), webSocketHub.Close(), applicationPlatform.Close(),
+		)
+	}
 
 	// 4. Assemble one inert lifecycle owner. No listener, goroutine, readiness,
 	// or transport lifecycle operation runs during composition.
 	node := &Server{components: runtimeComponents{
-		platform: applicationPlatform, reconciler: application, settings: runtimeSettingsFromConfig(snapshot.Server),
-		logger: capabilities.logger, jobs: jobRuntime, transport: httpTransport,
+		platform: applicationPlatform, reconciler: application, administratorRecovery: application,
+		settings: runtimeSettingsFromConfig(snapshot.Server),
+		logger:   capabilities.logger, jobs: jobRuntime, servingLease: servingLease, transport: httpTransport,
 		websocket: webSocketHub, readiness: readiness, listen: net.Listen, newHTTP: newHTTPServer,
 	}}
 	return &compositionResult{

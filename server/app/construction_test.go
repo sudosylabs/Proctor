@@ -22,7 +22,7 @@ import (
 type constructionCatalogStub struct{ store.Catalog }
 type constructionCacheStub struct{ authenticationCache }
 type constructionMailDeliverySenderStub struct{ MailDeliverySender }
-type constructionMailTemplateRendererStub struct{ MailTemplateRenderer }
+type constructionMailTemplateRendererStub struct{ DirectMailTemplateRenderer }
 type constructionRegistryStub struct{ externalProviderSource }
 type constructionFileContentStub struct{ FileContent }
 type constructionAuthenticationDiagnosticsStub struct{ authenticationDiagnostics }
@@ -160,13 +160,14 @@ func TestJobRecipePreservesLifecycleOnlyGraphs(t *testing.T) {
 
 type constructionCatalogWithJobs struct {
 	store.Catalog
-	jobs                store.JobStore
-	users               store.UserStore
-	files               store.FileStore
-	institutions        store.InstitutionStore
-	desktop             store.DesktopAuthorizationStore
-	externalLoginStates store.ExternalLoginStateStore
-	invitations         store.InvitationStore
+	jobs                 store.JobStore
+	users                store.UserStore
+	files                store.FileStore
+	institutions         store.InstitutionStore
+	desktop              store.DesktopAuthorizationStore
+	externalLoginStates  store.ExternalLoginStateStore
+	invitations          store.InvitationStore
+	personalAccessTokens store.PersonalAccessTokenStore
 }
 
 func (catalog constructionCatalogWithJobs) Job() store.JobStore   { return catalog.jobs }
@@ -189,6 +190,9 @@ func (catalog constructionCatalogWithJobs) ExternalLoginState() store.ExternalLo
 func (catalog constructionCatalogWithJobs) Invitation() store.InvitationStore {
 	return catalog.invitations
 }
+func (catalog constructionCatalogWithJobs) PersonalAccessToken() store.PersonalAccessTokenStore {
+	return catalog.personalAccessTokens
+}
 func (catalog constructionCatalogWithJobs) CommandOutcome() store.CommandOutcomeStore {
 	return constructionCommandOutcomeStoreStub{}
 }
@@ -198,6 +202,7 @@ type constructionUserStoreStub struct{ store.UserStore }
 type constructionFileStoreStub struct{ store.FileStore }
 type constructionInstitutionStoreStub struct{ store.InstitutionStore }
 type constructionInvitationStoreStub struct{ store.InvitationStore }
+type constructionPersonalAccessTokenStoreStub struct{ store.PersonalAccessTokenStore }
 type constructionDesktopAuthorizationStoreStub struct {
 	store.DesktopAuthorizationStore
 }
@@ -220,6 +225,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
 				desktop: constructionDesktopAuthorizationStoreStub{}, externalLoginStates: constructionExternalLoginStateStoreStub{}, invitations: constructionInvitationStoreStub{},
+				personalAccessTokens: constructionPersonalAccessTokenStoreStub{},
 			},
 			NodeID: "node-a", RecoveryDiagnostics: constructionRecoveryDiagnosticsStub{},
 		},
@@ -256,6 +262,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
 				desktop: constructionDesktopAuthorizationStoreStub{}, externalLoginStates: constructionExternalLoginStateStoreStub{}, invitations: constructionInvitationStoreStub{},
+				personalAccessTokens: constructionPersonalAccessTokenStoreStub{},
 			},
 			FileContent: constructionFileContentStub{},
 		},
@@ -358,8 +365,18 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if runner, ok := externalPeriodic.Runner.(externalAuthenticationMaintenancePeriodicRunner); !ok || runner.states == nil {
 		t.Fatalf("External authentication maintenance runner = %#v", externalPeriodic.Runner)
 	}
+	personalAccessTokenPeriodic, exists := periodicByName["personal-access-token-maintenance"]
+	if !exists || personalAccessTokenPeriodic.Interval != personalAccessTokenMaintenanceInterval {
+		t.Fatalf("Personal access token maintenance periodic task = %#v", personalAccessTokenPeriodic)
+	}
+	if runner, ok := personalAccessTokenPeriodic.Runner.(personalAccessTokenMaintenancePeriodicRunner); !ok || runner.tokens == nil {
+		t.Fatalf("Personal access token maintenance runner = %#v", personalAccessTokenPeriodic.Runner)
+	}
 	if _, exists = descriptors[model.JobType("authentication.desktop_authorization_maintenance")]; exists {
 		t.Fatal("Desktop authorization maintenance must not create a durable Job descriptor")
+	}
+	if _, exists = descriptors[model.JobType("personal_access_token.mutation_maintenance")]; exists {
+		t.Fatal("Personal access token maintenance must not create a durable Job descriptor")
 	}
 
 	cleanup, exists := descriptors[model.JobTypeCleanup]

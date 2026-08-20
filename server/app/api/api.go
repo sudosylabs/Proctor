@@ -158,6 +158,11 @@ type Authenticator interface {
 
 type Authentication interface {
 	Authenticator
+	RegisterLocalUser(
+		context.Context,
+		application.Invocation,
+		application.RegisterLocalUserCommand,
+	) error
 	Login(
 		context.Context,
 		application.Invocation,

@@ -39,7 +39,7 @@ type Dependencies struct {
 	Store                store.Catalog
 	Cache                authenticationCache
 	MailDeliverySender   MailDeliverySender
-	MailTemplateRenderer MailTemplateRenderer
+	MailTemplateRenderer DirectMailTemplateRenderer
 	MailDeliveryRecorder MailDeliveryRecorder
 	// MailSecretSealer is the concrete in-process cryptographic module for
 	// recoverable mail payloads. It is nil until an independent ring is configured.

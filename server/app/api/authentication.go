@@ -46,6 +46,12 @@ type loginRequest struct {
 	MFACode    string                  `json:"mfa_code,omitempty"`
 }
 
+type publicRegistrationRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type passwordResetRequest struct {
 	Email string `json:"email"`
 }
@@ -159,6 +165,7 @@ func authenticationResponseFromRefresh(
 }
 
 type authenticationEntryApplication interface {
+	RegisterLocalUser(context.Context, application.Invocation, application.RegisterLocalUserCommand) error
 	Login(context.Context, application.Invocation, application.LoginCommand) (*application.LoginResult, error)
 	RefreshSession(context.Context, application.Invocation, application.RefreshSessionCommand) (*model.Session, *model.AuthenticationTokens, error)
 	Logout(context.Context, application.Invocation, application.LogoutCommand) error
@@ -177,6 +184,15 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 	module := authenticationResourceModule{authentication: authentication, cookies: cookies}
 	return newResource(
 		"authentication",
+		publicRoute(
+			http.MethodPost, apiPath(literal("auth"), literal("register")),
+			[]string{
+				"request.invalid", "authentication.password.invalid", "authentication.registration.invalid",
+				"authentication.registration.invitation_required", "authentication.registration.unavailable",
+				"authentication.rate_limited", "authentication.rate_limit_unavailable",
+			},
+			module.register,
+		),
 		publicRoute(http.MethodPost, apiPath(literal("auth"), literal("login")), authenticationLoginErrorCodes(), module.login),
 		refreshCredentialRoute(http.MethodPost, apiPath(literal("auth"), literal("refresh")), authenticationRefreshErrorCodes(), module.refresh),
 		sessionRoute(http.MethodPost, apiPath(literal("auth"), literal("logout")), sessionAuthenticationMutationErrorCodes("authentication.internal"), module.logout),
@@ -218,6 +234,24 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 			module.completePasswordReset,
 		),
 	)
+}
+
+func (module authenticationResourceModule) register(request operationRequest) (operationResult, error) {
+	var input publicRegistrationRequest
+	if err := request.decodeJSON(&input, "register_local_user"); err != nil {
+		return operationResult{}, err
+	}
+	if err := module.authentication.RegisterLocalUser(
+		request.context,
+		application.NewInvocation(model.Principal{}, request.metadata),
+		application.RegisterLocalUserCommand{
+			Username: input.Username, Email: input.Email, Password: input.Password,
+			Source: request.request.RemoteAddr,
+		},
+	); err != nil {
+		return operationResult{}, err
+	}
+	return statusResult(http.StatusAccepted).withHeaders(http.Header{"Cache-Control": {"no-store"}}), nil
 }
 
 func authenticationLoginErrorCodes() []string {

@@ -101,7 +101,9 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 		}},
 		{"ExamStarterWorkspace", storetest.TestExamStarterWorkspaceStore},
 		{"Class", storetest.TestClassStore},
-		{"User", storetest.TestUserStore},
+		{"User", func(t *testing.T, decorated store.Store) {
+			storetest.TestUserStore(t, decorated, userRegistrationSQLProbe(sqlStore))
+		}},
 		{"UserSettings", storetest.TestUserSettingsStore},
 		{"File", storetest.TestFileStore},
 		{"Job", storetest.TestJobStore},
@@ -1244,7 +1246,29 @@ func TestClassStore(t *testing.T) {
 }
 
 func TestUserStore(t *testing.T) {
-	StoreTest(t, storetest.TestUserStore)
+	StoreTest(t, func(t *testing.T, persistence store.Store) {
+		storetest.TestUserStore(t, persistence, userRegistrationSQLProbe(persistence.(*SQLStore)))
+	})
+}
+
+func userRegistrationSQLProbe(persistence *SQLStore) storetest.UserStoreSQLProbe {
+	return storetest.UserStoreSQLProbe{SetPublicRegistration: func(t *testing.T, enabled, localLogin bool) {
+		t.Helper()
+		if _, err := persistence.GetMaster().Exec(context.Background(), `
+			UPDATE access_policies
+			   SET local_login_enabled=?, public_registration_enabled=?, invitation_local_credential_enabled=?, revision=revision+1,
+			       updated_at=clock_timestamp()
+			 WHERE singleton=1`, localLogin, enabled, localLogin); err != nil {
+			t.Fatal(err)
+		}
+	}, DatabaseNow: func(t *testing.T) time.Time {
+		t.Helper()
+		var now time.Time
+		if err := persistence.GetMaster().Get(context.Background(), &now, `SELECT clock_timestamp()`); err != nil {
+			t.Fatal(err)
+		}
+		return now.UTC().Truncate(time.Millisecond)
+	}}
 }
 
 func TestUserSettingsStore(t *testing.T) {
@@ -1456,6 +1480,26 @@ func TestAuditStoreAcceptsGranularAcademicResources(t *testing.T) {
 
 func TestInstallationStore(t *testing.T) {
 	PristineStoreTest(t, storetest.TestInstallationStore)
+}
+
+func TestAdministratorRecoveryStore(t *testing.T) {
+	PristineStoreTest(t, func(t *testing.T, persistence store.Store) {
+		sqlPersistence := persistence.(*SQLStore)
+		storetest.TestAdministratorRecoveryStore(t, persistence, storetest.AdministratorRecoverySQLProbe{
+			HoldAuthenticationPathFence: func(t *testing.T, ctx context.Context) (int, func()) {
+				t.Helper()
+				return holdSystemAdministratorAuthenticationPathFence(t, ctx, sqlPersistence)
+			},
+			HoldServingNodeLeaseFence: func(t *testing.T, ctx context.Context) (int, func()) {
+				t.Helper()
+				return holdServingNodeLeaseFence(t, ctx, sqlPersistence)
+			},
+			WaitForBlockedTransactions: func(t *testing.T, ctx context.Context, blockerPID, want int) {
+				t.Helper()
+				waitForBlockedSystemAdministratorAuthenticationPathTransactions(t, ctx, sqlPersistence, blockerPID, want)
+			},
+		})
+	})
 }
 
 func TestCommandOutcomeStore(t *testing.T) {

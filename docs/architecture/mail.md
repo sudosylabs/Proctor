@@ -178,6 +178,20 @@ changes coalesce to the latest relevant fact. An unsent schedule followed by
 cancellation becomes obsolete; a candidate who received the schedule receives
 the cancellation. Direct security notices, Class transitions, Submission
 receipts, and released-result notices preserve history instead of coalescing.
+Personal Access Token create, enable, disable, and revoke transitions are
+ordinary historical security notices. Before rendering, a named aggregate
+locks the per-User PAT mutation fence and persists a bounded, Session-bound
+preparation whose action time comes from PostgreSQL. The terminal aggregate
+reuses that action time for PAT state and the occurrence, delivery deadline,
+and Job lifecycle; it records the terminal audit with the preparation time as
+creation and a fresh PostgreSQL completion time, then removes the preparation.
+An authoritative replay removes only its preparation and emits no audit or
+mail. Bounded non-durable periodic maintenance terminalizes abandoned
+preparations as failed audits under `SKIP LOCKED`. Copy is limited to the
+supplied description, exact committed expiry, action time, a localized
+Institution/Academic Unit scope label, and bounded action count. The one-time
+credential, stored hash, and complete action list never enter mail content or
+delivery metadata.
 
 A fan-out occurrence freezes a bounded encrypted render bundle containing its
 template sources, localized copy, schema version, and digest. Every child uses
