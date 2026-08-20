@@ -50,6 +50,7 @@ type InvitationProfileSuggestions struct {
 	FirstName   string
 	LastName    string
 	Locale      string
+	Timezone    string
 }
 
 // Invitation is the durable pre-User credential and frozen relationship
@@ -572,6 +573,7 @@ func normalizeInvitationSuggestions(value InvitationProfileSuggestions) Invitati
 	value.FirstName = SanitizeUnicode(value.FirstName)
 	value.LastName = SanitizeUnicode(value.LastName)
 	value.Locale = SanitizeUnicode(value.Locale)
+	value.Timezone = SanitizeUnicode(value.Timezone)
 	return value
 }
 
@@ -586,6 +588,9 @@ func validateInvitationSuggestions(value InvitationProfileSuggestions) error {
 	}
 	if value.Locale != "" && (len(value.Locale) > UserLocaleMaxLength || !validLocale.MatchString(value.Locale)) {
 		return fmt.Errorf("locale has an invalid format")
+	}
+	if len(value.Timezone) > UserTimezoneMaxLength {
+		return fmt.Errorf("timezone is too long")
 	}
 	return nil
 }

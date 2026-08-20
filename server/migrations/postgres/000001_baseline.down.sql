@@ -18,6 +18,8 @@ DROP FUNCTION IF EXISTS reject_mail_occurrence_update();
 ALTER TABLE IF EXISTS role_bindings
     DROP CONSTRAINT IF EXISTS role_bindings_origin_invitation_id_fkey;
 DROP TABLE IF EXISTS external_login_states;
+DROP TABLE IF EXISTS onboarding_import_rows;
+DROP TABLE IF EXISTS onboarding_imports;
 DROP TABLE IF EXISTS invitations;
 DROP TABLE IF EXISTS job_attempts;
 DROP TABLE IF EXISTS job_permanent_occurrences;

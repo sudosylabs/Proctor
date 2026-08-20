@@ -147,6 +147,7 @@ func TestJobRecipePreservesLifecycleOnlyGraphs(t *testing.T) {
 		Dependencies{Store: constructionCatalogWithoutJobs{}},
 		applicationFoundation{},
 		accessAcademicConstruction{},
+		identityConstruction{},
 		examinationConstruction{},
 		profileFileConstruction{},
 	)
@@ -167,6 +168,7 @@ type constructionCatalogWithJobs struct {
 	desktop              store.DesktopAuthorizationStore
 	externalLoginStates  store.ExternalLoginStateStore
 	invitations          store.InvitationStore
+	onboardingImports    store.OnboardingImportStore
 	personalAccessTokens store.PersonalAccessTokenStore
 	examSittings         store.ExamSittingStore
 }
@@ -191,6 +193,9 @@ func (catalog constructionCatalogWithJobs) ExternalLoginState() store.ExternalLo
 func (catalog constructionCatalogWithJobs) Invitation() store.InvitationStore {
 	return catalog.invitations
 }
+func (catalog constructionCatalogWithJobs) OnboardingImport() store.OnboardingImportStore {
+	return catalog.onboardingImports
+}
 func (catalog constructionCatalogWithJobs) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return catalog.personalAccessTokens
 }
@@ -206,6 +211,7 @@ type constructionUserStoreStub struct{ store.UserStore }
 type constructionFileStoreStub struct{ store.FileStore }
 type constructionInstitutionStoreStub struct{ store.InstitutionStore }
 type constructionInvitationStoreStub struct{ store.InvitationStore }
+type constructionOnboardingImportStoreStub struct{ store.OnboardingImportStore }
 type constructionPersonalAccessTokenStoreStub struct{ store.PersonalAccessTokenStore }
 type constructionExamSittingStoreStub struct{ store.ExamSittingStore }
 type constructionDesktopAuthorizationStoreStub struct {
@@ -230,6 +236,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
 				desktop: constructionDesktopAuthorizationStoreStub{}, externalLoginStates: constructionExternalLoginStateStoreStub{}, invitations: constructionInvitationStoreStub{},
+				onboardingImports:    constructionOnboardingImportStoreStub{},
 				personalAccessTokens: constructionPersonalAccessTokenStoreStub{},
 				examSittings:         constructionExamSittingStoreStub{},
 			},
@@ -237,6 +244,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 		},
 		applicationFoundation{},
 		accessAcademicConstruction{},
+		identityConstruction{},
 		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: constructionExamAttemptUseCasesStub{}},
 		profiles,
 	)
@@ -268,10 +276,11 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 				jobs: constructionJobStoreStub{}, users: constructionUserStoreStub{},
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
 				desktop: constructionDesktopAuthorizationStoreStub{}, externalLoginStates: constructionExternalLoginStateStoreStub{}, invitations: constructionInvitationStoreStub{},
-				personalAccessTokens: constructionPersonalAccessTokenStoreStub{},
+				onboardingImports: constructionOnboardingImportStoreStub{}, personalAccessTokens: constructionPersonalAccessTokenStoreStub{},
 			},
 			FileContent: constructionFileContentStub{},
 		},
+		identityConstruction{onboardingImports: &onboardingImportService{}},
 		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: constructionExamAttemptUseCasesStub{}}, profiles,
 		&defaultProfilePictureJobProposer{jobs: constructionJobStoreStub{}},
 		newMailHealth(false),
@@ -314,8 +323,14 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if !exists {
 		t.Fatal("Invitation maintenance descriptor is absent from the application Job graph")
 	}
-	if handler, ok := invitationMaintenance.Handler.(invitationMaintenanceHandler); !ok || handler.invitations == nil {
+	if handler, ok := invitationMaintenance.Handler.(invitationMaintenanceHandler); !ok || handler.invitations == nil || handler.imports == nil || handler.content == nil || handler.now == nil {
 		t.Fatalf("Invitation maintenance handler = %#v", invitationMaintenance.Handler)
+	}
+	if descriptor, ok := descriptors[model.JobTypeOnboardingImportParse]; !ok || !descriptor.Cancelable {
+		t.Fatalf("Onboarding import parse descriptor = %#v", descriptor)
+	}
+	if descriptor, ok := descriptors[model.JobTypeOnboardingImportExecute]; !ok || !descriptor.Cancelable || len(descriptor.CheckpointVersions) != 1 {
+		t.Fatalf("Onboarding import execution descriptor = %#v", descriptor)
 	}
 
 	recurrenceCount := 0
@@ -398,7 +413,8 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		retained[policy.Type] = true
 	}
 	if !retained[model.JobTypeExamSittingLifecycle] || !retained[model.JobTypeExamSittingLifecycleRecovery] ||
-		!retained[model.JobTypeExamSittingSealing] || !retained[model.JobTypeInvitationMaintenance] {
+		!retained[model.JobTypeExamSittingSealing] || !retained[model.JobTypeInvitationMaintenance] ||
+		!retained[model.JobTypeOnboardingImportParse] || !retained[model.JobTypeOnboardingImportExecute] {
 		t.Fatalf("cleanup retention types = %#v", retained)
 	}
 }

@@ -135,7 +135,13 @@ func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal
 		return invalidTokenAppError()
 	}
 	user, err := s.users.Get(ctx, principal.UserID.String())
-	if err != nil || !user.IsActive() {
+	if err != nil {
+		if store.IsNotFound(err) {
+			return invalidTokenAppError()
+		}
+		return authenticationUnavailable(err)
+	}
+	if !user.IsActive() {
 		return invalidTokenAppError()
 	}
 	return nil

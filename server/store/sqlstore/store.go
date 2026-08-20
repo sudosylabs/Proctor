@@ -97,6 +97,7 @@ type SQLStoreStores struct {
 	desktopAuthorization store.DesktopAuthorizationStore
 	userToken            store.UserTokenStore
 	invitation           store.InvitationStore
+	onboardingImport     store.OnboardingImportStore
 	personalAccessToken  store.PersonalAccessTokenStore
 	mfa                  store.MFAStore
 	affiliation          store.AffiliationStore
@@ -175,6 +176,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.desktopAuthorization = newSQLDesktopAuthorizationStore(sqlStore)
 	sqlStore.stores.userToken = newSQLUserTokenStore(sqlStore)
 	sqlStore.stores.invitation = newSQLInvitationStore(sqlStore)
+	sqlStore.stores.onboardingImport = newSQLOnboardingImportStore(sqlStore)
 	sqlStore.stores.personalAccessToken = newSQLPersonalAccessTokenStore(sqlStore)
 	sqlStore.stores.mfa = newSQLMFAStore(sqlStore)
 	sqlStore.stores.affiliation = newSQLAffiliationStore(sqlStore)
@@ -305,6 +307,10 @@ func (ss *SQLStore) UserToken() store.UserTokenStore {
 
 func (ss *SQLStore) Invitation() store.InvitationStore {
 	return ss.stores.invitation
+}
+
+func (ss *SQLStore) OnboardingImport() store.OnboardingImportStore {
+	return ss.stores.onboardingImport
 }
 
 func (ss *SQLStore) PersonalAccessToken() store.PersonalAccessTokenStore {

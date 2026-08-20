@@ -61,6 +61,7 @@ type idempotentMutation[T any] struct {
 	hydrateReplay     func(context.Context, *sqlxTxWrapper, T) (T, error)
 	completeReplay    func(context.Context, *sqlxTxWrapper, T, string) error
 	freshAuditEventID func(T) (string, error)
+	onboardingOutcome func(T) (model.OnboardingImportRowStatus, model.InvitationID, error)
 }
 
 type idempotentResult[T any] struct {
@@ -74,6 +75,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		command.FingerprintVersion <= 0 || command.OutcomeVersion <= 0 ||
 		command.Retention <= 0 || command.Wait <= 0 || mutation.execute == nil ||
 		mutation.encode == nil || mutation.decode == nil ||
+		(command.OnboardingImportID.IsValid() != (command.OnboardingImportRowNumber > 0)) ||
 		(mutation.freshAuditEventID == nil &&
 			(mutation.completeReplay == nil || !model.IsValidId(mutation.auditEventID))) {
 		return nil, store.NewErrInvalidInput("command_outcome", "mutation", nil)
@@ -90,6 +92,9 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 				return nil, &store.ErrIdempotencyInProgress{}
 			}
 			return nil, fmt.Errorf("lock idempotent command: %w", err)
+		}
+		if err := lockOnboardingImportCommand(ctx, tx, command); err != nil {
+			return nil, err
 		}
 
 		var row commandOutcomeRow
@@ -116,6 +121,9 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 				if completeErr := mutation.completeReplay(ctx, tx, value, row.OriginalAuditID.String); completeErr != nil {
 					return nil, completeErr
 				}
+			}
+			if err = completeOnboardingImportCommand(ctx, tx, command, value, mutation.onboardingOutcome); err != nil {
+				return nil, err
 			}
 			return &idempotentResult[T]{Value: value, Replayed: true}, nil
 		case errors.Is(err, sql.ErrNoRows):
@@ -157,6 +165,9 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 			command.Fingerprint[:], command.OutcomeVersion, encoded, persistedAuditID,
 			command.Retention.Milliseconds()); err != nil {
 			return nil, fmt.Errorf("persist idempotent command outcome: %w", err)
+		}
+		if err = completeOnboardingImportCommand(ctx, tx, command, value, mutation.onboardingOutcome); err != nil {
+			return nil, err
 		}
 		return &idempotentResult[T]{Value: value}, nil
 	})

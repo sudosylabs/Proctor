@@ -335,6 +335,18 @@ func (s SQLAcademicUnitStore) Search(
 	return units, nil
 }
 
+func (s SQLAcademicUnitStore) GetByName(ctx context.Context, institutionID, name string) (*model.AcademicUnit, error) {
+	if !model.IsValidId(institutionID) || name == "" {
+		return nil, store.NewErrInvalidInput("academic_unit", "name", nil)
+	}
+	var row academicUnitRow
+	query := s.academicUnitsQuery.Where(sq.Eq{"academic_units.institution_id": institutionID, "academic_units.name": name, "academic_units.archived_at": nil})
+	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
+		return nil, translateError("academic_unit", name, err)
+	}
+	return row.model()
+}
+
 type academicUnitAuditCompletion struct {
 	eventID string
 	at      int64

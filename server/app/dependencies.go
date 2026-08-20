@@ -5,12 +5,14 @@ package app
 
 import (
 	"context"
+	"io"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -30,6 +32,15 @@ type FileContent interface {
 	examresource.FileContent
 	examcorrection.Content
 	examworkspace.Content
+	OnboardingImportFiles
+}
+
+type OnboardingImportFiles interface {
+	StageOnboardingImport(context.Context, model.OnboardingImportID, io.Reader, int64) (string, int64, error)
+	IsOnboardingImportTooLarge(error) bool
+	OpenOnboardingImport(context.Context, model.OnboardingImportID) (io.ReadCloser, error)
+	RemoveOnboardingImport(context.Context, model.OnboardingImportID) error
+	ListOnboardingImportFiles(context.Context, string, int, time.Time) ([]model.OnboardingImportID, string, error)
 }
 
 // Dependencies are the explicit capabilities package app needs. The module-root

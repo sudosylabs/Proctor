@@ -29,6 +29,11 @@ type CommandIdempotency struct {
 	OutcomeVersion     int
 	Retention          time.Duration
 	Wait               time.Duration
+	// OnboardingImportID and OnboardingImportRowNumber bind a CSV execution
+	// command to the parent/row fence that must commit with its ordinary
+	// mutation. They are absent for all non-import commands.
+	OnboardingImportID        model.OnboardingImportID
+	OnboardingImportRowNumber int
 }
 
 // AcademicUnitCommandResult and AcademicPeriodCommandResult report whether a
@@ -288,6 +293,7 @@ type Catalog interface {
 	DesktopAuthorization() DesktopAuthorizationStore
 	UserToken() UserTokenStore
 	Invitation() InvitationStore
+	OnboardingImport() OnboardingImportStore
 	PersonalAccessToken() PersonalAccessTokenStore
 	MFA() MFAStore
 	Affiliation() AffiliationStore
@@ -333,6 +339,7 @@ type Store interface {
 	DesktopAuthorization() DesktopAuthorizationStore
 	UserToken() UserTokenStore
 	Invitation() InvitationStore
+	OnboardingImport() OnboardingImportStore
 	PersonalAccessToken() PersonalAccessTokenStore
 	MFA() MFAStore
 	Affiliation() AffiliationStore
@@ -826,6 +833,7 @@ type AcademicUnitStore interface {
 	ArchiveWithAudit(context.Context, *AcademicUnitArchive) (*model.AcademicUnit, error)
 	Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
 	Get(context.Context, string) (*model.AcademicUnit, error)
+	GetByName(context.Context, string, string) (*model.AcademicUnit, error)
 	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)
 	ListAncestors(context.Context, string) ([]*model.AcademicUnit, error)
 	Search(context.Context, string, string, int) ([]*model.AcademicUnit, error)
@@ -1515,6 +1523,7 @@ type InvitationCommandResult struct {
 	Invitation *model.Invitation
 	Replayed   bool
 	Duplicate  bool
+	NoOp       bool
 }
 
 // InvitationAdministrationCommandResult is the lifecycle-command equivalent
@@ -1612,6 +1621,126 @@ type InvitationReplacement struct {
 	AuditAt                 int64
 }
 
+const (
+	OnboardingImportMaximumBytes   = 10 * 1024 * 1024
+	OnboardingImportMaximumRows    = 50_000
+	OnboardingImportMaximumColumns = 64
+	OnboardingImportMaximumField   = 16 * 1024
+	OnboardingImportPageSize       = 200
+)
+
+// OnboardingImport is the safe aggregate projection. Recipient data and the
+// frozen row commands remain private to persistence and never enter Jobs,
+// audit fields, logs, or administration list responses.
+type OnboardingImport struct {
+	ID             model.OnboardingImportID
+	Mode           model.OnboardingImportMode
+	State          model.OnboardingImportState
+	ScopeType      model.RoleScopeType
+	ScopeID        string
+	RoleID         model.RoleID
+	ActorUserID    model.UserID
+	PreviewDigest  string
+	IgnoredHeaders []string
+	TotalRows      int
+	ValidRows      int
+	InvalidRows    int
+	SucceededRows  int
+	NoOpRows       int
+	FailedRows     int
+	SkippedRows    int
+	CommitPolicy   model.OnboardingImportCommitPolicy
+	ParseJobID     model.JobID
+	ExecutionJobID model.JobID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ExpiresAt      time.Time
+	Revision       int64
+	FailureCode    string
+	Principal      model.Principal
+}
+
+// OnboardingImportRow is the detailed seven-day preview/report row. Command
+// contains private normalized recipient/package input and must never be
+// returned directly by a transport.
+type OnboardingImportRow struct {
+	ImportID       model.OnboardingImportID
+	RowNumber      int
+	Reference      string
+	Operation      string
+	ScopeType      model.RoleScopeType
+	ScopeID        string
+	TargetRevision int64
+	RoleID         model.RoleID
+	RoleRevision   int64
+	Email          string
+	Username       string
+	DisplayName    string
+	FirstName      string
+	LastName       string
+	Locale         string
+	Timezone       string
+	StartsAt       int64
+	EndsAt         int64
+	PreviewStatus  model.OnboardingImportRowStatus
+	PreviewCode    string
+	Status         model.OnboardingImportRowStatus
+	PublicCode     string
+	InvitationID   model.InvitationID
+	UpdatedAt      time.Time
+}
+
+type OnboardingImportCreation struct {
+	Import       *OnboardingImport
+	ParseJob     *model.Job
+	AuditEventID string
+	AuditAt      int64
+}
+
+type OnboardingImportPreviewCompletion struct {
+	ID               model.OnboardingImportID
+	ExpectedRevision int64
+	Digest           string
+	IgnoredHeaders   []string
+	Rows             []OnboardingImportRow
+	At               time.Time
+}
+
+type OnboardingImportCommit struct {
+	ID               model.OnboardingImportID
+	ActorUserID      model.UserID
+	ExpectedRevision int64
+	PreviewDigest    string
+	Policy           model.OnboardingImportCommitPolicy
+	IdempotencyKey   [sha256.Size]byte
+	ExecutionJob     *model.Job
+	At               time.Time
+	AuditEventID     string
+	AuditAt          int64
+}
+
+type OnboardingImportCancellation struct {
+	ID           model.OnboardingImportID
+	ActorUserID  model.UserID
+	At           time.Time
+	AuditEventID string
+	AuditAt      int64
+}
+
+type OnboardingImportRowCompletion struct {
+	ID           model.OnboardingImportID
+	RowNumber    int
+	Status       model.OnboardingImportRowStatus
+	PublicCode   string
+	InvitationID model.InvitationID
+	At           time.Time
+}
+
+type OnboardingImportPage struct {
+	Rows []OnboardingImportRow
+	More bool
+}
+
 // InvitationStore owns durable Invitation issuance, acceptance,
 // administration, and their retained idempotent outcomes. Raw claims never
 // cross this boundary.
@@ -1622,6 +1751,7 @@ type InvitationStore interface {
 	IssueTeacherAcademicUnitIdempotently(context.Context, *TeacherAcademicUnitInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
 	IssueScopedRole(context.Context, *ScopedRoleInvitationIssue) (*model.Invitation, error)
 	IssueScopedRoleIdempotently(context.Context, *ScopedRoleInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
+	ResolveOnboardingInvitationNoOp(context.Context, *model.Invitation) (*model.Invitation, bool, error)
 	FindCommandOutcome(context.Context, *CommandIdempotency) (*InvitationCommandResult, error)
 	ReplayIssue(context.Context, *CommandIdempotency, string, int64) (*InvitationCommandResult, error)
 	ReplayAdministration(context.Context, *CommandIdempotency, string, int64) (*InvitationAdministrationCommandResult, error)
@@ -1640,6 +1770,22 @@ type InvitationStore interface {
 	RevokeIdempotently(context.Context, *InvitationRevocation, *CommandIdempotency) (*InvitationAdministrationCommandResult, error)
 	Replace(context.Context, *InvitationReplacement) (*InvitationAdministrationRecord, error)
 	Maintain(context.Context, int) (*InvitationMaintenanceResult, error)
+}
+
+// OnboardingImportStore owns the seven-day CSV import aggregate, its frozen
+// private rows, execution fences, and retention lifecycle.
+type OnboardingImportStore interface {
+	CreateOnboardingImport(context.Context, *OnboardingImportCreation) (*OnboardingImport, error)
+	GetOnboardingImport(context.Context, model.OnboardingImportID) (*OnboardingImport, error)
+	CompleteOnboardingImportPreview(context.Context, *OnboardingImportPreviewCompletion) (*OnboardingImport, error)
+	CommitOnboardingImport(context.Context, *OnboardingImportCommit) (*OnboardingImport, error)
+	ListOnboardingImportRows(context.Context, model.OnboardingImportID, int, int) (*OnboardingImportPage, error)
+	CompleteOnboardingImportRow(context.Context, *OnboardingImportRowCompletion) (*OnboardingImport, error)
+	FinishOnboardingImport(context.Context, model.OnboardingImportID, time.Time) (*OnboardingImport, error)
+	CancelOnboardingImport(context.Context, *OnboardingImportCancellation) (*OnboardingImport, error)
+	FailOnboardingImport(context.Context, model.OnboardingImportID, string, time.Time) (*OnboardingImport, error)
+	ListExpiredOnboardingImports(context.Context, int, time.Time) ([]model.OnboardingImportID, error)
+	PurgeOnboardingImport(context.Context, model.OnboardingImportID, time.Time) (bool, error)
 }
 
 type PersonalAccessTokenResolution struct {

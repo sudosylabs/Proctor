@@ -107,8 +107,11 @@ func (s *hookStore) ExternalLoginState() store.ExternalLoginStateStore {
 func (s *hookStore) DesktopAuthorization() store.DesktopAuthorizationStore {
 	return hookDesktopAuthorizationStore{}
 }
-func (s *hookStore) UserToken() store.UserTokenStore               { return hookUserTokenStore{} }
-func (s *hookStore) Invitation() store.InvitationStore             { return hookInvitationStore{} }
+func (s *hookStore) UserToken() store.UserTokenStore   { return hookUserTokenStore{} }
+func (s *hookStore) Invitation() store.InvitationStore { return hookInvitationStore{} }
+func (s *hookStore) OnboardingImport() store.OnboardingImportStore {
+	return hookOnboardingImportStore{}
+}
 func (s *hookStore) Role() store.RoleStore                         { return hookRoleStore{} }
 func (s *hookStore) RoleBinding() store.RoleBindingStore           { return hookRoleBindingStore{} }
 func (s *hookStore) Audit() store.AuditStore                       { return hookAuditStore{} }
@@ -123,6 +126,7 @@ func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore {
 }
 
 type hookInvitationStore struct{ store.InvitationStore }
+type hookOnboardingImportStore struct{ store.OnboardingImportStore }
 
 type hookServingNodeLeaseStore struct{}
 

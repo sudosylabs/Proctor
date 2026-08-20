@@ -72,6 +72,8 @@ type retryStores struct {
 	userTokenOnce            sync.Once
 	invitation               store.InvitationStore
 	invitationOnce           sync.Once
+	onboardingImport         store.OnboardingImportStore
+	onboardingImportOnce     sync.Once
 	personalAccessToken      store.PersonalAccessTokenStore
 	personalAccessTokenOnce  sync.Once
 	mfa                      store.MFAStore
@@ -245,6 +247,11 @@ type userTokenStore struct {
 
 type invitationStore struct {
 	store.InvitationStore
+	layer *Layer
+}
+
+type onboardingImportStore struct {
+	store.OnboardingImportStore
 	layer *Layer
 }
 
@@ -568,6 +575,16 @@ func (l *Layer) Invitation() store.InvitationStore {
 	return l.stores.invitation
 }
 
+func (l *Layer) OnboardingImport() store.OnboardingImportStore {
+	l.stores.onboardingImportOnce.Do(func() {
+		next := l.Store.OnboardingImport()
+		if next != nil {
+			l.stores.onboardingImport = &onboardingImportStore{OnboardingImportStore: next, layer: l}
+		}
+	})
+	return l.stores.onboardingImport
+}
+
 func (l *Layer) PersonalAccessToken() store.PersonalAccessTokenStore {
 	l.stores.personalAccessTokenOnce.Do(func() {
 		next := l.Store.PersonalAccessToken()
@@ -760,6 +777,7 @@ var (
 	_ store.ExternalLoginStateStore   = (*externalLoginStateStore)(nil)
 	_ store.UserTokenStore            = (*userTokenStore)(nil)
 	_ store.InvitationStore           = (*invitationStore)(nil)
+	_ store.OnboardingImportStore     = (*onboardingImportStore)(nil)
 	_ store.PersonalAccessTokenStore  = (*personalAccessTokenStore)(nil)
 	_ store.MFAStore                  = (*mfaStore)(nil)
 	_ store.AffiliationStore          = (*affiliationStore)(nil)

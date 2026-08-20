@@ -368,6 +368,27 @@ already-approved bounded delivery summary. They contain no recipient package,
 raw or hashed claim, rendered mail, or transport secret, and replay resolves
 before a new claim or mail candidate is prepared.
 
+## CSV Invitation imports
+
+`POST /api/v1/onboarding-imports` is a bounded streaming `text/csv` upload for
+an authenticated principal with `onboarding_batch.manage` at the declared
+exact scope. Query parameters select the closed import mode and external
+Class, Academic Unit, Institution, and optional teacher Role target. The route
+accepts at most 10 MiB; parsing and full row validation run asynchronously.
+Original bytes are private staging material and are removed after preview
+creation or cancellation.
+
+`GET /api/v1/onboarding-imports/{id}` returns the immutable, content-digested
+preview and safe row projections. `POST .../{id}/commit` requires an
+`Idempotency-Key`, the exact preview digest and revision, and either
+`require_all_valid` or `valid_rows_only`; it queues at most one resumable
+execution Job. `POST .../{id}/cancel` cooperatively stops new rows, and
+`GET .../{id}/report` downloads a `text/csv` safe-result projection. Every
+operation reauthorizes; execution also revalidates authority and target
+revisions per row. JSON and report responses are `no-store`, reports are
+`nosniff`, and neither projection contains recipient email, CSV command fields,
+raw or hashed Invitation claims, rendered mail, or private errors.
+
 ## Ownership and extension workflow
 
 `api.New` is the production construction boundary. Its broad `Options` value

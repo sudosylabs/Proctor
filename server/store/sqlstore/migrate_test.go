@@ -79,6 +79,8 @@ var baselineTables = []string{
 	"mail_send_rate_limit",
 	"mfa_credentials",
 	"mfa_recovery_codes",
+	"onboarding_import_rows",
+	"onboarding_imports",
 	"password_credentials",
 	"personal_access_token_mutation_preparations",
 	"personal_access_tokens",
@@ -264,7 +266,7 @@ func truncateBaselineTables(t *testing.T, ctx context.Context, migrator *Migrato
 
 	if _, err := migrator.store.GetMaster().Exec(ctx, `
 		TRUNCATE TABLE
-			cluster_discovery_nodes, mail_send_rate_limit, mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, invitations, job_attempts, jobs, browser_authentication_transactions, external_login_states, installation_states, access_policy_transitions, access_policies,
+			cluster_discovery_nodes, mail_send_rate_limit, mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences, onboarding_import_rows, onboarding_imports, invitations, job_attempts, jobs, browser_authentication_transactions, external_login_states, installation_states, access_policy_transitions, access_policies,
 			audit_events, mfa_recovery_codes, mfa_credentials, user_tokens,
 			user_settings_documents,
 			personal_access_token_mutation_preparations, personal_access_tokens, session_credentials, sessions, role_bindings,

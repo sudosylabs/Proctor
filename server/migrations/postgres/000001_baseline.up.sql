@@ -337,6 +337,7 @@ CREATE TABLE invitations (
     suggested_first_name varchar(256) NOT NULL DEFAULT '',
     suggested_last_name varchar(256) NOT NULL DEFAULT '',
     suggested_locale varchar(35) NOT NULL DEFAULT '',
+    suggested_timezone varchar(64) NOT NULL DEFAULT '',
     inviter_user_id varchar(26) NOT NULL REFERENCES users(id),
     scope_type varchar(32) NOT NULL CHECK (scope_type IN ('class', 'academic_unit', 'institution')),
     scope_id varchar(26) NOT NULL,
@@ -391,6 +392,97 @@ CREATE UNIQUE INDEX invitations_pending_academic_unit_role_package_key
 CREATE UNIQUE INDEX invitations_pending_institution_role_package_key
     ON invitations (target_email, scope_id, role_id)
     WHERE state = 'pending' AND purpose = 'institution_role';
+
+-- CSV onboarding imports retain only a seven-day private preview/report. Job
+-- commands contain the opaque import ID; recipient data remains in these
+-- domain-owned tables and is removed with the aggregate.
+CREATE TABLE onboarding_imports (
+    id varchar(26) PRIMARY KEY,
+    mode varchar(32) NOT NULL CHECK (mode IN ('student_class', 'teacher_academic_unit', 'institution')),
+    state varchar(32) NOT NULL CHECK (state IN ('uploading', 'parsing', 'preview_ready', 'executing', 'completed', 'completed_with_errors', 'canceled', 'failed')),
+    scope_type varchar(32) NOT NULL CHECK (scope_type IN ('class', 'academic_unit', 'institution')),
+    scope_id varchar(26) NOT NULL,
+    role_id varchar(26),
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    principal jsonb NOT NULL,
+    preview_digest char(64) NOT NULL DEFAULT '' CHECK (preview_digest = '' OR preview_digest ~ '^[0-9a-f]{64}$'),
+    ignored_headers text[] NOT NULL DEFAULT '{}',
+    total_rows integer NOT NULL DEFAULT 0 CHECK (total_rows BETWEEN 0 AND 50000),
+    valid_rows integer NOT NULL DEFAULT 0 CHECK (valid_rows >= 0),
+    invalid_rows integer NOT NULL DEFAULT 0 CHECK (invalid_rows >= 0),
+    succeeded_rows integer NOT NULL DEFAULT 0 CHECK (succeeded_rows >= 0),
+    no_op_rows integer NOT NULL DEFAULT 0 CHECK (no_op_rows >= 0),
+    failed_rows integer NOT NULL DEFAULT 0 CHECK (failed_rows >= 0),
+    skipped_rows integer NOT NULL DEFAULT 0 CHECK (skipped_rows >= 0),
+    commit_policy varchar(32) CHECK (commit_policy IN ('require_all_valid', 'valid_rows_only')),
+    commit_expected_revision bigint CHECK (commit_expected_revision > 0),
+    commit_at timestamptz,
+    commit_key_digest bytea,
+    parse_job_id varchar(26) NOT NULL UNIQUE REFERENCES jobs(id),
+    execution_job_id varchar(26) UNIQUE REFERENCES jobs(id),
+    failure_code varchar(128) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    CONSTRAINT onboarding_imports_scope_check CHECK (
+        (mode = 'student_class' AND scope_type = 'class' AND role_id IS NULL) OR
+        (mode = 'teacher_academic_unit' AND scope_type = 'academic_unit' AND role_id IS NOT NULL) OR
+        (mode = 'institution' AND scope_type = 'institution' AND role_id IS NULL)
+    ),
+    CONSTRAINT onboarding_imports_counts_check CHECK (
+        valid_rows + invalid_rows = total_rows AND
+        succeeded_rows + no_op_rows + failed_rows + skipped_rows <= total_rows
+    ),
+    CONSTRAINT onboarding_imports_lifecycle_check CHECK (
+        updated_at >= created_at AND expires_at = created_at + interval '7 days' AND
+        (state NOT IN ('uploading', 'parsing') OR preview_digest = '') AND
+        (state NOT IN ('preview_ready', 'executing', 'completed', 'completed_with_errors') OR preview_digest <> '') AND
+        ((state IN ('executing', 'completed', 'completed_with_errors') AND execution_job_id IS NOT NULL) OR
+         state NOT IN ('executing', 'completed', 'completed_with_errors'))
+    )
+);
+
+CREATE UNIQUE INDEX onboarding_imports_active_scope_idx
+    ON onboarding_imports (mode, scope_type, scope_id)
+    WHERE state = 'executing';
+CREATE INDEX onboarding_imports_expiry_idx ON onboarding_imports (expires_at, id);
+
+CREATE TABLE onboarding_import_rows (
+    import_id varchar(26) NOT NULL REFERENCES onboarding_imports(id) ON DELETE CASCADE,
+    row_number integer NOT NULL CHECK (row_number BETWEEN 1 AND 50000),
+    reference varchar(128) NOT NULL,
+    operation varchar(64) NOT NULL,
+    scope_type varchar(32) NOT NULL CHECK (scope_type IN ('class', 'academic_unit', 'institution')),
+    scope_id varchar(26) NOT NULL,
+    target_revision bigint NOT NULL CHECK (target_revision >= 0),
+    role_id varchar(26),
+    role_revision bigint NOT NULL DEFAULT 0 CHECK (role_revision >= 0),
+    target_email varchar(254) NOT NULL CHECK (target_email = lower(btrim(target_email))),
+    suggested_username varchar(64) NOT NULL DEFAULT '',
+    suggested_display_name varchar(512) NOT NULL DEFAULT '',
+    suggested_first_name varchar(256) NOT NULL DEFAULT '',
+    suggested_last_name varchar(256) NOT NULL DEFAULT '',
+    suggested_locale varchar(35) NOT NULL DEFAULT '',
+    suggested_timezone varchar(64) NOT NULL DEFAULT '',
+    intended_start_at timestamptz,
+    intended_end_at timestamptz,
+    preview_status varchar(16) NOT NULL CHECK (preview_status IN ('valid', 'invalid', 'duplicate')),
+    preview_code varchar(128) NOT NULL DEFAULT '',
+    status varchar(16) NOT NULL CHECK (status IN ('valid', 'invalid', 'duplicate', 'pending', 'succeeded', 'no_op', 'failed', 'skipped', 'canceled')),
+    public_code varchar(128) NOT NULL DEFAULT '',
+    invitation_id varchar(26) REFERENCES invitations(id),
+    updated_at timestamptz NOT NULL,
+    PRIMARY KEY (import_id, row_number),
+    CONSTRAINT onboarding_import_rows_result_check CHECK (
+        (status <> 'succeeded' OR invitation_id IS NOT NULL) AND
+        (invitation_id IS NULL OR status IN ('succeeded', 'no_op')) AND
+        (status = 'failed') = (public_code <> '')
+    )
+);
+
+CREATE INDEX onboarding_import_rows_execution_idx
+    ON onboarding_import_rows (import_id, row_number) WHERE status = 'pending';
 
 -- One immutable logical occurrence owns one or more frozen recipient
 -- deliveries. Occurrence actors and recipient targets are deliberately
@@ -1259,6 +1351,12 @@ CREATE UNIQUE INDEX roles_name_key ON roles (name) WHERE archived_at IS NULL;
 
 ALTER TABLE invitations
     ADD CONSTRAINT invitations_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(id);
+
+ALTER TABLE onboarding_imports
+    ADD CONSTRAINT onboarding_imports_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(id);
+
+ALTER TABLE onboarding_import_rows
+    ADD CONSTRAINT onboarding_import_rows_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(id);
 
 CREATE TABLE role_bindings (
     id varchar(26) PRIMARY KEY,
@@ -2899,6 +2997,30 @@ ALTER TABLE invitations
     CHECK (accepted_academic_unit_member_id IS NULL OR accepted_academic_unit_member_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT invitations_accepted_role_binding_id_canonical_check
     CHECK (accepted_role_binding_id IS NULL OR accepted_role_binding_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE onboarding_imports
+    ADD CONSTRAINT onboarding_imports_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_scope_id_canonical_check
+    CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_role_id_canonical_check
+    CHECK (role_id IS NULL OR role_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_actor_user_id_canonical_check
+    CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_parse_job_id_canonical_check
+    CHECK (parse_job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_execution_job_id_canonical_check
+    CHECK (execution_job_id IS NULL OR execution_job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE onboarding_import_rows
+    ADD CONSTRAINT onboarding_import_rows_import_id_canonical_check
+    CHECK (import_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_import_rows_scope_id_canonical_check
+    CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_import_rows_role_id_canonical_check
+    CHECK (role_id IS NULL OR role_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_import_rows_invitation_id_canonical_check
+    CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE mail_occurrences
     ADD CONSTRAINT mail_occurrences_id_canonical_check

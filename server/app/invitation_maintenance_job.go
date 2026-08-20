@@ -16,23 +16,35 @@ import (
 
 const invitationMaintenancePageSize = 500
 const invitationMaintenanceMaximumPages = 20
+const onboardingImportOrphanSafetyWindow = time.Hour
 
 type InvitationMaintenanceCommandV1 struct {
 	PageSize int `json:"page_size"`
 	MaxPages int `json:"max_pages"`
 }
 type InvitationMaintenanceResultV1 struct {
-	Expired int `json:"expired"`
-	Purged  int `json:"purged"`
+	Expired          int `json:"expired"`
+	Purged           int `json:"purged"`
+	OnboardingPurged int `json:"onboarding_purged"`
 }
 
 type invitationMaintenanceStore interface {
 	Maintain(context.Context, int) (*store.InvitationMaintenanceResult, error)
 }
-type invitationMaintenanceHandler struct{ invitations invitationMaintenanceStore }
+type onboardingImportMaintenanceStore interface {
+	GetOnboardingImport(context.Context, model.OnboardingImportID) (*store.OnboardingImport, error)
+	ListExpiredOnboardingImports(context.Context, int, time.Time) ([]model.OnboardingImportID, error)
+	PurgeOnboardingImport(context.Context, model.OnboardingImportID, time.Time) (bool, error)
+}
+type invitationMaintenanceHandler struct {
+	invitations invitationMaintenanceStore
+	imports     onboardingImportMaintenanceStore
+	content     OnboardingImportFiles
+	now         func() time.Time
+}
 
 func (h invitationMaintenanceHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
-	if execution.Job == nil || execution.Job.CommandVersion != 1 || h.invitations == nil {
+	if execution.Job == nil || execution.Job.CommandVersion != 1 || h.invitations == nil || h.imports == nil || h.content == nil || h.now == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Invitation maintenance job is invalid"))
 	}
 	var command InvitationMaintenanceCommandV1
@@ -40,6 +52,7 @@ func (h invitationMaintenanceHandler) Run(ctx context.Context, execution jobengi
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("Invitation maintenance command is invalid"))
 	}
 	result := InvitationMaintenanceResultV1{}
+	fileCursor := ""
 	for page := 0; page < command.MaxPages; page++ {
 		maintained, err := h.invitations.Maintain(ctx, command.PageSize)
 		if err != nil {
@@ -47,7 +60,40 @@ func (h invitationMaintenanceHandler) Run(ctx context.Context, execution jobengi
 		}
 		result.Expired += maintained.Expired
 		result.Purged += maintained.Purged
-		if !maintained.More {
+		at := model.TimeUTC(h.now())
+		expiredImports, err := h.imports.ListExpiredOnboardingImports(ctx, command.PageSize, at)
+		if err != nil {
+			return jobengine.RetryableFailure("dependency.unavailable", err)
+		}
+		for _, id := range expiredImports {
+			if err = h.content.RemoveOnboardingImport(ctx, id); err != nil {
+				return jobengine.RetryableFailure("dependency.unavailable", err)
+			}
+			purged, purgeErr := h.imports.PurgeOnboardingImport(ctx, id, at)
+			if purgeErr != nil {
+				return jobengine.RetryableFailure("dependency.unavailable", purgeErr)
+			}
+			if purged {
+				result.OnboardingPurged++
+			}
+		}
+		staged, nextCursor, err := h.content.ListOnboardingImportFiles(ctx, fileCursor, command.PageSize, at.Add(-onboardingImportOrphanSafetyWindow))
+		if err != nil {
+			return jobengine.RetryableFailure("dependency.unavailable", err)
+		}
+		for _, id := range staged {
+			current, getErr := h.imports.GetOnboardingImport(ctx, id)
+			if getErr != nil && !store.IsNotFound(getErr) {
+				return jobengine.RetryableFailure("dependency.unavailable", getErr)
+			}
+			if store.IsNotFound(getErr) || (current != nil && current.State != model.OnboardingImportUploading && current.State != model.OnboardingImportParsing) {
+				if removeErr := h.content.RemoveOnboardingImport(ctx, id); removeErr != nil {
+					return jobengine.RetryableFailure("dependency.unavailable", removeErr)
+				}
+			}
+		}
+		fileCursor = nextCursor
+		if !maintained.More && len(expiredImports) < command.PageSize && fileCursor == "" {
 			break
 		}
 	}

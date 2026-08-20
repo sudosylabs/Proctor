@@ -194,6 +194,15 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	if len(found) != 1 || found[0].ID != child.ID {
 		t.Fatalf("Search() = %#v", found)
 	}
+	exact, err := ss.AcademicUnit().GetByName(ctx, institution.ID.String(), child.Name)
+	requireNoError(t, err)
+	if exact.ID != child.ID {
+		t.Fatalf("GetByName() = %#v", exact)
+	}
+	otherInstitution := saveInstitution(t, ctx, ss)
+	if _, err = ss.AcademicUnit().GetByName(ctx, otherInstitution.ID.String(), child.Name); !store.IsNotFound(err) {
+		t.Fatalf("cross-Institution GetByName() error = %v", err)
+	}
 	if _, err = ss.AcademicUnit().Archive(ctx, parent.ID.String(), model.GetMillis()); !store.IsConflict(err) {
 		t.Fatalf("Archive(parent with child) error = %v", err)
 	}

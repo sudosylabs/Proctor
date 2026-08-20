@@ -75,6 +75,8 @@ type timedStores struct {
 	userTokenOnce            sync.Once
 	invitation               store.InvitationStore
 	invitationOnce           sync.Once
+	onboardingImport         store.OnboardingImportStore
+	onboardingImportOnce     sync.Once
 	personalAccessToken      store.PersonalAccessTokenStore
 	personalAccessTokenOnce  sync.Once
 	mfa                      store.MFAStore
@@ -249,6 +251,11 @@ type timedUserTokenStore struct {
 type timedInvitationStore struct {
 	layer *Layer
 	next  store.InvitationStore
+}
+
+type timedOnboardingImportStore struct {
+	layer *Layer
+	next  store.OnboardingImportStore
 }
 
 type timedPersonalAccessTokenStore struct {
@@ -569,6 +576,16 @@ func (l *Layer) Invitation() store.InvitationStore {
 		}
 	})
 	return l.stores.invitation
+}
+
+func (l *Layer) OnboardingImport() store.OnboardingImportStore {
+	l.stores.onboardingImportOnce.Do(func() {
+		next := l.next.OnboardingImport()
+		if next != nil {
+			l.stores.onboardingImport = &timedOnboardingImportStore{layer: l, next: next}
+		}
+	})
+	return l.stores.onboardingImport
 }
 
 func (l *Layer) PersonalAccessToken() store.PersonalAccessTokenStore {
@@ -1805,6 +1822,12 @@ func (s *timedAcademicUnitStore) Get(arg0 context.Context, arg1 string) (*model.
 	})
 }
 
+func (s *timedAcademicUnitStore) GetByName(arg0 context.Context, arg1 string, arg2 string) (*model.AcademicUnit, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGetByName), func() (*model.AcademicUnit, error) {
+		return s.next.GetByName(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedAcademicUnitStore) ListChildren(arg0 context.Context, arg1 string, arg2 string) ([]*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListChildren), func() ([]*model.AcademicUnit, error) {
 		return s.next.ListChildren(arg0, arg1, arg2)
@@ -2309,6 +2332,12 @@ func (s *timedInvitationStore) IssueScopedRoleIdempotently(arg0 context.Context,
 	})
 }
 
+func (s *timedInvitationStore) ResolveOnboardingInvitationNoOp(arg0 context.Context, arg1 *model.Invitation) (*model.Invitation, bool, error) {
+	return timeStoreCall2(s.layer, storeOperation(aggregateInvitation, methodResolveOnboardingInvitationNoOp), func() (*model.Invitation, bool, error) {
+		return s.next.ResolveOnboardingInvitationNoOp(arg0, arg1)
+	})
+}
+
 func (s *timedInvitationStore) FindCommandOutcome(arg0 context.Context, arg1 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodFindCommandOutcome), func() (*store.InvitationCommandResult, error) {
 		return s.next.FindCommandOutcome(arg0, arg1)
@@ -2414,6 +2443,72 @@ func (s *timedInvitationStore) Replace(arg0 context.Context, arg1 *store.Invitat
 func (s *timedInvitationStore) Maintain(arg0 context.Context, arg1 int) (*store.InvitationMaintenanceResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodMaintain), func() (*store.InvitationMaintenanceResult, error) {
 		return s.next.Maintain(arg0, arg1)
+	})
+}
+
+func (s *timedOnboardingImportStore) CreateOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportCreation) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCreateOnboardingImport), func() (*store.OnboardingImport, error) {
+		return s.next.CreateOnboardingImport(arg0, arg1)
+	})
+}
+
+func (s *timedOnboardingImportStore) GetOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodGetOnboardingImport), func() (*store.OnboardingImport, error) {
+		return s.next.GetOnboardingImport(arg0, arg1)
+	})
+}
+
+func (s *timedOnboardingImportStore) CompleteOnboardingImportPreview(arg0 context.Context, arg1 *store.OnboardingImportPreviewCompletion) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCompleteOnboardingImportPreview), func() (*store.OnboardingImport, error) {
+		return s.next.CompleteOnboardingImportPreview(arg0, arg1)
+	})
+}
+
+func (s *timedOnboardingImportStore) CommitOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportCommit) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCommitOnboardingImport), func() (*store.OnboardingImport, error) {
+		return s.next.CommitOnboardingImport(arg0, arg1)
+	})
+}
+
+func (s *timedOnboardingImportStore) ListOnboardingImportRows(arg0 context.Context, arg1 model.OnboardingImportID, arg2 int, arg3 int) (*store.OnboardingImportPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodListOnboardingImportRows), func() (*store.OnboardingImportPage, error) {
+		return s.next.ListOnboardingImportRows(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedOnboardingImportStore) CompleteOnboardingImportRow(arg0 context.Context, arg1 *store.OnboardingImportRowCompletion) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCompleteOnboardingImportRow), func() (*store.OnboardingImport, error) {
+		return s.next.CompleteOnboardingImportRow(arg0, arg1)
+	})
+}
+
+func (s *timedOnboardingImportStore) FinishOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID, arg2 time.Time) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodFinishOnboardingImport), func() (*store.OnboardingImport, error) {
+		return s.next.FinishOnboardingImport(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedOnboardingImportStore) CancelOnboardingImport(arg0 context.Context, arg1 *store.OnboardingImportCancellation) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodCancelOnboardingImport), func() (*store.OnboardingImport, error) {
+		return s.next.CancelOnboardingImport(arg0, arg1)
+	})
+}
+
+func (s *timedOnboardingImportStore) FailOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID, arg2 string, arg3 time.Time) (*store.OnboardingImport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodFailOnboardingImport), func() (*store.OnboardingImport, error) {
+		return s.next.FailOnboardingImport(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedOnboardingImportStore) ListExpiredOnboardingImports(arg0 context.Context, arg1 int, arg2 time.Time) ([]model.OnboardingImportID, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodListExpiredOnboardingImports), func() ([]model.OnboardingImportID, error) {
+		return s.next.ListExpiredOnboardingImports(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedOnboardingImportStore) PurgeOnboardingImport(arg0 context.Context, arg1 model.OnboardingImportID, arg2 time.Time) (bool, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateOnboardingImport, methodPurgeOnboardingImport), func() (bool, error) {
+		return s.next.PurgeOnboardingImport(arg0, arg1, arg2)
 	})
 }
 
@@ -2953,6 +3048,7 @@ var (
 	_ store.ExternalLoginStateStore   = (*timedExternalLoginStateStore)(nil)
 	_ store.UserTokenStore            = (*timedUserTokenStore)(nil)
 	_ store.InvitationStore           = (*timedInvitationStore)(nil)
+	_ store.OnboardingImportStore     = (*timedOnboardingImportStore)(nil)
 	_ store.PersonalAccessTokenStore  = (*timedPersonalAccessTokenStore)(nil)
 	_ store.MFAStore                  = (*timedMFAStore)(nil)
 	_ store.AffiliationStore          = (*timedAffiliationStore)(nil)

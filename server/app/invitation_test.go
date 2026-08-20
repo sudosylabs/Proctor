@@ -34,6 +34,14 @@ type invitationStoreFake struct {
 	idempotentIssues map[[32]byte]*model.Invitation
 	batchDuplicates  map[[32]byte]bool
 	issueExecutions  int
+	onboardingNoOp   bool
+}
+
+func (f *invitationStoreFake) ResolveOnboardingInvitationNoOp(_ context.Context, candidate *model.Invitation) (*model.Invitation, bool, error) {
+	if f.onboardingNoOp {
+		return candidate, true, nil
+	}
+	return nil, false, nil
 }
 
 func (f *invitationStoreFake) RecordBatchDuplicate(_ context.Context, _ *store.InvitationBatchDuplicate, command *store.CommandIdempotency) (*store.InvitationBatchCommandResult, error) {
@@ -67,6 +75,9 @@ func (f *invitationStoreFake) IssueStudentClass(_ context.Context, input *store.
 }
 func (f *invitationStoreFake) IssueStudentClassIdempotently(_ context.Context, input *store.StudentClassInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	f.issued = input
+	if f.onboardingNoOp && input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil {
+		return &store.InvitationCommandResult{Invitation: input.Invitation, NoOp: true}, nil
+	}
 	if f.idempotentIssues == nil {
 		f.idempotentIssues = make(map[[32]byte]*model.Invitation)
 	}
@@ -77,6 +88,23 @@ func (f *invitationStoreFake) IssueStudentClassIdempotently(_ context.Context, i
 	f.invitation = input.Invitation
 	f.idempotentIssues[command.KeyDigest] = input.Invitation
 	return &store.InvitationCommandResult{Invitation: input.Invitation}, nil
+}
+
+func TestOnboardingInvitationNoOpDoesNotRequireMail(t *testing.T) {
+	t.Parallel()
+	now := model.TimeFromMillis(1_800_000_000_000)
+	periodID, classID := model.NewAcademicPeriodID(), model.NewClassID()
+	persistence := &invitationStoreFake{onboardingNoOp: true}
+	service := newInvitationServiceForTest(t, persistence,
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{disabled: true}, now)
+	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour)}}
+	view, err := service.IssueStudentClass(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+		IssueStudentClassInvitationCommand{TargetEmail: "existing@example.edu", ClassID: classID.String(), IdempotencyKey: "import-row",
+			onboardingImportID: model.NewOnboardingImportID(), onboardingImportRowNumber: 1})
+	if err != nil || !view.NoOp || persistence.issued == nil || persistence.issued.Occurrence != nil || persistence.issued.Delivery != nil || persistence.issued.DeliveryJob != nil {
+		t.Fatalf("mail-disabled no-op = %#v / %#v / %v", view, persistence.issued, err)
+	}
 }
 func (f *invitationStoreFake) IssueTeacherAcademicUnit(_ context.Context, input *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
 	f.teacherIssued = input

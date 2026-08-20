@@ -39,6 +39,7 @@ type App struct {
 	academicUnitMembers               *academicUnitMemberService
 	classMembers                      *classMemberService
 	invitations                       *invitationService
+	onboardingImports                 *onboardingImportService
 	exams                             examUseCases
 	examRevisions                     examRevisionUseCases
 	examSittings                      examSittingUseCases
@@ -105,7 +106,7 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	jobs, err := constructJobs(deps, foundation, access, examinations, profiles)
+	jobs, err := constructJobs(deps, foundation, access, identity, examinations, profiles)
 	if err != nil {
 		return nil, err
 	}

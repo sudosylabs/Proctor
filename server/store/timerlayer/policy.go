@@ -38,6 +38,7 @@ const (
 	aggregateInstallation         aggregateName = "installation"
 	aggregateInstitution          aggregateName = "institution"
 	aggregateInvitation           aggregateName = "invitation"
+	aggregateOnboardingImport     aggregateName = "onboarding_import"
 	aggregateJob                  aggregateName = "job"
 	aggregateMail                 aggregateName = "mail"
 	aggregateMFA                  aggregateName = "mfa"
@@ -292,6 +293,18 @@ const (
 	methodReplayIssue                          methodName = "replay_issue"
 	methodReplayAdministration                 methodName = "replay_administration"
 	methodRecordBatchDuplicate                 methodName = "record_batch_duplicate"
+	methodCreateOnboardingImport               methodName = "create_onboarding_import"
+	methodGetOnboardingImport                  methodName = "get_onboarding_import"
+	methodCompleteOnboardingImportPreview      methodName = "complete_onboarding_import_preview"
+	methodCommitOnboardingImport               methodName = "commit_onboarding_import"
+	methodListOnboardingImportRows             methodName = "list_onboarding_import_rows"
+	methodCompleteOnboardingImportRow          methodName = "complete_onboarding_import_row"
+	methodFinishOnboardingImport               methodName = "finish_onboarding_import"
+	methodCancelOnboardingImport               methodName = "cancel_onboarding_import"
+	methodFailOnboardingImport                 methodName = "fail_onboarding_import"
+	methodListExpiredOnboardingImports         methodName = "list_expired_onboarding_imports"
+	methodPurgeOnboardingImport                methodName = "purge_onboarding_import"
+	methodResolveOnboardingInvitationNoOp      methodName = "resolve_onboarding_invitation_no_op"
 )
 
 const (

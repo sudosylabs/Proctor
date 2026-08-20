@@ -40,6 +40,7 @@ func (testStore) Job() store.JobStore                                   { return
 func (testStore) Mail() store.MailStore                                 { return nil }
 func (testStore) DesktopAuthorization() store.DesktopAuthorizationStore { return nil }
 func (testStore) Invitation() store.InvitationStore                     { return nil }
+func (testStore) OnboardingImport() store.OnboardingImportStore         { return nil }
 func (testStore) UserSettings() store.UserSettingsStore {
 	return nil
 }

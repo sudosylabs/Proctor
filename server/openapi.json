@@ -536,6 +536,64 @@
         "responses": {"200": {"$ref": "#/components/responses/InvitationBatchOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
       }
     },
+    "/api/v1/onboarding-imports": {
+      "post": {
+        "operationId": "uploadOnboardingImport", "summary": "Upload a bounded Invitation CSV for asynchronous validation",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.invalid_file", "onboarding_import.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [
+          {"name": "mode", "in": "query", "required": true, "schema": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution"]}},
+          {"name": "scope_type", "in": "query", "required": true, "schema": {"type": "string", "enum": ["class", "academic_unit", "institution"]}},
+          {"name": "scope_id", "in": "query", "required": true, "schema": {"$ref": "#/components/schemas/ID"}},
+          {"name": "role_id", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/ID"}}
+        ],
+        "requestBody": {"required": true, "content": {"text/csv": {"schema": {"type": "string", "format": "binary", "maxLength": 10485760}}}},
+        "responses": {"202": {"$ref": "#/components/responses/OnboardingImportAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/onboarding-imports/{onboarding_import_id}": {
+      "parameters": [{"$ref": "#/components/parameters/OnboardingImportID"}],
+      "get": {
+        "operationId": "getOnboardingImport", "summary": "Get one authorized immutable onboarding preview or final report projection",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable", "onboarding_import.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/OnboardingImportOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/onboarding-imports/{onboarding_import_id}/commit": {
+      "parameters": [{"$ref": "#/components/parameters/OnboardingImportID"}],
+      "post": {
+        "operationId": "commitOnboardingImport", "summary": "Commit one exact validated onboarding preview",
+        "x-proctor-auth": "principal_required", "x-proctor-idempotency": "required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.invalid_file", "onboarding_import.unavailable", "idempotency.key_required", "idempotency.invalid_key", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
+        "requestBody": {"$ref": "#/components/requestBodies/CommitOnboardingImport"},
+        "responses": {"202": {"$ref": "#/components/responses/OnboardingImportAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/onboarding-imports/{onboarding_import_id}/cancel": {
+      "parameters": [{"$ref": "#/components/parameters/OnboardingImportID"}],
+      "post": {
+        "operationId": "cancelOnboardingImport", "summary": "Cooperatively cancel an onboarding parse or execution",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "onboarding_import.conflict", "onboarding_import.invalid_file", "onboarding_import.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "responses": {"200": {"$ref": "#/components/responses/OnboardingImportOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/onboarding-imports/{onboarding_import_id}/report": {
+      "parameters": [{"$ref": "#/components/parameters/OnboardingImportID"}],
+      "get": {
+        "operationId": "downloadOnboardingImportReport", "summary": "Download the authorized formula-safe onboarding report",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable", "onboarding_import.conflict", "onboarding_import.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/OnboardingImportReport"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
     "/api/v1/invitations": {
       "get": {
         "operationId": "listInvitations", "summary": "List Invitations within the caller's authorized scope",
@@ -2714,6 +2772,10 @@
         "name": "invitation_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "OnboardingImportID": {
+        "name": "onboarding_import_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "ClassMemberID": {
         "name": "class_member_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -2777,6 +2839,7 @@
       "MutateInvitation": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationMutationRequest"}}}},
       "ReplaceInvitation": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReplaceInvitationRequest"}}}},
       "RunInvitationBatch": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationBatchRequest"}}}},
+      "CommitOnboardingImport": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportCommitRequest"}}}},
       "StartMailRekey": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailRekeyRequest"}}}
@@ -3038,6 +3101,9 @@
       "InvitationAdministrationCreated": {"description": "Replacement Invitation created and prior Invitation superseded", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationResponse"}}}},
       "InvitationAdministrationListOK": {"description": "Bounded authorized Invitation administration page", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationListResponse"}}}},
       "InvitationBatchOK": {"description": "Ordered bounded per-item Invitation outcomes", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationBatchResponse"}}}},
+      "OnboardingImportAccepted": {"description": "Onboarding import accepted for asynchronous work", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
+      "OnboardingImportOK": {"description": "Authorized safe onboarding preview or report projection", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OnboardingImportResponse"}}}},
+      "OnboardingImportReport": {"description": "Formula-safe CSV report without recipient or Invitation secret disclosure", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}, "X-Content-Type-Options": {"$ref": "#/components/headers/NoSniff"}}, "content": {"text/csv": {"schema": {"type": "string", "format": "binary"}}}},
       "ExamOK": {
         "description": "Bounded Exam authoring view",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResponse"}}}
@@ -3403,7 +3469,8 @@
     },
     "headers": {
       "NoStore": {"description": "Prevents storage of sensitive responses.", "schema": {"type": "string", "const": "no-store"}},
-      "PrivateNoStore": {"description": "Marks a private response and prevents all storage.", "schema": {"type": "string", "const": "private, no-store"}}
+      "PrivateNoStore": {"description": "Marks a private response and prevents all storage.", "schema": {"type": "string", "const": "private, no-store"}},
+      "NoSniff": {"description": "Prevents content-type sniffing.", "schema": {"type": "string", "const": "nosniff"}}
     },
     "schemas": {
       "ID": {
@@ -5185,7 +5252,8 @@
           "suggested_display_name": {"type": "string", "maxLength": 512},
           "suggested_first_name": {"type": "string", "maxLength": 256},
           "suggested_last_name": {"type": "string", "maxLength": 256},
-          "suggested_locale": {"type": "string", "maxLength": 35}
+          "suggested_locale": {"type": "string", "maxLength": 35},
+          "suggested_timezone": {"type": "string", "maxLength": 64}
         }
       },
       "AcceptStudentClassInvitationRequest": {
@@ -5205,7 +5273,8 @@
           "start_at": {"type": "integer", "format": "int64", "minimum": 1}, "end_at": {"type": "integer", "format": "int64", "minimum": 1},
           "suggested_username": {"type": "string", "maxLength": 64}, "suggested_display_name": {"type": "string", "maxLength": 512},
           "suggested_first_name": {"type": "string", "maxLength": 256}, "suggested_last_name": {"type": "string", "maxLength": 256},
-          "suggested_locale": {"type": "string", "maxLength": 35}
+          "suggested_locale": {"type": "string", "maxLength": 35},
+          "suggested_timezone": {"type": "string", "maxLength": 64}
         }
       },
       "AcceptTeacherAcademicUnitInvitationRequest": {
@@ -5238,7 +5307,8 @@
           "start_at": {"type": "integer", "format": "int64", "minimum": 1}, "end_at": {"type": "integer", "format": "int64", "minimum": 1},
           "suggested_username": {"type": "string", "maxLength": 64}, "suggested_display_name": {"type": "string", "maxLength": 512},
           "suggested_first_name": {"type": "string", "maxLength": 256}, "suggested_last_name": {"type": "string", "maxLength": 256},
-          "suggested_locale": {"type": "string", "maxLength": 35}
+          "suggested_locale": {"type": "string", "maxLength": 35},
+          "suggested_timezone": {"type": "string", "maxLength": 64}
         }
       },
       "InvitationBatchItemRequest": {
@@ -5250,7 +5320,8 @@
           "start_at": {"type": "integer", "format": "int64", "minimum": 1}, "end_at": {"type": "integer", "format": "int64", "minimum": 1},
           "suggested_username": {"type": "string", "maxLength": 64}, "suggested_display_name": {"type": "string", "maxLength": 512},
           "suggested_first_name": {"type": "string", "maxLength": 256}, "suggested_last_name": {"type": "string", "maxLength": 256},
-          "suggested_locale": {"type": "string", "maxLength": 35}
+          "suggested_locale": {"type": "string", "maxLength": 35},
+          "suggested_timezone": {"type": "string", "maxLength": 64}
         }
       },
       "InvitationBatchRequest": {
@@ -5278,6 +5349,42 @@
           "items": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"$ref": "#/components/schemas/InvitationBatchItemResponse"}},
           "succeeded": {"type": "integer", "minimum": 0, "maximum": 200}, "no_op": {"type": "integer", "minimum": 0, "maximum": 200},
           "failed": {"type": "integer", "minimum": 0, "maximum": 200}
+        }
+      },
+      "OnboardingImportCommitRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_revision", "preview_digest", "policy"],
+        "properties": {
+          "expected_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "preview_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "policy": {"type": "string", "enum": ["require_all_valid", "valid_rows_only"]}
+        }
+      },
+      "OnboardingImportRowResponse": {
+        "type": "object", "additionalProperties": false, "required": ["row", "reference", "operation", "status"],
+        "properties": {
+          "row": {"type": "integer", "minimum": 1, "maximum": 50000}, "reference": {"type": "string", "maxLength": 128},
+          "operation": {"type": "string", "enum": ["student_class.create", "teacher_academic_unit.create", "academic_unit_role.create", "institution_role.create"]},
+          "status": {"type": "string", "enum": ["valid", "invalid", "duplicate", "pending", "succeeded", "no_op", "failed", "skipped", "canceled"]},
+          "preview_code": {"type": "string"}, "public_code": {"type": "string"}, "invitation_id": {"$ref": "#/components/schemas/ID"}
+        }
+      },
+      "OnboardingImportResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "mode", "state", "scope_type", "scope_id", "total_rows", "valid_rows", "invalid_rows", "succeeded_rows", "no_op_rows", "failed_rows", "skipped_rows", "parse_job_id", "created_at", "updated_at", "expires_at", "revision"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "mode": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "institution"]},
+          "state": {"type": "string", "enum": ["uploading", "parsing", "preview_ready", "executing", "completed", "completed_with_errors", "canceled", "failed"]},
+          "scope_type": {"type": "string", "enum": ["class", "academic_unit", "institution"]}, "scope_id": {"$ref": "#/components/schemas/ID"},
+          "role_id": {"$ref": "#/components/schemas/ID"}, "preview_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "ignored_headers": {"type": "array", "maxItems": 64, "items": {"type": "string", "maxLength": 128}},
+          "rows": {"type": "array", "maxItems": 50000, "items": {"$ref": "#/components/schemas/OnboardingImportRowResponse"}},
+          "total_rows": {"type": "integer", "minimum": 0, "maximum": 50000}, "valid_rows": {"type": "integer", "minimum": 0, "maximum": 50000},
+          "invalid_rows": {"type": "integer", "minimum": 0, "maximum": 50000}, "succeeded_rows": {"type": "integer", "minimum": 0, "maximum": 50000},
+          "no_op_rows": {"type": "integer", "minimum": 0, "maximum": 50000}, "failed_rows": {"type": "integer", "minimum": 0, "maximum": 50000},
+          "skipped_rows": {"type": "integer", "minimum": 0, "maximum": 50000}, "commit_policy": {"type": "string", "enum": ["require_all_valid", "valid_rows_only"]},
+          "parse_job_id": {"$ref": "#/components/schemas/ID"}, "execution_job_id": {"$ref": "#/components/schemas/ID"},
+          "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1}, "failure_code": {"type": "string"}
         }
       },
       "InvitationDeliveryResponse": {

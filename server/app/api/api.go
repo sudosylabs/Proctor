@@ -115,6 +115,7 @@ type Options struct {
 	AcademicUnitMembers     AcademicUnitMemberApplication
 	ClassMembers            ClassMemberApplication
 	Invitations             InvitationApplication
+	OnboardingImports       OnboardingImportApplication
 	UserProfiles            UserProfileApplication
 	UserSettings            UserSettingsApplication
 	AccountStates           AccountStateApplication
@@ -566,6 +567,13 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 	if invitations == nil {
 		invitations, _ = options.Application.(InvitationApplication)
 	}
+	onboardingImports := options.OnboardingImports
+	if onboardingImports == nil {
+		onboardingImports, _ = options.Application.(OnboardingImportApplication)
+	}
+	if onboardingImports == nil {
+		onboardingImports = unavailableOnboardingImportApplication{}
+	}
 	if invitations == nil {
 		invitations = unavailableInvitationApplication{}
 	}
@@ -601,6 +609,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		academicUnitMemberResource(options.AcademicUnitMembers),
 		classMemberResource(options.ClassMembers),
 		invitationResource(invitations),
+		onboardingImportResource(onboardingImports),
 		roleResource(options.Roles),
 		roleBindingResource(options.RoleBindings),
 		auditResource(options.AuditListings),

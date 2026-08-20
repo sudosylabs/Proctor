@@ -18,6 +18,7 @@ func constructJobs(
 	deps Dependencies,
 	foundation applicationFoundation,
 	access accessAcademicConstruction,
+	identity identityConstruction,
 	examinations examinationConstruction,
 	profiles profileFileConstruction,
 ) (jobConstruction, error) {
@@ -41,7 +42,7 @@ func constructJobs(
 	if mailHealth == nil {
 		mailHealth = newMailHealth(deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled())
 	}
-	definitions := buildApplicationJobDefinitions(deps, examinations, profiles, defaultJobs, mailHealth)
+	definitions := buildApplicationJobDefinitions(deps, identity, examinations, profiles, defaultJobs, mailHealth)
 	runtime, err := jobengine.New(jobengine.Config{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
 		Diagnostics:   deps.RecoveryDiagnostics,
@@ -53,6 +54,9 @@ func constructJobs(
 		return jobConstruction{}, err
 	}
 	defaultJobs.wake = runtime.Wake
+	if identity.onboardingImports != nil {
+		identity.onboardingImports.wake = runtime.Wake
+	}
 	profiles.profilePictures.reads.defaultJobs = defaultJobs
 	var mailService *mailService
 	if deps.Store.Mail() != nil {
@@ -135,6 +139,7 @@ type applicationJobDefinitions struct {
 // use the same definition graph that production passes to the Job engine.
 func buildApplicationJobDefinitions(
 	deps Dependencies,
+	identity identityConstruction,
 	examinations examinationConstruction,
 	profiles profileFileConstruction,
 	defaultJobs *defaultProfilePictureJobProposer,
@@ -163,10 +168,16 @@ func buildApplicationJobDefinitions(
 		sittingMailExpansionDescriptor(sittingMailExpansionHandler{sittings: deps.Store.ExamSitting(), mail: examinations.sittingMail}),
 		mailCleanupDescriptor(mailCleanupHandler{mail: deps.Store.Mail(), sittings: deps.Store.ExamSitting(), recorder: deps.MailDeliveryRecorder}),
 		mailRekeyDescriptor(mailRekeyHandler{mail: deps.Store.Mail(), sealer: deps.MailSecretSealer}),
-		invitationMaintenanceDescriptor(invitationMaintenanceHandler{invitations: deps.Store.Invitation()}),
+		invitationMaintenanceDescriptor(invitationMaintenanceHandler{invitations: deps.Store.Invitation(), imports: deps.Store.OnboardingImport(), content: deps.FileContent, now: time.Now}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
 		examSittingSealingDescriptor(examSittingSealingHandler{service: sealingUseCases}),
 		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: lifecycleUseCases}),
+	}
+	if identity.onboardingImports != nil {
+		descriptors = append(descriptors,
+			onboardingImportParseDescriptor(onboardingImportParseHandler{service: identity.onboardingImports}),
+			onboardingImportExecuteDescriptor(onboardingImportExecuteHandler{service: identity.onboardingImports}),
+		)
 	}
 	retentionPolicies := jobRetentionPolicies(descriptors)
 	cleanupHandler := jobHistoryCleanupHandler{jobs: deps.Store.Job(), policies: append(retentionPolicies, store.JobRetentionPolicy{

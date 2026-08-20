@@ -497,7 +497,10 @@ reauthorize and commit independently through the ordinary Invitation use cases;
 stable per-row keys and retained outcomes recover unknown commits or row
 reordering without duplicate Invitations or mail, duplicate rows are explicit,
 and PATs remain limited to ordinary scoped student/teacher onboarding. Larger
-validated CSV imports and their retained reports remain the next batch slice.
+validated CSV Invitation imports are also implemented: bounded private uploads
+produce asynchronous immutable previews, explicit idempotent commits queue one
+resumable per-row execution Job, and safe seven-day reports expose only row
+references, outcomes, created Invitation IDs, and closed public codes.
 The closed authorization registry now distinguishes Academic Unit
 membership, Programme, Programme Level, Academic Period, Class, Class
 membership, progression, Access Policy, Invitation, onboarding batch,

@@ -43,6 +43,7 @@ type issueStudentClassInvitationRequest struct {
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
 	SuggestedLastName    string `json:"suggested_last_name,omitempty"`
 	SuggestedLocale      string `json:"suggested_locale,omitempty"`
+	SuggestedTimezone    string `json:"suggested_timezone,omitempty"`
 }
 
 type acceptStudentClassInvitationRequest struct {
@@ -66,6 +67,7 @@ type issueTeacherAcademicUnitInvitationRequest struct {
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
 	SuggestedLastName    string `json:"suggested_last_name,omitempty"`
 	SuggestedLocale      string `json:"suggested_locale,omitempty"`
+	SuggestedTimezone    string `json:"suggested_timezone,omitempty"`
 }
 
 type acceptTeacherAcademicUnitInvitationRequest acceptStudentClassInvitationRequest
@@ -124,6 +126,7 @@ type replaceInvitationRequest struct {
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
 	SuggestedLastName    string `json:"suggested_last_name,omitempty"`
 	SuggestedLocale      string `json:"suggested_locale,omitempty"`
+	SuggestedTimezone    string `json:"suggested_timezone,omitempty"`
 }
 
 type invitationBatchItemRequest struct {
@@ -139,6 +142,7 @@ type invitationBatchItemRequest struct {
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
 	SuggestedLastName    string `json:"suggested_last_name,omitempty"`
 	SuggestedLocale      string `json:"suggested_locale,omitempty"`
+	SuggestedTimezone    string `json:"suggested_timezone,omitempty"`
 }
 
 type invitationBatchRequest struct {
@@ -301,7 +305,7 @@ func (m invitationResourceModule) batch(request operationRequest) (operationResu
 			ExpectedRevision: item.ExpectedRevision, TargetEmail: item.Email, RoleID: item.RoleID,
 			IntendedStartsAt: item.StartAt, IntendedEndsAt: item.EndAt, SuggestedUsername: item.SuggestedUsername,
 			SuggestedDisplayName: item.SuggestedDisplayName, SuggestedFirstName: item.SuggestedFirstName,
-			SuggestedLastName: item.SuggestedLastName, SuggestedLocale: item.SuggestedLocale})
+			SuggestedLastName: item.SuggestedLastName, SuggestedLocale: item.SuggestedLocale, SuggestedTimezone: item.SuggestedTimezone})
 	}
 	result, err := m.invitations.RunInvitationBatch(request.context, request.invocation(), application.RunInvitationBatchCommand{
 		Operation: application.InvitationBatchOperation(body.Operation), ScopeType: model.RoleScopeType(body.ScopeType),
@@ -400,7 +404,7 @@ func (m invitationResourceModule) replace(request operationRequest) (operationRe
 		ClassID: body.ClassID, AcademicUnitID: body.AcademicUnitID, InstitutionID: body.InstitutionID, RoleID: body.RoleID,
 		IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt, SuggestedUsername: body.SuggestedUsername,
 		SuggestedDisplayName: body.SuggestedDisplayName, SuggestedFirstName: body.SuggestedFirstName,
-		SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale,
+		SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -569,7 +573,7 @@ func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequ
 	created, err := m.invitations.IssueTeacherAcademicUnitInvitation(request.context, request.invocation(), application.IssueTeacherAcademicUnitInvitationCommand{
 		TargetEmail: body.Email, AcademicUnitID: unitID, RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
-		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale,
+		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -604,7 +608,7 @@ func (m invitationResourceModule) issueStudentClass(request operationRequest) (o
 	created, err := m.invitations.IssueStudentClassInvitation(request.context, request.invocation(), application.IssueStudentClassInvitationCommand{
 		TargetEmail: body.Email, ClassID: classID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
-		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale,
+		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
 	if err != nil {
 		return operationResult{}, err

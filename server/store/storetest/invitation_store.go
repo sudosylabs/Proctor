@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -75,6 +76,12 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 	t.Run("AdministrationPaginationIsStable", func(t *testing.T) {
 		testInvitationAdministrationPaginationIsStable(t, ss)
 	})
+	t.Run("OnboardingImportLifecycle", func(t *testing.T) {
+		testOnboardingImportLifecycle(t, ss)
+	})
+	t.Run("OnboardingImportTeacherAndRoleNoOps", func(t *testing.T) {
+		testOnboardingImportTeacherAndRoleNoOps(t, ss)
+	})
 	if probe.DisableInviterBeforeIssue != nil {
 		t.Run("IssueStudentClassSerializesWithConcurrentInviterDisable", func(t *testing.T) {
 			testInvitationIssueSerializesWithInviterDisable(t, ss, probe.DisableInviterBeforeIssue)
@@ -98,6 +105,350 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 			testScopedRoleAcceptSerializesWithInviterBindingEnd(t, ss, probe.EndBindingBeforeAccept)
 		})
 	}
+}
+
+func testOnboardingImportTeacherAndRoleNoOps(t *testing.T, ss store.Store) {
+	t.Helper()
+	ctx := context.Background()
+	unit, _ := saveProgrammeParents(t, ctx, ss, "onboarding-cross-kind-"+model.NewId())
+	actor := saveUser(t, ctx, ss)
+	at := model.NowUTC().Add(-time.Minute)
+	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "onboarding-target-" + model.NewId(), DisplayName: "Onboarding Target",
+		Permissions: []string{string(model.ActionAcademicUnitView)}})
+	requireNoError(t, err)
+	authorityRole, err := ss.Role().Save(ctx, &model.Role{Name: "onboarding-authority-" + model.NewId(), DisplayName: "Onboarding Authority",
+		Permissions: []string{string(model.ActionOnboardingBatchManage), string(model.ActionInvitationCreate), string(model.ActionAcademicUnitMembersManage),
+			string(model.ActionRoleBindingManage), string(model.ActionAcademicUnitView)}})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: actor.ID, RoleID: authorityRole.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: unit.InstitutionID.String(), StartsAt: at.Add(-time.Second)})
+	requireNoError(t, err)
+	session, credentials, _ := saveSession(t, ctx, ss, actor.ID.String(), 10)
+	principal := model.Principal{UserID: actor.ID, SessionID: session.ID, CredentialID: model.PrincipalCredentialID(credentials[0].ID),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: session.ClientType, AuthenticatedAt: session.AuthenticatedAt}
+
+	teacherIssue := teacherAcademicUnitInvitationIssueFixture(t, ss, actor, unit, targetRole, at)
+	teacherIssue.Invitation.TargetEmail = "onboarding-teacher-" + model.NewId() + "@example.edu"
+	requireNoError(t, teacherIssue.Invitation.Validate())
+	teacher, err := ss.Invitation().IssueTeacherAcademicUnit(ctx, teacherIssue)
+	requireNoError(t, err)
+	teacherImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportTeacherAcademicUnit,
+		model.RoleScopeAcademicUnit, unit.ID.String(), targetRole.ID, at, store.OnboardingImportRow{Operation: "teacher_academic_unit.create",
+			ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), TargetRevision: unit.Revision, RoleID: targetRole.ID,
+			RoleRevision: targetRole.UpdatedAt.UnixMicro(), Email: teacher.TargetEmail, StartsAt: model.MillisFromTime(teacher.IntendedStartsAt)})
+	teacherNoMail := teacherAcademicUnitInvitationIssueFixture(t, ss, actor, unit, targetRole, at.Add(time.Second))
+	teacherNoMail.Invitation.TargetEmail, teacherNoMail.Invitation.IntendedStartsAt = teacher.TargetEmail, teacher.IntendedStartsAt
+	requireNoError(t, teacherNoMail.Invitation.Validate())
+	teacherNoMail.Occurrence, teacherNoMail.Delivery, teacherNoMail.DeliveryJob = nil, nil, nil
+	teacherCommand := invitationTestCommand(actor.ID, "invitation.teacher_academic_unit.issue.v1", "onboarding-teacher-row", "onboarding-teacher-row")
+	teacherCommand.OnboardingImportID, teacherCommand.OnboardingImportRowNumber = teacherImportID, 1
+	teacherResult, err := ss.Invitation().IssueTeacherAcademicUnitIdempotently(ctx, teacherNoMail, teacherCommand)
+	requireNoError(t, err)
+	if !teacherResult.NoOp || teacherResult.Invitation == nil || teacherResult.Invitation.ID != teacher.ID {
+		t.Fatalf("teacher import no-op = %#v", teacherResult)
+	}
+
+	roleCandidate, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeAcademicUnitRole,
+		TargetEmail: "onboarding-role-" + model.NewId() + "@example.edu", AcademicUnitID: unit.ID, RoleID: targetRole.ID, RoleActions: targetRole.Permissions,
+		IntendedStartsAt: at, InviterUserID: actor.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at})
+	requireNoError(t, err)
+	roleInvitation, err := ss.Invitation().IssueScopedRole(ctx, scopedRoleInvitationIssueFixture(t, ss, roleCandidate))
+	requireNoError(t, err)
+	roleImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportInstitution,
+		model.RoleScopeInstitution, unit.InstitutionID.String(), "", at, store.OnboardingImportRow{Operation: "academic_unit_role.create",
+			ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), TargetRevision: unit.Revision, RoleID: targetRole.ID,
+			RoleRevision: targetRole.UpdatedAt.UnixMicro(), Email: roleInvitation.TargetEmail, StartsAt: model.MillisFromTime(roleInvitation.IntendedStartsAt)})
+	roleNoMail := scopedRoleInvitationIssueFixture(t, ss, roleCandidate)
+	roleNoMail.Invitation.ID = model.NewInvitationID()
+	roleNoMail.Invitation.ClaimHash = model.HashInvitationClaim(model.NewCredentialToken())
+	requireNoError(t, roleNoMail.Invitation.Validate())
+	roleNoMail.Occurrence, roleNoMail.Delivery, roleNoMail.DeliveryJob = nil, nil, nil
+	roleCommand := invitationTestCommand(actor.ID, "invitation.academic_unit_role.issue.v1", "onboarding-role-row", "onboarding-role-row")
+	roleCommand.OnboardingImportID, roleCommand.OnboardingImportRowNumber = roleImportID, 1
+	roleResult, err := ss.Invitation().IssueScopedRoleIdempotently(ctx, roleNoMail, roleCommand)
+	requireNoError(t, err)
+	if !roleResult.NoOp || roleResult.Invitation == nil || roleResult.Invitation.ID != roleInvitation.ID {
+		t.Fatalf("Role import no-op = %#v", roleResult)
+	}
+}
+
+func testOnboardingImportLifecycle(t *testing.T, ss store.Store) {
+	t.Helper()
+	ctx := context.Background()
+	fixture, class, actor, _ := invitationAdministrationFixture(t, ctx, ss, "onboarding-import")
+	at := model.TimeUTC(time.Now())
+	session, credentials, _ := saveSession(t, ctx, ss, actor.ID.String(), 10)
+	principal := model.Principal{UserID: actor.ID, SessionID: session.ID, CredentialID: model.PrincipalCredentialID(credentials[0].ID),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: session.ClientType, AuthenticatedAt: session.AuthenticatedAt}
+	importID := model.NewOnboardingImportID()
+	scopeID := class.ID.String()
+	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "parse:"+importID.String(), at, at, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
+	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: importID,
+		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
+		ActorUserID: actor.ID, Principal: principal, ParseJobID: parseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}, ParseJob: parseJob,
+		AuditEventID: creationAudit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", sha256.Size*2)
+	preview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: importID, ExpectedRevision: created.Revision,
+		Digest: digest, IgnoredHeaders: []string{"misspelled"}, At: at.Add(time.Second), Rows: []store.OnboardingImportRow{{ImportID: importID, RowNumber: 1,
+			Reference: "row-1", Operation: "student_class.create", ScopeType: model.RoleScopeClass, ScopeID: created.ScopeID, TargetRevision: 1,
+			Email: "student@example.edu", PreviewStatus: model.OnboardingImportRowValid, Status: model.OnboardingImportRowValid}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.State != model.OnboardingImportPreviewReady || preview.ValidRows != 1 || preview.InvalidRows != 0 {
+		t.Fatalf("preview = %#v", preview)
+	}
+	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "execute:"+importID.String(), at, at, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sha256.Sum256([]byte("commit-key"))
+	commit := &store.OnboardingImportCommit{ID: importID, ActorUserID: actor.ID, ExpectedRevision: preview.Revision, PreviewDigest: digest,
+		Policy: model.OnboardingImportRequireAllValid, IdempotencyKey: key, ExecutionJob: executionJob, At: at.Add(2 * time.Second)}
+	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
+	commit.AuditEventID, commit.AuditAt = commitAudit.ID.String(), model.MillisFromTime(at.Add(2*time.Second))
+	executing, err := ss.OnboardingImport().CommitOnboardingImport(ctx, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executing.State != model.OnboardingImportExecuting || executing.ExecutionJobID != executionJob.ID {
+		t.Fatalf("executing = %#v", executing)
+	}
+	retryJob, _ := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+importID.String()+`"}`), "retry:"+importID.String(), at, at, 3)
+	commit.ExecutionJob = retryJob
+	replayAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
+	commit.AuditEventID, commit.AuditAt = replayAudit.ID.String(), model.MillisFromTime(at.Add(2*time.Second))
+	replayed, err := ss.OnboardingImport().CommitOnboardingImport(ctx, commit)
+	if err != nil || replayed.ExecutionJobID != executionJob.ID {
+		t.Fatalf("replay = %#v, %v", replayed, err)
+	}
+	changed := *commit
+	changed.IdempotencyKey = sha256.Sum256([]byte("changed"))
+	changedAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
+	changed.AuditEventID, changed.AuditAt = changedAudit.ID.String(), model.MillisFromTime(at.Add(2*time.Second))
+	if _, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &changed); !store.IsConflict(err) {
+		t.Fatalf("changed key error = %v", err)
+	}
+	issue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, at)
+	command := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "onboarding-row-1", "onboarding-row-1")
+	command.OnboardingImportID, command.OnboardingImportRowNumber = importID, 1
+	issued, err := ss.Invitation().IssueStudentClassIdempotently(ctx, issue, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invitationID := issued.Invitation.ID
+	completed, err := ss.OnboardingImport().GetOnboardingImport(ctx, importID)
+	requireNoError(t, err)
+	if completed.State != model.OnboardingImportCompleted || completed.SucceededRows != 1 {
+		t.Fatalf("completed = %#v", completed)
+	}
+	lateReplayAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
+	commit.AuditEventID, commit.AuditAt = lateReplayAudit.ID.String(), model.MillisFromTime(at.Add(3*time.Second))
+	lateReplay, err := ss.OnboardingImport().CommitOnboardingImport(ctx, commit)
+	requireNoError(t, err)
+	if lateReplay.ExecutionJobID != executionJob.ID || lateReplay.State != model.OnboardingImportExecuting ||
+		lateReplay.Revision != preview.Revision+1 || lateReplay.SucceededRows != 0 || !lateReplay.UpdatedAt.Equal(commit.At) {
+		t.Fatalf("late commit replay = %#v", lateReplay)
+	}
+	changedRevision := *commit
+	changedRevision.ExpectedRevision++
+	changedRevisionAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, created.ScopeID, "onboarding_import.commit")
+	changedRevision.AuditEventID, changedRevision.AuditAt = changedRevisionAudit.ID.String(), model.MillisFromTime(at.Add(3*time.Second))
+	if _, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &changedRevision); !store.IsConflict(err) {
+		t.Fatalf("changed-revision late replay error = %v", err)
+	}
+	page, err := ss.OnboardingImport().ListOnboardingImportRows(ctx, importID, 0, 10)
+	if err != nil || len(page.Rows) != 1 || page.Rows[0].InvitationID != invitationID {
+		t.Fatalf("rows = %#v, %v", page, err)
+	}
+
+	noOpID := createExecutingStudentOnboardingImport(t, ctx, ss, actor, principal, class, at.Add(-time.Minute), "student@example.edu")
+	noOpIssue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, at)
+	resolved, isNoOp, err := ss.Invitation().ResolveOnboardingInvitationNoOp(ctx, noOpIssue.Invitation)
+	requireNoError(t, err)
+	if !isNoOp || resolved == nil || resolved.ID != invitationID {
+		t.Fatalf("pending-effect preflight = %#v, %t", resolved, isNoOp)
+	}
+	unusedDeliveryID := noOpIssue.Delivery.ID
+	noOpIssue.Occurrence, noOpIssue.Delivery, noOpIssue.DeliveryJob = nil, nil, nil
+	noOpCommand := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "onboarding-row-no-op", "onboarding-row-no-op")
+	noOpCommand.OnboardingImportID, noOpCommand.OnboardingImportRowNumber = noOpID, 1
+	noOpResult, err := ss.Invitation().IssueStudentClassIdempotently(ctx, noOpIssue, noOpCommand)
+	requireNoError(t, err)
+	if !noOpResult.NoOp || noOpResult.Invitation == nil || noOpResult.Invitation.ID != invitationID {
+		t.Fatalf("pending-effect no-op = %#v", noOpResult)
+	}
+	noOpImport, err := ss.OnboardingImport().GetOnboardingImport(ctx, noOpID)
+	requireNoError(t, err)
+	if noOpImport.State != model.OnboardingImportCompleted || noOpImport.NoOpRows != 1 {
+		t.Fatalf("no-op import = %#v", noOpImport)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, unusedDeliveryID); !store.IsNotFound(err) {
+		t.Fatalf("no-op delivery error = %v", err)
+	}
+
+	cancelRaceID := createExecutingStudentOnboardingImport(t, ctx, ss, actor, principal, class, at.Add(-2*time.Minute), "canceled-row@example.edu")
+	cancelRaceAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.cancel")
+	_, err = ss.OnboardingImport().CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: cancelRaceID, ActorUserID: actor.ID,
+		At: at, AuditEventID: cancelRaceAudit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	canceledIssue := studentClassInvitationIssueFixture(t, ss, actor, class, fixture.period, at)
+	canceledIssue.Invitation.TargetEmail = "canceled-row@example.edu"
+	requireNoError(t, canceledIssue.Invitation.Validate())
+	canceledCommand := invitationTestCommand(actor.ID, "invitation.student_class.issue.v1", "onboarding-row-canceled", "onboarding-row-canceled")
+	canceledCommand.OnboardingImportID, canceledCommand.OnboardingImportRowNumber = cancelRaceID, 1
+	if _, err = ss.Invitation().IssueStudentClassIdempotently(ctx, canceledIssue, canceledCommand); !store.IsConflict(err) {
+		t.Fatalf("canceled row issue error = %v", err)
+	}
+	if _, err = ss.Invitation().Get(ctx, canceledIssue.Invitation.ID); !store.IsNotFound(err) {
+		t.Fatalf("canceled row Invitation error = %v", err)
+	}
+
+	emptyID := model.NewOnboardingImportID()
+	emptyParseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+emptyID.String()+`"}`), "parse:"+emptyID.String(), at, at, 3)
+	requireNoError(t, err)
+	emptyCreationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
+	emptyCreated, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: emptyID,
+		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
+		ActorUserID: actor.ID, Principal: principal, ParseJobID: emptyParseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1},
+		ParseJob: emptyParseJob, AuditEventID: emptyCreationAudit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	emptyPreview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: emptyID, ExpectedRevision: emptyCreated.Revision,
+		Digest: strings.Repeat("b", sha256.Size*2), At: at.Add(time.Second), Rows: []store.OnboardingImportRow{{ImportID: emptyID, RowNumber: 1,
+			Reference: "invalid-row", ScopeType: model.RoleScopeClass, ScopeID: scopeID, PreviewStatus: model.OnboardingImportRowInvalid, PreviewCode: "request.invalid", Status: model.OnboardingImportRowInvalid}}})
+	requireNoError(t, err)
+	emptyExecutionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+emptyID.String()+`"}`), "execute:"+emptyID.String(), at, at, 3)
+	requireNoError(t, err)
+	emptyCommitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.commit")
+	emptyExecuting, err := ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: emptyID, ActorUserID: actor.ID, ExpectedRevision: emptyPreview.Revision,
+		PreviewDigest: emptyPreview.PreviewDigest, Policy: model.OnboardingImportValidRowsOnly, IdempotencyKey: sha256.Sum256([]byte("empty-commit")), ExecutionJob: emptyExecutionJob,
+		At: at.Add(2 * time.Second), AuditEventID: emptyCommitAudit.ID.String(), AuditAt: model.MillisFromTime(at.Add(2 * time.Second))})
+	requireNoError(t, err)
+	emptyFinished, err := ss.OnboardingImport().FinishOnboardingImport(ctx, emptyID, at.Add(3*time.Second))
+	requireNoError(t, err)
+	if emptyExecuting.State != model.OnboardingImportExecuting || emptyFinished.State != model.OnboardingImportCompleted || emptyFinished.SkippedRows != 1 {
+		t.Fatalf("all-invalid import = %#v / %#v", emptyExecuting, emptyFinished)
+	}
+
+	cancelID := model.NewOnboardingImportID()
+	cancelJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+cancelID.String()+`"}`), "parse:"+cancelID.String(), at, at, 3)
+	requireNoError(t, err)
+	cancelCreationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
+	_, err = ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: cancelID,
+		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
+		ActorUserID: actor.ID, Principal: principal, ParseJobID: cancelJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1},
+		ParseJob: cancelJob, AuditEventID: cancelCreationAudit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	cancelAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.cancel")
+	canceled, err := ss.OnboardingImport().CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: cancelID, ActorUserID: actor.ID, At: at.Add(time.Second),
+		AuditEventID: cancelAudit.ID.String(), AuditAt: model.MillisFromTime(at.Add(time.Second))})
+	requireNoError(t, err)
+	storedJob, err := ss.Job().Get(ctx, cancelJob.ID)
+	requireNoError(t, err)
+	if canceled.State != model.OnboardingImportCanceled || storedJob.Status != model.JobStatusCanceled {
+		t.Fatalf("canceled import/job = %#v / %#v", canceled, storedJob)
+	}
+
+	oldAt := at.Add(-8 * 24 * time.Hour)
+	expiredID := model.NewOnboardingImportID()
+	expiredJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+expiredID.String()+`"}`), "parse:"+expiredID.String(), oldAt, oldAt, 3)
+	requireNoError(t, err)
+	expiredAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, scopeID, "onboarding_import.upload")
+	_, err = ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: expiredID,
+		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: scopeID,
+		ActorUserID: actor.ID, Principal: principal, ParseJobID: expiredJob.ID, CreatedAt: oldAt, UpdatedAt: oldAt, ExpiresAt: oldAt.Add(7 * 24 * time.Hour), Revision: 1},
+		ParseJob: expiredJob, AuditEventID: expiredAudit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	expired, err := ss.OnboardingImport().ListExpiredOnboardingImports(ctx, 100, at)
+	requireNoError(t, err)
+	if !slices.Contains(expired, expiredID) {
+		t.Fatalf("expired onboarding imports = %#v", expired)
+	}
+	purged, err := ss.OnboardingImport().PurgeOnboardingImport(ctx, expiredID, at)
+	requireNoError(t, err)
+	if !purged {
+		t.Fatal("expired onboarding import was not purged")
+	}
+}
+
+func createExecutingStudentOnboardingImport(t *testing.T, ctx context.Context, ss store.Store, actor *model.User, principal model.Principal,
+	class *model.Class, at time.Time, email string,
+) model.OnboardingImportID {
+	t.Helper()
+	id := model.NewOnboardingImportID()
+	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "parse:"+id.String(), at, at, 3)
+	requireNoError(t, err)
+	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.upload")
+	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: id,
+		Mode: model.OnboardingImportStudentClass, State: model.OnboardingImportParsing, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), ActorUserID: actor.ID,
+		Principal: principal, ParseJobID: parseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}, ParseJob: parseJob,
+		AuditEventID: creationAudit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	preview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: id, ExpectedRevision: created.Revision,
+		Digest: strings.Repeat("c", sha256.Size*2), At: at.Add(time.Second), Rows: []store.OnboardingImportRow{{ImportID: id, RowNumber: 1, Reference: "row-1",
+			Operation: "student_class.create", ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), TargetRevision: class.Revision, Email: email,
+			PreviewStatus: model.OnboardingImportRowValid, Status: model.OnboardingImportRowValid}}})
+	requireNoError(t, err)
+	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "execute:"+id.String(), at, at, 3)
+	requireNoError(t, err)
+	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, model.RoleScopeClass, class.ID.String(), "onboarding_import.commit")
+	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: actor.ID, ExpectedRevision: preview.Revision,
+		PreviewDigest: preview.PreviewDigest, Policy: model.OnboardingImportRequireAllValid, IdempotencyKey: sha256.Sum256([]byte("commit:" + id.String())), ExecutionJob: executionJob,
+		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID.String(), AuditAt: model.MillisFromTime(at.Add(2 * time.Second))})
+	requireNoError(t, err)
+	return id
+}
+
+func createExecutingOnboardingImport(t *testing.T, ctx context.Context, ss store.Store, actor *model.User, principal model.Principal,
+	mode model.OnboardingImportMode, scopeType model.RoleScopeType, scopeID string, importRoleID model.RoleID, at time.Time, row store.OnboardingImportRow,
+) model.OnboardingImportID {
+	t.Helper()
+	id := model.NewOnboardingImportID()
+	parseJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportParse, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "parse:"+id.String(), at, at, 3)
+	requireNoError(t, err)
+	creationAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, scopeType, scopeID, "onboarding_import.upload")
+	created, err := ss.OnboardingImport().CreateOnboardingImport(ctx, &store.OnboardingImportCreation{Import: &store.OnboardingImport{ID: id,
+		Mode: mode, State: model.OnboardingImportParsing, ScopeType: scopeType, ScopeID: scopeID, RoleID: importRoleID, ActorUserID: actor.ID,
+		Principal: principal, ParseJobID: parseJob.ID, CreatedAt: at, UpdatedAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour), Revision: 1}, ParseJob: parseJob,
+		AuditEventID: creationAudit.ID.String(), AuditAt: model.MillisFromTime(at)})
+	requireNoError(t, err)
+	row.ImportID, row.RowNumber, row.Reference = id, 1, "row-1"
+	row.PreviewStatus, row.Status, row.UpdatedAt = model.OnboardingImportRowValid, model.OnboardingImportRowValid, at.Add(time.Second)
+	preview, err := ss.OnboardingImport().CompleteOnboardingImportPreview(ctx, &store.OnboardingImportPreviewCompletion{ID: id, ExpectedRevision: created.Revision,
+		Digest: strings.Repeat("e", sha256.Size*2), At: at.Add(time.Second), Rows: []store.OnboardingImportRow{row}})
+	requireNoError(t, err)
+	executionJob, err := model.NewJob(model.NewJobID(), model.JobTypeOnboardingImportExecute, 1, json.RawMessage(`{"import_id":"`+id.String()+`"}`), "execute:"+id.String(), at, at, 3)
+	requireNoError(t, err)
+	commitAudit := saveOnboardingImportAuditAttempt(t, ctx, ss, actor.ID, scopeType, scopeID, "onboarding_import.commit")
+	_, err = ss.OnboardingImport().CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: actor.ID, ExpectedRevision: preview.Revision,
+		PreviewDigest: preview.PreviewDigest, Policy: model.OnboardingImportRequireAllValid, IdempotencyKey: sha256.Sum256([]byte("commit:" + id.String())), ExecutionJob: executionJob,
+		At: at.Add(2 * time.Second), AuditEventID: commitAudit.ID.String(), AuditAt: model.MillisFromTime(at.Add(2 * time.Second))})
+	requireNoError(t, err)
+	return id
+}
+
+func saveOnboardingImportAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, actor model.UserID, scopeType model.RoleScopeType, scopeID, action string) *model.AuditEvent {
+	t.Helper()
+	resourceType := model.ResourceInstitution
+	if scopeType == model.RoleScopeAcademicUnit {
+		resourceType = model.ResourceAcademicUnit
+	} else if scopeType == model.RoleScopeClass {
+		resourceType = model.ResourceClass
+	}
+	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: actor, Action: action, Resource: model.Resource{Type: resourceType, ID: scopeID},
+		ScopeType: scopeType, ScopeID: scopeID, Status: model.AuditStatusAttempt, NodeID: "onboarding-import-store-test"})
+	requireNoError(t, err)
+	return audit
 }
 
 func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
@@ -591,7 +942,7 @@ func invitationAdministrationFixture(t *testing.T, ctx context.Context, ss store
 	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-admin-"+suffix)
 	inviter := saveUser(t, ctx, ss)
 	role, err := ss.Role().Save(ctx, &model.Role{Name: "invitation-admin-" + suffix + "-" + model.NewId(), DisplayName: "Invitation administrator",
-		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionInvitationManage), string(model.ActionClassMembersManage)}})
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionInvitationManage), string(model.ActionClassMembersManage), string(model.ActionOnboardingBatchManage)}})
 	requireNoError(t, err)
 	at := model.NowUTC().Add(-time.Minute)
 	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,

@@ -48,6 +48,7 @@ type identityConstruction struct {
 	accountTokens                     *accountTokenService
 	publicRegistration                *publicRegistrationService
 	invitations                       *invitationService
+	onboardingImports                 *onboardingImportService
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
 }
 
@@ -196,6 +197,7 @@ func assembleApplication(
 		accountTokens:                     identity.accountTokens,
 		publicRegistration:                identity.publicRegistration,
 		invitations:                       identity.invitations,
+		onboardingImports:                 identity.onboardingImports,
 		personalAccessTokenAdministration: identity.personalAccessTokenAdministration,
 		authorization:                     access.authorization,
 		accessPolicies:                    access.accessPolicies,

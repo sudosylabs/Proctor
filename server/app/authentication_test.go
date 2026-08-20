@@ -84,6 +84,7 @@ type authenticationStoreFake struct {
 	createdJob          *model.Job
 	createdSettings     *model.UserSettingsDocument
 	rotation            *store.SessionRotation
+	userGetErr          error
 	rotatedAccess       *model.SessionCredential
 	rotatedRefresh      *model.SessionCredential
 	rotatedAt           int64
@@ -169,6 +170,9 @@ func (s authenticationUserStore) Create(
 }
 
 func (s authenticationUserStore) Get(_ context.Context, id string) (*model.User, error) {
+	if s.root.userGetErr != nil {
+		return nil, s.root.userGetErr
+	}
 	user, ok := s.root.users[id]
 	if !ok {
 		return nil, store.NewErrNotFound("user", id)
@@ -531,6 +535,11 @@ func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {
 	if err := service.ValidatePrincipal(context.Background(), principal); err != nil {
 		t.Fatalf("valid principal rejected: %v", err)
 	}
+	persistence.userGetErr = errors.New("database unavailable")
+	if err := service.ValidatePrincipal(context.Background(), principal); !Is(err, "authentication.internal") {
+		t.Fatalf("dependency error = %v", err)
+	}
+	persistence.userGetErr = nil
 	session.UserID = model.NewUserID()
 	if err := service.ValidatePrincipal(context.Background(), principal); !Is(err, "authentication.invalid_token") {
 		t.Fatalf("mismatched session error = %v", err)

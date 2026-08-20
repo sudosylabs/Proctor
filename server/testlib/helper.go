@@ -279,6 +279,9 @@ func (s *LifecycleStore) UserToken() store.UserTokenStore { return lifecycleUser
 func (s *LifecycleStore) Invitation() store.InvitationStore {
 	return lifecycleInvitationStore{}
 }
+func (s *LifecycleStore) OnboardingImport() store.OnboardingImportStore {
+	return lifecycleOnboardingImportStore{}
+}
 func (s *LifecycleStore) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return lifecyclePersonalAccessTokenStore{}
 }
@@ -357,6 +360,7 @@ var _ store.Store = (*LifecycleStore)(nil)
 // composition graph to validate focused service dependencies while keeping
 // lifecycle tests free of unrelated persistence behavior.
 type lifecycleUserStore struct{ store.UserStore }
+type lifecycleOnboardingImportStore struct{ store.OnboardingImportStore }
 type lifecycleAccessPolicyStore struct{ store.AccessPolicyStore }
 type lifecycleUserSettingsStore struct{ store.UserSettingsStore }
 type lifecycleInstitutionStore struct{ store.InstitutionStore }
