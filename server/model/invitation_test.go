@@ -48,7 +48,7 @@ func TestNewStudentClassInvitationFreezesSafePackage(t *testing.T) {
 		invitation.ScopeType != RoleScopeClass || invitation.ScopeID != classID.String() {
 		t.Fatalf("frozen target/scope = %#v", invitation)
 	}
-	if invitation.ExpiresAt != issuedAt.Add(StudentClassInvitationLifetime) {
+	if invitation.ExpiresAt != issuedAt.Add(InvitationLifetime) {
 		t.Fatalf("expires_at = %v", invitation.ExpiresAt)
 	}
 	if invitation.ClaimHash == rawClaim || invitation.ClaimHash == HashToken(rawClaim) ||
@@ -333,6 +333,85 @@ func TestInvitationExpireTerminalizesOnlyAnElapsedPendingInvitation(t *testing.T
 	}
 }
 
+func TestInvitationAdministrativeLifecycleTransitions(t *testing.T) {
+	issuedAt := time.UnixMilli(1_800_000_000_000).UTC()
+	newInvitation := func(t *testing.T) *Invitation {
+		t.Helper()
+		classID := NewClassID()
+		invitation, err := NewStudentClassInvitation(StudentClassInvitationInput{
+			ID: NewInvitationID(), TargetEmail: "student@example.edu",
+			ClassID: classID, AcademicPeriodID: NewAcademicPeriodID(), IntendedStartsAt: issuedAt,
+			InviterUserID: NewUserID(), ScopeType: RoleScopeClass, ScopeID: classID.String(),
+			ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return invitation
+	}
+
+	t.Run("resend rotates only a pending claim", func(t *testing.T) {
+		invitation := newInvitation(t)
+		previousHash := invitation.ClaimHash
+		at := issuedAt.Add(time.Hour)
+		if err := invitation.Resend(HashInvitationClaim(NewCredentialToken()), at); err != nil {
+			t.Fatal(err)
+		}
+		if invitation.State != InvitationPending || invitation.ClaimHash == previousHash ||
+			!invitation.UpdatedAt.Equal(at) || invitation.Revision != 2 ||
+			!invitation.ExpiresAt.Equal(issuedAt.Add(InvitationLifetime)) {
+			t.Fatalf("resent Invitation = %#v", invitation)
+		}
+		if err := invitation.Resend(invitation.ClaimHash, at.Add(time.Minute)); err == nil {
+			t.Fatal("Resend() accepted the current claim hash")
+		}
+	})
+
+	for _, transition := range []struct {
+		name  string
+		state InvitationState
+		apply func(*Invitation, time.Time) error
+	}{
+		{name: "revoke", state: InvitationRevoked, apply: (*Invitation).Revoke},
+		{name: "supersede", state: InvitationSuperseded, apply: (*Invitation).Supersede},
+	} {
+		t.Run(transition.name+" terminalizes pending", func(t *testing.T) {
+			invitation := newInvitation(t)
+			at := issuedAt.Add(time.Hour)
+			if err := transition.apply(invitation, at); err != nil {
+				t.Fatal(err)
+			}
+			if invitation.State != transition.state || !invitation.UpdatedAt.Equal(at) || invitation.Revision != 2 {
+				t.Fatalf("terminal Invitation = %#v", invitation)
+			}
+			if err := transition.apply(invitation, at.Add(time.Minute)); err == nil {
+				t.Fatal("terminal transition replay succeeded")
+			}
+		})
+		t.Run(transition.name+" rejects elapsed pending", func(t *testing.T) {
+			invitation := newInvitation(t)
+			if err := transition.apply(invitation, invitation.ExpiresAt); err == nil || invitation.State != InvitationPending {
+				t.Fatalf("elapsed terminal transition = %#v, %v", invitation, err)
+			}
+		})
+	}
+
+	t.Run("package equality excludes lifecycle identity and inviter provenance", func(t *testing.T) {
+		first := newInvitation(t)
+		second := *first
+		second.ID, second.InviterUserID = NewInvitationID(), NewUserID()
+		second.ClaimHash = HashInvitationClaim(NewCredentialToken())
+		second.CreatedAt, second.UpdatedAt, second.ExpiresAt = issuedAt.Add(time.Minute), issuedAt.Add(time.Minute), issuedAt.Add(time.Minute).Add(InvitationLifetime)
+		if !first.HasSamePackage(&second) {
+			t.Fatal("HasSamePackage() treated identity or provenance as package data")
+		}
+		second.TargetEmail = "other@example.edu"
+		if first.HasSamePackage(&second) {
+			t.Fatal("HasSamePackage() ignored recipient change")
+		}
+	})
+}
+
 func TestMailDeliveryTargetsExactlyOneUserOrInvitation(t *testing.T) {
 	t.Parallel()
 
@@ -343,7 +422,7 @@ func TestMailDeliveryTargetsExactlyOneUserOrInvitation(t *testing.T) {
 		TemplateKey:        MailTemplateAccessStudentClassInvitation,
 		TemplateDigest:     strings.Repeat("a", 64), MaskedRecipient: "s***@example.edu",
 		State: MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at,
-		Deadline: at.Add(StudentClassInvitationLifetime), MessageID: "<mail@example.edu>",
+		Deadline: at.Add(InvitationLifetime), MessageID: "<mail@example.edu>",
 		EncryptedPayload: json.RawMessage(`{"key_id":"0123456789abcdef0123456789abcdef"}`),
 		Revision:         1,
 	}

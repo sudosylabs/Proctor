@@ -343,8 +343,10 @@ eight attempts with exponential jitter beginning near 30 seconds and capped
 near 30 minutes, always inside the message deadline.
 
 Invitation delivery additionally stops when the Invitation expires, is
-revoked, is accepted, or is superseded by a resend. Expiry does not itself send
-mail. Revocation sends `access.invitation_revoked` only when the earlier
+revoked, accepted, or superseded by an explicit replacement. Resend preserves
+the pending Invitation and rotates its claim while suppressing every earlier
+unsent credential delivery. Expiry does not itself send mail. Revocation sends
+`access.invitation_revoked` only when the earlier
 invitation delivery reached Accepted; otherwise the pending delivery is merely
 suppressed. The initial slice has no invitation reminders.
 

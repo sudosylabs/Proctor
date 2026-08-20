@@ -17,11 +17,13 @@ import (
 type mutationAttemptAuditorFake struct {
 	events   *[]string
 	beginID  string
+	beginIDs []string
 	beginErr error
 	failErr  error
 	failID   string
 	failCode string
 	attempt  mutationAttempt
+	attempts []mutationAttempt
 }
 
 func (a *mutationAttemptAuditorFake) BeginAtScope(
@@ -46,7 +48,8 @@ func (a *mutationAttemptAuditorFake) BeginAtScope(
 		Value:      value,
 		Prior:      prior,
 	}
-	return a.beginID, a.beginErr
+	a.attempts = append(a.attempts, a.attempt)
+	return a.nextBeginID(), a.beginErr
 }
 
 func (a *mutationAttemptAuditorFake) Begin(
@@ -67,7 +70,17 @@ func (a *mutationAttemptAuditorFake) Begin(
 		Value:      value,
 		Prior:      prior,
 	}
-	return a.beginID, a.beginErr
+	a.attempts = append(a.attempts, a.attempt)
+	return a.nextBeginID(), a.beginErr
+}
+
+func (a *mutationAttemptAuditorFake) nextBeginID() string {
+	if len(a.beginIDs) == 0 {
+		return a.beginID
+	}
+	id := a.beginIDs[0]
+	a.beginIDs = a.beginIDs[1:]
+	return id
 }
 
 func (a *mutationAttemptAuditorFake) Fail(_ context.Context, id, code string) error {

@@ -1450,6 +1450,101 @@ type InvitationMaintenanceResult struct {
 	More    bool
 }
 
+// InvitationVisibilityScope is the bounded persistence-side authorization
+// constraint for Invitation administration. AcademicUnitRootIDs name complete
+// subtrees and ClassIDs name exact Class grants.
+type InvitationVisibilityScope struct {
+	InstitutionWide     bool
+	AcademicUnitRootIDs []string
+	ClassIDs            []string
+}
+
+// InvitationDeliverySummary is the approved operational projection of the
+// newest delivery for an Invitation. It deliberately excludes ciphertext,
+// rendered content, transport detail, Job identity, and Message-ID.
+type InvitationDeliverySummary struct {
+	TemplateKey       model.MailTemplateKey
+	State             model.MailDeliveryState
+	MaskedRecipient   string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	Deadline          time.Time
+	AcceptedAt        model.OptionalTime
+	PublicFailureCode string
+}
+
+type InvitationAdministrationRecord struct {
+	Invitation *model.Invitation
+	Delivery   *InvitationDeliverySummary
+}
+
+type InvitationListOptions struct {
+	Visibility      InvitationVisibilityScope
+	Purpose         model.InvitationPurpose
+	State           model.InvitationState
+	TargetEmail     string
+	TargetID        string
+	CreatedAfter    time.Time
+	CreatedBefore   time.Time
+	BeforeCreatedAt time.Time
+	BeforeID        model.InvitationID
+	Limit           int
+}
+
+type InvitationPage struct {
+	Items []*InvitationAdministrationRecord
+	More  bool
+}
+
+// InvitationResend rotates the claim and atomically replaces every unsent
+// credential delivery with one newly frozen occurrence.
+type InvitationResend struct {
+	ID               model.InvitationID
+	ExpectedRevision int64
+	ClaimHash        string
+	Occurrence       *model.MailOccurrence
+	Delivery         *model.MailDelivery
+	DeliveryJob      *model.Job
+	ActorUserID      model.UserID
+	AuditEventID     string
+	AuditAt          int64
+}
+
+// InvitationRevocation terminalizes one pending Invitation. RevocationNotice
+// is inserted only when an original Invitation delivery was SMTP Accepted.
+type InvitationRevocation struct {
+	ID               model.InvitationID
+	ExpectedRevision int64
+	ActorUserID      model.UserID
+	RevocationNotice *PreparedMail
+	AuditEventID     string
+	AuditAt          int64
+}
+
+// PreparedMail groups one already-rendered direct occurrence and its work.
+// Named aggregate inputs use it only where the mail is conditionally applied.
+type PreparedMail struct {
+	Occurrence *model.MailOccurrence
+	Delivery   *model.MailDelivery
+	Job        *model.Job
+}
+
+// InvitationReplacement supersedes CurrentID and inserts Replacement plus its
+// initial delivery in one authoritative transaction.
+type InvitationReplacement struct {
+	CurrentID               model.InvitationID
+	ExpectedCurrentRevision int64
+	Replacement             *model.Invitation
+	Lifetime                time.Duration
+	Occurrence              *model.MailOccurrence
+	Delivery                *model.MailDelivery
+	DeliveryJob             *model.Job
+	ActorUserID             model.UserID
+	CurrentAuditEventID     string
+	ReplacementAuditEventID string
+	AuditAt                 int64
+}
+
 // InvitationStore owns the durable pre-User Invitation and its two atomic
 // first-slice transitions. Raw claims never cross this boundary.
 type InvitationStore interface {
@@ -1461,6 +1556,11 @@ type InvitationStore interface {
 	AcceptStudentClass(context.Context, *StudentClassInvitationAcceptance) (*StudentClassInvitationAcceptanceResult, error)
 	AcceptTeacherAcademicUnit(context.Context, *TeacherAcademicUnitInvitationAcceptance) (*TeacherAcademicUnitInvitationAcceptanceResult, error)
 	AcceptScopedRole(context.Context, *ScopedRoleInvitationAcceptance) (*ScopedRoleInvitationAcceptanceResult, error)
+	List(context.Context, InvitationListOptions) (*InvitationPage, error)
+	GetForAdministration(context.Context, model.InvitationID, InvitationVisibilityScope) (*InvitationAdministrationRecord, error)
+	Resend(context.Context, *InvitationResend) (*InvitationAdministrationRecord, error)
+	Revoke(context.Context, *InvitationRevocation) (*InvitationAdministrationRecord, error)
+	Replace(context.Context, *InvitationReplacement) (*InvitationAdministrationRecord, error)
 	Maintain(context.Context, int) (*InvitationMaintenanceResult, error)
 }
 

@@ -524,6 +524,65 @@
         }
       }
     },
+    "/api/v1/invitations": {
+      "get": {
+        "operationId": "listInvitations", "summary": "List Invitations within the caller's authorized scope",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable", "invitation.query.invalid", "invitation.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "parameters": [
+          {"name": "purpose", "in": "query", "required": false, "schema": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "academic_unit_role", "institution_role"]}},
+          {"name": "state", "in": "query", "required": false, "schema": {"type": "string", "enum": ["pending", "accepted", "revoked", "expired", "superseded"]}},
+          {"name": "email", "in": "query", "required": false, "schema": {"type": "string", "format": "email"}},
+          {"name": "target_id", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/ID"}},
+          {"name": "created_after", "in": "query", "required": false, "schema": {"type": "integer", "format": "int64", "minimum": 1}},
+          {"name": "created_before", "in": "query", "required": false, "schema": {"type": "integer", "format": "int64", "minimum": 1}},
+          {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 512}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}
+        ],
+        "responses": {"200": {"$ref": "#/components/responses/InvitationAdministrationListOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/invitations/{invitation_id}": {
+      "parameters": [{"$ref": "#/components/parameters/InvitationID"}],
+      "get": {
+        "operationId": "getInvitation", "summary": "Get one Invitation within the caller's authorized scope",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "request.invalid", "resource.not_found", "administration.unavailable", "invitation.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "responses": {"200": {"$ref": "#/components/responses/InvitationAdministrationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/invitations/{invitation_id}/resend": {
+      "parameters": [{"$ref": "#/components/parameters/InvitationID"}],
+      "post": {
+        "operationId": "resendInvitation", "summary": "Rotate the claim and resend an unchanged pending Invitation",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "requestBody": {"$ref": "#/components/requestBodies/MutateInvitation"},
+        "responses": {"200": {"$ref": "#/components/responses/InvitationAdministrationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/invitations/{invitation_id}/revoke": {
+      "parameters": [{"$ref": "#/components/parameters/InvitationID"}],
+      "post": {
+        "operationId": "revokeInvitation", "summary": "Revoke a pending Invitation",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "requestBody": {"$ref": "#/components/requestBodies/MutateInvitation"},
+        "responses": {"200": {"$ref": "#/components/responses/InvitationAdministrationOK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/invitations/{invitation_id}/replacement": {
+      "parameters": [{"$ref": "#/components/parameters/InvitationID"}],
+      "post": {
+        "operationId": "replaceInvitation", "summary": "Supersede a pending Invitation with a changed immutable package",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable", "administration.unavailable", "authentication.strong_required", "authentication.reauthentication_required"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}], "requestBody": {"$ref": "#/components/requestBodies/ReplaceInvitation"},
+        "responses": {"201": {"$ref": "#/components/responses/InvitationAdministrationCreated"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
     "/api/v1/classes/{class_id}/invitations/student": {
       "parameters": [{"$ref": "#/components/parameters/ClassID"}],
       "post": {
@@ -2639,6 +2698,10 @@
         "name": "class_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
       },
+      "InvitationID": {
+        "name": "invitation_id", "in": "path", "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
       "ClassMemberID": {
         "name": "class_member_id", "in": "path", "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -2699,6 +2762,8 @@
       "EnrollPassword": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EnrollPasswordRequest"}}}},
       "BeginProviderConnection": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BeginProviderConnectionRequest"}}}},
       "BeginInvitationExternalAuthentication": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExternalAuthenticationStartRequest"}}}},
+      "MutateInvitation": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationMutationRequest"}}}},
+      "ReplaceInvitation": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReplaceInvitationRequest"}}}},
       "StartMailRekey": {
         "required": true,
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MailRekeyRequest"}}}
@@ -2956,6 +3021,9 @@
     "responses": {
       "DesktopAuthorizationStarted": {"description": "Desktop browser authorization transaction created", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationStartResponse"}}}},
       "DesktopAuthorizationApproved": {"description": "One-use Desktop code issued", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationApprovalResponse"}}}},
+      "InvitationAdministrationOK": {"description": "Authorized safe Invitation administration view", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationResponse"}}}},
+      "InvitationAdministrationCreated": {"description": "Replacement Invitation created and prior Invitation superseded", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationResponse"}}}},
+      "InvitationAdministrationListOK": {"description": "Bounded authorized Invitation administration page", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationListResponse"}}}},
       "ExamOK": {
         "description": "Bounded Exam authoring view",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExamResponse"}}}
@@ -5140,6 +5208,54 @@
       "AcceptScopedRoleInvitationRequest": {
         "type": "object", "additionalProperties": false, "required": ["claim"],
         "properties": {"claim": {"type": "string", "minLength": 43, "maxLength": 128}}
+      },
+      "InvitationMutationRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_revision"],
+        "properties": {"expected_revision": {"type": "integer", "format": "int64", "minimum": 1}}
+      },
+      "ReplaceInvitationRequest": {
+        "type": "object", "additionalProperties": false, "required": ["expected_revision", "purpose", "email"],
+        "properties": {
+          "expected_revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "purpose": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "academic_unit_role", "institution_role"]},
+          "email": {"type": "string", "format": "email"},
+          "class_id": {"$ref": "#/components/schemas/ID"}, "academic_unit_id": {"$ref": "#/components/schemas/ID"},
+          "institution_id": {"$ref": "#/components/schemas/ID"}, "role_id": {"$ref": "#/components/schemas/ID"},
+          "start_at": {"type": "integer", "format": "int64", "minimum": 1}, "end_at": {"type": "integer", "format": "int64", "minimum": 1},
+          "suggested_username": {"type": "string", "maxLength": 64}, "suggested_display_name": {"type": "string", "maxLength": 512},
+          "suggested_first_name": {"type": "string", "maxLength": 256}, "suggested_last_name": {"type": "string", "maxLength": 256},
+          "suggested_locale": {"type": "string", "maxLength": 35}
+        }
+      },
+      "InvitationDeliveryResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["template_key", "state", "masked_recipient", "created_at", "updated_at", "deadline"],
+        "properties": {
+          "template_key": {"type": "string"}, "state": {"type": "string", "enum": ["queued", "sending", "accepted", "failed", "suppressed", "canceled"]},
+          "masked_recipient": {"type": "string"}, "created_at": {"type": "integer", "format": "int64"},
+          "updated_at": {"type": "integer", "format": "int64"}, "deadline": {"type": "integer", "format": "int64"},
+          "accepted_at": {"type": "integer", "format": "int64"}, "public_failure_code": {"type": "string"}
+        }
+      },
+      "InvitationAdministrationResponse": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "purpose", "state", "start_at", "expires_at", "email", "inviter_user_id", "created_at", "updated_at", "revision"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"}, "purpose": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "academic_unit_role", "institution_role"]},
+          "state": {"type": "string", "enum": ["pending", "accepted", "revoked", "expired", "superseded"]},
+          "class_id": {"$ref": "#/components/schemas/ID"}, "academic_period_id": {"$ref": "#/components/schemas/ID"},
+          "academic_unit_id": {"$ref": "#/components/schemas/ID"}, "role_id": {"$ref": "#/components/schemas/ID"},
+          "role_actions": {"type": "array", "items": {"type": "string"}},
+          "start_at": {"type": "integer", "format": "int64"}, "end_at": {"type": "integer", "format": "int64"},
+          "expires_at": {"type": "integer", "format": "int64"}, "email": {"type": "string", "format": "email"},
+          "inviter_user_id": {"$ref": "#/components/schemas/ID"}, "accepted_user_id": {"$ref": "#/components/schemas/ID"},
+          "created_at": {"type": "integer", "format": "int64"}, "updated_at": {"type": "integer", "format": "int64"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1}, "delivery": {"$ref": "#/components/schemas/InvitationDeliveryResponse"}
+        }
+      },
+      "InvitationAdministrationListResponse": {
+        "type": "object", "additionalProperties": false, "required": ["items"],
+        "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/InvitationAdministrationResponse"}}, "next_cursor": {"type": "string"}}
       },
       "InvitationResponse": {
         "type": "object", "additionalProperties": false,

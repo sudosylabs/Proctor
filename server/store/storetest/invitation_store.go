@@ -55,6 +55,18 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 	t.Run("IssueStudentClassImmediatelyReplacesElapsedPendingInvitation", func(t *testing.T) {
 		testInvitationIssueStudentClassTerminalizesElapsedPendingInvitation(t, ss, probe.PayloadKeyReferences)
 	})
+	t.Run("AdministrationLifecycle", func(t *testing.T) {
+		testInvitationAdministrationLifecycle(t, ss)
+	})
+	t.Run("AdministrationResendIsRevisionFenced", func(t *testing.T) {
+		testInvitationAdministrationResendIsRevisionFenced(t, ss)
+	})
+	t.Run("AdministrationRevokeAndReplaceAreRevisionFenced", func(t *testing.T) {
+		testInvitationAdministrationRevokeAndReplaceAreRevisionFenced(t, ss)
+	})
+	t.Run("AdministrationPaginationIsStable", func(t *testing.T) {
+		testInvitationAdministrationPaginationIsStable(t, ss)
+	})
 	if probe.DisableInviterBeforeIssue != nil {
 		t.Run("IssueStudentClassSerializesWithConcurrentInviterDisable", func(t *testing.T) {
 			testInvitationIssueSerializesWithInviterDisable(t, ss, probe.DisableInviterBeforeIssue)
@@ -78,6 +90,408 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 			testScopedRoleAcceptSerializesWithInviterBindingEnd(t, ss, probe.EndBindingBeforeAccept)
 		})
 	}
+}
+
+func testInvitationAdministrationPaginationIsStable(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "pagination")
+	created := make(map[model.InvitationID]struct{}, 3)
+	for index := 0; index < 3; index++ {
+		issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
+		issue.Invitation.TargetEmail = "pagination-" + model.NewId() + "@example.edu"
+		requireNoError(t, issue.Invitation.Validate())
+		invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
+		requireNoError(t, err)
+		created[invitation.ID] = struct{}{}
+	}
+
+	visibility := store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}
+	first, err := ss.Invitation().List(ctx, store.InvitationListOptions{Visibility: visibility, Limit: 2})
+	requireNoError(t, err)
+	if len(first.Items) != 2 || !first.More {
+		t.Fatalf("first Invitation page = %#v", first)
+	}
+	boundary := first.Items[len(first.Items)-1].Invitation
+	second, err := ss.Invitation().List(ctx, store.InvitationListOptions{Visibility: visibility, Limit: 2,
+		BeforeCreatedAt: boundary.CreatedAt, BeforeID: boundary.ID})
+	requireNoError(t, err)
+	if len(second.Items) != 1 || second.More {
+		t.Fatalf("second Invitation page = %#v", second)
+	}
+
+	seen := make(map[model.InvitationID]struct{}, 3)
+	for _, page := range []*store.InvitationPage{first, second} {
+		for _, record := range page.Items {
+			if _, duplicate := seen[record.Invitation.ID]; duplicate {
+				t.Fatalf("Invitation %s repeated across pages", record.Invitation.ID)
+			}
+			seen[record.Invitation.ID] = struct{}{}
+		}
+	}
+	if len(seen) != len(created) {
+		t.Fatalf("paginated Invitations = %v, want %v", seen, created)
+	}
+	for id := range created {
+		if _, ok := seen[id]; !ok {
+			t.Fatalf("Invitation %s skipped by pagination", id)
+		}
+	}
+}
+
+func testInvitationAdministrationRevokeAndReplaceAreRevisionFenced(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "revoke-replace-race")
+	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
+	issue.Invitation.TargetEmail = "revoke-replace-race-" + model.NewId() + "@example.edu"
+	requireNoError(t, issue.Invitation.Validate())
+	current, err := ss.Invitation().IssueStudentClass(ctx, issue)
+	requireNoError(t, err)
+
+	changed, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
+		TargetEmail: "revoke-replace-winner-" + model.NewId() + "@example.edu", ClassID: class.ID,
+		AcademicPeriodID: fixture.period.ID, IntendedStartsAt: fixture.period.StartsAt,
+		IntendedEndsAt: model.OptionalTimeFrom(fixture.period.EndsAt), InviterUserID: inviter.ID,
+		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: model.NowUTC()})
+	requireNoError(t, err)
+	replacementOccurrence, replacementDelivery, replacementJob := invitationLifecycleMailFixture(t, changed.ID, inviter.ID,
+		model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), changed.ExpiresAt)
+	supersedeAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.supersede")
+	replacementAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.replacement_issue")
+	replacement := &store.InvitationReplacement{CurrentID: current.ID, ExpectedCurrentRevision: current.Revision,
+		Replacement: changed, Lifetime: model.InvitationLifetime, Occurrence: replacementOccurrence,
+		Delivery: replacementDelivery, DeliveryJob: replacementJob, ActorUserID: inviter.ID,
+		CurrentAuditEventID: supersedeAudit.ID.String(), ReplacementAuditEventID: replacementAudit.ID.String(),
+		AuditAt: model.MillisFromTime(model.NowUTC())}
+
+	revocationOccurrence, revocationDelivery, revocationJob := invitationLifecycleMailFixture(t, current.ID, inviter.ID,
+		model.MailTemplateAccessInvitationRevoked, model.JobTypeMailDeliver, model.NowUTC(), model.NowUTC().Add(24*time.Hour))
+	revocationAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.revoke")
+	revocation := &store.InvitationRevocation{ID: current.ID, ExpectedRevision: current.Revision, ActorUserID: inviter.ID,
+		RevocationNotice: &store.PreparedMail{Occurrence: revocationOccurrence, Delivery: revocationDelivery, Job: revocationJob},
+		AuditEventID:     revocationAudit.ID.String(), AuditAt: model.MillisFromTime(model.NowUTC())}
+
+	var revoked, replaced *store.InvitationAdministrationRecord
+	var revokeErr, replaceErr error
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go func() {
+		defer wait.Done()
+		<-start
+		revoked, revokeErr = ss.Invitation().Revoke(ctx, revocation)
+	}()
+	go func() {
+		defer wait.Done()
+		<-start
+		replaced, replaceErr = ss.Invitation().Replace(ctx, replacement)
+	}()
+	close(start)
+	wait.Wait()
+
+	if (revokeErr == nil) == (replaceErr == nil) {
+		t.Fatalf("concurrent Revoke()/Replace() results=%#v/%#v errors=%v/%v", revoked, replaced, revokeErr, replaceErr)
+	}
+	currentAfter, err := ss.Invitation().Get(ctx, current.ID)
+	requireNoError(t, err)
+	if revokeErr == nil {
+		if !store.IsConflict(replaceErr) || currentAfter.State != model.InvitationRevoked || currentAfter.Revision != current.Revision+1 {
+			t.Fatalf("winning Revoke() = %#v current=%#v Replace error=%v", revoked, currentAfter, replaceErr)
+		}
+		if _, err = ss.Invitation().Get(ctx, changed.ID); !store.IsNotFound(err) {
+			t.Fatalf("losing replacement Invitation = %v", err)
+		}
+		if _, err = ss.Mail().GetDelivery(ctx, replacementDelivery.ID); !store.IsNotFound(err) {
+			t.Fatalf("losing replacement delivery = %v", err)
+		}
+	} else {
+		if !store.IsConflict(revokeErr) || currentAfter.State != model.InvitationSuperseded || currentAfter.Revision != current.Revision+1 ||
+			replaced == nil || replaced.Invitation.ID != changed.ID {
+			t.Fatalf("winning Replace() = %#v current=%#v Revoke error=%v", replaced, currentAfter, revokeErr)
+		}
+		if _, err = ss.Mail().GetDelivery(ctx, revocationDelivery.ID); !store.IsNotFound(err) {
+			t.Fatalf("losing revocation delivery = %v", err)
+		}
+	}
+	obsolete, err := ss.Mail().GetDelivery(ctx, issue.Delivery.ID)
+	requireNoError(t, err)
+	if obsolete.State != model.MailDeliverySuppressed || len(obsolete.EncryptedPayload) != 0 {
+		t.Fatalf("terminal race credential delivery = %#v", obsolete)
+	}
+}
+
+func testInvitationAdministrationResendIsRevisionFenced(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "resend-race")
+	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
+	issue.Invitation.TargetEmail = "resend-race-" + model.NewId() + "@example.edu"
+	requireNoError(t, issue.Invitation.Validate())
+	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
+	requireNoError(t, err)
+
+	inputs := make([]*store.InvitationResend, 2)
+	for index := range inputs {
+		occurrence, delivery, job := invitationLifecycleMailFixture(t, invitation.ID, inviter.ID,
+			model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), invitation.ExpiresAt)
+		audit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
+		inputs[index] = &store.InvitationResend{ID: invitation.ID, ExpectedRevision: invitation.Revision,
+			ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), Occurrence: occurrence, Delivery: delivery,
+			DeliveryJob: job, ActorUserID: inviter.ID, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(model.NowUTC())}
+	}
+	results := make([]*store.InvitationAdministrationRecord, 2)
+	errors := make([]error, 2)
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	for index := range inputs {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			results[index], errors[index] = ss.Invitation().Resend(ctx, inputs[index])
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+	winner := -1
+	for index, resendErr := range errors {
+		if resendErr == nil {
+			winner = index
+			continue
+		}
+		if !store.IsConflict(resendErr) {
+			t.Fatalf("concurrent Resend() error[%d] = %v", index, resendErr)
+		}
+	}
+	if winner < 0 || errors[1-winner] == nil || results[winner] == nil || results[winner].Invitation.Revision != invitation.Revision+1 {
+		t.Fatalf("concurrent Resend() results=%#v errors=%v", results, errors)
+	}
+	if _, err = ss.Invitation().GetByClaimHash(ctx, inputs[winner].ClaimHash); err != nil {
+		t.Fatalf("winning claim lookup = %v", err)
+	}
+	if _, err = ss.Invitation().GetByClaimHash(ctx, inputs[1-winner].ClaimHash); !store.IsNotFound(err) {
+		t.Fatalf("losing claim lookup = %v", err)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, inputs[1-winner].Delivery.ID); !store.IsNotFound(err) {
+		t.Fatalf("losing resend delivery = %v", err)
+	}
+}
+
+func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "lifecycle")
+	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
+	issue.Invitation.TargetEmail = "lifecycle-" + model.NewId() + "@example.edu"
+	requireNoError(t, issue.Invitation.Validate())
+	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
+	requireNoError(t, err)
+
+	visibility := store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}
+	page, err := ss.Invitation().List(ctx, store.InvitationListOptions{Visibility: visibility,
+		Purpose: model.InvitationPurposeStudentClass, State: model.InvitationPending,
+		TargetEmail: invitation.TargetEmail, TargetID: class.ID.String(), Limit: 1})
+	requireNoError(t, err)
+	if len(page.Items) != 1 || page.Items[0].Invitation.ID != invitation.ID || page.Items[0].Delivery == nil ||
+		page.Items[0].Delivery.State != model.MailDeliveryQueued || page.Items[0].Delivery.MaskedRecipient == "" {
+		t.Fatalf("Invitation administration list = %#v", page)
+	}
+	rootPage, err := ss.Invitation().List(ctx, store.InvitationListOptions{Visibility: store.InvitationVisibilityScope{
+		AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}}, TargetEmail: invitation.TargetEmail, Limit: 10})
+	requireNoError(t, err)
+	if len(rootPage.Items) != 1 || rootPage.Items[0].Invitation.ID != invitation.ID {
+		t.Fatalf("Academic Unit subtree Invitation list = %#v", rootPage)
+	}
+	if _, err = ss.Invitation().GetForAdministration(ctx, invitation.ID,
+		store.InvitationVisibilityScope{ClassIDs: []string{model.NewClassID().String()}}); !store.IsNotFound(err) {
+		t.Fatalf("out-of-scope Invitation detail error = %v", err)
+	}
+
+	oldHash := invitation.ClaimHash
+	newHash := model.HashInvitationClaim(model.NewCredentialToken())
+	occurrence, delivery, job := invitationLifecycleMailFixture(t, invitation.ID, inviter.ID,
+		model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), invitation.ExpiresAt)
+	audit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
+	resent, err := ss.Invitation().Resend(ctx, &store.InvitationResend{ID: invitation.ID, ExpectedRevision: invitation.Revision,
+		ClaimHash: newHash, Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
+		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(model.NowUTC())})
+	requireNoError(t, err)
+	if resent.Invitation.ClaimHash != newHash || resent.Invitation.Revision != invitation.Revision+1 ||
+		resent.Invitation.ExpiresAt != invitation.ExpiresAt || resent.Delivery == nil || resent.Delivery.State != model.MailDeliveryQueued {
+		t.Fatalf("Resend() = %#v", resent)
+	}
+	if _, err = ss.Invitation().GetByClaimHash(ctx, oldHash); !store.IsNotFound(err) {
+		t.Fatalf("old Invitation claim error = %v", err)
+	}
+	obsolete, err := ss.Mail().GetDelivery(ctx, issue.Delivery.ID)
+	requireNoError(t, err)
+	if obsolete.State != model.MailDeliverySuppressed || len(obsolete.EncryptedPayload) != 0 || obsolete.PublicFailureCode != model.MailDeliveryObsoleteCode {
+		t.Fatalf("obsolete Invitation delivery = %#v", obsolete)
+	}
+
+	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, 1, model.NowUTC())
+	requireNoError(t, err)
+	accepted, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID,
+		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
+	requireNoError(t, err)
+	if accepted.State != model.MailDeliveryAccepted || len(accepted.EncryptedPayload) != 0 {
+		t.Fatalf("accepted Invitation delivery = %#v", accepted)
+	}
+	revocationOccurrence, revocationDelivery, revocationJob := invitationLifecycleMailFixture(t, invitation.ID, inviter.ID,
+		model.MailTemplateAccessInvitationRevoked, model.JobTypeMailDeliver, model.NowUTC(), model.NowUTC().Add(24*time.Hour))
+	revocationAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.revoke")
+	revoked, err := ss.Invitation().Revoke(ctx, &store.InvitationRevocation{ID: invitation.ID,
+		ExpectedRevision: resent.Invitation.Revision, ActorUserID: inviter.ID,
+		RevocationNotice: &store.PreparedMail{Occurrence: revocationOccurrence, Delivery: revocationDelivery, Job: revocationJob},
+		AuditEventID:     revocationAudit.ID.String(), AuditAt: model.MillisFromTime(model.NowUTC())})
+	requireNoError(t, err)
+	if revoked.Invitation.State != model.InvitationRevoked || revoked.Delivery == nil ||
+		revoked.Delivery.TemplateKey != model.MailTemplateAccessInvitationRevoked || revoked.Delivery.State != model.MailDeliveryQueued {
+		t.Fatalf("Revoke() after accepted SMTP delivery = %#v", revoked)
+	}
+	if _, err = ss.Invitation().GetByClaimHash(ctx, newHash); err != nil {
+		t.Fatalf("terminal Invitation lookup by claim hash = %v", err)
+	}
+
+	unsentFixture, unsentClass, unsentInviter, unsentAt := invitationAdministrationFixture(t, ctx, ss, "unsent-revoke")
+	unsentIssue := studentClassInvitationIssueFixture(t, ss, unsentInviter, unsentClass, unsentFixture.period, unsentAt)
+	unsentIssue.Invitation.TargetEmail = "unsent-revoke-" + model.NewId() + "@example.edu"
+	requireNoError(t, unsentIssue.Invitation.Validate())
+	unsent, err := ss.Invitation().IssueStudentClass(ctx, unsentIssue)
+	requireNoError(t, err)
+	unusedOccurrence, unusedDelivery, unusedJob := invitationLifecycleMailFixture(t, unsent.ID, unsentInviter.ID,
+		model.MailTemplateAccessInvitationRevoked, model.JobTypeMailDeliver, model.NowUTC(), model.NowUTC().Add(24*time.Hour))
+	unsentAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, unsentInviter.ID, unsentClass.ID.String(), "invitation.revoke")
+	unsentRevoked, err := ss.Invitation().Revoke(ctx, &store.InvitationRevocation{ID: unsent.ID,
+		ExpectedRevision: unsent.Revision, ActorUserID: unsentInviter.ID,
+		RevocationNotice: &store.PreparedMail{Occurrence: unusedOccurrence, Delivery: unusedDelivery, Job: unusedJob},
+		AuditEventID:     unsentAudit.ID.String(), AuditAt: model.MillisFromTime(model.NowUTC())})
+	requireNoError(t, err)
+	if unsentRevoked.Invitation.State != model.InvitationRevoked || unsentRevoked.Delivery != nil {
+		t.Fatalf("Revoke() before SMTP acceptance = %#v", unsentRevoked)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, unusedDelivery.ID); !store.IsNotFound(err) {
+		t.Fatalf("unneeded revocation delivery = %v", err)
+	}
+	unsentObsolete, err := ss.Mail().GetDelivery(ctx, unsentIssue.Delivery.ID)
+	requireNoError(t, err)
+	if unsentObsolete.State != model.MailDeliverySuppressed || len(unsentObsolete.EncryptedPayload) != 0 {
+		t.Fatalf("revoked unsent credential delivery = %#v", unsentObsolete)
+	}
+
+	replacementFixture, replacementClass, replacementInviter, replacementAt := invitationAdministrationFixture(t, ctx, ss, "replacement")
+	replacementIssue := studentClassInvitationIssueFixture(t, ss, replacementInviter, replacementClass, replacementFixture.period, replacementAt)
+	replacementIssue.Invitation.TargetEmail = "replace-current-" + model.NewId() + "@example.edu"
+	requireNoError(t, replacementIssue.Invitation.Validate())
+	current, err := ss.Invitation().IssueStudentClass(ctx, replacementIssue)
+	requireNoError(t, err)
+	samePackage := *current
+	samePackage.ID, samePackage.ClaimHash = model.NewInvitationID(), model.HashInvitationClaim(model.NewCredentialToken())
+	samePackage.CreatedAt, samePackage.UpdatedAt = model.NowUTC(), model.NowUTC()
+	samePackage.ExpiresAt, samePackage.Revision = samePackage.CreatedAt.Add(model.InvitationLifetime), 1
+	requireNoError(t, samePackage.Validate())
+	sameOccurrence, sameDelivery, sameJob := invitationLifecycleMailFixture(t, samePackage.ID, replacementInviter.ID,
+		model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), samePackage.ExpiresAt)
+	sameCurrentAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementClass.ID.String(), "invitation.supersede")
+	sameReplacementAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementClass.ID.String(), "invitation.replacement_issue")
+	_, err = ss.Invitation().Replace(ctx, &store.InvitationReplacement{CurrentID: current.ID,
+		ExpectedCurrentRevision: current.Revision, Replacement: &samePackage, Lifetime: model.InvitationLifetime,
+		Occurrence: sameOccurrence, Delivery: sameDelivery, DeliveryJob: sameJob, ActorUserID: replacementInviter.ID,
+		CurrentAuditEventID: sameCurrentAudit.ID.String(), ReplacementAuditEventID: sameReplacementAudit.ID.String(),
+		AuditAt: model.MillisFromTime(model.NowUTC())})
+	if !store.IsConflict(err) {
+		t.Fatalf("unchanged Replace() error = %v", err)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, sameDelivery.ID); !store.IsNotFound(err) {
+		t.Fatalf("unchanged replacement delivery = %v", err)
+	}
+	replacementTargetClass := saveClass(t, ctx, ss, replacementFixture.level.ID.String(), replacementFixture.period.ID.String(), "invitation-admin-replacement-target")
+	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "invitation-replacement-target-" + model.NewId(), DisplayName: "Invitation replacement target",
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: replacementInviter.ID, RoleID: targetRole.ID,
+		ScopeType: model.RoleScopeClass, ScopeID: replacementTargetClass.ID.String(), StartsAt: replacementAt.Add(-time.Second)})
+	requireNoError(t, err)
+	candidate, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
+		TargetEmail: "replacement-" + model.NewId() + "@example.edu", ClassID: replacementTargetClass.ID,
+		AcademicPeriodID: replacementFixture.period.ID, IntendedStartsAt: replacementFixture.period.StartsAt,
+		IntendedEndsAt: model.OptionalTimeFrom(replacementFixture.period.EndsAt), InviterUserID: replacementInviter.ID,
+		ScopeType: model.RoleScopeClass, ScopeID: replacementTargetClass.ID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: model.NowUTC()})
+	requireNoError(t, err)
+	replacementOccurrence, replacementDelivery, replacementJob := invitationLifecycleMailFixture(t, candidate.ID, replacementInviter.ID,
+		model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), candidate.ExpiresAt)
+	supersedeAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementClass.ID.String(), "invitation.supersede")
+	replacementAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, replacementInviter.ID, replacementTargetClass.ID.String(), "invitation.replacement_issue")
+	replaced, err := ss.Invitation().Replace(ctx, &store.InvitationReplacement{CurrentID: current.ID,
+		ExpectedCurrentRevision: current.Revision, Replacement: candidate, Lifetime: model.InvitationLifetime,
+		Occurrence: replacementOccurrence, Delivery: replacementDelivery, DeliveryJob: replacementJob, ActorUserID: replacementInviter.ID,
+		CurrentAuditEventID: supersedeAudit.ID.String(), ReplacementAuditEventID: replacementAudit.ID.String(),
+		AuditAt: model.MillisFromTime(model.NowUTC())})
+	requireNoError(t, err)
+	if replaced.Invitation.ID != candidate.ID || replaced.Invitation.State != model.InvitationPending || replaced.Delivery == nil {
+		t.Fatalf("Replace() = %#v", replaced)
+	}
+	superseded, err := ss.Invitation().Get(ctx, current.ID)
+	requireNoError(t, err)
+	if superseded.State != model.InvitationSuperseded || superseded.Revision != current.Revision+1 {
+		t.Fatalf("superseded Invitation = %#v", superseded)
+	}
+	supersedeEvent, err := ss.Audit().Get(ctx, supersedeAudit.ID.String())
+	requireNoError(t, err)
+	replacementEvent, err := ss.Audit().Get(ctx, replacementAudit.ID.String())
+	requireNoError(t, err)
+	if supersedeEvent.ScopeID != replacementClass.ID.String() || strings.Contains(string(supersedeEvent.Result), replacementTargetClass.ID.String()) ||
+		replacementEvent.ScopeID != replacementTargetClass.ID.String() || strings.Contains(string(replacementEvent.Result), replacementClass.ID.String()) {
+		t.Fatalf("cross-scope replacement audits = %#v / %#v", supersedeEvent, replacementEvent)
+	}
+	oldReplacementDelivery, err := ss.Mail().GetDelivery(ctx, replacementIssue.Delivery.ID)
+	requireNoError(t, err)
+	if oldReplacementDelivery.State != model.MailDeliverySuppressed || len(oldReplacementDelivery.EncryptedPayload) != 0 {
+		t.Fatalf("superseded Invitation delivery = %#v", oldReplacementDelivery)
+	}
+}
+
+func invitationAdministrationFixture(t *testing.T, ctx context.Context, ss store.Store, suffix string) (classFixture, *model.Class, *model.User, time.Time) {
+	t.Helper()
+	fixture := saveClassFixture(t, ctx, ss)
+	class := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "invitation-admin-"+suffix)
+	inviter := saveUser(t, ctx, ss)
+	role, err := ss.Role().Save(ctx, &model.Role{Name: "invitation-admin-" + suffix + "-" + model.NewId(), DisplayName: "Invitation administrator",
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionInvitationManage), string(model.ActionClassMembersManage)}})
+	requireNoError(t, err)
+	at := model.NowUTC().Add(-time.Minute)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
+		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: at.Add(-time.Second)})
+	requireNoError(t, err)
+	return fixture, class, inviter, at
+}
+
+func invitationLifecycleMailFixture(t *testing.T, invitationID model.InvitationID, actor model.UserID,
+	key model.MailTemplateKey, jobType model.JobType, at, deadline time.Time,
+) (*model.MailOccurrence, *model.MailDelivery, *model.Job) {
+	t.Helper()
+	occurrenceID, deliveryID := model.NewMailOccurrenceID(), model.NewMailDeliveryID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	requireNoError(t, err)
+	job, err := model.NewJob(model.NewJobID(), jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	requireNoError(t, err)
+	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation, TemplateKey: key, ActorUserID: actor, CreatedAt: at}
+	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: job.ID, TargetInvitationID: invitationID,
+		TemplateKey: key, TemplateDigest: strings.Repeat("d", 64), MaskedRecipient: "i***@example.edu",
+		State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: deadline,
+		MessageID:        "<invitation-lifecycle." + deliveryID.String() + "@example.test>",
+		EncryptedPayload: json.RawMessage(`{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"lifecycle"}`), Revision: 1}
+	requireNoError(t, occurrence.Validate())
+	requireNoError(t, delivery.Validate())
+	return occurrence, delivery, job
+}
+
+func saveInvitationLifecycleAuditAttempt(t *testing.T, ctx context.Context, ss store.Store, actor model.UserID, classID, action string) *model.AuditEvent {
+	t.Helper()
+	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: actor, Action: action,
+		Resource: model.Resource{Type: model.ResourceClass, ID: classID}, ScopeType: model.RoleScopeClass, ScopeID: classID,
+		Status: model.AuditStatusAttempt, NodeID: "invitation-lifecycle-store-test"})
+	requireNoError(t, err)
+	return audit
 }
 
 func testScopedRoleAcceptSerializesWithRoleArchive(t *testing.T, ss store.Store,
@@ -301,7 +715,7 @@ func scopedRoleInvitationIssueFixture(t *testing.T, ss store.Store, invitation *
 		Action: string(model.ActionInvitationCreate), Resource: model.Resource{Type: resourceTypeForScopedInvitation(invitation), ID: invitation.ScopeID},
 		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID, Status: model.AuditStatusAttempt, NodeID: "scoped-role-invitation-store-test"})
 	requireNoError(t, err)
-	return &store.ScopedRoleInvitationIssue{Invitation: invitation, Lifetime: model.StudentClassInvitationLifetime,
+	return &store.ScopedRoleInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation, TemplateKey: key,
 			ActorUserID: invitation.InviterUserID, CreatedAt: at},
 		Delivery: &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetInvitationID: invitation.ID,

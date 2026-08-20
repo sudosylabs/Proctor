@@ -49,6 +49,7 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateAccessAcademicUnitRoleInvitation,
 		MailTemplateAccessInstitutionRoleInvitation,
 		MailTemplateAccessInvitationAccepted,
+		MailTemplateAccessInvitationRevoked,
 		MailTemplateExamSittingScheduled,
 		MailTemplateExamSittingRescheduled,
 		MailTemplateExamSittingCancelled,
@@ -87,6 +88,7 @@ const (
 	MailTemplateAccessAcademicUnitRoleInvitation    MailTemplateKey = "access.academic_unit_role_invitation"
 	MailTemplateAccessInstitutionRoleInvitation     MailTemplateKey = "access.institution_role_invitation"
 	MailTemplateAccessInvitationAccepted            MailTemplateKey = "access.invitation_accepted"
+	MailTemplateAccessInvitationRevoked             MailTemplateKey = "access.invitation_revoked"
 	MailTemplateExamSittingScheduled                MailTemplateKey = "exam.sitting_scheduled"
 	MailTemplateExamSittingRescheduled              MailTemplateKey = "exam.sitting_rescheduled"
 	MailTemplateExamSittingCancelled                MailTemplateKey = "exam.sitting_cancelled"
@@ -156,7 +158,7 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 	case MailOccurrenceInvitation:
 		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessTeacherAcademicUnitInvitation ||
 			key == MailTemplateAccessAcademicUnitRoleInvitation || key == MailTemplateAccessInstitutionRoleInvitation ||
-			key == MailTemplateAccessInvitationAccepted
+			key == MailTemplateAccessInvitationAccepted || key == MailTemplateAccessInvitationRevoked
 	case MailOccurrenceSittingSchedule:
 		return key == MailTemplateExamSittingScheduled || key == MailTemplateExamSittingRescheduled ||
 			key == MailTemplateExamSittingCancelled || key == MailTemplateExamSittingAssignmentRemoved

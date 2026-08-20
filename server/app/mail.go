@@ -267,6 +267,44 @@ func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, act
 		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil, nil)
 }
 
+func (p *directMailPreparer) PrepareInvitationResend(invitation *model.Invitation, actionURL string, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
+	if !p.Enabled() || invitation == nil || invitation.Validate() != nil || invitation.State != model.InvitationPending ||
+		!actor.IsValid() || at.IsZero() || !model.TimeUTC(at).Before(invitation.ExpiresAt) {
+		return nil, errors.New("Invitation resend mail input is invalid")
+	}
+	key, err := invitationTemplateKey(invitation.Purpose)
+	if err != nil {
+		return nil, err
+	}
+	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
+		actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailOccurrenceInvitation, key, actionURL,
+		at, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil, nil)
+}
+
+func (p *directMailPreparer) PrepareInvitationRevocation(invitation *model.Invitation, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
+	if p == nil || invitation == nil || invitation.Validate() != nil || invitation.State != model.InvitationPending || !actor.IsValid() || at.IsZero() {
+		return nil, errors.New("Invitation revocation mail input is invalid")
+	}
+	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
+		actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailOccurrenceInvitation,
+		model.MailTemplateAccessInvitationRevoked, "", at, model.TimeUTC(at).Add(24*time.Hour), model.JobTypeMailDeliver, nil, nil)
+}
+
+func invitationTemplateKey(purpose model.InvitationPurpose) (model.MailTemplateKey, error) {
+	switch purpose {
+	case model.InvitationPurposeStudentClass:
+		return model.MailTemplateAccessStudentClassInvitation, nil
+	case model.InvitationPurposeTeacherAcademicUnit:
+		return model.MailTemplateAccessTeacherAcademicUnitInvitation, nil
+	case model.InvitationPurposeAcademicUnitRole:
+		return model.MailTemplateAccessAcademicUnitRoleInvitation, nil
+	case model.InvitationPurposeInstitutionRole:
+		return model.MailTemplateAccessInstitutionRoleInvitation, nil
+	default:
+		return "", errors.New("Invitation mail purpose is not implemented")
+	}
+}
+
 func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, locale string, actorUserID, targetUserID model.UserID,
 	targetInvitationID model.InvitationID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind,
 	key model.MailTemplateKey, actionURL string, at, deadline time.Time, jobType model.JobType,

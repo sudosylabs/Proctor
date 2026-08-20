@@ -300,6 +300,36 @@ same User returns the exact result; a different User or incompatible package
 receives a bounded `invitation.*` outcome without consuming the Invitation.
 The hosted `/join` page remains outside this transport slice.
 
+## Invitation administration
+
+`GET /api/v1/invitations` and `GET
+/api/v1/invitations/{invitation_id}` require an authenticated principal and
+authorize `invitation.view` before persistence applies the resulting
+Institution, Academic Unit subtree, and exact Class visibility constraint.
+The list is keyset-paginated with a default limit of 50 and maximum of 200;
+purpose, lifecycle state, normalized recipient email, target ID, and creation
+time bounds are optional server-side filters. The opaque cursor binds the
+exclusive `(created_at, id)` boundary. Out-of-scope detail reads are
+indistinguishable from missing Invitations.
+
+The administration projection exposes the approved recipient email, immutable
+package, inviter and accepted User IDs, revision, timestamps, and newest safe
+delivery summary. It never exposes a raw or hashed claim, action URL, rendered
+mail or encrypted payload, provider identity, Message-ID, Job identity,
+transport response, or internal failure detail.
+
+`POST /api/v1/invitations/{invitation_id}/resend`, `/revoke`, and
+`/replacement` require `invitation.manage` visibility and an
+`expected_revision`. Resend preserves the immutable package and absolute
+Invitation expiry while rotating the one-use claim and atomically replacing
+unsent credential mail. Revocation immediately terminalizes the Invitation,
+suppresses unsent credential mail, and queues a semantic revocation notice only
+when an Invitation credential delivery was SMTP Accepted. Replacement creates
+a new typed Invitation and supersedes the old one atomically; it repeats the
+same target, delegation, assurance, and package validation required by direct
+issue. Institution Role replacement therefore requires a strong, recent
+interactive Session.
+
 ## Ownership and extension workflow
 
 `api.New` is the production construction boundary. Its broad `Options` value

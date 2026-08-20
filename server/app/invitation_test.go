@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 )
 
 type invitationStoreFake struct {
+	store.InvitationStore
 	invitation      *model.Invitation
 	issued          *store.StudentClassInvitationIssue
 	accepted        *store.StudentClassInvitationAcceptance
@@ -23,6 +25,10 @@ type invitationStoreFake struct {
 	scopedIssued    *store.ScopedRoleInvitationIssue
 	scopedAccepted  *store.ScopedRoleInvitationAcceptance
 	scopedAcceptErr error
+	listOptions     store.InvitationListOptions
+	resent          *store.InvitationResend
+	revoked         *store.InvitationRevocation
+	replaced        *store.InvitationReplacement
 	events          *[]string
 }
 
@@ -81,6 +87,29 @@ func (f *invitationStoreFake) AcceptScopedRole(_ context.Context, input *store.S
 func (f *invitationStoreFake) Maintain(context.Context, int) (*store.InvitationMaintenanceResult, error) {
 	return &store.InvitationMaintenanceResult{}, nil
 }
+func (f *invitationStoreFake) List(_ context.Context, options store.InvitationListOptions) (*store.InvitationPage, error) {
+	f.listOptions = options
+	return &store.InvitationPage{Items: []*store.InvitationAdministrationRecord{{Invitation: f.invitation}}}, nil
+}
+func (f *invitationStoreFake) GetForAdministration(context.Context, model.InvitationID, store.InvitationVisibilityScope) (*store.InvitationAdministrationRecord, error) {
+	return &store.InvitationAdministrationRecord{Invitation: f.invitation}, nil
+}
+func (f *invitationStoreFake) Resend(_ context.Context, input *store.InvitationResend) (*store.InvitationAdministrationRecord, error) {
+	f.resent = input
+	result := *f.invitation
+	_ = result.Resend(input.ClaimHash, model.TimeFromMillis(input.AuditAt))
+	return &store.InvitationAdministrationRecord{Invitation: &result, Delivery: &store.InvitationDeliverySummary{State: model.MailDeliveryQueued}}, nil
+}
+func (f *invitationStoreFake) Revoke(_ context.Context, input *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
+	f.revoked = input
+	result := *f.invitation
+	_ = result.Revoke(model.TimeFromMillis(input.AuditAt))
+	return &store.InvitationAdministrationRecord{Invitation: &result}, nil
+}
+func (f *invitationStoreFake) Replace(_ context.Context, input *store.InvitationReplacement) (*store.InvitationAdministrationRecord, error) {
+	f.replaced = input
+	return &store.InvitationAdministrationRecord{Invitation: input.Replacement}, nil
+}
 
 type invitationClassStoreFake struct{ class *model.Class }
 
@@ -124,6 +153,10 @@ func (f *invitationAuthorizerFake) CanDelegateActionsAtScope(_ context.Context, 
 	f.delegatedScopeID = scopeID
 	return f.err
 }
+func (f *invitationAuthorizerFake) Visibility(_ context.Context, _ Invocation, action model.Action) (store.InvitationVisibilityScope, error) {
+	f.actions = append(f.actions, action)
+	return store.InvitationVisibilityScope{InstitutionWide: true}, f.err
+}
 
 func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testing.T) {
 	now := model.TimeFromMillis(1_800_000_000_000)
@@ -143,7 +176,7 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 		t.Fatalf("IssueTeacherAcademicUnit() error = %v", err)
 	}
 	if view.AcademicUnitID != unitID || view.RoleID != roleID || persistence.teacherIssued == nil ||
-		persistence.teacherIssued.Lifetime != model.StudentClassInvitationLifetime ||
+		persistence.teacherIssued.Lifetime != model.InvitationLifetime ||
 		!slices.Equal(persistence.teacherIssued.Invitation.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}) {
 		t.Fatalf("teacher issue view/input = %#v / %#v", view, persistence.teacherIssued)
 	}
@@ -171,7 +204,7 @@ func TestInvitationServiceIssuesAcademicUnitRoleForExistingUser(t *testing.T) {
 		t.Fatalf("IssueAcademicUnitRole() error = %v", err)
 	}
 	if view.Purpose != model.InvitationPurposeAcademicUnitRole || view.AcademicUnitID != unitID || view.RoleID != roleID ||
-		persistence.scopedIssued == nil || persistence.scopedIssued.Lifetime != model.StudentClassInvitationLifetime {
+		persistence.scopedIssued == nil || persistence.scopedIssued.Lifetime != model.InvitationLifetime {
 		t.Fatalf("academic-unit Role issue view/input = %#v / %#v", view, persistence.scopedIssued)
 	}
 	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
@@ -359,6 +392,16 @@ func (f *invitationMailPreparerFake) PrepareInvitation(invitation *model.Invitat
 	f.issueURL = actionURL
 	return invitationPreparedMail(invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()), model.MailTemplateAccessStudentClassInvitation, invitation.CreatedAt, invitation.ExpiresAt), nil
 }
+func (f *invitationMailPreparerFake) PrepareInvitationResend(invitation *model.Invitation, actionURL string, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
+	f.issueURL = actionURL
+	return invitationPreparedMail(actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailTemplateAccessStudentClassInvitation, at, invitation.ExpiresAt), nil
+}
+func (f *invitationMailPreparerFake) PrepareInvitationRevocation(invitation *model.Invitation, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
+	prepared := invitationPreparedMail(actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailTemplateAccessInvitationRevoked, at, at.Add(24*time.Hour))
+	command, _ := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: prepared.Delivery.ID})
+	prepared.Job, _ = model.NewJob(prepared.Job.ID, model.JobTypeMailDeliver, 1, command, prepared.Delivery.ID.String(), at, at, model.MailMaximumAttempts)
+	return prepared, nil
+}
 func (f *invitationMailPreparerFake) PrepareDirect(request DirectMailPreparation) (*preparedDirectMail, error) {
 	f.directJobType = request.JobType
 	prepared := invitationPreparedMail(request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID, request.TemplateKey, request.At, request.Deadline)
@@ -400,6 +443,106 @@ func newInvitationServiceForTest(t *testing.T, persistence store.InvitationStore
 		t.Fatal(err)
 	}
 	return service
+}
+
+func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	classID := model.NewClassID()
+	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
+		TargetEmail: "student@example.edu", ClassID: classID, AcademicPeriodID: model.NewAcademicPeriodID(),
+		IntendedStartsAt: now, InviterUserID: model.NewUserID(), ScopeType: model.RoleScopeClass,
+		ScopeID: classID.String(), ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &invitationStoreFake{invitation: invitation}
+	authorizer := &invitationAuthorizerFake{}
+	mail := &invitationMailPreparerFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, now.Add(time.Hour))
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+
+	page, err := service.List(context.Background(), invocation, ListInvitationsQuery{TargetEmail: "STUDENT@example.edu", Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].TargetEmail != invitation.TargetEmail ||
+		persistence.listOptions.TargetEmail != invitation.TargetEmail || persistence.listOptions.Limit != 25 {
+		t.Fatalf("Invitation list = %#v / %#v", page, persistence.listOptions)
+	}
+
+	resent, err := service.Resend(context.Background(), invocation, ResendInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistence.resent == nil || persistence.resent.ClaimHash == invitation.ClaimHash ||
+		strings.Contains(resent.String(), persistence.resent.ClaimHash) || !strings.Contains(mail.issueURL, "/join#token=") {
+		t.Fatalf("Invitation resend = %#v / %#v / %q", resent, persistence.resent, mail.issueURL)
+	}
+
+	revoked, err := service.Revoke(context.Background(), invocation, RevokeInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistence.revoked == nil || revoked.State != model.InvitationRevoked ||
+		persistence.revoked.RevocationNotice == nil || persistence.revoked.RevocationNotice.Delivery.TemplateKey != model.MailTemplateAccessInvitationRevoked {
+		t.Fatalf("Invitation revoke = %#v / %#v", revoked, persistence.revoked)
+	}
+	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationView, model.ActionInvitationManage, model.ActionInvitationManage}) {
+		t.Fatalf("Invitation administration authorization = %v", authorizer.actions)
+	}
+}
+
+func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	period := &model.AcademicPeriod{ID: model.NewAcademicPeriodID(), StartsAt: now.Add(24 * time.Hour), EndsAt: now.Add(180 * 24 * time.Hour)}
+	currentClassID := model.NewClassID()
+	class := &model.Class{ID: model.NewClassID(), AcademicPeriodID: period.ID}
+	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(),
+		TargetEmail: "old@example.edu", ClassID: currentClassID, AcademicPeriodID: period.ID,
+		IntendedStartsAt: period.StartsAt, InviterUserID: model.NewUserID(), ScopeType: model.RoleScopeClass,
+		ScopeID: currentClassID.String(), ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &invitationStoreFake{invitation: invitation}
+	authorizer := &invitationAuthorizerFake{}
+	mail := &invitationMailPreparerFake{}
+	events := []string{}
+	auditIDs := []string{model.NewAuditEventID().String(), model.NewAuditEventID().String()}
+	auditor := &mutationAttemptAuditorFake{events: &events, beginIDs: auditIDs}
+	service, err := newInvitationService(persistence, invitationClassStoreFake{class: class}, invitationPeriodStoreFake{period: period},
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
+		auditor, invitationAttemptLimiterFake{},
+		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Hour) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := model.NewUserID()
+	result, err := service.Replace(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
+		ReplaceInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision,
+			Purpose: string(model.InvitationPurposeStudentClass), TargetEmail: "new@example.edu", ClassID: class.ID.String(),
+			SuggestedUsername: "new-student"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistence.replaced == nil || result.ID == invitation.ID || result.TargetEmail != "new@example.edu" ||
+		persistence.replaced.Replacement.InviterUserID != actor || persistence.replaced.Replacement.ClassID != class.ID ||
+		persistence.replaced.Replacement.AcademicPeriodID != period.ID || persistence.replaced.Replacement.ClaimHash == invitation.ClaimHash ||
+		persistence.replaced.ExpectedCurrentRevision != invitation.Revision ||
+		persistence.replaced.CurrentAuditEventID != auditIDs[0] || persistence.replaced.ReplacementAuditEventID != auditIDs[1] ||
+		!strings.Contains(mail.issueURL, "/join#token=") {
+		t.Fatalf("Invitation replacement = %#v / %#v / %q", result, persistence.replaced, mail.issueURL)
+	}
+	wantActions := []model.Action{model.ActionInvitationManage, model.ActionInvitationCreate, model.ActionClassMembersManage}
+	if !slices.Equal(authorizer.actions, wantActions) {
+		t.Fatalf("Invitation replacement authorization = %v, want %v", authorizer.actions, wantActions)
+	}
+	if len(auditor.attempts) != 2 || auditor.attempts[0].ScopeID != currentClassID.String() ||
+		auditor.attempts[1].ScopeID != class.ID.String() ||
+		strings.Contains(fmt.Sprint(auditor.attempts[0].Value), class.ID.String()) ||
+		strings.Contains(fmt.Sprint(auditor.attempts[1].Value), currentClassID.String()) {
+		t.Fatalf("Invitation replacement audit attempts = %#v", auditor.attempts)
+	}
 }
 
 func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {

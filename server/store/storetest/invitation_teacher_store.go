@@ -245,7 +245,7 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 	}
 	unboundedLifetime := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt.Add(3*time.Second))
 	unboundedLifetime.Invitation.TargetEmail = "teacher-unbounded-lifetime@example.edu"
-	unboundedLifetime.Lifetime = model.StudentClassInvitationLifetime + time.Hour
+	unboundedLifetime.Lifetime = model.InvitationLifetime + time.Hour
 	var invalidInput *store.ErrInvalidInput
 	if _, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, unboundedLifetime); !errors.As(err, &invalidInput) {
 		t.Fatalf("IssueTeacherAcademicUnit() unbounded lifetime error = %v", err)
@@ -260,7 +260,7 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 		after := model.NowUTC()
 		requireNoError(t, issueErr)
 		if persisted.CreatedAt.Before(before.Add(-time.Second)) || persisted.CreatedAt.After(after.Add(time.Second)) ||
-			persisted.ExpiresAt.Sub(persisted.CreatedAt) != model.StudentClassInvitationLifetime {
+			persisted.ExpiresAt.Sub(persisted.CreatedAt) != model.InvitationLifetime {
 			t.Fatalf("skew %v teacher Invitation lifecycle = %v..%v; local window %v..%v", skew, persisted.CreatedAt, persisted.ExpiresAt, before, after)
 		}
 		delivery, deliveryErr := ss.Mail().GetDelivery(ctx, skewed.Delivery.ID)
@@ -384,7 +384,7 @@ func teacherAcademicUnitInvitationIssueFixture(t *testing.T, ss store.Store, inv
 		Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unit.ID.String(), Status: model.AuditStatusAttempt, NodeID: "teacher-invitation-store-test"})
 	requireNoError(t, err)
-	return &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation, Lifetime: model.StudentClassInvitationLifetime,
+	return &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation,
 			TemplateKey: model.MailTemplateAccessTeacherAcademicUnitInvitation, ActorUserID: inviter.ID, CreatedAt: issuedAt},
 		Delivery: delivery, DeliveryJob: job, AuditEventID: attempt.ID.String(), AuditAt: model.MillisFromTime(issuedAt)}

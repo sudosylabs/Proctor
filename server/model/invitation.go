@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-const StudentClassInvitationLifetime = 7 * 24 * time.Hour
+const InvitationLifetime = 7 * 24 * time.Hour
 
 const invitationClaimHashDomain = "proctor/invitation-claim/v1\x00"
 
@@ -152,7 +152,7 @@ func NewStudentClassInvitation(input StudentClassInvitationInput) (*Invitation, 
 		Suggestions:      normalizeInvitationSuggestions(input.Suggestions),
 		InviterUserID:    input.InviterUserID, ScopeType: input.ScopeType,
 		ScopeID: input.ScopeID, ClaimHash: input.ClaimHash,
-		ExpiresAt: issuedAt.Add(StudentClassInvitationLifetime),
+		ExpiresAt: issuedAt.Add(InvitationLifetime),
 	}
 	if err := invitation.Validate(); err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func NewTeacherAcademicUnitInvitation(input TeacherAcademicUnitInvitationInput) 
 		Suggestions:      normalizeInvitationSuggestions(input.Suggestions),
 		InviterUserID:    input.InviterUserID, ScopeType: input.ScopeType,
 		ScopeID: input.ScopeID, ClaimHash: input.ClaimHash,
-		ExpiresAt: issuedAt.Add(StudentClassInvitationLifetime),
+		ExpiresAt: issuedAt.Add(InvitationLifetime),
 	}
 	if err := invitation.Validate(); err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func NewScopedRoleInvitation(input ScopedRoleInvitationInput) (*Invitation, erro
 		IntendedStartsAt: TimeUTC(input.IntendedStartsAt),
 		IntendedEndsAt:   normalizeOptionalInvitationTime(input.IntendedEndsAt),
 		InviterUserID:    input.InviterUserID, ScopeType: input.ScopeType, ScopeID: input.ScopeID,
-		ClaimHash: input.ClaimHash, ExpiresAt: issuedAt.Add(StudentClassInvitationLifetime),
+		ClaimHash: input.ClaimHash, ExpiresAt: issuedAt.Add(InvitationLifetime),
 	}
 	if err := invitation.Validate(); err != nil {
 		return nil, err
@@ -245,7 +245,7 @@ func (i *Invitation) Validate() error {
 	if !IsValidTokenHash(i.ClaimHash) {
 		return invalidModelError(where, "invitation", "claim_hash", "has an invalid format", details)
 	}
-	if !i.ExpiresAt.Equal(i.CreatedAt.Add(StudentClassInvitationLifetime)) {
+	if !i.ExpiresAt.Equal(i.CreatedAt.Add(InvitationLifetime)) {
 		return invalidModelError(where, "invitation", "expires_at", "must be exactly seven days after creation", details)
 	}
 	if err := validateInvitationSuggestions(i.Suggestions); err != nil {
@@ -425,6 +425,69 @@ func (i *Invitation) Expire(at time.Time) error {
 		return fmt.Errorf("model: invitation cannot be expired at this time")
 	}
 	i.State = InvitationExpired
+	i.UpdatedAt = at
+	i.Revision++
+	return i.Validate()
+}
+
+// Resend rotates the bearer claim for an otherwise unchanged pending
+// Invitation. Resend deliberately preserves the original creation time and
+// expiry; extending an Invitation requires an explicit replacement package.
+func (i *Invitation) Resend(claimHash string, at time.Time) error {
+	if i == nil || i.State != InvitationPending || !IsValidTokenHash(claimHash) || claimHash == i.ClaimHash {
+		return fmt.Errorf("model: invitation cannot be resent")
+	}
+	at = TimeUTC(at)
+	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
+		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
+		return fmt.Errorf("model: invitation cannot be resent at this time")
+	}
+	i.ClaimHash = claimHash
+	i.UpdatedAt = at
+	i.Revision++
+	return i.Validate()
+}
+
+// Revoke makes a pending Invitation immediately unusable. Delivery cleanup
+// and any notice for a previously accepted SMTP delivery remain part of the
+// authoritative Store transaction.
+func (i *Invitation) Revoke(at time.Time) error {
+	return i.terminalizeAdministratively(InvitationRevoked, at)
+}
+
+// Supersede terminalizes a pending Invitation immediately before its explicit
+// replacement is inserted by the same aggregate transaction.
+func (i *Invitation) Supersede(at time.Time) error {
+	return i.terminalizeAdministratively(InvitationSuperseded, at)
+}
+
+// HasSamePackage reports whether another Invitation carries exactly the same
+// immutable recipient and grant package. Identity, claim, lifecycle,
+// timestamps, and inviter provenance are deliberately excluded.
+func (i *Invitation) HasSamePackage(other *Invitation) bool {
+	return i != nil && other != nil &&
+		i.Purpose == other.Purpose && i.TargetEmail == other.TargetEmail &&
+		i.ClassID == other.ClassID && i.AcademicPeriodID == other.AcademicPeriodID &&
+		i.AcademicUnitID == other.AcademicUnitID && i.RoleID == other.RoleID &&
+		slices.Equal(i.RoleActions, other.RoleActions) &&
+		i.IntendedStartsAt.Equal(other.IntendedStartsAt) && sameInvitationOptionalTime(i.IntendedEndsAt, other.IntendedEndsAt) &&
+		i.Suggestions == other.Suggestions && i.ScopeType == other.ScopeType && i.ScopeID == other.ScopeID
+}
+
+func sameInvitationOptionalTime(first, second OptionalTime) bool {
+	return first.Valid == second.Valid && (!first.Valid || first.Time.Equal(second.Time))
+}
+
+func (i *Invitation) terminalizeAdministratively(state InvitationState, at time.Time) error {
+	if i == nil || i.State != InvitationPending || (state != InvitationRevoked && state != InvitationSuperseded) {
+		return fmt.Errorf("model: invitation cannot be terminalized administratively")
+	}
+	at = TimeUTC(at)
+	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
+		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
+		return fmt.Errorf("model: invitation cannot be terminalized administratively at this time")
+	}
+	i.State = state
 	i.UpdatedAt = at
 	i.Revision++
 	return i.Validate()

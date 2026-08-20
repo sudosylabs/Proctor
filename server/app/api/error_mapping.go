@@ -76,6 +76,7 @@ var applicationErrorMappings = map[string]applicationErrorMapping{
 	"class.invalid":                                        {status: http.StatusBadRequest},
 	"class.conflict":                                       {status: http.StatusConflict},
 	"invitation.invalid":                                   {status: http.StatusBadRequest},
+	"invitation.query.invalid":                             {status: http.StatusBadRequest},
 	"invitation.user_invalid":                              {status: http.StatusBadRequest},
 	"invitation.class_period_invalid":                      {status: http.StatusConflict},
 	"invitation.conflict":                                  {status: http.StatusConflict},

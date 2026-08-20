@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -20,6 +21,7 @@ import (
 )
 
 type invitationHTTPApplication struct {
+	InvitationApplication
 	issue                 application.IssueStudentClassInvitationCommand
 	accept                application.AcceptStudentClassInvitationCommand
 	teacherIssue          application.IssueTeacherAcademicUnitInvitationCommand
@@ -28,6 +30,12 @@ type invitationHTTPApplication struct {
 	unitRoleAccept        application.AcceptAcademicUnitRoleInvitationCommand
 	institutionRoleIssue  application.IssueInstitutionRoleInvitationCommand
 	institutionRoleAccept application.AcceptInstitutionRoleInvitationCommand
+	resend                application.ResendInvitationCommand
+	revoke                application.RevokeInvitationCommand
+	replace               application.ReplaceInvitationCommand
+	list                  application.ListInvitationsQuery
+	listMore              bool
+	getID                 string
 	acceptance            *application.InvitationAcceptanceView
 }
 
@@ -79,6 +87,129 @@ func (a *invitationHTTPApplication) AcceptStudentClassInvitation(_ context.Conte
 		return a.acceptance, nil
 	}
 	return &application.InvitationAcceptanceView{User: &model.User{ID: model.NewUserID(), Username: command.Username}}, nil
+}
+func (a *invitationHTTPApplication) ListInvitations(_ context.Context, _ application.Invocation, query application.ListInvitationsQuery) (application.InvitationAdministrationPage, error) {
+	a.list = query
+	return application.InvitationAdministrationPage{Items: []application.InvitationAdministrationView{a.administrationView()}, More: a.listMore}, nil
+}
+
+func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T) {
+	logger, _ := newTestLogger(t)
+	applicationFake := &invitationHTTPApplication{listMore: true}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now(), MFACompletedAt: model.OptionalTimeFrom(time.Now())}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, invitationResource(applicationFake))
+
+	list := httptest.NewRequest(http.MethodGet, "/api/v1/invitations?purpose=student_class&state=pending&email=student%40example.edu&limit=25&created_after=1700000000000&created_before=1900000000000", nil)
+	list.Header.Set("Authorization", "Bearer session")
+	listResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(listResponse, list)
+	if listResponse.Code != http.StatusOK || listResponse.Header().Get("Cache-Control") != "no-store" ||
+		applicationFake.list.Purpose != model.InvitationPurposeStudentClass ||
+		applicationFake.list.State != model.InvitationPending || applicationFake.list.TargetEmail != "student@example.edu" ||
+		applicationFake.list.Limit != 25 || applicationFake.list.CreatedAfter.IsZero() || applicationFake.list.CreatedBefore.IsZero() {
+		t.Fatalf("list Invitations = %d %s query=%#v", listResponse.Code, listResponse.Body.String(), applicationFake.list)
+	}
+	var listed map[string]any
+	if err := json.Unmarshal(listResponse.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode Invitation list: %v", err)
+	}
+	if listed["next_cursor"] == "" {
+		t.Fatalf("Invitation list cursor missing: %#v", listed)
+	}
+	for _, forbidden := range []string{"claim", "claim_hash", "encrypted_payload", "rendered", "provider", "message_id", "job_id", "failure_detail"} {
+		if strings.Contains(listResponse.Body.String(), forbidden) {
+			t.Fatalf("Invitation list leaked %q: %s", forbidden, listResponse.Body.String())
+		}
+	}
+	cursor, ok := listed["next_cursor"].(string)
+	if !ok || cursor == "" {
+		t.Fatalf("Invitation list cursor = %#v", listed["next_cursor"])
+	}
+	secondPage := httptest.NewRequest(http.MethodGet, "/api/v1/invitations?limit=25&cursor="+url.QueryEscape(cursor), nil)
+	secondPage.Header.Set("Authorization", "Bearer session")
+	secondPageResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(secondPageResponse, secondPage)
+	if secondPageResponse.Code != http.StatusOK || applicationFake.list.BeforeCreatedAt.IsZero() || !applicationFake.list.BeforeID.IsValid() {
+		t.Fatalf("second Invitation page = %d %s query=%#v", secondPageResponse.Code, secondPageResponse.Body.String(), applicationFake.list)
+	}
+
+	id := model.NewInvitationID().String()
+	detail := httptest.NewRequest(http.MethodGet, "/api/v1/invitations/"+id, nil)
+	detail.Header.Set("Authorization", "Bearer session")
+	detailResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(detailResponse, detail)
+	if detailResponse.Code != http.StatusOK || detailResponse.Header().Get("Cache-Control") != "no-store" || applicationFake.getID != id {
+		t.Fatalf("Invitation detail = %d %s id=%q", detailResponse.Code, detailResponse.Body.String(), applicationFake.getID)
+	}
+	for _, mutation := range []struct {
+		path string
+		body map[string]any
+		code int
+	}{
+		{path: "/api/v1/invitations/" + id + "/resend", body: map[string]any{"expected_revision": 7}, code: http.StatusOK},
+		{path: "/api/v1/invitations/" + id + "/revoke", body: map[string]any{"expected_revision": 8}, code: http.StatusOK},
+		{path: "/api/v1/invitations/" + id + "/replacement", body: map[string]any{"expected_revision": 9, "purpose": "student_class", "email": "replacement@example.edu", "class_id": model.NewClassID().String()}, code: http.StatusCreated},
+	} {
+		body, _ := json.Marshal(mutation.body)
+		request := httptest.NewRequest(http.MethodPost, mutation.path, bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer session")
+		response := httptest.NewRecorder()
+		httpAPI.ServeHTTP(response, request)
+		if response.Code != mutation.code || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("%s = %d %s", mutation.path, response.Code, response.Body.String())
+		}
+	}
+	if applicationFake.resend.ID != id || applicationFake.resend.ExpectedRevision != 7 ||
+		applicationFake.revoke.ID != id || applicationFake.revoke.ExpectedRevision != 8 ||
+		applicationFake.replace.ID != id || applicationFake.replace.ExpectedRevision != 9 ||
+		applicationFake.replace.TargetEmail != "replacement@example.edu" {
+		t.Fatalf("Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	}
+}
+
+func TestInvitationAdministrationHTTPRejectsMalformedCursor(t *testing.T) {
+	logger, logs := newTestLogger(t)
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}}, invitationResource(&invitationHTTPApplication{}))
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/invitations?cursor=not-a-cursor", nil)
+	request.Header.Set("Authorization", "Bearer pat")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invitation.query.invalid") {
+		t.Fatalf("malformed Invitation cursor = %d %s logs=%s", response.Code, response.Body.String(), logs.String())
+	}
+}
+func (a *invitationHTTPApplication) GetInvitation(_ context.Context, _ application.Invocation, id string) (application.InvitationAdministrationView, error) {
+	a.getID = id
+	return a.administrationView(), nil
+}
+func (a *invitationHTTPApplication) ResendInvitation(_ context.Context, _ application.Invocation, command application.ResendInvitationCommand) (application.InvitationAdministrationView, error) {
+	a.resend = command
+	return a.administrationView(), nil
+}
+func (a *invitationHTTPApplication) RevokeInvitation(_ context.Context, _ application.Invocation, command application.RevokeInvitationCommand) (application.InvitationAdministrationView, error) {
+	a.revoke = command
+	view := a.administrationView()
+	view.State = model.InvitationRevoked
+	return view, nil
+}
+func (a *invitationHTTPApplication) ReplaceInvitation(_ context.Context, _ application.Invocation, command application.ReplaceInvitationCommand) (application.InvitationAdministrationView, error) {
+	a.replace = command
+	return a.administrationView(), nil
+}
+func (a *invitationHTTPApplication) administrationView() application.InvitationAdministrationView {
+	at := model.TimeFromMillis(1_800_000_000_000)
+	return application.InvitationAdministrationView{InvitationView: application.InvitationView{ID: model.NewInvitationID(),
+		Purpose: model.InvitationPurposeStudentClass, State: model.InvitationPending, ClassID: model.NewClassID(),
+		AcademicPeriodID: model.NewAcademicPeriodID(), IntendedStartsAt: at, ExpiresAt: at.Add(7 * 24 * time.Hour)},
+		TargetEmail: "student@example.edu", InviterUserID: model.NewUserID(), CreatedAt: at, UpdatedAt: at, Revision: 1,
+		Delivery: &application.InvitationDeliveryView{TemplateKey: model.MailTemplateAccessStudentClassInvitation,
+			State: model.MailDeliveryQueued, MaskedRecipient: "s***@example.edu", CreatedAt: at, UpdatedAt: at, Deadline: at.Add(7 * 24 * time.Hour)}}
 }
 
 func TestInvitationAcceptanceHTTPReturnsOnlyRecordIDsForFreshAndReplay(t *testing.T) {

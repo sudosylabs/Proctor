@@ -2321,6 +2321,36 @@ func (s *timedInvitationStore) AcceptScopedRole(arg0 context.Context, arg1 *stor
 	})
 }
 
+func (s *timedInvitationStore) List(arg0 context.Context, arg1 store.InvitationListOptions) (*store.InvitationPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodList), func() (*store.InvitationPage, error) {
+		return s.next.List(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) GetForAdministration(arg0 context.Context, arg1 model.InvitationID, arg2 store.InvitationVisibilityScope) (*store.InvitationAdministrationRecord, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGetForAdministration), func() (*store.InvitationAdministrationRecord, error) {
+		return s.next.GetForAdministration(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedInvitationStore) Resend(arg0 context.Context, arg1 *store.InvitationResend) (*store.InvitationAdministrationRecord, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodResend), func() (*store.InvitationAdministrationRecord, error) {
+		return s.next.Resend(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) Revoke(arg0 context.Context, arg1 *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodRevoke), func() (*store.InvitationAdministrationRecord, error) {
+		return s.next.Revoke(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) Replace(arg0 context.Context, arg1 *store.InvitationReplacement) (*store.InvitationAdministrationRecord, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplace), func() (*store.InvitationAdministrationRecord, error) {
+		return s.next.Replace(arg0, arg1)
+	})
+}
+
 func (s *timedInvitationStore) Maintain(arg0 context.Context, arg1 int) (*store.InvitationMaintenanceResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodMaintain), func() (*store.InvitationMaintenanceResult, error) {
 		return s.next.Maintain(arg0, arg1)

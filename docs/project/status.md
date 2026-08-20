@@ -283,8 +283,9 @@ and reserved credential-delivery Job atomically. Reissue invalidates the prior
 credential and suppresses its unsent delivery. Password-reset completion now
 atomically changes the password, revokes Sessions, consumes the reset token,
 records its audit, and queues only the password-changed security notice.
-Implemented product-transition mail also covers student and teacher Invitation
-issuance and acceptance, explicit email transitions, account enable and
+Implemented product-transition mail also covers typed Invitation issuance and
+acceptance, explicit resend, accepted-delivery revocation notices, explicit
+email transitions, account enable and
 disable, explicit administrative Session revocation, and MFA enable, disable,
 recovery-code regeneration, and Personal Access Token create, enable, disable,
 and revoke. Exam Manager addition, removal, and ownership transfer now commit
@@ -324,8 +325,8 @@ desktop URL scheme while the client navigation contract remains undefined.
 The access and onboarding architecture is accepted. Existing installations
 now reconcile the protected `system_admin` Role with every current grantable
 action before serving traffic, preserving unknown downgrade actions and all
-custom Roles and bindings. Identity reconciliation, the remaining Invitation
-purposes, and batch workflows are not implemented.
+custom Roles and bindings. Identity reconciliation and batch workflows are not
+implemented.
 
 Bootstrap now requires a deployment-owned secret, rate-limits public proof attempts,
 and atomically creates the unverified first local administrator, protected
@@ -467,6 +468,14 @@ requires a strong/recent interactive Session and rejects PATs, and atomic
 acceptance adds or reuses only the compatible Role Binding without changing the
 canonical User, creating a relationship, or sending redundant welcome or
 acceptance mail. Same-User replay is exact and cross-User replay fails closed.
+Authorized Invitation administration is also implemented. Bounded keyset list
+and detail apply Institution, Academic Unit subtree, or exact Class visibility;
+their safe projections omit claims, rendered payloads, provider and transport
+internals. Revision-fenced resend rotates the claim and atomically suppresses
+older unsent credential delivery, revocation terminalizes immediately and
+notifies only after an SMTP-Accepted credential delivery, and replacement
+supersedes the old immutable package while rechecking the new package and
+authority in the committing PostgreSQL transaction.
 CSV imports are asynchronous validated batches over the same invitation and
 progression commands, with row-level results and no raw invitation secrets in
 exports. The closed authorization registry now distinguishes Academic Unit
@@ -538,8 +547,8 @@ contract is in [Execution environments](../architecture/execution.md).
 
 - Implement the accepted access-and-onboarding architecture in its documented
   order after scoped Academic Period ownership and protected initial policy:
-  local and external credential reconciliation, the remaining durable typed
-  Invitations, then bounded CSV batch workflows.
+  local and external credential reconciliation, then bounded CSV batch
+  workflows over the implemented typed Invitation commands.
   Invitation-required activation and usable invite links remain gated on the
   mail foundation and hosted-page design system respectively.
 - Continue the accepted transactional-mail architecture as verified vertical
