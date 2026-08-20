@@ -695,6 +695,13 @@ func (s SQLUserStore) SetDisabledWithAudit(
 			if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 				return nil, err
 			}
+			// Match every authentication and Session mutation: after the
+			// installation-wide path fence, serialize this User's Sessions before
+			// taking the User row. Reversing these two locks can deadlock with a
+			// concurrent Desktop code exchange that already owns the Session fence.
+			if err := lockUserSessions(ctx, tx, input.ID); err != nil {
+				return nil, err
+			}
 		}
 		var lockedUserID string
 		if err := tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL FOR UPDATE`, input.ID); err != nil {
@@ -740,9 +747,6 @@ func (s SQLUserStore) SetDisabledWithAudit(
 				if !remaining {
 					return nil, store.NewErrConflict("user", "users_last_system_admin", nil)
 				}
-			}
-			if err := lockUserSessions(ctx, tx, input.ID); err != nil {
-				return nil, err
 			}
 		}
 		disabledAt := int64(0)

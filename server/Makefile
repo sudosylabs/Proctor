@@ -9,7 +9,7 @@ PROCTOR_TEST_S3_ENDPOINT ?= 127.0.0.1:$(PROCTOR_MINIO_PORT)
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT
 
-.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs conformance-postgres conformance-realtime
+.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding conformance-postgres conformance-realtime
 
 check: architecture openapi-agreement test test-race vet
 
@@ -131,6 +131,30 @@ independent-modules:
 	done
 
 phase-file-jobs: check integration-postgres integration-s3 independent-modules
+
+phase-access-onboarding: check
+	@set -eu; \
+	cleanup() { $(COMPOSE) down --remove-orphans; }; \
+	trap cleanup EXIT INT TERM; \
+	$(COMPOSE) up --detach --wait postgres; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./app -run '^TestAccessAndOnboardingServerPhaseCertification$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./app -run '^TestJobRunnerRecoversNodeLossAroundADurableDomainCommit$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./store/sqlstore -run '^TestAccessAndOnboardingDecoratedLayerConformance$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./store/sqlstore -run '^TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationMaintenanceIsBoundedAndMultiNodeSafe$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossNodes$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./store/sqlstore -run '^(TestExamSittingReconciliationAndInvitationAcceptanceShareUserClassLockOrder|TestDisabledSittingReconciliationAndInvitationAcceptanceUseUserSingletonClassOrder)$$' -count=1; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+		go test -tags=integration ./store/sqlstore -run '^TestMigrationsRoundTrip$$' -count=1
 
 integration-providers:
 	@set -eu; \

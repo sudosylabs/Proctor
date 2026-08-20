@@ -328,11 +328,15 @@ desktop URL scheme while the client navigation contract remains undefined.
 
 ## Access and onboarding
 
-The access and onboarding architecture is accepted. Existing installations
-now reconcile the protected `system_admin` Role with every current grantable
-action before serving traffic, preserving unknown downgrade actions and all
-custom Roles and bindings. Identity reconciliation and batch workflows are not
-implemented.
+The access and onboarding server phase is implemented and certified. Existing
+installations reconcile the protected `system_admin` Role with every current
+grantable action before serving traffic, preserving unknown downgrade actions
+and all custom Roles and bindings. The real-graph phase gate covers bootstrap,
+policy, Desktop protocol, local and external credentials, Invitations,
+JSON/CSV administration, progression, mail, multi-node recovery,
+authorization, privacy, PostgreSQL conformance, HTTP/OpenAPI, race, vet, and
+architecture checks. Server-hosted design-system pages and the Desktop
+LaunchWindow remain explicitly deferred client/hosted-page work.
 
 Bootstrap now requires a deployment-owned secret, rate-limits public proof attempts,
 and atomically creates the unverified first local administrator, protected
@@ -582,11 +586,8 @@ contract is in [Execution environments](../architecture/execution.md).
 
 ## Planned product work
 
-- Implement the accepted access-and-onboarding architecture in its documented
-  order after scoped Academic Period ownership and protected initial policy:
-  bounded CSV batch workflows over the implemented typed Invitation commands.
-  Invitation-required activation and usable invite links remain gated on the
-  mail foundation and hosted-page design system respectively.
+- Implement the deferred server-hosted account, Invitation, and Desktop
+  authorization pages with the design system, plus the Desktop LaunchWindow.
 - Continue the accepted transactional-mail architecture as verified vertical
   slices after the durable operator tracer and account-recovery delivery. The
   recovery landing pages remain a separately visible dependency of the future

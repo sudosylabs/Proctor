@@ -553,6 +553,16 @@ integration, and independent `GOWORK=off` builds/tests of all four modules:
 make -C server phase-file-jobs
 ```
 
+The access-and-onboarding server-phase gate combines the hermetic checks with
+the real composition graph, PostgreSQL-backed JSON/CSV administration,
+multi-node protocol and recovery scenarios, decorated Store conformance,
+lock-order regressions, and migration round-trip coverage. It certifies the
+server protocol and domain phase, not the deferred hosted pages or Desktop UI:
+
+```sh
+make -C server phase-access-onboarding
+```
+
 The individual `test`, `test-race`, `vet`, and `build` targets use the root
 workspace during repository development. The server declares exact pseudo
 versions of the reusable modules; those versions must be published before the
